@@ -13,6 +13,7 @@ import {
   paperTradingComparisonBaselineEvaluation,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonRuntimeWriteContextHasRuntimeShape,
   type PaperTradingComparisonActivationAttemptRecord,
   type PaperTradingComparisonActivationOutcomeRecord,
@@ -154,6 +155,9 @@ describe("paper comparison runtime activation domain", () => {
     expect(paperTradingComparisonRuntimeWriteContextHasRuntimeShape(
       validRuntimeWriteContext()
     )).toBe(true);
+    expect(paperTradingComparisonRuntimeControlIdempotencyKey(
+      validRuntimeWriteContext()
+    )).toBe("paper-comparison-run-control:attempt-1:champion:start");
   });
 
   it.each([

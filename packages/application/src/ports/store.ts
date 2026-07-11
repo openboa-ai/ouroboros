@@ -33,6 +33,7 @@ import type {
   PaperTradingComparisonActivationAttemptRecord,
   PaperTradingComparisonActivationSideResultRecord,
   PaperTradingComparisonActivationOutcomeRecord,
+  PaperTradingComparisonRuntimeWriteContext,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -147,10 +148,16 @@ export interface OuroborosStorePort {
   recordTradingPromotion(promotion: TradingPromotionRecord): Promise<TradingPromotionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
-  recordRunControlAudit(input: RunControlAuditInput): Promise<RunControlAuditOutcome>;
+  recordRunControlAudit(
+    input: RunControlAuditInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<RunControlAuditOutcome>;
   recordPublicMarketLivenessSurface(surface: PublicMarketLivenessSurfaceRecord): Promise<PublicMarketLivenessSurfaceReadModel>;
   getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined>;
-  recordSandboxStart(input: SandboxStartResult): Promise<StartSandboxOutcome>;
+  recordSandboxStart(
+    input: SandboxStartResult,
+    authority?: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<StartSandboxOutcome>;
   recordSandboxObservations(
     sandboxId: string,
     observations: Omit<SandboxAdapterObservationResult, "instance"> & {
@@ -160,7 +167,8 @@ export interface OuroborosStorePort {
   ): Promise<SandboxLogsOutcome>;
   stopSandbox(
     input: StopSandboxInput,
-    observations?: SandboxAdapterObservationResult
+    observations?: SandboxAdapterObservationResult,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome>;
   recordPaperTradingEvaluationCommitment(
     commitment: PaperTradingEvaluationCommitmentRecord
@@ -169,7 +177,10 @@ export interface OuroborosStorePort {
     commitmentId: string
   ): Promise<PaperTradingEvaluationCommitmentRecord | undefined>;
   listPaperTradingEvaluationCommitments(): Promise<PaperTradingEvaluationCommitmentRecord[]>;
-  recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
+  recordPaperTradingEvaluation(
+    evaluation: PaperTradingEvaluationRecord,
+    authority?: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<PaperTradingEvaluationRecord>;
   getPaperTradingEvaluation(
     evaluationId: string
   ): Promise<PaperTradingEvaluationRecord | undefined>;

@@ -63,6 +63,8 @@ import {
   paperTradingComparisonPreparationHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
+  paperTradingComparisonRuntimeControlIdempotencyKey,
+  paperTradingComparisonRuntimeWriteContextHasRuntimeShape,
   paperTradingComparisonSideRecordsHaveInertShape,
   paperTradingComparisonStoppedQualificationClosureHasRuntimeShape,
   paperTradingComparisonSystemCodeRecordDigestInput,
@@ -165,6 +167,7 @@ import type {
   PaperTradingComparisonActivationAttemptRecord,
   PaperTradingComparisonActivationOutcomeRecord,
   PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -347,6 +350,13 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_activation_outcome_sequence_mismatch"
   | "paper_trading_comparison_activation_outcome_state_mismatch"
   | "paper_trading_comparison_activation_outcome_graph_invalid"
+  | "invalid_paper_trading_comparison_runtime_write_context"
+  | "paper_trading_comparison_runtime_write_context_reference_not_found"
+  | "paper_trading_comparison_runtime_write_context_reference_mismatch"
+  | "paper_trading_comparison_runtime_write_context_writer_mismatch"
+  | "paper_trading_comparison_runtime_write_transition_mismatch"
+  | "paper_trading_comparison_runtime_write_state_conflict"
+  | "paper_trading_comparison_runtime_write_graph_invalid"
   | "authority_evidence_identity_conflict";
 
 export class LocalStoreError extends Error {
@@ -477,6 +487,20 @@ interface PaperTradingComparisonRuntimeSideState {
   baseline: PaperTradingEvaluationRecord;
   sandbox?: SandboxDetailReadModel;
 }
+
+type PaperTradingComparisonBoundSideWrite =
+  | { writer: "sandbox_start"; input: SandboxObservationInput }
+  | {
+      writer: "sandbox_stop";
+      sandbox: SandboxRecord;
+      observations: Omit<SandboxObservationInput, "instance">;
+    }
+  | { writer: "run_control"; input: RunControlAuditInput }
+  | {
+      writer: "paper_trading_evaluation";
+      evaluation: PaperTradingEvaluationRecord;
+      existing?: PaperTradingEvaluationRecord;
+    };
 
 const fixtureNotice: FixtureNotice = {
   mode: "fixture_convenience_mode",
@@ -1196,7 +1220,8 @@ export class LocalStore {
     runId?: string;
     commitmentId?: string;
     evaluationId?: string;
-  }): Promise<void> {
+  }, authority?: PaperTradingComparisonRuntimeWriteContext,
+  write?: PaperTradingComparisonBoundSideWrite): Promise<void> {
     const freezesPromotionEvidence = (await this.listPaperTradingComparisonPreparations())
       .some((preparation) => {
         this.assertPersistedComparisonPreparationShape(preparation);
@@ -1218,9 +1243,10 @@ export class LocalStore {
         "active paper comparison preparation freezes champion promotion evidence"
       );
     }
-    const bound = (await this.listPaperTradingComparisonCommitments()).some((pair) => {
+    const boundSides = (await this.listPaperTradingComparisonCommitments()).flatMap((pair) => {
       this.assertPersistedComparisonCommitmentShape(pair);
-      return [pair.champion, pair.challenger].some((side) =>
+      return [pair.champion, pair.challenger]
+        .filter((side) =>
         (input.runId !== undefined && paperTradingComparisonRefsEqual(
           side.trading_run_ref,
           { record_kind: "trading_run", id: input.runId }
@@ -1233,12 +1259,551 @@ export class LocalStore {
           side.paper_trading_evaluation_ref,
           { record_kind: "paper_trading_evaluation", id: input.evaluationId }
         ))
-      );
+        )
+        .map((side) => ({ pair, side }));
     });
-    if (bound) {
+    if (boundSides.length === 0) {
+      if (authority !== undefined || write !== undefined) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_runtime_write_context_reference_mismatch",
+          "paper comparison runtime write context does not target a bound side"
+        );
+      }
+      return;
+    }
+    if (boundSides.length !== 1) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_graph_invalid",
+        "paper comparison runtime writer matched more than one bound side"
+      );
+    }
+    if (authority === undefined || write === undefined) {
       throw new LocalStoreError(
         "paper_trading_comparison_inert_graph_mutation_forbidden",
-        "persisted paper comparison side graph is inert until a later authority lifecycle exists"
+        "persisted paper comparison side graph requires exact runtime activation context"
+      );
+    }
+    await this.assertPaperTradingComparisonRuntimeWriteAllowed({
+      ...boundSides[0]!,
+      authority,
+      write
+    });
+  }
+
+  private async assertPaperTradingComparisonRuntimeWriteAllowed(input: {
+    pair: PaperTradingComparisonCommitmentRecord;
+    side: PaperTradingComparisonSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    write: PaperTradingComparisonBoundSideWrite;
+  }): Promise<void> {
+    if (!paperTradingComparisonRuntimeWriteContextHasRuntimeShape(input.authority)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_runtime_write_context",
+        "paper comparison runtime write context has invalid shape"
+      );
+    }
+    const expectedOperation = input.write.writer === "sandbox_start"
+      ? "start"
+      : input.write.writer === "sandbox_stop"
+        ? "stop"
+        : input.write.writer === "run_control"
+          ? input.write.input.command.action === "start" ||
+            input.write.input.command.action === "stop"
+            ? input.write.input.command.action
+            : input.authority.operation
+          : input.authority.operation;
+    if ((expectedOperation !== "start" && expectedOperation !== "stop") ||
+      input.authority.operation !== expectedOperation) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_context_writer_mismatch",
+        "paper comparison runtime write context operation does not match its writer"
+      );
+    }
+
+    let activation: PaperTradingComparisonActivationRecord | undefined;
+    let attempt: PaperTradingComparisonActivationAttemptRecord | undefined;
+    try {
+      [activation, attempt] = await Promise.all([
+        this.getPaperTradingComparisonActivation(
+          input.authority.paper_trading_comparison_activation_ref.id
+        ),
+        this.getPaperTradingComparisonActivationAttempt(
+          input.authority.paper_trading_comparison_activation_attempt_ref.id
+        )
+      ]);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_graph_invalid",
+        "paper comparison runtime write context references unreadable evidence"
+      );
+    }
+    if (!activation || !attempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_context_reference_not_found",
+        "paper comparison runtime write context evidence was not found"
+      );
+    }
+    const activationSide = activation[input.authority.role];
+    if (
+      input.authority.paper_trading_comparison_activation_digest !==
+        activation.activation_digest ||
+      input.authority.paper_trading_comparison_activation_attempt_digest !==
+        attempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        attempt.paper_trading_comparison_activation_ref,
+        input.authority.paper_trading_comparison_activation_ref
+      ) ||
+      attempt.paper_trading_comparison_activation_digest !==
+        input.authority.paper_trading_comparison_activation_digest ||
+      input.pair.paper_trading_comparison_commitment_id !==
+        activation.paper_trading_comparison_commitment_ref.id ||
+      input.pair.commitment_digest !==
+        activation.paper_trading_comparison_commitment_digest ||
+      input.side.role !== input.authority.role ||
+      !samePersistedComparisonRecord(input.side, input.pair[input.authority.role]) ||
+      !paperTradingComparisonRefsEqual(
+        input.side.trading_run_ref,
+        activationSide.trading_run_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        input.side.paper_trading_evaluation_commitment_ref,
+        activationSide.paper_trading_evaluation_commitment_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        input.side.paper_trading_evaluation_ref,
+        activationSide.paper_trading_evaluation_ref
+      )
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_context_reference_mismatch",
+        "paper comparison runtime write context does not match its frozen side"
+      );
+    }
+
+    const closure = await this.loadPaperTradingComparisonActivationAttemptClosure(attempt);
+    const attempts = await this.listPaperTradingComparisonActivationAttempts(
+      activation.paper_trading_comparison_activation_id
+    );
+    if (attempts.at(-1)?.paper_trading_comparison_activation_attempt_id !==
+      attempt.paper_trading_comparison_activation_attempt_id) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_state_conflict",
+        "paper comparison runtime write context does not reference the latest attempt"
+      );
+    }
+    const outcomes = await this.listPaperTradingComparisonActivationOutcomes(
+      attempt.paper_trading_comparison_activation_attempt_id
+    );
+    const latestOutcome = outcomes.at(-1);
+    const results = await this.listPaperTradingComparisonActivationSideResults(
+      attempt.paper_trading_comparison_activation_attempt_id
+    );
+    const roleResults = results.filter((result) => result.role === input.authority.role);
+    if (latestOutcome?.outcome_status === "stopped_cleanly" ||
+      input.authority.operation === "start" &&
+        (latestOutcome !== undefined || roleResults.some((result) => result.operation === "start")) ||
+      input.authority.operation === "stop" &&
+        !roleResults.some((result) => result.operation === "start")) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_state_conflict",
+        "paper comparison runtime write context is not open for this side operation"
+      );
+    }
+
+    const state = await this.loadPaperTradingComparisonRuntimeSideState(
+      attempt,
+      input.authority.role,
+      closure.comparison,
+      "paper_trading_comparison_runtime_write_graph_invalid"
+    );
+    if ((input.write.writer === "sandbox_stop" ||
+      input.write.writer === "paper_trading_evaluation") &&
+      !await this.paperTradingComparisonRuntimeControlAuditIsPersisted(
+        attempt,
+        state,
+        input.authority
+      )) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_state_conflict",
+        "paper comparison runtime transition requires its exact control audit"
+      );
+    }
+    if (input.write.writer === "sandbox_start") {
+      this.assertPaperTradingComparisonSandboxStartTransition(
+        attempt,
+        state,
+        input.write.input
+      );
+      return;
+    }
+    if (input.write.writer === "sandbox_stop") {
+      this.assertPaperTradingComparisonSandboxStopTransition(
+        attempt,
+        state,
+        input.write.sandbox,
+        input.write.observations
+      );
+      return;
+    }
+    if (input.write.writer === "run_control") {
+      this.assertPaperTradingComparisonRunControlTransition(
+        attempt,
+        state,
+        input.authority,
+        input.write.input
+      );
+      return;
+    }
+    this.assertPaperTradingComparisonEvaluationTransition(
+      attempt,
+      state,
+      input.authority.operation,
+      input.write.evaluation,
+      input.write.existing
+    );
+  }
+
+  private async paperTradingComparisonRuntimeControlAuditIsPersisted(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    state: PaperTradingComparisonRuntimeSideState,
+    authority: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<boolean> {
+    const recordIds = runtimeControlAuditRecordIds({
+      candidate_id: state.commitment.candidate_ref.id,
+      candidate_version_id: state.commitment.candidate_version_ref.id,
+      runtime_id: state.run.trading_run_id,
+      idempotency_key: paperTradingComparisonRuntimeControlIdempotencyKey(authority)
+    });
+    const outcome = await this.readRunControlAuditOutcome(
+      state.commitment.candidate_ref.id,
+      state.commitment.candidate_version_ref.id,
+      state.run.trading_run_id,
+      recordIds
+    );
+    if (!outcome) return false;
+    const expectedStatus = authority.operation === "start" ? "running" : "stopped";
+    const relatedEvidence = [
+      outcome.command.related_order_request_refs,
+      outcome.command.related_gateway_result_refs,
+      outcome.command.related_execution_result_refs,
+      outcome.decision.related_order_request_refs,
+      outcome.decision.related_gateway_result_refs,
+      outcome.decision.related_execution_result_refs,
+      outcome.audit_event.related_order_request_refs,
+      outcome.audit_event.related_gateway_result_refs,
+      outcome.audit_event.related_execution_result_refs
+    ];
+    return paperTradingComparisonRefsEqual(outcome.command.runtime_ref, state.comparisonSide.trading_run_ref) &&
+      outcome.command.action === authority.operation &&
+      outcome.command.requested_lifecycle_status === expectedStatus &&
+      outcome.command.idempotency_key ===
+        paperTradingComparisonRuntimeControlIdempotencyKey(authority) &&
+      outcome.command.authority_status === "control_only" &&
+      isIsoTimestamp(outcome.command.requested_at) &&
+      Date.parse(outcome.command.requested_at) >= Date.parse(attempt.attempted_at) &&
+      (authority.operation !== "start" || Date.parse(outcome.command.requested_at) <=
+        Date.parse(attempt.start_deadline_at)) &&
+      relatedEvidence.every((refs) => (refs?.length ?? 0) === 0) &&
+      paperTradingComparisonRefsEqual(outcome.decision.runtime_ref, state.comparisonSide.trading_run_ref) &&
+      outcome.decision.command_ref.id === outcome.command.run_control_command_id &&
+      outcome.decision.decision_outcome === "allowed" &&
+      outcome.decision.resulting_lifecycle_status === expectedStatus &&
+      outcome.decision.authority_status === "control_only" &&
+      isIsoTimestamp(outcome.decision.decided_at) &&
+      outcome.decision.decided_at === outcome.command.requested_at &&
+      paperTradingComparisonRefsEqual(outcome.audit_event.runtime_ref, state.comparisonSide.trading_run_ref) &&
+      outcome.audit_event.command_ref?.id === outcome.command.run_control_command_id &&
+      outcome.audit_event.decision_ref?.id === outcome.decision.run_control_decision_id &&
+      outcome.audit_event.event_kind === "runtime_lifecycle_transitioned" &&
+      outcome.audit_event.runtime_lifecycle_status === expectedStatus &&
+      outcome.audit_event.authority_status === "audit_only" &&
+      isIsoTimestamp(outcome.audit_event.created_at) &&
+      outcome.audit_event.created_at === outcome.command.requested_at &&
+      Boolean(state.run.run_control_command_refs?.some((record) =>
+        record.id === outcome.command.run_control_command_id)) &&
+      Boolean(state.run.run_control_decision_refs?.some((record) =>
+        record.id === outcome.decision.run_control_decision_id)) &&
+      Boolean(state.run.runtime_audit_event_refs?.some((record) =>
+        record.id === outcome.audit_event.runtime_audit_event_id));
+  }
+
+  private assertPaperTradingComparisonSandboxStartTransition(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    state: PaperTradingComparisonRuntimeSideState,
+    input: SandboxObservationInput
+  ): void {
+    const sandbox = input.instance;
+    if (
+      (state.run.runtime_lifecycle_status !== "registered" &&
+        state.run.runtime_lifecycle_status !== "stopped") ||
+      (state.evaluation.status !== "not_started" && state.evaluation.status !== "stopped") ||
+      sandbox.record_kind !== "sandbox" ||
+      sandbox.version !== 1 ||
+      sandbox.lifecycle_status !== "running" ||
+      !paperTradingComparisonRefsEqual(sandbox.runtime_ref, state.comparisonSide.trading_run_ref) ||
+      !paperTradingComparisonRefsEqual(sandbox.system_code_ref, state.commitment.system_code_ref) ||
+      !paperTradingComparisonRefsEqual(sandbox.sandbox_placement_ref, state.run.placement_ref) ||
+      input.placement !== undefined ||
+      !isIsoTimestamp(sandbox.started_at) ||
+      Date.parse(sandbox.started_at) < Date.parse(attempt.attempted_at) ||
+      Date.parse(sandbox.started_at) > Date.parse(attempt.start_deadline_at) ||
+      sandbox.stopped_at !== undefined ||
+      sandbox.removed_at !== undefined ||
+      sandbox.authority_status !== "not_live" ||
+      state.sandbox !== undefined &&
+        state.sandbox.lifecycle_status !== "stopped" &&
+        state.sandbox.lifecycle_status !== "removed"
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_transition_mismatch",
+        "paper comparison runtime sandbox start is outside the bound zero-evidence transition"
+      );
+    }
+  }
+
+  private assertPaperTradingComparisonSandboxStopTransition(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    state: PaperTradingComparisonRuntimeSideState,
+    sandbox: SandboxRecord,
+    observations: Omit<SandboxObservationInput, "instance">
+  ): void {
+    const current = state.sandbox;
+    if (
+      !current ||
+      sandbox.sandbox_id !== current.sandbox_id ||
+      (sandbox.lifecycle_status !== "stopped" && sandbox.lifecycle_status !== "removed") ||
+      !paperTradingComparisonRefsEqual(sandbox.runtime_ref, state.comparisonSide.trading_run_ref) ||
+      !paperTradingComparisonRefsEqual(sandbox.system_code_ref, state.commitment.system_code_ref) ||
+      !paperTradingComparisonRefsEqual(
+        sandbox.sandbox_placement_ref,
+        current.sandbox_placement_ref
+      ) ||
+      sandbox.adapter_kind !== current.adapter_kind ||
+      sandbox.sandbox_name !== current.sandbox_name ||
+      sandbox.created_at !== current.created_at ||
+      sandbox.started_at !== current.started_at ||
+      observations.placement !== undefined ||
+      !isIsoTimestamp(sandbox.stopped_at) ||
+      Date.parse(sandbox.stopped_at) < Date.parse(attempt.attempted_at) ||
+      sandbox.authority_status !== "not_live" ||
+      ![
+        "deployed",
+        "starting",
+        "running",
+        "paused",
+        "stopping",
+        "stopped",
+        "failed",
+        "killed",
+        "human_review_required"
+      ].includes(state.run.runtime_lifecycle_status ?? "registered") ||
+      (state.evaluation.status !== "running" &&
+        state.evaluation.status !== "not_started" &&
+        state.evaluation.status !== "stopped")
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_transition_mismatch",
+        "paper comparison runtime sandbox stop is outside the bound cleanup transition"
+      );
+    }
+  }
+
+  private assertPaperTradingComparisonRunControlTransition(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    state: PaperTradingComparisonRuntimeSideState,
+    authority: PaperTradingComparisonRuntimeWriteContext,
+    input: RunControlAuditInput
+  ): void {
+    const operation = authority.operation;
+    const lifecycleStatus = operation === "start" ? "running" : "stopped";
+    const relatedEvidence = [
+      input.command.related_order_request_refs,
+      input.command.related_gateway_result_refs,
+      input.command.related_execution_result_refs,
+      input.decision.related_order_request_refs,
+      input.decision.related_gateway_result_refs,
+      input.decision.related_execution_result_refs,
+      input.audit_event.related_order_request_refs,
+      input.audit_event.related_gateway_result_refs,
+      input.audit_event.related_execution_result_refs
+    ];
+    if (
+      input.idempotency_key !==
+        paperTradingComparisonRuntimeControlIdempotencyKey(authority) ||
+      input.runtime_id !== state.run.trading_run_id ||
+      input.candidate_id !== state.commitment.candidate_ref.id ||
+      input.candidate_version_id !== state.commitment.candidate_version_ref.id ||
+      input.command.action !== operation ||
+      input.command.requested_lifecycle_status !== lifecycleStatus ||
+      input.command.actor_kind !== "human_operator" ||
+      input.command.actor_ref?.record_kind !== "operator" ||
+      input.command.actor_ref.id !== "runtime-activation-coordinator" ||
+      input.command.runtime_operating_policy_ref?.record_kind !==
+        "runtime_operating_policy" ||
+      input.command.runtime_operating_policy_ref.id !==
+        "runtime-operating-policy-paper-v1" ||
+      input.command.reason !== "operator_request" ||
+      input.decision.decision_outcome !== "allowed" ||
+      input.decision.decision_reason !== "policy_allows_control" ||
+      input.decision.decided_by_actor_kind !== "policy_engine" ||
+      input.decision.decided_by_actor_ref?.record_kind !== "runtime_policy_engine" ||
+      input.decision.runtime_operating_policy_ref?.record_kind !==
+        "runtime_operating_policy" ||
+      input.decision.runtime_operating_policy_ref.id !==
+        "runtime-operating-policy-paper-v1" ||
+      input.decision.resulting_lifecycle_status !== lifecycleStatus ||
+      input.audit_event.event_kind !== "runtime_lifecycle_transitioned" ||
+      input.audit_event.actor_kind !== "human_operator" ||
+      input.audit_event.actor_ref?.record_kind !== "operator" ||
+      input.audit_event.actor_ref.id !== "runtime-activation-coordinator" ||
+      input.audit_event.runtime_lifecycle_status !== lifecycleStatus ||
+      relatedEvidence.some((refs) => (refs?.length ?? 0) > 0) ||
+      !isIsoTimestamp(input.created_at) ||
+      Date.parse(input.created_at) < Date.parse(attempt.attempted_at) ||
+      operation === "start" && Date.parse(input.created_at) >
+        Date.parse(attempt.start_deadline_at) ||
+      operation === "start" && state.run.runtime_lifecycle_status !== "running" ||
+      operation === "start" && state.sandbox?.lifecycle_status !== "running" ||
+      operation === "stop" && ![
+        "deployed",
+        "starting",
+        "running",
+        "paused",
+        "stopping",
+        "stopped",
+        "failed",
+        "killed",
+        "human_review_required"
+      ].includes(state.run.runtime_lifecycle_status ?? "registered")
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_transition_mismatch",
+        "paper comparison runtime control audit is not the exact bound lifecycle transition"
+      );
+    }
+  }
+
+  private paperTradingComparisonRunControlReplayMatches(
+    input: RunControlAuditInput,
+    outcome: RunControlAuditOutcome
+  ): boolean {
+    const command = outcome.command;
+    const decision = outcome.decision;
+    const audit = outcome.audit_event;
+    return outcome.candidate_id === input.candidate_id &&
+      outcome.candidate_version_id === input.candidate_version_id &&
+      outcome.runtime_id === input.runtime_id &&
+      command.idempotency_key === input.idempotency_key &&
+      command.action === input.command.action &&
+      command.requested_lifecycle_status === input.command.requested_lifecycle_status &&
+      command.actor_kind === input.command.actor_kind &&
+      sameOptionalRef(command.actor_ref, input.command.actor_ref) &&
+      sameOptionalRef(
+        command.runtime_operating_policy_ref,
+        input.command.runtime_operating_policy_ref
+      ) &&
+      command.reason === input.command.reason &&
+      command.reason_summary === input.command.reason_summary &&
+      sameOptionalRef(command.trace_ref, input.command.trace_ref) &&
+      sameOptionalPersistedComparisonValue(
+        command.related_order_request_refs,
+        input.command.related_order_request_refs
+      ) &&
+      sameOptionalPersistedComparisonValue(
+        command.related_gateway_result_refs,
+        input.command.related_gateway_result_refs
+      ) &&
+      sameOptionalPersistedComparisonValue(
+        command.related_execution_result_refs,
+        input.command.related_execution_result_refs
+      ) &&
+      command.requested_at === input.created_at &&
+      decision.decision_outcome === input.decision.decision_outcome &&
+      decision.decision_reason === input.decision.decision_reason &&
+      decision.decided_by_actor_kind === input.decision.decided_by_actor_kind &&
+      sameOptionalRef(decision.decided_by_actor_ref, input.decision.decided_by_actor_ref) &&
+      sameOptionalRef(
+        decision.runtime_operating_policy_ref,
+        input.decision.runtime_operating_policy_ref ??
+          input.command.runtime_operating_policy_ref
+      ) &&
+      decision.resulting_lifecycle_status === input.decision.resulting_lifecycle_status &&
+      sameOptionalRef(
+        decision.trace_ref,
+        input.decision.trace_ref ?? input.command.trace_ref
+      ) &&
+      decision.decided_at === input.created_at &&
+      audit.event_kind === input.audit_event.event_kind &&
+      audit.actor_kind === (input.audit_event.actor_kind ?? input.command.actor_kind) &&
+      sameOptionalRef(
+        audit.actor_ref,
+        input.audit_event.actor_ref ?? input.command.actor_ref
+      ) &&
+      audit.runtime_lifecycle_status ===
+        (input.audit_event.runtime_lifecycle_status ??
+          input.decision.resulting_lifecycle_status) &&
+      audit.message === input.audit_event.message &&
+      sameOptionalRef(
+        audit.trace_ref,
+        input.audit_event.trace_ref ??
+          input.decision.trace_ref ??
+          input.command.trace_ref
+      ) &&
+      audit.created_at === input.created_at;
+  }
+
+  private assertPaperTradingComparisonEvaluationTransition(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    state: PaperTradingComparisonRuntimeSideState,
+    operation: "start" | "stop",
+    evaluation: PaperTradingEvaluationRecord,
+    existing?: PaperTradingEvaluationRecord
+  ): void {
+    if (!existing || !samePersistedComparisonRecord(existing, state.evaluation)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_state_conflict",
+        "paper comparison runtime evaluation current state changed before write"
+      );
+    }
+    if (operation === "start") {
+      const transitionAt = Date.parse(evaluation.next_observation_at ?? "") -
+        evaluation.interval_ms;
+      if (
+        state.run.runtime_lifecycle_status !== "running" ||
+        state.sandbox?.lifecycle_status !== "running" ||
+        (existing.status !== "not_started" && existing.status !== "stopped") ||
+        !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+          evaluation,
+          state.baseline,
+          "running"
+        ) ||
+        !Number.isFinite(transitionAt) ||
+        transitionAt < Date.parse(attempt.attempted_at) ||
+        transitionAt > Date.parse(attempt.start_deadline_at)
+      ) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_runtime_write_transition_mismatch",
+          "paper comparison runtime evaluation start is not zero-evidence and bounded"
+        );
+      }
+      return;
+    }
+    if (
+      state.run.runtime_lifecycle_status !== "stopped" ||
+      (existing.status !== "running" && existing.status !== "not_started") ||
+      existing.status === "running" && state.sandbox !== undefined &&
+        state.sandbox.lifecycle_status !== "stopped" &&
+        state.sandbox.lifecycle_status !== "removed" ||
+      !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+        evaluation,
+        state.baseline,
+        "stopped"
+      ) ||
+      Date.parse(evaluation.stopped_at ?? "") < Date.parse(attempt.attempted_at)
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_runtime_write_transition_mismatch",
+        "paper comparison runtime evaluation stop is not zero-evidence and bounded"
       );
     }
   }
@@ -2583,18 +3148,24 @@ export class LocalStore {
   }
 
   async recordSandboxStart(
-    input: SandboxObservationInput
+    input: SandboxObservationInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordSandboxStartUnlocked(input)
+      () => this.recordSandboxStartUnlocked(input, authority)
     );
   }
 
   private async recordSandboxStartUnlocked(
-    input: SandboxObservationInput
+    input: SandboxObservationInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome> {
     await this.assertSandboxLinks(input.instance);
-    await this.assertNoPairBoundSideMutation({ runId: input.instance.runtime_ref?.id });
+    await this.assertNoPairBoundSideMutation(
+      { runId: input.instance.runtime_ref?.id },
+      authority,
+      authority !== undefined ? { writer: "sandbox_start", input } : undefined
+    );
     await this.writeSandboxObservations(input);
     await this.rebuildProjections();
 
@@ -2680,16 +3251,18 @@ export class LocalStore {
 
   async stopSandbox(
     input: StopSandboxInput,
-    observations: Omit<SandboxObservationInput, "instance"> = {}
+    observations: Omit<SandboxObservationInput, "instance"> = {},
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.stopSandboxUnlocked(input, observations)
+      () => this.stopSandboxUnlocked(input, observations, authority)
     );
   }
 
   private async stopSandboxUnlocked(
     input: StopSandboxInput,
-    observations: Omit<SandboxObservationInput, "instance"> = {}
+    observations: Omit<SandboxObservationInput, "instance"> = {},
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome> {
     const instance = await this.readOptionalRecord<SandboxRecord>(
       "sandboxes",
@@ -2702,8 +3275,6 @@ export class LocalStore {
         { sandbox_id: input.sandbox_id }
       );
     }
-    await this.assertNoPairBoundSideMutation({ runId: instance.runtime_ref?.id });
-
     const observedLifecycleStatus = observations.lifecycle_status;
     const lifecycleStatus = instance.lifecycle_status === "removed" || input.removed_at
       ? "removed"
@@ -2724,6 +3295,14 @@ export class LocalStore {
       ),
       last_heartbeat_at: latestObservedAt(observations.heartbeats) ?? instance.last_heartbeat_at
     } satisfies SandboxRecord);
+
+    await this.assertNoPairBoundSideMutation(
+      { runId: instance.runtime_ref?.id },
+      authority,
+      authority !== undefined
+        ? { writer: "sandbox_stop", sandbox: updatedInstance, observations }
+        : undefined
+    );
 
     await this.writeSandboxObservations({
       ...observations,
@@ -3387,15 +3966,17 @@ export class LocalStore {
   }
 
   async recordPaperTradingEvaluation(
-    evaluation: PaperTradingEvaluationRecord
+    evaluation: PaperTradingEvaluationRecord,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<PaperTradingEvaluationRecord> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordPaperTradingEvaluationUnlocked(evaluation)
+      () => this.recordPaperTradingEvaluationUnlocked(evaluation, authority)
     );
   }
 
   private async recordPaperTradingEvaluationUnlocked(
-    evaluation: PaperTradingEvaluationRecord
+    evaluation: PaperTradingEvaluationRecord,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<PaperTradingEvaluationRecord> {
     const existing = await this.getPaperTradingEvaluation(evaluation.paper_trading_evaluation_id);
     if (existing && JSON.stringify(existing) === JSON.stringify(evaluation)) {
@@ -3406,7 +3987,11 @@ export class LocalStore {
       runId: evaluation.trading_run_ref.id,
       commitmentId: evaluation.paper_trading_evaluation_commitment_ref?.id,
       evaluationId: evaluation.paper_trading_evaluation_id
-    });
+    }, authority, authority !== undefined ? {
+      writer: "paper_trading_evaluation",
+      evaluation,
+      existing
+    } : undefined);
     await this.writeJson(
       this.itemPath("paper-trading-evaluations", evaluation.paper_trading_evaluation_id),
       evaluation
@@ -6095,15 +6680,17 @@ export class LocalStore {
   }
 
   async recordRunControlAudit(
-    input: RunControlAuditInput
+    input: RunControlAuditInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<RunControlAuditOutcome> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordRunControlAuditUnlocked(input)
+      () => this.recordRunControlAuditUnlocked(input, authority)
     );
   }
 
   private async recordRunControlAuditUnlocked(
-    input: RunControlAuditInput
+    input: RunControlAuditInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<RunControlAuditOutcome> {
     const validationFailure = validateRunControlAuditInput(input);
     if (validationFailure) {
@@ -6184,9 +6771,22 @@ export class LocalStore {
       recordIds
     );
     if (existing) {
+      if (authority && !this.paperTradingComparisonRunControlReplayMatches(
+        input,
+        existing
+      )) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_runtime_write_transition_mismatch",
+          "paper comparison runtime control audit replay drifted from persisted evidence"
+        );
+      }
       return existing;
     }
-    await this.assertNoPairBoundSideMutation({ runId: runtime.trading_run_id });
+    await this.assertNoPairBoundSideMutation(
+      { runId: runtime.trading_run_id },
+      authority,
+      authority !== undefined ? { writer: "run_control", input } : undefined
+    );
 
     const createdAt = input.created_at ?? new Date().toISOString();
     const runtimeRef = ref("trading_run", runtime.trading_run_id);
@@ -10186,6 +10786,11 @@ function samePersistedComparisonRecord(left: unknown, right: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+function sameOptionalPersistedComparisonValue(left: unknown, right: unknown): boolean {
+  return left === undefined && right === undefined ||
+    samePersistedComparisonRecord(left, right);
 }
 
 function latestPaperTradingComparisonActivationSideResult(

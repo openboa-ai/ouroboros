@@ -2020,6 +2020,17 @@ export interface PaperTradingComparisonRuntimeWriteContext {
   operation: "start" | "stop";
 }
 
+export function paperTradingComparisonRuntimeControlIdempotencyKey(
+  context: PaperTradingComparisonRuntimeWriteContext
+): string {
+  return [
+    "paper-comparison-run-control",
+    context.paper_trading_comparison_activation_attempt_ref.id,
+    context.role,
+    context.operation
+  ].join(":");
+}
+
 export interface PaperTradingQualificationPolicy {
   minObservationCount: number;
   minElapsedMs: number;

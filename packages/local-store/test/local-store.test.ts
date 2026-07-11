@@ -47,6 +47,7 @@ import type {
   PaperTradingComparisonActivationRecord,
   PaperTradingComparisonActivationSide,
   PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -88,6 +89,7 @@ import {
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPreparationDigestInput,
+  paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTickDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
@@ -5610,6 +5612,300 @@ describe("LocalStore", () => {
       await expectStoreError(loaded, code);
     });
   });
+
+  describe("runtime activation write context", () => {
+    it("permits the exact six start and stop Store transitions for one bound side", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const startContext = runtimeActivationWriteContext(attempt, "challenger", "start");
+      const sandboxStart = runtimeActivationSandboxStart(fixture, attempt, "challenger");
+
+      await expect(store.recordSandboxStart(sandboxStart, startContext))
+        .resolves.toMatchObject({ sandbox: { lifecycle_status: "running" } });
+      await expect(store.recordRunControlAudit(
+        runtimeActivationRunControlInput(fixture, attempt, "challenger", "start"),
+        startContext
+      )).resolves.toMatchObject({
+        decision: { resulting_lifecycle_status: "running" }
+      });
+      const running = runtimeActivationEvaluation(
+        fixture,
+        attempt,
+        "challenger",
+        "running"
+      );
+      await expect(store.recordPaperTradingEvaluation(running, startContext))
+        .resolves.toEqual(running);
+      const startResult = runtimeActivationSucceededStartResult(
+        attempt,
+        "challenger",
+        sandboxStart.instance.sandbox_id
+      );
+      await store.recordPaperTradingComparisonActivationSideResult(startResult);
+
+      const stopContext = runtimeActivationWriteContext(attempt, "challenger", "stop");
+      await expect(store.recordRunControlAudit(
+        runtimeActivationRunControlInput(fixture, attempt, "challenger", "stop"),
+        stopContext
+      )).resolves.toMatchObject({
+        decision: { resulting_lifecycle_status: "stopped" }
+      });
+      const stoppedAt = new Date(Date.parse(attempt.attempted_at) + 7_000).toISOString();
+      await expect(store.stopSandbox(
+        { sandbox_id: sandboxStart.instance.sandbox_id, stopped_at: stoppedAt },
+        {},
+        stopContext
+      )).resolves.toMatchObject({ sandbox: { lifecycle_status: "stopped" } });
+      const stopped = runtimeActivationEvaluation(
+        fixture,
+        attempt,
+        "challenger",
+        "stopped"
+      );
+      await expect(store.recordPaperTradingEvaluation(stopped, stopContext))
+        .resolves.toEqual(stopped);
+      const stopResult = runtimeActivationSucceededStopResult(
+        attempt,
+        "challenger",
+        sandboxStart.instance.sandbox_id
+      );
+      await store.recordPaperTradingComparisonActivationSideResult(stopResult);
+
+      await expect(store.getTradingRun(attempt.challenger.trading_run_ref.id))
+        .resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+      await expect(store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual(stopped);
+      await expect(store.listPaperTradingObservations(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([]);
+      await expect(store.listPaperTradingComparisonActivationSideResults(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([startResult, stopResult]);
+    });
+
+    it.each([
+      ["missing", undefined, "paper_trading_comparison_inert_graph_mutation_forbidden"],
+      ["null", () => null as unknown as PaperTradingComparisonRuntimeWriteContext,
+        "invalid_paper_trading_comparison_runtime_write_context"],
+      ["invalid", (context: PaperTradingComparisonRuntimeWriteContext) => ({
+        ...context,
+        paper_trading_comparison_activation_digest: ""
+      }), "invalid_paper_trading_comparison_runtime_write_context"],
+      ["activation digest", (context: PaperTradingComparisonRuntimeWriteContext) => ({
+        ...context,
+        paper_trading_comparison_activation_digest: "sha256:wrong"
+      }), "paper_trading_comparison_runtime_write_context_reference_mismatch"],
+      ["attempt digest", (context: PaperTradingComparisonRuntimeWriteContext) => ({
+        ...context,
+        paper_trading_comparison_activation_attempt_digest: "sha256:wrong"
+      }), "paper_trading_comparison_runtime_write_context_reference_mismatch"],
+      ["role", (context: PaperTradingComparisonRuntimeWriteContext) => ({
+        ...context,
+        role: "champion" as const
+      }), "paper_trading_comparison_runtime_write_context_reference_mismatch"],
+      ["operation", (context: PaperTradingComparisonRuntimeWriteContext) => ({
+        ...context,
+        operation: "stop" as const
+      }), "paper_trading_comparison_runtime_write_context_writer_mismatch"]
+    ] as const)("rejects %s runtime write context", async (_label, mutate, code) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-context-${_label}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const exact = runtimeActivationWriteContext(attempt, "challenger", "start");
+      const context = mutate === undefined ? undefined : mutate(exact);
+
+      await expectStoreError(
+        store.recordSandboxStart(
+          runtimeActivationSandboxStart(fixture, attempt, "challenger"),
+          context as PaperTradingComparisonRuntimeWriteContext | undefined
+        ),
+        code
+      );
+    });
+
+    it.each([
+      ["sandbox state", async (
+        store: LocalStore,
+        fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+        attempt: PaperTradingComparisonActivationAttemptRecord,
+        context: PaperTradingComparisonRuntimeWriteContext
+      ) => store.recordSandboxStart({
+        ...runtimeActivationSandboxStart(fixture, attempt, "challenger"),
+        instance: {
+          ...runtimeActivationSandboxStart(fixture, attempt, "challenger").instance,
+          lifecycle_status: "failed"
+        }
+      }, context)],
+      ["run control action", async (
+        store: LocalStore,
+        fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+        attempt: PaperTradingComparisonActivationAttemptRecord,
+        context: PaperTradingComparisonRuntimeWriteContext
+      ) => {
+        const input = runtimeActivationRunControlInput(
+          fixture,
+          attempt,
+          "challenger",
+          "start"
+        );
+        return store.recordRunControlAudit({
+          ...input,
+          command: {
+            ...input.command,
+            action: "pause",
+            requested_lifecycle_status: "paused"
+          },
+          decision: {
+            ...input.decision,
+            resulting_lifecycle_status: "paused"
+          },
+          audit_event: {
+            ...input.audit_event,
+            runtime_lifecycle_status: "paused"
+          }
+        }, context);
+      }],
+      ["evaluation evidence", async (
+        store: LocalStore,
+        fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+        attempt: PaperTradingComparisonActivationAttemptRecord,
+        context: PaperTradingComparisonRuntimeWriteContext
+      ) => {
+        await store.recordSandboxStart(
+          runtimeActivationSandboxStart(fixture, attempt, "challenger"),
+          context
+        );
+        await store.recordRunControlAudit(
+          runtimeActivationRunControlInput(fixture, attempt, "challenger", "start"),
+          context
+        );
+        return store.recordPaperTradingEvaluation({
+          ...runtimeActivationEvaluation(fixture, attempt, "challenger", "running"),
+          observation_count: 1
+        }, context);
+      }]
+    ] as const)("rejects runtime activation %s drift", async (_label, invoke) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-transition-${_label}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const context = runtimeActivationWriteContext(attempt, "challenger", "start");
+
+      await expectStoreError(
+        invoke(store, fixture, attempt, context),
+        "paper_trading_comparison_runtime_write_transition_mismatch"
+      );
+    });
+
+    it("rejects a context from a prior attempt", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const first = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(first);
+      await completeStoppedRuntimeActivationAttempt(store, first);
+      await store.recordPaperTradingComparisonActivationAttempt(
+        validRuntimeActivationAttempt(fixture.activation, 2)
+      );
+
+      await expectStoreError(
+        store.recordSandboxStart(
+          runtimeActivationSandboxStart(fixture, first, "challenger"),
+          runtimeActivationWriteContext(first, "challenger", "start")
+        ),
+        "paper_trading_comparison_runtime_write_state_conflict"
+      );
+    });
+
+    it("rejects same-id runtime control audit drift", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const context = runtimeActivationWriteContext(attempt, "challenger", "start");
+      await store.recordSandboxStart(
+        runtimeActivationSandboxStart(fixture, attempt, "challenger"),
+        context
+      );
+      const exact = runtimeActivationRunControlInput(
+        fixture,
+        attempt,
+        "challenger",
+        "start"
+      );
+      await store.recordRunControlAudit(exact, context);
+
+      await expectStoreError(
+        store.recordRunControlAudit({
+          ...exact,
+          command: { ...exact.command, reason_summary: "drifted replay" }
+        }, context),
+        "paper_trading_comparison_runtime_write_transition_mismatch"
+      );
+    });
+
+    it("rejects sandbox placement mutation under exact start context", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const sandbox = runtimeActivationSandboxStart(fixture, attempt, "challenger");
+      const placement = await readComparisonFixtureRecord<SandboxPlacementRecord>(
+        store,
+        "sandbox-placements",
+        fixture.challengerRun.placement_ref.id
+      );
+
+      await expectStoreError(
+        store.recordSandboxStart({
+          ...sandbox,
+          placement: { ...placement, service_name: "drifted-placement" }
+        }, runtimeActivationWriteContext(attempt, "challenger", "start")),
+        "paper_trading_comparison_runtime_write_transition_mismatch"
+      );
+    });
+
+    it.each([
+      ["observation", "paper_trading_comparison_inert_graph_mutation_forbidden"],
+      ["ledger", "paper_trading_comparison_inert_graph_mutation_forbidden"],
+      ["sandbox-observations", "paper_trading_comparison_inert_graph_mutation_forbidden"],
+      ["commitment", "paper_trading_evaluation_commitment_conflict"],
+      ["system-code", "paper_trading_comparison_frozen_authority_write_conflict"],
+      ["admission", "paper_trading_comparison_frozen_authority_write_conflict"],
+      ["promotion", "paper_trading_comparison_frozen_authority_write_conflict"]
+    ] as const)("does not extend runtime context to forbidden %s writer", async (
+      writer,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-forbidden-${writer}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      if (writer === "sandbox-observations") {
+        await seedBoundSandboxForWriterTest(store, fixture);
+      }
+
+      await expectStoreError(
+        invokeForbiddenBoundSideWriterWithContext(
+          store,
+          fixture,
+          writer,
+          runtimeActivationWriteContext(attempt, "challenger", "start")
+        ),
+        code
+      );
+    });
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -6787,6 +7083,164 @@ async function completeStoppedRuntimeActivationAttempt(
   return outcome;
 }
 
+function runtimeActivationWriteContext(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  operation: "start" | "stop"
+): PaperTradingComparisonRuntimeWriteContext {
+  return {
+    paper_trading_comparison_activation_ref: {
+      ...attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+    role,
+    operation
+  };
+}
+
+function runtimeActivationSandboxStart(
+  fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger"
+): SandboxObservationInput {
+  const run = role === "champion" ? fixture.championRun : fixture.challengerRun;
+  const startedAt = new Date(Date.parse(attempt.attempted_at) + 1_000).toISOString();
+  return {
+    instance: {
+      record_kind: "sandbox",
+      version: 1,
+      sandbox_id: `${attempt.paper_trading_comparison_activation_attempt_id}-${role}-sandbox`,
+      adapter_kind: "deterministic_test",
+      system_code_ref: { ...run.system_code_ref! },
+      runtime_ref: { record_kind: "trading_run", id: run.trading_run_id },
+      sandbox_placement_ref: { ...run.placement_ref },
+      lifecycle_status: "running",
+      sandbox_name: `paper-comparison-runtime-${role}`,
+      created_at: startedAt,
+      started_at: startedAt,
+      log_refs: [],
+      heartbeat_refs: [],
+      command_evidence_refs: [],
+      authority_status: "not_live"
+    }
+  };
+}
+
+function runtimeActivationRunControlInput(
+  fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  operation: "start" | "stop"
+): RunControlAuditInput {
+  const candidate = role === "champion" ? fixture.champion : fixture.challenger;
+  const run = role === "champion" ? fixture.championRun : fixture.challengerRun;
+  const lifecycleStatus = operation === "start" ? "running" : "stopped";
+  return {
+    idempotency_key: paperTradingComparisonRuntimeControlIdempotencyKey(
+      runtimeActivationWriteContext(attempt, role, operation)
+    ),
+    candidate_id: candidate.candidate_id,
+    candidate_version_id: candidate.candidate_version.candidate_version_id,
+    runtime_id: run.trading_run_id,
+    command: {
+      action: operation,
+      requested_lifecycle_status: lifecycleStatus,
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "runtime-activation-coordinator" },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      reason: "operator_request",
+      reason_summary: `Paper comparison runtime ${operation}.`
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: {
+        record_kind: "runtime_policy_engine",
+        id: "runtime-policy-engine-fixture"
+      },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      resulting_lifecycle_status: lifecycleStatus
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "runtime-activation-coordinator" },
+      runtime_lifecycle_status: lifecycleStatus,
+      message: `Paper comparison runtime ${operation} recorded.`
+    },
+    created_at: new Date(
+      Date.parse(attempt.attempted_at) + (operation === "start" ? 2_000 : 6_000)
+    ).toISOString()
+  };
+}
+
+function runtimeActivationEvaluation(
+  fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  status: "running" | "stopped"
+): PaperTradingEvaluationRecord {
+  const baseline = structuredClone(
+    role === "champion" ? fixture.championEvaluation : fixture.challengerEvaluation
+  );
+  if (status === "running") {
+    const transitionedAt = Date.parse(attempt.attempted_at) + 3_000;
+    return {
+      ...baseline,
+      status,
+      next_observation_at: new Date(
+        transitionedAt + baseline.interval_ms
+      ).toISOString()
+    };
+  }
+  return {
+    ...baseline,
+    status,
+    stopped_at: new Date(Date.parse(attempt.attempted_at) + 8_000).toISOString()
+  };
+}
+
+function runtimeActivationSucceededStartResult(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  sandboxId: string
+): PaperTradingComparisonActivationSideResultRecord {
+  return withRuntimeActivationSideResultDigest({
+    ...validRuntimeActivationSideResult(attempt, role, "succeeded"),
+    sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+    effect_completed_at: new Date(Date.parse(attempt.attempted_at) + 4_000).toISOString()
+  });
+}
+
+function runtimeActivationSucceededStopResult(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  sandboxId: string
+): PaperTradingComparisonActivationSideResultRecord {
+  return withRuntimeActivationSideResultDigest({
+    ...validRuntimeActivationSideResult(attempt, role, "not_running"),
+    reason: "policy_cleanup",
+    outcome: "succeeded",
+    sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+    runtime_lifecycle_status: "stopped",
+    evaluation_status: "stopped",
+    effect_completed_at: new Date(Date.parse(attempt.attempted_at) + 9_000).toISOString()
+  });
+}
+
 async function comparisonActivationInvariantSnapshot(
   store: LocalStore
 ): Promise<Record<string, Array<{ file: string; bytes: string }>>> {
@@ -6947,6 +7401,97 @@ async function invokeBoundSideWriter(
     { sandbox_id: sandbox.instance.sandbox_id, stopped_at: "2026-07-10T00:02:00.000Z" },
     {}
   );
+}
+
+async function invokeForbiddenBoundSideWriterWithContext(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
+  writer: "observation" | "ledger" | "sandbox-observations" |
+    "commitment" | "system-code" | "admission" | "promotion",
+  context: PaperTradingComparisonRuntimeWriteContext
+): Promise<unknown> {
+  if (writer === "observation") {
+    const observedAt = new Date(Date.parse(fixture.activation.authorized_at) + 60_000)
+      .toISOString();
+    const observation = {
+      ...validPaperTradingObservation(
+        fixture.challengerCommitment,
+        fixture.challengerEvaluation
+      ),
+      paper_trading_observation_id: "paper-observation-runtime-context-forbidden",
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation" as const,
+        id: fixture.challengerEvaluation.paper_trading_evaluation_id
+      },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment" as const,
+        id: fixture.challengerCommitment.paper_trading_evaluation_commitment_id
+      },
+      candidate_ref: { ...fixture.challengerCommitment.candidate_ref },
+      candidate_version_ref: { ...fixture.challengerCommitment.candidate_version_ref },
+      trading_run_ref: { ...fixture.challengerCommitment.trading_run_ref },
+      sequence: 1,
+      observed_at: observedAt
+    };
+    return Reflect.apply(store.recordPaperTradingObservation, store, [
+      observation,
+      {
+        ...fixture.challengerEvaluation,
+        status: "running",
+        observation_count: 1,
+        last_observed_at: observedAt,
+        next_observation_at: new Date(Date.parse(observedAt) + 60_000).toISOString()
+      },
+      context
+    ]);
+  }
+  if (writer === "ledger") {
+    return Reflect.apply(store.recordLedger, store, [{
+      ...validLedgerInput(fixture.challenger.candidate_version.candidate_version_id),
+      idempotency_key: "runtime-context-forbidden-ledger",
+      candidate_id: fixture.challenger.candidate_id,
+      candidate_version_id: fixture.challenger.candidate_version.candidate_version_id,
+      runtime_id: fixture.challengerRun.trading_run_id
+    }, context]);
+  }
+  if (writer === "sandbox-observations") {
+    const sandbox = boundSideSandboxInput(fixture);
+    return Reflect.apply(store.recordSandboxObservations, store, [
+      sandbox.instance.sandbox_id,
+      { lifecycle_status: "running", logs: [], heartbeats: [], command_evidence: [] },
+      context
+    ]);
+  }
+  if (writer === "system-code") {
+    const systemCode = (await store.getSystemCode(
+      fixture.preparation.challenger.system_code_ref.id
+    ))!;
+    return Reflect.apply(store.recordSystemCode, store, [{
+      ...systemCode,
+      entrypoint: ["python3", "runtime-context-forbidden.py"]
+    }, context]);
+  }
+  if (writer === "commitment") {
+    return Reflect.apply(store.recordPaperTradingEvaluationCommitment, store, [{
+      ...fixture.challengerCommitment,
+      committed_at: new Date(
+        Date.parse(fixture.challengerCommitment.committed_at) + 1
+      ).toISOString()
+    }, context]);
+  }
+  if (writer === "admission") {
+    const admission = (await store.getCandidateAdmissionDecision(
+      fixture.preparation.challenger.candidate_admission_decision_ref.id
+    ))!;
+    return Reflect.apply(store.recordCandidateAdmissionDecision, store, [{
+      ...admission,
+      decided_at: new Date(Date.parse(admission.decided_at) + 1).toISOString()
+    }, context]);
+  }
+  return Reflect.apply(store.recordTradingPromotion, store, [{
+    ...fixture.promotion,
+    promoted_at: new Date(Date.parse(fixture.promotion.promoted_at) + 1).toISOString()
+  }, context]);
 }
 
 function alternateSideCommitment(
