@@ -60,9 +60,13 @@ Current command groups:
   champion promotion, comparison policy, or comparison `committed_at`. Internal comparison
   preparation assigns time from its server-owned clock and persists an inert append-only record.
   Public qualification activation remains closed. The internal first shared tick and effect-free
-  `PaperTradingComparisonActivation` authorization have no public command exposure; runtime start,
-  side consumption, later ticks, verdict authority, and pair recovery remain pending and are not
-  part of this command contract.
+  `PaperTradingComparisonActivation` authorization have no public command exposure. A separate
+  uncomposed internal coordinator may persist an activation attempt, start both bound qualification
+  sides in parallel against that first-tick view, enforce request/time/skew bounds, stop partial or
+  invalid starts, and conservatively stop unowned pairs after restart. Its `both_running` outcome is
+  zero-observation operational state only. It is not a paired checkpoint, qualification result,
+  comparison verdict, promotion, or public command. Side consumption, later ticks, paired evidence,
+  adjudication, and verdict authority remain pending and outside this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read

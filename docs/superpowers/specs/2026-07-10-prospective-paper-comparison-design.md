@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Inert comparison graph, first shared tick/fixed view, and effect-free activation authorization implemented; runtime activation, consumption, later ticks, verdict, and recovery pending
+**Status:** Inert graph, first tick/fixed view, authorization, and bounded symmetric runtime activation/recovery implemented; consumption, later ticks, paired checkpoints, and verdict pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -73,9 +73,11 @@ persist only its TradingRun and supporting refs, frozen commitment and account i
 `not_started` evaluation. It remains runtime-inert: the internal `PaperTradingComparisonCoordinator`
 may prepare and verify a complete pair commitment, but it cannot start provider, sandbox, market,
 Gateway, Ledger, observation, or lifecycle effects. A separate internal tick coordinator may now
-persist one eligible first shared public market checkpoint without changing that inert state.
-Activation, side consumption, later ticks, adjudication, non-overlapping confirmation, a verdict,
-and promotion integration remain pending.
+persist one eligible first shared public market checkpoint without changing that inert state. Later
+authorization and runtime-activation coordinators now persist bounded symmetric start/cleanup/
+recovery evidence without creating an observation. Side consumption, later ticks, paired
+checkpoints, adjudication, non-overlapping confirmation, a verdict, and promotion integration remain
+pending.
 
 ## Commitment-Graph Frontier Status
 
@@ -110,13 +112,14 @@ the decision; the application wrapper preserves its existing public API. Read-on
 applies full prepared-side validation, including SystemCode-before-admission, before loading
 champion selection authority or dereferencing nested side records.
 
-This frontier grants no activation authority and starts no provider, sandbox, market, runner,
-Gateway, Ledger, or observation effect. Each pair side binds the exact sole
+This commitment frontier grants no activation authority and starts no provider, sandbox, market,
+runner, Gateway, Ledger, or observation effect. Each pair side binds the exact sole
 commitment/evaluation chain for its qualification `TradingRun` and a zero-score,
 zero-observation, empty-account-activity baseline. Post-pair reload is read-only and fails closed on
-missing, changed, or malformed side records without repair or invalidation. The first shared tick
-frontier below consumes only this verified inert graph; activation, side observations,
-verdict/adjudication, confirmations, promotion integration, and pair recovery remain pending.
+missing, changed, or malformed side records without repair or invalidation. Subsequent first-tick,
+authorization, and symmetric runtime-activation frontiers consume only this verified graph and still
+create no observation or economic evidence. Side observations, paired checkpoints,
+verdict/adjudication, confirmations, and promotion integration remain pending.
 
 ## First Shared Tick Frontier Status
 
@@ -398,8 +401,9 @@ This design is intentionally split into independently reviewable frontiers:
    `ComparisonMarketDataView` are implemented while both sides remain inert.
 4. **Effect-free activation authorization:** one append-only paper-only authorization binds the
    verified pair, sole first tick, exact side refs, and bounded derived policy without runtime effects.
-5. **Pending:** append-only activation attempt/outcome evidence, symmetric start, partial-start
-   cleanup and recovery, an advanceable shared view, later contiguous ticks, paired observations,
-   sealing, adjudication, confirmation, promotion integration, and restart recovery.
+5. **Symmetric runtime activation:** append-only attempt, side-result, and outcome evidence,
+   bounded parallel start, partial-start cleanup, and conservative restart recovery are implemented.
+6. **Pending:** a claimed first paired checkpoint, an advanceable shared view, later contiguous
+   ticks, paired observations, sealing, adjudication, confirmation, and promotion integration.
 
 The second frontier must not begin by weakening the first frontier's identity or authority checks.

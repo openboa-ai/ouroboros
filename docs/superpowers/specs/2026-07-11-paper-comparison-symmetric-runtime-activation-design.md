@@ -1,7 +1,7 @@
 # Paper Comparison Symmetric Runtime Activation Design
 
 **Date:** 2026-07-11
-**Status:** Approved by the standing autonomous-goal instruction; implementation pending
+**Status:** Implemented with focused and real LocalStore/session integration evidence
 **Scope:** CandidateArena P0, recoverable paper-only symmetric runtime start and cleanup
 **Depends on:** Verified `PaperTradingComparisonActivation`, sole first tick, and complete inert pair
 
@@ -328,6 +328,11 @@ Because API provider sessions are process-local, this frontier never claims that
 persists side results, and appends the next outcome as `stopped_cleanly` only when neither side is
 active. Otherwise it appends `cleanup_required`. This is the conservative `stop_both` branch of the
 frozen `recover_both_or_stop_both` policy.
+
+A ref-less timed-out start or failed transient-sandbox cleanup remains externally uncertain even
+when Store state has no active sandbox. Absence of a persisted sandbox ref is not stop proof; that
+role keeps its uncertain latest result and recovery remains `cleanup_required` until an adapter- or
+operator-backed cleanup frontier can prove the external instance is gone.
 
 Recovery never resumes one side, never synthesizes a missing success result, never reuses a partial
 checkpoint, and never starts a retry automatically.

@@ -68,8 +68,13 @@ The persisted graph remains inert, binds one exact baseline commitment/evaluatio
 evidence, or implement promotion behavior. One first shared tick and one separate
 `PaperTradingComparisonActivation` authorization may now be appended while both sides remain inert.
 The authorization freezes paper-only start, cleanup, retry, request-budget, restart, and market-view
-policy; it is not proof of runtime start or evidence consumption. Symmetric runtime activation, side
-consumption, later ticks, verdicts, and pair recovery remain pending.
+policy; it is not proof of runtime start or evidence consumption. The internal symmetric runtime
+coordinator now persists one attempt before effects, starts both sides in parallel against the fixed
+first-tick view, records per-side start/stop results, enforces time, skew, and request bounds, and
+persists only `both_running`, `stopped_cleanly`, or `cleanup_required`. Restart recovery never
+resumes a side or claims a process-local provider survived; it stops both or leaves cleanup required.
+`both_running` is zero-observation operational evidence only. Side consumption, later ticks, paired
+checkpoints, qualification, verdicts, and promotion remain pending.
 
 ## Candidate Freeze
 
@@ -131,12 +136,29 @@ Gateway market read plus one public-execution read, and atomically persist one f
 `PaperTradingComparisonTick`. Its fixed `ComparisonMarketDataView` serves only that stored content
 without retaining a Binance delegate. An internal effect-free authorization coordinator may then
 bind the exact verified pair, sole first tick, side refs, and derived bounded policy into one
-append-only `PaperTradingComparisonActivation`. It has no market, session, provider, sandbox,
-runner, Gateway order, Ledger, observation, run-control, verdict, promotion, or public dependency.
-Capture and authorization leave both side evaluations `not_started`; the existing session service
-still rejects qualification activation, scheduling, observation, stop, and recovery. The
-implemented boundary does not provide side consumption, a running shared stream, later ticks,
-adjudication, confirmation, a verdict, or promotion authority.
+append-only `PaperTradingComparisonActivation`. Capture and authorization leave both side
+evaluations `not_started` and have no provider, sandbox, runner, Gateway order, Ledger, observation,
+run-control, verdict, promotion, or public dependency.
+
+The internal runtime-activation coordinator consumes only that authorization. It appends a
+`PaperTradingComparisonActivationAttempt` before external effects, gives both isolated sides the
+same non-delegating first-tick view, and starts them concurrently through a focused internal session
+port. The paper API provider rejects requests beyond the frozen per-side cap before market, account,
+or order handlers. Every sandbox, run-control, and zero-evidence evaluation transition carries the
+exact activation/attempt/role/operation Store context; observations, Ledger writes, score/account
+changes, candidate/code drift, verdicts, and promotion remain forbidden. Per-side settlements are
+append-only `PaperTradingComparisonActivationSideResult` records. Pair reconciliation is a
+sequenced `PaperTradingComparisonActivationOutcome` and can claim only `both_running`,
+`stopped_cleanly`, or `cleanup_required`; timeout and late settlement remain uncertain until durable
+cleanup proves otherwise. Startup recovery treats every unclaimed `both_running` pair as unowned and
+stops both sides. Public/default qualification activate, observe, schedule, stop, and recovery paths
+remain rejected or skipped.
+
+This boundary still does not consume a side decision, schedule an observation, advance the shared
+market view, append a later tick, record a paired checkpoint, create Ledger or economic evidence,
+adjudicate superiority, release qualification evidence, confirm a result, or authorize promotion.
+`both_running` proves only that both zero-observation runtimes met start policy at one reconciliation
+point.
 
 ## Evaluator Information Barrier
 
@@ -272,16 +294,17 @@ from Arena paper-learning projections and next-generation source selection. Cand
 Ledger summaries remain absent until they can be resolved by exact TradingRun. Standalone
 qualification cannot create a new promotion. The first shared tick demonstrates only that a common
 immutable input is available. The activation authorization demonstrates only that one exact inert
-pair may later enter a bounded paper-only start protocol; it does not demonstrate a started runtime,
-evaluator secrecy, side consumption, prospective qualification, champion/challenger comparability,
-a superiority verdict, post-adjudication release, or P0 completion.
+pair may enter the bounded paper-only start protocol. Symmetric activation evidence now demonstrates
+durable intent, bounded parallel start, partial cleanup, and conservative restart recovery, but not
+side consumption, prospective qualification, champion/challenger comparability, a paired checkpoint,
+a superiority verdict, post-adjudication release, promotion, or P0 completion.
 
 ## Implementation Frontier Order
 
 1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
-   comparison commitment graph, exactly one first shared tick/fixed view, and one effect-free
-   activation authorization are persisted and validated; runtime activation, side consumption,
-   later ticks, and adjudication remain.
+   comparison commitment graph, exactly one first shared tick/fixed view, one effect-free activation
+   authorization, and bounded symmetric runtime activation/recovery are persisted and validated;
+   side consumption, later ticks, paired checkpoints, and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -290,9 +313,10 @@ a superiority verdict, post-adjudication release, or P0 completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Next frontier:** consume the authorization through append-only activation attempt/outcome
-   evidence, symmetric start, partial-start cleanup, restart recovery, and paired consumption on one
-   advanceable shared public market stream. Adjudication remains a later frontier.
+5. **Implemented activation boundary:** append-only attempt, side-result, and outcome evidence;
+   symmetric start; hard provider-request caps; partial-start cleanup; and conservative restart
+   recovery. **Next frontier:** one claimed first paired checkpoint on an advanceable shared public
+   market stream. Adjudication remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired
