@@ -7,7 +7,8 @@ import {
   type PaperTradingEvaluationInvalidationReason,
   type PaperTradingEvaluationRecord,
   type PaperTradingEvidencePurpose,
-  type SandboxDetailReadModel
+  type SandboxDetailReadModel,
+  type SystemCodeRecord
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, type OuroborosStorePort } from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
@@ -221,6 +222,7 @@ export class PaperTradingSessionService {
 
     if (exactEvaluation) {
       if (
+        input.evidencePurpose === "qualification" &&
         paperTradingComparisonEvaluationRecordDigestInput(exactEvaluation) !==
         paperTradingComparisonEvaluationRecordDigestInput(this.notStartedEvaluation(exactCommitment!))
       ) {
@@ -229,7 +231,10 @@ export class PaperTradingSessionService {
           "Paper session preparation only reuses an exact inert evaluation."
         );
       }
-      const resolved = await this.verifyExisting(candidate, exactEvaluation, binding);
+      const resolved = await this.verifyExisting(candidate, exactEvaluation, binding, {
+        systemCode,
+        resolvedArtifactDigest
+      });
       const verification = resolved.verification;
       if (verification.status !== "verified") {
         const invalidated = await this.persistInvalidation(candidate, exactEvaluation, verification);
@@ -602,7 +607,11 @@ export class PaperTradingSessionService {
   private async verifyExisting(
     candidate: CandidateInspectReadModel,
     evaluation: PaperTradingEvaluationRecord,
-    binding: GatewayRuntimeBinding
+    binding: GatewayRuntimeBinding,
+    resolvedSystemCode?: {
+      systemCode: SystemCodeRecord;
+      resolvedArtifactDigest: string;
+    }
   ): Promise<{
     commitment: PaperTradingEvaluationCommitmentRecord;
     evaluation: PaperTradingEvaluationRecord;
@@ -632,7 +641,8 @@ export class PaperTradingSessionService {
         }
       };
     }
-    const systemCode = await this.options.store.getSystemCode(commitment.system_code_ref.id);
+    const systemCode = resolvedSystemCode?.systemCode ??
+      await this.options.store.getSystemCode(commitment.system_code_ref.id);
     if (!systemCode) {
       return {
         commitment,
@@ -645,7 +655,8 @@ export class PaperTradingSessionService {
       };
     }
     try {
-      const resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(systemCode);
+      const resolvedArtifactDigest = resolvedSystemCode?.resolvedArtifactDigest ??
+        await this.options.artifactResolver.resolveArtifactDigest(systemCode);
       return {
         commitment,
         evaluation,

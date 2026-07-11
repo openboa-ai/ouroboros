@@ -180,6 +180,49 @@ describe("PaperTradingSessionService", () => {
     expect(effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
   });
 
+  it("reuses an exact running research-feedback evaluation without additional writes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-running-research-feedback-replay",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const input: Parameters<PaperTradingSessionService["prepare"]>[0] = {
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    };
+    const writes = { evaluations: 0 };
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const service = activatableResearchSessionService(
+      evaluationWriteCountingStore(store, writes),
+      effects
+    );
+    const prepared = await service.prepare(input);
+    const running = await service.activate(prepared);
+    const evaluationsBefore = await store.listPaperTradingEvaluations();
+    const writesBefore = writes.evaluations;
+    const effectsBefore = { ...effects };
+
+    const replayed = await service.prepare(input);
+
+    expect(replayed.evaluation).toEqual(running);
+    expect(replayed.verification.status).toBe("verified");
+    expect(writes.evaluations).toBe(writesBefore);
+    expect(effects).toEqual(effectsBefore);
+    await expect(store.listPaperTradingEvaluations()).resolves.toEqual(evaluationsBefore);
+    await service.stop(run.trading_run_id);
+  });
+
   it.each(["running", "stopped", "failed", "invalidated"] as const)(
     "rejects non-inert exact evaluation replay: %s",
     async (status) => {
@@ -657,6 +700,111 @@ function commitmentOverrideStore(
       }
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function evaluationWriteCountingStore(
+  store: OuroborosStorePort,
+  writes: { evaluations: number }
+): OuroborosStorePort {
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === "recordPaperTradingEvaluation") {
+        return async (...args: Parameters<OuroborosStorePort["recordPaperTradingEvaluation"]>) => {
+          writes.evaluations += 1;
+          return target.recordPaperTradingEvaluation(...args);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function activatableResearchSessionService(
+  store: OuroborosStorePort,
+  effects: { providerStarts: number; sandboxStarts: number; marketReads: number }
+): PaperTradingSessionService {
+  return new PaperTradingSessionService({
+    store,
+    intervalMs: 60_000,
+    artifactResolver: {
+      async resolveArtifactDigest() {
+        return "sha256:session-service-fixture";
+      }
+    },
+    sandboxAdapters: {
+      deterministic_test: {
+        async startArtifactInstance(input: SandboxStartInput) {
+          effects.sandboxStarts += 1;
+          return {
+            placement: {
+              record_kind: "sandbox_placement",
+              version: 1,
+              sandbox_placement_id: input.sandbox_placement_id,
+              placement_kind: "fixture_local_placeholder",
+              authority_status: "not_launched"
+            },
+            instance: {
+              record_kind: "sandbox",
+              version: 1,
+              sandbox_id: input.instance_id,
+              adapter_kind: "deterministic_test",
+              system_code_ref: { record_kind: "system_code", id: input.artifact.system_code_id },
+              runtime_ref: input.runtime_ref,
+              sandbox_placement_ref: {
+                record_kind: "sandbox_placement",
+                id: input.sandbox_placement_id
+              },
+              lifecycle_status: "running",
+              sandbox_name: input.sandbox_name,
+              created_at: input.created_at,
+              started_at: input.created_at,
+              log_refs: [],
+              heartbeat_refs: [],
+              authority_status: "not_live"
+            },
+            logs: [],
+            heartbeats: [],
+            command_evidence: []
+          };
+        },
+        async stopArtifactInstance() {
+          return {
+            lifecycle_status: "stopped" as const,
+            stopped_at: "2026-07-10T00:00:00.000Z"
+          };
+        }
+      }
+    } as never,
+    marketData: {
+      provider_kind: "binance_production_public_market_data",
+      source_kind: "binance_production_public_hybrid",
+      rest_base_url: "https://example.invalid",
+      required_endpoints: [],
+      authority_status: "read_only",
+      async readMarketSnapshot() {
+        effects.marketReads += 1;
+        throw new Error("research replay preparation read market data");
+      },
+      async readPublicMarketLivenessSurface() {
+        effects.marketReads += 1;
+        throw new Error("research replay preparation read market liveness");
+      },
+      async readPublicExecutionSnapshot() {
+        effects.marketReads += 1;
+        throw new Error("research replay preparation read public execution");
+      }
+    },
+    async apiProviderFactory() {
+      effects.providerStarts += 1;
+      return {
+        base_url: "http://research-replay.test",
+        async close() {},
+        requests: () => [],
+        candidate_input: {} as never
+      };
     }
   });
 }
