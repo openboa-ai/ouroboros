@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1874,7 +1874,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       "role-swap",
       "2026-07-09T21:32:00.000Z"
     );
-    await fixture.store.recordTradingPromotion({
+    const roleSwapPromotion: TradingPromotionRecord = {
       ...fixture.promotion,
       trading_promotion_id: "trading-promotion-coordinator-role-swap",
       candidate_ref: {
@@ -1890,7 +1890,16 @@ describe("PaperTradingComparisonCoordinator", () => {
         id: swappedEvidence.evaluation.paper_trading_evaluation_id
       },
       promoted_at: "2026-07-09T22:03:00.000Z"
-    });
+    };
+    await writeFile(
+      path.join(
+        fixture.store.root(),
+        "trading-promotions/items",
+        encodeURIComponent(roleSwapPromotion.trading_promotion_id) + ".json"
+      ),
+      JSON.stringify(roleSwapPromotion, null, 2) + "\n",
+      "utf8"
+    );
     await expect(
       fixture.coordinator.prepare({
         ...fixture.input,
@@ -3340,7 +3349,18 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     );
   }
   if (!options.omitPromotion) {
-    await store.recordTradingPromotion(promotion);
+    await mkdir(path.join(store.root(), "trading-promotions/items"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(
+        store.root(),
+        "trading-promotions/items",
+        encodeURIComponent(promotion.trading_promotion_id) + ".json"
+      ),
+      JSON.stringify(promotion, null, 2) + "\n",
+      "utf8"
+    );
   }
   const coordinatorStore = options.wrongPromotionEvaluationRef
     ? (new Proxy(store, {

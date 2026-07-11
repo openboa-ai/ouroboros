@@ -288,11 +288,11 @@ git commit -m "feat: decide comparison-backed promotion"
 - Keeps recordTradingPromotion inside withComparisonEvidenceWriteTransaction.
 - Produces append-only exact replay and stable LocalStore errors.
 
-- [ ] **Step 1: Write failing persistence and corruption tests**
+- [x] **Step 1: Write failing persistence and corruption tests**
 
 From an actual valid confirmation fixture, prove record/get/latest/exact replay. Add one mutation per campaign ref/digest, outcome ref/digest, final verdict ref/digest, candidate, version, final evaluation, qualification, outcome eligibility, promotion time, bootstrap currentness, champion replacement currentness, and same-ID drift. Add restart readback.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ~~~bash
 npm test -- packages/local-store/test/local-store.test.ts -t "comparison-backed TradingPromotion"
@@ -300,7 +300,7 @@ npm test -- packages/local-store/test/local-store.test.ts -t "comparison-backed 
 
 Expected: FAIL because the current writer neither validates confirmation provenance nor enforces append-only replay.
 
-- [ ] **Step 3: Implement shape, reload, and append-only gates**
+- [x] **Step 3: Implement shape, reload, and append-only gates**
 
 Add stable errors:
 
@@ -315,17 +315,17 @@ Add stable errors:
 
 recordTradingPromotionUnlocked must validate runtime shape, return only exact existing content, reject same-ID drift, validate the full graph before assertFrozenAuthorityWriteAllowed, and then write one JSON record. get/list must reject malformed persisted data.
 
-- [ ] **Step 4: Implement full graph/currentness validation**
+- [x] **Step 4: Implement full graph/currentness validation**
 
 Load campaign, outcome, final verdict, candidate version, SystemCode, admission, final commitment/evaluation/observations, and current promotion. Invoke the existing full outcome and verdict graph validators. Require all slots improved, eligible outcome, qualified final verdict, exact challenger identity, exact final evaluation, and strict post-evidence time.
 
 For a new bootstrap promotion, latest must be absent. For a new champion challenge, latest ref and canonical digest must equal campaign.champion_selection. For exact replay, the existing record may be latest, but any newer promotion makes the attempted transition stale.
 
-- [ ] **Step 5: Add transaction race pressure**
+- [x] **Step 5: Add transaction race pressure**
 
 Race a comparison reservation against promotion while pausing one operation after latest-promotion read. Exactly one current-champion state may win; the loser fails closed and neither side leaves a partial record.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ~~~bash
 npm test -- packages/local-store/test/local-store.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts

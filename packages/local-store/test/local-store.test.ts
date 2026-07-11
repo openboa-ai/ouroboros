@@ -3434,7 +3434,12 @@ describe("LocalStore", () => {
       },
       promoted_at: "2026-07-09T22:03:00.000Z"
     };
-    await store.recordTradingPromotion(swappedPromotion);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "trading-promotions",
+      swappedPromotion.trading_promotion_id,
+      swappedPromotion
+    );
     await expectStoreError(
       store.reservePaperTradingComparisonPreparation(withPreparationDigest({
         ...fixture.preparation,
@@ -4234,6 +4239,81 @@ describe("LocalStore", () => {
     expect((await reloaded.listArtifactLineages()).filter((lineage) =>
       lineage.artifact_lineage_id === fixture.release.lineage.artifact_lineage_id
     )).toHaveLength(1);
+  });
+
+  it.each([
+    ["campaign digest", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.comparison_confirmation.campaign_digest =
+        "sha256:stale-campaign";
+    }],
+    ["outcome digest", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.comparison_confirmation.campaign_outcome_digest =
+        "sha256:stale-outcome";
+    }],
+    ["final verdict digest", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.comparison_confirmation.final_verdict_digest =
+        "sha256:stale-verdict";
+    }],
+    ["challenger candidate", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.candidate_ref = {
+        ...fixture.campaign.champion.candidate_ref
+      };
+    }],
+    ["challenger evaluation", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.paper_trading_evaluation_ref = {
+        ...fixture.finalVerdict.champion.paper_trading_evaluation_ref
+      };
+    }],
+    ["promotion time", (fixture: Awaited<ReturnType<
+      typeof storedComparisonBackedTradingPromotionFixture
+    >>) => {
+      fixture.promotion.promoted_at = fixture.outcome.evaluated_at;
+    }]
+  ])("rejects comparison-backed TradingPromotion %s drift", async (
+    label,
+    mutate
+  ) => {
+    const store = new LocalStore(path.join(tmpDir, label.replaceAll(" ", "-")));
+    await store.initialize();
+    const fixture = await storedComparisonBackedTradingPromotionFixture(store);
+    mutate(fixture);
+
+    await expectStoreError(
+      store.recordTradingPromotion(fixture.promotion),
+      "trading_promotion_graph_invalid"
+    );
+  });
+
+  it("rejects same-ID TradingPromotion mutation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonBackedTradingPromotionFixture(store);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "trading-promotions",
+      fixture.promotion.trading_promotion_id,
+      fixture.promotion
+    );
+
+    await expectStoreError(
+      store.recordTradingPromotion({
+        ...fixture.promotion,
+        promoted_at: new Date(
+          Date.parse(fixture.promotion.promoted_at) + 1
+        ).toISOString()
+      }),
+      "trading_promotion_conflict"
+    );
   });
 
   it.each([
@@ -5546,16 +5626,23 @@ describe("LocalStore", () => {
     await expectComparisonWriterQueued(store, activeTransactionTail, laterPromotionWrite);
     store.releaseLatestPromotionRead();
     await expect(reservation).resolves.toEqual(fixture.preparation);
-    await expect(laterPromotionWrite).resolves.toMatchObject({
-      trading_promotion_id: "trading-promotion-after-reservation"
-    });
+    await expectStoreError(
+      laterPromotionWrite,
+      "trading_promotion_reference_not_found"
+    );
   });
 
   it("rejects a stale paper comparison selection when promotion wins the evidence transaction", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const fixture = await comparisonPreparationFixture(store);
-    await store.recordTradingPromotion(laterChampionPromotion(fixture));
+    const laterPromotion = laterChampionPromotion(fixture);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "trading-promotions",
+      laterPromotion.trading_promotion_id,
+      laterPromotion
+    );
     await expectStoreError(
       store.reservePaperTradingComparisonPreparation(fixture.preparation),
       "paper_trading_comparison_champion_selection_mismatch"
@@ -8380,7 +8467,14 @@ async function comparisonPreparationFixture(
       `${encodeURIComponent(championPromotionEvidence.evaluation.paper_trading_evaluation_id)}.json`
     ), { force: true });
   }
-  if (!options.omitChampionPromotion) await store.recordTradingPromotion(promotion);
+  if (!options.omitChampionPromotion) {
+    await overwriteComparisonFixtureRecord(
+      store,
+      "trading-promotions",
+      promotion.trading_promotion_id,
+      promotion
+    );
+  }
   const preparationWithoutDigest: PaperTradingComparisonPreparationRecord = {
     record_kind: "paper_trading_comparison_preparation",
     version: 1,
@@ -10473,6 +10567,56 @@ async function storedPaperTradingComparisonResearchReleaseFixture(
     sourceLineage,
     release
   };
+}
+
+async function storedComparisonBackedTradingPromotionFixture(store: LocalStore) {
+  const fixture = await storedPaperTradingComparisonResearchReleaseFixture(
+    store,
+    "confirmed_improvement"
+  );
+  const finalResult = fixture.outcome.slot_results.at(-1);
+  if (!finalResult?.verdict_ref || !finalResult.verdict_digest) {
+    throw new Error("missing final confirmation verdict result");
+  }
+  const finalVerdict = await store.getPaperTradingComparisonVerdict(
+    finalResult.verdict_ref.id
+  );
+  if (!finalVerdict) throw new Error("missing final confirmation verdict");
+  const outcomeId =
+    fixture.outcome.paper_trading_comparison_confirmation_campaign_outcome_id;
+  const promotion: TradingPromotionRecord = {
+    record_kind: "trading_promotion",
+    version: 1,
+    trading_promotion_id: "trading-promotion-" + outcomeId,
+    status: "promoted_for_trading_review",
+    candidate_ref: { ...fixture.campaign.challenger.candidate_ref },
+    candidate_version_ref: {
+      ...fixture.campaign.challenger.candidate_version_ref
+    },
+    paper_trading_evaluation_ref: {
+      ...finalVerdict.challenger.paper_trading_evaluation_ref
+    },
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: fixture.campaign.paper_trading_comparison_confirmation_campaign_id
+      },
+      campaign_digest: fixture.campaign.campaign_digest,
+      campaign_outcome_ref: {
+        record_kind:
+          "paper_trading_comparison_confirmation_campaign_outcome",
+        id: outcomeId
+      },
+      campaign_outcome_digest: fixture.outcome.outcome_digest,
+      final_verdict_ref: { ...finalResult.verdict_ref },
+      final_verdict_digest: finalResult.verdict_digest
+    },
+    promoted_at: new Date(Date.parse(fixture.outcome.evaluated_at) + 1)
+      .toISOString(),
+    authority_status: "not_live"
+  };
+  return { ...fixture, finalVerdict, promotion };
 }
 
 function validPaperTradingComparisonResearchRelease(

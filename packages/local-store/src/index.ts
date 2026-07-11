@@ -88,6 +88,7 @@ import {
   paperTradingComparisonTickHasRuntimeShape,
   paperTradingComparisonTickIOWriteContextHasRuntimeShape,
   paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingComparisonTradingPromotionHasRuntimeShape,
   paperTradingComparisonQualificationResultDigestInput,
   paperTradingComparisonVerdictDigestInput,
   paperTradingComparisonVerdictHasRuntimeShape,
@@ -432,6 +433,12 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_verdict_digest_mismatch"
   | "paper_trading_comparison_verdict_conflict"
   | "paper_trading_comparison_verdict_graph_invalid"
+  | "invalid_trading_promotion_input"
+  | "trading_promotion_conflict"
+  | "trading_promotion_reference_not_found"
+  | "trading_promotion_graph_invalid"
+  | "trading_promotion_stale_champion"
+  | "trading_promotion_reload_failed"
   | "invalid_paper_trading_comparison_confirmation_campaign_input"
   | "paper_trading_comparison_confirmation_campaign_digest_mismatch"
   | "paper_trading_comparison_confirmation_campaign_conflict"
@@ -3019,6 +3026,12 @@ export class LocalStore {
   private async recordTradingPromotionUnlocked(
     promotion: TradingPromotionRecord
   ): Promise<TradingPromotionRecord> {
+    if (!paperTradingComparisonTradingPromotionHasRuntimeShape(promotion)) {
+      throw new LocalStoreError(
+        "invalid_trading_promotion_input",
+        "invalid comparison-backed TradingPromotion input"
+      );
+    }
     await this.assertFrozenAuthorityWriteAllowed({
       recordKind: "trading_promotion",
       id: promotion.trading_promotion_id,
@@ -3026,6 +3039,20 @@ export class LocalStore {
         paperTradingComparisonTradingPromotionDigestInput(promotion)
       )
     });
+    const existing = await this.getTradingPromotion(
+      promotion.trading_promotion_id
+    );
+    if (existing) {
+      if (!sameJson(existing, promotion)) {
+        throw new LocalStoreError(
+          "trading_promotion_conflict",
+          "TradingPromotion is append-only"
+        );
+      }
+      await this.validateTradingPromotionGraph(existing, true);
+      return existing;
+    }
+    await this.validateTradingPromotionGraph(promotion, false);
     await this.writeJson(this.itemPath("trading-promotions", promotion.trading_promotion_id), promotion);
     return promotion;
   }
@@ -3033,13 +3060,185 @@ export class LocalStore {
   async getTradingPromotion(
     promotionId: string
   ): Promise<TradingPromotionRecord | undefined> {
-    return this.readOptionalRecord<TradingPromotionRecord>("trading-promotions", promotionId);
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "trading-promotions",
+        promotionId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedTradingPromotion(record);
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "trading_promotion_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "trading_promotion_reload_failed",
+        "persisted TradingPromotion is unreadable or corrupt"
+      );
+    }
   }
 
   async getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined> {
-    return (await this.readCollection<TradingPromotionRecord>("trading-promotions"))
+    return (await this.listTradingPromotions())
       .sort((a, b) => b.promoted_at.localeCompare(a.promoted_at))
       .at(0);
+  }
+
+  private async listTradingPromotions(): Promise<TradingPromotionRecord[]> {
+    try {
+      return (await this.readCollection<unknown>("trading-promotions"))
+        .map((record) => {
+          this.assertPersistedTradingPromotion(record);
+          return record;
+        });
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "trading_promotion_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "trading_promotion_reload_failed",
+        "persisted TradingPromotion collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  private assertPersistedTradingPromotion(
+    record: unknown
+  ): asserts record is TradingPromotionRecord {
+    if (!paperTradingComparisonTradingPromotionHasRuntimeShape(record)) {
+      throw new LocalStoreError(
+        "trading_promotion_reload_failed",
+        "persisted TradingPromotion is malformed or corrupt"
+      );
+    }
+  }
+
+  private async validateTradingPromotionGraph(
+    promotion: TradingPromotionRecord,
+    exactReplay: boolean
+  ): Promise<void> {
+    const basis = promotion.comparison_confirmation;
+    const [campaign, outcome, finalVerdict] = await Promise.all([
+      this.getPaperTradingComparisonConfirmationCampaign(basis.campaign_ref.id),
+      this.getPaperTradingComparisonConfirmationCampaignOutcome(
+        basis.campaign_outcome_ref.id
+      ),
+      this.getPaperTradingComparisonVerdict(basis.final_verdict_ref.id)
+    ]);
+    if (!campaign || !outcome || !finalVerdict) {
+      throw new LocalStoreError(
+        "trading_promotion_reference_not_found",
+        "TradingPromotion comparison confirmation evidence was not found"
+      );
+    }
+
+    const verdicts: PaperTradingComparisonVerdictRecord[] = [];
+    try {
+      await this.validatePaperTradingComparisonConfirmationCampaignOutcomeGraph(
+        outcome
+      );
+      for (const result of outcome.slot_results) {
+        if (!result.verdict_ref) throw new Error("missing confirmation verdict");
+        const verdict = await this.getPaperTradingComparisonVerdict(
+          result.verdict_ref.id
+        );
+        if (!verdict) throw new Error("missing confirmation verdict");
+        await this.validatePaperTradingComparisonVerdictGraph(verdict);
+        verdicts.push(verdict);
+      }
+    } catch {
+      throw new LocalStoreError(
+        "trading_promotion_graph_invalid",
+        "TradingPromotion confirmation evidence graph is invalid"
+      );
+    }
+
+    const finalResult = outcome.slot_results.at(-1);
+    const validatedFinalVerdict = verdicts.at(-1);
+    const graphMatches =
+      basis.campaign_ref.id ===
+        campaign.paper_trading_comparison_confirmation_campaign_id &&
+      basis.campaign_digest === campaign.campaign_digest &&
+      basis.campaign_outcome_ref.id ===
+        outcome.paper_trading_comparison_confirmation_campaign_outcome_id &&
+      basis.campaign_outcome_digest === outcome.outcome_digest &&
+      outcome.campaign_ref.id ===
+        campaign.paper_trading_comparison_confirmation_campaign_id &&
+      outcome.campaign_digest === campaign.campaign_digest &&
+      outcome.campaign_outcome === "confirmed_improvement" &&
+      outcome.promotion_eligibility === "eligible" &&
+      outcome.next_action === "review_for_trading_promotion" &&
+      outcome.slot_results.length === campaign.slots.length &&
+      outcome.slot_results.every((result) =>
+        result.status === "challenger_improved" &&
+        result.verdict_ref !== undefined &&
+        result.verdict_digest !== undefined
+      ) &&
+      finalResult?.verdict_ref?.id === basis.final_verdict_ref.id &&
+      finalResult?.verdict_digest === basis.final_verdict_digest &&
+      validatedFinalVerdict?.paper_trading_comparison_verdict_id ===
+        basis.final_verdict_ref.id &&
+      validatedFinalVerdict?.verdict_digest === basis.final_verdict_digest &&
+      validatedFinalVerdict?.paper_trading_comparison_commitment_ref.id ===
+        finalResult?.paper_trading_comparison_commitment_ref.id &&
+      validatedFinalVerdict?.verdict_outcome === "challenger_improved" &&
+      validatedFinalVerdict?.pair_qualification.qualification_status ===
+        "qualified" &&
+      paperTradingComparisonRefsEqual(
+        promotion.candidate_ref,
+        campaign.challenger.candidate_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        promotion.candidate_version_ref,
+        campaign.challenger.candidate_version_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        validatedFinalVerdict?.challenger.candidate_ref,
+        campaign.challenger.candidate_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        validatedFinalVerdict?.challenger.candidate_version_ref,
+        campaign.challenger.candidate_version_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        validatedFinalVerdict?.challenger.system_code_ref,
+        campaign.challenger.system_code_ref
+      ) &&
+      validatedFinalVerdict?.challenger.system_code_artifact_digest ===
+        campaign.challenger.system_code_artifact_digest &&
+      paperTradingComparisonRefsEqual(
+        promotion.paper_trading_evaluation_ref,
+        validatedFinalVerdict?.challenger.paper_trading_evaluation_ref
+      ) &&
+      Date.parse(promotion.promoted_at) > Date.parse(outcome.evaluated_at) &&
+      Date.parse(promotion.promoted_at) >
+        Date.parse(validatedFinalVerdict?.evaluated_at ?? "");
+    if (!graphMatches) {
+      throw new LocalStoreError(
+        "trading_promotion_graph_invalid",
+        "TradingPromotion does not match exact confirmed challenger evidence"
+      );
+    }
+
+    if (exactReplay) return;
+    const latest = await this.getLatestTradingPromotion();
+    const selection = campaign.champion_selection;
+    const current = selection.selection_kind === "bootstrap"
+      ? latest === undefined
+      : latest !== undefined &&
+        selection.trading_promotion_ref.id === latest.trading_promotion_id &&
+        selection.trading_promotion_digest === comparisonExactRecordDigest(
+          paperTradingComparisonTradingPromotionDigestInput(latest)
+        );
+    if (!current) {
+      throw new LocalStoreError(
+        "trading_promotion_stale_champion",
+        "TradingPromotion comparison did not challenge the current champion"
+      );
+    }
   }
 
   async recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord> {
