@@ -2242,6 +2242,103 @@ export interface PaperTradingQualificationResult {
   evidence_window: PaperTradingEvidenceWindowReadModel;
 }
 
+export type PaperTradingComparisonQualificationStatus =
+  | "qualified"
+  | "not_qualified";
+
+export type PaperTradingComparisonQualificationReason =
+  | "comparison_window_not_stopped_cleanly"
+  | "comparison_window_not_completed_normally"
+  | "comparison_checkpoint_incomplete"
+  | "comparison_minimum_observation_count_not_met"
+  | "comparison_minimum_elapsed_not_met"
+  | "champion_not_qualified"
+  | "challenger_not_qualified"
+  | "champion_ledger_incomplete"
+  | "challenger_ledger_incomplete"
+  | "champion_ledger_lineage_mismatch"
+  | "challenger_ledger_lineage_mismatch";
+
+export interface PaperTradingComparisonQualificationResult {
+  comparison_id: string;
+  activation_id: string;
+  activation_attempt_id: string;
+  qualification_status: PaperTradingComparisonQualificationStatus;
+  qualification_reasons: PaperTradingComparisonQualificationReason[];
+  checkpoint_count: number;
+  champion: PaperTradingQualificationResult;
+  challenger: PaperTradingQualificationResult;
+  authority_status: "not_verdict";
+}
+
+export type PaperTradingComparisonVerdictOutcome =
+  | "challenger_improved"
+  | "challenger_not_improved"
+  | "comparison_ineligible";
+
+export interface PaperTradingComparisonVerdictSide {
+  role: "champion" | "challenger";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_commitment_record_digest: string;
+  paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_record_digest: string;
+  paper_trading_observation_chain_digest: string;
+  net_revenue_usdt?: number;
+  cost_usdt?: number;
+}
+
+export interface PaperTradingComparisonVerdictMetric {
+  metric_kind: "net_revenue_usdt";
+  champion_value_usdt: number;
+  challenger_value_usdt: number;
+  observed_lift_usdt: number;
+  minimum_lift_usdt: number;
+}
+
+export interface PaperTradingComparisonVerdictRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_verdict";
+  paper_trading_comparison_verdict_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  final_activation_outcome_ref: Ref;
+  final_activation_outcome_digest: string;
+  latest_tick_ref: Ref;
+  latest_tick_digest: string;
+  checkpoint_outcome_refs: Ref[];
+  checkpoint_outcome_digests: string[];
+  pair_qualification: PaperTradingComparisonQualificationResult;
+  pair_qualification_digest: string;
+  champion: PaperTradingComparisonVerdictSide;
+  challenger: PaperTradingComparisonVerdictSide;
+  metric?: PaperTradingComparisonVerdictMetric;
+  verdict_outcome: PaperTradingComparisonVerdictOutcome;
+  window_started_at: string;
+  window_ended_at: string;
+  evaluator_policy_version: "paper-comparison-verdict-v1";
+  evaluation_authority: "external_to_trading_systems";
+  confirmation_disposition: "requires_precommitted_campaign" | "not_applicable";
+  promotion_eligibility: "not_eligible";
+  release_status: "sealed";
+  next_action:
+    | "precommit_confirmation_campaign"
+    | "return_to_candidate_arena"
+    | "repair_evidence_or_rerun_comparison";
+  evaluated_at: string;
+  verdict_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
 export function paperTradingEvaluationCommitmentDigestInput(
   record: PaperTradingEvaluationCommitmentRecord
 ): string {
@@ -2523,6 +2620,25 @@ export function paperTradingComparisonCheckpointOutcomeDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function paperTradingComparisonQualificationResultDigestInput(
+  result: PaperTradingComparisonQualificationResult
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput(result);
+}
+
+export function paperTradingComparisonVerdictDigestInput(
+  record: PaperTradingComparisonVerdictRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_verdict_id: _id,
+    verdict_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export const PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT: PaperTradingAccountSnapshot = {
   wallet_balance_usdt: "10000", available_balance_usdt: "10000", equity_usdt: "10000",
   realized_pnl_usdt: "0", unrealized_pnl_usdt: "0", fee_paid_usdt: "0",
@@ -2569,6 +2685,282 @@ function comparisonNonNegativeFinite(value: unknown): value is number {
 function comparisonDigest(value: unknown): value is string { return comparisonString(value); }
 function comparisonPolicyIdentity(value: unknown): boolean {
   return comparisonObject(value) && ["market_data_policy_version", "gateway_policy_version", "cost_policy_version", "funding_policy_version", "slippage_policy_version", "fill_policy_version", "risk_policy_version", "paper_account_policy_version", "decision_event_protocol_version", "persistent_state_boundary_version"].every((key) => comparisonString(value[key]));
+}
+
+const PAPER_TRADING_COMPARISON_QUALIFICATION_REASONS = new Set<string>([
+  "comparison_window_not_stopped_cleanly",
+  "comparison_window_not_completed_normally",
+  "comparison_checkpoint_incomplete",
+  "comparison_minimum_observation_count_not_met",
+  "comparison_minimum_elapsed_not_met",
+  "champion_not_qualified",
+  "challenger_not_qualified",
+  "champion_ledger_incomplete",
+  "challenger_ledger_incomplete",
+  "champion_ledger_lineage_mismatch",
+  "challenger_ledger_lineage_mismatch"
+]);
+
+const PAPER_TRADING_QUALIFICATION_REASONS = new Set<string>([
+  "min_observation_count_not_met",
+  "min_elapsed_ms_not_met",
+  "runner_inactive_for_running_evaluation",
+  "paper_observation_chain_incomplete",
+  "paper_score_account_mismatch",
+  "failed_observation_ratio_exceeded",
+  "latest_market_snapshot_missing",
+  "fill_public_execution_evidence_missing",
+  "paper_evaluation_failed",
+  "evidence_purpose_not_qualification",
+  "provider_identity_not_qualification_eligible",
+  "paper_evaluation_commitment_missing",
+  "paper_evaluation_invalidated"
+]);
+
+function paperTradingQualificationResultHasRuntimeShape(
+  value: unknown
+): value is PaperTradingQualificationResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "qualification_status",
+    "qualification_reasons",
+    "evidence_window"
+  ]) || ![
+    "collecting_evidence",
+    "qualified",
+    "needs_resume",
+    "blocked_by_quality",
+    "paper_failed",
+    "not_qualification_evidence"
+  ].includes(value.qualification_status as string) ||
+    !Array.isArray(value.qualification_reasons) ||
+    value.qualification_reasons.some((reason) =>
+      !PAPER_TRADING_QUALIFICATION_REASONS.has(reason as string)) ||
+    new Set(value.qualification_reasons).size !== value.qualification_reasons.length ||
+    !comparisonObject(value.evidence_window)) return false;
+  const evidence = value.evidence_window;
+  const evidenceKeys = [
+    "observation_count",
+    "elapsed_ms",
+    "failed_observation_count",
+    ...(evidence.first_observed_at !== undefined ? ["first_observed_at"] : []),
+    ...(evidence.last_observed_at !== undefined ? ["last_observed_at"] : [])
+  ];
+  if (!comparisonHasExactKeys(evidence, evidenceKeys) ||
+    !comparisonNonNegative(evidence.observation_count) ||
+    !comparisonNonNegative(evidence.elapsed_ms) ||
+    !comparisonNonNegative(evidence.failed_observation_count) ||
+    Number(evidence.failed_observation_count) > Number(evidence.observation_count) ||
+    (evidence.first_observed_at !== undefined && !comparisonIso(evidence.first_observed_at)) ||
+    (evidence.last_observed_at !== undefined && !comparisonIso(evidence.last_observed_at)) ||
+    (evidence.first_observed_at !== undefined && evidence.last_observed_at !== undefined &&
+      Date.parse(evidence.last_observed_at as string) <
+        Date.parse(evidence.first_observed_at as string))) return false;
+  return value.qualification_status === "qualified"
+    ? value.qualification_reasons.length === 0
+    : value.qualification_reasons.length > 0;
+}
+
+export function paperTradingComparisonQualificationResultHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonQualificationResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "comparison_id",
+    "activation_id",
+    "activation_attempt_id",
+    "qualification_status",
+    "qualification_reasons",
+    "checkpoint_count",
+    "champion",
+    "challenger",
+    "authority_status"
+  ]) || !comparisonString(value.comparison_id) ||
+    !comparisonString(value.activation_id) ||
+    !comparisonString(value.activation_attempt_id) ||
+    (value.qualification_status !== "qualified" &&
+      value.qualification_status !== "not_qualified") ||
+    !Array.isArray(value.qualification_reasons) ||
+    value.qualification_reasons.some((reason) =>
+      !PAPER_TRADING_COMPARISON_QUALIFICATION_REASONS.has(reason as string)) ||
+    new Set(value.qualification_reasons).size !== value.qualification_reasons.length ||
+    !comparisonNonNegative(value.checkpoint_count) ||
+    !paperTradingQualificationResultHasRuntimeShape(value.champion) ||
+    !paperTradingQualificationResultHasRuntimeShape(value.challenger) ||
+    value.authority_status !== "not_verdict") return false;
+  return value.qualification_status === "qualified"
+    ? value.qualification_reasons.length === 0 &&
+      value.champion.qualification_status === "qualified" &&
+      value.challenger.qualification_status === "qualified"
+    : value.qualification_reasons.length > 0;
+}
+
+function paperTradingComparisonVerdictSideHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger",
+  scored: boolean
+): value is PaperTradingComparisonVerdictSide {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "role",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "trading_run_ref",
+    "paper_trading_evaluation_commitment_ref",
+    "paper_trading_evaluation_commitment_record_digest",
+    "paper_trading_evaluation_ref",
+    "paper_trading_evaluation_record_digest",
+    "paper_trading_observation_chain_digest",
+    ...(scored ? ["net_revenue_usdt", "cost_usdt"] : [])
+  ]) || value.role !== role ||
+    !comparisonRef(value.candidate_ref, "trading_system_candidate") ||
+    !comparisonRef(value.candidate_version_ref, "candidate_version") ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.trading_run_ref, "trading_run") ||
+    !comparisonRef(
+      value.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) || !comparisonDigest(value.paper_trading_evaluation_commitment_record_digest) ||
+    !comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") ||
+    !comparisonDigest(value.paper_trading_evaluation_record_digest) ||
+    !comparisonDigest(value.paper_trading_observation_chain_digest)) return false;
+  return !scored || comparisonFinite(value.net_revenue_usdt) &&
+    comparisonNonNegativeFinite(value.cost_usdt);
+}
+
+function comparisonRound6(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+export function paperTradingComparisonVerdictHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonVerdictRecord {
+  if (!comparisonObject(value) ||
+    !paperTradingComparisonQualificationResultHasRuntimeShape(value.pair_qualification)) {
+    return false;
+  }
+  const scored = value.pair_qualification.qualification_status === "qualified";
+  if (!comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_verdict_id",
+    "paper_trading_comparison_commitment_ref",
+    "paper_trading_comparison_commitment_digest",
+    "paper_trading_comparison_activation_ref",
+    "paper_trading_comparison_activation_digest",
+    "paper_trading_comparison_activation_attempt_ref",
+    "paper_trading_comparison_activation_attempt_digest",
+    "final_activation_outcome_ref",
+    "final_activation_outcome_digest",
+    "latest_tick_ref",
+    "latest_tick_digest",
+    "checkpoint_outcome_refs",
+    "checkpoint_outcome_digests",
+    "pair_qualification",
+    "pair_qualification_digest",
+    "champion",
+    "challenger",
+    ...(scored ? ["metric"] : []),
+    "verdict_outcome",
+    "window_started_at",
+    "window_ended_at",
+    "evaluator_policy_version",
+    "evaluation_authority",
+    "confirmation_disposition",
+    "promotion_eligibility",
+    "release_status",
+    "next_action",
+    "evaluated_at",
+    "verdict_digest",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_verdict" || value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_verdict_id) ||
+    !comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) || !comparisonDigest(value.paper_trading_comparison_commitment_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) || !comparisonDigest(value.paper_trading_comparison_activation_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) || !comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) ||
+    !comparisonRef(
+      value.final_activation_outcome_ref,
+      "paper_trading_comparison_activation_outcome"
+    ) || !comparisonDigest(value.final_activation_outcome_digest) ||
+    !comparisonRef(value.latest_tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonDigest(value.latest_tick_digest) ||
+    !Array.isArray(value.checkpoint_outcome_refs) ||
+    !Array.isArray(value.checkpoint_outcome_digests) ||
+    value.checkpoint_outcome_refs.length !== value.checkpoint_outcome_digests.length ||
+    value.checkpoint_outcome_refs.some((item) =>
+      !comparisonRef(item, "paper_trading_comparison_checkpoint_outcome")) ||
+    value.checkpoint_outcome_digests.some((item) => !comparisonDigest(item)) ||
+    new Set(value.checkpoint_outcome_refs.map((item) => item.id)).size !==
+      value.checkpoint_outcome_refs.length ||
+    new Set(value.checkpoint_outcome_digests).size !==
+      value.checkpoint_outcome_digests.length ||
+    !comparisonDigest(value.pair_qualification_digest) ||
+    value.pair_qualification.comparison_id !==
+      value.paper_trading_comparison_commitment_ref.id ||
+    value.pair_qualification.activation_id !==
+      value.paper_trading_comparison_activation_ref.id ||
+    value.pair_qualification.activation_attempt_id !==
+      value.paper_trading_comparison_activation_attempt_ref.id ||
+    !paperTradingComparisonVerdictSideHasRuntimeShape(value.champion, "champion", scored) ||
+    !paperTradingComparisonVerdictSideHasRuntimeShape(value.challenger, "challenger", scored) ||
+    value.champion.candidate_version_ref.id === value.challenger.candidate_version_ref.id ||
+    value.champion.trading_run_ref.id === value.challenger.trading_run_ref.id ||
+    !comparisonIso(value.window_started_at) || !comparisonIso(value.window_ended_at) ||
+    Date.parse(value.window_ended_at as string) < Date.parse(value.window_started_at as string) ||
+    !comparisonIso(value.evaluated_at) ||
+    Date.parse(value.evaluated_at as string) < Date.parse(value.window_ended_at as string) ||
+    value.evaluator_policy_version !== "paper-comparison-verdict-v1" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_eligibility !== "not_eligible" ||
+    value.release_status !== "sealed" ||
+    !comparisonDigest(value.verdict_digest) ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "not_live") return false;
+
+  if (!scored) {
+    return value.verdict_outcome === "comparison_ineligible" &&
+      value.metric === undefined &&
+      value.confirmation_disposition === "not_applicable" &&
+      value.next_action === "repair_evidence_or_rerun_comparison";
+  }
+  if (!comparisonObject(value.metric) || !comparisonHasExactKeys(value.metric, [
+    "metric_kind",
+    "champion_value_usdt",
+    "challenger_value_usdt",
+    "observed_lift_usdt",
+    "minimum_lift_usdt"
+  ]) || value.metric.metric_kind !== "net_revenue_usdt" ||
+    !comparisonFinite(value.metric.champion_value_usdt) ||
+    !comparisonFinite(value.metric.challenger_value_usdt) ||
+    !comparisonFinite(value.metric.observed_lift_usdt) ||
+    !comparisonNonNegativeFinite(value.metric.minimum_lift_usdt) ||
+    value.metric.champion_value_usdt !== value.champion.net_revenue_usdt ||
+    value.metric.challenger_value_usdt !== value.challenger.net_revenue_usdt ||
+    value.metric.observed_lift_usdt !== comparisonRound6(
+      Number(value.metric.challenger_value_usdt) -
+        Number(value.metric.champion_value_usdt)
+    )) return false;
+  const improved = Number(value.metric.observed_lift_usdt) > 0 &&
+    Number(value.metric.observed_lift_usdt) >= Number(value.metric.minimum_lift_usdt);
+  return improved
+    ? value.verdict_outcome === "challenger_improved" &&
+      value.confirmation_disposition === "requires_precommitted_campaign" &&
+      value.next_action === "precommit_confirmation_campaign"
+    : value.verdict_outcome === "challenger_not_improved" &&
+      value.confirmation_disposition === "not_applicable" &&
+      value.next_action === "return_to_candidate_arena";
 }
 
 export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unknown): value is TradingPromotionRecord {

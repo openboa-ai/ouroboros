@@ -1,27 +1,18 @@
 import type {
   LedgerReadModel,
   PaperTradingComparisonActivationOutcomeReason,
+  PaperTradingComparisonQualificationReason,
+  PaperTradingComparisonQualificationResult,
   PaperTradingQualificationResult,
   Ref
 } from "@ouroboros/domain";
 import type { PaperTradingComparisonWindowPhase } from "./comparison-window-state";
 
-export type PaperTradingComparisonQualificationStatus =
-  | "qualified"
-  | "not_qualified";
-
-export type PaperTradingComparisonQualificationReason =
-  | "comparison_window_not_stopped_cleanly"
-  | "comparison_window_not_completed_normally"
-  | "comparison_checkpoint_incomplete"
-  | "comparison_minimum_observation_count_not_met"
-  | "comparison_minimum_elapsed_not_met"
-  | "champion_not_qualified"
-  | "challenger_not_qualified"
-  | "champion_ledger_incomplete"
-  | "challenger_ledger_incomplete"
-  | "champion_ledger_lineage_mismatch"
-  | "challenger_ledger_lineage_mismatch";
+export type {
+  PaperTradingComparisonQualificationReason,
+  PaperTradingComparisonQualificationResult,
+  PaperTradingComparisonQualificationStatus
+} from "@ouroboros/domain";
 
 export interface PaperTradingComparisonQualificationSideInput {
   tradingRunId: string;
@@ -45,18 +36,6 @@ export interface PaperTradingComparisonQualificationDecisionInput {
   latestTickObservedAt: string;
   champion: PaperTradingComparisonQualificationSideInput;
   challenger: PaperTradingComparisonQualificationSideInput;
-}
-
-export interface PaperTradingComparisonQualificationResult {
-  comparison_id: string;
-  activation_id: string;
-  activation_attempt_id: string;
-  qualification_status: PaperTradingComparisonQualificationStatus;
-  qualification_reasons: PaperTradingComparisonQualificationReason[];
-  checkpoint_count: number;
-  champion: PaperTradingQualificationResult;
-  challenger: PaperTradingQualificationResult;
-  authority_status: "not_verdict";
 }
 
 type LedgerAssessment = "complete" | "incomplete" | "lineage_mismatch";
