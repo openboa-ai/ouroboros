@@ -191,7 +191,7 @@ Add only the fixture files actually changed by the required type migration.
 - Produces PaperTradingComparisonPromotionService.promote({ candidateId }).
 - Produces stable PaperTradingComparisonPromotionServiceErrorCode values.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Cover:
 
@@ -220,7 +220,7 @@ expect(harness.recordedPromotions).toEqual([promotion]);
 
 Add explicit tests for blank input with zero reads; unrelated candidates; non-confirmed, ineligible, mixed, expired, and source-verdict-only evidence; stale bootstrap and champion challenge; final verdict ref/digest/role/qualification drift; newer unrelated candidate evaluation; invalid clock; exact replay; Store response drift; and absence of research-release, CandidateArena, runner, Gateway, Ledger, order, credential, private, and live calls.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ~~~bash
 npm test -- packages/application/src/trading/paper/comparison-promotion-service.test.ts
@@ -228,7 +228,7 @@ npm test -- packages/application/src/trading/paper/comparison-promotion-service.
 
 Expected: FAIL because the service module does not exist.
 
-- [ ] **Step 3: Implement typed errors and the no-read input gate**
+- [x] **Step 3: Implement typed errors and the no-read input gate**
 
 ~~~ts
 export type PaperTradingComparisonPromotionServiceErrorCode =
@@ -242,7 +242,7 @@ export type PaperTradingComparisonPromotionServiceErrorCode =
 
 Normalize candidateId before any Store call.
 
-- [ ] **Step 4: Implement eligible and current evidence selection**
+- [x] **Step 4: Implement eligible and current evidence selection**
 
 An outcome is eligible only when:
 
@@ -260,11 +260,11 @@ outcome.slot_results.every((result) =>
 
 Sort candidate-matching outcomes by evaluated_at descending and stable ID descending. Bootstrap matches only when no current promotion exists. Champion challenge matches only when its promotion ref and canonical full-record digest equal the current promotion. Return an existing promotion byte-identically when it already references the selected outcome. Distinguish absent evidence from evidence stale against an old champion.
 
-- [ ] **Step 5: Bind the final verdict and persist**
+- [x] **Step 5: Bind the final verdict and persist**
 
 Require final verdict outcome challenger_improved, pair qualification qualified, exact final slot refs/digests, and exact campaign challenger candidate/version/SystemCode. Construct the deterministic ID from safeId(outcomeId), bind finalVerdict.challenger.paper_trading_evaluation_ref, and require promoted_at strictly after outcome and verdict evaluation times. Reject a non-identical Store response.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ~~~bash
 npm test -- packages/application/src/trading/paper/comparison-promotion-service.test.ts
