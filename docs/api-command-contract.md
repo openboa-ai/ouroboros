@@ -64,18 +64,27 @@ Current command groups:
   uncomposed internal coordinator may persist an activation attempt, start both bound qualification
   sides in parallel against that first-tick view, enforce request/time/skew bounds, stop partial or
   invalid starts, and conservatively stop unowned pairs after restart. Its `both_running` outcome is
-  zero-observation operational state only. Another uncomposed internal coordinator may persist one
-  first-checkpoint intent, refresh both sandboxes under exact checkpoint authority, prepare both
-  sides without economic writes, and commit one atomic paired first-tick bundle. Restart recovery
-  rematerializes that exact bundle and stops unowned sessions without replaying decisions. After
-  that bundle, the exact running role-bound provider may be internally enabled to persist a
+  zero-observation operational state only. Another uncomposed internal coordinator may persist a
+  checkpoint intent, refresh both sandboxes under exact checkpoint authority, prepare both sides
+  without economic writes, and commit one atomic paired bundle. The sequence-1 bundle is the sole
+  acknowledgement-optional checkpoint. After it, the exact running role-bound provider may be
+  internally enabled to persist a
   `PaperTradingComparisonTickDelivery` before returning first-tick context from
   `/market/snapshot`, then persist a matching `PaperTradingComparisonTickAcknowledgement` through
-  `/comparison/tick/ack`. These sandbox-internal routes and records are not public
-  `OuroborosCommand`s, create no economic or lifecycle authority, and do not advance the shared
-  market view. None of these records or operations has public command exposure. Later ticks,
-  repeated checkpoints, resume, qualification, adjudication, verdict, promotion, private access,
-  and live authority remain pending and outside this command contract.
+  `/comparison/tick/ack`. Once both roles acknowledge that tick, internal sequence-N coordinators
+  can persist one contiguous next Gateway-owned tick, persist the next checkpoint attempt before
+  effects, advance both owned provider views without restarting their sandboxes, require distinct
+  exact acknowledgements for the new tick, and atomically commit both sides. The same sequence-N
+  path is covered through sequence 3 without provider or sandbox restart. An internal
+  `PaperTradingComparisonWindowDriver` can reconstruct the graph and perform one legal transition,
+  while a process-local `PaperTradingComparisonWindowRunner` can schedule non-overlapping steps to
+  the precommitted observation/time maximum without score-aware stopping. Restart rematerializes
+  committed bundles and stops unowned sessions without replaying decisions; the runner never
+  adopts or resumes provider identity. These internal routes, records, coordinators, driver, and
+  runner are not composed into an app/controller or public `OuroborosCommand` and create no private,
+  direct-order, qualification, promotion, or live authority. Public composition, process resume,
+  minimum-window qualification, adjudication, confirmation, verdict, evidence release, promotion,
+  private access, and live authority remain pending and outside this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read

@@ -1,7 +1,7 @@
 # Repeated Paired Comparison Checkpoint Design
 
 **Date:** 2026-07-11
-**Status:** Approved by standing Goal authority; implementation not started
+**Status:** Implemented and repository-verified through sequence 2; superseded by bounded sequence-N orchestration
 **Depends on:** One committed first paired checkpoint and role-bound served-tick attribution
 
 ## Goal
@@ -222,6 +222,21 @@ This frontier remains internal and paper-only:
 - minimum-window qualification or score adjudication;
 - non-overlapping confirmation windows;
 - external verdict, evidence release, TradingPromotion, private exchange, or live trading.
+
+## Implementation Evidence
+
+- Sequence-N domain and persistence contracts preserve the acknowledgement-optional sequence-1
+  exception and require exact predecessor and role-bound acknowledgement lineage for sequence 2+.
+- The implemented two-phase coordinator persists attempt 2 before both view advances, requires both
+  exact acknowledgements before preparation, and atomically commits both sides.
+- LocalStore now validates repeated tick delivery, acknowledgement, checkpoint sandbox refresh,
+  transaction materialization, and recovery through its public APIs rather than fixture file
+  injection.
+- A LocalStore/session integration proves two paired checkpoints and conservative restart cleanup
+  without provider/sandbox restart during the second checkpoint or candidate-decision replay during
+  recovery.
+- Automatic cadence, process-resume, minimum-window qualification, adjudication, confirmation,
+  evidence release, and promotion remain closed.
 
 ## Next Frontier
 

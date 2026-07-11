@@ -295,7 +295,7 @@ git commit -m "feat: capture next comparison tick"
 - Requires: exact acknowledgement lineage for sequence 2+ paired transaction
 - Preserves: sequence-1 atomic bundle and recovery behavior
 
-- [ ] **Step 1: Write failing sequence-2 Store tests**
+- [x] **Step 1: Write failing sequence-2 Store tests**
 
 From sequence-1 paired state plus persisted tick 2, construct attempt 2 with current evaluation and
 observation-chain digests. Assert attempt persistence requires exact predecessor outcome and allows
@@ -308,7 +308,7 @@ assert recovery yields both sequence-2 sides or neither. Reject gaps, duplicate 
 evaluation/observation digests, wrong prior outcome, mismatched ack, event-count drift, provider
 count regression/overflow, stale Ledger preview, one-sided observation, and partial materialization.
 
-- [ ] **Step 2: Run Store sequence-2 tests and verify RED**
+- [x] **Step 2: Run Store sequence-2 tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "repeated paired checkpoint"
@@ -317,7 +317,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "repeated paired
 Expected: FAIL because checkpoint persistence and committed-state validation assume exactly one
 checkpoint and observation.
 
-- [ ] **Step 3: Implement contiguous checkpoint state**
+- [x] **Step 3: Implement contiguous checkpoint state**
 
 Sort checkpoint attempts by `checkpoint_sequence` then ID and reject gaps or duplicate sequences.
 For attempt N, reload all prior attempts and exact terminal outcomes, require sequences 1..N-1 are
@@ -334,7 +334,7 @@ tick, require `observation.sequence === checkpoint_sequence`, validate exact ack
 for sequence 2+, and use the current evaluation as `previous_evaluation`. Keep the same recoverable
 bundle and materialization algorithm.
 
-- [ ] **Step 4: Run Store and domain regressions**
+- [x] **Step 4: Run Store and domain regressions**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "checkpoint|comparison tick|runtime activation"
@@ -344,12 +344,18 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: sequence-1 and sequence-2 Store regressions plus LocalStore typecheck pass.
 
-- [ ] **Step 5: Commit sequence-N Store transactions**
+Actual: 5 repeated-checkpoint tests and all 295 LocalStore tests passed; 134 relevant domain tests
+and `@ouroboros/local-store` typecheck passed. The repeated fixture now records tick-2 delivery and
+acknowledgement through the public Store writers rather than raw fixture injection.
+
+- [x] **Step 5: Commit sequence-N Store transactions**
 
 ```bash
 git add packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
 git commit -m "feat: persist repeated paired checkpoints"
 ```
+
+Committed as `9a07a98`.
 
 ### Task 5: Advance role-bound views and require acknowledgement in preparation
 
@@ -366,7 +372,7 @@ git commit -m "feat: persist repeated paired checkpoints"
 - Requires: exact role-bound acknowledgement for sequence 2+
 - Preserves: first checkpoint's acknowledgement-optional preparation
 
-- [ ] **Step 1: Write failing session/view tests**
+- [x] **Step 1: Write failing session/view tests**
 
 Persist open attempt 2 after tick 2. For each role assert:
 
@@ -383,7 +389,7 @@ For preparation, assert missing/cross-role/stale ack fails before economic outpu
 silence produces sequence-2 `no_order`, and order/cancel/hold/no-action events must echo the exact
 ack. First-checkpoint events remain acknowledgement-optional.
 
-- [ ] **Step 2: Run session/preparation tests and verify RED**
+- [x] **Step 2: Run session/preparation tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts -t "advance comparison view|repeated checkpoint|acknowledged silence"
@@ -391,7 +397,7 @@ npx vitest run packages/application/src/trading/paper/session-service.test.ts pa
 
 Expected: FAIL because the session cannot advance a binding and preparation assumes sequence 1.
 
-- [ ] **Step 3: Add the session port and causal preparation checks**
+- [x] **Step 3: Add the session port and causal preparation checks**
 
 Add:
 
@@ -415,7 +421,7 @@ During sequence-N preparation, load the role's exact persisted acknowledgement a
 same ref/digest. Add acknowledgement lineage to the resulting observation. Zero events remains
 valid only because the exact ack exists.
 
-- [ ] **Step 4: Run session/provider/observation regressions and typecheck**
+- [x] **Step 4: Run session/provider/observation regressions and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts packages/application/src/trading/paper/events.test.ts packages/application/src/trading/gateway/runtime-binding.test.ts
@@ -424,12 +430,18 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: session, event, provider, preparation tests and application typecheck pass.
 
-- [ ] **Step 5: Commit view advancement and ack gate**
+Actual: 69 session/preparation/event/view tests and 31 checkpoint/runtime regressions passed;
+`@ouroboros/application` typecheck passed. The localhost-binding runtime test remains part of final
+host-capable verification.
+
+- [x] **Step 5: Commit view advancement and ack gate**
 
 ```bash
 git add packages/application/src/ports/paper-comparison-session.ts packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/observation.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts
 git commit -m "feat: require acknowledged comparison views"
 ```
+
+Actual: committed as `b7ffdb4`.
 
 ### Task 6: Coordinate two-phase repeated checkpoints
 
@@ -444,7 +456,7 @@ git commit -m "feat: require acknowledged comparison views"
 - Tracks: in-process ownership of successfully advanced open attempts
 - Generalizes: checkpoint graph loading, failure cleanup, and recovery through sequence N
 
-- [ ] **Step 1: Write failing two-phase coordinator tests**
+- [x] **Step 1: Write failing two-phase coordinator tests**
 
 Assert `beginNext`:
 
@@ -466,7 +478,7 @@ Assert `completeNext`:
 - missing/stale/cross-role ack, deadline, request cap, side failure, or persistence failure produces
   no partial economic evidence and executes conservative cleanup.
 
-- [ ] **Step 2: Run coordinator tests and verify RED**
+- [x] **Step 2: Run coordinator tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts -t "begin next|complete next|repeated checkpoint"
@@ -474,7 +486,7 @@ npx vitest run packages/application/src/trading/paper/comparison-checkpoint-coor
 
 Expected: FAIL because the coordinator exposes only one synchronous first-checkpoint path.
 
-- [ ] **Step 3: Generalize graph loading and add two-phase methods**
+- [x] **Step 3: Generalize graph loading and add two-phase methods**
 
 Add:
 
@@ -500,7 +512,7 @@ the open graph and ack records before reusing concurrent side preparation and at
 Generalize recovery to rematerialize transaction bundles first, then fail and stop every remaining
 open attempt without claiming provider survival or replaying decisions.
 
-- [ ] **Step 4: Run checkpoint/runtime/session regressions and typecheck**
+- [x] **Step 4: Run checkpoint/runtime/session regressions and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts packages/application/src/trading/paper/session-service.test.ts packages/local-store/test/local-store.test.ts -t "checkpoint|comparison tick|activation"
@@ -511,12 +523,17 @@ npm run typecheck --workspace @ouroboros/local-store
 Expected: sequence-1 and sequence-2 coordinator/runtime/session/Store regressions and both
 typechecks pass.
 
-- [ ] **Step 5: Commit two-phase coordination**
+Actual: all 14 checkpoint-coordinator tests, a 131-test selected cross-layer regression, and the
+combined 90 session/checkpoint/runtime tests passed; application and LocalStore typechecks passed.
+
+- [x] **Step 5: Commit two-phase coordination**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-checkpoint-coordinator.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts
 git commit -m "feat: coordinate repeated paired checkpoints"
 ```
+
+Actual: committed as `170168b`.
 
 ### Task 7: Prove the real two-tick path and update durable truth
 
@@ -534,7 +551,7 @@ git commit -m "feat: coordinate repeated paired checkpoints"
 - Produces: real provider/sandbox/LocalStore/restart evidence and canonical implementation status
 - Leaves: automatic multi-tick loop, resume, adjudication, confirmation, release, and promotion closed
 
-- [ ] **Step 1: Write the real end-to-end integration test**
+- [x] **Step 1: Write the real end-to-end integration test**
 
 Extend the real LocalStore and actual HTTP provider fixture:
 
@@ -550,7 +567,7 @@ Extend the real LocalStore and actual HTTP provider fixture:
 9. restart LocalStore and recover, proving the exact two bundles rematerialize without new provider,
    delivery, acknowledgement, decision, Ledger, observation, score, or outcome evidence.
 
-- [ ] **Step 2: Run the real integration test**
+- [x] **Step 2: Run the real integration test**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-coordinator.test.ts -t "repeated paired checkpoint"
@@ -559,7 +576,11 @@ npx vitest run packages/application/src/trading/paper/comparison-coordinator.tes
 Expected: PASS only when the real HTTP provider, session view, LocalStore transaction, and recovery
 boundaries agree.
 
-- [ ] **Step 3: Verify no production composition**
+Actual: the actual HTTP provider, role-bound session views, acknowledgement endpoints, LocalStore
+transactions, and restart recovery pass through sequence 2 without provider, decision, or economic
+replay.
+
+- [x] **Step 3: Verify no production composition**
 
 ```bash
 rg -n "captureNextTick|beginNext|completeNext|advanceComparisonCheckpointSide|capture_next_tick" apps packages --glob '!**/*.test.ts'
@@ -568,14 +589,17 @@ rg -n "captureNextTick|beginNext|completeNext|advanceComparisonCheckpointSide|ca
 Expected: domain, Store, provider/session, and internal coordinators only; no runtime controller,
 public command, CLI, TUI, Web, or Desktop composition.
 
-- [ ] **Step 4: Update canonical docs**
+Actual: matches are limited to domain contracts, the internal application session port, and the
+comparison tick/checkpoint/session implementations; no `apps` match exists.
+
+- [x] **Step 4: Update canonical docs**
 
 State that one acknowledgement-required repeated paired checkpoint is implemented as internal
 scientific-control evidence. Preserve explicit closure of automatic cadence, process resume,
 minimum-window qualification, adjudication, confirmation, verdict, evidence release, promotion,
 private access, and live authority. Record actual commits and verification counts in this plan.
 
-- [ ] **Step 5: Run focused and repository-wide verification**
+- [x] **Step 5: Run focused and repository-wide verification**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-tick.test.ts packages/domain/src/paper-trading-comparison-tick-attribution.test.ts packages/domain/src/paper-trading-comparison-checkpoint.test.ts packages/application/src/trading/paper/comparison-tick-coordinator.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts
@@ -587,7 +611,11 @@ git diff --check
 
 Expected: all focused tests, workspace typechecks, repository guards, and full suite pass.
 
-- [ ] **Step 6: Commit durable repeated-checkpoint evidence**
+Actual: 133 focused application tests and all 298 LocalStore tests passed; all workspace
+typechecks, repository guards, and `git diff --check` passed; the escalated full suite passed all
+1,485 tests across 97 files.
+
+- [x] **Step 6: Commit durable repeated-checkpoint evidence**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-11-repeated-paired-comparison-checkpoint-design.md docs/superpowers/plans/2026-07-11-repeated-paired-comparison-checkpoint.md packages/application/src/trading/paper/comparison-coordinator.test.ts
