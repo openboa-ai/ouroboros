@@ -129,7 +129,7 @@ describe("paired paper comparison qualification service", () => {
 
     const hiddenRefGraph = qualificationGraph();
     hiddenRefGraph.checkpointOutcomes[0]!.champion.ledger_chain_refs =
-      hiddenRefGraph.checkpointOutcomes[0]!.champion.ledger_chain_refs.slice(0, 2);
+      [];
     await expect(qualificationHarness(hiddenRefGraph).service.assess(validInput()))
       .resolves.toMatchObject({
         qualification_reasons: ["champion_ledger_lineage_mismatch"]
@@ -621,11 +621,7 @@ function truncateSideEvidence(
 }
 
 function ledgerRefs(prefix: string): Ref[] {
-  return [
-    { record_kind: "order_request", id: `${prefix}-order` },
-    { record_kind: "gateway_result", id: `${prefix}-gateway` },
-    { record_kind: "execution_result", id: `${prefix}-execution` }
-  ];
+  return [{ record_kind: "ledger_chain", id: `${prefix}-order` }];
 }
 
 function emptyLedger(): LedgerReadModel {

@@ -27,7 +27,7 @@ describe("paired paper comparison qualification decision", () => {
     });
   });
 
-  it("accepts exact complete order, gateway, and execution Ledger refs", () => {
+  it("accepts exact complete Ledger chain refs", () => {
     const input = qualificationInput();
     input.champion.expectedLedgerRefs = ledgerRefs("champion");
     input.champion.ledger = completeLedger("champion");
@@ -131,13 +131,13 @@ describe("paired paper comparison qualification decision", () => {
         input.champion.ledger = completeLedger("champion");
       },
       (input) => {
-        input.champion.expectedLedgerRefs = ledgerRefs("champion").slice(0, 2);
+        input.champion.expectedLedgerRefs = [];
         input.champion.ledger = completeLedger("champion");
       },
       (input) => {
         input.champion.expectedLedgerRefs = [
           ...ledgerRefs("champion"),
-          { record_kind: "order_request", id: "order-extra" }
+          { record_kind: "ledger_chain", id: "order-extra" }
         ];
         input.champion.ledger = completeLedger("champion");
       },
@@ -261,11 +261,7 @@ function unqualifiedSide(): PaperTradingQualificationResult {
 }
 
 function ledgerRefs(prefix: string): Ref[] {
-  return [
-    { record_kind: "order_request", id: `${prefix}-order` },
-    { record_kind: "gateway_result", id: `${prefix}-gateway` },
-    { record_kind: "execution_result", id: `${prefix}-execution` }
-  ];
+  return [{ record_kind: "ledger_chain", id: `${prefix}-order` }];
 }
 
 function emptyLedger(): LedgerReadModel {

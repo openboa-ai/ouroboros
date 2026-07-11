@@ -40,12 +40,6 @@ export interface PaperTradingComparisonQualificationDecisionInput {
 
 type LedgerAssessment = "complete" | "incomplete" | "lineage_mismatch";
 
-const SUPPORTED_LEDGER_REF_KINDS = new Set([
-  "order_request",
-  "gateway_result",
-  "execution_result"
-]);
-
 export function decidePaperTradingComparisonQualification(
   input: PaperTradingComparisonQualificationDecisionInput
 ): PaperTradingComparisonQualificationResult {
@@ -124,7 +118,7 @@ function assessLedger(
     return "lineage_mismatch";
   }
 
-  const expected = refKeys(side.expectedLedgerRefs);
+  const expected = ledgerChainIds(side.expectedLedgerRefs);
   if (!expected) return "lineage_mismatch";
 
   const ledger = side.ledger;
@@ -143,7 +137,7 @@ function assessLedger(
     return "incomplete";
   }
 
-  const actualRefs: Ref[] = [];
+  const actualChainIds: string[] = [];
   for (const chain of ledger.chains) {
     const gateway = chain.gateway_result!;
     const execution = chain.execution_result!;
@@ -156,14 +150,10 @@ function assessLedger(
       execution.gateway_result_ref.id !== gateway.gateway_result_id) {
       return "lineage_mismatch";
     }
-    actualRefs.push(
-      { record_kind: "order_request", id: chain.order_request.order_request_id },
-      { record_kind: "gateway_result", id: gateway.gateway_result_id },
-      { record_kind: "execution_result", id: execution.execution_result_id }
-    );
+    actualChainIds.push(chain.chain_id);
   }
 
-  const actual = refKeys(actualRefs);
+  const actual = uniqueSortedIds(actualChainIds);
   if (!actual || actual.length !== expected.length ||
     actual.some((value, index) => value !== expected[index])) {
     return "lineage_mismatch";
@@ -171,13 +161,17 @@ function assessLedger(
   return "complete";
 }
 
-function refKeys(refs: readonly Ref[]): string[] | undefined {
-  const keys = refs.map((value) => {
-    if (!value || !SUPPORTED_LEDGER_REF_KINDS.has(value.record_kind) ||
+function ledgerChainIds(refs: readonly Ref[]): string[] | undefined {
+  const ids = refs.map((value) => {
+    if (!value || value.record_kind !== "ledger_chain" ||
       typeof value.id !== "string" || !value.id) return undefined;
-    return `${value.record_kind}:${value.id}`;
+    return value.id;
   });
-  if (keys.some((value) => value === undefined)) return undefined;
-  const sorted = (keys as string[]).sort();
+  if (ids.some((value) => value === undefined)) return undefined;
+  return uniqueSortedIds(ids as string[]);
+}
+
+function uniqueSortedIds(ids: readonly string[]): string[] | undefined {
+  const sorted = [...ids].sort();
   return new Set(sorted).size === sorted.length ? sorted : undefined;
 }
