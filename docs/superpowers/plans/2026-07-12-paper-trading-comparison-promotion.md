@@ -348,7 +348,7 @@ git commit -m "feat: persist comparison-backed promotions"
 - Preserves current missing/unqualified/standalone diagnostics.
 - Produces compact confirmation evidence from exact promotion refs.
 
-- [ ] **Step 1: Write failing command tests**
+- [x] **Step 1: Write failing command tests**
 
 Success returns { promotion } and calls promote once. Error mapping is:
 
@@ -362,11 +362,11 @@ graph, reference, or persistence conflict -> paper_trading_comparison_invalid
 
 Preserve active_trading_review_candidate_id and attempted_replacement_candidate_id details.
 
-- [ ] **Step 2: Write failing exact-readback tests**
+- [x] **Step 2: Write failing exact-readback tests**
 
 Seed a promotion-bound final evaluation and then a newer unrelated candidate evaluation. Assert TradingPromotion, TradingReview, and review packet still use promotion.paper_trading_evaluation_ref. Assert the compact summary contains campaign/outcome/final-verdict IDs, required/improved counts, metric, minimum lift, evaluated_at, external evaluation authority, and not_live.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ~~~bash
 npm test -- apps/runtime/test/operator-paper-trading-board.test.ts -t "promotion|Trading review"
@@ -374,15 +374,15 @@ npm test -- apps/runtime/test/operator-paper-trading-board.test.ts -t "promotion
 
 Expected: success remains blocked and confirmation summary is absent.
 
-- [ ] **Step 4: Compose the service with diagnostic fallback**
+- [x] **Step 4: Compose the service with diagnostic fallback**
 
 Try the promotion service first. Only evidence_required enters the existing latest-paper qualification diagnostic. Map stale separately and all evidence corruption to paper_trading_comparison_invalid. On success do not alter selectedCandidateId and do not call any runtime mutation port.
 
-- [ ] **Step 5: Build exact evidence projection**
+- [x] **Step 5: Build exact evidence projection**
 
 Load getPaperTradingEvaluation(promotion.paper_trading_evaluation_ref.id), exact observations/commitment, and the campaign/outcome named by comparison_confirmation. Produce the summary only when refs, digests, eligible counts, and final verdict identity agree. Never use candidate-latest as successful promotion evidence.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ~~~bash
 npm test -- apps/runtime/test/operator-paper-trading-board.test.ts

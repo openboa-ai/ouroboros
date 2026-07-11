@@ -14,7 +14,9 @@ import {
   type PaperTradingQualificationStatus,
   type Ref,
   type ResearcherProviderReadModel,
-  type TradingProfitLossReadModel
+  type TradingProfitLossReadModel,
+  type TradingPromotionComparisonConfirmationReadModel,
+  type TradingPromotionRecord
 } from "@ouroboros/domain";
 import {
   listAgentProfileReadModels,
@@ -44,6 +46,10 @@ import { paperTradingEvaluationCommitmentMatchesEvaluation } from "../trading/pa
 import { paperTradingLearningSummary } from "../trading/paper/learning";
 import { paperTradingQualificationBlockerGroups } from "../trading/paper/qualification-blockers";
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
+import {
+  PaperTradingComparisonPromotionService,
+  PaperTradingComparisonPromotionServiceError
+} from "../trading/paper/comparison-promotion-service";
 
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
 const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
@@ -68,6 +74,10 @@ export interface OperatorServiceOptions {
   paperTradingEvaluationRunner?: {
     active(tradingRunId: string): boolean;
   };
+  paperTradingComparisonPromotionService?: Pick<
+    PaperTradingComparisonPromotionService,
+    "promote"
+  >;
 }
 
 export class OperatorService {
@@ -318,6 +328,29 @@ export class OperatorService {
         const candidate = await this.options.store.getCandidate(candidateId);
         if (!candidate) {
           throw new OperatorCommandError(404, "candidate_not_found", { candidate_id: candidateId });
+        }
+        const promotionService = this.options.paperTradingComparisonPromotionService ??
+          new PaperTradingComparisonPromotionService({ store: this.options.store });
+        try {
+          const promotion = await promotionService.promote({ candidateId });
+          return {
+            result: { promotion },
+            summary: `Promoted ${candidateId} to Trading review from confirmed paper comparison evidence.`
+          };
+        } catch (error) {
+          if (!(error instanceof PaperTradingComparisonPromotionServiceError)) {
+            throw error;
+          }
+          if (error.code === "paper_trading_comparison_promotion_stale") {
+            throw new OperatorCommandError(409, "paper_trading_comparison_stale", {
+              candidate_id: candidateId
+            });
+          }
+          if (error.code !== "paper_trading_comparison_promotion_evidence_required") {
+            throw new OperatorCommandError(409, "paper_trading_comparison_invalid", {
+              candidate_id: candidateId
+            });
+          }
         }
         const evaluation = await this.options.store.getLatestPaperTradingEvaluationForCandidate(candidateId);
         if (!evaluation) {
@@ -1125,11 +1158,14 @@ async function buildTradingPromotionReadModel(input: {
   }
 
   const candidate = await input.store.getCandidate(promotion.candidate_ref.id);
+  const comparisonConfirmation =
+    await buildTradingPromotionComparisonConfirmationReadModel(
+      input.store,
+      promotion
+    );
   const boardEntry = input.paperTradingBoard.entries.find((entry) =>
     entry.candidate_id === promotion.candidate_ref.id &&
     entry.evaluation_id === promotion.paper_trading_evaluation_ref.id
-  ) ?? input.paperTradingBoard.entries.find((entry) =>
-    entry.candidate_id === promotion.candidate_ref.id
   );
   if (boardEntry) {
     return {
@@ -1147,13 +1183,22 @@ async function buildTradingPromotionReadModel(input: {
       paper_profit_loss: boardEntry.profit_loss,
       runner_status: boardEntry.runner_status,
       latest_failure_reason: boardEntry.latest_failure_reason,
+      comparison_confirmation: comparisonConfirmation,
       next_action: tradingPromotionNextAction(boardEntry.qualification_status),
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"
     };
   }
 
-  const evaluation = await input.store.getLatestPaperTradingEvaluationForCandidate(promotion.candidate_ref.id);
+  const promotionEvaluation = await input.store.getPaperTradingEvaluation(
+    promotion.paper_trading_evaluation_ref.id
+  );
+  const evaluation = promotionEvaluation &&
+    promotionEvaluation.candidate_ref.id === promotion.candidate_ref.id &&
+    promotionEvaluation.candidate_version_ref.id ===
+      promotion.candidate_version_ref.id
+    ? promotionEvaluation
+    : undefined;
   const observations = evaluation
     ? await input.store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
     : [];
@@ -1179,17 +1224,92 @@ async function buildTradingPromotionReadModel(input: {
     candidate_version_id: promotion.candidate_version_ref.id,
     display_name: candidate?.display_name ?? promotion.candidate_ref.id,
     promoted_at: promotion.promoted_at,
-    paper_trading_evaluation_id: evaluation?.paper_trading_evaluation_id,
+    paper_trading_evaluation_id: promotion.paper_trading_evaluation_ref.id,
     paper_qualification_status: qualification?.qualification_status,
     paper_qualification_reasons: qualification?.qualification_reasons ?? [],
     paper_evidence_window: qualification?.evidence_window,
     paper_profit_loss: evaluation?.latest_score,
     runner_status: runnerStatus,
     latest_failure_reason: evaluation?.latest_failure_reason,
+    comparison_confirmation: comparisonConfirmation,
     next_action: qualification
       ? tradingPromotionNextAction(qualification.qualification_status)
       : "Start continuous paper trading before promotion can be trusted.",
     live_disabled_reason: "mlp_paper_only",
+    authority_status: "not_live"
+  };
+}
+
+async function buildTradingPromotionComparisonConfirmationReadModel(
+  store: OuroborosStorePort,
+  promotion: TradingPromotionRecord
+): Promise<TradingPromotionComparisonConfirmationReadModel | undefined> {
+  const basis = promotion.comparison_confirmation;
+  const campaign = await store.getPaperTradingComparisonConfirmationCampaign(
+    basis.campaign_ref.id
+  );
+  if (!campaign ||
+    campaign.paper_trading_comparison_confirmation_campaign_id !==
+      basis.campaign_ref.id ||
+    campaign.campaign_digest !== basis.campaign_digest ||
+    campaign.evaluation_authority !== "external_to_trading_systems" ||
+    campaign.authority_status !== "not_live") {
+    return undefined;
+  }
+  const outcome = await store
+    .getPaperTradingComparisonConfirmationCampaignOutcome(
+      basis.campaign_outcome_ref.id
+    );
+  const requiredWindowCount = campaign.campaign_policy.required_window_count;
+  const finalResult = outcome?.slot_results.at(-1);
+  if (!outcome ||
+    outcome.paper_trading_comparison_confirmation_campaign_outcome_id !==
+      basis.campaign_outcome_ref.id ||
+    outcome.outcome_digest !== basis.campaign_outcome_digest ||
+    outcome.campaign_ref.id !==
+      campaign.paper_trading_comparison_confirmation_campaign_id ||
+    outcome.campaign_digest !== campaign.campaign_digest ||
+    outcome.campaign_outcome !== "confirmed_improvement" ||
+    outcome.promotion_eligibility !== "eligible" ||
+    outcome.next_action !== "review_for_trading_promotion" ||
+    outcome.evaluation_authority !== "external_to_trading_systems" ||
+    outcome.authority_status !== "not_live" ||
+    !Number.isInteger(requiredWindowCount) ||
+    requiredWindowCount <= 0 ||
+    campaign.slots.length !== requiredWindowCount ||
+    outcome.slot_results.length !== requiredWindowCount ||
+    outcome.improved_count !== requiredWindowCount ||
+    outcome.not_improved_count !== 0 ||
+    outcome.ineligible_count !== 0 ||
+    outcome.expired_count !== 0 ||
+    outcome.slot_results.some((result, index) =>
+      result.slot_index !== campaign.slots[index]?.slot_index ||
+      result.status !== "challenger_improved" ||
+      !result.verdict_ref ||
+      !result.verdict_digest
+    ) ||
+    finalResult?.verdict_ref?.id !== basis.final_verdict_ref.id ||
+    finalResult.verdict_digest !== basis.final_verdict_digest ||
+    campaign.comparison_policy.primary_metric !== "net_revenue_usdt" ||
+    !Number.isFinite(
+      campaign.comparison_policy.minimum_net_revenue_lift_usdt
+    ) ||
+    !Number.isFinite(Date.parse(outcome.evaluated_at))) {
+    return undefined;
+  }
+  return {
+    campaign_id: campaign
+      .paper_trading_comparison_confirmation_campaign_id,
+    campaign_outcome_id: outcome
+      .paper_trading_comparison_confirmation_campaign_outcome_id,
+    final_verdict_id: basis.final_verdict_ref.id,
+    required_window_count: requiredWindowCount,
+    improved_window_count: outcome.improved_count,
+    primary_metric: "net_revenue_usdt",
+    minimum_net_revenue_lift_usdt:
+      campaign.comparison_policy.minimum_net_revenue_lift_usdt,
+    evaluated_at: outcome.evaluated_at,
+    evaluation_authority: "external_to_trading_systems",
     authority_status: "not_live"
   };
 }
@@ -1208,8 +1328,17 @@ async function buildTradingReviewReadModel(input: {
   const activeCandidate = activeCandidateId
     ? await input.store.getCandidate(activeCandidateId)
     : undefined;
-  const activeEvaluation = activeCandidateId
-    ? await input.store.getLatestPaperTradingEvaluationForCandidate(activeCandidateId)
+  const promotionEvaluation = activeCandidateId &&
+      input.tradingPromotion.paper_trading_evaluation_id
+    ? await input.store.getPaperTradingEvaluation(
+        input.tradingPromotion.paper_trading_evaluation_id
+      )
+    : undefined;
+  const activeEvaluation = promotionEvaluation &&
+    promotionEvaluation.candidate_ref.id === activeCandidateId &&
+    promotionEvaluation.candidate_version_ref.id ===
+      input.tradingPromotion.candidate_version_id
+    ? promotionEvaluation
     : undefined;
   const activeObservations = activeEvaluation
     ? await input.store.listPaperTradingObservations(activeEvaluation.paper_trading_evaluation_id)
@@ -1223,9 +1352,8 @@ async function buildTradingReviewReadModel(input: {
   const paperBoardEntry = activeCandidateId
     ? input.paperTradingBoard.entries.find((entry) =>
         entry.candidate_id === activeCandidateId &&
-        (!input.tradingPromotion.paper_trading_evaluation_id ||
-          entry.evaluation_id === input.tradingPromotion.paper_trading_evaluation_id)
-      ) ?? input.paperTradingBoard.entries.find((entry) => entry.candidate_id === activeCandidateId)
+        entry.evaluation_id === input.tradingPromotion.paper_trading_evaluation_id
+      )
     : undefined;
   const arenaEntry = activeCandidateId
     ? input.candidateArena.leaderboard.find((entry) => entry.candidate_id === activeCandidateId)
@@ -1256,6 +1384,7 @@ async function buildTradingReviewReadModel(input: {
     paper_board_entry: paperBoardEntry,
     runner_status: input.tradingPromotion.runner_status,
     latest_failure_reason: input.tradingPromotion.latest_failure_reason,
+    comparison_confirmation: input.tradingPromotion.comparison_confirmation,
     selected_candidate_id: input.selectedCandidateId,
     selected_matches_trading_review: selectedMatchesTradingReview,
     review_packet: buildTradingReviewPacket({
@@ -1348,7 +1477,8 @@ function buildTradingReviewPacket(input: {
     evidence_quality: {
       evidence_window: input.tradingPromotion.paper_evidence_window ?? input.paperBoardEntry?.evidence_window,
       qualification_reasons: qualificationReasons,
-      blocker_groups: blockerGroups
+      blocker_groups: blockerGroups,
+      comparison_confirmation: input.tradingPromotion.comparison_confirmation
     },
     provenance: {
       market_data_source: input.paperBoardEntry?.market_data_source ?? input.paperEvaluation.market_data_source,

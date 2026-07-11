@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +9,8 @@ import {
 } from "@ouroboros/application/services/operator";
 import { createPaperTradingEvaluationCommitment } from "@ouroboros/application/trading/paper/commitment";
 import { initialPaperTradingEngineState } from "@ouroboros/application/trading/paper/engine";
+import { PaperTradingComparisonPromotionServiceError } from
+  "@ouroboros/application/trading/paper/comparison-promotion-service";
 import type {
   CandidateMaterializationInput,
   OperatorReadModel,
@@ -22,7 +24,8 @@ import type {
   SandboxPlacementRecord,
   SandboxRecord,
   SystemCodeRecord,
-  TradingProfitLossReadModel
+  TradingProfitLossReadModel,
+  TradingPromotionRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -492,6 +495,190 @@ describe("operator paper trading board", () => {
       }
     });
     await expect(store.getLatestTradingPromotion()).resolves.toBeUndefined();
+  });
+
+  it("promotes a confirmed challenger through the explicit operator command", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "confirmed-command-promotion",
+      title: "Confirmed Command Promotion"
+    });
+    const promotion = comparisonBackedPromotionForCandidate(candidate);
+    const promoteCalls: Array<{ candidateId: string }> = [];
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingComparisonPromotionService: {
+        async promote(input) {
+          promoteCalls.push(input);
+          return promotion;
+        }
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).resolves.toEqual({
+      result: { promotion },
+      summary: `Promoted ${candidate.candidate_id} to Trading review from confirmed paper comparison evidence.`
+    });
+    expect(promoteCalls).toEqual([{ candidateId: candidate.candidate_id }]);
+  });
+
+  it.each([
+    [
+      "paper_trading_comparison_promotion_stale",
+      "paper_trading_comparison_stale"
+    ],
+    [
+      "paper_trading_comparison_promotion_graph_invalid",
+      "paper_trading_comparison_invalid"
+    ],
+    [
+      "paper_trading_comparison_promotion_reference_not_found",
+      "paper_trading_comparison_invalid"
+    ],
+    [
+      "paper_trading_comparison_promotion_persistence_conflict",
+      "paper_trading_comparison_invalid"
+    ]
+  ] as const)("maps %s to %s", async (serviceCode, operatorError) => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "comparison-promotion-error",
+      title: "Comparison Promotion Error"
+    });
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingComparisonPromotionService: {
+        async promote() {
+          throw new PaperTradingComparisonPromotionServiceError(
+            serviceCode,
+            "comparison promotion failed"
+          );
+        }
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: operatorError,
+      details: {
+        candidate_id: candidate.candidate_id
+      }
+    });
+  });
+
+  it("binds Trading review readback to the exact promotion evaluation and confirmation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "exact-promotion-readback",
+      title: "Exact Promotion Readback"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    const boundEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(
+      candidate.candidate_id
+    );
+    if (!boundEvaluation) {
+      throw new Error("promotion-bound paper evaluation missing");
+    }
+    const newerEvaluationId = boundEvaluation.paper_trading_evaluation_id + "-newer";
+    await writeNewerUnrelatedPaperEvaluation(
+      store,
+      boundEvaluation,
+      newerEvaluationId
+    );
+    const promotion = await recordTradingPromotionForCandidate(
+      store,
+      candidate,
+      "2026-05-16T00:32:00.000Z",
+      boundEvaluation.paper_trading_evaluation_id
+    );
+    const projectionStore = comparisonConfirmationProjectionStore(store, promotion);
+    const service = new OperatorService({
+      store: projectionStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
+      }
+    });
+
+    await service.executeCommand("candidate.select", {
+      candidate_id: candidate.candidate_id
+    });
+    const operator = await service.readOperator();
+    const confirmation = {
+      campaign_id: promotion.comparison_confirmation.campaign_ref.id,
+      campaign_outcome_id:
+        promotion.comparison_confirmation.campaign_outcome_ref.id,
+      final_verdict_id:
+        promotion.comparison_confirmation.final_verdict_ref.id,
+      required_window_count: 2,
+      improved_window_count: 2,
+      primary_metric: "net_revenue_usdt",
+      minimum_net_revenue_lift_usdt: 0.75,
+      evaluated_at: "2026-05-16T00:31:30.000Z",
+      evaluation_authority: "external_to_trading_systems",
+      authority_status: "not_live"
+    } as const;
+
+    expect(operator.paper_trading_board.entries[0]?.evaluation_id).toBe(
+      newerEvaluationId
+    );
+    expect(operator.trading_promotion).toMatchObject({
+      paper_trading_evaluation_id:
+        boundEvaluation.paper_trading_evaluation_id,
+      paper_profit_loss: {
+        net_revenue_usdt: 14.2,
+        net_return_pct: 0.142
+      },
+      comparison_confirmation: confirmation
+    });
+    expect(operator.trading_review).toMatchObject({
+      paper_trading_evaluation_id:
+        boundEvaluation.paper_trading_evaluation_id,
+      comparison_confirmation: confirmation,
+      paper_trading_evaluation: {
+        evaluation_id: boundEvaluation.paper_trading_evaluation_id,
+        profit_loss: {
+          net_revenue_usdt: 14.2,
+          net_return_pct: 0.142
+        }
+      },
+      review_packet: {
+        subject: {
+          paper_trading_evaluation_id:
+            boundEvaluation.paper_trading_evaluation_id
+        },
+        evidence_quality: {
+          comparison_confirmation: confirmation
+        }
+      }
+    });
   });
 
   it("projects a persisted Trading review target without live authority", async () => {
@@ -1734,9 +1921,35 @@ function timestampAt(index: number): string {
 async function recordTradingPromotionForCandidate(
   store: LocalStore,
   candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>,
-  promotedAt = "2026-05-16T00:32:00.000Z"
-): Promise<void> {
-  await store.recordTradingPromotion({
+  promotedAt = "2026-05-16T00:32:00.000Z",
+  paperTradingEvaluationId = `paper-evaluation-${candidate.candidate_id}`
+): Promise<TradingPromotionRecord> {
+  const promotion = comparisonBackedPromotionForCandidate(
+    candidate,
+    promotedAt,
+    paperTradingEvaluationId
+  );
+  const itemDir = path.join(store.root(), "trading-promotions/items");
+  await mkdir(itemDir, { recursive: true });
+  await writeFile(
+    path.join(
+      itemDir,
+      encodeURIComponent(promotion.trading_promotion_id) + ".json"
+    ),
+    JSON.stringify(promotion, null, 2) + "\n",
+    "utf8"
+  );
+  return promotion;
+}
+
+function comparisonBackedPromotionForCandidate(
+  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>,
+  promotedAt = "2026-05-16T00:32:00.000Z",
+  paperTradingEvaluationId = `paper-evaluation-${candidate.candidate_id}`
+): TradingPromotionRecord {
+  const campaignId = "operator-test-campaign-" + candidate.candidate_id;
+  const outcomeId = campaignId + "-outcome";
+  return {
     record_kind: "trading_promotion",
     version: 1,
     trading_promotion_id: `promotion-${candidate.candidate_id}`,
@@ -1748,28 +1961,143 @@ async function recordTradingPromotionForCandidate(
     },
     paper_trading_evaluation_ref: {
       record_kind: "paper_trading_evaluation",
-      id: `paper-evaluation-${candidate.candidate_id}`
+      id: paperTradingEvaluationId
     },
     comparison_confirmation: {
       basis_kind: "paper_trading_comparison_confirmation",
       campaign_ref: {
         record_kind: "paper_trading_comparison_confirmation_campaign",
-        id: "operator-test-campaign"
+        id: campaignId
       },
-      campaign_digest: "sha256:operator-test-campaign",
+      campaign_digest: "sha256:" + campaignId,
       campaign_outcome_ref: {
         record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
-        id: "operator-test-campaign-outcome"
+        id: outcomeId
       },
-      campaign_outcome_digest: "sha256:operator-test-campaign-outcome",
+      campaign_outcome_digest: "sha256:" + outcomeId,
       final_verdict_ref: {
         record_kind: "paper_trading_comparison_verdict",
-        id: "operator-test-final-verdict"
+        id: outcomeId + "-final-verdict"
       },
-      final_verdict_digest: "sha256:operator-test-final-verdict"
+      final_verdict_digest: "sha256:" + outcomeId + "-final-verdict"
     },
     promoted_at: promotedAt,
     authority_status: "not_live"
+  };
+}
+
+async function writeNewerUnrelatedPaperEvaluation(
+  store: LocalStore,
+  boundEvaluation: PaperTradingEvaluationRecord,
+  evaluationId: string
+): Promise<void> {
+  const itemDir = path.join(store.root(), "paper-trading-evaluations/items");
+  await mkdir(itemDir, { recursive: true });
+  await writeFile(
+    path.join(itemDir, encodeURIComponent(evaluationId) + ".json"),
+    JSON.stringify({
+      ...boundEvaluation,
+      paper_trading_evaluation_id: evaluationId,
+      started_at: "2026-05-16T01:00:00.000Z",
+      observation_count: 0,
+      last_observed_at: "2026-05-16T01:01:00.000Z",
+      next_observation_at: "2026-05-16T01:02:00.000Z",
+      latest_score: {
+        revenue_usdt: 1_000.6,
+        cost_usdt: 0.6,
+        net_revenue_usdt: 1_000,
+        net_return_pct: 10
+      }
+    }, null, 2) + "\n",
+    "utf8"
+  );
+}
+
+function comparisonConfirmationProjectionStore(
+  store: LocalStore,
+  promotion: TradingPromotionRecord
+): LocalStore {
+  const campaign = {
+    record_kind: "paper_trading_comparison_confirmation_campaign",
+    paper_trading_comparison_confirmation_campaign_id:
+      promotion.comparison_confirmation.campaign_ref.id,
+    campaign_digest: promotion.comparison_confirmation.campaign_digest,
+    campaign_policy: {
+      required_window_count: 2
+    },
+    comparison_policy: {
+      primary_metric: "net_revenue_usdt",
+      minimum_net_revenue_lift_usdt: 0.75
+    },
+    slots: [{ slot_index: 1 }, { slot_index: 2 }],
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as NonNullable<Awaited<ReturnType<
+    LocalStore["getPaperTradingComparisonConfirmationCampaign"]
+  >>>;
+  const outcome = {
+    record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+    paper_trading_comparison_confirmation_campaign_outcome_id:
+      promotion.comparison_confirmation.campaign_outcome_ref.id,
+    campaign_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign",
+      id: campaign.paper_trading_comparison_confirmation_campaign_id
+    },
+    campaign_digest: campaign.campaign_digest,
+    slot_results: [
+      {
+        slot_index: 1,
+        status: "challenger_improved",
+        verdict_ref: {
+          record_kind: "paper_trading_comparison_verdict",
+          id: "operator-test-slot-1-verdict"
+        },
+        verdict_digest: "sha256:operator-test-slot-1-verdict"
+      },
+      {
+        slot_index: 2,
+        status: "challenger_improved",
+        verdict_ref: {
+          ...promotion.comparison_confirmation.final_verdict_ref
+        },
+        verdict_digest:
+          promotion.comparison_confirmation.final_verdict_digest
+      }
+    ],
+    improved_count: 2,
+    not_improved_count: 0,
+    ineligible_count: 0,
+    expired_count: 0,
+    campaign_outcome: "confirmed_improvement",
+    promotion_eligibility: "eligible",
+    next_action: "review_for_trading_promotion",
+    evaluated_at: "2026-05-16T00:31:30.000Z",
+    outcome_digest:
+      promotion.comparison_confirmation.campaign_outcome_digest,
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as NonNullable<Awaited<ReturnType<
+    LocalStore["getPaperTradingComparisonConfirmationCampaignOutcome"]
+  >>>;
+
+  return new Proxy(store, {
+    get(target, property) {
+      if (property === "getPaperTradingComparisonConfirmationCampaign") {
+        return async (id: string) => id ===
+          campaign.paper_trading_comparison_confirmation_campaign_id
+          ? campaign
+          : undefined;
+      }
+      if (property ===
+        "getPaperTradingComparisonConfirmationCampaignOutcome") {
+        return async (id: string) => id ===
+          outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+          ? outcome
+          : undefined;
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
   });
 }
 
