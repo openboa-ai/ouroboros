@@ -486,7 +486,13 @@ export async function readBinanceBtcUsdtMarketSnapshot({
     moving_average_slow: roundMarketNumber(slowAverage),
     volatility: roundMarketNumber(closeVolatility(closes)),
     expected_direction: expectedDirection(fastAverage, slowAverage),
-    observed_at: epochMsToIso(observedEpochMs)
+    observed_at: epochMsToIso(observedEpochMs),
+    source_kind: "binance_production_public_rest",
+    source_priority: "rest_fallback",
+    freshness: "fresh",
+    ws_connected: false,
+    rest_fallback_used: true,
+    gap_detected: false
   };
 }
 

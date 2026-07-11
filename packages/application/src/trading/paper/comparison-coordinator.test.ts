@@ -53,6 +53,7 @@ import {
   type PreparePaperTradingComparisonInput,
   type VerifiedPaperTradingComparisonCommitmentGraph
 } from "./comparison-coordinator";
+import { PaperTradingComparisonTickCoordinator } from "./comparison-tick-coordinator";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -153,6 +154,75 @@ describe("PaperTradingComparisonCoordinator", () => {
         )
       )?.ledger?.has_activity
     ).toBe(false);
+  });
+
+  it("captures the first shared tick through the real inert graph without runtime effects", async () => {
+    const fixture = await comparisonFixture();
+    const prepared = await fixture.coordinator.prepare(fixture.input);
+    const captureMarketData: GatewayMarketDataPort = {
+      ...fixture.marketData,
+      async readMarketSnapshot() {
+        return {
+          symbol: "BTCUSDT",
+          price: 60_000,
+          moving_average_fast: 60_100,
+          moving_average_slow: 59_900,
+          volatility: 0.01,
+          expected_direction: "long",
+          observed_at: "2026-07-10T00:00:10.500Z",
+          source_kind: "binance_production_public_rest",
+          source_priority: "rest_fallback",
+          freshness: "fresh",
+          ws_connected: false,
+          rest_fallback_used: true,
+          gap_detected: false
+        };
+      },
+      async readPublicExecutionSnapshot() {
+        return {
+          symbol: "BTCUSDT",
+          observed_at: "2026-07-10T00:00:10.600Z",
+          source_kind: "binance_production_public_rest",
+          source_priority: "rest_fallback",
+          freshness: "fresh",
+          ws_connected: false,
+          rest_fallback_used: true,
+          gap_detected: false,
+          stream_marker: "comparison-first-tick-integration",
+          agg_trades: [],
+          authority_status: "read_only"
+        };
+      }
+    };
+    const ticks = new PaperTradingComparisonTickCoordinator({
+      store: fixture.store,
+      comparisons: fixture.coordinator,
+      marketData: captureMarketData,
+      now: () => "2026-07-10T00:00:11.000Z"
+    });
+
+    const captured = await ticks.captureFirstTick({
+      comparisonId: prepared.commitment.paper_trading_comparison_commitment_id,
+      idempotencyKey: "real-inert-pair-first-tick"
+    });
+
+    await expect(fixture.store.listPaperTradingComparisonTicks(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([captured.tick]);
+    await expect(fixture.store.getPaperTradingEvaluation(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "not_started", observation_count: 0 });
+    await expect(fixture.store.getPaperTradingEvaluation(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "not_started", observation_count: 0 });
+    expect(fixture.runner.active(prepared.champion.run.trading_run_id)).toBe(false);
+    expect(fixture.runner.active(prepared.challenger.run.trading_run_id)).toBe(false);
+    expect(fixture.effects).toEqual({
+      providerStarts: 0,
+      sandboxStarts: 0,
+      marketReads: 0
+    });
+    expect(captured.comparison.verification.activation_authority).toBe("not_granted");
   });
 
   it("prepares bootstrap selection only when no TradingPromotion exists", async () => {
@@ -1879,6 +1949,7 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     sessions,
     runner,
     coordinator,
+    marketData,
     input,
     effects
   };

@@ -131,7 +131,13 @@ describe("Binance public market liveness adapter", () => {
     expect(first).toMatchObject({
       symbol: "BTCUSDT",
       price: 65000,
-      expected_direction: "long"
+      expected_direction: "long",
+      source_kind: "binance_production_public_rest",
+      source_priority: "rest_fallback",
+      freshness: "fresh",
+      ws_connected: false,
+      rest_fallback_used: true,
+      gap_detected: false
     });
     expect(second).toEqual(first);
     expect(client.calls).toEqual({
