@@ -390,7 +390,7 @@ git commit -m "feat: release paper comparison research evidence"
 - Changes: adaptive default direction ordering can react to released campaign evidence
 - Preserves: leaderboard, qualification, Trading review, and promotion state
 
-- [ ] **Step 1: Write the unreleased/released ablation test**
+- [x] **Step 1: Write the unreleased/released ablation test**
 
 Use a real LocalStore candidate and override only the release-list read with a domain-valid release
 fixture. First return `[]` and run a tick; assert default direction order and no release context.
@@ -412,13 +412,13 @@ expect(nextTick.direction_results[0]?.direction_kind).toBe("mean_reversion");
 Assert context omits raw slot scores, `promotion_eligibility`, Ledger chains, credentials, and live
 authority. Exact duplicate release reads must not duplicate clusters or focus score.
 
-- [ ] **Step 2: Run the context test and verify RED**
+- [x] **Step 2: Run the context test and verify RED**
 
 ```bash
 npx vitest run apps/runtime/test/candidate-arena-paper-context.test.ts -t "released campaign|unreleased campaign|direction ablation"
 ```
 
-- [ ] **Step 3: Add the compact context projection**
+- [x] **Step 3: Add the compact context projection**
 
 Load releases once per context/read-model build and map only:
 
@@ -439,14 +439,14 @@ Load releases once per context/read-model build and map only:
 Sort by `released_at` descending then ID, cap context to eight, and never fall back to campaign
 outcomes when the release list is empty.
 
-- [ ] **Step 4: Extend FindingClusters without rank authority**
+- [x] **Step 4: Extend FindingClusters without rank authority**
 
 Pass releases into `arenaFindingClusters`. Use direction, candidate, summary, next focus, `unknown`
 regime, and release kind in the internal key. Do not set a fake qualification blocker or protocol
 failure. Deduplicate by release ID and candidate ID. Existing adaptive focus may reorder directions;
 no leaderboard or paper-board values change.
 
-- [ ] **Step 5: Run CandidateArena and application regressions**
+- [x] **Step 5: Run CandidateArena and application regressions**
 
 ```bash
 npx vitest run apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -454,7 +454,7 @@ npm run typecheck --workspace @ouroboros/application
 npm run typecheck --workspace @ouroboros/runtime
 ```
 
-- [ ] **Step 6: Commit causal consumption**
+- [x] **Step 6: Commit causal consumption**
 
 ```bash
 git add packages/application/src/candidate/arena.ts apps/runtime/test/candidate-arena-paper-context.test.ts

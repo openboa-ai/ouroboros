@@ -20,9 +20,11 @@ import type {
 import type {
   CandidateArenaTickRecord,
   CandidateInspectReadModel,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
-  PaperTradingObservationRecord
+  PaperTradingObservationRecord,
+  Ref
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -1603,6 +1605,113 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
+  it("uses only released campaign findings for context and direction ablation", async () => {
+    const store = new ResearchReleaseOverlayStore(tmpDir);
+    await store.initialize();
+    const source = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!source?.system_code?.ref) {
+      throw new Error("release ablation source candidate missing");
+    }
+    const release = releasedCampaignFindingFixture(source);
+    const capturedContexts: string[] = [];
+
+    const unreleased = await runCandidateArenaTick({
+      store,
+      tickId: "unreleased-campaign-direction-ablation",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    expect(unreleased.arena.latest_ticks.find((tick) =>
+      tick.tick_id === unreleased.tick_id)?.direction_results[0]?.direction_kind
+    ).toBe("trend_following");
+    const unreleasedContexts = capturedContexts.slice(0, 5).map((value) =>
+      JSON.parse(value) as {
+        released_campaign_findings?: unknown[];
+        finding_clusters: Array<{ candidate_ids: string[] }>;
+      });
+    expect(unreleasedContexts).toHaveLength(5);
+    expect(unreleasedContexts.every((context) =>
+      context.released_campaign_findings?.length === 0)).toBe(true);
+    expect(unreleasedContexts.flatMap((context) =>
+      context.finding_clusters.flatMap((cluster) => cluster.candidate_ids))
+    ).not.toContain(FIXTURE_CANDIDATE_ID);
+
+    store.releases = [release, structuredClone(release)];
+    const released = await runCandidateArenaTick({
+      store,
+      tickId: "released-campaign-direction-ablation",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const releasedTick = released.arena.latest_ticks.find((tick) =>
+      tick.tick_id === released.tick_id);
+    expect(releasedTick?.direction_results[0]?.direction_kind).toBe("mean_reversion");
+
+    const releasedContexts = capturedContexts.slice(-5).map((value) =>
+      JSON.parse(value) as {
+        requested_direction: string;
+        released_campaign_findings: Array<Record<string, unknown>>;
+        finding_clusters: Array<{
+          direction_kind: string;
+          candidate_count: number;
+          candidate_ids: string[];
+          latest_finding?: string;
+          next_research_focus: string;
+          authority_status: string;
+        }>;
+        adaptive_direction_focus: Array<{
+          direction_kind: string;
+          focus_score: number;
+        }>;
+      });
+    const context = releasedContexts.find((entry) =>
+      entry.requested_direction === "mean_reversion");
+    if (!context) throw new Error("released mean-reversion context missing");
+    expect(context.released_campaign_findings).toEqual([{
+      release_id: release.paper_trading_comparison_research_release_id,
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      direction_kind: "mean_reversion",
+      release_kind: "challenger_not_reproduced",
+      finding_kind: "negative_result",
+      summary: release.finding.summary,
+      next_research_focus: release.next_research_focus,
+      released_at: release.released_at,
+      authority_status: "not_promotion_authority"
+    }]);
+    const projected = context.released_campaign_findings[0]!;
+    expect(projected).not.toHaveProperty("slot_results");
+    expect(projected).not.toHaveProperty("promotion_eligibility");
+    expect(projected).not.toHaveProperty("ledger_chain_refs");
+    expect(projected).not.toHaveProperty("credentials");
+    expect(projected).not.toHaveProperty("live_exchange_authority");
+    expect(context.finding_clusters).toEqual(expect.arrayContaining([{
+      direction_kind: "mean_reversion",
+      market_regime: "unknown",
+      candidate_count: 1,
+      candidate_ids: [FIXTURE_CANDIDATE_ID],
+      latest_finding: release.finding.summary,
+      next_research_focus: release.next_research_focus,
+      authority_status: "not_promotion_authority"
+    }]));
+    expect(context.adaptive_direction_focus).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        focus_score: 10
+      })
+    ]));
+    expect(released.arena.finding_clusters).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        candidate_count: 1,
+        candidate_ids: [FIXTURE_CANDIDATE_ID]
+      })
+    ]));
+  });
+
   it("feeds previous tick research efficiency into the next researcher context without promotion authority", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1710,6 +1819,127 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 });
+
+class ResearchReleaseOverlayStore extends LocalStore {
+  releases: PaperTradingComparisonResearchReleaseRecord[] = [];
+
+  override async listPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  > {
+    return structuredClone(this.releases);
+  }
+}
+
+function releasedCampaignFindingFixture(
+  candidate: CandidateInspectReadModel
+): PaperTradingComparisonResearchReleaseRecord {
+  const candidateSystemCodeRef = candidate.system_code?.ref;
+  if (!candidateSystemCodeRef?.record_kind || !candidateSystemCodeRef.id) {
+    throw new Error("release ablation candidate SystemCode ref missing");
+  }
+  const systemCodeRef: Ref = {
+    record_kind: candidateSystemCodeRef.record_kind,
+    id: candidateSystemCodeRef.id
+  };
+  const releaseId = "campaign-outcome-direction-ablation-research-release";
+  const findingId = `${releaseId}-finding`;
+  const finding = {
+    record_kind: "research_finding" as const,
+    version: 1 as const,
+    research_finding_id: findingId,
+    research_worker_ref: { record_kind: "research_worker", id: "worker-ablation" },
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: "direction-mean-reversion"
+    },
+    experiment_run_ref: { record_kind: "experiment_run", id: "experiment-ablation" },
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: "evaluation-ablation"
+    },
+    finding_kind: "negative_result" as const,
+    summary:
+      "Paper comparison confirmation campaign campaign-direction-ablation: improved=1, not_improved=1, ineligible=0, expired=0; release=challenger_not_reproduced.",
+    supporting_record_refs: [
+      { record_kind: "research_finding", id: "source-finding-ablation" },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: "campaign-direction-ablation"
+      },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: "campaign-outcome-direction-ablation"
+      },
+      { record_kind: "paper_trading_comparison_verdict", id: "verdict-ablation" }
+    ],
+    created_at: "2026-07-12T08:00:00.000Z",
+    authority_status: "research_trace_only" as const
+  };
+  const lineage = {
+    record_kind: "artifact_lineage" as const,
+    version: 1 as const,
+    artifact_lineage_id: `${releaseId}-lineage`,
+    child_system_code_ref: { ...systemCodeRef },
+    source_finding_refs: [
+      { record_kind: "research_finding", id: "source-finding-ablation" },
+      { record_kind: "research_finding", id: findingId }
+    ],
+    created_by_research_worker_ref: { ...finding.research_worker_ref },
+    created_at: finding.created_at,
+    authority_status: "lineage_only" as const
+  };
+  return {
+    record_kind: "paper_trading_comparison_research_release",
+    version: 1,
+    paper_trading_comparison_research_release_id: releaseId,
+    campaign_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign",
+      id: "campaign-direction-ablation"
+    },
+    campaign_digest: "sha256:campaign-ablation",
+    campaign_outcome_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+      id: "campaign-outcome-direction-ablation"
+    },
+    campaign_outcome_digest: "sha256:outcome-ablation",
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: candidate.candidate_id
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: candidate.candidate_version.candidate_version_id
+    },
+    system_code_ref: { ...systemCodeRef },
+    system_code_artifact_digest: "sha256:artifact-ablation",
+    source_finding_ref: {
+      record_kind: "research_finding",
+      id: "source-finding-ablation"
+    },
+    source_finding_record_digest: "sha256:source-finding-ablation",
+    source_lineage_ref: {
+      record_kind: "artifact_lineage",
+      id: "source-lineage-ablation"
+    },
+    source_lineage_record_digest: "sha256:source-lineage-ablation",
+    direction_kind: "mean_reversion",
+    release_kind: "challenger_not_reproduced",
+    finding,
+    finding_record_digest: "sha256:finding-ablation",
+    lineage,
+    lineage_record_digest: "sha256:lineage-ablation",
+    next_research_focus:
+      "Explain non-reproduction, preserve the negative result, and generate differentiated candidates under new prospective evidence.",
+    released_at: finding.created_at,
+    release_digest: "sha256:release-ablation",
+    research_visibility: "released_to_research",
+    evaluation_authority: "external_to_trading_systems",
+    promotion_authority: false,
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "lineage_only"
+  };
+}
 
 class CapturingResearchAgent implements TradingResearchAgentAdapter {
   readonly agent: ManagedResearchAgent = {

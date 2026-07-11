@@ -26,6 +26,7 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
   PaperTradingObservationRecord,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingFailureKind,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
@@ -38,7 +39,8 @@ import type {
 } from "@ouroboros/domain";
 import {
   decideCandidateAdmission,
-  deriveCandidateAdmissionResearchWorkerOutcome
+  deriveCandidateAdmissionResearchWorkerOutcome,
+  paperTradingComparisonResearchReleaseHasRuntimeShape
 } from "@ouroboros/domain";
 import {
   FIXTURE_CANDIDATE_ID,
@@ -95,6 +97,18 @@ type ArenaAdaptiveDirectionFocus = {
   focus_score: number;
   focus_reason: string;
   next_research_focus: string;
+  authority_status: "not_promotion_authority";
+};
+
+type ArenaReleasedCampaignFinding = {
+  release_id: string;
+  candidate_id: string;
+  direction_kind: ResearchDirectionKind;
+  release_kind: PaperTradingComparisonResearchReleaseRecord["release_kind"];
+  finding_kind: ResearchFindingRecord["finding_kind"];
+  summary: string;
+  next_research_focus: string;
+  released_at: string;
   authority_status: "not_promotion_authority";
 };
 
@@ -397,7 +411,8 @@ export async function runCandidateArenaTick(
 export async function buildCandidateArenaReadModel(
   store: OuroborosStorePort,
   runnerStatus: "running" | "stopped",
-  tickCount: number
+  tickCount: number,
+  preloadedResearchReleases?: PaperTradingComparisonResearchReleaseRecord[]
 ): Promise<CandidateArenaReadModel> {
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
@@ -447,11 +462,17 @@ export async function buildCandidateArenaReadModel(
     live_disabled: true,
     authority_status: "not_live"
   };
+  const researchReleases = preloadedResearchReleases ??
+    await arenaPaperTradingComparisonResearchReleases(store);
   const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
   const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
   return {
     ...arena,
-    finding_clusters: arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard)
+    finding_clusters: arenaFindingClusters(
+      paperEvidenceCandidates,
+      paperTradingBoard,
+      researchReleases
+    )
   };
 }
 
@@ -1198,10 +1219,16 @@ function isAntiHackingEvaluation(entry: TradingResearchNotebookEntry): boolean {
 }
 
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
-  const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
+  const researchReleases = await arenaPaperTradingComparisonResearchReleases(store);
+  const arena = await buildCandidateArenaReadModel(
+    store,
+    "stopped",
+    0,
+    researchReleases
+  );
   const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
   const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
-  const findingClusters = arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard);
+  const findingClusters = arena.finding_clusters;
   return JSON.stringify({
     requested_direction: direction,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
@@ -1304,6 +1331,8 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         };
     }),
     paper_trading_board: paperTradingBoard,
+    released_campaign_findings:
+      arenaReleasedCampaignFindings(researchReleases),
     adaptive_direction_focus: [
       ...arenaAdaptiveDirectionFocus(findingClusters),
       ...arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
@@ -1333,9 +1362,63 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
   });
 }
 
+async function arenaPaperTradingComparisonResearchReleases(
+  store: OuroborosStorePort
+): Promise<PaperTradingComparisonResearchReleaseRecord[]> {
+  if (typeof store.listPaperTradingComparisonResearchReleases !== "function") {
+    return [];
+  }
+  const releases = await store.listPaperTradingComparisonResearchReleases();
+  return Array.isArray(releases)
+    ? uniquePaperTradingComparisonResearchReleases(releases)
+    : [];
+}
+
+function uniquePaperTradingComparisonResearchReleases(
+  releases: unknown[]
+): PaperTradingComparisonResearchReleaseRecord[] {
+  const byReleaseId = new Map<string, PaperTradingComparisonResearchReleaseRecord>();
+  for (const release of releases) {
+    if (!paperTradingComparisonResearchReleaseHasRuntimeShape(release) ||
+      byReleaseId.has(
+        release.paper_trading_comparison_research_release_id
+      )) {
+      continue;
+    }
+    byReleaseId.set(
+      release.paper_trading_comparison_research_release_id,
+      release
+    );
+  }
+  return [...byReleaseId.values()].sort((left, right) =>
+    right.released_at.localeCompare(left.released_at) ||
+    left.paper_trading_comparison_research_release_id.localeCompare(
+      right.paper_trading_comparison_research_release_id
+    ));
+}
+
+function arenaReleasedCampaignFindings(
+  releases: PaperTradingComparisonResearchReleaseRecord[]
+): ArenaReleasedCampaignFinding[] {
+  return uniquePaperTradingComparisonResearchReleases(releases)
+    .slice(0, 8)
+    .map((release) => ({
+      release_id: release.paper_trading_comparison_research_release_id,
+      candidate_id: release.candidate_ref.id,
+      direction_kind: release.direction_kind,
+      release_kind: release.release_kind,
+      finding_kind: release.finding.finding_kind,
+      summary: release.finding.summary,
+      next_research_focus: release.next_research_focus,
+      released_at: release.released_at,
+      authority_status: "not_promotion_authority"
+    }));
+}
+
 function arenaFindingClusters(
   candidates: Awaited<ReturnType<typeof arenaPaperEvidenceCandidates>>,
-  paperTradingBoard: ReturnType<typeof arenaPaperTradingBoardContext>
+  paperTradingBoard: ReturnType<typeof arenaPaperTradingBoardContext>,
+  researchReleases: PaperTradingComparisonResearchReleaseRecord[] = []
 ): CandidateArenaFindingClusterReadModel[] {
   const paperBoardByCandidateId = new Map(
     paperTradingBoard.flatMap((entry) => entry.candidate_id ? [[entry.candidate_id, entry]] : [])
@@ -1401,6 +1484,32 @@ function arenaFindingClusters(
       next_research_focus: paperLearning?.next_research_focus ??
         latestFailure?.next_action ??
         "Use the accumulated finding as next-generation context without promotion authority.",
+      authority_status: "not_promotion_authority"
+    });
+  }
+
+  for (const release of uniquePaperTradingComparisonResearchReleases(
+    researchReleases
+  )) {
+    const clusterKey = [
+      "released_campaign",
+      release.direction_kind,
+      release.release_kind,
+      "unknown"
+    ].join("|");
+    const existing = clusters.get(clusterKey);
+    if (existing) {
+      if (!existing.candidate_ids.includes(release.candidate_ref.id)) {
+        existing.candidate_ids.push(release.candidate_ref.id);
+      }
+      continue;
+    }
+    clusters.set(clusterKey, {
+      direction_kind: release.direction_kind,
+      market_regime: "unknown",
+      candidate_ids: [release.candidate_ref.id],
+      latest_finding: release.finding.summary,
+      next_research_focus: release.next_research_focus,
       authority_status: "not_promotion_authority"
     });
   }
