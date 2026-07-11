@@ -29,6 +29,7 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonTickRecord,
+  PaperTradingComparisonTickCaptureWriteContext,
   PaperTradingComparisonTickAcknowledgementRecord,
   PaperTradingComparisonTickDeliveryRecord,
   PaperTradingComparisonTickIOWriteContext,
@@ -237,7 +238,8 @@ export interface OuroborosStorePort {
   ): Promise<PaperTradingComparisonCommitmentRecord | undefined>;
   listPaperTradingComparisonCommitments(): Promise<PaperTradingComparisonCommitmentRecord[]>;
   recordPaperTradingComparisonTick(
-    tick: PaperTradingComparisonTickRecord
+    tick: PaperTradingComparisonTickRecord,
+    authority?: PaperTradingComparisonTickCaptureWriteContext
   ): Promise<PaperTradingComparisonTickRecord>;
   getPaperTradingComparisonTick(
     tickId: string

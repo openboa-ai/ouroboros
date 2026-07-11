@@ -146,7 +146,7 @@ git commit -m "feat: define repeated comparison lineage"
 - Preserves: authority-free sequence-1 capture only
 - Produces: exact sequence-2 append/replay validation for Task 3
 
-- [ ] **Step 1: Write failing LocalStore next-tick tests**
+- [x] **Step 1: Write failing LocalStore next-tick tests**
 
 Starting from a real running activation with one paired checkpoint and both first-tick
 acknowledgements, call:
@@ -162,7 +162,7 @@ sequence 1, sequence gap, alternate tick at sequence 2, non-monotonic timestamps
 tick before checkpoint 2 is paired. Assert sequence-1 capture rejects any authority and remains
 compatible.
 
-- [ ] **Step 2: Run LocalStore tick tests and verify RED**
+- [x] **Step 2: Run LocalStore tick tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "contiguous comparison tick"
@@ -170,7 +170,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "contiguous comp
 
 Expected: FAIL because Store accepts only one first tick and has no next-tick authority.
 
-- [ ] **Step 3: Generalize the Store tick writer**
+- [x] **Step 3: Generalize the Store tick writer**
 
 Change the port and implementation signature to:
 
@@ -187,7 +187,7 @@ latest activation outcome `both_running`, prior checkpoint sequence N-1 paired w
 both required prior acknowledgements, no open attempt, frozen cadence/count/elapsed bounds, and an
 exact capture context. Permit only exact replay for the same deterministic record.
 
-- [ ] **Step 4: Run LocalStore regressions and typecheck**
+- [x] **Step 4: Run LocalStore regressions and typecheck**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "comparison tick|paired checkpoint|tick attribution"
@@ -196,7 +196,10 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: selected Store tests and LocalStore typecheck pass.
 
-- [ ] **Step 5: Commit contiguous tick persistence**
+Actual: 7 new contiguous-tick tests, 43 selected comparison regressions, and all 290 LocalStore
+tests passed; `@ouroboros/local-store` typecheck passed.
+
+- [x] **Step 5: Commit contiguous tick persistence**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts

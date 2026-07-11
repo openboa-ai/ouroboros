@@ -75,6 +75,7 @@ import {
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTickAcknowledgementDigestInput,
   paperTradingComparisonTickAcknowledgementHasRuntimeShape,
+  paperTradingComparisonTickCaptureWriteContextHasRuntimeShape,
   paperTradingComparisonTickDeliveryDigestInput,
   paperTradingComparisonTickDeliveryHasRuntimeShape,
   paperTradingComparisonTickDigestInput,
@@ -187,6 +188,7 @@ import type {
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
   PaperTradingComparisonTickAcknowledgementRecord,
+  PaperTradingComparisonTickCaptureWriteContext,
   PaperTradingComparisonTickDeliveryRecord,
   PaperTradingComparisonTickIOOperation,
   PaperTradingComparisonTickIOWriteContext,
@@ -328,6 +330,10 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_tick_reference_mismatch"
   | "paper_trading_comparison_first_tick_conflict"
   | "paper_trading_comparison_tick_graph_invalid"
+  | "invalid_paper_trading_comparison_tick_capture_context"
+  | "paper_trading_comparison_tick_capture_reference_mismatch"
+  | "paper_trading_comparison_tick_capture_state_conflict"
+  | "paper_trading_comparison_tick_sequence_conflict"
   | "invalid_paper_trading_comparison_tick_delivery_input"
   | "paper_trading_comparison_tick_delivery_digest_mismatch"
   | "paper_trading_comparison_tick_delivery_conflict"
@@ -4755,15 +4761,17 @@ export class LocalStore {
   }
 
   async recordPaperTradingComparisonTick(
-    tick: PaperTradingComparisonTickRecord
+    tick: PaperTradingComparisonTickRecord,
+    authority?: PaperTradingComparisonTickCaptureWriteContext
   ): Promise<PaperTradingComparisonTickRecord> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordPaperTradingComparisonTickUnlocked(tick)
+      () => this.recordPaperTradingComparisonTickUnlocked(tick, authority)
     );
   }
 
   private async recordPaperTradingComparisonTickUnlocked(
-    tick: PaperTradingComparisonTickRecord
+    tick: PaperTradingComparisonTickRecord,
+    authority?: PaperTradingComparisonTickCaptureWriteContext
   ): Promise<PaperTradingComparisonTickRecord> {
     if (!paperTradingComparisonTickHasRuntimeShape(tick)) {
       throw new LocalStoreError(
@@ -4791,17 +4799,42 @@ export class LocalStore {
       );
     }
 
-    await this.validatePaperTradingComparisonTickGraph(tick);
     const comparisonId = tick.paper_trading_comparison_commitment_ref.id;
     const ticks = await this.listPaperTradingComparisonTicks(comparisonId);
-    const alternate = ticks.find((record) =>
-      record.paper_trading_comparison_tick_id !==
-        tick.paper_trading_comparison_tick_id
-    );
-    if (alternate) {
-      throw new LocalStoreError(
-        "paper_trading_comparison_first_tick_conflict",
-        "paper trading comparison already has a different first tick"
+    if (tick.sequence === 1) {
+      if (authority !== undefined) {
+        throw new LocalStoreError(
+          "invalid_paper_trading_comparison_tick_capture_context",
+          "first paper comparison tick cannot carry next-tick authority"
+        );
+      }
+      await this.validatePaperTradingComparisonTickGraph(tick);
+      const alternate = ticks.find((record) =>
+        record.paper_trading_comparison_tick_id !==
+          tick.paper_trading_comparison_tick_id
+      );
+      if (alternate) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_first_tick_conflict",
+          "paper trading comparison already has a different first tick"
+        );
+      }
+    } else {
+      if (!paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(authority)) {
+        throw new LocalStoreError(
+          "invalid_paper_trading_comparison_tick_capture_context",
+          "later paper comparison tick requires exact capture authority"
+        );
+      }
+      if (existing) {
+        await this.validatePaperTradingComparisonNextTickReplayAuthority(tick, authority);
+        return existing;
+      }
+      await this.validatePaperTradingComparisonTickGraph(tick, false);
+      await this.validatePaperTradingComparisonNextTickCapture(
+        tick,
+        authority,
+        ticks
       );
     }
     if (existing) {
@@ -4887,7 +4920,8 @@ export class LocalStore {
   }
 
   private async validatePaperTradingComparisonTickGraph(
-    tick: PaperTradingComparisonTickRecord
+    tick: PaperTradingComparisonTickRecord,
+    requireInert = true
   ): Promise<void> {
     let comparison: PaperTradingComparisonCommitmentRecord | undefined;
     try {
@@ -4933,12 +4967,341 @@ export class LocalStore {
         "paper trading comparison tick does not match its frozen comparison"
       );
     }
+    if (requireInert) {
+      try {
+        await this.validatePaperTradingComparisonCommitmentGraph(comparison);
+      } catch {
+        throw new LocalStoreError(
+          "paper_trading_comparison_tick_graph_invalid",
+          "paper trading comparison graph is not complete and inert"
+        );
+      }
+    }
+  }
+
+  private async validatePaperTradingComparisonNextTickCapture(
+    tick: PaperTradingComparisonTickRecord,
+    authority: PaperTradingComparisonTickCaptureWriteContext,
+    ticks: PaperTradingComparisonTickRecord[]
+  ): Promise<void> {
+    const alternate = ticks.find((record) => record.sequence === tick.sequence &&
+      record.paper_trading_comparison_tick_id !== tick.paper_trading_comparison_tick_id);
+    if (alternate) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_sequence_conflict",
+        "paper trading comparison already has a different tick at this sequence"
+      );
+    }
+
+    let activationAttempt: PaperTradingComparisonActivationAttemptRecord | undefined;
     try {
-      await this.validatePaperTradingComparisonCommitmentGraph(comparison);
+      activationAttempt = await this.getPaperTradingComparisonActivationAttempt(
+        authority.paper_trading_comparison_activation_attempt_ref.id
+      );
     } catch {
       throw new LocalStoreError(
         "paper_trading_comparison_tick_graph_invalid",
-        "paper trading comparison graph is not complete and inert"
+        "paper trading comparison activation attempt is corrupt"
+      );
+    }
+    if (!activationAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_reference_mismatch",
+        "paper trading comparison activation attempt was not found"
+      );
+    }
+
+    let closure: Awaited<ReturnType<
+      LocalStore["loadPaperTradingComparisonActivationAttemptClosure"]
+    >>;
+    let activationAttempts: PaperTradingComparisonActivationAttemptRecord[];
+    let activationOutcomes: PaperTradingComparisonActivationOutcomeRecord[];
+    let checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[];
+    let deliveries: PaperTradingComparisonTickDeliveryRecord[];
+    let acknowledgements: PaperTradingComparisonTickAcknowledgementRecord[];
+    try {
+      closure = await this.loadPaperTradingComparisonActivationAttemptClosure(activationAttempt);
+      [activationAttempts, activationOutcomes, checkpointAttempts, deliveries, acknowledgements] =
+        await Promise.all([
+          this.listPaperTradingComparisonActivationAttempts(
+            closure.activation.paper_trading_comparison_activation_id
+          ),
+          this.listPaperTradingComparisonActivationOutcomes(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          ),
+          this.listPaperTradingComparisonCheckpointAttempts(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          ),
+          this.listPaperTradingComparisonTickDeliveries(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          ),
+          this.listPaperTradingComparisonTickAcknowledgements(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          )
+        ]);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison next-tick graph is unreadable"
+      );
+    }
+
+    const latestActivationOutcome = activationOutcomes.at(-1);
+    if (
+      !paperTradingComparisonRefsEqual(
+        authority.paper_trading_comparison_activation_ref,
+        {
+          record_kind: "paper_trading_comparison_activation",
+          id: closure.activation.paper_trading_comparison_activation_id
+        }
+      ) ||
+      authority.paper_trading_comparison_activation_digest !==
+        closure.activation.activation_digest ||
+      !paperTradingComparisonRefsEqual(
+        authority.paper_trading_comparison_activation_attempt_ref,
+        {
+          record_kind: "paper_trading_comparison_activation_attempt",
+          id: activationAttempt.paper_trading_comparison_activation_attempt_id
+        }
+      ) ||
+      authority.paper_trading_comparison_activation_attempt_digest !==
+        activationAttempt.attempt_digest ||
+      activationAttempts.at(-1)?.paper_trading_comparison_activation_attempt_id !==
+        activationAttempt.paper_trading_comparison_activation_attempt_id ||
+      latestActivationOutcome?.outcome_status !== "both_running" ||
+      !paperTradingComparisonRefsEqual(
+        tick.paper_trading_comparison_commitment_ref,
+        closure.activation.paper_trading_comparison_commitment_ref
+      ) ||
+      tick.paper_trading_comparison_commitment_digest !==
+        closure.activation.paper_trading_comparison_commitment_digest
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_reference_mismatch",
+        "paper trading comparison capture authority does not match the running activation"
+      );
+    }
+
+    if (ticks.length !== tick.sequence - 1 ||
+      checkpointAttempts.length !== tick.sequence - 1 ||
+      tick.sequence > closure.comparison.comparison_policy.maximum_observation_count) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_state_conflict",
+        "paper trading comparison next tick is not contiguous or exceeds its observation cap"
+      );
+    }
+    for (let index = 0; index < ticks.length; index += 1) {
+      const current = ticks[index]!;
+      const previous = ticks[index - 1];
+      if (current.sequence !== index + 1 ||
+        (previous && (!paperTradingComparisonRefsEqual(current.previous_tick_ref, {
+          record_kind: "paper_trading_comparison_tick",
+          id: previous.paper_trading_comparison_tick_id
+        }) || current.previous_tick_digest !== previous.tick_digest))) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_tick_capture_state_conflict",
+          "persisted paper comparison tick chain is not contiguous"
+        );
+      }
+    }
+
+    const previousTick = ticks.at(-1);
+    if (!previousTick ||
+      !paperTradingComparisonRefsEqual(tick.previous_tick_ref, {
+        record_kind: "paper_trading_comparison_tick",
+        id: previousTick.paper_trading_comparison_tick_id
+      }) ||
+      tick.previous_tick_digest !== previousTick.tick_digest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_reference_mismatch",
+        "paper trading comparison next tick does not bind its exact predecessor"
+      );
+    }
+
+    const checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[] = [];
+    for (let index = 0; index < checkpointAttempts.length; index += 1) {
+      const checkpointAttempt = checkpointAttempts[index]!;
+      const outcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      );
+      const outcome = outcomes[0];
+      if (checkpointAttempt.checkpoint_sequence !== index + 1 ||
+        outcomes.length !== 1 || !outcome || outcome.outcome_status !== "paired" ||
+        outcome.checkpoint_sequence !== checkpointAttempt.checkpoint_sequence ||
+        outcome.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest ||
+        outcome.champion?.observation_status === "failed" ||
+        outcome.challenger?.observation_status === "failed") {
+        throw new LocalStoreError(
+          "paper_trading_comparison_tick_capture_state_conflict",
+          "paper trading comparison prior checkpoint chain is not exact and paired"
+        );
+      }
+      checkpointOutcomes.push(outcome);
+    }
+    const previousCheckpointAttempt = checkpointAttempts.at(-1);
+    const previousCheckpointOutcome = checkpointOutcomes.at(-1);
+    if (!previousCheckpointAttempt || !previousCheckpointOutcome ||
+      !paperTradingComparisonRefsEqual(authority.previous_checkpoint_attempt_ref, {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: previousCheckpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      }) ||
+      authority.previous_checkpoint_attempt_digest !== previousCheckpointAttempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(authority.previous_checkpoint_outcome_ref, {
+        record_kind: "paper_trading_comparison_checkpoint_outcome",
+        id: previousCheckpointOutcome.paper_trading_comparison_checkpoint_outcome_id
+      }) ||
+      authority.previous_checkpoint_outcome_digest !== previousCheckpointOutcome.outcome_digest ||
+      previousCheckpointOutcome.checkpoint_sequence !== tick.sequence - 1) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_reference_mismatch",
+        "paper trading comparison capture authority does not match the prior paired checkpoint"
+      );
+    }
+
+    const minimumObservedAt = Date.parse(previousTick.observed_at) +
+      closure.comparison.comparison_policy.interval_ms;
+    const maximumObservedAt = Date.parse(activationAttempt.attempted_at) +
+      closure.comparison.comparison_policy.maximum_elapsed_ms;
+    if (Date.parse(tick.observed_at) < minimumObservedAt ||
+      Date.parse(tick.observed_at) > maximumObservedAt ||
+      Date.parse(tick.market_snapshot.observed_at) <=
+        Date.parse(previousTick.market_snapshot.observed_at) ||
+      Date.parse(tick.public_execution_snapshot.observed_at) <=
+        Date.parse(previousTick.public_execution_snapshot.observed_at)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_state_conflict",
+        "paper trading comparison next tick violates its frozen cadence or elapsed window"
+      );
+    }
+
+    const maximumProviderRequests =
+      activationAttempt.activation_policy.maximum_provider_request_count_per_side;
+    for (const role of ["champion", "challenger"] as const) {
+      const roleAcknowledgements = acknowledgements.filter((record) =>
+        record.role === role && record.tick_ref.id === previousTick.paper_trading_comparison_tick_id
+      );
+      const acknowledgement = roleAcknowledgements[0];
+      const delivery = acknowledgement
+        ? deliveries.find((record) =>
+            record.paper_trading_comparison_tick_delivery_id === acknowledgement.delivery_ref.id)
+        : undefined;
+      const priorEvidence = previousCheckpointOutcome[role];
+      const priorAckMatches = previousCheckpointOutcome.checkpoint_sequence === 1 ||
+        Boolean(priorEvidence && acknowledgement &&
+          paperTradingComparisonRefsEqual(priorEvidence.tick_acknowledgement_ref, {
+            record_kind: "paper_trading_comparison_tick_acknowledgement",
+            id: acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+          }) && priorEvidence.tick_acknowledgement_digest ===
+            acknowledgement.acknowledgement_digest);
+      if (roleAcknowledgements.length !== 1 || !acknowledgement || !delivery || !priorEvidence ||
+        acknowledgement.paper_trading_comparison_activation_attempt_ref.id !==
+          activationAttempt.paper_trading_comparison_activation_attempt_id ||
+        acknowledgement.paper_trading_comparison_activation_attempt_digest !==
+          activationAttempt.attempt_digest ||
+        acknowledgement.trading_run_ref.id !== activationAttempt[role].trading_run_ref.id ||
+        acknowledgement.tick_digest !== previousTick.tick_digest ||
+        acknowledgement.tick_sequence !== previousTick.sequence ||
+        delivery.delivery_digest !== acknowledgement.delivery_digest ||
+        delivery.role !== role || delivery.trading_run_ref.id !==
+          activationAttempt[role].trading_run_ref.id ||
+        delivery.tick_ref.id !== previousTick.paper_trading_comparison_tick_id ||
+        delivery.tick_digest !== previousTick.tick_digest ||
+        acknowledgement.provider_request_count_at_acknowledgement <
+          delivery.provider_request_count_at_delivery ||
+        acknowledgement.provider_request_count_at_acknowledgement > maximumProviderRequests ||
+        Date.parse(acknowledgement.acknowledged_at) >= Date.parse(tick.observed_at) ||
+        !priorAckMatches) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_tick_capture_state_conflict",
+          "paper trading comparison next tick requires exact acknowledgements for both roles"
+        );
+      }
+    }
+
+    const [championState, challengerState] = await Promise.all([
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "champion",
+        closure.comparison,
+        "paper_trading_comparison_tick_graph_invalid",
+        { allowCommittedCheckpoint: true }
+      ),
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "challenger",
+        closure.comparison,
+        "paper_trading_comparison_tick_graph_invalid",
+        { allowCommittedCheckpoint: true }
+      )
+    ]);
+    if ([championState, challengerState].some((state) =>
+      state.evidenceState !== "paired_checkpoint" ||
+      state.run.runtime_lifecycle_status !== "running" ||
+      state.evaluation.status !== "running" ||
+      state.sandbox?.lifecycle_status !== "running")) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_state_conflict",
+        "paper trading comparison next tick requires both exact running paired sides"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonNextTickReplayAuthority(
+    tick: PaperTradingComparisonTickRecord,
+    authority: PaperTradingComparisonTickCaptureWriteContext
+  ): Promise<void> {
+    let previousAttempt: PaperTradingComparisonCheckpointAttemptRecord | undefined;
+    let previousOutcome: PaperTradingComparisonCheckpointOutcomeRecord | undefined;
+    try {
+      [previousAttempt, previousOutcome] = await Promise.all([
+        this.getPaperTradingComparisonCheckpointAttempt(
+          authority.previous_checkpoint_attempt_ref.id
+        ),
+        this.getPaperTradingComparisonCheckpointOutcome(
+          authority.previous_checkpoint_outcome_ref.id
+        )
+      ]);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison replay authority graph is unreadable"
+      );
+    }
+    if (!previousAttempt || !previousOutcome ||
+      !paperTradingComparisonRefsEqual(authority.previous_checkpoint_attempt_ref, {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: previousAttempt.paper_trading_comparison_checkpoint_attempt_id
+      }) ||
+      authority.previous_checkpoint_attempt_digest !== previousAttempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(authority.previous_checkpoint_outcome_ref, {
+        record_kind: "paper_trading_comparison_checkpoint_outcome",
+        id: previousOutcome.paper_trading_comparison_checkpoint_outcome_id
+      }) ||
+      authority.previous_checkpoint_outcome_digest !== previousOutcome.outcome_digest ||
+      !paperTradingComparisonRefsEqual(previousOutcome.checkpoint_attempt_ref, {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: previousAttempt.paper_trading_comparison_checkpoint_attempt_id
+      }) ||
+      previousOutcome.checkpoint_attempt_digest !== previousAttempt.attempt_digest ||
+      previousOutcome.outcome_status !== "paired" ||
+      previousOutcome.checkpoint_sequence !== tick.sequence - 1 ||
+      !paperTradingComparisonRefsEqual(previousOutcome.tick_ref, tick.previous_tick_ref) ||
+      previousOutcome.tick_digest !== tick.previous_tick_digest ||
+      !paperTradingComparisonRefsEqual(
+        previousAttempt.paper_trading_comparison_activation_ref,
+        authority.paper_trading_comparison_activation_ref
+      ) ||
+      previousAttempt.paper_trading_comparison_activation_digest !==
+        authority.paper_trading_comparison_activation_digest ||
+      !paperTradingComparisonRefsEqual(
+        previousAttempt.paper_trading_comparison_activation_attempt_ref,
+        authority.paper_trading_comparison_activation_attempt_ref
+      ) ||
+      previousAttempt.paper_trading_comparison_activation_attempt_digest !==
+        authority.paper_trading_comparison_activation_attempt_digest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_capture_reference_mismatch",
+        "paper trading comparison replay authority does not match persisted lineage"
       );
     }
   }
@@ -5541,7 +5904,7 @@ export class LocalStore {
       checkpointOutcomes.length !== 1 ||
       !checkpointOutcome ||
       checkpointOutcome.outcome_status !== "paired" ||
-      checkpointOutcome.next_action !== "design_attributed_next_tick" ||
+      checkpointOutcome.next_action !== "serve_and_acknowledge_current_tick" ||
       !checkpointEvidence ||
       !paperTradingComparisonRefsEqual(checkpointOutcome.tick_ref, authority.tick_ref) ||
       checkpointOutcome.tick_digest !== authority.tick_digest
