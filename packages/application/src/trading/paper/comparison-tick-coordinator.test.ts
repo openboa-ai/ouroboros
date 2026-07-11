@@ -15,6 +15,29 @@ import {
 } from "./comparison-tick-coordinator";
 
 describe("PaperTradingComparisonTickCoordinator", () => {
+  it("rejects an unowned next tick before Store graph or Gateway reads", async () => {
+    const fixture = captureFixture();
+    const coordinator = new PaperTradingComparisonTickCoordinator({
+      store: fixture.store,
+      comparisons: fixture.comparisons,
+      marketData: fixture.marketData,
+      activations: { ownsRunningAttempt: () => false },
+      now: () => "2026-07-11T00:01:01.000Z"
+    });
+
+    await expect(coordinator.captureNextTick({
+      activationId: "activation-1",
+      activationAttemptId: "activation-attempt-1",
+      idempotencyKey: "unowned-next-tick"
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_tick_not_owned"
+    });
+    expect(fixture.comparisons.reload).not.toHaveBeenCalled();
+    expect(fixture.marketData.readMarketSnapshot).not.toHaveBeenCalled();
+    expect(fixture.marketData.readPublicExecutionSnapshot).not.toHaveBeenCalled();
+    expect(fixture.records).toEqual([]);
+  });
+
   it("captures one shared first tick after verifying the inert graph", async () => {
     const fixture = captureFixture();
 
@@ -244,7 +267,7 @@ function captureFixture(options: CaptureFixtureOptions = {}) {
     marketData,
     now: () => "2026-07-11T00:00:01.000Z"
   });
-  return { coordinator, comparisons, graph, marketData, records };
+  return { coordinator, store, comparisons, graph, marketData, records };
 }
 
 function verifiedGraph(

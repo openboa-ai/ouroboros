@@ -2180,7 +2180,7 @@ async function authorizedComparisonSessionFixture(
         consumed_event_count: preparedSide.consumed_event_count,
         provider_request_count_after: preparedSide.provider_request_count_after
       },
-      next_action: "design_attributed_next_tick",
+      next_action: "serve_and_acknowledge_current_tick",
       completed_at: new Date().toISOString(),
       outcome_digest: "",
       live_exchange_authority: false,

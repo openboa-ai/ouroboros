@@ -212,6 +212,10 @@ git commit -m "feat: persist contiguous comparison ticks"
 - Modify: `packages/application/src/trading/paper/comparison-tick-coordinator.ts`
 - Modify: `packages/application/src/trading/paper/comparison-tick-coordinator.test.ts`
 - Modify: `packages/application/src/trading/paper/comparison-coordinator.test.ts`
+- Modify: `packages/application/src/trading/paper/comparison-checkpoint-coordinator.ts`
+- Modify: `packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts`
+- Modify: `packages/application/src/trading/paper/session-service.ts`
+- Modify: `packages/application/src/trading/paper/session-service.test.ts`
 
 **Interfaces:**
 - Adds: `captureNextTick({ activationId, activationAttemptId, idempotencyKey })`
@@ -219,7 +223,7 @@ git commit -m "feat: persist contiguous comparison ticks"
 - Produces: `CapturedPaperTradingComparisonTick`
 - Preserves: `captureFirstTick` behavior and deterministic replay
 
-- [ ] **Step 1: Write failing coordinator tests**
+- [x] **Step 1: Write failing coordinator tests**
 
 Build a real LocalStore comparison through first paired checkpoint and first-tick acknowledgements.
 Assert `captureNextTick`:
@@ -233,7 +237,7 @@ Assert `captureNextTick`:
   idempotency, failed prior side, and corrupt predecessor evidence;
 - does not mutate either running provider view, evaluation, observation, Ledger, or score.
 
-- [ ] **Step 2: Run tick-coordinator tests and verify RED**
+- [x] **Step 2: Run tick-coordinator tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-tick-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts -t "next tick|contiguous tick"
@@ -241,7 +245,7 @@ npx vitest run packages/application/src/trading/paper/comparison-tick-coordinato
 
 Expected: FAIL because `captureNextTick` and ownership validation do not exist.
 
-- [ ] **Step 3: Implement next-tick capture**
+- [x] **Step 3: Implement next-tick capture**
 
 Add:
 
@@ -259,7 +263,7 @@ latest tick, use a deterministic ID containing activation attempt, sequence, and
 read market/public execution concurrently once, build predecessor lineage, persist with the Task 2
 authority, reload exact content, and return `ComparisonMarketDataView`.
 
-- [ ] **Step 4: Run coordinator regressions and application typecheck**
+- [x] **Step 4: Run coordinator regressions and application typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-tick-coordinator.test.ts packages/application/src/trading/paper/comparison-market-data-view.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts
@@ -268,10 +272,14 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: tick/view/integration tests and application typecheck pass.
 
-- [ ] **Step 5: Commit next-tick capture**
+Actual: 16 tick-coordinator unit tests and 90 tick/view/comparison integration regressions passed;
+`@ouroboros/application` typecheck passed. The first-checkpoint next action was mechanically renamed
+to `serve_and_acknowledge_current_tick` across its builder, session gate, and fixtures.
+
+- [x] **Step 5: Commit next-tick capture**
 
 ```bash
-git add packages/application/src/trading/paper/comparison-tick-coordinator.ts packages/application/src/trading/paper/comparison-tick-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts
+git add packages/application/src/trading/paper/comparison-tick-coordinator.ts packages/application/src/trading/paper/comparison-tick-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts
 git commit -m "feat: capture next comparison tick"
 ```
 

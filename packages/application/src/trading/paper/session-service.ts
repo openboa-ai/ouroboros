@@ -855,7 +855,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       checkpointAttempt.tick_digest !== input.authority.tick_digest ||
       checkpointOutcomes.length !== 1 ||
       checkpointOutcome?.outcome_status !== "paired" ||
-      checkpointOutcome.next_action !== "design_attributed_next_tick" ||
+      checkpointOutcome.next_action !== "serve_and_acknowledge_current_tick" ||
       !checkpointEvidence ||
       paperTradingComparisonPersistedRecordDigestInput(persistedTick) !==
         paperTradingComparisonPersistedRecordDigestInput(input.tick)) {

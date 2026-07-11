@@ -894,7 +894,7 @@ function pairedCheckpointOutcome(
     outcome_reason: "paired_checkpoint_recorded",
     champion: side("champion"),
     challenger: side("challenger"),
-    next_action: "design_attributed_next_tick",
+    next_action: "serve_and_acknowledge_current_tick",
     completed_at: "2026-07-11T00:00:09.000Z",
     outcome_digest: "",
     live_exchange_authority: false,

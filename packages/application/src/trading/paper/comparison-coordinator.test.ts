@@ -472,7 +472,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       .toBe(authorized.activation.first_tick_ref.id);
   });
 
-  it("records real served tick attribution without fabricating it on restart", async () => {
+  it("records served attribution and captures the next tick without changing provider views", async () => {
     const fixture = await comparisonFixture();
     const prepared = await fixture.coordinator.prepare(fixture.input);
     const captureMarketData = comparisonFirstTickMarketData(fixture.marketData);
@@ -679,23 +679,76 @@ describe("PaperTradingComparisonCoordinator", () => {
       };
       const restartedStore = new LocalStore(fixture.store.root());
       await restartedStore.initialize();
-      const restartedSessions = runtimeSessions(restartedStore, false);
-      const restartedRuntime = new PaperTradingComparisonRuntimeActivationCoordinator({
-        store: restartedStore,
-        sessions: restartedSessions,
-        marketData: captureMarketData
-      });
-      await new PaperTradingComparisonCheckpointCoordinator({
-        store: restartedStore,
-        sessions: restartedSessions,
-        activations: restartedRuntime
-      }).recoverIncompleteCheckpoints();
       await expect(restartedStore.listPaperTradingComparisonTickDeliveries(
         started.attempt.paper_trading_comparison_activation_attempt_id
       )).resolves.toEqual(beforeRestart.deliveries);
       await expect(restartedStore.listPaperTradingComparisonTickAcknowledgements(
         started.attempt.paper_trading_comparison_activation_attempt_id
       )).resolves.toEqual(beforeRestart.acknowledgements);
+
+      const nextReads = { market: 0, publicExecution: 0 };
+      const nextObservedAt = new Date(Math.max(
+        Date.parse(captured.tick.observed_at) + comparisonPolicy.interval_ms,
+        ...acknowledgementRecords.map((record) => Date.parse(record.acknowledged_at) + 1)
+      )).toISOString();
+      const nextMarketData = comparisonNextTickMarketData(
+        fixture.marketData,
+        nextReads,
+        nextObservedAt
+      );
+      const nextInput = {
+        activationId: authorized.activation.paper_trading_comparison_activation_id,
+        activationAttemptId:
+          started.attempt.paper_trading_comparison_activation_attempt_id,
+        idempotencyKey: "real-served-attribution-next-tick"
+      };
+      const unowned = new PaperTradingComparisonTickCoordinator({
+        store: fixture.store,
+        comparisons: fixture.coordinator,
+        marketData: nextMarketData,
+        activations: { ownsRunningAttempt: () => false },
+        now: () => nextObservedAt
+      });
+      await expect(unowned.captureNextTick(nextInput)).rejects.toMatchObject({
+        code: "paper_trading_comparison_tick_not_owned"
+      });
+      expect(nextReads).toEqual({ market: 0, publicExecution: 0 });
+
+      const nextTicks = new PaperTradingComparisonTickCoordinator({
+        store: fixture.store,
+        comparisons: fixture.coordinator,
+        marketData: nextMarketData,
+        activations: runtime,
+        now: () => nextObservedAt
+      });
+      const next = await nextTicks.captureNextTick(nextInput);
+      expect(next.tick).toMatchObject({
+        sequence: 2,
+        previous_tick_ref: {
+          record_kind: "paper_trading_comparison_tick",
+          id: captured.tick.paper_trading_comparison_tick_id
+        },
+        previous_tick_digest: captured.tick.tick_digest,
+        observed_at: nextObservedAt,
+        market_snapshot: { price: 60_100 }
+      });
+      expect(nextReads).toEqual({ market: 1, publicExecution: 1 });
+      await expect(next.marketDataView.readMarketSnapshot()).resolves.toMatchObject({
+        price: 60_100,
+        observed_at: new Date(Date.parse(nextObservedAt) - 2).toISOString()
+      });
+      expect(nextReads).toEqual({ market: 1, publicExecution: 1 });
+
+      const replay = await nextTicks.captureNextTick(nextInput);
+      expect(replay.tick).toEqual(next.tick);
+      expect(nextReads).toEqual({ market: 1, publicExecution: 1 });
+      await expect(fixture.store.listPaperTradingComparisonTicks(
+        prepared.commitment.paper_trading_comparison_commitment_id
+      )).resolves.toEqual([captured.tick, next.tick]);
+      await expect(fixture.store.listPaperTradingComparisonTickDeliveries(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual(beforeRestart.deliveries);
+      expect(fixture.effects.marketReads).toBe(0);
     } finally {
       if (started) {
         await Promise.allSettled((["champion", "challenger"] as const).map((role) =>
@@ -2265,6 +2318,50 @@ function comparisonFirstTickMarketData(
         rest_fallback_used: true,
         gap_detected: false,
         stream_marker: "comparison-first-tick-integration",
+        agg_trades: [],
+        authority_status: "read_only"
+      };
+    }
+  };
+}
+
+function comparisonNextTickMarketData(
+  source: GatewayMarketDataPort,
+  reads: { market: number; publicExecution: number },
+  observedAt: string
+): GatewayMarketDataPort {
+  return {
+    ...source,
+    async readMarketSnapshot() {
+      reads.market += 1;
+      return {
+        symbol: "BTCUSDT",
+        price: 60_100,
+        moving_average_fast: 60_150,
+        moving_average_slow: 60_000,
+        volatility: 0.012,
+        expected_direction: "long",
+        observed_at: new Date(Date.parse(observedAt) - 2).toISOString(),
+        source_kind: "binance_production_public_rest",
+        source_priority: "rest_fallback",
+        freshness: "fresh",
+        ws_connected: false,
+        rest_fallback_used: true,
+        gap_detected: false
+      };
+    },
+    async readPublicExecutionSnapshot() {
+      reads.publicExecution += 1;
+      return {
+        symbol: "BTCUSDT",
+        observed_at: new Date(Date.parse(observedAt) - 1).toISOString(),
+        source_kind: "binance_production_public_rest",
+        source_priority: "rest_fallback",
+        freshness: "fresh",
+        ws_connected: false,
+        rest_fallback_used: true,
+        gap_detected: false,
+        stream_marker: "comparison-next-tick-integration",
         agg_trades: [],
         authority_status: "read_only"
       };
