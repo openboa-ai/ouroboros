@@ -1983,12 +1983,14 @@ export type PaperTradingComparisonActivationOutcomeReason =
   | "provider_request_budget_exceeded"
   | "side_result_persistence_failed"
   | "cleanup_failed"
-  | "restart_cleanup";
+  | "restart_cleanup"
+  | "handoff_cleanup";
 
 export type PaperTradingComparisonActivationNextAction =
   | "capture_first_paired_checkpoint"
   | "retry_activation"
-  | "recover_cleanup";
+  | "recover_cleanup"
+  | "checkpoint_handoff_complete";
 
 export interface PaperTradingComparisonActivationOutcomeRecord extends BaseRecord {
   record_kind: "paper_trading_comparison_activation_outcome";
@@ -2775,7 +2777,7 @@ export function paperTradingComparisonActivationSideResultHasRuntimeShape(
   }
   if (value.operation === "stop" && value.outcome === "succeeded") {
     return value.runtime_lifecycle_status === "stopped" &&
-      value.evaluation_status === "stopped";
+      (value.evaluation_status === "stopped" || value.evaluation_status === "failed");
   }
   if (value.operation === "stop" && value.outcome === "not_running") {
     return (value.runtime_lifecycle_status === "registered" ||
@@ -2816,7 +2818,8 @@ export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
       "provider_request_budget_exceeded",
       "side_result_persistence_failed",
       "cleanup_failed",
-      "restart_cleanup"
+      "restart_cleanup",
+      "handoff_cleanup"
     ].includes(value.outcome_reason as string) ||
     (value.champion_latest_result_ref !== undefined &&
       !comparisonRef(
@@ -2831,7 +2834,8 @@ export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
     ![
       "capture_first_paired_checkpoint",
       "retry_activation",
-      "recover_cleanup"
+      "recover_cleanup",
+      "checkpoint_handoff_complete"
     ].includes(value.next_action as string) ||
     !comparisonIso(value.completed_at) ||
     !comparisonDigest(value.outcome_digest) ||
@@ -2881,7 +2885,9 @@ export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
         value.challenger_latest_result_ref,
         "paper_trading_comparison_activation_side_result"
       ) &&
-      value.next_action === "retry_activation";
+      value.next_action === (value.outcome_reason === "handoff_cleanup"
+        ? "checkpoint_handoff_complete"
+        : "retry_activation");
   }
   return value.outcome_reason !== "started_within_policy" &&
     value.next_action === "recover_cleanup";

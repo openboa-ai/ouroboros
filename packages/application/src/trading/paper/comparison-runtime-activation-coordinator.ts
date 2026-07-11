@@ -38,6 +38,7 @@ export type PaperTradingComparisonRuntimeActivationErrorCode =
   | "paper_trading_comparison_runtime_activation_attempt_conflict"
   | "paper_trading_comparison_runtime_activation_attempt_incomplete"
   | "paper_trading_comparison_runtime_activation_attempt_persistence_failed"
+  | "paper_trading_comparison_runtime_activation_attempt_not_owned"
   | "paper_trading_comparison_runtime_activation_recovery_failed"
   | "paper_trading_comparison_runtime_activation_outcome_persistence_failed";
 
@@ -138,6 +139,17 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
     PaperTradingComparisonRuntimeActivationResult[]
   > {
     return this.withActivationQueue(() => this.recoverIncompleteActivationsUnlocked());
+  }
+
+  ownsRunningAttempt(attemptId: string): boolean {
+    return typeof attemptId === "string" && this.ownedRunningAttemptIds.has(attemptId);
+  }
+
+  stopOwnedAttempt(input: {
+    attemptId: string;
+    reason: "handoff_cleanup";
+  }): Promise<PaperTradingComparisonRuntimeActivationResult> {
+    return this.withActivationQueue(() => this.stopOwnedAttemptUnlocked(input));
   }
 
   private withActivationQueue<T>(task: () => Promise<T>): Promise<T> {
@@ -305,6 +317,81 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
       cleanup.records,
       outcome
     );
+  }
+
+  private async stopOwnedAttemptUnlocked(input: {
+    attemptId: string;
+    reason: "handoff_cleanup";
+  }): Promise<PaperTradingComparisonRuntimeActivationResult> {
+    if (!isRecord(input) || typeof input.attemptId !== "string" ||
+      input.attemptId.trim() !== input.attemptId || !input.attemptId ||
+      input.reason !== "handoff_cleanup") {
+      throw invalidInput();
+    }
+    if (!this.ownedRunningAttemptIds.has(input.attemptId)) {
+      throw new PaperTradingComparisonRuntimeActivationError(
+        "paper_trading_comparison_runtime_activation_attempt_not_owned",
+        "Paper comparison activation attempt is not owned by this coordinator."
+      );
+    }
+    const attempt = await this.readAttempt(input.attemptId);
+    if (!attempt) {
+      throw new PaperTradingComparisonRuntimeActivationError(
+        "paper_trading_comparison_runtime_activation_not_found",
+        "Owned paper comparison activation attempt was not found."
+      );
+    }
+    const graph = await this.loadActivationGraph(
+      attempt.paper_trading_comparison_activation_ref.id
+    );
+    const attempts = await this.readAttempts(graph.activation);
+    if (!isDeepStrictEqual(attempts.at(-1), attempt)) {
+      throw graphInvalid();
+    }
+    const evidence = await this.readAttemptEvidence(attempt);
+    const priorOutcome = evidence.outcomes.at(-1);
+    if (!priorOutcome || priorOutcome.outcome_status !== "both_running") {
+      throw new PaperTradingComparisonRuntimeActivationError(
+        "paper_trading_comparison_runtime_activation_attempt_incomplete",
+        "Owned paper comparison activation attempt is not the active both-running outcome."
+      );
+    }
+    const latest = latestResults(evidence.results);
+    if (ROLES.some((role) => latest[role]?.operation !== "start" ||
+      latest[role]?.outcome !== "succeeded")) {
+      throw graphInvalid();
+    }
+    const nextOperationSequence = Object.fromEntries(ROLES.map((role) => [
+      role,
+      evidence.results.filter((result) => result.role === role).length + 1
+    ])) as Record<Role, number>;
+    const cleanup = await this.cleanupBoth(attempt, latest, new Set(), {
+      reason: input.reason,
+      nextOperationSequence
+    });
+    this.ownedRunningAttemptIds.delete(input.attemptId);
+    const missingEvidence = ROLES.some((role) => cleanup.records[role] === undefined);
+    const status: PaperTradingComparisonActivationOutcomeStatus =
+      cleanup.clean && !cleanup.persistenceFailed && !missingEvidence
+        ? "stopped_cleanly"
+        : "cleanup_required";
+    const reason: PaperTradingComparisonActivationOutcomeReason =
+      cleanup.persistenceFailed || missingEvidence
+        ? "side_result_persistence_failed"
+        : cleanup.clean
+          ? "handoff_cleanup"
+          : "cleanup_failed";
+    const outcome = await this.persistOutcome({
+      attempt,
+      priorOutcomes: evidence.outcomes,
+      status,
+      reason,
+      results: cleanup.records,
+      completedAt: this.readNow(
+        "paper_trading_comparison_runtime_activation_outcome_persistence_failed"
+      )
+    });
+    return activationResult(graph.activation, attempt, cleanup.records, outcome);
   }
 
   private async recoverIncompleteActivationsUnlocked(): Promise<
@@ -1361,7 +1448,9 @@ function buildOutcome(input: {
     next_action: input.status === "both_running"
       ? "capture_first_paired_checkpoint"
       : input.status === "stopped_cleanly"
-        ? "retry_activation"
+        ? input.reason === "handoff_cleanup"
+          ? "checkpoint_handoff_complete"
+          : "retry_activation"
         : "recover_cleanup",
     completed_at: input.completedAt,
     outcome_digest: "",
@@ -1459,7 +1548,8 @@ function validInactiveStatus(
     (value.runtime_lifecycle_status === "registered" ||
       value.runtime_lifecycle_status === "stopped") &&
     (value.evaluation_status === "not_started" ||
-      value.evaluation_status === "stopped") &&
+      value.evaluation_status === "stopped" ||
+      value.evaluation_status === "failed") &&
     (value.sandbox_lifecycle_status === undefined ||
       value.sandbox_lifecycle_status === "stopped" ||
       value.sandbox_lifecycle_status === "removed") &&

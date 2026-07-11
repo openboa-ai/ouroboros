@@ -398,14 +398,14 @@ git commit -m "feat: prepare paired checkpoint side evidence"
 - Produces: `recoverIncompleteCheckpoints`
 - Produces: activation-coordinator owned-attempt inspection and explicit handoff cleanup
 
-- [ ] **Step 1: Write failing activation ownership/cleanup tests**
+- [x] **Step 1: Write failing activation ownership/cleanup tests**
 
 Add tests that an activation coordinator reports ownership only for the exact in-process
 `both_running` attempt and can explicitly stop both with `handoff_cleanup`, append stop side results,
 and append the next `stopped_cleanly` or `cleanup_required` activation outcome. A new coordinator
 instance must not claim ownership.
 
-- [ ] **Step 2: Implement the narrow activation handoff API**
+- [x] **Step 2: Implement the narrow activation handoff API**
 
 Expose:
 
@@ -419,7 +419,7 @@ stopOwnedAttempt(input: {
 
 Reuse existing cleanup and outcome persistence; do not create a second stop state machine.
 
-- [ ] **Step 3: Write failing checkpoint coordinator tests**
+- [x] **Step 3: Write failing checkpoint coordinator tests**
 
 Cover:
 
@@ -435,7 +435,7 @@ Cover:
 - restart without bundle never re-prepares decisions and records `restart_cleanup` after stop;
 - no verdict, promotion, public command, or market read is invoked.
 
-- [ ] **Step 4: Run coordinator tests and verify RED**
+- [x] **Step 4: Run coordinator tests and verify RED**
 
 Run:
 
@@ -445,7 +445,7 @@ npx vitest run packages/application/src/trading/paper/comparison-checkpoint-coor
 
 Expected: FAIL because the coordinator and handoff APIs are missing.
 
-- [ ] **Step 5: Implement deterministic capture and recovery**
+- [x] **Step 5: Implement deterministic capture and recovery**
 
 `captureFirst` accepts only activation ID, activation-attempt ID, and idempotency key. It reloads the
 full graph, verifies current-process ownership, creates deterministic attempt/outcome IDs, records
@@ -458,7 +458,7 @@ never recomputed. An attempt without a committed bundle is cleaned up and termin
 `restart_cleanup`; no provider session, sandbox log, event, Ledger, observation, or score is
 reconstructed.
 
-- [ ] **Step 6: Run checkpoint and activation regressions**
+- [x] **Step 6: Run checkpoint and activation regressions**
 
 Run:
 
@@ -469,7 +469,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: all selected tests and application typecheck pass.
 
-- [ ] **Step 7: Commit coordination and recovery**
+- [x] **Step 7: Commit coordination and recovery**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-runtime-activation-coordinator.ts packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts

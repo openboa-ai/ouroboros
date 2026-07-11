@@ -205,6 +205,15 @@ describe("paper comparison runtime activation domain", () => {
       runtime_lifecycle_status: "stopped",
       evaluation_status: "stopped"
     })],
+    ["stop after failed checkpoint", () => ({
+      ...validSideResult(),
+      operation_sequence: 2,
+      operation: "stop",
+      reason: "handoff_cleanup",
+      outcome: "succeeded",
+      runtime_lifecycle_status: "stopped",
+      evaluation_status: "failed"
+    })],
     ["stop not running", () => ({
       ...validSideResult(),
       operation_sequence: 2,
@@ -263,6 +272,18 @@ describe("paper comparison runtime activation domain", () => {
       outcome_status: "stopped_cleanly",
       outcome_reason: "restart_cleanup",
       next_action: "retry_activation"
+    })],
+    ["checkpoint handoff complete", () => ({
+      ...validOutcome(),
+      paper_trading_comparison_activation_outcome_id: "outcome-2",
+      outcome_sequence: 2,
+      previous_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: "outcome-1"
+      },
+      outcome_status: "stopped_cleanly",
+      outcome_reason: "handoff_cleanup",
+      next_action: "checkpoint_handoff_complete"
     })]
   ])("accepts valid activation outcome combination: %s", (_label, build) => {
     expect(paperTradingComparisonActivationOutcomeHasRuntimeShape(build())).toBe(true);
@@ -276,6 +297,7 @@ describe("paper comparison runtime activation domain", () => {
     ["running missing side", (record: any) => { delete record.challenger_latest_result_ref; }],
     ["running duplicate side", (record: any) => { record.challenger_latest_result_ref = record.champion_latest_result_ref; }],
     ["stopped capture action", (record: any) => { record.outcome_status = "stopped_cleanly"; record.outcome_reason = "start_failed"; }],
+    ["handoff retry action", (record: any) => { record.outcome_status = "stopped_cleanly"; record.outcome_reason = "handoff_cleanup"; record.next_action = "retry_activation"; }],
     ["cleanup retry action", (record: any) => { record.outcome_status = "cleanup_required"; record.outcome_reason = "cleanup_failed"; }],
     ["non-ISO completion", (record: any) => { record.completed_at = "bad"; }],
     ["live authority", (record: any) => { record.live_exchange_authority = true; }]

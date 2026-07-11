@@ -80,6 +80,50 @@ describe("PaperTradingComparisonRuntimeActivationCoordinator", () => {
     expect(fixture.stopInputs).toEqual([]);
   });
 
+  it("reports running ownership only from the coordinator that started the attempt", async () => {
+    const fixture = runtimeActivationFixture();
+    const result = await fixture.coordinator.start(fixture.input);
+
+    expect(fixture.coordinator.ownsRunningAttempt(
+      result.attempt.paper_trading_comparison_activation_attempt_id
+    )).toBe(true);
+    expect(fixture.createCoordinator().ownsRunningAttempt(
+      result.attempt.paper_trading_comparison_activation_attempt_id
+    )).toBe(false);
+    expect(fixture.coordinator.ownsRunningAttempt("unknown-attempt")).toBe(false);
+  });
+
+  it("hands an owned running attempt to the existing symmetric cleanup path", async () => {
+    const fixture = runtimeActivationFixture();
+    const running = await fixture.coordinator.start(fixture.input);
+
+    const stopped = await fixture.coordinator.stopOwnedAttempt({
+      attemptId: running.attempt.paper_trading_comparison_activation_attempt_id,
+      reason: "handoff_cleanup"
+    });
+
+    expect(stopped).toMatchObject({
+      status: "stopped_cleanly",
+      outcome: {
+        outcome_sequence: 2,
+        outcome_status: "stopped_cleanly",
+        outcome_reason: "handoff_cleanup",
+        next_action: "checkpoint_handoff_complete",
+        previous_outcome_ref: {
+          id: running.outcome.paper_trading_comparison_activation_outcome_id
+        }
+      }
+    });
+    expect(fixture.stopInputs.map((input) => [input.side.role, input.reason]).sort())
+      .toEqual([
+        ["challenger", "handoff_cleanup"],
+        ["champion", "handoff_cleanup"]
+      ]);
+    expect(fixture.coordinator.ownsRunningAttempt(
+      running.attempt.paper_trading_comparison_activation_attempt_id
+    )).toBe(false);
+  });
+
   it("stops both sides and records stopped-cleanly after a one-sided start failure", async () => {
     const fixture = runtimeActivationFixture({ startFailureRole: "challenger" });
 
