@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import type {
-  CandidateInspectReadModel,
-  PaperTradingEvaluationCommitmentRecord,
-  PaperTradingEvaluationInvalidationReason,
-  PaperTradingEvaluationRecord,
-  PaperTradingEvidencePurpose,
-  SandboxDetailReadModel
+import {
+  paperTradingComparisonRefsEqual,
+  type CandidateInspectReadModel,
+  type PaperTradingEvaluationCommitmentRecord,
+  type PaperTradingEvaluationInvalidationReason,
+  type PaperTradingEvaluationRecord,
+  type PaperTradingEvidencePurpose,
+  type SandboxDetailReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, type OuroborosStorePort } from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
@@ -119,6 +120,8 @@ export class PaperTradingSessionService {
     evidencePurpose: PaperTradingEvidencePurpose;
     clock: PaperTradingSessionClock;
   }): Promise<PreparedPaperTradingSession> {
+    const commitmentId = `paper-trading-evaluation-commitment-${safeRouteId(input.tradingRunId)}`;
+    const evaluationId = `paper-trading-evaluation-${safeRouteId(input.tradingRunId)}`;
     const candidate = await this.options.store.getCandidateForTradingRun(input.tradingRunId);
     if (!candidate) {
       throw new PaperTradingSessionError(
@@ -158,28 +161,6 @@ export class PaperTradingSessionService {
     }
 
     const binding = this.gatewayBinding();
-    const existingEvaluation = await this.options.store
-      .getLatestPaperTradingEvaluationForTradingRun(input.tradingRunId);
-    if (existingEvaluation) {
-      const resolved = await this.verifyExisting(candidate, existingEvaluation, binding);
-      const verification = resolved.verification;
-      if (verification.status !== "verified") {
-        const evaluation = await this.persistInvalidation(candidate, existingEvaluation, verification);
-        throw new PaperTradingSessionError(
-          "paper_trading_evaluation_invalidated",
-          verification.diagnostic,
-          { paper_trading_evaluation: evaluation, reason: verification.reason }
-        );
-      }
-      return {
-        candidate,
-        commitment: resolved.commitment,
-        evaluation: resolved.evaluation,
-        verification,
-        clock: input.clock
-      };
-    }
-
     const systemCodeId = candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
     const systemCode = await this.options.store.getSystemCode(systemCodeId);
     if (!systemCode) {
@@ -195,43 +176,89 @@ export class PaperTradingSessionService {
         { system_code_id: systemCodeId }
       );
     }
-    const committedAt = new Date().toISOString();
-    const initialEngineState = initialPaperTradingEngineState();
-    const commitment = createPaperTradingEvaluationCommitment({
-      commitmentId: `paper-trading-evaluation-commitment-${safeRouteId(input.tradingRunId)}`,
+
+    const runRef = { record_kind: "trading_run", id: input.tradingRunId };
+    const [exactCommitment, exactEvaluation, allCommitments, allEvaluations] = await Promise.all([
+      this.options.store.getPaperTradingEvaluationCommitment(commitmentId),
+      this.options.store.getPaperTradingEvaluation(evaluationId),
+      this.options.store.listPaperTradingEvaluationCommitments(),
+      this.options.store.listPaperTradingEvaluations()
+    ]);
+    const commitmentsForRun = allCommitments.filter((record) =>
+      paperTradingComparisonRefsEqual(record.trading_run_ref, runRef)
+    );
+    const commitmentIdsForRun = new Set(
+      commitmentsForRun.map((record) => record.paper_trading_evaluation_commitment_id)
+    );
+    const evaluationsForRun = allEvaluations.filter((record) =>
+      paperTradingComparisonRefsEqual(record.trading_run_ref, runRef) ||
+      (record.paper_trading_evaluation_commitment_ref?.record_kind ===
+        "paper_trading_evaluation_commitment" &&
+        commitmentIdsForRun.has(record.paper_trading_evaluation_commitment_ref.id))
+    );
+    const alternateCommitment = commitmentsForRun.find(
+      (record) => record.paper_trading_evaluation_commitment_id !== commitmentId
+    );
+    const alternateEvaluation = evaluationsForRun.find(
+      (record) => record.paper_trading_evaluation_id !== evaluationId
+    );
+    if (
+      alternateCommitment ||
+      alternateEvaluation ||
+      (exactEvaluation && !exactCommitment) ||
+      (exactCommitment && !paperTradingComparisonRefsEqual(exactCommitment.trading_run_ref, runRef)) ||
+      (exactEvaluation && !paperTradingComparisonRefsEqual(exactEvaluation.trading_run_ref, runRef)) ||
+      (exactEvaluation && exactEvaluation.paper_trading_evaluation_commitment_ref?.record_kind !==
+        "paper_trading_evaluation_commitment") ||
+      (exactEvaluation && exactEvaluation.paper_trading_evaluation_commitment_ref?.id !== commitmentId)
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_session_deterministic_identity_conflict",
+        "Paper session preparation found a non-deterministic commitment/evaluation identity."
+      );
+    }
+
+    if (exactEvaluation) {
+      const resolved = await this.verifyExisting(candidate, exactEvaluation, binding);
+      const verification = resolved.verification;
+      if (verification.status !== "verified") {
+        const invalidated = await this.persistInvalidation(candidate, exactEvaluation, verification);
+        throw new PaperTradingSessionError(
+          "paper_trading_evaluation_invalidated",
+          verification.diagnostic,
+          { paper_trading_evaluation: invalidated, reason: verification.reason }
+        );
+      }
+      return {
+        candidate,
+        commitment: resolved.commitment,
+        evaluation: resolved.evaluation,
+        verification,
+        clock: input.clock
+      };
+    }
+
+    const commitment = exactCommitment ?? createPaperTradingEvaluationCommitment({
+      commitmentId,
       evidencePurpose: input.evidencePurpose,
       candidate,
       systemCode,
       resolvedArtifactDigest,
       marketData: binding.marketData,
       intervalMs: this.intervalMs,
-      initialAccountSnapshot: initialEngineState.account,
-      committedAt
+      initialAccountSnapshot: initialPaperTradingEngineState().account,
+      committedAt: new Date().toISOString()
     });
-    await this.options.store.recordPaperTradingEvaluationCommitment(commitment);
-    const evaluation: PaperTradingEvaluationRecord = {
-      record_kind: "paper_trading_evaluation",
-      version: 1,
-      paper_trading_evaluation_id: `paper-trading-evaluation-${safeRouteId(input.tradingRunId)}`,
-      candidate_ref: { ...commitment.candidate_ref },
-      candidate_version_ref: { ...commitment.candidate_version_ref },
-      trading_run_ref: { ...commitment.trading_run_ref },
-      paper_trading_evaluation_commitment_ref: {
-        record_kind: "paper_trading_evaluation_commitment",
-        id: commitment.paper_trading_evaluation_commitment_id
-      },
-      status: "not_started",
-      interval_ms: this.intervalMs,
-      observation_count: 0,
-      started_at: committedAt,
-      latest_score: zeroPaperTradingProfitLoss(),
-      paper_account_snapshot: commitment.initial_account_snapshot,
-      open_orders: initialEngineState.openOrders,
-      processed_trading_system_event_ids: initialEngineState.processedTradingSystemEventIds,
-      processed_public_trade_ids: initialEngineState.processedPublicTradeIds,
-      authority_status: "not_live"
-    };
-    await this.options.store.recordPaperTradingEvaluation(evaluation);
+    if (!exactCommitment) {
+      await this.options.store.recordPaperTradingEvaluationCommitment(commitment);
+    }
+    const evaluation = this.notStartedEvaluation(commitment);
+    if (evaluation.paper_trading_evaluation_id !== evaluationId) {
+      throw new PaperTradingSessionError(
+        "paper_trading_evaluation_identity_mismatch",
+        "Deterministic paper evaluation identity changed during preparation."
+      );
+    }
     const verification = verifyPaperTradingEvaluationCommitment({
       commitment,
       evaluation,
@@ -241,6 +268,7 @@ export class PaperTradingSessionService {
       marketData: binding.marketData,
       intervalMs: this.intervalMs
     });
+    await this.options.store.recordPaperTradingEvaluation(evaluation);
     if (verification.status !== "verified") {
       const invalidated = await this.persistInvalidation(candidate, evaluation, verification);
       throw new PaperTradingSessionError(
@@ -250,6 +278,35 @@ export class PaperTradingSessionService {
       );
     }
     return { candidate, commitment, evaluation, verification, clock: input.clock };
+  }
+
+  private notStartedEvaluation(
+    commitment: PaperTradingEvaluationCommitmentRecord
+  ): PaperTradingEvaluationRecord {
+    const initialEngineState = initialPaperTradingEngineState();
+    return {
+      record_kind: "paper_trading_evaluation",
+      version: 1,
+      paper_trading_evaluation_id:
+        `paper-trading-evaluation-${safeRouteId(commitment.trading_run_ref.id)}`,
+      candidate_ref: { ...commitment.candidate_ref },
+      candidate_version_ref: { ...commitment.candidate_version_ref },
+      trading_run_ref: { ...commitment.trading_run_ref },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: commitment.paper_trading_evaluation_commitment_id
+      },
+      status: "not_started",
+      interval_ms: commitment.window_policy.interval_ms,
+      observation_count: 0,
+      started_at: commitment.committed_at,
+      latest_score: zeroPaperTradingProfitLoss(),
+      paper_account_snapshot: commitment.initial_account_snapshot,
+      open_orders: initialEngineState.openOrders,
+      processed_trading_system_event_ids: initialEngineState.processedTradingSystemEventIds,
+      processed_public_trade_ids: initialEngineState.processedPublicTradeIds,
+      authority_status: "not_live"
+    };
   }
 
   async activate(

@@ -1,9 +1,19 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
+  PAPER_TRADING_COMPARISON_ZERO_SCORE,
+  paperTradingEvaluationCommitmentDigestInput,
+  type PaperTradingEvaluationCommitmentRecord,
+  type PaperTradingEvaluationRecord
+} from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import type { OuroborosStorePort } from "../../ports/store";
 import type { SandboxStartInput } from "../../ports/sandbox";
+import { initialPaperTradingEngineState, paperTradingScoreFromAccount } from "./engine";
 import { PaperTradingSessionService } from "./session-service";
 
 let tmpDir: string;
@@ -17,6 +27,143 @@ afterEach(async () => {
 });
 
 describe("PaperTradingSessionService", () => {
+  it("keeps comparison neutral constants byte-identical to the paper engine baseline", () => {
+    const initial = initialPaperTradingEngineState();
+    expect(JSON.stringify(PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT))
+      .toBe(JSON.stringify(initial.account));
+    expect(initial.openOrders).toEqual([]);
+    expect(initial.processedTradingSystemEventIds).toEqual([]);
+    expect(initial.processedPublicTradeIds).toEqual([]);
+    expect(paperTradingScoreFromAccount(initial.account))
+      .toEqual(PAPER_TRADING_COMPARISON_ZERO_SCORE);
+  });
+
+  it("repairs a commitment-only qualification preparation without runtime effects", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-service-partial-qualification",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const first = inertSessionService(failFirstEvaluationWrite(store), effects);
+
+    await expect(first.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "qualification",
+      clock: "external"
+    })).rejects.toThrow("injected_evaluation_write_failure");
+    const [persistedCommitment] = await store.listPaperTradingEvaluationCommitments();
+    expect(persistedCommitment?.trading_run_ref.id).toBe(run.trading_run_id);
+    expect(await store.getLatestPaperTradingEvaluationForTradingRun(run.trading_run_id))
+      .toBeUndefined();
+
+    const repaired = await inertSessionService(store, effects).prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "qualification",
+      clock: "external"
+    });
+
+    expect(repaired.commitment).toEqual(persistedCommitment);
+    expect(repaired.commitment.paper_trading_evaluation_commitment_id)
+      .toMatch(/^paper-trading-evaluation-commitment-/);
+    const deterministicSuffix = repaired.commitment.paper_trading_evaluation_commitment_id.slice(
+      "paper-trading-evaluation-commitment-".length
+    );
+    expect(repaired.evaluation.paper_trading_evaluation_id).toBe(
+      `paper-trading-evaluation-${deterministicSuffix}`
+    );
+    expect(repaired.evaluation).toMatchObject({
+      status: "not_started",
+      observation_count: 0,
+      started_at: persistedCommitment!.committed_at,
+      paper_trading_evaluation_commitment_ref: {
+        id: persistedCommitment!.paper_trading_evaluation_commitment_id
+      }
+    });
+    expect(repaired.candidate.candidate_id).toBe(candidate.candidate_id);
+    expect(repaired.verification.status).toBe("verified");
+    expect(repaired.clock).toBe("external");
+    expect(effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    await expect(store.listPaperTradingObservations(
+      repaired.evaluation.paper_trading_evaluation_id
+    )).resolves.toEqual([]);
+  });
+
+  it.each([
+    "alternate-evaluation-for-exact-commitment",
+    "additional-evaluation-for-exact-commitment",
+    "alternate-commitment-only",
+    "alternate-commitment-evaluation-chain"
+  ] as const)("rejects non-deterministic partial session identity: %s", async (shape) => {
+    const store = new LocalStore(path.join(tmpDir, shape));
+    await store.initialize();
+    const fixture = await qualificationRunFixture(store, shape);
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const failing = inertSessionService(failFirstEvaluationWrite(store), effects);
+    await expect(failing.prepare(fixture.input)).rejects.toThrow(
+      "injected_evaluation_write_failure"
+    );
+    const [exactCommitment] = await store.listPaperTradingEvaluationCommitments();
+    if (!exactCommitment) {
+      throw new Error("deterministic commitment was not persisted");
+    }
+    const exactCommitmentId = exactCommitment.paper_trading_evaluation_commitment_id;
+    const exactEvaluationId = `paper-trading-evaluation-${exactCommitmentId.slice(
+      "paper-trading-evaluation-commitment-".length
+    )}`;
+
+    if (shape === "additional-evaluation-for-exact-commitment") {
+      await store.recordPaperTradingEvaluation(
+        notStartedEvaluationFixture(exactCommitment, exactEvaluationId)
+      );
+    }
+    if (shape === "alternate-commitment-evaluation-chain" ||
+      shape === "alternate-commitment-only") {
+      const alternateCommitment = withSessionCommitmentDigest({
+        ...exactCommitment,
+        paper_trading_evaluation_commitment_id: `${exactCommitmentId}-alternate`,
+        commitment_digest: ""
+      });
+      await store.recordPaperTradingEvaluationCommitment(alternateCommitment);
+      if (shape === "alternate-commitment-evaluation-chain") {
+        await store.recordPaperTradingEvaluation(
+          notStartedEvaluationFixture(
+            alternateCommitment,
+            `${exactEvaluationId}-alternate-chain`
+          )
+        );
+      }
+    } else {
+      await store.recordPaperTradingEvaluation(
+        notStartedEvaluationFixture(
+          exactCommitment,
+          `${exactEvaluationId}-alternate`
+        )
+      );
+    }
+    const commitmentsBefore = await store.listPaperTradingEvaluationCommitments();
+    const evaluationsBefore = await store.listPaperTradingEvaluations();
+
+    await expect(inertSessionService(store, effects).prepare(fixture.input)).rejects.toMatchObject({
+      code: "paper_trading_session_deterministic_identity_conflict"
+    });
+    await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual(commitmentsBefore);
+    await expect(store.listPaperTradingEvaluations()).resolves.toEqual(evaluationsBefore);
+    expect(effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+  });
+
   it("prepares without runtime effects, rejects unpaired qualification, and isolates external sessions", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -271,6 +418,137 @@ describe("PaperTradingSessionService", () => {
     expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
   });
 });
+
+async function qualificationRunFixture(store: LocalStore, suffix: string) {
+  const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+  if (!candidate) {
+    throw new Error("fixture candidate was not materialized");
+  }
+  const run = await store.createPaperTradingRun({
+    idempotency_key: `session-deterministic-identity-${suffix}`,
+    candidate_id: candidate.candidate_id,
+    candidate_version_id: candidate.candidate_version.candidate_version_id,
+    evidence_purpose: "qualification",
+    created_at: "2026-07-10T00:00:00.000Z"
+  });
+  const input: Parameters<PaperTradingSessionService["prepare"]>[0] = {
+    candidateId: candidate.candidate_id,
+    candidateVersionId: candidate.candidate_version.candidate_version_id,
+    tradingRunId: run.trading_run_id,
+    evidencePurpose: "qualification",
+    clock: "external"
+  };
+  return { candidate, run, input };
+}
+
+function notStartedEvaluationFixture(
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  evaluationId: string
+): PaperTradingEvaluationRecord {
+  return {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: evaluationId,
+    candidate_ref: { ...commitment.candidate_ref },
+    candidate_version_ref: { ...commitment.candidate_version_ref },
+    trading_run_ref: { ...commitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    interval_ms: commitment.window_policy.interval_ms,
+    observation_count: 0,
+    started_at: commitment.committed_at,
+    latest_score: {
+      revenue_usdt: 0,
+      cost_usdt: 0,
+      net_revenue_usdt: 0,
+      net_return_pct: 0
+    },
+    paper_account_snapshot: structuredClone(commitment.initial_account_snapshot),
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    authority_status: "not_live"
+  };
+}
+
+function withSessionCommitmentDigest(
+  commitment: PaperTradingEvaluationCommitmentRecord
+): PaperTradingEvaluationCommitmentRecord {
+  return {
+    ...commitment,
+    commitment_digest: `sha256:${createHash("sha256")
+      .update(paperTradingEvaluationCommitmentDigestInput(commitment))
+      .digest("hex")}`
+  };
+}
+
+function failFirstEvaluationWrite(store: OuroborosStorePort): OuroborosStorePort {
+  let failed = false;
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === "recordPaperTradingEvaluation") {
+        return async (...args: Parameters<OuroborosStorePort["recordPaperTradingEvaluation"]>) => {
+          if (!failed) {
+            failed = true;
+            throw new Error("injected_evaluation_write_failure");
+          }
+          return target.recordPaperTradingEvaluation(...args);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function inertSessionService(
+  store: OuroborosStorePort,
+  effects: { providerStarts: number; sandboxStarts: number; marketReads: number }
+): PaperTradingSessionService {
+  return new PaperTradingSessionService({
+    store,
+    intervalMs: 60_000,
+    artifactResolver: {
+      async resolveArtifactDigest() {
+        return "sha256:session-service-fixture";
+      }
+    },
+    sandboxAdapters: {
+      deterministic_test: {
+        async startArtifactInstance() {
+          effects.sandboxStarts += 1;
+          throw new Error("qualification preparation started a sandbox");
+        }
+      }
+    } as never,
+    marketData: {
+      provider_kind: "binance_production_public_market_data",
+      source_kind: "binance_production_public_hybrid",
+      rest_base_url: "https://example.invalid",
+      required_endpoints: [],
+      authority_status: "read_only",
+      async readMarketSnapshot() {
+        effects.marketReads += 1;
+        throw new Error("qualification preparation read market data");
+      },
+      async readPublicMarketLivenessSurface() {
+        effects.marketReads += 1;
+        throw new Error("qualification preparation read market liveness");
+      },
+      async readPublicExecutionSnapshot() {
+        effects.marketReads += 1;
+        throw new Error("qualification preparation read public execution");
+      }
+    },
+    async apiProviderFactory() {
+      effects.providerStarts += 1;
+      throw new Error("qualification preparation started a provider");
+    }
+  });
+}
 
 async function prepareGuardedSession(evidencePurpose: "qualification" | "research_feedback") {
   const store = new LocalStore(tmpDir);
