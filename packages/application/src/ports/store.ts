@@ -29,6 +29,9 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonTickRecord,
+  PaperTradingComparisonTickAcknowledgementRecord,
+  PaperTradingComparisonTickDeliveryRecord,
+  PaperTradingComparisonTickIOWriteContext,
   PaperTradingComparisonActivationRecord,
   PaperTradingComparisonActivationAttemptRecord,
   PaperTradingComparisonActivationSideResultRecord,
@@ -242,6 +245,26 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonTicks(
     comparisonId: string
   ): Promise<PaperTradingComparisonTickRecord[]>;
+  recordPaperTradingComparisonTickDelivery(
+    delivery: PaperTradingComparisonTickDeliveryRecord,
+    authority: PaperTradingComparisonTickIOWriteContext
+  ): Promise<PaperTradingComparisonTickDeliveryRecord>;
+  getPaperTradingComparisonTickDelivery(
+    deliveryId: string
+  ): Promise<PaperTradingComparisonTickDeliveryRecord | undefined>;
+  listPaperTradingComparisonTickDeliveries(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonTickDeliveryRecord[]>;
+  recordPaperTradingComparisonTickAcknowledgement(
+    acknowledgement: PaperTradingComparisonTickAcknowledgementRecord,
+    authority: PaperTradingComparisonTickIOWriteContext
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord>;
+  getPaperTradingComparisonTickAcknowledgement(
+    acknowledgementId: string
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord | undefined>;
+  listPaperTradingComparisonTickAcknowledgements(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord[]>;
   recordPaperTradingComparisonActivation(
     activation: PaperTradingComparisonActivationRecord
   ): Promise<PaperTradingComparisonActivationRecord>;

@@ -123,7 +123,7 @@ git commit -m "feat: define comparison tick attribution evidence"
 - Produces: Store get/list/record methods for delivery and acknowledgement
 - Preserves: all pair-bound economic and lifecycle mutation guards
 
-- [ ] **Step 1: Write failing LocalStore lifecycle and authority tests**
+- [x] **Step 1: Write failing LocalStore lifecycle and authority tests**
 
 Starting from a real committed first paired checkpoint whose sessions remain running, assert:
 
@@ -138,7 +138,7 @@ count at or below the frozen cap, acknowledgement requiring its exact delivery, 
 failure. Invoke sandbox, evaluation, observation, Ledger, run-control, tick, checkpoint, and
 promotion writers with the IO context and assert every one remains rejected.
 
-- [ ] **Step 2: Run LocalStore attribution tests and verify RED**
+- [x] **Step 2: Run LocalStore attribution tests and verify RED**
 
 Run:
 
@@ -148,7 +148,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "comparison tick
 
 Expected: FAIL because Store methods and collections do not exist.
 
-- [ ] **Step 3: Add Store methods and append-only collections**
+- [x] **Step 3: Add Store methods and append-only collections**
 
 Add:
 
@@ -166,7 +166,7 @@ paired checkpoint transaction evidence, role-bound run/evaluation/sandbox, and f
 Delivery requires a running post-checkpoint side. Ack requires exact delivery and a count not below
 delivery. Writes never rebuild economic records; they append only attribution collections.
 
-- [ ] **Step 4: Run LocalStore and typecheck regressions**
+- [x] **Step 4: Run LocalStore and typecheck regressions**
 
 Run:
 
@@ -177,7 +177,7 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: selected tests and LocalStore typecheck pass.
 
-- [ ] **Step 5: Commit attribution persistence**
+- [x] **Step 5: Commit attribution persistence**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts

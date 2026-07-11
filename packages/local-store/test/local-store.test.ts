@@ -52,6 +52,9 @@ import type {
   PaperTradingComparisonCheckpointOutcomeRecord,
   PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingComparisonTickAcknowledgementRecord,
+  PaperTradingComparisonTickDeliveryRecord,
+  PaperTradingComparisonTickIOWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -99,6 +102,8 @@ import {
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTickAcknowledgementDigestInput,
+  paperTradingComparisonTickDeliveryDigestInput,
   paperTradingComparisonTickDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingEvaluationCommitmentDigestInput
@@ -6448,6 +6453,333 @@ describe("LocalStore", () => {
       )).resolves.toEqual(input.outcome);
     });
   });
+
+  describe("comparison tick attribution", () => {
+    it("appends, reloads, lists, and semantically replays exact delivery and acknowledgement", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const delivery = validComparisonTickDelivery(fixture, "champion");
+      const deliveryAuthority = comparisonTickIOWriteContext(
+        fixture,
+        "champion",
+        "deliver_market_snapshot"
+      );
+
+      await expect(store.recordPaperTradingComparisonTickDelivery(
+        delivery,
+        deliveryAuthority
+      )).resolves.toEqual(delivery);
+      await expect(store.recordPaperTradingComparisonTickDelivery(
+        Object.fromEntries(Object.entries(delivery).reverse()) as unknown as
+          PaperTradingComparisonTickDeliveryRecord,
+        deliveryAuthority
+      )).resolves.toEqual(delivery);
+      await expect(store.getPaperTradingComparisonTickDelivery(
+        delivery.paper_trading_comparison_tick_delivery_id
+      )).resolves.toEqual(delivery);
+      await expect(store.listPaperTradingComparisonTickDeliveries(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([delivery]);
+
+      const acknowledgement = validComparisonTickAcknowledgement(delivery);
+      const acknowledgementAuthority = comparisonTickIOWriteContext(
+        fixture,
+        "champion",
+        "acknowledge_tick"
+      );
+      await expect(store.recordPaperTradingComparisonTickAcknowledgement(
+        acknowledgement,
+        acknowledgementAuthority
+      )).resolves.toEqual(acknowledgement);
+      await expect(store.recordPaperTradingComparisonTickAcknowledgement(
+        acknowledgement,
+        acknowledgementAuthority
+      )).resolves.toEqual(acknowledgement);
+      await expect(store.getPaperTradingComparisonTickAcknowledgement(
+        acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+      )).resolves.toEqual(acknowledgement);
+      await expect(store.listPaperTradingComparisonTickAcknowledgements(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([acknowledgement]);
+
+      const reloaded = new LocalStore(store.root());
+      await expect(reloaded.getPaperTradingComparisonTickDelivery(
+        delivery.paper_trading_comparison_tick_delivery_id
+      )).resolves.toEqual(delivery);
+      await expect(reloaded.getPaperTradingComparisonTickAcknowledgement(
+        acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+      )).resolves.toEqual(acknowledgement);
+    });
+
+    it("rejects delivery replay drift and alternate identity for the same role and tick", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const delivery = validComparisonTickDelivery(fixture, "champion");
+      const authority = comparisonTickIOWriteContext(
+        fixture,
+        "champion",
+        "deliver_market_snapshot"
+      );
+      await store.recordPaperTradingComparisonTickDelivery(delivery, authority);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonTickDelivery(
+          withComparisonTickDeliveryDigest({
+            ...delivery,
+            delivered_at: new Date(Date.parse(delivery.delivered_at) + 1).toISOString()
+          }),
+          authority
+        ),
+        "paper_trading_comparison_tick_delivery_conflict"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonTickDelivery(
+          withComparisonTickDeliveryDigest({
+            ...delivery,
+            paper_trading_comparison_tick_delivery_id: `${delivery.role}:alternate`
+          }),
+          authority
+        ),
+        "paper_trading_comparison_tick_delivery_conflict"
+      );
+      await expect(store.listPaperTradingComparisonTickDeliveries(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([delivery]);
+    });
+
+    it.each([
+      ["role authority", (
+        fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+        delivery: PaperTradingComparisonTickDeliveryRecord,
+        authority: PaperTradingComparisonTickIOWriteContext
+      ) => ({ delivery, authority: { ...authority, role: "challenger" as const } }),
+      "paper_trading_comparison_tick_delivery_reference_mismatch"],
+      ["runtime", (
+        _fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+        delivery: PaperTradingComparisonTickDeliveryRecord,
+        authority: PaperTradingComparisonTickIOWriteContext
+      ) => ({
+        delivery: withComparisonTickDeliveryDigest({
+          ...delivery,
+          trading_run_ref: { record_kind: "trading_run", id: "other-run" }
+        }),
+        authority
+      }), "paper_trading_comparison_tick_delivery_reference_mismatch"],
+      ["tick digest", (
+        _fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+        delivery: PaperTradingComparisonTickDeliveryRecord,
+        authority: PaperTradingComparisonTickIOWriteContext
+      ) => ({
+        delivery: withComparisonTickDeliveryDigest({
+          ...delivery,
+          tick_digest: "sha256:wrong"
+        }),
+        authority: { ...authority, tick_digest: "sha256:wrong" }
+      }), "paper_trading_comparison_tick_delivery_reference_mismatch"],
+      ["provider cap", (
+        fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+        delivery: PaperTradingComparisonTickDeliveryRecord,
+        authority: PaperTradingComparisonTickIOWriteContext
+      ) => ({
+        delivery: withComparisonTickDeliveryDigest({
+          ...delivery,
+          provider_request_count_at_delivery:
+            fixture.attempt.activation_policy.maximum_provider_request_count_per_side + 1
+        }),
+        authority
+      }), "paper_trading_comparison_tick_delivery_state_conflict"],
+      ["pre-checkpoint time", (
+        fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+        delivery: PaperTradingComparisonTickDeliveryRecord,
+        authority: PaperTradingComparisonTickIOWriteContext
+      ) => ({
+        delivery: withComparisonTickDeliveryDigest({
+          ...delivery,
+          delivered_at: new Date(
+            Date.parse(fixture.checkpoint.outcome.completed_at) - 1
+          ).toISOString()
+        }),
+        authority
+      }), "paper_trading_comparison_tick_delivery_state_conflict"]
+    ] as const)("rejects comparison tick delivery %s mismatch", async (
+      label,
+      mutate,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `tick-delivery-${label}`));
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const delivery = validComparisonTickDelivery(fixture, "champion");
+      const authority = comparisonTickIOWriteContext(
+        fixture,
+        "champion",
+        "deliver_market_snapshot"
+      );
+      const malformed = mutate(fixture, delivery, authority);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonTickDelivery(
+          malformed.delivery,
+          malformed.authority
+        ),
+        code
+      );
+      await expect(store.listPaperTradingComparisonTickDeliveries(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([]);
+    });
+
+    it.each([
+      ["missing delivery", (
+        ack: PaperTradingComparisonTickAcknowledgementRecord
+      ) => withComparisonTickAcknowledgementDigest({
+        ...ack,
+        delivery_ref: { ...ack.delivery_ref, id: "missing-delivery" }
+      }), "paper_trading_comparison_tick_acknowledgement_reference_not_found"],
+      ["role", (
+        ack: PaperTradingComparisonTickAcknowledgementRecord
+      ) => withComparisonTickAcknowledgementDigest({
+        ...ack,
+        role: "challenger"
+      }), "paper_trading_comparison_tick_acknowledgement_reference_mismatch"],
+      ["provider order", (
+        ack: PaperTradingComparisonTickAcknowledgementRecord
+      ) => withComparisonTickAcknowledgementDigest({
+        ...ack,
+        provider_request_count_at_acknowledgement: 1
+      }), "paper_trading_comparison_tick_acknowledgement_state_conflict"],
+      ["time order", (
+        ack: PaperTradingComparisonTickAcknowledgementRecord
+      ) => withComparisonTickAcknowledgementDigest({
+        ...ack,
+        acknowledged_at: "2026-07-10T00:00:00.000Z"
+      }), "paper_trading_comparison_tick_acknowledgement_state_conflict"]
+    ] as const)("rejects comparison tick acknowledgement %s mismatch", async (
+      label,
+      mutate,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `tick-ack-${label}`));
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const delivery = validComparisonTickDelivery(fixture, "champion");
+      await store.recordPaperTradingComparisonTickDelivery(
+        delivery,
+        comparisonTickIOWriteContext(fixture, "champion", "deliver_market_snapshot")
+      );
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonTickAcknowledgement(
+          mutate(validComparisonTickAcknowledgement(delivery)),
+          comparisonTickIOWriteContext(fixture, "champion", "acknowledge_tick")
+        ),
+        code
+      );
+      await expect(store.listPaperTradingComparisonTickAcknowledgements(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([]);
+    });
+
+    it("requires the exact current both-running post-checkpoint graph", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const closed = validRuntimeActivationOutcome(
+        fixture.attempt,
+        fixture.startResults,
+        "stopped_cleanly",
+        fixture.outcome
+      );
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-comparison-activation-outcomes",
+        closed.paper_trading_comparison_activation_outcome_id,
+        closed
+      );
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonTickDelivery(
+          validComparisonTickDelivery(fixture, "champion"),
+          comparisonTickIOWriteContext(fixture, "champion", "deliver_market_snapshot")
+        ),
+        "paper_trading_comparison_tick_delivery_state_conflict"
+      );
+    });
+
+    it("fails closed when persisted attribution or paired side evidence is corrupt", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const delivery = validComparisonTickDelivery(fixture, "champion");
+      await store.recordPaperTradingComparisonTickDelivery(
+        delivery,
+        comparisonTickIOWriteContext(fixture, "champion", "deliver_market_snapshot")
+      );
+      await overwriteComparisonFixtureBytes(
+        store,
+        "paper-trading-comparison-tick-deliveries",
+        delivery.paper_trading_comparison_tick_delivery_id,
+        "{broken"
+      );
+
+      await expectStoreError(
+        store.getPaperTradingComparisonTickDelivery(
+          delivery.paper_trading_comparison_tick_delivery_id
+        ),
+        "paper_trading_comparison_tick_delivery_reload_failed"
+      );
+
+      const graphStore = new LocalStore(path.join(tmpDir, "tick-corrupt-graph"));
+      await graphStore.initialize();
+      const graphFixture = await storedPairedCheckpointAttributionFixture(graphStore);
+      await overwriteComparisonFixtureBytes(
+        graphStore,
+        "paper-trading-evaluations",
+        graphFixture.checkpoint.champion.evaluation.paper_trading_evaluation_id,
+        "{broken"
+      );
+      await expectStoreError(
+        graphStore.recordPaperTradingComparisonTickDelivery(
+          validComparisonTickDelivery(graphFixture, "champion"),
+          comparisonTickIOWriteContext(
+            graphFixture,
+            "champion",
+            "deliver_market_snapshot"
+          )
+        ),
+        "paper_trading_comparison_tick_delivery_graph_invalid"
+      );
+    });
+
+    it.each([
+      "sandbox",
+      "evaluation",
+      "observation",
+      "ledger",
+      "run-control",
+      "tick",
+      "checkpoint",
+      "promotion"
+    ] as const)("does not extend tick IO context to forbidden %s writer", async (writer) => {
+      const store = new LocalStore(path.join(tmpDir, `tick-io-forbidden-${writer}`));
+      await store.initialize();
+      const fixture = await storedPairedCheckpointAttributionFixture(store);
+      const context = comparisonTickIOWriteContext(
+        fixture,
+        "challenger",
+        "deliver_market_snapshot"
+      );
+
+      await expect(
+        invokeForbiddenTickIOWriter(store, fixture, writer, context)
+      ).rejects.toMatchObject({ name: "LocalStoreError" });
+      await expect(store.listPaperTradingComparisonTickDeliveries(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([]);
+    });
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -7832,6 +8164,145 @@ async function validPairedCheckpointTransactionInput(
   return { attempt, outcome, champion, challenger };
 }
 
+async function storedPairedCheckpointAttributionFixture(store: LocalStore) {
+  const fixture = await storedBothRunningRuntimeActivationFixture(store);
+  const checkpointAttempt = validCheckpointAttempt(fixture);
+  await store.recordPaperTradingComparisonCheckpointAttempt(checkpointAttempt);
+  const checkpoint = await validPairedCheckpointTransactionInput(
+    store,
+    fixture,
+    checkpointAttempt
+  );
+  await store.recordPaperTradingComparisonPairedCheckpoint(checkpoint);
+  return { ...fixture, checkpointAttempt, checkpoint };
+}
+
+function validComparisonTickDelivery(
+  fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+  role: "champion" | "challenger"
+): PaperTradingComparisonTickDeliveryRecord {
+  const checkpointEvidence = fixture.checkpoint.outcome[role];
+  if (!checkpointEvidence) throw new Error(`missing ${role} checkpoint evidence`);
+  return withComparisonTickDeliveryDigest({
+    record_kind: "paper_trading_comparison_tick_delivery",
+    version: 1,
+    paper_trading_comparison_tick_delivery_id:
+      `${fixture.attempt.paper_trading_comparison_activation_attempt_id}:${role}:` +
+      fixture.tick.paper_trading_comparison_tick_id,
+    paper_trading_comparison_activation_ref: {
+      ...fixture.attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      fixture.attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: fixture.attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: fixture.attempt.attempt_digest,
+    role,
+    trading_run_ref: { ...fixture.attempt[role].trading_run_ref },
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: fixture.tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: fixture.tick.tick_digest,
+    tick_sequence: fixture.tick.sequence,
+    provider_request_count_at_delivery:
+      checkpointEvidence.provider_request_count_after + 1,
+    endpoint: "GET /market/snapshot",
+    delivered_at: new Date(
+      Date.parse(fixture.checkpoint.outcome.completed_at) + 1_000
+    ).toISOString(),
+    delivery_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withComparisonTickDeliveryDigest(
+  delivery: PaperTradingComparisonTickDeliveryRecord
+): PaperTradingComparisonTickDeliveryRecord {
+  return {
+    ...delivery,
+    delivery_digest: comparisonRecordDigest(
+      paperTradingComparisonTickDeliveryDigestInput(delivery)
+    )
+  };
+}
+
+function validComparisonTickAcknowledgement(
+  delivery: PaperTradingComparisonTickDeliveryRecord
+): PaperTradingComparisonTickAcknowledgementRecord {
+  return withComparisonTickAcknowledgementDigest({
+    record_kind: "paper_trading_comparison_tick_acknowledgement",
+    version: 1,
+    paper_trading_comparison_tick_acknowledgement_id:
+      `${delivery.paper_trading_comparison_tick_delivery_id}:acknowledgement`,
+    delivery_ref: {
+      record_kind: delivery.record_kind,
+      id: delivery.paper_trading_comparison_tick_delivery_id
+    },
+    delivery_digest: delivery.delivery_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      ...delivery.paper_trading_comparison_activation_attempt_ref
+    },
+    paper_trading_comparison_activation_attempt_digest:
+      delivery.paper_trading_comparison_activation_attempt_digest,
+    role: delivery.role,
+    trading_run_ref: { ...delivery.trading_run_ref },
+    tick_ref: { ...delivery.tick_ref },
+    tick_digest: delivery.tick_digest,
+    tick_sequence: delivery.tick_sequence,
+    provider_request_count_at_acknowledgement:
+      delivery.provider_request_count_at_delivery + 1,
+    endpoint: "POST /comparison/tick/ack",
+    acknowledged_at: new Date(Date.parse(delivery.delivered_at) + 1_000).toISOString(),
+    acknowledgement_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withComparisonTickAcknowledgementDigest(
+  acknowledgement: PaperTradingComparisonTickAcknowledgementRecord
+): PaperTradingComparisonTickAcknowledgementRecord {
+  return {
+    ...acknowledgement,
+    acknowledgement_digest: comparisonRecordDigest(
+      paperTradingComparisonTickAcknowledgementDigestInput(acknowledgement)
+    )
+  };
+}
+
+function comparisonTickIOWriteContext(
+  fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+  role: "champion" | "challenger",
+  operation: PaperTradingComparisonTickIOWriteContext["operation"]
+): PaperTradingComparisonTickIOWriteContext {
+  return {
+    paper_trading_comparison_activation_ref: {
+      ...fixture.attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      fixture.attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: fixture.attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: fixture.attempt.attempt_digest,
+    role,
+    trading_run_ref: { ...fixture.attempt[role].trading_run_ref },
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: fixture.tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: fixture.tick.tick_digest,
+    operation
+  };
+}
+
 function withPreparedCheckpointSideDigest(
   side: PreparedCheckpointSideFixture
 ): PreparedCheckpointSideFixture {
@@ -8417,7 +8888,8 @@ async function invokeForbiddenBoundSideWriterWithContext(
   fixture: Awaited<ReturnType<typeof storedRuntimeActivationFixture>>,
   writer: "observation" | "ledger" | "sandbox-observations" |
     "commitment" | "system-code" | "admission" | "promotion",
-  context: PaperTradingComparisonRuntimeWriteContext
+  context: PaperTradingComparisonRuntimeWriteContext |
+    PaperTradingComparisonTickIOWriteContext
 ): Promise<unknown> {
   if (writer === "observation") {
     const observedAt = new Date(Date.parse(fixture.activation.authorized_at) + 60_000)
@@ -8501,6 +8973,66 @@ async function invokeForbiddenBoundSideWriterWithContext(
     ...fixture.promotion,
     promoted_at: new Date(Date.parse(fixture.promotion.promoted_at) + 1).toISOString()
   }, context]);
+}
+
+async function invokeForbiddenTickIOWriter(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+  writer: "sandbox" | "evaluation" | "observation" | "ledger" |
+    "run-control" | "tick" | "checkpoint" | "promotion",
+  context: PaperTradingComparisonTickIOWriteContext
+): Promise<unknown> {
+  if (writer === "sandbox") {
+    return Reflect.apply(store.recordSandboxStart, store, [
+      runtimeActivationSandboxStart(fixture, fixture.attempt, "challenger"),
+      context
+    ]);
+  }
+  if (writer === "evaluation") {
+    return Reflect.apply(store.recordPaperTradingEvaluation, store, [{
+      ...fixture.checkpoint.challenger.evaluation,
+      status: "stopped",
+      stopped_at: new Date(
+        Date.parse(fixture.checkpoint.outcome.completed_at) + 2_000
+      ).toISOString()
+    }, context]);
+  }
+  if (writer === "observation" || writer === "ledger" || writer === "promotion") {
+    return invokeForbiddenBoundSideWriterWithContext(
+      store,
+      fixture,
+      writer,
+      context
+    );
+  }
+  if (writer === "run-control") {
+    return Reflect.apply(store.recordRunControlAudit, store, [
+      runtimeActivationRunControlInput(
+        fixture,
+        fixture.attempt,
+        "challenger",
+        "stop"
+      ),
+      context
+    ]);
+  }
+  if (writer === "tick") {
+    return Reflect.apply(store.recordPaperTradingComparisonTick, store, [
+      withTickDigest({
+        ...fixture.tick,
+        paper_trading_comparison_tick_id: "forbidden-attribution-tick"
+      }),
+      context
+    ]);
+  }
+  return Reflect.apply(store.recordPaperTradingComparisonCheckpointAttempt, store, [
+    withCheckpointAttemptDigest({
+      ...fixture.checkpointAttempt,
+      paper_trading_comparison_checkpoint_attempt_id:
+        "forbidden-attribution-checkpoint"
+    }),
+    context
+  ]);
 }
 
 function alternateSideCommitment(
