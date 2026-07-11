@@ -3543,9 +3543,10 @@ describe("LocalStore", () => {
     const store = new InterleavingComparisonLocalStore(tmpDir);
     await store.initialize();
     const fixture = await storedComparisonFixture(store);
-    store.pauseExactEvaluationRead();
+    store.pauseExactRunRead();
     const pairAppend = store.recordPaperTradingComparisonCommitment(fixture.comparison);
-    await store.exactEvaluationReadEntered;
+    await store.exactRunReadEntered;
+    const activeTransactionTail = store.comparisonTransactionTail();
     const sideMutation = store.recordPaperTradingEvaluation({
       ...fixture.challengerEvaluation,
       latest_score: {
@@ -3555,8 +3556,8 @@ describe("LocalStore", () => {
         net_return_pct: 0.0001
       }
     });
-    await expectPromiseStillPending(sideMutation);
-    store.releaseExactEvaluationRead();
+    await expectComparisonWriterQueued(store, activeTransactionTail, sideMutation);
+    store.releaseExactRunRead();
     await expect(pairAppend).resolves.toEqual(fixture.comparison);
     await expectStoreError(
       sideMutation,
@@ -3604,15 +3605,13 @@ describe("LocalStore", () => {
       const store = new InterleavingComparisonLocalStore(path.join(tmpDir, writer));
       await store.initialize();
       const fixture = await storedComparisonFixture(store);
-      const pausesEvaluation = writer === "evaluation" || writer === "observation";
-      if (pausesEvaluation) store.pauseExactEvaluationRead();
-      else store.pauseExactRunRead();
+      store.pauseExactRunRead();
       const pairAppend = store.recordPaperTradingComparisonCommitment(fixture.comparison);
-      await (pausesEvaluation ? store.exactEvaluationReadEntered : store.exactRunReadEntered);
+      await store.exactRunReadEntered;
+      const activeTransactionTail = store.comparisonTransactionTail();
       const sideWriter = invokeBoundSideWriter(store, fixture, writer);
-      await expectPromiseStillPending(sideWriter);
-      if (pausesEvaluation) store.releaseExactEvaluationRead();
-      else store.releaseExactRunRead();
+      await expectComparisonWriterQueued(store, activeTransactionTail, sideWriter);
+      store.releaseExactRunRead();
       await expect(pairAppend).resolves.toEqual(fixture.comparison);
       if (writer === "create-run-exact") {
         await expect(sideWriter).resolves.toEqual(fixture.challengerRun);
@@ -4405,6 +4404,61 @@ describe("LocalStore", () => {
     }
   );
 
+  it.each([
+    "commitment-shape",
+    "evaluation-shape",
+    "observation-identity",
+    "commitment-json"
+  ] as const)(
+    "fails closed for malformed persisted paper comparison side data: %s",
+    async (malformation) => {
+      const store = new LocalStore(path.join(tmpDir, malformation));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      if (malformation === "commitment-shape") {
+        const { committed_at: _committedAt, ...malformed } = fixture.challengerCommitment;
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-evaluation-commitments",
+          fixture.challengerCommitment.paper_trading_evaluation_commitment_id,
+          malformed
+        );
+      } else if (malformation === "evaluation-shape") {
+        const { started_at: _startedAt, ...malformed } = fixture.challengerEvaluation;
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-evaluations",
+          fixture.challengerEvaluation.paper_trading_evaluation_id,
+          malformed
+        );
+      } else if (malformation === "observation-identity") {
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-observations",
+          "paper-observation-malformed-comparison-side",
+          {
+            record_kind: "paper_trading_observation",
+            version: 1,
+            paper_trading_observation_id: "paper-observation-malformed-comparison-side"
+          }
+        );
+      } else {
+        await overwriteComparisonFixtureBytes(
+          store,
+          "paper-trading-evaluation-commitments",
+          fixture.challengerCommitment.paper_trading_evaluation_commitment_id,
+          "{not-valid-json\n"
+        );
+      }
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCommitment(fixture.comparison),
+        "paper_trading_comparison_commitment_reference_mismatch"
+      );
+      await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+    }
+  );
+
   it.each(["candidate", "candidate-version", "trading-run", "system-code"] as const)(
     "rejects persisted paper comparison same-ID loaded-record drift: %s",
     async (drift) => {
@@ -4497,8 +4551,9 @@ describe("LocalStore", () => {
     store.pauseLatestPromotionRead();
     const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
     await store.latestPromotionReadEntered;
+    const activeTransactionTail = store.comparisonTransactionTail();
     const laterPromotionWrite = store.recordTradingPromotion(laterChampionPromotion(fixture));
-    await expectPromiseStillPending(laterPromotionWrite);
+    await expectComparisonWriterQueued(store, activeTransactionTail, laterPromotionWrite);
     store.releaseLatestPromotionRead();
     await expect(reservation).resolves.toEqual(fixture.preparation);
     await expect(laterPromotionWrite).resolves.toMatchObject({
@@ -4526,8 +4581,9 @@ describe("LocalStore", () => {
     store.pauseLatestPromotionRead();
     const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
     await store.latestPromotionReadEntered;
+    const activeTransactionTail = store.comparisonTransactionTail();
     const driftWrite = store.recordSystemCode({ ...code, entrypoint: ["python3", "drift.py"] });
-    await expectPromiseStillPending(driftWrite);
+    await expectComparisonWriterQueued(store, activeTransactionTail, driftWrite);
     store.releaseLatestPromotionRead();
     await expect(reservation).resolves.toEqual(fixture.preparation);
     await expectStoreError(
@@ -4540,15 +4596,16 @@ describe("LocalStore", () => {
     const store = new InterleavingComparisonLocalStore(tmpDir);
     await store.initialize();
     const fixture = await comparisonPreparationFixture(store);
-    store.pauseExactEvaluationRead();
+    store.pauseLatestPromotionRead();
     const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
-    await store.exactEvaluationReadEntered;
+    await store.latestPromotionReadEntered;
+    const activeTransactionTail = store.comparisonTransactionTail();
     const evidenceWrite = store.recordPaperTradingEvaluation({
       ...fixture.championPromotionEvidence.evaluation,
       latest_failure_reason: "concurrent-promotion-evidence-drift"
     });
-    await expectPromiseStillPending(evidenceWrite);
-    store.releaseExactEvaluationRead();
+    await expectComparisonWriterQueued(store, activeTransactionTail, evidenceWrite);
+    store.releaseLatestPromotionRead();
     await expect(reservation).resolves.toEqual(fixture.preparation);
     await expectStoreError(
       evidenceWrite,
@@ -4634,6 +4691,20 @@ async function overwriteComparisonFixtureRecord(
   await writeFile(
     path.join(store.root(), collection, "items", `${encodeURIComponent(id)}.json`),
     `${JSON.stringify(record, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+async function overwriteComparisonFixtureBytes(
+  store: LocalStore,
+  collection: string,
+  id: string,
+  bytes: string
+): Promise<void> {
+  await mkdir(path.join(store.root(), collection, "items"), { recursive: true });
+  await writeFile(
+    path.join(store.root(), collection, "items", `${encodeURIComponent(id)}.json`),
+    bytes,
     "utf8"
   );
 }
@@ -5711,17 +5782,18 @@ async function rewriteFrozenSideDigestsForSemanticTest(
 
 class InterleavingComparisonLocalStore extends LocalStore {
   latestPromotionReadEntered: Promise<void> = Promise.resolve();
-  exactEvaluationReadEntered: Promise<void> = Promise.resolve();
   exactRunReadEntered: Promise<void> = Promise.resolve();
   private markPromotionReadEntered: (() => void) | undefined;
   private promotionReadRelease: Promise<void> | undefined;
   private releasePromotionRead: (() => void) | undefined;
-  private markEvaluationReadEntered: (() => void) | undefined;
-  private evaluationReadRelease: Promise<void> | undefined;
-  private releaseEvaluationRead: (() => void) | undefined;
   private markRunReadEntered: (() => void) | undefined;
   private runReadRelease: Promise<void> | undefined;
   private releaseRunRead: (() => void) | undefined;
+
+  comparisonTransactionTail(): Promise<void> {
+    return (this as unknown as { comparisonEvidenceWriteQueue: Promise<void> })
+      .comparisonEvidenceWriteQueue;
+  }
 
   pauseLatestPromotionRead(): void {
     this.latestPromotionReadEntered = new Promise((resolve) => {
@@ -5733,17 +5805,6 @@ class InterleavingComparisonLocalStore extends LocalStore {
   }
 
   releaseLatestPromotionRead(): void { this.releasePromotionRead?.(); }
-
-  pauseExactEvaluationRead(): void {
-    this.exactEvaluationReadEntered = new Promise((resolve) => {
-      this.markEvaluationReadEntered = resolve;
-    });
-    this.evaluationReadRelease = new Promise((resolve) => {
-      this.releaseEvaluationRead = resolve;
-    });
-  }
-
-  releaseExactEvaluationRead(): void { this.releaseEvaluationRead?.(); }
 
   pauseExactRunRead(): void {
     this.exactRunReadEntered = new Promise((resolve) => {
@@ -5764,20 +5825,6 @@ class InterleavingComparisonLocalStore extends LocalStore {
       this.promotionReadRelease = undefined;
       this.releasePromotionRead = undefined;
       this.markPromotionReadEntered = undefined;
-    }
-    return result;
-  }
-
-  override async getPaperTradingEvaluation(
-    evaluationId: string
-  ): Promise<PaperTradingEvaluationRecord | undefined> {
-    const result = await super.getPaperTradingEvaluation(evaluationId);
-    if (this.evaluationReadRelease) {
-      this.markEvaluationReadEntered?.();
-      await this.evaluationReadRelease;
-      this.evaluationReadRelease = undefined;
-      this.releaseEvaluationRead = undefined;
-      this.markEvaluationReadEntered = undefined;
     }
     return result;
   }
@@ -5805,12 +5852,20 @@ function laterChampionPromotion(
   };
 }
 
-async function expectPromiseStillPending(promise: Promise<unknown>): Promise<void> {
-  const state = await Promise.race([
-    promise.then(() => "fulfilled", () => "rejected"),
-    new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 5))
-  ]);
-  expect(state).toBe("pending");
+async function expectComparisonWriterQueued(
+  store: InterleavingComparisonLocalStore,
+  activeTransactionTail: Promise<void>,
+  writer: Promise<unknown>
+): Promise<void> {
+  let settled = false;
+  void writer.then(
+    () => { settled = true; },
+    () => { settled = true; }
+  );
+  const queuedWriterTail = store.comparisonTransactionTail();
+  expect(queuedWriterTail).not.toBe(activeTransactionTail);
+  await Promise.resolve();
+  expect(settled).toBe(false);
 }
 
 function validPaperTradingComparisonCommitment(): PaperTradingComparisonCommitmentRecord {

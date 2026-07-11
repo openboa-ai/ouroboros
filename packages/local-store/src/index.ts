@@ -3500,9 +3500,82 @@ export class LocalStore {
     );
   }
 
+  private async readPaperTradingComparisonCollection(
+    collection:
+      | "paper-trading-evaluation-commitments"
+      | "paper-trading-evaluations"
+      | "paper-trading-observations",
+    errorCode: LocalStoreErrorCode
+  ): Promise<unknown[]> {
+    try {
+      return await this.readCollection<unknown>(collection);
+    } catch {
+      throw new LocalStoreError(
+        errorCode,
+        `persisted ${collection} data is unreadable or corrupt`
+      );
+    }
+  }
+
+  private async scanPaperTradingComparisonCommitments(
+    errorCode: LocalStoreErrorCode
+  ): Promise<PaperTradingEvaluationCommitmentRecord[]> {
+    const records = await this.readPaperTradingComparisonCollection(
+      "paper-trading-evaluation-commitments",
+      errorCode
+    );
+    return records.map((record) => {
+      if (!isPaperTradingEvaluationCommitmentRecord(record)) {
+        throw new LocalStoreError(
+          errorCode,
+          "persisted paper trading comparison commitment evidence has invalid runtime shape"
+        );
+      }
+      return record;
+    });
+  }
+
+  private async scanPaperTradingComparisonEvaluations(
+    errorCode: LocalStoreErrorCode
+  ): Promise<PaperTradingEvaluationRecord[]> {
+    const records = await this.readPaperTradingComparisonCollection(
+      "paper-trading-evaluations",
+      errorCode
+    );
+    return records.map((record) => {
+      if (!isPaperTradingComparisonEvaluationScanRecord(record)) {
+        throw new LocalStoreError(
+          errorCode,
+          "persisted paper trading comparison evaluation has invalid runtime shape"
+        );
+      }
+      return record;
+    });
+  }
+
+  private async scanPaperTradingComparisonObservations(
+    errorCode: LocalStoreErrorCode
+  ): Promise<PaperTradingObservationRecord[]> {
+    const records = await this.readPaperTradingComparisonCollection(
+      "paper-trading-observations",
+      errorCode
+    );
+    return records.map((record) => {
+      if (!isPaperTradingComparisonObservationScanRecord(record)) {
+        throw new LocalStoreError(
+          errorCode,
+          "persisted paper trading comparison observation has invalid runtime shape"
+        );
+      }
+      return record;
+    });
+  }
+
   private async validatePaperTradingComparisonPreparation(
     preparation: PaperTradingComparisonPreparationRecord,
-    requireCurrentSelection: boolean
+    requireCurrentSelection: boolean,
+    persistedEvidenceErrorCode: LocalStoreErrorCode =
+      "paper_trading_comparison_champion_selection_mismatch"
   ): Promise<void> {
     if (!paperTradingComparisonPreparationHasRuntimeShape(preparation)) {
       throw new LocalStoreError(
@@ -3642,20 +3715,29 @@ export class LocalStore {
         "bound TradingPromotion selection was not found"
       );
     }
-    const [promotionEvaluation, promotionCommitment] = await Promise.all([
-      this.getPaperTradingEvaluation(selection.paper_trading_evaluation_ref.id),
-      this.getPaperTradingEvaluationCommitment(
-        selection.paper_trading_evaluation_commitment_ref.id
-      )
+    const [allEvaluations, allCommitments, allObservations] = await Promise.all([
+      this.scanPaperTradingComparisonEvaluations(persistedEvidenceErrorCode),
+      this.scanPaperTradingComparisonCommitments(persistedEvidenceErrorCode),
+      this.scanPaperTradingComparisonObservations(persistedEvidenceErrorCode)
     ]);
+    const promotionEvaluation = allEvaluations.find((record) =>
+      record.paper_trading_evaluation_id === selection.paper_trading_evaluation_ref.id
+    );
+    const promotionCommitment = allCommitments.find((record) =>
+      record.paper_trading_evaluation_commitment_id ===
+        selection.paper_trading_evaluation_commitment_ref.id
+    );
     if (!promotionEvaluation || !promotionCommitment) {
       throw new LocalStoreError(
         "paper_trading_comparison_preparation_reference_not_found",
         "bound TradingPromotion qualification evaluation or commitment was not found"
       );
     }
-    const promotionObservations = await this.listPaperTradingObservations(
-      promotionEvaluation.paper_trading_evaluation_id
+    const promotionObservations = allObservations.filter((record) =>
+      paperTradingComparisonRefsEqual(
+        record.paper_trading_evaluation_ref,
+        selection.paper_trading_evaluation_ref
+      )
     );
     const frozenPromotionContentMatches =
       selection.trading_promotion_digest === comparisonExactRecordDigest(
@@ -3758,7 +3840,11 @@ export class LocalStore {
     }
     this.assertPersistedComparisonPreparationShape(preparation);
     try {
-      await this.validatePaperTradingComparisonPreparation(preparation, false);
+      await this.validatePaperTradingComparisonPreparation(
+        preparation,
+        false,
+        "paper_trading_comparison_commitment_reference_mismatch"
+      );
     } catch (error) {
       if (error instanceof LocalStoreError &&
         error.code === "paper_trading_comparison_candidate_not_admitted") {
@@ -3980,55 +4066,60 @@ export class LocalStore {
       admission,
       run,
       systemCode,
-      commitment,
-      evaluation,
       allCommitments,
-      allEvaluations
+      allEvaluations,
+      allObservations
     ] = await Promise.all([
       this.getCandidateForTradingRun(input.trading_run_ref.id),
       this.getCandidateVersion(input.candidate_version_ref.id),
       this.getCandidateAdmissionDecision(input.candidate_admission_decision_ref.id),
       this.getTradingRun(input.trading_run_ref.id),
       this.getSystemCode(input.system_code_ref.id),
-      this.getPaperTradingEvaluationCommitment(
-        input.paper_trading_evaluation_commitment_ref.id
+      this.scanPaperTradingComparisonCommitments(
+        "paper_trading_comparison_commitment_reference_mismatch"
       ),
-      this.getPaperTradingEvaluation(input.paper_trading_evaluation_ref.id),
-      this.listPaperTradingEvaluationCommitments(),
-      this.listPaperTradingEvaluations()
+      this.scanPaperTradingComparisonEvaluations(
+        "paper_trading_comparison_commitment_reference_mismatch"
+      ),
+      this.scanPaperTradingComparisonObservations(
+        "paper_trading_comparison_commitment_reference_mismatch"
+      )
     ]);
+    const commitment = allCommitments.find((record) =>
+      record.paper_trading_evaluation_commitment_id ===
+        input.paper_trading_evaluation_commitment_ref.id
+    );
+    const evaluation = allEvaluations.find((record) =>
+      record.paper_trading_evaluation_id === input.paper_trading_evaluation_ref.id
+    );
     if (!candidate || !candidateVersion || !admission || !run || !systemCode ||
       !commitment || !evaluation) {
       return undefined;
     }
-    const persistedField = (value: unknown, key: string): unknown =>
-      value !== null && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)[key]
-        : undefined;
     const runRef = { record_kind: "trading_run", id: input.trading_run_ref.id };
     const commitmentsForRun = allCommitments.filter((record) =>
-      paperTradingComparisonRefsEqual(persistedField(record, "trading_run_ref"), runRef)
+      paperTradingComparisonRefsEqual(record.trading_run_ref, runRef)
     );
     const evaluationsForRun = allEvaluations.filter((record) =>
-      paperTradingComparisonRefsEqual(persistedField(record, "trading_run_ref"), runRef)
+      paperTradingComparisonRefsEqual(record.trading_run_ref, runRef)
     );
     if (commitmentsForRun.length !== 1 ||
-      persistedField(commitmentsForRun[0], "paper_trading_evaluation_commitment_id") !==
+      commitmentsForRun[0]?.paper_trading_evaluation_commitment_id !==
         input.paper_trading_evaluation_commitment_ref.id ||
       evaluationsForRun.length !== 1 ||
-      persistedField(evaluationsForRun[0], "paper_trading_evaluation_id") !==
+      evaluationsForRun[0]?.paper_trading_evaluation_id !==
         input.paper_trading_evaluation_ref.id ||
       !paperTradingComparisonRefsEqual(
-        persistedField(evaluation, "paper_trading_evaluation_commitment_ref"),
+        evaluation.paper_trading_evaluation_commitment_ref,
         input.paper_trading_evaluation_commitment_ref
       ) ||
-      persistedField(candidateVersion, "candidate_id") !== input.candidate_ref.id) {
+      candidateVersion.candidate_id !== input.candidate_ref.id) {
       throw new LocalStoreError(
         "paper_trading_comparison_commitment_reference_mismatch",
         "paper comparison side run does not own one deterministic commitment/evaluation chain"
       );
     }
-    return {
+    const loaded: LoadedPaperTradingComparisonSideGraph = {
       input,
       candidate,
       candidateVersion,
@@ -4037,10 +4128,20 @@ export class LocalStore {
       systemCode,
       commitment,
       evaluation,
-      observations: await this.listPaperTradingObservations(
-        input.paper_trading_evaluation_ref.id
+      observations: allObservations.filter((record) =>
+        paperTradingComparisonRefsEqual(
+          record.paper_trading_evaluation_ref,
+          input.paper_trading_evaluation_ref
+        )
       )
     };
+    if (!paperTradingComparisonSideRecordsHaveInertShape(loaded)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_commitment_reference_mismatch",
+        "paper comparison side records have invalid or non-inert runtime shape"
+      );
+    }
+    return loaded;
   }
 
   private async validatePaperTradingEvaluationWrite(
@@ -8075,6 +8176,97 @@ function isPaperTradingEvaluationCommitmentRecord(
     nonEmpty(record.commitment_digest) &&
     record.authority_status === "not_live"
   );
+}
+
+function isPaperTradingComparisonEvaluationScanRecord(
+  value: unknown
+): value is PaperTradingEvaluationRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Partial<PaperTradingEvaluationRecord>;
+  return (
+    record.record_kind === "paper_trading_evaluation" &&
+    record.version === 1 &&
+    nonEmpty(record.paper_trading_evaluation_id) &&
+    isRef(record.candidate_ref, "trading_system_candidate") &&
+    isRef(record.candidate_version_ref, "candidate_version") &&
+    isRef(record.trading_run_ref, "trading_run") &&
+    (record.paper_trading_evaluation_commitment_ref === undefined ||
+      isRef(
+        record.paper_trading_evaluation_commitment_ref,
+        "paper_trading_evaluation_commitment"
+      )) &&
+    ["not_started", "running", "stopped", "invalidated"].includes(
+      record.status as string
+    ) &&
+    Number.isInteger(record.interval_ms) &&
+    (record.interval_ms ?? 0) > 0 &&
+    Number.isInteger(record.observation_count) &&
+    (record.observation_count ?? -1) >= 0 &&
+    isIsoTimestamp(record.started_at) &&
+    (record.last_observed_at === undefined || isIsoTimestamp(record.last_observed_at)) &&
+    (record.next_observation_at === undefined || isIsoTimestamp(record.next_observation_at)) &&
+    (record.stopped_at === undefined || isIsoTimestamp(record.stopped_at)) &&
+    isPaperTradingComparisonScoreShape(record.latest_score) &&
+    (record.open_orders === undefined || Array.isArray(record.open_orders)) &&
+    (record.processed_trading_system_event_ids === undefined ||
+      isStringArray(record.processed_trading_system_event_ids)) &&
+    (record.processed_public_trade_ids === undefined ||
+      isStringArray(record.processed_public_trade_ids)) &&
+    record.authority_status === "not_live"
+  );
+}
+
+function isPaperTradingComparisonObservationScanRecord(
+  value: unknown
+): value is PaperTradingObservationRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Partial<PaperTradingObservationRecord>;
+  return (
+    record.record_kind === "paper_trading_observation" &&
+    record.version === 1 &&
+    nonEmpty(record.paper_trading_observation_id) &&
+    isRef(record.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    isRef(
+      record.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) &&
+    isRef(record.candidate_ref, "trading_system_candidate") &&
+    isRef(record.candidate_version_ref, "candidate_version") &&
+    isRef(record.trading_run_ref, "trading_run") &&
+    Number.isInteger(record.sequence) &&
+    (record.sequence ?? 0) > 0 &&
+    ["recorded", "no_order", "failed"].includes(record.status as string) &&
+    isIsoTimestamp(record.observed_at) &&
+    isPaperTradingComparisonScoreShape(record.score_delta) &&
+    isPaperTradingComparisonScoreShape(record.cumulative_score) &&
+    (record.open_orders === undefined || Array.isArray(record.open_orders)) &&
+    (record.processed_trading_system_event_ids === undefined ||
+      isStringArray(record.processed_trading_system_event_ids)) &&
+    (record.processed_public_trade_ids === undefined ||
+      isStringArray(record.processed_public_trade_ids)) &&
+    record.authority_status === "not_live"
+  );
+}
+
+function isPaperTradingComparisonScoreShape(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const score = value as Record<string, unknown>;
+  return [
+    score.revenue_usdt,
+    score.cost_usdt,
+    score.net_revenue_usdt,
+    score.net_return_pct
+  ].every((item) => typeof item === "number" && Number.isFinite(item));
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function paperTradingCommitmentReferencesMatch(input: {
