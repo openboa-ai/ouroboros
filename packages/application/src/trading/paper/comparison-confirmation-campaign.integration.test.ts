@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type ArtifactLineageRecord,
   type CandidateAdmissionDecisionRecord,
   type CandidateInspectReadModel,
   type CandidateMaterializationInput,
@@ -53,6 +54,8 @@ import { PaperTradingComparisonConfirmationCampaignService } from
   "./comparison-confirmation-campaign-service";
 import { PaperTradingComparisonConfirmationWindowService } from
   "./comparison-confirmation-window-service";
+import { PaperTradingComparisonResearchReleaseService } from
+  "./comparison-research-release-service";
 
 let tmpDir: string;
 
@@ -166,7 +169,81 @@ describe("paper comparison confirmation campaign integration", () => {
     expect(confirmedOutcome.slot_results.map((result) => result.verdict_ref?.id))
       .toEqual(confirmedVerdicts.map((verdict) =>
         verdict.paper_trading_comparison_verdict_id));
+    const findingsBeforeRelease = await fixture.store.listResearchFindings();
+    const lineagesBeforeRelease = await fixture.store.listArtifactLineages();
+    expect(findingsBeforeRelease).toContainEqual(fixture.challengerSourceFinding);
+    expect(findingsBeforeRelease.some((finding) =>
+      finding.research_finding_id.includes("research-release"))).toBe(false);
+    expect(lineagesBeforeRelease).toEqual([fixture.challengerSourceLineage]);
+    await expect(fixture.store.listPaperTradingComparisonResearchReleases())
+      .resolves.toEqual([]);
     await expect(fixture.store.getLatestTradingPromotion()).resolves.toBeUndefined();
+
+    fixture.setNowAfter(confirmedOutcome.evaluated_at, 1);
+    const release = await fixture.releases.release({
+      campaignOutcomeId:
+        confirmedOutcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    });
+    expect(release).toMatchObject({
+      release_kind: "confirmed_improvement",
+      direction_kind: "mean_reversion",
+      candidate_ref: confirmedCampaign.challenger.candidate_ref,
+      finding: {
+        finding_kind: "positive_result",
+        authority_status: "research_trace_only"
+      },
+      lineage: {
+        child_system_code_ref:
+          fixture.challengerSourceLineage.child_system_code_ref,
+        parent_system_code_ref:
+          fixture.challengerSourceLineage.parent_system_code_ref,
+        authority_status: "lineage_only"
+      },
+      research_visibility: "released_to_research",
+      promotion_authority: false,
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "lineage_only"
+    });
+    expect(release.finding.supporting_record_refs).toEqual([
+      {
+        record_kind: "research_finding",
+        id: fixture.challengerSourceFinding.research_finding_id
+      },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: confirmedCampaign.paper_trading_comparison_confirmation_campaign_id
+      },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: confirmedOutcome.paper_trading_comparison_confirmation_campaign_outcome_id
+      },
+      ...confirmedVerdicts.map((verdict) => ({
+        record_kind: "paper_trading_comparison_verdict",
+        id: verdict.paper_trading_comparison_verdict_id
+      }))
+    ]);
+    expect(release.finding.supporting_record_refs.map((ref) => ref.id))
+      .not.toContain(confirmedSource.paper_trading_comparison_verdict_id);
+    expect(release.lineage.source_finding_refs).toEqual([
+      ...fixture.challengerSourceLineage.source_finding_refs,
+      { record_kind: "research_finding", id: release.finding.research_finding_id }
+    ]);
+    expect((await fixture.store.listResearchFindings()).filter((finding) =>
+      finding.research_finding_id === release.finding.research_finding_id
+    )).toEqual([release.finding]);
+    expect((await fixture.store.listArtifactLineages()).filter((lineage) =>
+      lineage.artifact_lineage_id === release.lineage.artifact_lineage_id
+    )).toEqual([release.lineage]);
+    await expect(fixture.store.getLatestTradingPromotion()).resolves.toBeUndefined();
+
+    fixture.setNowAfter(release.released_at, 24 * 60 * 60_000);
+    await expect(fixture.releases.release({
+      campaignOutcomeId:
+        confirmedOutcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    })).resolves.toEqual(release);
+    await expect(fixture.store.listPaperTradingComparisonResearchReleases())
+      .resolves.toEqual([release]);
 
     const restartedStore = new LocalStore(fixture.store.root());
     await restartedStore.initialize();
@@ -181,6 +258,24 @@ describe("paper comparison confirmation campaign integration", () => {
     expect(replay).toEqual(confirmedOutcome);
     await expect(restartedStore.listPaperTradingComparisonConfirmationCampaignOutcomes())
       .resolves.toEqual([mixedOutcome, confirmedOutcome]);
+    await expect(restartedStore.recoverPaperTradingComparisonResearchReleases())
+      .resolves.toEqual([release]);
+    await expect(new PaperTradingComparisonResearchReleaseService({
+      store: restartedStore,
+      now: () => new Date(
+        Date.parse(release.released_at) + 48 * 60 * 60_000
+      ).toISOString()
+    }).release({
+      campaignOutcomeId:
+        confirmedOutcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    })).resolves.toEqual(release);
+    expect((await restartedStore.listResearchFindings()).filter((finding) =>
+      finding.research_finding_id === release.finding.research_finding_id
+    )).toEqual([release.finding]);
+    expect((await restartedStore.listArtifactLineages()).filter((lineage) =>
+      lineage.artifact_lineage_id === release.lineage.artifact_lineage_id
+    )).toEqual([release.lineage]);
+    await expect(restartedStore.getLatestTradingPromotion()).resolves.toBeUndefined();
   }, 60_000);
 });
 
@@ -192,14 +287,41 @@ async function integrationFixture(root: string) {
   const challengerCode = challengerSystemCode();
   await store.recordSystemCode(challengerCode);
   const challengerOutcome = await store.materializeCandidate(
-    challengerMaterializationInput(challengerCode.system_code_id)
+    challengerMaterializationInput(challengerCode, champion)
   );
   if (challengerOutcome.status !== "materialized") {
     throw new Error("integration challenger did not materialize");
   }
   const challenger = challengerOutcome.candidate;
   const championAdmission = await recordAdmission(store, champion, "champion");
-  const challengerAdmission = await recordAdmission(store, challenger, "challenger");
+  const championSystemCodeId = champion.system_code?.ref?.id;
+  if (!championSystemCodeId) throw new Error("missing champion source SystemCode");
+  const challengerAdmission = await recordAdmission(
+    store,
+    challenger,
+    "challenger",
+    championSystemCodeId
+  );
+  const challengerSourceFinding = (await store.listResearchFindings()).find((finding) =>
+    finding.research_finding_id === challengerAdmission.research_finding_ref.id
+  );
+  if (!challengerSourceFinding) {
+    throw new Error("missing challenger source Finding");
+  }
+  const challengerSourceLineage: ArtifactLineageRecord = {
+    record_kind: "artifact_lineage",
+    version: 1,
+    artifact_lineage_id: "lineage-confirmation-challenger-origin",
+    child_system_code_ref: { ...challengerAdmission.system_code_ref },
+    parent_system_code_ref: { ...challengerAdmission.source_system_code_ref },
+    source_finding_refs: [{ ...challengerAdmission.research_finding_ref }],
+    created_by_research_worker_ref: {
+      ...challengerSourceFinding.research_worker_ref
+    },
+    created_at: challengerSourceFinding.created_at,
+    authority_status: "lineage_only"
+  };
+  await store.recordArtifactLineage(challengerSourceLineage);
   const effects = {
     providerStarts: 0,
     providerCloses: 0,
@@ -369,6 +491,10 @@ async function integrationFixture(root: string) {
     comparisons: coordinator,
     now: () => now
   });
+  const releases = new PaperTradingComparisonResearchReleaseService({
+    store,
+    now: () => now
+  });
 
   const runWindow = async (
     graph: VerifiedPaperTradingComparisonCommitmentGraph,
@@ -525,6 +651,9 @@ async function integrationFixture(root: string) {
     coordinator,
     campaigns,
     windows,
+    releases,
+    challengerSourceFinding,
+    challengerSourceLineage,
     input,
     effects,
     runWindow,
@@ -706,12 +835,16 @@ function orderEventLine(instanceId: string, runId: string, at: string): string {
 async function recordAdmission(
   store: LocalStore,
   candidate: CandidateInspectReadModel,
-  suffix: "champion" | "challenger"
+  suffix: "champion" | "challenger",
+  sourceSystemCodeId?: string
 ): Promise<CandidateAdmissionDecisionRecord> {
   const systemCodeId = candidate.system_code?.ref?.id;
   const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
   if (!systemCode) throw new Error(`missing ${suffix} SystemCode`);
-  const sourceSystemCode: SystemCodeRecord = {
+  const existingSourceSystemCode = sourceSystemCodeId
+    ? await store.getSystemCode(sourceSystemCodeId)
+    : undefined;
+  const sourceSystemCode: SystemCodeRecord = existingSourceSystemCode ?? {
     ...systemCode,
     system_code_id: `system-code-confirmation-source-${suffix}`,
     artifact_digest: `sha256:confirmation-source-${suffix}`,
@@ -806,7 +939,7 @@ async function recordAdmission(
       : "2026-07-09T20:56:00.000Z",
     authority_status: "not_live"
   };
-  await store.recordSystemCode(sourceSystemCode);
+  if (!existingSourceSystemCode) await store.recordSystemCode(sourceSystemCode);
   await store.recordExperimentRun(experiment);
   await store.recordTradingEvaluationResult(evaluation);
   await store.recordResearchFinding(finding);
@@ -848,7 +981,14 @@ function challengerSystemCode(): SystemCodeRecord {
   };
 }
 
-function challengerMaterializationInput(systemCodeId: string): CandidateMaterializationInput {
+function challengerMaterializationInput(
+  systemCode: SystemCodeRecord,
+  source: CandidateInspectReadModel
+): CandidateMaterializationInput {
+  const sourceSystemCodeRef = source.system_code?.ref;
+  if (!sourceSystemCodeRef?.record_kind || !sourceSystemCodeRef.id) {
+    throw new Error("missing challenger full-cycle source SystemCode");
+  }
   return {
     idempotency_key: "confirmation-integration-challenger",
     provider: {
@@ -887,6 +1027,29 @@ function challengerMaterializationInput(systemCodeId: string): CandidateMaterial
       ]
     },
     artifact_refs: [{ record_kind: "provider_output_artifact", id: "confirmation-output" }],
-    system_code_ref: { record_kind: "system_code", id: systemCodeId }
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    full_cycle_lineage: {
+      source: {
+        trading_system_id: source.candidate_id,
+        candidate_version_id: source.candidate_version.candidate_version_id,
+        system_code_ref: {
+          record_kind: sourceSystemCodeRef.record_kind,
+          id: sourceSystemCodeRef.id
+        }
+      },
+      generated: {
+        system_code_ref: {
+          record_kind: "system_code",
+          id: systemCode.system_code_id
+        },
+        artifact_digest: systemCode.artifact_digest,
+        generated_by_agent: true
+      },
+      evaluation: {
+        status: "accepted",
+        score: 0.7,
+        direction_kind: "mean_reversion"
+      }
+    }
   };
 }

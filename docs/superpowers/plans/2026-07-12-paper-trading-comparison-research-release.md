@@ -8,6 +8,8 @@
 ArtifactLineage, FindingCluster, and later ResearchWorker context without leaking unreleased
 evidence or creating promotion/trading authority.
 
+**Status:** Complete
+
 **Architecture:** Domain owns one append-only release bundle with embedded exact Finding and
 Lineage. Application owns pure release classification and the service that resolves origin
 provenance. LocalStore independently validates, persists, materializes, freezes, and recovers the
@@ -476,7 +478,7 @@ git commit -m "feat: consume released comparison findings"
 - Proves: actual campaign outcome to release bundle to materialized Finding/Lineage to restart
 - Records: release is internal and promotion integration remains separate
 
-- [ ] **Step 1: Extend the real campaign lifecycle integration**
+- [x] **Step 1: Extend the real campaign lifecycle integration**
 
 Give the challenger fixture complete full-cycle direction and original ArtifactLineage evidence.
 Before release, assert the confirmed outcome has created no new campaign Finding/Lineage. Release
@@ -484,19 +486,19 @@ the exact confirmed outcome, then assert positive classification, exact supporti
 parent, one materialized Finding/Lineage, no TradingPromotion, and exact replay. Restart LocalStore,
 run release recovery, and assert the same bundle and materialized records remain.
 
-- [ ] **Step 2: Add negative/ineligible/expired integration coverage at the narrowest layer**
+- [x] **Step 2: Add negative/ineligible/expired integration coverage at the narrowest layer**
 
 Use pure decision and Store fixtures rather than running extra six-window campaigns. Prove each
 class persists and materializes the correct Finding kind, and source verdict exclusion remains
 exact.
 
-- [ ] **Step 3: Update canonical docs**
+- [x] **Step 3: Update canonical docs**
 
 Add the ResearchRelease noun, classification priority, recoverable bundle, released context,
 FindingCluster use, and ablation evidence. State explicitly that raw outcomes stay sealed until
 release and no promotion/public/private/live authority was added.
 
-- [ ] **Step 4: Verify no forbidden authority composition**
+- [x] **Step 4: Verify no forbidden authority composition**
 
 ```bash
 rg -n "ResearchReleaseService|recordPaperTradingComparisonResearchRelease" apps packages --glob '!**/*.test.ts'
@@ -506,7 +508,7 @@ rg -n 'recordTradingPromotion|promotion_eligibility|private_exchange_access: "al
 Expected: internal domain/application/Store and CandidateArena read-only consumption only; no
 promotion, private, direct-order, or live authority.
 
-- [ ] **Step 5: Run repository-wide verification**
+- [x] **Step 5: Run repository-wide verification**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-research-release.test.ts packages/application/src/trading/paper/comparison-research-release-decision.test.ts packages/application/src/trading/paper/comparison-research-release-service.test.ts packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts packages/local-store/test/local-store.test.ts
@@ -518,12 +520,21 @@ git diff --check
 
 Run localhost provider/subprocess tests with the required unsandboxed execution permission.
 
-- [ ] **Step 6: Mark design/plan complete and commit durable truth**
+- [x] **Step 6: Mark design/plan complete and commit durable truth**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-paper-trading-comparison-research-release-design.md docs/superpowers/plans/2026-07-12-paper-trading-comparison-research-release.md
 git commit -m "docs: record paper comparison research release"
 ```
+
+## Verification Evidence
+
+- Focused release lifecycle: 6 files, 417 tests passed.
+- Workspace typecheck and repository guards passed, including architecture, naming, environment,
+  secret, documentation-link, and diff checks.
+- Full repository suite: 111 files, 1,696 tests passed on the final rerun. One pre-existing operator
+  polling smoke timed out only under the first parallel run and passed alone in 2.15 seconds before
+  the clean full rerun; no unrelated timeout change was made.
 
 ## Plan Self-Review
 

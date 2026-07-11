@@ -101,11 +101,18 @@ Current command groups:
   one exact improved source verdict, materialize only the next slot, and settle every reserved
   improved, non-improved, ineligible, or expired result. LocalStore enforces active-pair ownership,
   strict sequence, non-overlap, bounded first-tick delay, source-verdict exclusion, and exact replay.
-  Only an all-improved outcome is protocol-level `eligible`; it still does not select a champion,
-  release Finding/Lineage memory, or create TradingPromotion. These services and Store methods
-  remain uncomposed from apps, controllers, operator projections, and public `OuroborosCommand`.
-  Process resume, evidence release, promotion integration, private access, and live authority remain
-  pending and outside this command contract.
+  Only an all-improved outcome is protocol-level `eligible`; the outcome itself still does not
+  select a champion, become research-visible, or create TradingPromotion. A separate internal
+  `PaperTradingComparisonResearchReleaseService` may bind one terminal outcome to its challenger's
+  exact admission Finding and original ArtifactLineage, then persist one append-only recoverable
+  bundle whose embedded Finding and extended Lineage become later CandidateArena context.
+  LocalStore independently validates classification and provenance, freezes release-bound child
+  IDs, and recovers partial materialization after restart. CandidateArena reads only accepted
+  releases, exposes compact `released_campaign_findings`, and may use their FindingCluster pressure
+  to reorder ResearchDirections; it never falls back to raw campaign outcomes. Release creation
+  remains uncomposed from apps, controllers, operator projections, and public
+  `OuroborosCommand`. Process resume, promotion integration, private access, and live authority
+  remain pending and outside this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -230,9 +237,11 @@ matching `research_feedback` commitment with `closed_observation` release policy
 research projections, and its observation chain and score must reconcile to the committed fake
 account. Candidate-level Ledger activity cannot create a paper research projection by itself.
 Qualification-purpose, invalidated, or integrity-failed scores, failures, observations, Ledger
-fields, and commitment digests remain omitted even after a run stops or fails; a future adjudicator
-owns release. The same predicate gates `paper_trading_evaluation_leader` source selection; sealed or
-corrupt paper evidence cannot become the next ResearchWorker's parent. Candidate-aggregate Ledger
+fields, and commitment digests remain omitted even after a run stops or fails. For completed
+confirmation campaigns, only an accepted `PaperTradingComparisonResearchRelease` owns later
+research visibility; raw outcomes remain sealed. The same predicate gates
+`paper_trading_evaluation_leader` source selection; sealed or corrupt paper evidence cannot become
+the next ResearchWorker's parent. Candidate-aggregate Ledger
 summaries are omitted until evidence can be resolved by the released evaluation's exact TradingRun.
 Selected paper
 evidence should also carry a compact

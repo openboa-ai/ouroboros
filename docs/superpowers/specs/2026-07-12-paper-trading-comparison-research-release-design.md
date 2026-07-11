@@ -1,7 +1,7 @@
 # Paper Trading Comparison Research Release Design
 
 **Date:** 2026-07-12
-**Status:** Approved by standing Goal authority; implementation not started
+**Status:** Implemented and repository-verified
 **Depends on:** Repository-verified sealed
 `PaperTradingComparisonConfirmationCampaignOutcome`
 
@@ -19,12 +19,12 @@ TradingPromotion merely because Research can learn from it.
 
 ## Current Boundary
 
-The repository already persists exact campaign/outcome evidence and keeps it hidden from
-CandidateArena context, Finding, Lineage, leaderboards, public commands, and operator read models.
-Existing `ResearchFindingRecord` and `ArtifactLineageRecord` are consumed by research orchestration,
-while CandidateArena context separately builds paper-backed FindingClusters. Writing either record
-alone is not a safe release boundary because a crash can leave half a causal chain and their current
-Store writers are not campaign-aware append-only gates.
+The repository persists exact campaign/outcome evidence and keeps it hidden until one accepted
+research release exists. Existing `ResearchFindingRecord` and `ArtifactLineageRecord` remain the
+research-orchestration records, while `PaperTradingComparisonResearchRelease` is the append-only
+visibility boundary that freezes and rematerializes both. CandidateArena consumes only accepted
+release bundles and still builds paper-backed FindingClusters independently. Raw campaign outcomes,
+leaderboards, public commands, and operator read models do not imply release.
 
 ## Approaches
 
@@ -236,6 +236,23 @@ The causal acceptance proof is an ablation:
 12. Focused domain, application, LocalStore, CandidateArena context, typecheck, repository guards,
     and full-suite validation pass.
 
+## Implementation Evidence
+
+- Domain shape and digest tests cover all four release kinds, deterministic child IDs, causal
+  Finding/Lineage refs, canonical persistence input, and no-authority fields.
+- Pure decision tests cover classification priority and malformed, reordered, duplicate, mixed,
+  ineligible, and expired slot evidence without input mutation.
+- LocalStore tests cover append-only persistence, one-outcome identity, bundle-first crash recovery,
+  exact materialization, release-bound child freezing, origin graph validation, and restart replay.
+- Service tests cover malformed-input no-read behavior, all four terminal classes, exact provenance,
+  clock ownership, ambiguous or late Lineage rejection, and Store replay conflicts.
+- CandidateArena's unreleased/released ablation uses a real LocalStore candidate. Only the release
+  adds compact context and a FindingCluster, moves `mean_reversion` to the first default direction,
+  and deduplicates repeated reads without changing rank or promotion authority.
+- The real confirmation lifecycle test reaches prospective public-fill paper evidence, confirmed
+  outcome, release, materialized Finding/Lineage, exact replay, restart recovery, and no
+  TradingPromotion.
+
 ## Out Of Scope
 
 - consuming `eligible` outcomes in TradingPromotion review;
@@ -248,7 +265,7 @@ The causal acceptance proof is an ablation:
 
 ## Next Frontier
 
-After repository verification, consume protocol-level eligible outcomes in a separately reviewed
-TradingPromotion path, then use released causal memory and efficiency evidence to govern durable
+Consume protocol-level eligible outcomes in a separately reviewed TradingPromotion path, then use
+released causal memory and efficiency evidence to govern durable
 ResearchWorker budgets and recovery. Neither frontier may mutate completed campaign or release
 evidence.

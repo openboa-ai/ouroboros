@@ -37,7 +37,8 @@ that pack every axis into one identifier.
 | `PaperTradingComparisonVerdict` | Append-only external evaluation of one exact settled comparison window. It records qualified improvement, qualified non-improvement, or ineligible closure, remains sealed and promotion-ineligible, and releases only the experiment pair for another precommitted window. |
 | `PaperTradingComparisonConfirmationCampaign` | Append-only sealed precommitment for every new prospective window used to confirm one exact source improved verdict. It freezes deterministic slots, pair identity, policy, strict sequence, non-overlap, and bounded start delay before campaign evidence exists. |
 | `PaperTradingComparisonConfirmationSlot` | One deterministic future comparison identity nested in a confirmation campaign. It is immutable commitment data, not a mutable lifecycle record or an observed result. |
-| `PaperTradingComparisonConfirmationCampaignOutcome` | Append-only external aggregate decision over every reserved slot. Only all improved slots produce protocol-level `eligible`; it remains sealed, paper-only, `not_live`, and grants no promotion, research release, private, or live authority. |
+| `PaperTradingComparisonConfirmationCampaignOutcome` | Append-only external aggregate decision over every reserved slot. Only all improved slots produce protocol-level `eligible`; it remains sealed, paper-only, `not_live`, and grants no promotion, implicit research visibility, private, or live authority. |
+| `PaperTradingComparisonResearchRelease` | Append-only internal visibility bundle for one exact terminal campaign outcome. It materializes one deterministic Finding and extended ArtifactLineage, recovers after restart, and remains `lineage_only` with no promotion, public, private, order, or live authority. |
 | `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one paper window cannot carry both or be upgraded after outcomes are known. |
 | `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
@@ -47,7 +48,7 @@ that pack every axis into one identifier.
 | `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
 | `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
-| `FindingCluster` | Read-only CandidateArena grouping of findings by direction, blocker, market regime, and protocol failure for the next ResearchWorker context. |
+| `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
 | `PaperEvidence` | Selected-candidate proof from the paper TradingRun, Gateway, and Ledger path. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate CandidateArena. |
@@ -115,6 +116,9 @@ standard term fits. Record that decision in repo docs and tests.
 - Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical
   significance, champion replacement, or promotion eligibility. Confirmation requires a campaign
   committed before any campaign-bound outcome, and every reserved terminal result must count.
+- Do not infer research visibility from a sealed confirmation outcome. Only an accepted
+  `PaperTradingComparisonResearchRelease` may add its compact Finding to later ResearchWorker
+  context and FindingClusters; release kind is not rank or promotion authority.
 - Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
   `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.

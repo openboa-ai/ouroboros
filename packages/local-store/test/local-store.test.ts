@@ -4236,6 +4236,36 @@ describe("LocalStore", () => {
     )).toHaveLength(1);
   });
 
+  it.each([
+    ["challenger_not_reproduced", "negative_result"],
+    ["comparison_evidence_ineligible", "failure_analysis"],
+    ["campaign_slot_expired", "failure_analysis"]
+  ] as const)("persists and materializes %s campaign research evidence", async (
+    releaseKind,
+    findingKind
+  ) => {
+    const store = new LocalStore(path.join(tmpDir, releaseKind));
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(
+      store,
+      releaseKind
+    );
+
+    await expect(store.recordPaperTradingComparisonResearchRelease(fixture.release))
+      .resolves.toMatchObject({
+        release_kind: releaseKind,
+        finding: { finding_kind: findingKind }
+      });
+    await expect(store.listResearchFindings()).resolves.toContainEqual(
+      fixture.release.finding
+    );
+    await expect(store.listArtifactLineages()).resolves.toContainEqual(
+      fixture.release.lineage
+    );
+    expect(fixture.release.finding.supporting_record_refs.map((ref) => ref.id))
+      .not.toContain(fixture.campaign.source_verdict_ref.id);
+  });
+
   it("recovers release materialization after a bundle-first crash", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -10356,7 +10386,9 @@ function validConfirmationCampaignOutcome(
 }
 
 async function storedPaperTradingComparisonResearchReleaseFixture(
-  store: LocalStore
+  store: LocalStore,
+  releaseKind: PaperTradingComparisonResearchReleaseRecord["release_kind"] =
+    "confirmed_improvement"
 ) {
   const fixture = await storedQualifiedComparisonVerdictFixture(
     store,
@@ -10390,15 +10422,24 @@ async function storedPaperTradingComparisonResearchReleaseFixture(
     1,
     "challenger_improved"
   );
-  await storedConfirmationSlotComparison(store, fixture, campaign, 2);
-  const second = await seedConfirmationSlotVerdict(
-    store,
-    fixture,
-    campaign,
-    2,
-    "challenger_improved"
-  );
-  const outcome = validConfirmationCampaignOutcome(campaign, [first, second]);
+  let outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord;
+  if (releaseKind === "campaign_slot_expired") {
+    outcome = validExpiredConfirmationCampaignOutcome(campaign, [first]);
+  } else {
+    await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+    const second = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      2,
+      releaseKind === "confirmed_improvement"
+        ? "challenger_improved"
+        : releaseKind === "challenger_not_reproduced"
+          ? "challenger_not_improved"
+          : "comparison_ineligible"
+    );
+    outcome = validConfirmationCampaignOutcome(campaign, [first, second]);
+  }
   await store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome);
   const release = validPaperTradingComparisonResearchRelease(
     campaign,
@@ -10422,6 +10463,7 @@ function validPaperTradingComparisonResearchRelease(
   sourceFinding: ResearchFindingRecord,
   sourceLineage: ArtifactLineageRecord
 ): PaperTradingComparisonResearchReleaseRecord {
+  const decision = paperTradingComparisonResearchReleaseFixtureDecision(outcome);
   const releaseId =
     `${outcome.paper_trading_comparison_confirmation_campaign_outcome_id}-research-release`;
   const releasedAt = new Date(Date.parse(outcome.evaluated_at) + 1).toISOString();
@@ -10435,12 +10477,8 @@ function validPaperTradingComparisonResearchRelease(
     trading_evaluation_result_ref: {
       ...sourceFinding.trading_evaluation_result_ref
     },
-    finding_kind: "positive_result",
-    summary: `Paper comparison confirmation campaign ${campaign.paper_trading_comparison_confirmation_campaign_id}: ` +
-      `improved=${outcome.improved_count}, ` +
-      `not_improved=${outcome.not_improved_count}, ` +
-      `ineligible=${outcome.ineligible_count}, ` +
-      `expired=${outcome.expired_count}; release=confirmed_improvement.`,
+    finding_kind: decision.findingKind,
+    summary: decision.summary,
     supporting_record_refs: [
       { record_kind: "research_finding", id: sourceFinding.research_finding_id },
       {
@@ -10507,13 +10545,12 @@ function validPaperTradingComparisonResearchRelease(
       paperTradingComparisonPersistedRecordDigestInput(sourceLineage)
     ),
     direction_kind: "mean_reversion",
-    release_kind: "confirmed_improvement",
+    release_kind: decision.releaseKind,
     finding,
     finding_record_digest: "sha256:pending",
     lineage,
     lineage_record_digest: "sha256:pending",
-    next_research_focus:
-      "Preserve the confirmed artifact lineage and generate controlled variants under new prospective evidence.",
+    next_research_focus: decision.nextResearchFocus,
     released_at: releasedAt,
     release_digest: "sha256:pending",
     research_visibility: "released_to_research",
@@ -10523,6 +10560,40 @@ function validPaperTradingComparisonResearchRelease(
     order_submission_authority: false,
     authority_status: "lineage_only"
   });
+}
+
+function paperTradingComparisonResearchReleaseFixtureDecision(
+  outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+) {
+  const releaseKind = outcome.campaign_outcome === "confirmed_improvement"
+    ? "confirmed_improvement" as const
+    : outcome.not_improved_count > 0
+      ? "challenger_not_reproduced" as const
+      : outcome.ineligible_count > 0
+        ? "comparison_evidence_ineligible" as const
+        : "campaign_slot_expired" as const;
+  const findingKind = releaseKind === "confirmed_improvement"
+    ? "positive_result" as const
+    : releaseKind === "challenger_not_reproduced"
+      ? "negative_result" as const
+      : "failure_analysis" as const;
+  const nextResearchFocus = releaseKind === "confirmed_improvement"
+    ? "Preserve the confirmed artifact lineage and generate controlled variants under new prospective evidence."
+    : releaseKind === "challenger_not_reproduced"
+      ? "Explain non-reproduction, preserve the negative result, and generate differentiated candidates under new prospective evidence."
+      : releaseKind === "comparison_evidence_ineligible"
+        ? "Repair comparison evidence and protocol quality before making an economic interpretation."
+        : "Repair campaign scheduling and recovery before making an economic interpretation.";
+  return {
+    releaseKind,
+    findingKind,
+    summary: `Paper comparison confirmation campaign ${outcome.campaign_ref.id}: ` +
+      `improved=${outcome.improved_count}, ` +
+      `not_improved=${outcome.not_improved_count}, ` +
+      `ineligible=${outcome.ineligible_count}, ` +
+      `expired=${outcome.expired_count}; release=${releaseKind}.`,
+    nextResearchFocus
+  };
 }
 
 function withPaperTradingComparisonResearchReleaseDigests(
