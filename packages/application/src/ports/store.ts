@@ -29,6 +29,7 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonTickRecord,
+  PaperTradingComparisonActivationRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -200,6 +201,15 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonTicks(
     comparisonId: string
   ): Promise<PaperTradingComparisonTickRecord[]>;
+  recordPaperTradingComparisonActivation(
+    activation: PaperTradingComparisonActivationRecord
+  ): Promise<PaperTradingComparisonActivationRecord>;
+  getPaperTradingComparisonActivation(
+    activationId: string
+  ): Promise<PaperTradingComparisonActivationRecord | undefined>;
+  listPaperTradingComparisonActivations(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonActivationRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

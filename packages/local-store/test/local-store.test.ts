@@ -42,6 +42,8 @@ import type {
   OrderFillSurfaceRecord,
   OrderRequestRecord,
   PaperTradingAccountSnapshot,
+  PaperTradingComparisonActivationRecord,
+  PaperTradingComparisonActivationSide,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -71,6 +73,8 @@ import type {
 } from "@ouroboros/domain";
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
+  paperTradingComparisonActivationDigestInput,
+  paperTradingComparisonActivationPolicyFor,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCommitmentDigestInput,
@@ -4853,6 +4857,287 @@ describe("LocalStore", () => {
       fixture.comparison.paper_trading_comparison_commitment_id
     )).resolves.toEqual([]);
   });
+
+  it("records, reloads, lists, and exactly replays one paper comparison activation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    const activation = validPaperTradingComparisonActivation(fixture.comparison, tick);
+    const before = await comparisonActivationInvariantSnapshot(store);
+
+    await expect(store.recordPaperTradingComparisonActivation(activation))
+      .resolves.toEqual(activation);
+    await expect(store.recordPaperTradingComparisonActivation(activation))
+      .resolves.toEqual(activation);
+    const reordered = Object.fromEntries(
+      Object.entries(activation).reverse()
+    ) as unknown as PaperTradingComparisonActivationRecord;
+    await expect(store.recordPaperTradingComparisonActivation(reordered))
+      .resolves.toEqual(activation);
+    await expect(store.getPaperTradingComparisonActivation(
+      activation.paper_trading_comparison_activation_id
+    )).resolves.toEqual(activation);
+    await expect(store.listPaperTradingComparisonActivations(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([activation]);
+    await expect(comparisonActivationInvariantSnapshot(store)).resolves.toEqual(before);
+  });
+
+  it.each([
+    ["digest", (activation: PaperTradingComparisonActivationRecord) => ({
+      ...activation,
+      activation_digest: "sha256:wrong"
+    }), "paper_trading_comparison_activation_digest_mismatch"],
+    ["missing pair", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        paper_trading_comparison_commitment_ref: {
+          record_kind: "paper_trading_comparison_commitment",
+          id: "missing-comparison"
+        }
+      }), "paper_trading_comparison_activation_reference_not_found"],
+    ["pair digest", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        paper_trading_comparison_commitment_digest: "sha256:wrong-comparison"
+      }), "paper_trading_comparison_activation_reference_mismatch"],
+    ["tick ref", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        first_tick_ref: {
+          record_kind: "paper_trading_comparison_tick",
+          id: "missing-first-tick"
+        }
+      }), "paper_trading_comparison_activation_reference_mismatch"],
+    ["tick digest", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({ ...activation, first_tick_digest: "sha256:wrong-tick" }),
+      "paper_trading_comparison_activation_reference_mismatch"],
+    ["market configuration", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        market_data_configuration_digest: "sha256:wrong-market"
+      }), "paper_trading_comparison_activation_reference_mismatch"],
+    ["side ref", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        challenger: {
+          ...activation.challenger,
+          trading_run_ref: { record_kind: "trading_run", id: "wrong-run" }
+        }
+      }), "paper_trading_comparison_activation_reference_mismatch"],
+    ["policy", (activation: PaperTradingComparisonActivationRecord) =>
+      withActivationDigest({
+        ...activation,
+        activation_policy: {
+          ...activation.activation_policy,
+          maximum_start_skew_ms: activation.activation_policy.maximum_start_skew_ms + 1
+        }
+      }), "paper_trading_comparison_activation_policy_mismatch"],
+    ["authorization time", (activation: PaperTradingComparisonActivationRecord) => ({
+      ...activation,
+      authorized_at: "2026-07-10T00:00:00.999Z"
+    }), "paper_trading_comparison_activation_time_mismatch"]
+  ] as const)("rejects paper comparison activation %s mismatch without mutation", async (
+    label,
+    mutate,
+    code
+  ) => {
+    const store = new LocalStore(path.join(tmpDir, `activation-${label}`));
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    const before = await comparisonActivationInvariantSnapshot(store);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonActivation(mutate(
+        validPaperTradingComparisonActivation(fixture.comparison, tick)
+      )),
+      code
+    );
+    await expect(store.listPaperTradingComparisonActivations(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([]);
+    await expect(comparisonActivationInvariantSnapshot(store)).resolves.toEqual(before);
+  });
+
+  it("rejects paper comparison activation with missing, non-sole, or corrupt first tick", async () => {
+    for (const problem of ["missing", "non-sole", "corrupt"] as const) {
+      const store = new LocalStore(path.join(tmpDir, `activation-tick-${problem}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      const tick = validPaperTradingComparisonTick(fixture.comparison);
+      if (problem !== "missing") {
+        await store.recordPaperTradingComparisonTick(tick);
+      }
+      if (problem === "non-sole") {
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-comparison-ticks",
+          "paper-comparison-first-tick-alternate",
+          withTickDigest({
+            ...tick,
+            paper_trading_comparison_tick_id: "paper-comparison-first-tick-alternate"
+          })
+        );
+      }
+      if (problem === "corrupt") {
+        await overwriteComparisonFixtureBytes(
+          store,
+          "paper-trading-comparison-ticks",
+          tick.paper_trading_comparison_tick_id,
+          "{"
+        );
+      }
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivation(
+          validPaperTradingComparisonActivation(fixture.comparison, tick)
+        ),
+        problem === "missing"
+          ? "paper_trading_comparison_activation_reference_not_found"
+          : problem === "non-sole"
+            ? "paper_trading_comparison_activation_reference_mismatch"
+            : "paper_trading_comparison_activation_graph_invalid"
+      );
+    }
+  });
+
+  it("rejects paper comparison activation when the frozen pair is no longer inert", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      fixture.challengerEvaluation.paper_trading_evaluation_id,
+      {
+        ...fixture.challengerEvaluation,
+        latest_score: {
+          revenue_usdt: 1,
+          cost_usdt: 0,
+          net_revenue_usdt: 1,
+          net_return_pct: 0.01
+        }
+      }
+    );
+    const before = await comparisonActivationInvariantSnapshot(store);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonActivation(
+        validPaperTradingComparisonActivation(fixture.comparison, tick)
+      ),
+      "paper_trading_comparison_activation_graph_invalid"
+    );
+    await expect(comparisonActivationInvariantSnapshot(store)).resolves.toEqual(before);
+  });
+
+  it("rejects drifted and alternate paper comparison activations", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    const activation = validPaperTradingComparisonActivation(fixture.comparison, tick);
+    await store.recordPaperTradingComparisonActivation(activation);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonActivation({
+        ...activation,
+        authorized_at: "2026-07-10T00:00:03.000Z"
+      }),
+      "paper_trading_comparison_activation_conflict"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonActivation(withActivationDigest({
+        ...activation,
+        paper_trading_comparison_activation_id: "paper-comparison-activation-alternate"
+      })),
+      "paper_trading_comparison_activation_pair_conflict"
+    );
+    await expect(store.listPaperTradingComparisonActivations(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([activation]);
+  });
+
+  it("serializes concurrent alternate paper comparison activations", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    const first = validPaperTradingComparisonActivation(fixture.comparison, tick);
+    const second = withActivationDigest({
+      ...first,
+      paper_trading_comparison_activation_id: "paper-comparison-activation-concurrent"
+    });
+
+    const results = await Promise.allSettled([
+      store.recordPaperTradingComparisonActivation(first),
+      store.recordPaperTradingComparisonActivation(second)
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [rejected] = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    expect(rejected?.reason).toMatchObject({
+      code: "paper_trading_comparison_activation_pair_conflict"
+    });
+    await expect(store.listPaperTradingComparisonActivations(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toHaveLength(1);
+  });
+
+  it("fails closed on corrupt or digest-drifted persisted paper comparison activation", async () => {
+    for (const problem of ["corrupt", "digest"] as const) {
+      const store = new LocalStore(path.join(tmpDir, `activation-reload-${problem}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      const tick = validPaperTradingComparisonTick(fixture.comparison);
+      await store.recordPaperTradingComparisonTick(tick);
+      const activation = validPaperTradingComparisonActivation(fixture.comparison, tick);
+      await store.recordPaperTradingComparisonActivation(activation);
+      if (problem === "corrupt") {
+        await overwriteComparisonFixtureBytes(
+          store,
+          "paper-trading-comparison-activations",
+          activation.paper_trading_comparison_activation_id,
+          "{"
+        );
+      } else {
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-comparison-activations",
+          activation.paper_trading_comparison_activation_id,
+          { ...activation, activation_digest: "sha256:persisted-drift" }
+        );
+      }
+
+      await expectStoreError(
+        store.getPaperTradingComparisonActivation(
+          activation.paper_trading_comparison_activation_id
+        ),
+        "paper_trading_comparison_activation_reload_failed"
+      );
+      await expectStoreError(
+        store.listPaperTradingComparisonActivations(
+          fixture.comparison.paper_trading_comparison_commitment_id
+        ),
+        "paper_trading_comparison_activation_reload_failed"
+      );
+    }
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -5714,6 +5999,106 @@ function withTickDigest(
       .update(paperTradingComparisonTickDigestInput(tick))
       .digest("hex")}`
   };
+}
+
+function validPaperTradingComparisonActivation(
+  comparison: PaperTradingComparisonCommitmentRecord,
+  tick: PaperTradingComparisonTickRecord
+): PaperTradingComparisonActivationRecord {
+  return withActivationDigest({
+    record_kind: "paper_trading_comparison_activation",
+    version: 1,
+    paper_trading_comparison_activation_id: "paper-comparison-activation-store-001",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: comparison.paper_trading_comparison_commitment_id
+    },
+    paper_trading_comparison_commitment_digest: comparison.commitment_digest,
+    first_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: tick.paper_trading_comparison_tick_id
+    },
+    first_tick_digest: tick.tick_digest,
+    champion: comparisonActivationSide(comparison.champion),
+    challenger: comparisonActivationSide(comparison.challenger),
+    market_data_configuration_digest: comparison.market_data_configuration_digest,
+    activation_policy: paperTradingComparisonActivationPolicyFor(
+      comparison.comparison_policy
+    ),
+    activation_scope: "qualification_pair",
+    activation_status: "authorized",
+    authorized_at: "2026-07-10T00:00:02.000Z",
+    activation_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    private_exchange_access: "forbidden",
+    credentials_access: "forbidden",
+    authority_status: "not_live"
+  });
+}
+
+function comparisonActivationSide(
+  side: PaperTradingComparisonSide
+): PaperTradingComparisonActivationSide {
+  return {
+    role: side.role,
+    trading_run_ref: { ...side.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      ...side.paper_trading_evaluation_commitment_ref
+    },
+    paper_trading_evaluation_ref: { ...side.paper_trading_evaluation_ref }
+  };
+}
+
+function withActivationDigest(
+  activation: PaperTradingComparisonActivationRecord
+): PaperTradingComparisonActivationRecord {
+  return {
+    ...activation,
+    activation_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonActivationDigestInput(activation))
+      .digest("hex")}`
+  };
+}
+
+async function comparisonActivationInvariantSnapshot(
+  store: LocalStore
+): Promise<Record<string, Array<{ file: string; bytes: string }>>> {
+  const collections = [
+    "candidates",
+    "candidate-versions",
+    "system-codes",
+    "candidate-admission-decisions",
+    "trading-promotions",
+    "paper-trading-comparison-preparations",
+    "paper-trading-comparison-commitments",
+    "paper-trading-comparison-ticks",
+    "trading-runs",
+    "paper-trading-evaluation-commitments",
+    "paper-trading-evaluations",
+    "paper-trading-observations",
+    "order-requests",
+    "gateway-results",
+    "execution-results",
+    "run-control-commands",
+    "run-control-decisions",
+    "runtime-audit-events",
+    "sandboxes",
+    "sandbox-logs",
+    "runtime-heartbeats",
+    "sandbox-command-evidence"
+  ];
+  return Object.fromEntries(await Promise.all(collections.map(async (collection) => {
+    const itemDir = path.join(store.root(), collection, "items");
+    const files = (await readdir(itemDir).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    })).sort();
+    return [collection, await Promise.all(files.map(async (file) => ({
+      file,
+      bytes: await readFile(path.join(itemDir, file), "utf8")
+    })))] as const;
+  })));
 }
 
 const boundSideWriterKinds = [

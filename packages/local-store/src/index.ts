@@ -41,6 +41,9 @@ import {
   buildLedgerReadModel,
   decidePaperTradingQualification,
   isCandidateAdmissionDecisionConsistent,
+  paperTradingComparisonActivationDigestInput,
+  paperTradingComparisonActivationHasRuntimeShape,
+  paperTradingComparisonActivationPolicyFor,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCandidateVersionPairKey,
@@ -51,6 +54,7 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonPreparationHasRuntimeShape,
+  paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
   paperTradingComparisonSideRecordsHaveInertShape,
   paperTradingComparisonStoppedQualificationClosureHasRuntimeShape,
@@ -149,6 +153,7 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
+  PaperTradingComparisonActivationRecord,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -291,6 +296,16 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_tick_reference_mismatch"
   | "paper_trading_comparison_first_tick_conflict"
   | "paper_trading_comparison_tick_graph_invalid"
+  | "invalid_paper_trading_comparison_activation_input"
+  | "paper_trading_comparison_activation_digest_mismatch"
+  | "paper_trading_comparison_activation_conflict"
+  | "paper_trading_comparison_activation_pair_conflict"
+  | "paper_trading_comparison_activation_reload_failed"
+  | "paper_trading_comparison_activation_reference_not_found"
+  | "paper_trading_comparison_activation_reference_mismatch"
+  | "paper_trading_comparison_activation_policy_mismatch"
+  | "paper_trading_comparison_activation_time_mismatch"
+  | "paper_trading_comparison_activation_graph_invalid"
   | "authority_evidence_identity_conflict";
 
 export class LocalStoreError extends Error {
@@ -363,6 +378,7 @@ type Collection =
   | "paper-trading-comparison-preparations"
   | "paper-trading-comparison-commitments"
   | "paper-trading-comparison-ticks"
+  | "paper-trading-comparison-activations"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -917,6 +933,36 @@ export class LocalStore {
       throw new LocalStoreError(
         errorCode,
         "persisted paper comparison tick digest does not match canonical content"
+      );
+    }
+  }
+
+  private assertPersistedComparisonActivationShape(
+    value: unknown,
+    errorCode: LocalStoreErrorCode =
+      "invalid_paper_trading_comparison_activation_input"
+  ): asserts value is PaperTradingComparisonActivationRecord {
+    if (!paperTradingComparisonActivationHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison activation has invalid runtime shape"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonActivationDigestInput(value)
+      );
+    } catch {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison activation is not canonically digestible"
+      );
+    }
+    if (value.activation_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison activation digest does not match canonical content"
       );
     }
   }
@@ -3725,6 +3771,280 @@ export class LocalStore {
     } catch {
       throw new LocalStoreError(
         "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison graph is not complete and inert"
+      );
+    }
+  }
+
+  async recordPaperTradingComparisonActivation(
+    activation: PaperTradingComparisonActivationRecord
+  ): Promise<PaperTradingComparisonActivationRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonActivationUnlocked(activation)
+    );
+  }
+
+  private async recordPaperTradingComparisonActivationUnlocked(
+    activation: PaperTradingComparisonActivationRecord
+  ): Promise<PaperTradingComparisonActivationRecord> {
+    if (!paperTradingComparisonActivationHasRuntimeShape(activation)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_activation_input",
+        "invalid paper trading comparison activation input"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonActivationDigestInput(activation)
+      );
+    } catch {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_activation_input",
+        "paper trading comparison activation is not canonically digestible"
+      );
+    }
+    if (activation.activation_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_digest_mismatch",
+        "paper trading comparison activation digest does not match canonical content"
+      );
+    }
+
+    const existing = await this.getPaperTradingComparisonActivation(
+      activation.paper_trading_comparison_activation_id
+    );
+    if (existing && !samePersistedComparisonRecord(existing, activation)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_conflict",
+        "paper trading comparison activation is append-only"
+      );
+    }
+
+    await this.validatePaperTradingComparisonActivationGraph(activation);
+    const comparisonId = activation.paper_trading_comparison_commitment_ref.id;
+    const activations = await this.listPaperTradingComparisonActivations(comparisonId);
+    const alternate = activations.find((record) =>
+      record.paper_trading_comparison_activation_id !==
+        activation.paper_trading_comparison_activation_id
+    );
+    if (alternate) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_pair_conflict",
+        "paper trading comparison already has a different activation authorization"
+      );
+    }
+    if (existing) {
+      return existing;
+    }
+
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-activations",
+        activation.paper_trading_comparison_activation_id
+      ),
+      activation
+    );
+    return activation;
+  }
+
+  async getPaperTradingComparisonActivation(
+    activationId: string
+  ): Promise<PaperTradingComparisonActivationRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-activations",
+        activationId
+      );
+      if (record === undefined) {
+        return undefined;
+      }
+      this.assertPersistedComparisonActivationShape(
+        record,
+        "paper_trading_comparison_activation_reload_failed"
+      );
+      return record;
+    } catch (error) {
+      if (
+        error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_activation_reload_failed"
+      ) {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reload_failed",
+        "persisted paper trading comparison activation is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonActivations(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonActivationRecord[]> {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-activations"
+      );
+      const validated = records.map((record) => {
+        this.assertPersistedComparisonActivationShape(
+          record,
+          "paper_trading_comparison_activation_reload_failed"
+        );
+        return record;
+      });
+      return validated
+        .filter((record) =>
+          record.paper_trading_comparison_commitment_ref.id === comparisonId
+        )
+        .sort((left, right) =>
+          left.authorized_at.localeCompare(right.authorized_at) ||
+          left.paper_trading_comparison_activation_id.localeCompare(
+            right.paper_trading_comparison_activation_id
+          )
+        );
+    } catch (error) {
+      if (
+        error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_activation_reload_failed"
+      ) {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reload_failed",
+        "persisted paper trading comparison activation collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonActivationGraph(
+    activation: PaperTradingComparisonActivationRecord
+  ): Promise<void> {
+    let comparison: PaperTradingComparisonCommitmentRecord | undefined;
+    try {
+      comparison = await this.getPaperTradingComparisonCommitment(
+        activation.paper_trading_comparison_commitment_ref.id
+      );
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_graph_invalid",
+        "paper trading comparison graph is unreadable or corrupt"
+      );
+    }
+    if (!comparison) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reference_not_found",
+        "paper trading comparison commitment was not found"
+      );
+    }
+    try {
+      this.assertPersistedComparisonCommitmentShape(comparison);
+      if (
+        comparison.commitment_digest !== comparisonExactRecordDigest(
+          paperTradingComparisonCommitmentDigestInput(comparison)
+        )
+      ) {
+        throw new Error("comparison digest mismatch");
+      }
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_graph_invalid",
+        "paper trading comparison commitment is invalid or corrupt"
+      );
+    }
+
+    let ticks: PaperTradingComparisonTickRecord[];
+    try {
+      ticks = await this.listPaperTradingComparisonTicks(
+        comparison.paper_trading_comparison_commitment_id
+      );
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_graph_invalid",
+        "paper trading comparison first tick is unreadable or corrupt"
+      );
+    }
+    if (ticks.length === 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reference_not_found",
+        "paper trading comparison first tick was not found"
+      );
+    }
+    if (ticks.length !== 1) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reference_mismatch",
+        "paper trading comparison does not have exactly one first tick"
+      );
+    }
+    const [tick] = ticks;
+    if (!tick) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reference_not_found",
+        "paper trading comparison first tick was not found"
+      );
+    }
+
+    const sideMatches = (
+      activationSide: PaperTradingComparisonActivationRecord["champion"],
+      comparisonSide: PaperTradingComparisonSide
+    ): boolean => activationSide.role === comparisonSide.role &&
+      paperTradingComparisonRefsEqual(
+        activationSide.trading_run_ref,
+        comparisonSide.trading_run_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        activationSide.paper_trading_evaluation_commitment_ref,
+        comparisonSide.paper_trading_evaluation_commitment_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        activationSide.paper_trading_evaluation_ref,
+        comparisonSide.paper_trading_evaluation_ref
+      );
+    if (
+      activation.paper_trading_comparison_commitment_ref.id !==
+        comparison.paper_trading_comparison_commitment_id ||
+      activation.paper_trading_comparison_commitment_digest !==
+        comparison.commitment_digest ||
+      activation.first_tick_ref.id !== tick.paper_trading_comparison_tick_id ||
+      activation.first_tick_digest !== tick.tick_digest ||
+      tick.paper_trading_comparison_commitment_ref.id !==
+        comparison.paper_trading_comparison_commitment_id ||
+      tick.paper_trading_comparison_commitment_digest !==
+        comparison.commitment_digest ||
+      activation.market_data_configuration_digest !==
+        comparison.market_data_configuration_digest ||
+      tick.market_data_configuration_digest !==
+        comparison.market_data_configuration_digest ||
+      !sideMatches(activation.champion, comparison.champion) ||
+      !sideMatches(activation.challenger, comparison.challenger)
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_reference_mismatch",
+        "paper trading comparison activation does not match its frozen pair and first tick"
+      );
+    }
+
+    const expectedPolicy = paperTradingComparisonActivationPolicyFor(
+      comparison.comparison_policy
+    );
+    if (!samePersistedComparisonRecord(activation.activation_policy, expectedPolicy)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_policy_mismatch",
+        "paper trading comparison activation policy was not derived from its frozen pair"
+      );
+    }
+    if (Date.parse(activation.authorized_at) < Date.parse(tick.observed_at)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_time_mismatch",
+        "paper trading comparison activation predates its first tick"
+      );
+    }
+
+    try {
+      await this.validatePaperTradingComparisonTickGraph(tick);
+      await this.validatePaperTradingComparisonCommitmentGraph(comparison);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_activation_graph_invalid",
         "paper trading comparison graph is not complete and inert"
       );
     }
@@ -8619,6 +8939,15 @@ function sameOptionalRef(left: Ref | undefined, right: Ref | undefined): boolean
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function samePersistedComparisonRecord(left: unknown, right: unknown): boolean {
+  try {
+    return paperTradingComparisonPersistedRecordDigestInput(left) ===
+      paperTradingComparisonPersistedRecordDigestInput(right);
+  } catch {
+    return false;
+  }
 }
 
 function isMissingFileError(error: unknown): boolean {
