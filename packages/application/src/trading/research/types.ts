@@ -2,6 +2,8 @@ import type {
   PaperTradingMarketDataFreshness,
   PaperTradingMarketDataSourceKind,
   PaperTradingMarketDataSourcePriority,
+  PaperTradingComparisonTickContext,
+  Ref,
   TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
 
@@ -77,6 +79,22 @@ export interface MarketSnapshot {
   gap_detected?: boolean;
   last_update_id?: string;
   stream_marker?: string;
+}
+
+export interface PaperTradingApiProviderComparisonTickHooks {
+  deliver(input: {
+    market: MarketSnapshot;
+    provider_request_count: number;
+    delivered_at: string;
+  }): Promise<PaperTradingComparisonTickContext | undefined>;
+  acknowledge(input: {
+    context: unknown;
+    provider_request_count: number;
+    acknowledged_at: string;
+  }): Promise<{
+    acknowledgement_ref: Ref;
+    acknowledgement_digest: string;
+  }>;
 }
 
 export type TradingApiMarketSnapshot = Omit<MarketSnapshot, "expected_direction">;

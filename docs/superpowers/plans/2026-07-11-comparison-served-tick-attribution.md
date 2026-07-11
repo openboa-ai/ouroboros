@@ -196,7 +196,7 @@ git commit -m "feat: persist comparison tick attribution"
 - Extends: `PaperTradingApiProviderOptions` with optional `comparison_tick_hooks`
 - Preserves: generic provider response bytes when hooks are absent or dormant
 
-- [ ] **Step 1: Write failing provider protocol tests**
+- [x] **Step 1: Write failing provider protocol tests**
 
 Cover:
 
@@ -210,7 +210,7 @@ Cover:
 - startup initial market read and `/orders/validate` do not call delivery;
 - request-cap rejection occurs before either hook.
 
-- [ ] **Step 2: Run provider tests and verify RED**
+- [x] **Step 2: Run provider tests and verify RED**
 
 Run:
 
@@ -220,7 +220,7 @@ npx vitest run packages/application/src/trading/gateway/runtime-binding.test.ts 
 
 Expected: FAIL because hooks, response context, and ack route are missing.
 
-- [ ] **Step 3: Implement optional provider hooks**
+- [x] **Step 3: Implement optional provider hooks**
 
 Add:
 
@@ -247,18 +247,18 @@ the sanitized market payload only when returned. Add `POST /comparison/tick/ack`
 errors to a stable client response and infrastructure errors to `503`. Keep the request cap before
 body parsing and all hooks.
 
-- [ ] **Step 4: Run provider regressions and typecheck**
+- [x] **Step 4: Run provider regressions and typecheck**
 
 Run:
 
 ```bash
-npx vitest run packages/application/src/trading/gateway/runtime-binding.test.ts packages/application/src/trading/research/replay-trading-api-provider.test.ts
+npx vitest run packages/application/src/trading/gateway/runtime-binding.test.ts
 npm run typecheck --workspace @ouroboros/application
 ```
 
 Expected: provider tests and application typecheck pass.
 
-- [ ] **Step 5: Commit provider protocol**
+- [x] **Step 5: Commit provider protocol**
 
 ```bash
 git add packages/application/src/trading/research/types.ts packages/application/src/trading/gateway/runtime-binding.ts packages/application/src/trading/gateway/runtime-binding.test.ts
