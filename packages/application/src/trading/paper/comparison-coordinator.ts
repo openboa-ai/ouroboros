@@ -410,19 +410,26 @@ export class PaperTradingComparisonCoordinator {
         "TradingPromotion has invalid persisted shape."
       );
     }
-    const evaluation = await this.options.store.getPaperTradingEvaluation(
-      promotion.paper_trading_evaluation_ref.id
-    );
-    const commitment = evaluation?.paper_trading_evaluation_commitment_ref
-      ? await this.options.store.getPaperTradingEvaluationCommitment(
-          evaluation.paper_trading_evaluation_commitment_ref.id
-        )
-      : undefined;
-    const observations = evaluation
-      ? await this.options.store.listPaperTradingObservations(
-          evaluation.paper_trading_evaluation_id
-        )
-      : [];
+    const { evaluation, commitment, observations } = await this.readPersistedGraph(async () => {
+      const persistedEvaluation = await this.options.store.getPaperTradingEvaluation(
+        promotion.paper_trading_evaluation_ref.id
+      );
+      const persistedCommitment = persistedEvaluation?.paper_trading_evaluation_commitment_ref
+        ? await this.options.store.getPaperTradingEvaluationCommitment(
+            persistedEvaluation.paper_trading_evaluation_commitment_ref.id
+          )
+        : undefined;
+      const persistedObservations = persistedEvaluation
+        ? await this.options.store.listPaperTradingObservations(
+            persistedEvaluation.paper_trading_evaluation_id
+          )
+        : [];
+      return {
+        evaluation: persistedEvaluation,
+        commitment: persistedCommitment,
+        observations: persistedObservations
+      };
+    }, "TradingPromotion qualification records could not be read.");
     if (
       !evaluation ||
       !commitment ||
@@ -528,8 +535,9 @@ export class PaperTradingComparisonCoordinator {
   async reload(
     comparisonId: string
   ): Promise<VerifiedPaperTradingComparisonCommitmentGraph | undefined> {
-    const commitment = await this.options.store.getPaperTradingComparisonCommitment(
-      comparisonId
+    const commitment = await this.readPersistedGraph(
+      () => this.options.store.getPaperTradingComparisonCommitment(comparisonId),
+      "Paper comparison commitment could not be read."
     );
     if (!commitment) {
       return undefined;
@@ -546,8 +554,11 @@ export class PaperTradingComparisonCoordinator {
         "Paper comparison canonical content changed."
       );
     }
-    const preparation = await this.options.store.getPaperTradingComparisonPreparation(
-      commitment.preparation_ref.id
+    const preparation = await this.readPersistedGraph(
+      () => this.options.store.getPaperTradingComparisonPreparation(
+        commitment.preparation_ref.id
+      ),
+      "Paper comparison preparation could not be read."
     );
     if (!preparation) {
       throw new PaperTradingComparisonError(
@@ -591,18 +602,21 @@ export class PaperTradingComparisonCoordinator {
       allCommitments,
       allEvaluations,
       observations
-    ] = await Promise.all([
-      this.options.store.getCandidateForTradingRun(side.trading_run_ref.id),
-      this.options.store.getTradingRun(side.trading_run_ref.id),
-      this.options.store.getSystemCode(side.system_code_ref.id),
-      this.options.store.getPaperTradingEvaluationCommitment(
-        side.paper_trading_evaluation_commitment_ref.id
-      ),
-      this.options.store.getPaperTradingEvaluation(side.paper_trading_evaluation_ref.id),
-      this.options.store.listPaperTradingEvaluationCommitments(),
-      this.options.store.listPaperTradingEvaluations(),
-      this.options.store.listPaperTradingObservations(side.paper_trading_evaluation_ref.id)
-    ]);
+    ] = await this.readPersistedGraph(
+      () => Promise.all([
+        this.options.store.getCandidateForTradingRun(side.trading_run_ref.id),
+        this.options.store.getTradingRun(side.trading_run_ref.id),
+        this.options.store.getSystemCode(side.system_code_ref.id),
+        this.options.store.getPaperTradingEvaluationCommitment(
+          side.paper_trading_evaluation_commitment_ref.id
+        ),
+        this.options.store.getPaperTradingEvaluation(side.paper_trading_evaluation_ref.id),
+        this.options.store.listPaperTradingEvaluationCommitments(),
+        this.options.store.listPaperTradingEvaluations(),
+        this.options.store.listPaperTradingObservations(side.paper_trading_evaluation_ref.id)
+      ]),
+      "Paper comparison side records could not be read."
+    );
     if (!candidate || !run || !systemCode || !commitment || !evaluation) {
       throw new PaperTradingComparisonError(
         "paper_trading_comparison_graph_incomplete",
@@ -710,48 +724,51 @@ export class PaperTradingComparisonCoordinator {
       challengerVersion,
       championAdmission,
       challengerAdmission
-    ] = await Promise.all([
-      this.options.store.getPaperTradingComparisonPreparation(
-        preparation.paper_trading_comparison_preparation_id
-      ),
-      this.options.store.getPaperTradingComparisonCommitment(
-        commitment.paper_trading_comparison_commitment_id
-      ),
-      this.options.store.getPaperTradingEvaluationCommitment(
-        champion.side.paper_trading_evaluation_commitment_ref.id
-      ),
-      this.options.store.getPaperTradingEvaluationCommitment(
-        challenger.side.paper_trading_evaluation_commitment_ref.id
-      ),
-      this.options.store.getPaperTradingEvaluation(
-        champion.side.paper_trading_evaluation_ref.id
-      ),
-      this.options.store.getPaperTradingEvaluation(
-        challenger.side.paper_trading_evaluation_ref.id
-      ),
-      this.options.store.getCandidateForTradingRun(champion.side.trading_run_ref.id),
-      this.options.store.getCandidateForTradingRun(challenger.side.trading_run_ref.id),
-      this.options.store.getTradingRun(champion.side.trading_run_ref.id),
-      this.options.store.getTradingRun(challenger.side.trading_run_ref.id),
-      this.options.store.getSystemCode(champion.side.system_code_ref.id),
-      this.options.store.getSystemCode(challenger.side.system_code_ref.id),
-      this.options.store.listPaperTradingEvaluationCommitments(),
-      this.options.store.listPaperTradingEvaluations(),
-      this.options.store.listPaperTradingObservations(
-        champion.side.paper_trading_evaluation_ref.id
-      ),
-      this.options.store.listPaperTradingObservations(
-        challenger.side.paper_trading_evaluation_ref.id
-      ),
-      this.options.store.getCandidateVersion(champion.side.candidate_version_ref.id),
-      this.options.store.getCandidateVersion(challenger.side.candidate_version_ref.id),
-      this.options.store.getCandidateAdmissionDecision(
-        champion.side.candidate_admission_decision_ref.id
-      ),
-      this.options.store.getCandidateAdmissionDecision(
-        challenger.side.candidate_admission_decision_ref.id
-      )
-    ]);
+    ] = await this.readPersistedGraph(
+      () => Promise.all([
+        this.options.store.getPaperTradingComparisonPreparation(
+          preparation.paper_trading_comparison_preparation_id
+        ),
+        this.options.store.getPaperTradingComparisonCommitment(
+          commitment.paper_trading_comparison_commitment_id
+        ),
+        this.options.store.getPaperTradingEvaluationCommitment(
+          champion.side.paper_trading_evaluation_commitment_ref.id
+        ),
+        this.options.store.getPaperTradingEvaluationCommitment(
+          challenger.side.paper_trading_evaluation_commitment_ref.id
+        ),
+        this.options.store.getPaperTradingEvaluation(
+          champion.side.paper_trading_evaluation_ref.id
+        ),
+        this.options.store.getPaperTradingEvaluation(
+          challenger.side.paper_trading_evaluation_ref.id
+        ),
+        this.options.store.getCandidateForTradingRun(champion.side.trading_run_ref.id),
+        this.options.store.getCandidateForTradingRun(challenger.side.trading_run_ref.id),
+        this.options.store.getTradingRun(champion.side.trading_run_ref.id),
+        this.options.store.getTradingRun(challenger.side.trading_run_ref.id),
+        this.options.store.getSystemCode(champion.side.system_code_ref.id),
+        this.options.store.getSystemCode(challenger.side.system_code_ref.id),
+        this.options.store.listPaperTradingEvaluationCommitments(),
+        this.options.store.listPaperTradingEvaluations(),
+        this.options.store.listPaperTradingObservations(
+          champion.side.paper_trading_evaluation_ref.id
+        ),
+        this.options.store.listPaperTradingObservations(
+          challenger.side.paper_trading_evaluation_ref.id
+        ),
+        this.options.store.getCandidateVersion(champion.side.candidate_version_ref.id),
+        this.options.store.getCandidateVersion(challenger.side.candidate_version_ref.id),
+        this.options.store.getCandidateAdmissionDecision(
+          champion.side.candidate_admission_decision_ref.id
+        ),
+        this.options.store.getCandidateAdmissionDecision(
+          challenger.side.candidate_admission_decision_ref.id
+        )
+      ]),
+      "Paper comparison verification records could not be read."
+    );
     const preparedSideHasFullRuntimeShape = (
       value: unknown,
       role: "champion" | "challenger",
@@ -795,10 +812,14 @@ export class PaperTradingComparisonCoordinator {
         "Paper comparison prepared side has invalid persisted runtime shape."
       );
     }
+    const championSelection = preparation.champion_selection;
     const boundPromotion =
-      preparation.champion_selection.selection_kind === "trading_review"
-        ? await this.options.store.getTradingPromotion(
-            preparation.champion_selection.trading_promotion_ref.id
+      championSelection.selection_kind === "trading_review"
+        ? await this.readPersistedGraph(
+            () => this.options.store.getTradingPromotion(
+              championSelection.trading_promotion_ref.id
+            ),
+            "Bound TradingPromotion could not be read."
           )
         : undefined;
     const selectionEvidence =
@@ -1203,6 +1224,23 @@ export class PaperTradingComparisonCoordinator {
       ...graph,
       verification: { status: "verified", activation_authority: "not_granted" }
     };
+  }
+
+  private async readPersistedGraph<T>(
+    read: () => Promise<T>,
+    message: string
+  ): Promise<T> {
+    try {
+      return await read();
+    } catch (error) {
+      if (error instanceof PaperTradingComparisonError) {
+        throw error;
+      }
+      throw new PaperTradingComparisonError(
+        "paper_trading_comparison_graph_invalid",
+        message
+      );
+    }
   }
 
   private assertRequestedPreparationIdentity(

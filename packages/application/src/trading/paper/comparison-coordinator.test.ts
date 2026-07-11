@@ -1581,6 +1581,31 @@ describe("PaperTradingComparisonCoordinator", () => {
     expect(fixture.effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
   });
 
+  it("maps malformed persisted side collections to a stable read-only graph error", async () => {
+    const fixture = await comparisonFixture();
+    const prepared = await fixture.coordinator.prepare(fixture.input);
+    const commitments = await fixture.store.listPaperTradingEvaluationCommitments();
+    for (const commitment of commitments) {
+      await writeCoordinatorRecord(
+        fixture.store,
+        "paper-trading-evaluation-commitments",
+        commitment.paper_trading_evaluation_commitment_id,
+        { ...commitment, committed_at: null }
+      );
+    }
+    const mutationCalls: string[] = [];
+    const coordinator = new PaperTradingComparisonCoordinator({
+      store: readOnlyStoreProxy(fixture.store, mutationCalls),
+      sessions: sessionsPrepareMustNotRun()
+    });
+
+    await expect(
+      coordinator.reload(prepared.commitment.paper_trading_comparison_commitment_id)
+    ).rejects.toMatchObject({ code: "paper_trading_comparison_graph_invalid" });
+    expect(mutationCalls).toEqual([]);
+    expect(fixture.effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+  });
+
   it("fails closed when reload finds canonical pair drift", async () => {
     const fixture = await comparisonFixture();
     const prepared = await fixture.coordinator.prepare(fixture.input);
