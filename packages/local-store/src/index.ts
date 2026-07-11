@@ -60,6 +60,8 @@ import {
   paperTradingComparisonCandidateVersionPairKey,
   paperTradingComparisonCommitmentDigestInput,
   paperTradingComparisonCommitmentHasRuntimeShape,
+  paperTradingComparisonConfirmationCampaignDigestInput,
+  paperTradingComparisonConfirmationCampaignHasRuntimeShape,
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonEvaluationRecordDigestInput,
@@ -187,6 +189,7 @@ import type {
   PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
+  PaperTradingComparisonConfirmationCampaignRecord,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
@@ -422,6 +425,15 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_verdict_digest_mismatch"
   | "paper_trading_comparison_verdict_conflict"
   | "paper_trading_comparison_verdict_graph_invalid"
+  | "invalid_paper_trading_comparison_confirmation_campaign_input"
+  | "paper_trading_comparison_confirmation_campaign_digest_mismatch"
+  | "paper_trading_comparison_confirmation_campaign_conflict"
+  | "paper_trading_comparison_confirmation_campaign_reload_failed"
+  | "paper_trading_comparison_confirmation_campaign_reference_not_found"
+  | "paper_trading_comparison_confirmation_campaign_graph_invalid"
+  | "paper_trading_comparison_confirmation_campaign_source_conflict"
+  | "paper_trading_comparison_active_campaign_pair_conflict"
+  | "paper_trading_comparison_confirmation_slot_not_ready"
   | "invalid_paper_trading_comparison_checkpoint_write_context"
   | "paper_trading_comparison_checkpoint_write_context_reference_not_found"
   | "paper_trading_comparison_checkpoint_write_context_reference_mismatch"
@@ -515,6 +527,7 @@ type Collection =
   | "paper-trading-comparison-checkpoint-outcomes"
   | "paper-trading-comparison-checkpoint-transactions"
   | "paper-trading-comparison-verdicts"
+  | "paper-trading-comparison-confirmation-campaigns"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -4657,6 +4670,18 @@ export class LocalStore {
       preparation.champion.candidate_version_ref.id,
       preparation.challenger.candidate_version_ref.id
     );
+    const activeCampaign = (
+      await this.listPaperTradingComparisonConfirmationCampaigns()
+    ).find((campaign) => paperTradingComparisonCandidateVersionPairKey(
+      campaign.champion.candidate_version_ref.id,
+      campaign.challenger.candidate_version_ref.id
+    ) === pairKey);
+    if (activeCampaign) {
+      await this.assertPaperTradingComparisonConfirmationSlotReservation(
+        activeCampaign,
+        preparation
+      );
+    }
     const terminatedComparisonIds = new Set(
       (await this.listPaperTradingComparisonVerdicts()).map((verdict) =>
         verdict.paper_trading_comparison_commitment_ref.id)
@@ -4684,6 +4709,86 @@ export class LocalStore {
       preparation
     );
     return preparation;
+  }
+
+  private async assertPaperTradingComparisonConfirmationSlotReservation(
+    campaign: PaperTradingComparisonConfirmationCampaignRecord,
+    preparation: PaperTradingComparisonPreparationRecord
+  ): Promise<void> {
+    await this.validatePaperTradingComparisonConfirmationCampaignGraph(campaign);
+    const requestedIndex = campaign.slots.findIndex((slot) =>
+      slot.paper_trading_comparison_preparation_id ===
+        preparation.paper_trading_comparison_preparation_id &&
+      slot.paper_trading_comparison_commitment_id ===
+        preparation.paper_trading_comparison_commitment_id
+    );
+    if (requestedIndex < 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_active_campaign_pair_conflict",
+        "an active confirmation campaign owns this unordered candidate-version pair"
+      );
+    }
+
+    const [preparations, verdicts] = await Promise.all([
+      this.listPaperTradingComparisonPreparations(),
+      this.listPaperTradingComparisonVerdicts()
+    ]);
+    let nextSlotIndex = 0;
+    let previousVerdict: PaperTradingComparisonVerdictRecord | undefined;
+    for (; nextSlotIndex < campaign.slots.length; nextSlotIndex += 1) {
+      const slot = campaign.slots[nextSlotIndex]!;
+      const persisted = preparations.find((record) =>
+        record.paper_trading_comparison_preparation_id ===
+          slot.paper_trading_comparison_preparation_id ||
+        record.paper_trading_comparison_commitment_id ===
+          slot.paper_trading_comparison_commitment_id
+      );
+      if (!persisted) break;
+      if (persisted.paper_trading_comparison_preparation_id !==
+          slot.paper_trading_comparison_preparation_id ||
+        persisted.paper_trading_comparison_commitment_id !==
+          slot.paper_trading_comparison_commitment_id) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_confirmation_campaign_graph_invalid",
+          "persisted confirmation slot preparation identity is inconsistent"
+        );
+      }
+      previousVerdict = verdicts.find((verdict) =>
+        verdict.paper_trading_comparison_commitment_ref.id ===
+          slot.paper_trading_comparison_commitment_id
+      );
+      if (!previousVerdict) break;
+    }
+    if (requestedIndex !== nextSlotIndex || previousVerdict === undefined &&
+      requestedIndex > 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_slot_not_ready",
+        "paper trading comparison confirmation slot is not the next ready slot"
+      );
+    }
+
+    const lowerBound = requestedIndex === 0
+      ? campaign.committed_at
+      : previousVerdict!.evaluated_at;
+    if (!samePersistedComparisonRecord(preparation.champion, campaign.champion) ||
+      !samePersistedComparisonRecord(preparation.challenger, campaign.challenger) ||
+      !samePersistedComparisonRecord(
+        preparation.champion_selection,
+        campaign.champion_selection
+      ) || !samePersistedComparisonRecord(
+        preparation.comparison_policy,
+        campaign.comparison_policy
+      ) || preparation.market_data_configuration_digest !==
+        campaign.market_data_configuration_digest ||
+      !samePersistedComparisonRecord(
+        preparation.paper_policy_identity,
+        campaign.paper_policy_identity
+      ) || Date.parse(preparation.committed_at) <= Date.parse(lowerBound)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_active_campaign_pair_conflict",
+        "paper trading comparison preparation does not match the frozen confirmation slot"
+      );
+    }
   }
 
   async getPaperTradingComparisonPreparation(
@@ -8412,6 +8517,219 @@ export class LocalStore {
       "paper_trading_comparison_verdict_graph_invalid",
       "paper trading comparison verdict does not match exact terminal evidence"
     );
+  }
+
+  async recordPaperTradingComparisonConfirmationCampaign(
+    campaign: PaperTradingComparisonConfirmationCampaignRecord
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonConfirmationCampaignUnlocked(campaign)
+    );
+  }
+
+  private async recordPaperTradingComparisonConfirmationCampaignUnlocked(
+    campaign: PaperTradingComparisonConfirmationCampaignRecord
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord> {
+    if (!paperTradingComparisonConfirmationCampaignHasRuntimeShape(campaign)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_confirmation_campaign_input",
+        "invalid paper trading comparison confirmation campaign input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      paperTradingComparisonConfirmationCampaignDigestInput(campaign)
+    );
+    if (campaign.campaign_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_digest_mismatch",
+        "paper trading comparison confirmation campaign digest does not match canonical content"
+      );
+    }
+    const existing = await this.getPaperTradingComparisonConfirmationCampaign(
+      campaign.paper_trading_comparison_confirmation_campaign_id
+    );
+    if (existing) {
+      if (!samePersistedComparisonRecord(existing, campaign)) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_confirmation_campaign_conflict",
+          "paper trading comparison confirmation campaign is append-only"
+        );
+      }
+      await this.validatePaperTradingComparisonConfirmationCampaignGraph(existing);
+      return existing;
+    }
+    const campaigns = await this.listPaperTradingComparisonConfirmationCampaigns();
+    if (campaigns.some((record) =>
+      record.source_verdict_ref.id === campaign.source_verdict_ref.id)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_source_conflict",
+        "one improved source verdict can start only one confirmation campaign"
+      );
+    }
+    const pairKey = paperTradingComparisonCandidateVersionPairKey(
+      campaign.champion.candidate_version_ref.id,
+      campaign.challenger.candidate_version_ref.id
+    );
+    if (campaigns.some((record) => paperTradingComparisonCandidateVersionPairKey(
+      record.champion.candidate_version_ref.id,
+      record.challenger.candidate_version_ref.id
+    ) === pairKey)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_active_campaign_pair_conflict",
+        "an active confirmation campaign already owns this unordered candidate-version pair"
+      );
+    }
+    const terminatedComparisonIds = new Set(
+      (await this.listPaperTradingComparisonVerdicts()).map((verdict) =>
+        verdict.paper_trading_comparison_commitment_ref.id)
+    );
+    const activePreparation = (
+      await this.listPaperTradingComparisonPreparations()
+    ).find((preparation) => !terminatedComparisonIds.has(
+      preparation.paper_trading_comparison_commitment_id
+    ) && paperTradingComparisonCandidateVersionPairKey(
+      preparation.champion.candidate_version_ref.id,
+      preparation.challenger.candidate_version_ref.id
+    ) === pairKey);
+    if (activePreparation) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_active_campaign_pair_conflict",
+        "an active comparison preparation already owns this campaign pair"
+      );
+    }
+    await this.validatePaperTradingComparisonConfirmationCampaignGraph(campaign);
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-confirmation-campaigns",
+        campaign.paper_trading_comparison_confirmation_campaign_id
+      ),
+      campaign
+    );
+    return campaign;
+  }
+
+  async getPaperTradingComparisonConfirmationCampaign(
+    campaignId: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-confirmation-campaigns",
+        campaignId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedPaperTradingComparisonConfirmationCampaign(record);
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_confirmation_campaign_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_reload_failed",
+        "persisted paper trading comparison confirmation campaign is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonConfirmationCampaigns(): Promise<
+    PaperTradingComparisonConfirmationCampaignRecord[]
+  > {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-confirmation-campaigns"
+      );
+      return records.map((record) => {
+        this.assertPersistedPaperTradingComparisonConfirmationCampaign(record);
+        return record;
+      }).sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.paper_trading_comparison_confirmation_campaign_id.localeCompare(
+          right.paper_trading_comparison_confirmation_campaign_id
+        ));
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_confirmation_campaign_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_reload_failed",
+        "persisted paper trading comparison confirmation campaign collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  private assertPersistedPaperTradingComparisonConfirmationCampaign(
+    record: unknown
+  ): asserts record is PaperTradingComparisonConfirmationCampaignRecord {
+    if (!paperTradingComparisonConfirmationCampaignHasRuntimeShape(record) ||
+      record.campaign_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonConfirmationCampaignDigestInput(record)
+      )) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_reload_failed",
+        "persisted paper trading comparison confirmation campaign is malformed or corrupt"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonConfirmationCampaignGraph(
+    campaign: PaperTradingComparisonConfirmationCampaignRecord
+  ): Promise<void> {
+    const [sourceVerdict, sourceComparison] = await Promise.all([
+      this.getPaperTradingComparisonVerdict(campaign.source_verdict_ref.id),
+      this.getPaperTradingComparisonCommitment(campaign.source_comparison_ref.id)
+    ]);
+    if (!sourceVerdict || !sourceComparison) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_reference_not_found",
+        "paper trading comparison confirmation campaign source evidence was not found"
+      );
+    }
+    await this.validatePaperTradingComparisonVerdictGraph(sourceVerdict);
+    const sourcePreparation = await this.getPaperTradingComparisonPreparation(
+      sourceComparison.preparation_ref.id
+    );
+    if (!sourcePreparation ||
+      sourceVerdict.verdict_digest !== campaign.source_verdict_digest ||
+      sourceVerdict.paper_trading_comparison_commitment_ref.id !==
+        sourceComparison.paper_trading_comparison_commitment_id ||
+      sourceVerdict.paper_trading_comparison_commitment_digest !==
+        sourceComparison.commitment_digest ||
+      sourceComparison.commitment_digest !== campaign.source_comparison_digest ||
+      sourceVerdict.verdict_outcome !== "challenger_improved" ||
+      sourceVerdict.pair_qualification.qualification_status !== "qualified" ||
+      sourceVerdict.confirmation_disposition !== "requires_precommitted_campaign" ||
+      sourceVerdict.release_status !== "sealed" ||
+      sourceVerdict.promotion_eligibility !== "not_eligible" ||
+      Date.parse(campaign.committed_at) <= Date.parse(sourceVerdict.evaluated_at) ||
+      !samePersistedComparisonRecord(campaign.champion, sourcePreparation.champion) ||
+      !samePersistedComparisonRecord(campaign.challenger, sourcePreparation.challenger) ||
+      !samePersistedComparisonRecord(
+        campaign.champion_selection,
+        sourceComparison.champion_selection
+      ) ||
+      !samePersistedComparisonRecord(
+        campaign.comparison_policy,
+        sourceComparison.comparison_policy
+      ) ||
+      campaign.market_data_configuration_digest !==
+        sourceComparison.market_data_configuration_digest ||
+      !samePersistedComparisonRecord(
+        campaign.paper_policy_identity,
+        sourceComparison.paper_policy_identity
+      ) || campaign.slots.some((slot) => {
+        const ids = paperTradingComparisonIdsForIdempotencyKey(
+          slot.comparison_idempotency_key
+        );
+        return ids.preparationId !==
+            slot.paper_trading_comparison_preparation_id ||
+          ids.comparisonId !== slot.paper_trading_comparison_commitment_id;
+      })) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_confirmation_campaign_graph_invalid",
+        "paper trading comparison confirmation campaign does not match exact improved source evidence"
+      );
+    }
   }
 
   async recordPaperTradingComparisonPairedCheckpoint(
@@ -14512,6 +14830,20 @@ function validateCandidateMaterializationInput(
 
 function comparisonExactRecordDigest(input: string): string {
   return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function paperTradingComparisonIdsForIdempotencyKey(idempotencyKey: string): {
+  preparationId: string;
+  comparisonId: string;
+} {
+  const suffix = createHash("sha256")
+    .update(idempotencyKey)
+    .digest("hex")
+    .slice(0, 16);
+  return {
+    preparationId: `paper-trading-comparison-preparation-${suffix}`,
+    comparisonId: `paper-trading-comparison-${suffix}`
+  };
 }
 
 function withLocalCheckpointTransactionDigest(
