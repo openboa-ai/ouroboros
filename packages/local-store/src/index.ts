@@ -373,6 +373,13 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_checkpoint_outcome_reference_mismatch"
   | "paper_trading_comparison_checkpoint_outcome_state_conflict"
   | "paper_trading_comparison_paired_checkpoint_transaction_required"
+  | "invalid_paper_trading_comparison_paired_checkpoint_input"
+  | "paper_trading_comparison_paired_checkpoint_digest_mismatch"
+  | "paper_trading_comparison_paired_checkpoint_reference_mismatch"
+  | "paper_trading_comparison_paired_checkpoint_state_conflict"
+  | "paper_trading_comparison_paired_checkpoint_transaction_conflict"
+  | "paper_trading_comparison_paired_checkpoint_transaction_reload_failed"
+  | "paper_trading_comparison_paired_checkpoint_materialization_conflict"
   | "invalid_paper_trading_comparison_runtime_write_context"
   | "paper_trading_comparison_runtime_write_context_reference_not_found"
   | "paper_trading_comparison_runtime_write_context_reference_mismatch"
@@ -458,6 +465,7 @@ type Collection =
   | "paper-trading-comparison-activation-outcomes"
   | "paper-trading-comparison-checkpoint-attempts"
   | "paper-trading-comparison-checkpoint-outcomes"
+  | "paper-trading-comparison-checkpoint-transactions"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -490,6 +498,48 @@ export interface SandboxObservationInput {
   logs?: SandboxLogRecord[];
   heartbeats?: RuntimeHeartbeatRecord[];
   command_evidence?: SandboxCommandEvidenceRecord[];
+}
+
+export interface PreparedPaperTradingComparisonCheckpointSideInput {
+  role: "champion" | "challenger";
+  ledger_inputs: LedgerInput[];
+  ledger_outcomes: LedgerWriteOutcome[];
+  observation: PaperTradingObservationRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  preparation_digest: string;
+}
+
+export interface RecordPaperTradingComparisonPairedCheckpointInput {
+  attempt: PaperTradingComparisonCheckpointAttemptRecord;
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+  champion: PreparedPaperTradingComparisonCheckpointSideInput;
+  challenger: PreparedPaperTradingComparisonCheckpointSideInput;
+}
+
+interface LocalLedgerWritePlan {
+  outcome: LedgerWriteOutcome;
+  previousRuntime: TradingRunRecord;
+  updatedRuntime: TradingRunRecord;
+  immutableRecords: FixtureItem[];
+  existing: boolean;
+}
+
+interface LocalPaperTradingComparisonCheckpointTransactionSide {
+  prepared: PreparedPaperTradingComparisonCheckpointSideInput;
+  previous_evaluation: PaperTradingEvaluationRecord;
+  ledger_plans: LocalLedgerWritePlan[];
+}
+
+interface LocalPaperTradingComparisonCheckpointTransaction {
+  record_kind: "local_paper_trading_comparison_checkpoint_transaction";
+  version: 1;
+  transaction_id: string;
+  checkpoint_attempt_ref: Ref;
+  checkpoint_attempt_digest: string;
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+  champion: LocalPaperTradingComparisonCheckpointTransactionSide;
+  challenger: LocalPaperTradingComparisonCheckpointTransactionSide;
+  transaction_digest: string;
 }
 
 interface LoadedPaperTradingComparisonSideGraph {
@@ -3714,9 +3764,51 @@ export class LocalStore {
     return this.withComparisonEvidenceWriteTransaction(() => this.recordLedgerUnlocked(input));
   }
 
+  async previewLedger(input: LedgerInput): Promise<LedgerWriteOutcome> {
+    return this.withComparisonEvidenceWriteTransaction(async () =>
+      (await this.buildLedgerWritePlan(input)).outcome
+    );
+  }
+
   private async recordLedgerUnlocked(
     input: LedgerInput
   ): Promise<LedgerWriteOutcome> {
+    const plan = await this.buildLedgerWritePlan(input);
+    if (plan.existing) return plan.outcome;
+    await this.assertNoPairBoundSideMutation({ runId: plan.outcome.runtime_id });
+    for (const item of plan.immutableRecords) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+    await this.rebuildProjections();
+    const recordIds = ledgerRecordIds({
+      candidate_id: plan.outcome.candidate_id,
+      candidate_version_id: plan.outcome.candidate_version_id,
+      runtime_id: plan.outcome.runtime_id,
+      idempotency_key: input.idempotency_key
+    });
+    const outcome = await this.readLedgerWriteOutcome(
+      plan.outcome.candidate_id,
+      plan.outcome.candidate_version_id,
+      plan.outcome.runtime_id,
+      recordIds
+    );
+    if (!outcome) {
+      throw new LocalStoreError(
+        "ledger_reload_failed",
+        "ledger records were not reloaded after write",
+        { runtime_id: plan.outcome.runtime_id }
+      );
+    }
+    return outcome;
+  }
+
+  private async buildLedgerWritePlan(
+    input: LedgerInput,
+    options: {
+      runtime?: TradingRunRecord;
+      stageBinding?: StageBindingRecord;
+    } = {}
+  ): Promise<LocalLedgerWritePlan> {
     const validationFailure = validateLedgerInput(input);
     if (validationFailure) {
       throw new LocalStoreError(validationFailure, "invalid ledger input");
@@ -3759,9 +3851,8 @@ export class LocalStore {
     }
 
     const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
-    const runtime = await this.readOptionalRecord<TradingRunRecord>(
-      "trading-runs",
-      runtimeId
+    const runtime = options.runtime ?? await this.readOptionalRecord<TradingRunRecord>(
+      "trading-runs", runtimeId
     );
     if (!runtime) {
       throw new LocalStoreError(
@@ -3796,9 +3887,14 @@ export class LocalStore {
       recordIds
     );
     if (existing) {
-      return existing;
+      return {
+        outcome: existing,
+        previousRuntime: runtime,
+        updatedRuntime: runtime,
+        immutableRecords: [],
+        existing: true
+      };
     }
-    await this.assertNoPairBoundSideMutation({ runId: runtime.trading_run_id });
 
     const createdAt = input.created_at ?? new Date().toISOString();
     const orderIntentRef = ref("order_request", recordIds.orderIntent);
@@ -3810,10 +3906,8 @@ export class LocalStore {
     const stageBindingId = runtime.stage_binding_ref?.id
       ?? `stage-binding-paper-${stableSuffix(runtime.trading_run_id)}`;
     const stageBindingRef = ref("stage_binding", stageBindingId);
-    const existingStageBinding = await this.readOptionalRecord<StageBindingRecord>(
-      "stage-bindings",
-      stageBindingId
-    );
+    const existingStageBinding = options.stageBinding ??
+      await this.readOptionalRecord<StageBindingRecord>("stage-bindings", stageBindingId);
 
     const orderIntent: OrderRequestRecord = stripUndefined({
       record_kind: "order_request",
@@ -3900,7 +3994,7 @@ export class LocalStore {
       created_at: runtime.created_at ?? createdAt
     } satisfies TradingRunRecord);
 
-    const records: FixtureItem[] = [
+    const immutableRecords: FixtureItem[] = [
       ...(stageBinding
         ? [{ collection: "stage-bindings" as const, id: stageBinding.stage_binding_id, record: stageBinding }]
         : []),
@@ -3909,25 +4003,20 @@ export class LocalStore {
       { collection: "execution-results", id: executionAttempt.execution_result_id, record: executionAttempt },
       { collection: "trading-runs", id: updatedRuntime.trading_run_id, record: updatedRuntime }
     ];
-    for (const item of records) {
-      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
-    }
-    await this.rebuildProjections();
-
-    const outcome = await this.readLedgerWriteOutcome(
-      candidate.candidate_id,
-      candidateVersion.candidate_version_id,
-      runtime.trading_run_id,
-      recordIds
-    );
-    if (!outcome) {
-      throw new LocalStoreError(
-        "ledger_reload_failed",
-        `ledger records were not reloaded after write`,
-        { runtime_id: runtime.trading_run_id }
-      );
-    }
-    return outcome;
+    return {
+      outcome: {
+        candidate_id: candidate.candidate_id,
+        candidate_version_id: candidateVersion.candidate_version_id,
+        runtime_id: runtime.trading_run_id,
+        order_request: orderIntent,
+        gateway_result: gatewayDecision,
+        execution_result: executionAttempt
+      },
+      previousRuntime: runtime,
+      updatedRuntime,
+      immutableRecords,
+      existing: false
+    };
   }
 
   async recordPaperTradingEvaluationCommitment(
@@ -6340,6 +6429,566 @@ export class LocalStore {
       throw new LocalStoreError(
         "paper_trading_comparison_checkpoint_outcome_reload_failed",
         "persisted paper trading comparison checkpoint outcome collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  async recordPaperTradingComparisonPairedCheckpoint(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonPairedCheckpointUnlocked(input)
+    );
+  }
+
+  private async recordPaperTradingComparisonPairedCheckpointUnlocked(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord> {
+    this.assertPairedCheckpointInputShape(input);
+    const transactionId = input.attempt.paper_trading_comparison_checkpoint_attempt_id;
+    const existing = await this.getPaperTradingComparisonCheckpointTransaction(transactionId);
+    if (existing) {
+      if (!samePersistedComparisonRecord(existing.champion.prepared, input.champion) ||
+        !samePersistedComparisonRecord(existing.challenger.prepared, input.challenger) ||
+        !samePersistedComparisonRecord(existing.outcome, input.outcome) ||
+        existing.checkpoint_attempt_digest !== input.attempt.attempt_digest) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_paired_checkpoint_transaction_conflict",
+          "paper trading comparison checkpoint transaction is append-only"
+        );
+      }
+      await this.materializePaperTradingComparisonCheckpointTransaction(existing);
+      return existing.outcome;
+    }
+
+    const transaction = await this.buildPaperTradingComparisonCheckpointTransaction(input);
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-checkpoint-transactions",
+        transaction.transaction_id
+      ),
+      transaction
+    );
+    await this.materializePaperTradingComparisonCheckpointTransaction(transaction);
+    return transaction.outcome;
+  }
+
+  async recoverPaperTradingComparisonCheckpointTransactions(): Promise<
+    PaperTradingComparisonCheckpointOutcomeRecord[]
+  > {
+    return this.withComparisonEvidenceWriteTransaction(async () => {
+      const transactions = await this.listPaperTradingComparisonCheckpointTransactions();
+      const outcomes: PaperTradingComparisonCheckpointOutcomeRecord[] = [];
+      for (const transaction of transactions) {
+        await this.materializePaperTradingComparisonCheckpointTransaction(transaction);
+        outcomes.push(transaction.outcome);
+      }
+      return outcomes;
+    });
+  }
+
+  private assertPairedCheckpointInputShape(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): void {
+    if (!paperTradingComparisonCheckpointAttemptHasRuntimeShape(input.attempt) ||
+      !paperTradingComparisonCheckpointOutcomeHasRuntimeShape(input.outcome) ||
+      input.outcome.outcome_status !== "paired" ||
+      !this.preparedCheckpointSideHasRuntimeShape(input.champion, "champion") ||
+      !this.preparedCheckpointSideHasRuntimeShape(input.challenger, "challenger")) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_paired_checkpoint_input",
+        "invalid paper trading comparison paired checkpoint input"
+      );
+    }
+  }
+
+  private preparedCheckpointSideHasRuntimeShape(
+    value: unknown,
+    role: "champion" | "challenger"
+  ): value is PreparedPaperTradingComparisonCheckpointSideInput {
+    if (!isPlainObject(value)) return false;
+    const side = value as unknown as PreparedPaperTradingComparisonCheckpointSideInput;
+    if (side.role !== role || !Array.isArray(side.ledger_inputs) ||
+      !Array.isArray(side.ledger_outcomes) ||
+      side.ledger_inputs.length !== side.ledger_outcomes.length ||
+      !isPlainObject(side.observation) || !isPlainObject(side.evaluation) ||
+      typeof side.preparation_digest !== "string" ||
+      side.preparation_digest.length === 0) {
+      return false;
+    }
+    const { preparation_digest: _digest, ...payload } = side;
+    try {
+      return side.preparation_digest === comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(payload)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async buildPaperTradingComparisonCheckpointTransaction(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): Promise<LocalPaperTradingComparisonCheckpointTransaction> {
+    const persistedAttempt = await this.getPaperTradingComparisonCheckpointAttempt(
+      input.attempt.paper_trading_comparison_checkpoint_attempt_id
+    );
+    if (!persistedAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reference_not_found",
+        "paper trading comparison checkpoint attempt was not found"
+      );
+    }
+    if (!samePersistedComparisonRecord(persistedAttempt, input.attempt) ||
+      !paperTradingComparisonRefsEqual(
+        input.outcome.checkpoint_attempt_ref,
+        {
+          record_kind: "paper_trading_comparison_checkpoint_attempt",
+          id: persistedAttempt.paper_trading_comparison_checkpoint_attempt_id
+        }
+      ) ||
+      input.outcome.checkpoint_attempt_digest !== persistedAttempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(input.outcome.tick_ref, persistedAttempt.tick_ref) ||
+      input.outcome.tick_digest !== persistedAttempt.tick_digest ||
+      input.outcome.checkpoint_sequence !== persistedAttempt.checkpoint_sequence) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch",
+        "paired checkpoint outcome does not match its persisted attempt"
+      );
+    }
+    if (Date.parse(input.outcome.completed_at) < Date.parse(persistedAttempt.attempted_at) ||
+      Date.parse(input.outcome.completed_at) >
+        Date.parse(persistedAttempt.checkpoint_deadline_at)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_state_conflict",
+        "paired checkpoint outcome lies outside its recorded deadline"
+      );
+    }
+    const existingOutcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
+      persistedAttempt.paper_trading_comparison_checkpoint_attempt_id
+    );
+    if (existingOutcomes.length > 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_state_conflict",
+        "paper trading comparison checkpoint attempt already has a terminal outcome"
+      );
+    }
+
+    const activationAttempt = await this.getPaperTradingComparisonActivationAttempt(
+      persistedAttempt.paper_trading_comparison_activation_attempt_ref.id
+    );
+    if (!activationAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reference_not_found",
+        "paper trading comparison activation attempt was not found"
+      );
+    }
+    const closure = await this.loadPaperTradingComparisonActivationAttemptClosure(
+      activationAttempt
+    );
+    const activationOutcomes = await this.listPaperTradingComparisonActivationOutcomes(
+      activationAttempt.paper_trading_comparison_activation_attempt_id
+    );
+    const latestActivationOutcome = activationOutcomes.at(-1);
+    if (!latestActivationOutcome || latestActivationOutcome.outcome_status !== "both_running" ||
+      latestActivationOutcome.paper_trading_comparison_activation_outcome_id !==
+        persistedAttempt.activation_outcome_ref.id ||
+      latestActivationOutcome.outcome_digest !== persistedAttempt.activation_outcome_digest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_state_conflict",
+        "paired checkpoint requires the exact latest both-running activation outcome"
+      );
+    }
+    const [championState, challengerState] = await Promise.all([
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "champion",
+        closure.comparison,
+        "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+      ),
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "challenger",
+        closure.comparison,
+        "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+      )
+    ]);
+    const champion = await this.buildPaperTradingComparisonCheckpointTransactionSide({
+      role: "champion",
+      prepared: input.champion,
+      checkpointAttempt: persistedAttempt,
+      activationAttempt,
+      state: championState,
+      tick: closure.tick,
+      outcomeEvidence: input.outcome.champion
+    });
+    const challenger = await this.buildPaperTradingComparisonCheckpointTransactionSide({
+      role: "challenger",
+      prepared: input.challenger,
+      checkpointAttempt: persistedAttempt,
+      activationAttempt,
+      state: challengerState,
+      tick: closure.tick,
+      outcomeEvidence: input.outcome.challenger
+    });
+    if (champion.prepared.observation.paper_trading_observation_id ===
+      challenger.prepared.observation.paper_trading_observation_id) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch",
+        "paired checkpoint sides cannot share an observation identity"
+      );
+    }
+    const draft: LocalPaperTradingComparisonCheckpointTransaction = {
+      record_kind: "local_paper_trading_comparison_checkpoint_transaction",
+      version: 1,
+      transaction_id: persistedAttempt.paper_trading_comparison_checkpoint_attempt_id,
+      checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: persistedAttempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      checkpoint_attempt_digest: persistedAttempt.attempt_digest,
+      outcome: structuredClone(input.outcome),
+      champion,
+      challenger,
+      transaction_digest: ""
+    };
+    return withLocalCheckpointTransactionDigest(draft);
+  }
+
+  private async buildPaperTradingComparisonCheckpointTransactionSide(input: {
+    role: "champion" | "challenger";
+    prepared: PreparedPaperTradingComparisonCheckpointSideInput;
+    checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord;
+    activationAttempt: PaperTradingComparisonActivationAttemptRecord;
+    state: PaperTradingComparisonRuntimeSideState;
+    tick: PaperTradingComparisonTickRecord;
+    outcomeEvidence: PaperTradingComparisonCheckpointOutcomeRecord["champion"];
+  }): Promise<LocalPaperTradingComparisonCheckpointTransactionSide> {
+    const { role, prepared, checkpointAttempt, activationAttempt, state, tick } = input;
+    const evidence = input.outcomeEvidence;
+    const observation = prepared.observation;
+    const evaluation = prepared.evaluation;
+    if (!evidence || evidence.role !== role ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt[role].trading_run_ref,
+        state.run.record_kind === "trading_run"
+          ? { record_kind: "trading_run", id: state.run.trading_run_id }
+          : undefined
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt[role].paper_trading_evaluation_ref,
+        { record_kind: "paper_trading_evaluation", id: state.evaluation.paper_trading_evaluation_id }
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        observation.paper_trading_evaluation_ref,
+        checkpointAttempt[role].paper_trading_evaluation_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        observation.paper_trading_evaluation_commitment_ref,
+        activationAttempt[role].paper_trading_evaluation_commitment_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        observation.paper_trading_comparison_tick_ref,
+        checkpointAttempt.tick_ref
+      ) ||
+      observation.paper_trading_comparison_tick_digest !== checkpointAttempt.tick_digest ||
+      !paperTradingComparisonRefsEqual(
+        observation.paper_trading_comparison_checkpoint_attempt_ref,
+        {
+          record_kind: "paper_trading_comparison_checkpoint_attempt",
+          id: checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+        }
+      ) ||
+      observation.paper_trading_comparison_checkpoint_attempt_digest !==
+        checkpointAttempt.attempt_digest ||
+      observation.sequence !== 1 ||
+      observation.observed_at !== tick.observed_at ||
+      !samePersistedComparisonRecord(observation.market_snapshot, tick.market_snapshot) ||
+      !samePersistedComparisonRecord(
+        observation.public_execution_snapshot,
+        tick.public_execution_snapshot
+      ) ||
+      evaluation.paper_trading_evaluation_id !==
+        state.evaluation.paper_trading_evaluation_id ||
+      evaluation.observation_count !== state.evaluation.observation_count + 1 ||
+      evaluation.last_observed_at !== tick.observed_at ||
+      (observation.status === "failed"
+        ? evaluation.status !== "failed"
+        : evaluation.status !== "running") ||
+      !paperTradingObservationReferencesMatch(
+        observation,
+        evaluation,
+        state.commitment
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        evidence.observation_ref,
+        { record_kind: "paper_trading_observation", id: observation.paper_trading_observation_id }
+      ) ||
+      evidence.observation_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(observation)
+      ) ||
+      evidence.evaluation_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+      ) ||
+      evidence.observation_status !== observation.status ||
+      evidence.provider_request_count_after <
+        checkpointAttempt[role].provider_request_count_before ||
+      evidence.provider_request_count_after >
+        activationAttempt.activation_policy.maximum_provider_request_count_per_side) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch",
+        `paired checkpoint ${role} side does not match its frozen graph and first tick`
+      );
+    }
+    await this.validatePaperTradingAccountLineage({
+      commitment: state.commitment,
+      existingEvaluation: state.evaluation,
+      observation,
+      evaluation
+    });
+    await this.validatePaperTradingEvaluationWrite(evaluation, state.evaluation);
+
+    const ledgerPlans: LocalLedgerWritePlan[] = [];
+    let currentRuntime = state.run;
+    let currentStageBinding = currentRuntime.stage_binding_ref
+      ? await this.readOptionalRecord<StageBindingRecord>(
+          "stage-bindings",
+          currentRuntime.stage_binding_ref.id
+        )
+      : undefined;
+    for (let index = 0; index < prepared.ledger_inputs.length; index += 1) {
+      const ledgerInput = prepared.ledger_inputs[index]!;
+      if (ledgerInput.runtime_id !== state.run.trading_run_id) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_paired_checkpoint_reference_mismatch",
+          `paired checkpoint ${role} Ledger input targets another runtime`
+        );
+      }
+      const plan = await this.buildLedgerWritePlan(ledgerInput, {
+        runtime: currentRuntime,
+        ...(currentStageBinding ? { stageBinding: currentStageBinding } : {})
+      });
+      if (plan.existing || !samePersistedComparisonRecord(
+        plan.outcome,
+        prepared.ledger_outcomes[index]
+      )) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_paired_checkpoint_state_conflict",
+          `paired checkpoint ${role} Ledger preview is stale or already materialized`
+        );
+      }
+      ledgerPlans.push(plan);
+      currentRuntime = plan.updatedRuntime;
+      const plannedStageBinding = plan.immutableRecords.find(
+        (record) => record.collection === "stage-bindings"
+      )?.record;
+      if (plannedStageBinding?.record_kind === "stage_binding") {
+        currentStageBinding = plannedStageBinding as StageBindingRecord;
+      }
+    }
+    const expectedLedgerRefs = ledgerPlans.map((plan) => ({
+      record_kind: "ledger_chain",
+      id: plan.outcome.order_request.order_request_id
+    }));
+    if (!samePersistedComparisonRecord(evidence.ledger_chain_refs, expectedLedgerRefs) ||
+      evidence.consumed_event_count !== (
+        evaluation.processed_trading_system_event_ids?.length ?? 0
+      ) - (state.evaluation.processed_trading_system_event_ids?.length ?? 0) ||
+      (ledgerPlans.length === 0
+        ? observation.ledger_ref !== undefined
+        : !paperTradingComparisonRefsEqual(
+            observation.ledger_ref,
+            expectedLedgerRefs.at(-1)
+          ))) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch",
+        `paired checkpoint ${role} Ledger and event evidence is inconsistent`
+      );
+    }
+    return {
+      prepared: structuredClone(prepared),
+      previous_evaluation: structuredClone(state.evaluation),
+      ledger_plans: ledgerPlans
+    };
+  }
+
+  private async materializePaperTradingComparisonCheckpointTransaction(
+    transaction: LocalPaperTradingComparisonCheckpointTransaction
+  ): Promise<void> {
+    this.assertPersistedPaperTradingComparisonCheckpointTransaction(transaction);
+    for (const side of [transaction.champion, transaction.challenger]) {
+      for (const plan of side.ledger_plans) {
+        for (const item of plan.immutableRecords) {
+          if (item.collection === "trading-runs") continue;
+          await this.materializeExactCheckpointRecord(item);
+        }
+        await this.materializeCheckpointTransition(
+          "trading-runs",
+          plan.updatedRuntime.trading_run_id,
+          plan.previousRuntime,
+          plan.updatedRuntime
+        );
+      }
+      await this.materializeExactCheckpointRecord({
+        collection: "paper-trading-observations",
+        id: side.prepared.observation.paper_trading_observation_id,
+        record: side.prepared.observation
+      });
+      await this.materializeCheckpointTransition(
+        "paper-trading-evaluations",
+        side.prepared.evaluation.paper_trading_evaluation_id,
+        side.previous_evaluation,
+        side.prepared.evaluation
+      );
+    }
+    await this.materializeExactCheckpointRecord({
+      collection: "paper-trading-comparison-checkpoint-outcomes",
+      id: transaction.outcome.paper_trading_comparison_checkpoint_outcome_id,
+      record: transaction.outcome
+    });
+    await this.rebuildProjections();
+  }
+
+  private async materializeExactCheckpointRecord(item: FixtureItem): Promise<void> {
+    const existing = await this.readOptionalRecord<unknown>(
+      item.collection,
+      item.id,
+      item.itemDir
+    );
+    if (existing !== undefined && !samePersistedComparisonRecord(existing, item.record)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_materialization_conflict",
+        `paired checkpoint materialization conflicts with ${item.collection}:${item.id}`
+      );
+    }
+    if (existing === undefined) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+  }
+
+  private async materializeCheckpointTransition(
+    collection: "trading-runs" | "paper-trading-evaluations",
+    id: string,
+    before: TradingRunRecord | PaperTradingEvaluationRecord,
+    after: TradingRunRecord | PaperTradingEvaluationRecord
+  ): Promise<void> {
+    const existing = await this.readOptionalRecord<unknown>(collection, id);
+    if (existing !== undefined &&
+      !samePersistedComparisonRecord(existing, before) &&
+      !samePersistedComparisonRecord(existing, after)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_materialization_conflict",
+        `paired checkpoint transition conflicts with ${collection}:${id}`
+      );
+    }
+    if (!samePersistedComparisonRecord(existing, after)) {
+      await this.writeJson(this.itemPath(collection, id), after);
+    }
+  }
+
+  private async getPaperTradingComparisonCheckpointTransaction(
+    transactionId: string
+  ): Promise<LocalPaperTradingComparisonCheckpointTransaction | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-checkpoint-transactions",
+        transactionId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedPaperTradingComparisonCheckpointTransaction(record);
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code ===
+          "paper_trading_comparison_paired_checkpoint_transaction_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "persisted paired checkpoint transaction is unreadable or corrupt"
+      );
+    }
+  }
+
+  private async listPaperTradingComparisonCheckpointTransactions(): Promise<
+    LocalPaperTradingComparisonCheckpointTransaction[]
+  > {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-checkpoint-transactions"
+      );
+      return records.map((record) => {
+        this.assertPersistedPaperTradingComparisonCheckpointTransaction(record);
+        return record;
+      }).sort((left, right) => left.transaction_id.localeCompare(right.transaction_id));
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code ===
+          "paper_trading_comparison_paired_checkpoint_transaction_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "persisted paired checkpoint transaction collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  private assertPersistedPaperTradingComparisonCheckpointTransaction(
+    value: unknown
+  ): asserts value is LocalPaperTradingComparisonCheckpointTransaction {
+    if (!isPlainObject(value)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "paired checkpoint transaction has invalid runtime shape"
+      );
+    }
+    const transaction = value as unknown as LocalPaperTradingComparisonCheckpointTransaction;
+    if (transaction.record_kind !==
+        "local_paper_trading_comparison_checkpoint_transaction" ||
+      transaction.version !== 1 || typeof transaction.transaction_id !== "string" ||
+      transaction.transaction_id.length === 0 ||
+      !paperTradingComparisonRefsEqual(
+        transaction.checkpoint_attempt_ref,
+        {
+          record_kind: "paper_trading_comparison_checkpoint_attempt",
+          id: transaction.transaction_id
+        }
+      ) ||
+      typeof transaction.checkpoint_attempt_digest !== "string" ||
+      !paperTradingComparisonCheckpointOutcomeHasRuntimeShape(transaction.outcome) ||
+      transaction.outcome.outcome_status !== "paired" ||
+      !this.preparedCheckpointSideHasRuntimeShape(
+        transaction.champion?.prepared,
+        "champion"
+      ) ||
+      !this.preparedCheckpointSideHasRuntimeShape(
+        transaction.challenger?.prepared,
+        "challenger"
+      ) ||
+      !Array.isArray(transaction.champion.ledger_plans) ||
+      !Array.isArray(transaction.challenger.ledger_plans) ||
+      typeof transaction.transaction_digest !== "string") {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "paired checkpoint transaction has invalid runtime shape"
+      );
+    }
+    const { transaction_digest: _digest, ...payload } = transaction;
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(payload)
+      );
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "paired checkpoint transaction is not canonically digestible"
+      );
+    }
+    if (transaction.transaction_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_reload_failed",
+        "paired checkpoint transaction digest does not match canonical content"
       );
     }
   }
@@ -11696,6 +12345,24 @@ function validateCandidateMaterializationInput(
 
 function comparisonExactRecordDigest(input: string): string {
   return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function withLocalCheckpointTransactionDigest(
+  transaction: LocalPaperTradingComparisonCheckpointTransaction
+): LocalPaperTradingComparisonCheckpointTransaction {
+  const { transaction_digest: _digest, ...payload } = transaction;
+  return {
+    ...transaction,
+    transaction_digest: comparisonExactRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(payload)
+    )
+  };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === null);
 }
 
 function isIsoTimestamp(value: unknown): value is string {

@@ -5434,6 +5434,8 @@ export type FixtureRecord =
   | PaperTradingComparisonActivationAttemptRecord
   | PaperTradingComparisonActivationSideResultRecord
   | PaperTradingComparisonActivationOutcomeRecord
+  | PaperTradingComparisonCheckpointAttemptRecord
+  | PaperTradingComparisonCheckpointOutcomeRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord

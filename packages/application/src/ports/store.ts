@@ -56,6 +56,22 @@ export type SandboxStartPersistenceInput = Omit<SandboxStartResult, "placement">
   placement?: SandboxStartResult["placement"];
 };
 
+export interface PreparedPaperTradingComparisonCheckpointSide {
+  role: "champion" | "challenger";
+  ledger_inputs: LedgerInput[];
+  ledger_outcomes: LedgerWriteOutcome[];
+  observation: PaperTradingObservationRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  preparation_digest: string;
+}
+
+export interface RecordPaperTradingComparisonPairedCheckpointInput {
+  attempt: PaperTradingComparisonCheckpointAttemptRecord;
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+  champion: PreparedPaperTradingComparisonCheckpointSide;
+  challenger: PreparedPaperTradingComparisonCheckpointSide;
+}
+
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
 export const FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 
@@ -276,6 +292,13 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonCheckpointOutcomes(
     checkpointAttemptId: string
   ): Promise<PaperTradingComparisonCheckpointOutcomeRecord[]>;
+  previewLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
+  recordPaperTradingComparisonPairedCheckpoint(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord>;
+  recoverPaperTradingComparisonCheckpointTransactions(): Promise<
+    PaperTradingComparisonCheckpointOutcomeRecord[]
+  >;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

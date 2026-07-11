@@ -31,6 +31,7 @@ import type {
   ImprovementProposalProviderFailureInput,
   ImprovementProposalProviderResult,
   LedgerInput,
+  LedgerWriteOutcome,
   CandidateMaterializationInput,
   EvidenceClassificationRecord,
   EvaluationComparisonSetRecord,
@@ -79,6 +80,7 @@ import type {
 } from "@ouroboros/domain";
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
+  PAPER_TRADING_COMPARISON_ZERO_SCORE,
   paperTradingComparisonActivationDigestInput,
   paperTradingComparisonActivationAttemptDigestInput,
   paperTradingComparisonActivationOutcomeDigestInput,
@@ -92,6 +94,7 @@ import {
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonObservationChainDigestInput,
+  paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonSystemCodeRecordDigestInput,
@@ -6162,6 +6165,148 @@ describe("LocalStore", () => {
       await expectStoreError(listing, code);
     });
   });
+
+  describe("paired checkpoint transaction and ledger preview", () => {
+    it("previews deterministic Ledger records without writing Store state", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+      if (!candidate) throw new Error("fixture candidate missing");
+      const input = validLedgerInput(candidate.candidate_version.candidate_version_id);
+      const before = await comparisonActivationInvariantSnapshot(store);
+
+      const preview = await store.previewLedger(input);
+
+      await expect(comparisonActivationInvariantSnapshot(store)).resolves.toEqual(before);
+      const recorded = await store.recordLedger(input);
+      expect(recorded).toEqual(preview);
+    });
+
+    it("commits both side observations and paired outcome through one exact bundle", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const input = await validPairedCheckpointTransactionInput(
+        store,
+        fixture,
+        attempt,
+        { championLedger: true }
+      );
+
+      const committed = await store.recordPaperTradingComparisonPairedCheckpoint(input);
+      const replayed = await store.recordPaperTradingComparisonPairedCheckpoint(input);
+
+      expect(committed).toEqual(input.outcome);
+      expect(replayed).toEqual(committed);
+      await expect(store.listPaperTradingObservations(
+        attempt.champion.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([input.champion.observation]);
+      await expect(store.listPaperTradingObservations(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([input.challenger.observation]);
+      await expect(store.getPaperTradingEvaluation(
+        attempt.champion.paper_trading_evaluation_ref.id
+      )).resolves.toEqual(input.champion.evaluation);
+      await expect(store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual(input.challenger.evaluation);
+      await expect(store.listPaperTradingComparisonCheckpointOutcomes(
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual([input.outcome]);
+      expect(await readdir(path.join(
+        store.root(),
+        "paper-trading-comparison-checkpoint-transactions",
+        "items"
+      ))).toHaveLength(1);
+      const championRun = await store.getTradingRun(
+        attempt.champion.trading_run_ref.id
+      );
+      expect(championRun?.order_request_refs).toEqual([
+        {
+          record_kind: "order_request",
+          id: input.champion.ledger_outcomes[0]?.order_request.order_request_id
+        }
+      ]);
+    });
+
+    it("does not create a transaction bundle for invalid asymmetric input", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const input = await validPairedCheckpointTransactionInput(store, fixture, attempt);
+      const invalid = {
+        ...input,
+        challenger: withPreparedCheckpointSideDigest({
+          ...input.challenger,
+          observation: {
+            ...input.challenger.observation,
+            paper_trading_comparison_tick_digest: "sha256:wrong-tick"
+          }
+        })
+      };
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonPairedCheckpoint(invalid),
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch"
+      );
+      await expect(readdir(path.join(
+        store.root(),
+        "paper-trading-comparison-checkpoint-transactions",
+        "items"
+      ))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(store.listPaperTradingObservations(
+        attempt.champion.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([]);
+      await expect(store.listPaperTradingObservations(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([]);
+    });
+
+    it("rematerializes missing paired records from the committed transaction bundle", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const input = await validPairedCheckpointTransactionInput(store, fixture, attempt);
+      await store.recordPaperTradingComparisonPairedCheckpoint(input);
+
+      await Promise.all([
+        rm(path.join(
+          store.root(),
+          "paper-trading-observations/items",
+          `${encodeURIComponent(input.champion.observation.paper_trading_observation_id)}.json`
+        )),
+        rm(path.join(
+          store.root(),
+          "paper-trading-observations/items",
+          `${encodeURIComponent(input.challenger.observation.paper_trading_observation_id)}.json`
+        )),
+        rm(path.join(
+          store.root(),
+          "paper-trading-comparison-checkpoint-outcomes/items",
+          `${encodeURIComponent(input.outcome.paper_trading_comparison_checkpoint_outcome_id)}.json`
+        ))
+      ]);
+
+      const reloaded = new LocalStore(store.root());
+      await expect(reloaded.recoverPaperTradingComparisonCheckpointTransactions())
+        .resolves.toEqual([input.outcome]);
+      await expect(reloaded.listPaperTradingObservations(
+        attempt.champion.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([input.champion.observation]);
+      await expect(reloaded.listPaperTradingObservations(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([input.challenger.observation]);
+      await expect(reloaded.getPaperTradingComparisonCheckpointOutcome(
+        input.outcome.paper_trading_comparison_checkpoint_outcome_id
+      )).resolves.toEqual(input.outcome);
+    });
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -7327,6 +7472,198 @@ function withCheckpointOutcomeDigest(
     ...outcome,
     outcome_digest: comparisonRecordDigest(
       paperTradingComparisonCheckpointOutcomeDigestInput(outcome)
+    )
+  };
+}
+
+interface PreparedCheckpointSideFixture {
+  role: "champion" | "challenger";
+  ledger_inputs: LedgerInput[];
+  ledger_outcomes: LedgerWriteOutcome[];
+  observation: PaperTradingObservationRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  preparation_digest: string;
+}
+
+interface PairedCheckpointTransactionFixture {
+  attempt: PaperTradingComparisonCheckpointAttemptRecord;
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+  champion: PreparedCheckpointSideFixture;
+  challenger: PreparedCheckpointSideFixture;
+}
+
+async function validPairedCheckpointTransactionInput(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedBothRunningRuntimeActivationFixture>>,
+  attempt: PaperTradingComparisonCheckpointAttemptRecord,
+  options: { championLedger?: boolean } = {}
+): Promise<PairedCheckpointTransactionFixture> {
+  const prepare = async (
+    role: "champion" | "challenger"
+  ): Promise<PreparedCheckpointSideFixture> => {
+    const candidate = role === "champion" ? fixture.champion : fixture.challenger;
+    const current = await store.getPaperTradingEvaluation(
+      attempt[role].paper_trading_evaluation_ref.id
+    );
+    if (!current) throw new Error(`missing ${role} checkpoint evaluation`);
+    const withLedger = role === "champion" && options.championLedger === true;
+    const ledgerInputs: LedgerInput[] = withLedger ? [{
+      idempotency_key: `${attempt.paper_trading_comparison_checkpoint_attempt_id}:${role}:event-1`,
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      runtime_id: attempt[role].trading_run_ref.id,
+      intent: {
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: String(fixture.tick.market_snapshot.price)
+      },
+      gateway_result: {
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only",
+        policy_ref: {
+          record_kind: "runtime_operating_policy",
+          id: "runtime-operating-policy-paper-v1"
+        }
+      },
+      execution_result: {
+        execution_mode: "host_local",
+        completed_at: fixture.tick.observed_at
+      },
+      created_at: fixture.tick.observed_at
+    }] : [];
+    const ledgerOutcomes: LedgerWriteOutcome[] = [];
+    for (const input of ledgerInputs) {
+      ledgerOutcomes.push(await store.previewLedger(input));
+    }
+    const eventIds = withLedger ? [`${role}-checkpoint-event-1`] : [];
+    const latestLedger = ledgerOutcomes.at(-1);
+    const observation: PaperTradingObservationRecord = {
+      record_kind: "paper_trading_observation",
+      version: 1,
+      paper_trading_observation_id:
+        `${attempt[role].paper_trading_evaluation_ref.id}-observation-0001`,
+      paper_trading_evaluation_ref: {
+        ...attempt[role].paper_trading_evaluation_ref
+      },
+      paper_trading_evaluation_commitment_ref: {
+        ...fixture.attempt[role].paper_trading_evaluation_commitment_ref
+      },
+      paper_trading_comparison_tick_ref: { ...attempt.tick_ref },
+      paper_trading_comparison_tick_digest: attempt.tick_digest,
+      paper_trading_comparison_checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: attempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      paper_trading_comparison_checkpoint_attempt_digest: attempt.attempt_digest,
+      candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: candidate.candidate_id
+      },
+      candidate_version_ref: {
+        record_kind: "candidate_version",
+        id: candidate.candidate_version.candidate_version_id
+      },
+      trading_run_ref: { ...attempt[role].trading_run_ref },
+      sequence: 1,
+      status: withLedger ? "recorded" : "no_order",
+      observed_at: fixture.tick.observed_at,
+      market_snapshot: structuredClone(fixture.tick.market_snapshot),
+      public_execution_snapshot: structuredClone(
+        fixture.tick.public_execution_snapshot
+      ),
+      ...(withLedger ? {
+        decision: {
+          decision_kind: "order_request" as const,
+          source_kind: "trading_system_decision" as const,
+          reason: "checkpoint_fixture_order",
+          observed_at: fixture.tick.observed_at,
+          order_request: {
+            intent_kind: "place_order" as const,
+            symbol: "BTCUSDT" as const,
+            side: "buy" as const,
+            order_type: "limit" as const,
+            quantity: "0.001",
+            limit_price: String(fixture.tick.market_snapshot.price)
+          },
+          authority_status: "trace_only" as const
+        },
+        ledger_ref: {
+          record_kind: "ledger_chain",
+          id: latestLedger!.order_request.order_request_id
+        }
+      } : {}),
+      paper_account_snapshot: structuredClone(current.paper_account_snapshot),
+      open_orders: structuredClone(current.open_orders ?? []),
+      processed_trading_system_event_ids: eventIds,
+      processed_public_trade_ids: structuredClone(
+        current.processed_public_trade_ids ?? []
+      ),
+      score_delta: structuredClone(PAPER_TRADING_COMPARISON_ZERO_SCORE),
+      cumulative_score: structuredClone(current.latest_score),
+      authority_status: "not_live"
+    };
+    const evaluation: PaperTradingEvaluationRecord = {
+      ...structuredClone(current),
+      observation_count: 1,
+      last_observed_at: fixture.tick.observed_at,
+      next_observation_at: new Date(
+        Date.parse(fixture.tick.observed_at) + current.interval_ms
+      ).toISOString(),
+      latest_public_execution_snapshot: structuredClone(
+        fixture.tick.public_execution_snapshot
+      ),
+      processed_trading_system_event_ids: eventIds
+    };
+    return withPreparedCheckpointSideDigest({
+      role,
+      ledger_inputs: ledgerInputs,
+      ledger_outcomes: ledgerOutcomes,
+      observation,
+      evaluation,
+      preparation_digest: ""
+    });
+  };
+  const champion = await prepare("champion");
+  const challenger = await prepare("challenger");
+  const sideEvidence = (side: PreparedCheckpointSideFixture) => ({
+    role: side.role,
+    observation_ref: {
+      record_kind: "paper_trading_observation",
+      id: side.observation.paper_trading_observation_id
+    },
+    observation_record_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(side.observation)
+    ),
+    evaluation_record_digest: comparisonRecordDigest(
+      paperTradingComparisonEvaluationRecordDigestInput(side.evaluation)
+    ),
+    ledger_chain_refs: side.ledger_outcomes.map((ledger) => ({
+      record_kind: "ledger_chain",
+      id: ledger.order_request.order_request_id
+    })),
+    observation_status: side.observation.status,
+    consumed_event_count:
+      side.observation.processed_trading_system_event_ids?.length ?? 0,
+    provider_request_count_after: attempt[side.role].provider_request_count_before
+  });
+  const outcome = withCheckpointOutcomeDigest({
+    ...validPairedCheckpointOutcome(attempt),
+    champion: sideEvidence(champion),
+    challenger: sideEvidence(challenger)
+  });
+  return { attempt, outcome, champion, challenger };
+}
+
+function withPreparedCheckpointSideDigest(
+  side: PreparedCheckpointSideFixture
+): PreparedCheckpointSideFixture {
+  const { preparation_digest: _digest, ...payload } = side;
+  return {
+    ...side,
+    preparation_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(payload)
     )
   };
 }
