@@ -156,7 +156,7 @@ git commit -m "feat: define paper comparison research release"
 - Produces: `decidePaperTradingComparisonResearchRelease`
 - Produces: release kind, Finding kind, deterministic summary, and next research focus
 
-- [ ] **Step 1: Write failing classification tests**
+- [x] **Step 1: Write failing classification tests**
 
 Use this exact result contract:
 
@@ -173,7 +173,7 @@ Cover all-improved, any non-improved, ineligible-only, expired-only, non-improve
 ineligible plus expired, malformed counts, partial/reordered/duplicate slots, input mutation, and
 deterministic replay. Summary must include improved, not-improved, ineligible, and expired counts.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-research-release-decision.test.ts
@@ -181,7 +181,7 @@ npx vitest run packages/application/src/trading/paper/comparison-research-releas
 
 Expected: FAIL because the decision module does not exist.
 
-- [ ] **Step 3: Implement classification priority**
+- [x] **Step 3: Implement classification priority**
 
 Implement the design priority exactly:
 
@@ -198,14 +198,14 @@ Reject malformed runtime shape with
 `invalid_paper_trading_comparison_research_release_decision_input`. Do not read Store state or infer
 from promotion eligibility alone.
 
-- [ ] **Step 4: Run decision regressions and typecheck**
+- [x] **Step 4: Run decision regressions and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-research-release-decision.test.ts packages/application/src/trading/paper/comparison-confirmation-decision.test.ts
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 5: Commit the pure decision**
+- [x] **Step 5: Commit the pure decision**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-research-release-decision.ts packages/application/src/trading/paper/comparison-research-release-decision.test.ts
