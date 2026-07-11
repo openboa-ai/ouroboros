@@ -42,6 +42,7 @@ import type {
   PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonConfirmationCampaignRecord,
+  PaperTradingComparisonConfirmationCampaignOutcomeRecord,
   PaperTradingComparisonVerdictRecord,
   LedgerInput,
   LedgerWriteOutcome,
@@ -348,6 +349,15 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonConfirmationCampaigns(): Promise<
     PaperTradingComparisonConfirmationCampaignRecord[]
   >;
+  recordPaperTradingComparisonConfirmationCampaignOutcome(
+    outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord>;
+  getPaperTradingComparisonConfirmationCampaignOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord | undefined>;
+  listPaperTradingComparisonConfirmationCampaignOutcomes(
+    campaignId?: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

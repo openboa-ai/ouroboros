@@ -58,6 +58,8 @@ import type {
   PaperTradingComparisonTickIOWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonConfirmationCampaignRecord,
+  PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  PaperTradingComparisonConfirmationSlotResult,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPolicy,
   PaperTradingComparisonPreparationRecord,
@@ -101,6 +103,7 @@ import {
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCommitmentDigestInput,
   paperTradingComparisonConfirmationCampaignDigestInput,
+  paperTradingComparisonConfirmationCampaignOutcomeDigestInput,
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonObservationChainDigestInput,
@@ -3884,6 +3887,315 @@ describe("LocalStore", () => {
     await expectStoreError(
       store.recordPaperTradingComparisonConfirmationCampaign(campaign),
       "paper_trading_comparison_active_campaign_pair_conflict"
+    );
+  });
+
+  it("enforces a confirmation campaign slot-1 first-tick deadline", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedQualifiedComparisonVerdictFixture(store);
+    const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+    await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+    const slot = await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+    const maximumDelay = campaign.campaign_policy.maximum_slot_start_delay_ms;
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(confirmationSlotFirstTick(
+        slot.comparison,
+        campaign.committed_at,
+        1
+      )),
+      "paper_trading_comparison_confirmation_first_tick_time_mismatch"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(confirmationSlotFirstTick(
+        slot.comparison,
+        new Date(Date.parse(campaign.committed_at) + maximumDelay + 1).toISOString(),
+        1
+      )),
+      "paper_trading_comparison_confirmation_first_tick_time_mismatch"
+    );
+    const tick = confirmationSlotFirstTick(
+      slot.comparison,
+      new Date(Date.parse(campaign.committed_at) + 20_000).toISOString(),
+      1
+    );
+    await expect(store.recordPaperTradingComparisonTick(tick)).resolves.toEqual(tick);
+    await expect(store.recordPaperTradingComparisonTick(tick)).resolves.toEqual(tick);
+  });
+
+  it("enforces strict predecessor closure and deadline for a later campaign first tick", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedQualifiedComparisonVerdictFixture(store);
+    const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+    await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+    const slot1 = await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+    const slot1Tick = confirmationSlotFirstTick(
+      slot1.comparison,
+      new Date(Date.parse(campaign.committed_at) + 11_000).toISOString(),
+      1
+    );
+    await store.recordPaperTradingComparisonTick(slot1Tick);
+    const priorVerdict = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      1,
+      "challenger_improved"
+    );
+    const slot = await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+    const maximumDelay = campaign.campaign_policy.maximum_slot_start_delay_ms;
+
+    for (const observedAt of [
+      priorVerdict.window_ended_at,
+      priorVerdict.evaluated_at,
+      new Date(Date.parse(priorVerdict.evaluated_at) + maximumDelay + 1).toISOString()
+    ]) {
+      await expectStoreError(
+        store.recordPaperTradingComparisonTick(confirmationSlotFirstTick(
+          slot.comparison,
+          observedAt,
+          2
+        )),
+        "paper_trading_comparison_confirmation_first_tick_time_mismatch"
+      );
+    }
+    const tick = confirmationSlotFirstTick(
+      slot.comparison,
+      new Date(Date.parse(campaign.committed_at) + 21_000).toISOString(),
+      2
+    );
+    await expect(store.recordPaperTradingComparisonTick(tick)).resolves.toEqual(tick);
+  });
+
+  it("persists a complete confirmed campaign outcome and releases its pair", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedQualifiedComparisonVerdictFixture(store);
+    const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+    await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+    const slot1 = await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+    const slot1Tick = confirmationSlotFirstTick(
+      slot1.comparison,
+      new Date(Date.parse(campaign.committed_at) + 11_000).toISOString(),
+      1
+    );
+    await store.recordPaperTradingComparisonTick(slot1Tick);
+    const slot1Verdict = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      1,
+      "challenger_improved"
+    );
+    await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+    const slot2Verdict = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      2,
+      "challenger_improved"
+    );
+    const outcome = validConfirmationCampaignOutcome(
+      campaign,
+      [slot1Verdict, slot2Verdict]
+    );
+    const arbitrary = withPreparationDigest({
+      ...confirmationSlotPreparation(fixture, campaign, 2),
+      paper_trading_comparison_preparation_id:
+        "paper-comparison-preparation-after-campaign-outcome",
+      paper_trading_comparison_commitment_id:
+        "paper-comparison-after-campaign-outcome",
+      committed_at: new Date(Date.parse(outcome.evaluated_at) + 1_000).toISOString(),
+      preparation_digest: ""
+    });
+
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(arbitrary),
+      "paper_trading_comparison_active_campaign_pair_conflict"
+    );
+    await expect(store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome))
+      .resolves.toEqual(outcome);
+    await expect(store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome))
+      .resolves.toEqual(outcome);
+    await expect(store.getPaperTradingComparisonConfirmationCampaignOutcome(
+      outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    )).resolves.toEqual(outcome);
+    await expect(store.listPaperTradingComparisonConfirmationCampaignOutcomes(
+      campaign.paper_trading_comparison_confirmation_campaign_id
+    )).resolves.toEqual([outcome]);
+    const reloaded = new LocalStore(tmpDir);
+    await expect(reloaded.getPaperTradingComparisonConfirmationCampaignOutcome(
+      outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    )).resolves.toEqual(outcome);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      slot1.champion.evaluation.paper_trading_evaluation_id,
+      {
+        ...slot1.champion.evaluation,
+        status: "stopped",
+        stopped_at: new Date(Date.parse(outcome.evaluated_at) - 1).toISOString()
+      }
+    );
+    await expect(store.recordPaperTradingComparisonTick(slot1Tick))
+      .resolves.toEqual(slot1Tick);
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(withTickDigest({
+        ...slot1Tick,
+        paper_trading_comparison_tick_id: `${slot1Tick.paper_trading_comparison_tick_id}-late`,
+        tick_digest: ""
+      })),
+      "paper_trading_comparison_confirmation_campaign_terminal"
+    );
+    await expect(store.reservePaperTradingComparisonPreparation(arbitrary))
+      .resolves.toEqual(arbitrary);
+  });
+
+  it.each([
+    ["not-improved", "challenger_not_improved", "challenger_not_improved"],
+    ["ineligible", "comparison_ineligible", "comparison_ineligible"],
+    ["expired", "slot_expired", undefined]
+  ] as const)("persists a complete %s campaign outcome", async (
+    label,
+    expectedStatus,
+    secondVerdictStatus
+  ) => {
+    const store = new LocalStore(path.join(tmpDir, label));
+    await store.initialize();
+    const fixture = await storedQualifiedComparisonVerdictFixture(store);
+    const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+    await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+    await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+    const first = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      1,
+      "challenger_improved"
+    );
+    let outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord;
+    if (secondVerdictStatus) {
+      await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+      const second = await seedConfirmationSlotVerdict(
+        store,
+        fixture,
+        campaign,
+        2,
+        secondVerdictStatus
+      );
+      outcome = validConfirmationCampaignOutcome(campaign, [first, second]);
+    } else {
+      outcome = validExpiredConfirmationCampaignOutcome(campaign, [first]);
+      await expectStoreError(
+        store.recordPaperTradingComparisonConfirmationCampaignOutcome(
+          withConfirmationCampaignOutcomeDigest({
+            ...outcome,
+            evaluated_at: new Date(
+              Date.parse(first.evaluated_at) +
+                campaign.campaign_policy.maximum_slot_start_delay_ms
+            ).toISOString(),
+            outcome_digest: ""
+          })
+        ),
+        "paper_trading_comparison_confirmation_campaign_outcome_graph_invalid"
+      );
+    }
+
+    await expect(store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome))
+      .resolves.toMatchObject({
+        campaign_outcome: "not_confirmed",
+        promotion_eligibility: "not_eligible",
+        next_action: "return_to_candidate_arena",
+        slot_results: [{ status: "challenger_improved" }, { status: expectedStatus }]
+      });
+  });
+
+  it("rejects incomplete, drifted, foreign, and changed campaign outcomes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedQualifiedComparisonVerdictFixture(store);
+    const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+    await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+    await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+    const first = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      1,
+      "challenger_improved"
+    );
+    await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+    const second = await seedConfirmationSlotVerdict(
+      store,
+      fixture,
+      campaign,
+      2,
+      "challenger_improved"
+    );
+    const outcome = validConfirmationCampaignOutcome(campaign, [first, second]);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome({
+        ...outcome,
+        outcome_digest: "sha256:stale"
+      }),
+      "paper_trading_comparison_confirmation_campaign_outcome_digest_mismatch"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome({
+        ...outcome,
+        slot_results: outcome.slot_results.slice(0, 1)
+      } as never),
+      "invalid_paper_trading_comparison_confirmation_campaign_outcome_input"
+    );
+    const staleVerdictResults = structuredClone(outcome.slot_results);
+    staleVerdictResults[1]!.verdict_digest = "sha256:stale-verdict";
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome(
+        withConfirmationCampaignOutcomeDigest({
+          ...outcome,
+          slot_results: staleVerdictResults,
+          outcome_digest: ""
+        })
+      ),
+      "paper_trading_comparison_confirmation_campaign_outcome_graph_invalid"
+    );
+    const foreignResults = structuredClone(outcome.slot_results);
+    foreignResults[1]!.paper_trading_comparison_commitment_ref.id =
+      "foreign-comparison";
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome(
+        withConfirmationCampaignOutcomeDigest({
+          ...outcome,
+          slot_results: foreignResults,
+          outcome_digest: ""
+        })
+      ),
+      "paper_trading_comparison_confirmation_campaign_outcome_graph_invalid"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome(
+        withConfirmationCampaignOutcomeDigest({
+          ...outcome,
+          improved_count: 1,
+          not_improved_count: 1,
+          outcome_digest: ""
+        })
+      ),
+      "invalid_paper_trading_comparison_confirmation_campaign_outcome_input"
+    );
+    await store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome);
+    await expectStoreError(
+      store.recordPaperTradingComparisonConfirmationCampaignOutcome(
+        withConfirmationCampaignOutcomeDigest({
+          ...outcome,
+          evaluated_at: new Date(Date.parse(outcome.evaluated_at) + 1).toISOString(),
+          outcome_digest: ""
+        })
+      ),
+      "paper_trading_comparison_confirmation_campaign_outcome_conflict"
     );
   });
 
@@ -9482,6 +9794,344 @@ function confirmationSlotPreparation(
       .toISOString(),
     preparation_digest: ""
   });
+}
+
+async function storedConfirmationSlotComparison(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedQualifiedComparisonVerdictFixture>>,
+  campaign: PaperTradingComparisonConfirmationCampaignRecord,
+  slotIndex: number
+) {
+  const preparation = confirmationSlotPreparation(fixture, campaign, slotIndex);
+  await store.reservePaperTradingComparisonPreparation(preparation);
+  const createSide = async (role: "champion" | "challenger") => {
+    const candidate = role === "champion" ? fixture.champion : fixture.challenger;
+    const run = await store.createPaperTradingRun({
+      idempotency_key:
+        `${campaign.slots[slotIndex - 1]!.comparison_idempotency_key}:${role}`,
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: preparation.committed_at
+    });
+    const systemCode = await store.getSystemCode(run.system_code_ref!.id);
+    if (!systemCode) throw new Error(`missing ${role} confirmation SystemCode`);
+    const commitment = qualificationCommitment(
+      candidate,
+      run,
+      systemCode,
+      `${preparation.paper_trading_comparison_commitment_id}-${role}-commitment`,
+      preparation.committed_at
+    );
+    const evaluation: PaperTradingEvaluationRecord = {
+      ...validPaperTradingEvaluation(commitment),
+      paper_trading_evaluation_id:
+        `${preparation.paper_trading_comparison_commitment_id}-${role}-evaluation`,
+      candidate_ref: { ...commitment.candidate_ref },
+      candidate_version_ref: { ...commitment.candidate_version_ref },
+      trading_run_ref: { ...commitment.trading_run_ref },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: commitment.paper_trading_evaluation_commitment_id
+      },
+      status: "not_started",
+      observation_count: 0,
+      latest_score: zeroPaperTradingProfitLoss(),
+      paper_account_snapshot: structuredClone(commitment.initial_account_snapshot),
+      open_orders: [],
+      processed_trading_system_event_ids: [],
+      processed_public_trade_ids: []
+    };
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    return { run, commitment, evaluation };
+  };
+  const champion = await createSide("champion");
+  const challenger = await createSide("challenger");
+  const comparison = withComparisonDigest({
+    ...validPaperTradingComparisonCommitment(),
+    paper_trading_comparison_commitment_id:
+      preparation.paper_trading_comparison_commitment_id,
+    preparation_ref: {
+      record_kind: "paper_trading_comparison_preparation",
+      id: preparation.paper_trading_comparison_preparation_id
+    },
+    champion: comparisonSide(
+      preparation.champion,
+      champion.commitment,
+      champion.evaluation
+    ),
+    challenger: comparisonSide(
+      preparation.challenger,
+      challenger.commitment,
+      challenger.evaluation
+    ),
+    champion_selection: structuredClone(campaign.champion_selection),
+    comparison_policy: structuredClone(campaign.comparison_policy),
+    market_data_configuration_digest: campaign.market_data_configuration_digest,
+    paper_policy_identity: structuredClone(campaign.paper_policy_identity),
+    committed_at: preparation.committed_at,
+    commitment_digest: ""
+  });
+  await store.recordPaperTradingComparisonCommitment(comparison);
+  return { preparation, comparison, champion, challenger };
+}
+
+function confirmationSlotFirstTick(
+  comparison: PaperTradingComparisonCommitmentRecord,
+  observedAt: string,
+  slotIndex: number
+): PaperTradingComparisonTickRecord {
+  const tick = validPaperTradingComparisonTick(comparison);
+  return withTickDigest({
+    ...tick,
+    paper_trading_comparison_tick_id:
+      `${comparison.paper_trading_comparison_commitment_id}-first-tick-${slotIndex}`,
+    market_snapshot: {
+      ...tick.market_snapshot,
+      observed_at: new Date(Date.parse(observedAt) - 2).toISOString()
+    },
+    public_execution_snapshot: {
+      ...tick.public_execution_snapshot,
+      observed_at: new Date(Date.parse(observedAt) - 1).toISOString(),
+      stream_marker:
+        `${comparison.paper_trading_comparison_commitment_id}-public-execution`
+    },
+    observed_at: observedAt,
+    tick_digest: ""
+  });
+}
+
+async function seedConfirmationSlotVerdict(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedQualifiedComparisonVerdictFixture>>,
+  campaign: PaperTradingComparisonConfirmationCampaignRecord,
+  slotIndex: number,
+  status:
+    | "challenger_improved"
+    | "challenger_not_improved"
+    | "comparison_ineligible"
+): Promise<PaperTradingComparisonVerdictRecord> {
+  const slot = campaign.slots[slotIndex - 1];
+  if (!slot) throw new Error(`missing confirmation verdict slot ${slotIndex}`);
+  const comparison = await store.getPaperTradingComparisonCommitment(
+    slot.paper_trading_comparison_commitment_id
+  );
+  if (!comparison) throw new Error(`missing confirmation slot ${slotIndex} comparison`);
+  const ineligible = status === "comparison_ineligible";
+  const pairQualification = {
+    ...structuredClone(fixture.verdict.pair_qualification),
+    comparison_id: slot.paper_trading_comparison_commitment_id,
+    ...(ineligible
+      ? {
+          qualification_status: "not_qualified" as const,
+          qualification_reasons: [
+            "comparison_window_not_completed_normally" as const
+          ]
+        }
+      : {})
+  };
+  const improved = status === "challenger_improved";
+  const champion = {
+    ...structuredClone(fixture.verdict.champion),
+    net_revenue_usdt: 0,
+    cost_usdt: 0
+  };
+  const challenger = {
+    ...structuredClone(fixture.verdict.challenger),
+    net_revenue_usdt: improved ? 1 : 0,
+    cost_usdt: 0
+  };
+  const baseTime = Date.parse(campaign.committed_at) + slotIndex * 10_000;
+  const scoredVerdict = {
+    ...structuredClone(fixture.verdict),
+    paper_trading_comparison_verdict_id:
+      `${slot.paper_trading_comparison_commitment_id}-verdict`,
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: slot.paper_trading_comparison_commitment_id
+    },
+    paper_trading_comparison_commitment_digest: comparison.commitment_digest,
+    pair_qualification: pairQualification,
+    pair_qualification_digest: comparisonRecordDigest(
+      paperTradingComparisonQualificationResultDigestInput(pairQualification)
+    ),
+    champion,
+    challenger,
+    metric: {
+      metric_kind: "net_revenue_usdt",
+      champion_value_usdt: 0,
+      challenger_value_usdt: improved ? 1 : 0,
+      observed_lift_usdt: improved ? 1 : 0,
+      minimum_lift_usdt: campaign.comparison_policy.minimum_net_revenue_lift_usdt
+    },
+    verdict_outcome: status,
+    window_started_at: new Date(baseTime + 1_000).toISOString(),
+    window_ended_at: new Date(baseTime + 2_000).toISOString(),
+    evaluated_at: new Date(baseTime + 3_000).toISOString(),
+    confirmation_disposition: improved
+      ? "requires_precommitted_campaign"
+      : "not_applicable",
+    next_action: improved
+      ? "precommit_confirmation_campaign"
+      : "return_to_candidate_arena",
+    verdict_digest: ""
+  };
+  const verdict = ineligible
+    ? withComparisonVerdictDigest((() => {
+        const {
+          net_revenue_usdt: _championNet,
+          cost_usdt: _championCost,
+          ...ineligibleChampion
+        } = scoredVerdict.champion;
+        const {
+          net_revenue_usdt: _challengerNet,
+          cost_usdt: _challengerCost,
+          ...ineligibleChallenger
+        } = scoredVerdict.challenger;
+        const { metric: _metric, ...withoutMetric } = scoredVerdict;
+        return {
+          ...withoutMetric,
+          champion: ineligibleChampion,
+          challenger: ineligibleChallenger,
+          verdict_outcome: "comparison_ineligible" as const,
+          confirmation_disposition: "not_applicable" as const,
+          next_action: "repair_evidence_or_rerun_comparison" as const,
+          verdict_digest: ""
+        } as PaperTradingComparisonVerdictRecord;
+      })())
+    : withComparisonVerdictDigest(scoredVerdict as PaperTradingComparisonVerdictRecord);
+  await overwriteComparisonFixtureRecord(
+    store,
+    "paper-trading-comparison-verdicts",
+    verdict.paper_trading_comparison_verdict_id,
+    verdict
+  );
+  return verdict;
+}
+
+function validConfirmationCampaignOutcome(
+  campaign: PaperTradingComparisonConfirmationCampaignRecord,
+  verdicts: PaperTradingComparisonVerdictRecord[]
+): PaperTradingComparisonConfirmationCampaignOutcomeRecord {
+  const slotResults: PaperTradingComparisonConfirmationSlotResult[] = verdicts.map(
+    (verdict, index) => ({
+      slot_index: index + 1,
+      paper_trading_comparison_commitment_ref: {
+        record_kind: "paper_trading_comparison_commitment",
+        id: campaign.slots[index]!.paper_trading_comparison_commitment_id
+      },
+      status: verdict.verdict_outcome === "challenger_improved"
+        ? "challenger_improved"
+        : verdict.verdict_outcome === "challenger_not_improved"
+          ? "challenger_not_improved"
+          : "comparison_ineligible",
+      verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: verdict.paper_trading_comparison_verdict_id
+      },
+      verdict_digest: verdict.verdict_digest,
+      window_started_at: verdict.window_started_at,
+      window_ended_at: verdict.window_ended_at
+    })
+  );
+  const improvedCount = slotResults.filter((result) =>
+    result.status === "challenger_improved").length;
+  const confirmed = improvedCount === campaign.slots.length;
+  const outcome = {
+    record_kind: "paper_trading_comparison_confirmation_campaign_outcome" as const,
+    version: 1 as const,
+    paper_trading_comparison_confirmation_campaign_outcome_id:
+      `${campaign.paper_trading_comparison_confirmation_campaign_id}-outcome`,
+    campaign_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign",
+      id: campaign.paper_trading_comparison_confirmation_campaign_id
+    },
+    campaign_digest: campaign.campaign_digest,
+    slot_results: slotResults,
+    improved_count: improvedCount,
+    not_improved_count: slotResults.filter((result) =>
+      result.status === "challenger_not_improved").length,
+    ineligible_count: slotResults.filter((result) =>
+      result.status === "comparison_ineligible").length,
+    expired_count: 0,
+    campaign_outcome: confirmed ? "confirmed_improvement" as const : "not_confirmed" as const,
+    decision_rule: "all_reserved_windows_must_improve" as const,
+    promotion_eligibility: confirmed ? "eligible" as const : "not_eligible" as const,
+    release_status: "sealed" as const,
+    next_action: confirmed
+      ? "review_for_trading_promotion" as const
+      : "return_to_candidate_arena" as const,
+    evaluated_at: new Date(
+      Math.max(...verdicts.map((verdict) => Date.parse(verdict.evaluated_at))) + 1_000
+    ).toISOString(),
+    outcome_digest: "",
+    evaluation_authority: "external_to_trading_systems" as const,
+    live_exchange_authority: false as const,
+    order_submission_authority: false as const,
+    authority_status: "not_live" as const
+  };
+  return {
+    ...outcome,
+    outcome_digest: comparisonRecordDigest(
+      paperTradingComparisonConfirmationCampaignOutcomeDigestInput(outcome)
+    )
+  };
+}
+
+function validExpiredConfirmationCampaignOutcome(
+  campaign: PaperTradingComparisonConfirmationCampaignRecord,
+  completedVerdicts: PaperTradingComparisonVerdictRecord[]
+): PaperTradingComparisonConfirmationCampaignOutcomeRecord {
+  const completed = validConfirmationCampaignOutcome(campaign, completedVerdicts);
+  const slotResults: PaperTradingComparisonConfirmationSlotResult[] = [
+    ...completed.slot_results,
+    ...campaign.slots.slice(completedVerdicts.length).map((slot, index) => ({
+      slot_index: completedVerdicts.length + index + 1,
+      paper_trading_comparison_commitment_ref: {
+        record_kind: "paper_trading_comparison_commitment",
+        id: slot.paper_trading_comparison_commitment_id
+      },
+      status: "slot_expired" as const
+    }))
+  ];
+  const applicableStart = completedVerdicts.at(-1)?.evaluated_at ?? campaign.committed_at;
+  const outcome = {
+    ...completed,
+    slot_results: slotResults,
+    improved_count: completedVerdicts.filter((verdict) =>
+      verdict.verdict_outcome === "challenger_improved").length,
+    not_improved_count: completedVerdicts.filter((verdict) =>
+      verdict.verdict_outcome === "challenger_not_improved").length,
+    ineligible_count: completedVerdicts.filter((verdict) =>
+      verdict.verdict_outcome === "comparison_ineligible").length,
+    expired_count: campaign.slots.length - completedVerdicts.length,
+    campaign_outcome: "not_confirmed" as const,
+    promotion_eligibility: "not_eligible" as const,
+    next_action: "return_to_candidate_arena" as const,
+    evaluated_at: new Date(
+      Date.parse(applicableStart) +
+        campaign.campaign_policy.maximum_slot_start_delay_ms + 1
+    ).toISOString(),
+    outcome_digest: ""
+  };
+  return {
+    ...outcome,
+    outcome_digest: comparisonRecordDigest(
+      paperTradingComparisonConfirmationCampaignOutcomeDigestInput(outcome)
+    )
+  };
+}
+
+function withConfirmationCampaignOutcomeDigest(
+  outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+): PaperTradingComparisonConfirmationCampaignOutcomeRecord {
+  return {
+    ...outcome,
+    outcome_digest: comparisonRecordDigest(
+      paperTradingComparisonConfirmationCampaignOutcomeDigestInput(outcome)
+    )
+  };
 }
 
 function withComparisonVerdictDigest(
