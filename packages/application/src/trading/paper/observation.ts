@@ -605,7 +605,8 @@ async function preparePaperTradingObservationDecision(input: {
         event_id: event.event_id,
         event_kind: "error",
         observed_at: event.observed_at,
-        reason: event.reason
+        reason: event.reason,
+        ...comparisonTickAcknowledgementAttribution(event)
       }))
     };
   }
@@ -645,7 +646,8 @@ async function preparePaperTradingObservationDecision(input: {
           record_kind: "order_request",
           id: ledger.order_request.order_request_id
         },
-        gateway_outcome: ledger.gateway_result.decision_outcome
+        gateway_outcome: ledger.gateway_result.decision_outcome,
+        ...comparisonTickAcknowledgementAttribution(event)
       });
       continue;
     }
@@ -662,7 +664,8 @@ async function preparePaperTradingObservationDecision(input: {
         event_kind: "cancel_order",
         observed_at: event.observed_at,
         order_id: event.order_id,
-        reason: event.reason
+        reason: event.reason,
+        ...comparisonTickAcknowledgementAttribution(event)
       });
       continue;
     }
@@ -671,7 +674,8 @@ async function preparePaperTradingObservationDecision(input: {
       event_id: event.event_id,
       event_kind: event.event_kind,
       observed_at: event.observed_at,
-      reason: event.reason
+      reason: event.reason,
+      ...comparisonTickAcknowledgementAttribution(event)
     });
   }
   return {
@@ -679,6 +683,26 @@ async function preparePaperTradingObservationDecision(input: {
     ledgerInputs,
     ledgerOutcomes,
     engineEvents
+  };
+}
+
+function comparisonTickAcknowledgementAttribution(
+  event: ParsedTradingSystemPaperEvent
+): Pick<
+  ParsedTradingSystemPaperEvent,
+  | "comparison_tick_acknowledgement_ref"
+  | "comparison_tick_acknowledgement_digest"
+> {
+  if (!event.comparison_tick_acknowledgement_ref ||
+    !event.comparison_tick_acknowledgement_digest) {
+    return {};
+  }
+  return {
+    comparison_tick_acknowledgement_ref: {
+      ...event.comparison_tick_acknowledgement_ref
+    },
+    comparison_tick_acknowledgement_digest:
+      event.comparison_tick_acknowledgement_digest
   };
 }
 
@@ -731,7 +755,8 @@ async function recordPaperTradingObservationDecision(input: {
         event_id: event.event_id,
         event_kind: "error",
         observed_at: event.observed_at,
-        reason: event.reason
+        reason: event.reason,
+        ...comparisonTickAcknowledgementAttribution(event)
       }))
     };
   }
@@ -761,7 +786,8 @@ async function recordPaperTradingObservationDecision(input: {
         observed_at: event.observed_at,
         order_request: event.order_request,
         ledger_ref: { record_kind: "order_request", id: ledger.order_request.order_request_id },
-        gateway_outcome: ledger.gateway_result.decision_outcome
+        gateway_outcome: ledger.gateway_result.decision_outcome,
+        ...comparisonTickAcknowledgementAttribution(event)
       });
       continue;
     }
@@ -778,7 +804,8 @@ async function recordPaperTradingObservationDecision(input: {
         event_kind: "cancel_order",
         observed_at: event.observed_at,
         order_id: event.order_id,
-        reason: event.reason
+        reason: event.reason,
+        ...comparisonTickAcknowledgementAttribution(event)
       });
       continue;
     }
@@ -794,7 +821,8 @@ async function recordPaperTradingObservationDecision(input: {
         event_id: event.event_id,
         event_kind: "error",
         observed_at: event.observed_at,
-        reason: event.reason
+        reason: event.reason,
+        ...comparisonTickAcknowledgementAttribution(event)
       });
       continue;
     }
@@ -803,7 +831,8 @@ async function recordPaperTradingObservationDecision(input: {
       event_id: event.event_id,
       event_kind: event.event_kind,
       observed_at: event.observed_at,
-      reason: event.reason
+      reason: event.reason,
+      ...comparisonTickAcknowledgementAttribution(event)
     });
   }
   await recordPaperTradingObservationAudit({

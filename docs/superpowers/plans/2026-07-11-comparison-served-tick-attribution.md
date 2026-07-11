@@ -269,14 +269,15 @@ git commit -m "feat: expose comparison tick acknowledgement protocol"
 
 **Files:**
 - Modify: `packages/application/src/trading/paper/events.ts`
-- Modify: `packages/application/src/trading/paper/events.test.ts`
+- Create: `packages/application/src/trading/paper/events.test.ts`
+- Modify: `packages/application/src/trading/paper/observation.ts`
 - Modify: `packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts`
 
 **Interfaces:**
 - Extends: every accepted `ParsedTradingSystemPaperEvent` with optional acknowledgement ref/digest
 - Preserves: acknowledgement lineage through first-checkpoint preparation without requiring it
 
-- [ ] **Step 1: Write failing parser and preparation tests**
+- [x] **Step 1: Write failing parser and preparation tests**
 
 Add an order, cancel, hold, and no-action event containing:
 
@@ -294,7 +295,7 @@ Assert both fields survive parsing. Reject either field alone, wrong record kind
 digest, and forbidden extra attribution authority. Assert first-checkpoint preparation still accepts
 an event without attribution and preserves an attributed event in the prepared engine event path.
 
-- [ ] **Step 2: Run event tests and verify RED**
+- [x] **Step 2: Run event tests and verify RED**
 
 Run:
 
@@ -304,27 +305,28 @@ npx vitest run packages/application/src/trading/paper/events.test.ts packages/ap
 
 Expected: FAIL because parsed events omit acknowledgement lineage.
 
-- [ ] **Step 3: Add all-or-none attribution parsing**
+- [x] **Step 3: Add all-or-none attribution parsing**
 
 Define one shared optional attribution interface and spread it into every accepted event kind. The
 parser validates exact ref kind and `sha256:` digest syntax before event-specific parsing. Rejected
 attribution becomes a normal `PaperTradingErrorEvent`; it never silently strips malformed lineage.
 
-- [ ] **Step 4: Run paper event and observation regressions**
+- [x] **Step 4: Run paper event and observation regressions**
 
 Run:
 
 ```bash
-npx vitest run packages/application/src/trading/paper/events.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts packages/application/src/trading/paper/observation.test.ts
+npx vitest run packages/application/src/trading/paper/events.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts
+npx vitest run packages/application/src/trading/paper/session-service.test.ts -t "prepares one authorized first-checkpoint side|stops after a paired checkpoint"
 npm run typecheck --workspace @ouroboros/application
 ```
 
 Expected: selected tests and application typecheck pass.
 
-- [ ] **Step 5: Commit event lineage**
+- [x] **Step 5: Commit event lineage**
 
 ```bash
-git add packages/application/src/trading/paper/events.ts packages/application/src/trading/paper/events.test.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts
+git add packages/application/src/trading/paper/events.ts packages/application/src/trading/paper/events.test.ts packages/application/src/trading/paper/observation.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts
 git commit -m "feat: preserve comparison tick acknowledgement lineage"
 ```
 

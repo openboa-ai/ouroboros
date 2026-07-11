@@ -98,6 +98,43 @@ describe("paper comparison checkpoint preparation", () => {
     expect(prepared.consumed_event_count).toBe(1);
   });
 
+  it("accepts acknowledged event lineage through optional first-checkpoint preparation", async () => {
+    const fixture = preparationFixture([attributedHoldEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      status: "no_order",
+      decision: {
+        decision_kind: "hold",
+        reason: "candidate attributed cadence hold"
+      },
+      processed_trading_system_event_ids: ["checkpoint-attributed-hold-1"]
+    });
+    expect(prepared.consumed_event_count).toBe(1);
+  });
+
+  it("turns partial acknowledgement lineage into first-checkpoint negative evidence", async () => {
+    const fixture = preparationFixture([partialAttributionHoldEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      status: "failed",
+      failure_reason: "comparison_tick_acknowledgement_attribution_invalid",
+      decision: {
+        decision_kind: "error",
+        reason: "comparison_tick_acknowledgement_attribution_invalid"
+      }
+    });
+    expect(prepared.evaluation.status).toBe("failed");
+    expect(prepared.ledger_outcomes).toEqual([]);
+  });
+
   it("turns a rejected candidate protocol event into paired negative evidence", async () => {
     const fixture = preparationFixture([malformedOrderEventLine()]);
 
@@ -395,6 +432,37 @@ function holdEventLine(): string {
     at: "2026-07-11T00:00:04.000Z",
     authority_status: "trace_only",
     reason: "candidate cadence hold"
+  });
+}
+
+function attributedHoldEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-attributed-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "candidate attributed cadence hold",
+    comparison_tick_acknowledgement_ref: {
+      record_kind: "paper_trading_comparison_tick_acknowledgement",
+      id: "ack-1"
+    },
+    comparison_tick_acknowledgement_digest: "sha256:acknowledgement"
+  });
+}
+
+function partialAttributionHoldEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-partial-attribution-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "candidate partial attribution hold",
+    comparison_tick_acknowledgement_ref: {
+      record_kind: "paper_trading_comparison_tick_acknowledgement",
+      id: "ack-1"
+    }
   });
 }
 
