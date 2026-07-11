@@ -272,7 +272,7 @@ function emptyLedger(): LedgerReadModel {
   return {
     ledger_kind: "ledger",
     has_activity: false,
-    chain_complete: true,
+    chain_complete: false,
     chain_count: 0,
     chains: [],
     latest_order_request: null,
@@ -329,6 +329,7 @@ function completeLedger(prefix: string): LedgerReadModel {
   return {
     ...ledger,
     has_activity: true,
+    chain_complete: true,
     chain_count: 1,
     chains: [{
       chain_id: order.order_request_id,

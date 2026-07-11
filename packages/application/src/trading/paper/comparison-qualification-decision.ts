@@ -149,6 +149,14 @@ function assessLedger(
   if (!expected) return "lineage_mismatch";
 
   const ledger = side.ledger;
+  if (ledger.chains.length === 0) {
+    const emptyProjection = !ledger.has_activity && ledger.chain_count === 0 &&
+      ledger.latest_order_request === null &&
+      ledger.latest_gateway_result === null &&
+      ledger.latest_execution_result === null;
+    if (!emptyProjection) return "incomplete";
+    return expected.length === 0 ? "complete" : "lineage_mismatch";
+  }
   if (!ledger.chain_complete || ledger.chain_count !== ledger.chains.length ||
     ledger.has_activity !== (ledger.chains.length > 0) ||
     ledger.chains.some((chain) =>

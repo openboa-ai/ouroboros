@@ -69,6 +69,8 @@ import { PaperTradingComparisonWindowDriver } from "./comparison-window-driver";
 import { LocalStorePaperTradingComparisonWindowStateReader } from
   "./comparison-window-reader";
 import { PaperTradingComparisonWindowRunner } from "./comparison-window-runner";
+import { PaperTradingComparisonQualificationService } from
+  "./comparison-qualification-service";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -260,7 +262,7 @@ describe("PaperTradingComparisonCoordinator", () => {
     const fixture = await comparisonFixture({
       comparisonPolicy: {
         minimum_observation_count: 3,
-        minimum_elapsed_ms: 120_000,
+        minimum_elapsed_ms: 60_000,
         maximum_observation_count: 3,
         maximum_elapsed_ms: 600_000
       }
@@ -852,6 +854,72 @@ describe("PaperTradingComparisonCoordinator", () => {
       ]);
     }
 
+    const qualificationReader = new LocalStorePaperTradingComparisonWindowStateReader({
+      store: fixture.store,
+      activations: runtime,
+      now: () => driverNow
+    });
+    const qualifier = new PaperTradingComparisonQualificationService({
+      store: fixture.store,
+      windowReader: qualificationReader
+    });
+    const countsBeforeQualification = await persistedInertCounts(
+      fixture.store,
+      prepared
+    );
+    const qualification = await qualifier.assess({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    });
+    expect(qualification).toMatchObject({
+      qualification_status: "qualified",
+      qualification_reasons: [],
+      checkpoint_count: 3,
+      champion: { qualification_status: "qualified" },
+      challenger: { qualification_status: "qualified" },
+      authority_status: "not_verdict"
+    });
+    await expect(qualifier.assess({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).resolves.toEqual(qualification);
+    await expect(persistedInertCounts(fixture.store, prepared))
+      .resolves.toEqual(countsBeforeQualification);
+
+    const wrongRunProjectionStore = new Proxy(fixture.store, {
+      get(target, property) {
+        if (property === "getCandidateForTradingRun") {
+          return async (runId: string) => {
+            const candidate = await target.getCandidateForTradingRun(runId);
+            if (runId !== prepared.champion.run.trading_run_id ||
+              !candidate?.trading_run) return candidate;
+            return {
+              ...candidate,
+              trading_run: {
+                ...candidate.trading_run,
+                ref: { ...candidate.trading_run.ref, id: "champion-default-run" }
+              }
+            };
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    await expect(new PaperTradingComparisonQualificationService({
+      store: wrongRunProjectionStore,
+      windowReader: qualificationReader
+    }).assess({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).resolves.toMatchObject({
+      qualification_status: "not_qualified",
+      qualification_reasons: ["champion_ledger_lineage_mismatch"]
+    });
+
     const restartedStore = new LocalStore(fixture.store.root());
     await restartedStore.initialize();
     const restartedSessions = runtimeSessions(restartedStore);
@@ -888,6 +956,19 @@ describe("PaperTradingComparisonCoordinator", () => {
         outcome_reason: "handoff_cleanup"
       })
     ]));
+    const restartedQualification = await new PaperTradingComparisonQualificationService({
+      store: restartedStore,
+      windowReader: new LocalStorePaperTradingComparisonWindowStateReader({
+        store: restartedStore,
+        activations: restarted,
+        now: () => driverNow
+      })
+    }).assess({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    });
+    expect(restartedQualification).toEqual(qualification);
     expect(runtimeEffects).toEqual({
       providerStarts: 2,
       providerCloses: 2,
