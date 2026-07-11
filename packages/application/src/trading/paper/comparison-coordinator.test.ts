@@ -53,6 +53,7 @@ import {
   type PreparePaperTradingComparisonInput,
   type VerifiedPaperTradingComparisonCommitmentGraph
 } from "./comparison-coordinator";
+import { PaperTradingComparisonActivationCoordinator } from "./comparison-activation-coordinator";
 import { PaperTradingComparisonTickCoordinator } from "./comparison-tick-coordinator";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
@@ -156,7 +157,7 @@ describe("PaperTradingComparisonCoordinator", () => {
     ).toBe(false);
   });
 
-  it("captures the first shared tick through the real inert graph without runtime effects", async () => {
+  it("captures the first shared tick and records activation authorization without runtime effects", async () => {
     const fixture = await comparisonFixture();
     const prepared = await fixture.coordinator.prepare(fixture.input);
     const captureMarketData: GatewayMarketDataPort = {
@@ -205,10 +206,23 @@ describe("PaperTradingComparisonCoordinator", () => {
       comparisonId: prepared.commitment.paper_trading_comparison_commitment_id,
       idempotencyKey: "real-inert-pair-first-tick"
     });
+    const effectsBeforeAuthorization = { ...fixture.effects };
+    const activations = new PaperTradingComparisonActivationCoordinator({
+      store: fixture.store,
+      comparisons: fixture.coordinator,
+      now: () => "2026-07-10T00:00:12.000Z"
+    });
+    const authorized = await activations.authorize({
+      comparisonId: prepared.commitment.paper_trading_comparison_commitment_id,
+      idempotencyKey: "real-inert-pair-activation"
+    });
 
     await expect(fixture.store.listPaperTradingComparisonTicks(
       prepared.commitment.paper_trading_comparison_commitment_id
     )).resolves.toEqual([captured.tick]);
+    await expect(fixture.store.listPaperTradingComparisonActivations(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([authorized.activation]);
     await expect(fixture.store.getPaperTradingEvaluation(
       prepared.champion.evaluation.paper_trading_evaluation_id
     )).resolves.toMatchObject({ status: "not_started", observation_count: 0 });
@@ -222,7 +236,10 @@ describe("PaperTradingComparisonCoordinator", () => {
       sandboxStarts: 0,
       marketReads: 0
     });
+    expect(fixture.effects).toEqual(effectsBeforeAuthorization);
+    expect(authorized.runtimeEffects).toBe("not_started");
     expect(captured.comparison.verification.activation_authority).toBe("not_granted");
+    expect(authorized.comparison.verification.activation_authority).toBe("not_granted");
   });
 
   it("prepares bootstrap selection only when no TradingPromotion exists", async () => {
