@@ -8350,6 +8350,24 @@ async function comparisonPreparationFixture(
       record_kind: "paper_trading_evaluation",
       id: championPromotionEvidence.evaluation.paper_trading_evaluation_id
     },
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: "local-store-test-campaign"
+      },
+      campaign_digest: "sha256:local-store-test-campaign",
+      campaign_outcome_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: "local-store-test-campaign-outcome"
+      },
+      campaign_outcome_digest: "sha256:local-store-test-campaign-outcome",
+      final_verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: "local-store-test-final-verdict"
+      },
+      final_verdict_digest: "sha256:local-store-test-final-verdict"
+    },
     promoted_at: options.futureChampionPromotion
       ? "2026-07-10T00:01:00.000Z"
       : "2026-07-09T21:31:00.000Z",

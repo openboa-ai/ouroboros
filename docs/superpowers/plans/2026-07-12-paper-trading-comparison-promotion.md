@@ -38,7 +38,7 @@
 - Adds the read-only summary to TradingPromotionReadModel, TradingReviewReadModel, and TradingReviewPacketReadModel.evidence_quality.
 - Preserves paperTradingComparisonTradingPromotionDigestInput as the full-record digest input.
 
-- [ ] **Step 1: Write the failing domain tests**
+- [x] **Step 1: Write the failing domain tests**
 
 Create the fixture and mutation pressure:
 
@@ -120,7 +120,7 @@ comparison_confirmation: {
 }
 ~~~
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ~~~bash
 npm test -- packages/domain/src/paper-trading-comparison-promotion.test.ts
@@ -128,7 +128,7 @@ npm test -- packages/domain/src/paper-trading-comparison-promotion.test.ts
 
 Expected: FAIL because the new basis/read-model contracts do not exist and the old predicate accepts a bare promotion.
 
-- [ ] **Step 3: Implement the domain contracts**
+- [x] **Step 3: Implement the domain contracts**
 
 Add:
 
@@ -159,7 +159,7 @@ export interface TradingPromotionComparisonConfirmationReadModel {
 
 Require comparison_confirmation on TradingPromotionRecord. Update paperTradingComparisonTradingPromotionHasRuntimeShape with exact basis kind, record kinds, digests, ISO timestamp, and not_live checks.
 
-- [ ] **Step 4: Migrate all typed fixtures**
+- [x] **Step 4: Migrate all typed fixtures**
 
 ~~~bash
 rg -n 'record_kind: "trading_promotion"' packages apps
@@ -167,7 +167,7 @@ rg -n 'record_kind: "trading_promotion"' packages apps
 
 Add a valid confirmation basis to every positive typed fixture. Malformed-input tests may omit or mutate it deliberately. Use fixture-local campaign/outcome/verdict IDs where LocalStore validates the graph.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ~~~bash
 npm test -- packages/domain/src/paper-trading-comparison-promotion.test.ts packages/domain/src/paper-trading-comparison-commitment.test.ts
@@ -504,4 +504,3 @@ Keep this frontier only when current evidence proves:
 9. durable docs leave automatic composition, adaptive allocation, and Goal/P0 completion open.
 
 After completion, route back to auto-project and activate persisted bounded adaptive ResearchWorker allocation.
-

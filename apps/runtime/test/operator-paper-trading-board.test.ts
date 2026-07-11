@@ -1750,6 +1750,24 @@ async function recordTradingPromotionForCandidate(
       record_kind: "paper_trading_evaluation",
       id: `paper-evaluation-${candidate.candidate_id}`
     },
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: "operator-test-campaign"
+      },
+      campaign_digest: "sha256:operator-test-campaign",
+      campaign_outcome_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: "operator-test-campaign-outcome"
+      },
+      campaign_outcome_digest: "sha256:operator-test-campaign-outcome",
+      final_verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: "operator-test-final-verdict"
+      },
+      final_verdict_digest: "sha256:operator-test-final-verdict"
+    },
     promoted_at: promotedAt,
     authority_status: "not_live"
   });

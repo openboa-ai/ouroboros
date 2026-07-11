@@ -304,6 +304,24 @@ function stoppedClosure(): any {
       status: "promoted_for_trading_review", candidate_ref: commitment.candidate_ref,
       candidate_version_ref: commitment.candidate_version_ref,
       paper_trading_evaluation_ref: { record_kind: "paper_trading_evaluation", id: evaluation.paper_trading_evaluation_id },
+      comparison_confirmation: {
+        basis_kind: "paper_trading_comparison_confirmation",
+        campaign_ref: {
+          record_kind: "paper_trading_comparison_confirmation_campaign",
+          id: "promotion-campaign"
+        },
+        campaign_digest: "sha256:promotion-campaign",
+        campaign_outcome_ref: {
+          record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+          id: "promotion-campaign-outcome"
+        },
+        campaign_outcome_digest: "sha256:promotion-campaign-outcome",
+        final_verdict_ref: {
+          record_kind: "paper_trading_comparison_verdict",
+          id: "promotion-final-verdict"
+        },
+        final_verdict_digest: "sha256:promotion-final-verdict"
+      },
       promoted_at: "2026-07-09T22:31:00.000Z", authority_status: "not_live"
     },
     preparationCommittedAt: "2026-07-09T22:32:00.000Z"

@@ -3593,7 +3593,22 @@ export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unk
   return comparisonObject(value) && value.record_kind === "trading_promotion" && value.version === 1 &&
     comparisonString(value.trading_promotion_id) && value.status === "promoted_for_trading_review" &&
     comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") &&
-    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonIso(value.promoted_at) &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    comparisonObject(value.comparison_confirmation) &&
+    value.comparison_confirmation.basis_kind === "paper_trading_comparison_confirmation" &&
+    comparisonRef(
+      value.comparison_confirmation.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) && comparisonDigest(value.comparison_confirmation.campaign_digest) &&
+    comparisonRef(
+      value.comparison_confirmation.campaign_outcome_ref,
+      "paper_trading_comparison_confirmation_campaign_outcome"
+    ) && comparisonDigest(value.comparison_confirmation.campaign_outcome_digest) &&
+    comparisonRef(
+      value.comparison_confirmation.final_verdict_ref,
+      "paper_trading_comparison_verdict"
+    ) && comparisonDigest(value.comparison_confirmation.final_verdict_digest) &&
+    comparisonIso(value.promoted_at) &&
     (value.promoted_by_command_ref === undefined || comparisonRef(value.promoted_by_command_ref)) && value.authority_status === "not_live";
 }
 
@@ -6401,6 +6416,29 @@ export type TradingPromotionReadinessStatus =
   | "ready_to_promote"
   | "promoted_for_trading_review";
 
+export interface TradingPromotionComparisonConfirmation {
+  basis_kind: "paper_trading_comparison_confirmation";
+  campaign_ref: Ref;
+  campaign_digest: string;
+  campaign_outcome_ref: Ref;
+  campaign_outcome_digest: string;
+  final_verdict_ref: Ref;
+  final_verdict_digest: string;
+}
+
+export interface TradingPromotionComparisonConfirmationReadModel {
+  campaign_id: string;
+  campaign_outcome_id: string;
+  final_verdict_id: string;
+  required_window_count: number;
+  improved_window_count: number;
+  primary_metric: "net_revenue_usdt";
+  minimum_net_revenue_lift_usdt: number;
+  evaluated_at: string;
+  evaluation_authority: "external_to_trading_systems";
+  authority_status: "not_live";
+}
+
 export interface TradingPromotionRecord extends BaseRecord {
   record_kind: "trading_promotion";
   trading_promotion_id: string;
@@ -6408,6 +6446,7 @@ export interface TradingPromotionRecord extends BaseRecord {
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   paper_trading_evaluation_ref: Ref;
+  comparison_confirmation: TradingPromotionComparisonConfirmation;
   promoted_at: string;
   promoted_by_command_ref?: Ref;
   authority_status: "not_live";
@@ -6428,6 +6467,7 @@ export interface TradingPromotionReadModel {
   paper_profit_loss?: TradingProfitLossReadModel;
   runner_status?: PaperTradingBoardRunnerStatus;
   latest_failure_reason?: string;
+  comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   next_action: string;
   live_disabled_reason: "mlp_paper_only";
   authority_status: "not_live";
@@ -6539,6 +6579,7 @@ export interface TradingReviewPacketReadModel {
     evidence_window?: PaperTradingEvidenceWindowReadModel;
     qualification_reasons: PaperTradingQualificationReason[];
     blocker_groups: TradingReviewPacketBlockerGroup[];
+    comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   };
   provenance: {
     market_data_source?: PaperTradingMarketDataSourceKind;
@@ -6591,6 +6632,7 @@ export interface TradingReviewReadModel {
   paper_board_entry?: PaperTradingBoardEntryReadModel;
   runner_status?: PaperTradingBoardRunnerStatus;
   latest_failure_reason?: string;
+  comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   selected_candidate_id: string | null;
   selected_matches_trading_review: boolean;
   review_packet: TradingReviewPacketReadModel;
