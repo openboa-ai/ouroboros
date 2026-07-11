@@ -42,8 +42,11 @@ import type {
   OrderFillSurfaceRecord,
   OrderRequestRecord,
   PaperTradingAccountSnapshot,
+  PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonActivationOutcomeRecord,
   PaperTradingComparisonActivationRecord,
   PaperTradingComparisonActivationSide,
+  PaperTradingComparisonActivationSideResultRecord,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
@@ -74,7 +77,10 @@ import type {
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
   paperTradingComparisonActivationDigestInput,
+  paperTradingComparisonActivationAttemptDigestInput,
+  paperTradingComparisonActivationOutcomeDigestInput,
   paperTradingComparisonActivationPolicyFor,
+  paperTradingComparisonActivationSideResultDigestInput,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCommitmentDigestInput,
@@ -5138,6 +5144,472 @@ describe("LocalStore", () => {
       );
     }
   });
+
+  describe("paper comparison runtime activation", () => {
+    it("appends, reloads, lists, and semantically replays the exact first attempt", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      const before = await comparisonActivationInvariantSnapshot(store);
+
+      await expect(store.recordPaperTradingComparisonActivationAttempt(attempt))
+        .resolves.toEqual(attempt);
+      await expect(store.recordPaperTradingComparisonActivationAttempt(attempt))
+        .resolves.toEqual(attempt);
+      const reordered = Object.fromEntries(
+        Object.entries(attempt).reverse()
+      ) as unknown as PaperTradingComparisonActivationAttemptRecord;
+      await expect(store.recordPaperTradingComparisonActivationAttempt(reordered))
+        .resolves.toEqual(attempt);
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationAttempt(
+          withRuntimeActivationAttemptDigest({
+            ...attempt,
+            attempted_at: "2026-07-10T00:00:13.000Z",
+            start_deadline_at: "2026-07-10T00:01:13.000Z"
+          })
+        ),
+        "paper_trading_comparison_activation_attempt_conflict"
+      );
+      await expect(store.getPaperTradingComparisonActivationAttempt(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual(attempt);
+      await expect(store.listPaperTradingComparisonActivationAttempts(
+        fixture.activation.paper_trading_comparison_activation_id
+      )).resolves.toEqual([attempt]);
+      await expect(comparisonActivationInvariantSnapshot(store)).resolves.toEqual(before);
+    });
+
+    it.each([
+      ["digest", (attempt: PaperTradingComparisonActivationAttemptRecord) => ({
+        ...attempt,
+        attempt_digest: "sha256:wrong"
+      }), "paper_trading_comparison_activation_attempt_digest_mismatch"],
+      ["activation", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          paper_trading_comparison_activation_ref: {
+            record_kind: "paper_trading_comparison_activation",
+            id: "missing-activation"
+          }
+        }), "paper_trading_comparison_activation_attempt_reference_not_found"],
+      ["pair", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          paper_trading_comparison_commitment_digest: "sha256:wrong-pair"
+        }), "paper_trading_comparison_activation_attempt_reference_mismatch"],
+      ["tick", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          first_tick_digest: "sha256:wrong-tick"
+        }), "paper_trading_comparison_activation_attempt_reference_mismatch"],
+      ["side", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          challenger: {
+            ...attempt.challenger,
+            trading_run_ref: { record_kind: "trading_run", id: "wrong-run" }
+          }
+        }), "paper_trading_comparison_activation_attempt_reference_mismatch"],
+      ["policy", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          activation_policy: {
+            ...attempt.activation_policy,
+            maximum_start_skew_ms: attempt.activation_policy.maximum_start_skew_ms + 1
+          }
+        }), "paper_trading_comparison_activation_attempt_policy_mismatch"],
+      ["time", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          attempted_at: "2026-07-10T00:00:01.000Z",
+          start_deadline_at: "2026-07-10T00:01:01.000Z"
+        }), "paper_trading_comparison_activation_attempt_time_mismatch"],
+      ["sequence", (attempt: PaperTradingComparisonActivationAttemptRecord) =>
+        withRuntimeActivationAttemptDigest({
+          ...attempt,
+          attempt_sequence: 2,
+          retry_index: 1
+        }), "paper_trading_comparison_activation_attempt_sequence_mismatch"]
+    ] as const)("rejects first attempt %s mismatch without mutation", async (
+      label,
+      mutate,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-attempt-${label}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationAttempt(mutate(
+          validRuntimeActivationAttempt(fixture.activation)
+        )),
+        code
+      );
+      await expect(store.listPaperTradingComparisonActivationAttempts(
+        fixture.activation.paper_trading_comparison_activation_id
+      )).resolves.toEqual([]);
+    });
+
+    it("serializes concurrent alternate attempts and keeps one open attempt", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const first = validRuntimeActivationAttempt(fixture.activation);
+      const second = withRuntimeActivationAttemptDigest({
+        ...first,
+        paper_trading_comparison_activation_attempt_id: "runtime-attempt-alternate"
+      });
+
+      const results = await Promise.allSettled([
+        store.recordPaperTradingComparisonActivationAttempt(first),
+        store.recordPaperTradingComparisonActivationAttempt(second)
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect((results.find((result) => result.status === "rejected") as PromiseRejectedResult)
+        .reason).toMatchObject({
+          code: "paper_trading_comparison_activation_attempt_state_conflict"
+        });
+      await expect(store.listPaperTradingComparisonActivationAttempts(
+        fixture.activation.paper_trading_comparison_activation_id
+      )).resolves.toHaveLength(1);
+    });
+
+    it("admits retry only after the latest attempt stopped cleanly", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const first = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(first);
+      const retry = validRuntimeActivationAttempt(fixture.activation, 2);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationAttempt(retry),
+        "paper_trading_comparison_activation_attempt_state_conflict"
+      );
+      await completeStoppedRuntimeActivationAttempt(store, first);
+      await expect(store.recordPaperTradingComparisonActivationAttempt(retry))
+        .resolves.toEqual(retry);
+      await expect(store.listPaperTradingComparisonActivationAttempts(
+        fixture.activation.paper_trading_comparison_activation_id
+      )).resolves.toEqual([first, retry]);
+    });
+
+    it("rejects forged stopped-cleanly retry admission without side stop evidence", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const first = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(first);
+      const forged = validRuntimeActivationOutcome(first, [
+        validRuntimeActivationSideResult(first, "champion", "not_running"),
+        validRuntimeActivationSideResult(first, "challenger", "not_running")
+      ], "stopped_cleanly");
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-comparison-activation-outcomes",
+        forged.paper_trading_comparison_activation_outcome_id,
+        forged
+      );
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationAttempt(
+          validRuntimeActivationAttempt(fixture.activation, 2)
+        ),
+        "paper_trading_comparison_activation_attempt_state_conflict"
+      );
+    });
+
+    it("enforces the frozen retry-count ceiling", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      for (let sequence = 1; sequence <= 4; sequence += 1) {
+        const attempt = validRuntimeActivationAttempt(fixture.activation, sequence);
+        await store.recordPaperTradingComparisonActivationAttempt(attempt);
+        await completeStoppedRuntimeActivationAttempt(store, attempt);
+      }
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationAttempt(
+          validRuntimeActivationAttempt(fixture.activation, 5)
+        ),
+        "invalid_paper_trading_comparison_activation_attempt_input"
+      );
+      await expect(store.listPaperTradingComparisonActivationAttempts(
+        fixture.activation.paper_trading_comparison_activation_id
+      )).resolves.toHaveLength(4);
+    });
+
+    it.each(["both_running", "cleanup_required"] as const)(
+      "blocks retry after %s",
+      async (status) => {
+        const store = new LocalStore(path.join(tmpDir, `runtime-block-${status}`));
+        await store.initialize();
+        const fixture = await storedRuntimeActivationFixture(store);
+        const first = validRuntimeActivationAttempt(fixture.activation);
+        await store.recordPaperTradingComparisonActivationAttempt(first);
+        const outcome = withRuntimeActivationOutcomeDigest({
+          ...validRuntimeActivationOutcome(first, [], status),
+          outcome_reason: status === "both_running"
+            ? "started_within_policy"
+            : "side_result_persistence_failed",
+          next_action: status === "both_running"
+            ? "capture_first_paired_checkpoint"
+            : "recover_cleanup",
+          champion_latest_result_ref: status === "both_running"
+            ? {
+                record_kind: "paper_trading_comparison_activation_side_result",
+                id: "unavailable-champion-result"
+              }
+            : undefined,
+          challenger_latest_result_ref: status === "both_running"
+            ? {
+                record_kind: "paper_trading_comparison_activation_side_result",
+                id: "unavailable-challenger-result"
+              }
+            : undefined
+        });
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-comparison-activation-outcomes",
+          outcome.paper_trading_comparison_activation_outcome_id,
+          outcome
+        );
+
+        await expectStoreError(
+          store.recordPaperTradingComparisonActivationAttempt(
+            validRuntimeActivationAttempt(fixture.activation, 2)
+          ),
+          "paper_trading_comparison_activation_attempt_state_conflict"
+        );
+      }
+    );
+
+    it("binds side results to the attempt, role sequence, policy, and current state", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const champion = validRuntimeActivationSideResult(attempt, "champion", "failed");
+
+      await expect(store.recordPaperTradingComparisonActivationSideResult(champion))
+        .resolves.toEqual(champion);
+      await expect(store.recordPaperTradingComparisonActivationSideResult(champion))
+        .resolves.toEqual(champion);
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationSideResult(
+          withRuntimeActivationSideResultDigest({
+            ...champion,
+            stable_error_code: "drifted-error"
+          })
+        ),
+        "paper_trading_comparison_activation_side_result_conflict"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationSideResult(
+          withRuntimeActivationSideResultDigest({
+            ...champion,
+            paper_trading_comparison_activation_side_result_id: "alternate-start-result"
+          })
+        ),
+        "paper_trading_comparison_activation_side_result_sequence_mismatch"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationSideResult(
+          withRuntimeActivationSideResultDigest({
+            ...validRuntimeActivationSideResult(attempt, "challenger", "failed"),
+            trading_run_ref: { ...attempt.champion.trading_run_ref }
+          })
+        ),
+        "paper_trading_comparison_activation_side_result_reference_mismatch"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationSideResult(
+          withRuntimeActivationSideResultDigest({
+            ...validRuntimeActivationSideResult(attempt, "challenger", "failed"),
+            provider_request_count:
+              attempt.activation_policy.maximum_provider_request_count_per_side + 1
+          })
+        ),
+        "paper_trading_comparison_activation_side_result_policy_mismatch"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationSideResult(
+          validRuntimeActivationSideResult(attempt, "challenger", "succeeded")
+        ),
+        "paper_trading_comparison_activation_side_result_state_mismatch"
+      );
+      await expect(store.getPaperTradingComparisonActivationSideResult(
+        champion.paper_trading_comparison_activation_side_result_id
+      )).resolves.toEqual(champion);
+      await expect(store.listPaperTradingComparisonActivationSideResults(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([champion]);
+    });
+
+    it("rejects false pair outcomes then appends exact stopped-cleanly evidence", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const starts = await recordFailedRuntimeActivationStarts(store, attempt);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationOutcome(
+          validRuntimeActivationOutcome(attempt, starts, "both_running")
+        ),
+        "paper_trading_comparison_activation_outcome_state_mismatch"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationOutcome(
+          validRuntimeActivationOutcome(attempt, starts, "stopped_cleanly")
+        ),
+        "paper_trading_comparison_activation_outcome_state_mismatch"
+      );
+
+      const stops = await recordNotRunningRuntimeActivationStops(store, attempt);
+      const outcome = validRuntimeActivationOutcome(attempt, stops, "stopped_cleanly");
+      await expect(store.recordPaperTradingComparisonActivationOutcome(outcome))
+        .resolves.toEqual(outcome);
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationOutcome(
+          withRuntimeActivationOutcomeDigest({
+            ...outcome,
+            completed_at: new Date(Date.parse(outcome.completed_at) + 1).toISOString()
+          })
+        ),
+        "paper_trading_comparison_activation_outcome_conflict"
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonActivationOutcome(
+          validRuntimeActivationOutcome(attempt, stops, "stopped_cleanly", outcome)
+        ),
+        "paper_trading_comparison_activation_outcome_state_mismatch"
+      );
+      await expect(store.recordPaperTradingComparisonActivationOutcome(outcome))
+        .resolves.toEqual(outcome);
+      await expect(store.getPaperTradingComparisonActivationOutcome(
+        outcome.paper_trading_comparison_activation_outcome_id
+      )).resolves.toEqual(outcome);
+      await expect(store.listPaperTradingComparisonActivationOutcomes(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([outcome]);
+    });
+
+    it("reconciles cleanup-required into a contiguous stopped-cleanly outcome", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const starts = await recordFailedRuntimeActivationStarts(store, attempt, true);
+      const uncertain = validRuntimeActivationOutcome(attempt, starts, "cleanup_required");
+      await store.recordPaperTradingComparisonActivationOutcome(uncertain);
+      const stops = await recordNotRunningRuntimeActivationStops(store, attempt);
+      const recovered = validRuntimeActivationOutcome(
+        attempt,
+        stops,
+        "stopped_cleanly",
+        uncertain
+      );
+
+      await expect(store.recordPaperTradingComparisonActivationOutcome(recovered))
+        .resolves.toEqual(recovered);
+      await expect(store.listPaperTradingComparisonActivationOutcomes(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([uncertain, recovered]);
+    });
+
+    it.each([
+      ["attempt", "paper-trading-comparison-activation-attempts",
+        "paper_trading_comparison_activation_attempt_reload_failed"],
+      ["side-result", "paper-trading-comparison-activation-side-results",
+        "paper_trading_comparison_activation_side_result_reload_failed"],
+      ["outcome", "paper-trading-comparison-activation-outcomes",
+        "paper_trading_comparison_activation_outcome_reload_failed"]
+    ] as const)("fails closed on corrupt persisted %s", async (
+      kind,
+      collection,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-corrupt-${kind}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      if (kind !== "attempt") {
+        const starts = await recordFailedRuntimeActivationStarts(store, attempt);
+        if (kind === "outcome") {
+          const stops = await recordNotRunningRuntimeActivationStops(store, attempt);
+          await store.recordPaperTradingComparisonActivationOutcome(
+            validRuntimeActivationOutcome(attempt, stops, "stopped_cleanly")
+          );
+        } else {
+          expect(starts).toHaveLength(2);
+        }
+      }
+      const itemDir = path.join(store.root(), collection, "items");
+      await mkdir(itemDir, { recursive: true });
+      await writeFile(path.join(itemDir, "corrupt.json"), "{");
+
+      const listing = kind === "attempt"
+        ? store.listPaperTradingComparisonActivationAttempts(
+            fixture.activation.paper_trading_comparison_activation_id
+          )
+        : kind === "side-result"
+          ? store.listPaperTradingComparisonActivationSideResults(
+              attempt.paper_trading_comparison_activation_attempt_id
+            )
+          : store.listPaperTradingComparisonActivationOutcomes(
+              attempt.paper_trading_comparison_activation_attempt_id
+            );
+      await expectStoreError(listing, code);
+    });
+
+    it.each([
+      ["attempt", "paper-trading-comparison-activation-attempts",
+        "paper_trading_comparison_activation_attempt_reload_failed"],
+      ["side-result", "paper-trading-comparison-activation-side-results",
+        "paper_trading_comparison_activation_side_result_reload_failed"],
+      ["outcome", "paper-trading-comparison-activation-outcomes",
+        "paper_trading_comparison_activation_outcome_reload_failed"]
+    ] as const)("fails closed on shape-valid persisted %s digest drift", async (
+      kind,
+      collection,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `runtime-digest-${kind}`));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      let id = attempt.paper_trading_comparison_activation_attempt_id;
+      let drifted: Record<string, unknown> = { ...attempt, attempt_digest: "sha256:drift" };
+      if (kind === "side-result") {
+        const result = validRuntimeActivationSideResult(attempt, "champion", "failed");
+        await store.recordPaperTradingComparisonActivationSideResult(result);
+        id = result.paper_trading_comparison_activation_side_result_id;
+        drifted = { ...result, side_result_digest: "sha256:drift" };
+      } else if (kind === "outcome") {
+        const outcome = await completeStoppedRuntimeActivationAttempt(store, attempt);
+        id = outcome.paper_trading_comparison_activation_outcome_id;
+        drifted = { ...outcome, outcome_digest: "sha256:drift" };
+      }
+      await overwriteComparisonFixtureRecord(store, collection, id, drifted);
+
+      const loaded = kind === "attempt"
+        ? store.getPaperTradingComparisonActivationAttempt(id)
+        : kind === "side-result"
+          ? store.getPaperTradingComparisonActivationSideResult(id)
+          : store.getPaperTradingComparisonActivationOutcome(id);
+      await expectStoreError(loaded, code);
+    });
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -6059,6 +6531,260 @@ function withActivationDigest(
       .update(paperTradingComparisonActivationDigestInput(activation))
       .digest("hex")}`
   };
+}
+
+async function storedRuntimeActivationFixture(store: LocalStore) {
+  const fixture = await storedComparisonFixture(store);
+  await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+  const tick = validPaperTradingComparisonTick(fixture.comparison);
+  await store.recordPaperTradingComparisonTick(tick);
+  const activation = validPaperTradingComparisonActivation(fixture.comparison, tick);
+  await store.recordPaperTradingComparisonActivation(activation);
+  return { ...fixture, tick, activation };
+}
+
+function validRuntimeActivationAttempt(
+  activation: PaperTradingComparisonActivationRecord,
+  sequence = 1
+): PaperTradingComparisonActivationAttemptRecord {
+  const attemptedAt = new Date(
+    Date.parse(activation.authorized_at) + sequence * 10_000
+  ).toISOString();
+  const startDeadlineAt = new Date(
+    Date.parse(attemptedAt) + activation.activation_policy.maximum_activation_elapsed_ms
+  ).toISOString();
+  return withRuntimeActivationAttemptDigest({
+    record_kind: "paper_trading_comparison_activation_attempt",
+    version: 1,
+    paper_trading_comparison_activation_attempt_id:
+      `paper-comparison-runtime-attempt-${sequence}`,
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation",
+      id: activation.paper_trading_comparison_activation_id
+    },
+    paper_trading_comparison_activation_digest: activation.activation_digest,
+    paper_trading_comparison_commitment_ref: {
+      ...activation.paper_trading_comparison_commitment_ref
+    },
+    paper_trading_comparison_commitment_digest:
+      activation.paper_trading_comparison_commitment_digest,
+    first_tick_ref: { ...activation.first_tick_ref },
+    first_tick_digest: activation.first_tick_digest,
+    champion: structuredClone(activation.champion),
+    challenger: structuredClone(activation.challenger),
+    activation_policy: structuredClone(activation.activation_policy),
+    attempt_sequence: sequence,
+    retry_index: sequence - 1,
+    start_mode: "parallel",
+    attempt_status: "starting",
+    attempted_at: attemptedAt,
+    start_deadline_at: startDeadlineAt,
+    attempt_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withRuntimeActivationAttemptDigest(
+  attempt: PaperTradingComparisonActivationAttemptRecord
+): PaperTradingComparisonActivationAttemptRecord {
+  return {
+    ...attempt,
+    attempt_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonActivationAttemptDigestInput(attempt))
+      .digest("hex")}`
+  };
+}
+
+function validRuntimeActivationSideResult(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  outcome: "succeeded" | "failed" | "timed_out" | "not_running"
+): PaperTradingComparisonActivationSideResultRecord {
+  const side = attempt[role];
+  const operation = outcome === "not_running" ? "stop" : "start";
+  const effectStartedAt = new Date(
+    Date.parse(attempt.attempted_at) + (operation === "start" ? 1_000 : 5_000)
+  ).toISOString();
+  const effectCompletedAt = new Date(Date.parse(effectStartedAt) + 1_000).toISOString();
+  const failed = outcome === "failed" || outcome === "timed_out";
+  return withRuntimeActivationSideResultDigest({
+    record_kind: "paper_trading_comparison_activation_side_result",
+    version: 1,
+    paper_trading_comparison_activation_side_result_id:
+      `${attempt.paper_trading_comparison_activation_attempt_id}-${role}-${operation}`,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+    paper_trading_comparison_activation_ref: {
+      ...attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      attempt.paper_trading_comparison_activation_digest,
+    role,
+    operation_sequence: operation === "start" ? 1 : 2,
+    operation,
+    reason: operation === "start" ? "symmetric_start" : "partial_start_cleanup",
+    outcome,
+    trading_run_ref: { ...side.trading_run_ref },
+    paper_trading_evaluation_ref: { ...side.paper_trading_evaluation_ref },
+    ...(outcome === "succeeded"
+      ? { sandbox_ref: { record_kind: "sandbox", id: `${role}-runtime-sandbox` } }
+      : {}),
+    runtime_lifecycle_status: outcome === "succeeded"
+      ? "running"
+      : outcome === "timed_out"
+        ? "unknown"
+        : "registered",
+    evaluation_status: outcome === "succeeded"
+      ? "running"
+      : outcome === "timed_out"
+        ? "unknown"
+        : "not_started",
+    provider_request_count: operation === "start" ? 1 : 0,
+    effect_started_at: effectStartedAt,
+    effect_completed_at: effectCompletedAt,
+    ...(failed ? { stable_error_code: `runtime_${outcome}` } : {}),
+    side_result_digest: "",
+    authority_status: "not_live"
+  });
+}
+
+function withRuntimeActivationSideResultDigest(
+  result: PaperTradingComparisonActivationSideResultRecord
+): PaperTradingComparisonActivationSideResultRecord {
+  return {
+    ...result,
+    side_result_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonActivationSideResultDigestInput(result))
+      .digest("hex")}`
+  };
+}
+
+function validRuntimeActivationOutcome(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  latestResults: PaperTradingComparisonActivationSideResultRecord[],
+  status: "both_running" | "stopped_cleanly" | "cleanup_required",
+  previous?: PaperTradingComparisonActivationOutcomeRecord
+): PaperTradingComparisonActivationOutcomeRecord {
+  const champion = latestResults.find((result) => result.role === "champion");
+  const challenger = latestResults.find((result) => result.role === "challenger");
+  const timedOut = latestResults.some((result) => result.outcome === "timed_out");
+  const latestCompletedAt = latestResults.reduce(
+    (latest, result) => Math.max(latest, Date.parse(result.effect_completed_at)),
+    Date.parse(attempt.attempted_at)
+  );
+  return withRuntimeActivationOutcomeDigest({
+    record_kind: "paper_trading_comparison_activation_outcome",
+    version: 1,
+    paper_trading_comparison_activation_outcome_id:
+      `${attempt.paper_trading_comparison_activation_attempt_id}-outcome-${previous ? 2 : 1}`,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+    paper_trading_comparison_activation_ref: {
+      ...attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      attempt.paper_trading_comparison_activation_digest,
+    outcome_sequence: previous ? previous.outcome_sequence + 1 : 1,
+    ...(previous ? {
+      previous_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: previous.paper_trading_comparison_activation_outcome_id
+      }
+    } : {}),
+    outcome_status: status,
+    outcome_reason: status === "both_running"
+      ? "started_within_policy"
+      : status === "cleanup_required"
+        ? timedOut ? "start_timed_out" : "start_failed"
+        : previous ? "restart_cleanup" : "start_failed",
+    ...(champion ? {
+      champion_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: champion.paper_trading_comparison_activation_side_result_id
+      }
+    } : {}),
+    ...(challenger ? {
+      challenger_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: challenger.paper_trading_comparison_activation_side_result_id
+      }
+    } : {}),
+    next_action: status === "both_running"
+      ? "capture_first_paired_checkpoint"
+      : status === "stopped_cleanly"
+        ? "retry_activation"
+        : "recover_cleanup",
+    completed_at: new Date(
+      Math.max(latestCompletedAt, previous ? Date.parse(previous.completed_at) : 0) + 1_000
+    ).toISOString(),
+    outcome_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withRuntimeActivationOutcomeDigest(
+  outcome: PaperTradingComparisonActivationOutcomeRecord
+): PaperTradingComparisonActivationOutcomeRecord {
+  return {
+    ...outcome,
+    outcome_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonActivationOutcomeDigestInput(outcome))
+      .digest("hex")}`
+  };
+}
+
+async function recordFailedRuntimeActivationStarts(
+  store: LocalStore,
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  includeTimeout = false
+): Promise<PaperTradingComparisonActivationSideResultRecord[]> {
+  const results = [
+    validRuntimeActivationSideResult(
+      attempt,
+      "champion",
+      includeTimeout ? "timed_out" : "failed"
+    ),
+    validRuntimeActivationSideResult(attempt, "challenger", "failed")
+  ];
+  for (const result of results) {
+    await store.recordPaperTradingComparisonActivationSideResult(result);
+  }
+  return results;
+}
+
+async function recordNotRunningRuntimeActivationStops(
+  store: LocalStore,
+  attempt: PaperTradingComparisonActivationAttemptRecord
+): Promise<PaperTradingComparisonActivationSideResultRecord[]> {
+  const results = [
+    validRuntimeActivationSideResult(attempt, "champion", "not_running"),
+    validRuntimeActivationSideResult(attempt, "challenger", "not_running")
+  ];
+  for (const result of results) {
+    await store.recordPaperTradingComparisonActivationSideResult(result);
+  }
+  return results;
+}
+
+async function completeStoppedRuntimeActivationAttempt(
+  store: LocalStore,
+  attempt: PaperTradingComparisonActivationAttemptRecord
+): Promise<PaperTradingComparisonActivationOutcomeRecord> {
+  await recordFailedRuntimeActivationStarts(store, attempt);
+  const stops = await recordNotRunningRuntimeActivationStops(store, attempt);
+  const outcome = validRuntimeActivationOutcome(attempt, stops, "stopped_cleanly");
+  await store.recordPaperTradingComparisonActivationOutcome(outcome);
+  return outcome;
 }
 
 async function comparisonActivationInvariantSnapshot(

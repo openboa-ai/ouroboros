@@ -30,6 +30,9 @@ import type {
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonTickRecord,
   PaperTradingComparisonActivationRecord,
+  PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonActivationOutcomeRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -210,6 +213,33 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonActivations(
     comparisonId: string
   ): Promise<PaperTradingComparisonActivationRecord[]>;
+  recordPaperTradingComparisonActivationAttempt(
+    attempt: PaperTradingComparisonActivationAttemptRecord
+  ): Promise<PaperTradingComparisonActivationAttemptRecord>;
+  getPaperTradingComparisonActivationAttempt(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationAttemptRecord | undefined>;
+  listPaperTradingComparisonActivationAttempts(
+    activationId: string
+  ): Promise<PaperTradingComparisonActivationAttemptRecord[]>;
+  recordPaperTradingComparisonActivationSideResult(
+    result: PaperTradingComparisonActivationSideResultRecord
+  ): Promise<PaperTradingComparisonActivationSideResultRecord>;
+  getPaperTradingComparisonActivationSideResult(
+    resultId: string
+  ): Promise<PaperTradingComparisonActivationSideResultRecord | undefined>;
+  listPaperTradingComparisonActivationSideResults(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationSideResultRecord[]>;
+  recordPaperTradingComparisonActivationOutcome(
+    outcome: PaperTradingComparisonActivationOutcomeRecord
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord>;
+  getPaperTradingComparisonActivationOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord | undefined>;
+  listPaperTradingComparisonActivationOutcomes(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 
