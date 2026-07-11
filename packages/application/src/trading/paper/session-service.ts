@@ -4,6 +4,7 @@ import {
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonCheckpointWriteContextHasRuntimeShape,
+  paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
   paperTradingComparisonRuntimeControlIdempotencyKey,
@@ -16,6 +17,8 @@ import {
   type CandidateInspectReadModel,
   type PaperTradingComparisonActivationAttemptRecord,
   type PaperTradingComparisonActivationSide,
+  type PaperTradingComparisonCheckpointAttemptRecord,
+  type PaperTradingComparisonCheckpointOutcomeRecord,
   type PaperTradingComparisonCheckpointWriteContext,
   type PaperTradingComparisonRuntimeWriteContext,
   type PaperTradingComparisonTickAcknowledgementRecord,
@@ -66,6 +69,7 @@ import type {
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
 import { initialPaperTradingEngineState } from "./engine";
 import { zeroPaperTradingProfitLoss } from "./evaluation";
+import { ComparisonMarketDataView } from "./comparison-market-data-view";
 import {
   createPaperTradingEvaluationCommitment,
   invalidatePaperTradingEvaluation,
@@ -127,6 +131,13 @@ interface EnabledPaperTradingComparisonTickAttribution {
   checkpointProviderRequestCount: number;
 }
 
+interface AdvancedPaperTradingComparisonCheckpointView {
+  authority: PaperTradingComparisonCheckpointWriteContext & {
+    operation: "advance_tick_view";
+  };
+  tick: PaperTradingComparisonTickRecord;
+}
+
 export type PaperTradingRecoveryOutcome =
   | {
       tradingRunId: string;
@@ -169,6 +180,8 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
   private readonly comparisonProviderRequestLimits = new Map<string, number>();
   private readonly enabledComparisonTickAttributions =
     new Map<string, EnabledPaperTradingComparisonTickAttribution>();
+  private readonly advancedComparisonCheckpointViews =
+    new Map<string, AdvancedPaperTradingComparisonCheckpointView>();
   private readonly comparisonTransientCleanupFailures = new Map<string, string>();
   private readonly activeSessions = new Set<string>();
   private readonly runner: PaperTradingEvaluationRunner;
@@ -903,6 +916,292 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     if (!existing) this.enabledComparisonTickAttributions.set(sessionKey, enabled);
   }
 
+  async advanceComparisonCheckpointSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonCheckpointWriteContext & {
+      operation: "advance_tick_view";
+    };
+    tick: PaperTradingComparisonTickRecord;
+  }): Promise<void> {
+    this.assertComparisonCheckpointSessionInput(
+      input.authority,
+      input.side,
+      "advance_tick_view"
+    );
+    if (!paperTradingComparisonTickHasRuntimeShape(input.tick)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_write_context_mismatch",
+        "Paper comparison view advance requires one valid checkpoint tick."
+      );
+    }
+    const loaded = await this.loadComparisonSessionSide(
+      input.side,
+      input.authority,
+      { allowCommittedCheckpoint: true }
+    );
+    const [
+      checkpointAttempt,
+      activationOutcome,
+      persistedTick,
+      checkpointAttempts,
+      currentOutcomes,
+      activationOutcomes,
+      observations,
+      deliveries,
+      acknowledgements,
+      sandbox
+    ] = await Promise.all([
+      this.options.store.getPaperTradingComparisonCheckpointAttempt(
+        input.authority.checkpoint_attempt_ref.id
+      ),
+      this.options.store.getPaperTradingComparisonActivationOutcome(
+        input.authority.activation_outcome_ref.id
+      ),
+      this.options.store.getPaperTradingComparisonTick(
+        input.tick.paper_trading_comparison_tick_id
+      ),
+      this.options.store.listPaperTradingComparisonCheckpointAttempts(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonCheckpointOutcomes(
+        input.authority.checkpoint_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonActivationOutcomes(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingObservations(
+        input.side.paper_trading_evaluation_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonTickDeliveries(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonTickAcknowledgements(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      loaded.run.sandbox_ref
+        ? this.options.store.getSandbox(loaded.run.sandbox_ref.id)
+        : Promise.resolve(undefined)
+    ]);
+    const previousAttempt = checkpointAttempts.at(-2);
+    const previousOutcomes = previousAttempt
+      ? await this.options.store.listPaperTradingComparisonCheckpointOutcomes(
+          previousAttempt.paper_trading_comparison_checkpoint_attempt_id
+        )
+      : [];
+    const previousOutcome = previousOutcomes[0];
+    const previousEvidence = previousOutcome?.[input.side.role];
+    const previousAcknowledgements = previousAttempt
+      ? acknowledgements.filter((record) =>
+          record.role === input.side.role &&
+          record.tick_ref.id === previousAttempt.tick_ref.id)
+      : [];
+    const previousAcknowledgement = previousAcknowledgements[0];
+    const previousDelivery = previousAcknowledgement
+      ? deliveries.find((record) =>
+          record.paper_trading_comparison_tick_delivery_id ===
+            previousAcknowledgement.delivery_ref.id)
+      : undefined;
+    const currentTickDeliveries = deliveries.filter((record) =>
+      record.role === input.side.role &&
+      record.tick_ref.id === input.tick.paper_trading_comparison_tick_id);
+    const currentTickAcknowledgements = acknowledgements.filter((record) =>
+      record.role === input.side.role &&
+      record.tick_ref.id === input.tick.paper_trading_comparison_tick_id);
+    const checkpointSide = checkpointAttempt?.[input.side.role];
+    if (!checkpointAttempt || !activationOutcome || !persistedTick ||
+      !previousAttempt || !previousOutcome || !previousEvidence ||
+      !previousAcknowledgement || !previousDelivery || !checkpointSide) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_reference_not_found",
+        "Paper comparison view advance references incomplete checkpoint evidence."
+      );
+    }
+    if (Date.now() > Date.parse(checkpointAttempt.checkpoint_deadline_at)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_deadline_exceeded",
+        "Paper comparison view advance exceeded its checkpoint deadline."
+      );
+    }
+    if (checkpointAttempt.checkpoint_sequence <= 1 ||
+      checkpointAttempts.at(-1)?.paper_trading_comparison_checkpoint_attempt_id !==
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+      checkpointAttempt.checkpoint_sequence !== previousAttempt.checkpoint_sequence + 1 ||
+      currentOutcomes.length !== 0 || previousOutcomes.length !== 1 ||
+      previousOutcome.outcome_status !== "paired" ||
+      previousEvidence.observation_status === "failed" ||
+      checkpointAttempt.previous_checkpoint_outcome_ref?.id !==
+        previousOutcome.paper_trading_comparison_checkpoint_outcome_id ||
+      checkpointAttempt.previous_checkpoint_outcome_digest !== previousOutcome.outcome_digest ||
+      checkpointAttempt.tick_ref.id !== input.tick.paper_trading_comparison_tick_id ||
+      checkpointAttempt.tick_digest !== input.tick.tick_digest ||
+      input.tick.sequence !== checkpointAttempt.checkpoint_sequence ||
+      paperTradingComparisonPersistedRecordDigestInput(input.tick) !==
+        paperTradingComparisonPersistedRecordDigestInput(persistedTick) ||
+      checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id !==
+        input.authority.checkpoint_attempt_ref.id ||
+      checkpointAttempt.attempt_digest !== input.authority.checkpoint_attempt_digest ||
+      checkpointAttempt.paper_trading_comparison_activation_ref.id !==
+        input.authority.paper_trading_comparison_activation_ref.id ||
+      checkpointAttempt.paper_trading_comparison_activation_digest !==
+        input.authority.paper_trading_comparison_activation_digest ||
+      checkpointAttempt.paper_trading_comparison_activation_attempt_ref.id !==
+        input.authority.paper_trading_comparison_activation_attempt_ref.id ||
+      checkpointAttempt.paper_trading_comparison_activation_attempt_digest !==
+        input.authority.paper_trading_comparison_activation_attempt_digest ||
+      checkpointAttempt.activation_outcome_ref.id !==
+        input.authority.activation_outcome_ref.id ||
+      checkpointAttempt.activation_outcome_digest !==
+        input.authority.activation_outcome_digest ||
+      activationOutcome.paper_trading_comparison_activation_outcome_id !==
+        input.authority.activation_outcome_ref.id ||
+      activationOutcome.outcome_digest !== input.authority.activation_outcome_digest ||
+      activationOutcome.outcome_status !== "both_running" ||
+      activationOutcomes.at(-1)?.paper_trading_comparison_activation_outcome_id !==
+        activationOutcome.paper_trading_comparison_activation_outcome_id ||
+      checkpointSide.role !== input.side.role ||
+      checkpointSide.trading_run_ref.id !== input.side.trading_run_ref.id ||
+      checkpointSide.paper_trading_evaluation_ref.id !==
+        input.side.paper_trading_evaluation_ref.id ||
+      checkpointSide.evaluation_record_digest !== comparisonDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(loaded.evaluation)
+      ) ||
+      checkpointSide.observation_chain_digest !== comparisonDigest(
+        paperTradingComparisonObservationChainDigestInput(observations)
+      ) ||
+      observations.length !== checkpointAttempt.checkpoint_sequence - 1 ||
+      loaded.evidenceState !== "paired_checkpoint" ||
+      loaded.run.runtime_lifecycle_status !== "running" ||
+      loaded.evaluation.status !== "running" ||
+      sandbox?.lifecycle_status !== "running" ||
+      previousAcknowledgements.length !== 1 ||
+      previousAcknowledgement.paper_trading_comparison_activation_attempt_ref.id !==
+        loaded.attempt.paper_trading_comparison_activation_attempt_id ||
+      previousAcknowledgement.paper_trading_comparison_activation_attempt_digest !==
+        loaded.attempt.attempt_digest ||
+      previousAcknowledgement.trading_run_ref.id !== loaded.run.trading_run_id ||
+      previousAcknowledgement.tick_digest !== previousAttempt.tick_digest ||
+      previousAcknowledgement.tick_sequence !== previousAttempt.checkpoint_sequence ||
+      previousDelivery.delivery_digest !== previousAcknowledgement.delivery_digest ||
+      previousDelivery.role !== input.side.role ||
+      previousDelivery.trading_run_ref.id !== loaded.run.trading_run_id ||
+      previousDelivery.tick_ref.id !== previousAttempt.tick_ref.id ||
+      previousDelivery.tick_digest !== previousAttempt.tick_digest ||
+      previousAcknowledgement.provider_request_count_at_acknowledgement <
+        previousDelivery.provider_request_count_at_delivery ||
+      (previousOutcome.checkpoint_sequence > 1 && (
+        previousEvidence.tick_acknowledgement_ref?.id !==
+          previousAcknowledgement.paper_trading_comparison_tick_acknowledgement_id ||
+        previousEvidence.tick_acknowledgement_digest !==
+          previousAcknowledgement.acknowledgement_digest
+      )) || currentTickDeliveries.length > 0 || currentTickAcknowledgements.length > 0) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_state_mismatch",
+        "Paper comparison view advance does not match the open repeated checkpoint."
+      );
+    }
+
+    const advanced: AdvancedPaperTradingComparisonCheckpointView = {
+      authority: structuredClone(input.authority),
+      tick: structuredClone(input.tick)
+    };
+    const existing = this.advancedComparisonCheckpointViews.get(
+      comparisonSessionKey(input.authority)
+    );
+    if (existing) {
+      if (sameAdvancedComparisonCheckpointView(existing, advanced)) {
+        return;
+      }
+      if (existing.authority.checkpoint_attempt_ref.id !==
+          previousAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+        existing.authority.checkpoint_attempt_digest !== previousAttempt.attempt_digest ||
+        existing.tick.paper_trading_comparison_tick_id !== previousAttempt.tick_ref.id ||
+        existing.tick.tick_digest !== previousAttempt.tick_digest) {
+        throw new PaperTradingSessionError(
+          "paper_trading_comparison_checkpoint_state_mismatch",
+          "Paper comparison provider view was already advanced with different evidence."
+        );
+      }
+    }
+
+    const sessionKey = comparisonSessionKey(input.authority);
+    const provider = this.comparisonApiProviderSessions.get(sessionKey);
+    const binding = this.comparisonGatewayBindings.get(sessionKey);
+    const maximumProviderRequestCount = this.comparisonProviderRequestLimits.get(sessionKey);
+    const providerRequestCount = this.comparisonProviderRequestCount(sessionKey);
+    const currentAttribution = this.enabledComparisonTickAttributions.get(sessionKey);
+    if (!provider || !binding || maximumProviderRequestCount === undefined ||
+      !currentAttribution ||
+      providerRequestCount !== checkpointSide.provider_request_count_before ||
+      providerRequestCount <
+        previousAcknowledgement.provider_request_count_at_acknowledgement ||
+      providerRequestCount > maximumProviderRequestCount ||
+      maximumProviderRequestCount >
+        loaded.attempt.activation_policy.maximum_provider_request_count_per_side ||
+      currentAttribution.tick.paper_trading_comparison_tick_id !==
+        previousAttempt.tick_ref.id ||
+      currentAttribution.tick.tick_digest !== previousAttempt.tick_digest ||
+      currentAttribution.side.role !== input.side.role ||
+      currentAttribution.side.trading_run_ref.id !== loaded.run.trading_run_id) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_state_mismatch",
+        "Paper comparison view advance provider state is missing or inconsistent.",
+        {
+          provider_session_active: provider !== undefined,
+          gateway_binding_present: binding !== undefined,
+          provider_request_count: providerRequestCount,
+          checkpoint_provider_request_count:
+            checkpointSide.provider_request_count_before,
+          previous_acknowledgement_provider_request_count:
+            previousAcknowledgement.provider_request_count_at_acknowledgement,
+          maximum_provider_request_count: maximumProviderRequestCount,
+          current_attribution_tick_id:
+            currentAttribution?.tick.paper_trading_comparison_tick_id,
+          expected_previous_tick_id: previousAttempt.tick_ref.id
+        }
+      );
+    }
+
+    const nextMarketData = new ComparisonMarketDataView({
+      source: binding.marketData,
+      tick: input.tick
+    });
+    if (Date.now() > Date.parse(checkpointAttempt.checkpoint_deadline_at)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_deadline_exceeded",
+        "Paper comparison view advance completed after its checkpoint deadline."
+      );
+    }
+    const tickAuthority: PaperTradingComparisonTickIOWriteContext = {
+      paper_trading_comparison_activation_ref: {
+        ...input.authority.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        input.authority.paper_trading_comparison_activation_digest,
+      paper_trading_comparison_activation_attempt_ref: {
+        ...input.authority.paper_trading_comparison_activation_attempt_ref
+      },
+      paper_trading_comparison_activation_attempt_digest:
+        input.authority.paper_trading_comparison_activation_attempt_digest,
+      role: input.side.role,
+      trading_run_ref: { ...input.side.trading_run_ref },
+      tick_ref: {
+        record_kind: "paper_trading_comparison_tick",
+        id: input.tick.paper_trading_comparison_tick_id
+      },
+      tick_digest: input.tick.tick_digest,
+      operation: "deliver_market_snapshot"
+    };
+    binding.marketData = nextMarketData;
+    this.enabledComparisonTickAttributions.set(sessionKey, {
+      side: structuredClone(input.side),
+      authority: tickAuthority,
+      tick: structuredClone(input.tick),
+      maximumProviderRequestCount,
+      checkpointProviderRequestCount: checkpointSide.provider_request_count_before
+    });
+    this.advancedComparisonCheckpointViews.set(sessionKey, advanced);
+  }
+
   async prepareComparisonCheckpointSide(input: {
     side: PaperTradingComparisonActivationSide;
     authority: PaperTradingComparisonCheckpointWriteContext;
@@ -920,9 +1219,14 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       );
     }
     this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
-    const loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    const loaded = await this.loadComparisonSessionSide(
+      input.side,
+      input.authority,
+      { allowCommittedCheckpoint: true }
+    );
     const [checkpointAttempt, activationOutcome, persistedTick, checkpointAttempts,
-      checkpointOutcomes, activationOutcomes] = await Promise.all([
+      checkpointOutcomes, activationOutcomes, existingObservations,
+      tickDeliveries, tickAcknowledgements] = await Promise.all([
       this.options.store.getPaperTradingComparisonCheckpointAttempt(
         input.authority.checkpoint_attempt_ref.id
       ),
@@ -937,6 +1241,15 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         input.authority.checkpoint_attempt_ref.id
       ),
       this.options.store.listPaperTradingComparisonActivationOutcomes(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingObservations(
+        input.side.paper_trading_evaluation_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonTickDeliveries(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonTickAcknowledgements(
         input.authority.paper_trading_comparison_activation_attempt_ref.id
       )
     ]);
@@ -985,7 +1298,14 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       !paperTradingComparisonRefsEqual(
         checkpointSide.paper_trading_evaluation_ref,
         input.side.paper_trading_evaluation_ref
-      )
+      ) ||
+      checkpointSide.evaluation_record_digest !== comparisonDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(loaded.evaluation)
+      ) ||
+      checkpointSide.observation_chain_digest !== comparisonDigest(
+        paperTradingComparisonObservationChainDigestInput(existingObservations)
+      ) ||
+      loaded.evaluation.observation_count !== checkpointAttempt.checkpoint_sequence - 1
     ) {
       throw new PaperTradingSessionError(
         "paper_trading_comparison_checkpoint_write_context_mismatch",
@@ -998,7 +1318,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       checkpointOutcomes.length !== 0 ||
       activationOutcomes.at(-1)?.paper_trading_comparison_activation_outcome_id !==
         activationOutcome.paper_trading_comparison_activation_outcome_id ||
-      loaded.evidenceState !== "zero" ||
+      loaded.evidenceState !== (checkpointAttempt.checkpoint_sequence === 1
+        ? "zero"
+        : "paired_checkpoint") ||
       loaded.run.runtime_lifecycle_status !== "running" ||
       loaded.evaluation.status !== "running"
     ) {
@@ -1031,6 +1353,61 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         "paper_trading_comparison_checkpoint_state_mismatch",
         "Paper comparison checkpoint provider session is missing or inconsistent."
       );
+    }
+    let tickAcknowledgement: PaperTradingComparisonTickAcknowledgementRecord | undefined;
+    if (checkpointAttempt.checkpoint_sequence > 1) {
+      const roleAcknowledgements = tickAcknowledgements.filter((record) =>
+        record.role === input.side.role &&
+        record.tick_ref.id === input.tick.paper_trading_comparison_tick_id);
+      if (roleAcknowledgements.length === 0) {
+        throw new PaperTradingSessionError(
+          "paper_trading_comparison_tick_acknowledgement_required",
+          "Repeated paper comparison preparation requires its persisted tick acknowledgement."
+        );
+      }
+      tickAcknowledgement = roleAcknowledgements[0];
+      const delivery = tickAcknowledgement
+        ? tickDeliveries.find((record) =>
+            record.paper_trading_comparison_tick_delivery_id ===
+              tickAcknowledgement!.delivery_ref.id)
+        : undefined;
+      const advanced = this.advancedComparisonCheckpointViews.get(sessionKey);
+      const enabled = this.enabledComparisonTickAttributions.get(sessionKey);
+      if (roleAcknowledgements.length !== 1 || !tickAcknowledgement || !delivery ||
+        !advanced || !enabled ||
+        advanced.authority.checkpoint_attempt_ref.id !==
+          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+        advanced.authority.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest ||
+        advanced.tick.paper_trading_comparison_tick_id !==
+          input.tick.paper_trading_comparison_tick_id ||
+        advanced.tick.tick_digest !== input.tick.tick_digest ||
+        enabled.tick.paper_trading_comparison_tick_id !==
+          input.tick.paper_trading_comparison_tick_id ||
+        enabled.tick.tick_digest !== input.tick.tick_digest ||
+        tickAcknowledgement.paper_trading_comparison_activation_attempt_ref.id !==
+          loaded.attempt.paper_trading_comparison_activation_attempt_id ||
+        tickAcknowledgement.paper_trading_comparison_activation_attempt_digest !==
+          loaded.attempt.attempt_digest ||
+        tickAcknowledgement.trading_run_ref.id !== loaded.run.trading_run_id ||
+        tickAcknowledgement.tick_digest !== input.tick.tick_digest ||
+        tickAcknowledgement.tick_sequence !== checkpointAttempt.checkpoint_sequence ||
+        delivery.delivery_digest !== tickAcknowledgement.delivery_digest ||
+        delivery.role !== input.side.role ||
+        delivery.trading_run_ref.id !== loaded.run.trading_run_id ||
+        delivery.tick_ref.id !== input.tick.paper_trading_comparison_tick_id ||
+        delivery.tick_digest !== input.tick.tick_digest ||
+        delivery.tick_sequence !== checkpointAttempt.checkpoint_sequence ||
+        tickAcknowledgement.provider_request_count_at_acknowledgement <
+          delivery.provider_request_count_at_delivery ||
+        tickAcknowledgement.provider_request_count_at_acknowledgement >
+          providerRequestCountBefore ||
+        Date.parse(tickAcknowledgement.acknowledged_at) >
+          Date.parse(checkpointAttempt.checkpoint_deadline_at)) {
+        throw new PaperTradingSessionError(
+          "paper_trading_comparison_tick_acknowledgement_mismatch",
+          "Repeated paper comparison acknowledgement does not match the active view."
+        );
+      }
     }
     const sandbox = loaded.run.sandbox_ref
       ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
@@ -1081,6 +1458,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       evaluation: loaded.evaluation,
       tick: input.tick,
       checkpointAttempt,
+      tickAcknowledgement,
       gatewayRuntimeBinding: binding,
       intervalMs: this.intervalMs
     });
@@ -1327,7 +1705,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
 
   private assertComparisonCheckpointSessionInput(
     authority: PaperTradingComparisonCheckpointWriteContext,
-    side: PaperTradingComparisonActivationSide
+    side: PaperTradingComparisonActivationSide,
+    operation: PaperTradingComparisonCheckpointWriteContext["operation"] =
+      "refresh_sandbox_evidence"
   ): void {
     if (!paperTradingComparisonCheckpointWriteContextHasRuntimeShape(authority)) {
       throw new PaperTradingSessionError(
@@ -1335,8 +1715,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         "Paper comparison checkpoint requires one valid write context."
       );
     }
-    if (authority.operation !== "refresh_sandbox_evidence" ||
-      authority.role !== side.role) {
+    if (authority.operation !== operation || authority.role !== side.role) {
       throw new PaperTradingSessionError(
         "paper_trading_comparison_checkpoint_write_context_mismatch",
         "Paper comparison checkpoint context does not match its side operation."
@@ -1552,58 +1931,110 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         .listPaperTradingComparisonCheckpointAttempts(
           input.attempt.paper_trading_comparison_activation_attempt_id
         );
-      const checkpointAttempt = checkpointAttempts.at(-1);
-      if (!checkpointAttempt || checkpointAttempts.length !== 1) return false;
-      const outcomes = await this.options.store.listPaperTradingComparisonCheckpointOutcomes(
-        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
-      );
-      const outcome = outcomes[0];
-      const evidence = outcome?.[input.side.role];
-      const observations: PaperTradingObservationRecord[] = await this.options.store
-        .listPaperTradingObservations(input.side.paper_trading_evaluation_ref.id);
-      const observation = observations[0];
-      if (!outcome || outcomes.length !== 1 || outcome.outcome_status !== "paired" ||
-        !evidence || !observation || observations.length !== 1) {
+      const committed: Array<{
+        attempt: PaperTradingComparisonCheckpointAttemptRecord;
+        outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+      }> = [];
+      let reachedOpenAttempt = false;
+      for (const checkpointAttempt of checkpointAttempts) {
+        const outcomes = await this.options.store
+          .listPaperTradingComparisonCheckpointOutcomes(
+            checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+          );
+        const outcome = outcomes[0];
+        if (!outcome || outcome.outcome_status === "incomplete") {
+          if (outcomes.length > 1 || outcome && (
+            outcome.checkpoint_sequence !== checkpointAttempt.checkpoint_sequence ||
+            outcome.checkpoint_attempt_ref.id !==
+              checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+            outcome.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest
+          )) {
+            return false;
+          }
+          reachedOpenAttempt = true;
+          continue;
+        }
+        if (reachedOpenAttempt || outcomes.length !== 1 ||
+          outcome.outcome_status !== "paired" ||
+          outcome.checkpoint_sequence !== checkpointAttempt.checkpoint_sequence ||
+          outcome.checkpoint_attempt_ref.id !==
+            checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+          outcome.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest) {
+          return false;
+        }
+        committed.push({ attempt: checkpointAttempt, outcome });
+      }
+      if (committed.length === 0 || checkpointAttempts.length - committed.length > 1) {
         return false;
       }
+      const observations: PaperTradingObservationRecord[] = await this.options.store
+        .listPaperTradingObservations(input.side.paper_trading_evaluation_ref.id);
+      observations.sort((left, right) => left.sequence - right.sequence ||
+        left.paper_trading_observation_id.localeCompare(
+          right.paper_trading_observation_id
+        ));
+      if (observations.length !== committed.length) return false;
       const normalizedEvaluation = input.evaluation.status === "stopped" &&
-        observation.status !== "failed"
+        observations.at(-1)?.status !== "failed"
         ? {
             ...input.evaluation,
             status: "running" as const,
             stopped_at: undefined
           }
         : input.evaluation;
-      const consumedEventCount = (
+      const consumedEventCount = committed.reduce((total, current) =>
+        total + (current.outcome[input.side.role]?.consumed_event_count ?? 0), 0);
+      const ledgerRefIds: string[] = [];
+      for (let index = 0; index < committed.length; index += 1) {
+        const current = committed[index]!;
+        const previous = committed[index - 1];
+        const evidence = current.outcome[input.side.role];
+        const observation = observations[index];
+        if (!evidence || !observation ||
+          current.attempt.checkpoint_sequence !== index + 1 ||
+          observation.sequence !== current.attempt.checkpoint_sequence ||
+          current.outcome.tick_ref.id !== current.attempt.tick_ref.id ||
+          current.outcome.tick_digest !== current.attempt.tick_digest ||
+          observation.paper_trading_comparison_tick_ref?.id !==
+            current.attempt.tick_ref.id ||
+          observation.paper_trading_comparison_tick_digest !==
+            current.attempt.tick_digest ||
+          observation.paper_trading_comparison_checkpoint_attempt_ref?.id !==
+            current.attempt.paper_trading_comparison_checkpoint_attempt_id ||
+          observation.paper_trading_comparison_checkpoint_attempt_digest !==
+            current.attempt.attempt_digest ||
+          evidence.observation_ref.id !== observation.paper_trading_observation_id ||
+          evidence.observation_record_digest !== comparisonDigest(
+            paperTradingComparisonPersistedRecordDigestInput(observation)
+          ) ||
+          evidence.observation_status !== observation.status ||
+          previous && (
+            current.attempt.previous_checkpoint_outcome_ref?.id !==
+              previous.outcome.paper_trading_comparison_checkpoint_outcome_id ||
+            current.attempt.previous_checkpoint_outcome_digest !==
+              previous.outcome.outcome_digest
+          )) {
+          return false;
+        }
+        ledgerRefIds.push(...evidence.ledger_chain_refs.map((ref) => ref.id));
+      }
+      const latest = committed.at(-1)!;
+      const latestEvidence = latest.outcome[input.side.role];
+      const processedEventCount = (
         normalizedEvaluation.processed_trading_system_event_ids?.length ?? 0
       ) - (input.baseline.processed_trading_system_event_ids?.length ?? 0);
-      return outcome.checkpoint_attempt_ref.id ===
-          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id &&
-        outcome.checkpoint_attempt_digest === checkpointAttempt.attempt_digest &&
-        outcome.tick_ref.id === checkpointAttempt.tick_ref.id &&
-        outcome.tick_digest === checkpointAttempt.tick_digest &&
-        checkpointAttempt[input.side.role].trading_run_ref.id === input.run.trading_run_id &&
-        checkpointAttempt[input.side.role].paper_trading_evaluation_ref.id ===
+      return Boolean(latestEvidence) &&
+        normalizedEvaluation.observation_count === committed.length &&
+        latest.attempt[input.side.role].trading_run_ref.id === input.run.trading_run_id &&
+        latest.attempt[input.side.role].paper_trading_evaluation_ref.id ===
           input.evaluation.paper_trading_evaluation_id &&
-        observation.sequence === 1 &&
-        observation.paper_trading_comparison_tick_ref?.id === checkpointAttempt.tick_ref.id &&
-        observation.paper_trading_comparison_tick_digest === checkpointAttempt.tick_digest &&
-        observation.paper_trading_comparison_checkpoint_attempt_ref?.id ===
-          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id &&
-        observation.paper_trading_comparison_checkpoint_attempt_digest ===
-          checkpointAttempt.attempt_digest &&
-        evidence.observation_ref.id === observation.paper_trading_observation_id &&
-        evidence.observation_record_digest === comparisonDigest(
-          paperTradingComparisonPersistedRecordDigestInput(observation)
-        ) &&
-        evidence.evaluation_record_digest === comparisonDigest(
+        latestEvidence!.evaluation_record_digest === comparisonDigest(
           paperTradingComparisonEvaluationRecordDigestInput(normalizedEvaluation)
         ) &&
-        evidence.observation_status === observation.status &&
-        evidence.consumed_event_count === consumedEventCount &&
+        processedEventCount === consumedEventCount &&
         sameStringIds(
           input.run.order_request_refs?.map((ref) => ref.id) ?? [],
-          evidence.ledger_chain_refs.map((ref) => ref.id)
+          ledgerRefIds
         );
     } catch {
       return false;
@@ -1936,6 +2367,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       this.comparisonGatewayBindings.delete(sessionKey);
       this.comparisonProviderRequestLimits.delete(sessionKey);
       this.enabledComparisonTickAttributions.delete(sessionKey);
+      this.advancedComparisonCheckpointViews.delete(sessionKey);
       return;
     }
     this.comparisonProviderRequestCounts.set(
@@ -1946,6 +2378,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     this.comparisonGatewayBindings.delete(sessionKey);
     this.comparisonProviderRequestLimits.delete(sessionKey);
     this.enabledComparisonTickAttributions.delete(sessionKey);
+    this.advancedComparisonCheckpointViews.delete(sessionKey);
     await provider.close();
   }
 
@@ -2307,6 +2740,14 @@ function comparisonActivationSidesEqual(
 function sameComparisonTickAttributionEnablement(
   left: EnabledPaperTradingComparisonTickAttribution,
   right: EnabledPaperTradingComparisonTickAttribution
+): boolean {
+  return paperTradingComparisonPersistedRecordDigestInput(left) ===
+    paperTradingComparisonPersistedRecordDigestInput(right);
+}
+
+function sameAdvancedComparisonCheckpointView(
+  left: AdvancedPaperTradingComparisonCheckpointView,
+  right: AdvancedPaperTradingComparisonCheckpointView
 ): boolean {
   return paperTradingComparisonPersistedRecordDigestInput(left) ===
     paperTradingComparisonPersistedRecordDigestInput(right);

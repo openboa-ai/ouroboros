@@ -52,6 +52,13 @@ export interface PaperTradingComparisonSessionPort {
     authority: PaperTradingComparisonTickIOWriteContext;
     tick: PaperTradingComparisonTickRecord;
   }): Promise<void>;
+  advanceComparisonCheckpointSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonCheckpointWriteContext & {
+      operation: "advance_tick_view";
+    };
+    tick: PaperTradingComparisonTickRecord;
+  }): Promise<void>;
   prepareComparisonCheckpointSide(input: {
     side: PaperTradingComparisonActivationSide;
     authority: PaperTradingComparisonCheckpointWriteContext;

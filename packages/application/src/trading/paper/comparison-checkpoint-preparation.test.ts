@@ -6,6 +6,7 @@ import {
   type LedgerInput,
   type LedgerWriteOutcome,
   type PaperTradingComparisonCheckpointAttemptRecord,
+  type PaperTradingComparisonTickAcknowledgementRecord,
   type PaperTradingComparisonTickRecord,
   type PaperTradingEvaluationRecord
 } from "@ouroboros/domain";
@@ -135,6 +136,76 @@ describe("paper comparison checkpoint preparation", () => {
     expect(prepared.ledger_outcomes).toEqual([]);
   });
 
+  it("records acknowledged silence as a causal sequence 2 no-order observation", async () => {
+    const fixture = repeatedPreparationFixture([]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      sequence: 2,
+      status: "no_order",
+      paper_trading_comparison_tick_acknowledgement_ref: {
+        id: fixture.acknowledgement
+          .paper_trading_comparison_tick_acknowledgement_id
+      },
+      paper_trading_comparison_tick_acknowledgement_digest:
+        fixture.acknowledgement.acknowledgement_digest
+    });
+    expect(prepared.observation.decision).toBeUndefined();
+    expect(prepared.evaluation.observation_count).toBe(2);
+    expect(prepared.consumed_event_count).toBe(0);
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("rejects sequence 2 preparation without its exact persisted acknowledgement", async () => {
+    const fixture = repeatedPreparationFixture([]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence({
+      ...fixture.input,
+      tickAcknowledgement: undefined
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_tick_acknowledgement_required"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale event acknowledgement before sequence 2 Ledger preview", async () => {
+    const fixture = repeatedPreparationFixture([attributedHoldEventLine()]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    )).rejects.toMatchObject({
+      code: "comparison_tick_acknowledgement_attribution_invalid"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("consumes an exactly acknowledged sequence 2 hold without Ledger evidence", async () => {
+    const fixture = repeatedPreparationFixture([]);
+    fixture.input.candidate = candidateWithLogs([
+      attributedHoldEventLine({
+        id: fixture.acknowledgement
+          .paper_trading_comparison_tick_acknowledgement_id,
+        digest: fixture.acknowledgement.acknowledgement_digest
+      })
+    ]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      sequence: 2,
+      status: "no_order",
+      decision: { decision_kind: "hold" },
+      processed_trading_system_event_ids: ["checkpoint-attributed-hold-1"]
+    });
+    expect(prepared.consumed_event_count).toBe(1);
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
   it("turns a rejected candidate protocol event into paired negative evidence", async () => {
     const fixture = preparationFixture([malformedOrderEventLine()]);
 
@@ -201,6 +272,110 @@ function preparationFixture(lines: string[]) {
       checkpointAttempt: attempt,
       gatewayRuntimeBinding: binding,
       intervalMs: 60_000
+    }
+  };
+}
+
+function repeatedPreparationFixture(lines: string[]) {
+  const fixture = preparationFixture(lines);
+  const firstTick = fixture.input.tick;
+  const tick: PaperTradingComparisonTickRecord = {
+    ...structuredClone(firstTick),
+    paper_trading_comparison_tick_id: "tick-2",
+    sequence: 2,
+    previous_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: firstTick.paper_trading_comparison_tick_id
+    },
+    previous_tick_digest: firstTick.tick_digest,
+    market_snapshot: {
+      ...structuredClone(firstTick.market_snapshot),
+      price: 60_100,
+      observed_at: "2026-07-11T00:01:01.000Z"
+    },
+    public_execution_snapshot: {
+      ...structuredClone(firstTick.public_execution_snapshot),
+      observed_at: "2026-07-11T00:01:01.000Z",
+      stream_marker: "second-tick"
+    },
+    observed_at: "2026-07-11T00:01:02.000Z",
+    tick_digest: "sha256:tick-2"
+  };
+  const evaluation: PaperTradingEvaluationRecord = {
+    ...structuredClone(fixture.input.evaluation),
+    observation_count: 1,
+    last_observed_at: firstTick.observed_at,
+    next_observation_at: tick.observed_at,
+    latest_public_execution_snapshot: structuredClone(
+      firstTick.public_execution_snapshot
+    )
+  };
+  const attempt: PaperTradingComparisonCheckpointAttemptRecord = {
+    ...structuredClone(fixture.attempt),
+    paper_trading_comparison_checkpoint_attempt_id: "checkpoint-attempt-2",
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: tick.tick_digest,
+    checkpoint_sequence: 2,
+    previous_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: "checkpoint-attempt-1-outcome"
+    },
+    previous_checkpoint_outcome_digest: "sha256:checkpoint-attempt-1-outcome",
+    champion: {
+      ...structuredClone(fixture.attempt.champion),
+      evaluation_record_digest: "sha256:evaluation-1",
+      observation_chain_digest: "sha256:observation-chain-1",
+      provider_request_count_before: 2
+    },
+    challenger: {
+      ...structuredClone(fixture.attempt.challenger),
+      evaluation_record_digest: "sha256:evaluation-challenger-1",
+      observation_chain_digest: "sha256:observation-chain-challenger-1",
+      provider_request_count_before: 2
+    },
+    attempted_at: "2026-07-11T00:01:03.000Z",
+    checkpoint_deadline_at: "2026-07-11T00:02:03.000Z",
+    attempt_digest: "sha256:checkpoint-attempt-2"
+  };
+  const acknowledgement: PaperTradingComparisonTickAcknowledgementRecord = {
+    record_kind: "paper_trading_comparison_tick_acknowledgement",
+    version: 1,
+    paper_trading_comparison_tick_acknowledgement_id: "ack-2",
+    delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
+      id: "delivery-2"
+    },
+    delivery_digest: "sha256:delivery-2",
+    paper_trading_comparison_activation_attempt_ref: {
+      ...attempt.paper_trading_comparison_activation_attempt_ref
+    },
+    paper_trading_comparison_activation_attempt_digest:
+      attempt.paper_trading_comparison_activation_attempt_digest,
+    role: "champion",
+    trading_run_ref: { ...attempt.champion.trading_run_ref },
+    tick_ref: { ...attempt.tick_ref },
+    tick_digest: attempt.tick_digest,
+    tick_sequence: 2,
+    provider_request_count_at_acknowledgement: 4,
+    endpoint: "POST /comparison/tick/ack",
+    acknowledged_at: "2026-07-11T00:01:05.000Z",
+    acknowledgement_digest: "sha256:acknowledgement-2",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  };
+  return {
+    ...fixture,
+    acknowledgement,
+    input: {
+      ...fixture.input,
+      evaluation,
+      tick,
+      checkpointAttempt: attempt,
+      tickAcknowledgement: acknowledgement
     }
   };
 }
@@ -435,7 +610,12 @@ function holdEventLine(): string {
   });
 }
 
-function attributedHoldEventLine(): string {
+function attributedHoldEventLine(
+  attribution: { id: string; digest: string } = {
+    id: "ack-1",
+    digest: "sha256:acknowledgement"
+  }
+): string {
   return JSON.stringify({
     event: "hold",
     event_id: "checkpoint-attributed-hold-1",
@@ -445,9 +625,9 @@ function attributedHoldEventLine(): string {
     reason: "candidate attributed cadence hold",
     comparison_tick_acknowledgement_ref: {
       record_kind: "paper_trading_comparison_tick_acknowledgement",
-      id: "ack-1"
+      id: attribution.id
     },
-    comparison_tick_acknowledgement_digest: "sha256:acknowledgement"
+    comparison_tick_acknowledgement_digest: attribution.digest
   });
 }
 

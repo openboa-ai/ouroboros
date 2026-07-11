@@ -1139,6 +1139,243 @@ describe("PaperTradingSessionService", () => {
     });
   });
 
+  it("advances one owned role-bound view and requires a distinct tick 2 acknowledgement", async () => {
+    const fixture = await readyRepeatedCheckpointSessionFixture(
+      "advance-comparison-view"
+    );
+    const marketBefore = await fixture.readBoundComparisonMarket();
+    const writesBefore = structuredClone(fixture.writes);
+    const fixedReadsBefore = fixture.effects.fixedMarketReads;
+
+    await fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: fixture.repeated.authority,
+      tick: fixture.repeated.tick
+    });
+    await fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: fixture.repeated.authority,
+      tick: fixture.repeated.tick
+    });
+
+    const marketAfter = await fixture.readBoundComparisonMarket();
+    expect([marketBefore.price, marketAfter.price]).toEqual([60_000, 60_100]);
+    expect(fixture.effects).toMatchObject({
+      providerStarts: 1,
+      providerCloses: 0,
+      sandboxStarts: 1,
+      sandboxStops: 0,
+      fixedMarketReads: fixedReadsBefore,
+      underlyingMarketReads: 0
+    });
+    expect(fixture.writes).toEqual(writesBefore);
+
+    const deliveredAt = new Date(
+      Date.parse(fixture.repeated.attempt.attempted_at) + 1_000
+    ).toISOString();
+    const context = await fixture.hooks.deliver({
+      market: comparisonTickMarket(fixture.repeated.tick),
+      provider_request_count: 7,
+      delivered_at: deliveredAt
+    });
+    if (!context) throw new Error("tick 2 delivery did not return context");
+    expect(context).toMatchObject({
+      tick_ref: {
+        id: fixture.repeated.tick.paper_trading_comparison_tick_id
+      },
+      tick_digest: fixture.repeated.tick.tick_digest,
+      tick_sequence: 2
+    });
+    expect(context.delivery_ref.id).not.toBe(fixture.firstContext.delivery_ref.id);
+
+    await expect(fixture.hooks.acknowledge({
+      context: fixture.firstContext,
+      provider_request_count: 8,
+      acknowledged_at: new Date(Date.parse(deliveredAt) + 1_000).toISOString()
+    })).rejects.toMatchObject({ code: "comparison_tick_context_stale" });
+    await expect(fixture.hooks.acknowledge({
+      context,
+      provider_request_count: 9,
+      acknowledged_at: new Date(Date.parse(deliveredAt) + 2_000).toISOString()
+    })).resolves.toMatchObject({
+      acknowledgement_ref: { id: expect.any(String) },
+      acknowledgement_digest: expect.stringMatching(/^sha256:/)
+    });
+    expect(fixture.tickDeliveries()).toHaveLength(2);
+    expect(fixture.tickAcknowledgements()).toHaveLength(2);
+  });
+
+  it.each([
+    ["wrong role", (fixture: Awaited<ReturnType<
+      typeof readyRepeatedCheckpointSessionFixture
+    >>) => ({
+      authority: { ...fixture.repeated.authority, role: "champion" as const },
+      tick: fixture.repeated.tick
+    })],
+    ["wrong tick", (fixture: Awaited<ReturnType<
+      typeof readyRepeatedCheckpointSessionFixture
+    >>) => ({
+      authority: fixture.repeated.authority,
+      tick: {
+        ...fixture.repeated.tick,
+        paper_trading_comparison_tick_id: "different-tick"
+      }
+    })],
+    ["stale attempt", (fixture: Awaited<ReturnType<
+      typeof readyRepeatedCheckpointSessionFixture
+    >>) => ({
+      authority: {
+        ...fixture.repeated.authority,
+        checkpoint_attempt_ref: {
+          record_kind: "paper_trading_comparison_checkpoint_attempt",
+          id: "stale-checkpoint-attempt"
+        }
+      },
+      tick: fixture.repeated.tick
+    })]
+  ] as const)("rejects %s before changing the repeated comparison view", async (
+    _label,
+    mutate
+  ) => {
+    const fixture = await readyRepeatedCheckpointSessionFixture(`advance-${_label}`);
+    const changed = mutate(fixture);
+    const writesBefore = structuredClone(fixture.writes);
+    const effectsBefore = structuredClone(fixture.effects);
+
+    await expect(fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: changed.authority,
+      tick: changed.tick
+    })).rejects.toMatchObject({
+      code: expect.stringMatching(/context|reference|state|not_found/)
+    });
+    await expect(fixture.readBoundComparisonMarket()).resolves.toMatchObject({
+      price: 60_000
+    });
+    expect(fixture.writes).toEqual(writesBefore);
+    expect(fixture.effects).toMatchObject({
+      ...effectsBefore,
+      fixedMarketReads: effectsBefore.fixedMarketReads + 1
+    });
+  });
+
+  it("rejects provider-count drift before changing the repeated comparison view", async () => {
+    const fixture = await readyRepeatedCheckpointSessionFixture(
+      "advance-provider-count-drift"
+    );
+    fixture.setProviderRequestCount(
+      fixture.repeated.attempt.challenger.provider_request_count_before + 1
+    );
+    const writesBefore = structuredClone(fixture.writes);
+
+    await expect(fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: fixture.repeated.authority,
+      tick: fixture.repeated.tick
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_checkpoint_state_mismatch"
+    });
+    await expect(fixture.readBoundComparisonMarket()).resolves.toMatchObject({
+      price: 60_000
+    });
+    expect(fixture.writes).toEqual(writesBefore);
+    expect(fixture.effects).toMatchObject({
+      providerStarts: 1,
+      providerCloses: 0,
+      sandboxStarts: 1,
+      sandboxStops: 0,
+      underlyingMarketReads: 0
+    });
+  });
+
+  it("rejects repeated preparation before tick 2 acknowledgement and accepts acknowledged silence", async () => {
+    const missing = await readyRepeatedCheckpointSessionFixture(
+      "repeated-checkpoint-missing-ack"
+    );
+    await missing.service.advanceComparisonCheckpointSide({
+      side: missing.side,
+      authority: missing.repeated.authority,
+      tick: missing.repeated.tick
+    });
+    const missingLogReads = missing.effects.sandboxLogReads;
+    await expect(missing.service.prepareComparisonCheckpointSide({
+      side: missing.side,
+      authority: {
+        ...missing.repeated.authority,
+        operation: "refresh_sandbox_evidence"
+      },
+      tick: missing.repeated.tick,
+      deadlineAt: missing.repeated.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount:
+        missing.attempt.activation_policy.maximum_provider_request_count_per_side,
+      signal: new AbortController().signal
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_tick_acknowledgement_required"
+    });
+    expect(missing.effects.sandboxLogReads).toBe(missingLogReads);
+
+    const fixture = await readyRepeatedCheckpointSessionFixture(
+      "repeated-checkpoint-acknowledged-silence"
+    );
+    await fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: fixture.repeated.authority,
+      tick: fixture.repeated.tick
+    });
+    const deliveredAt = new Date(
+      Date.parse(fixture.repeated.attempt.attempted_at) + 1_000
+    ).toISOString();
+    const context = await fixture.hooks.deliver({
+      market: comparisonTickMarket(fixture.repeated.tick),
+      provider_request_count: 7,
+      delivered_at: deliveredAt
+    });
+    if (!context) throw new Error("tick 2 context was not delivered");
+    const acknowledgement = await fixture.hooks.acknowledge({
+      context,
+      provider_request_count: 9,
+      acknowledged_at: new Date(Date.parse(deliveredAt) + 1_000).toISOString()
+    });
+    const writesBefore = fixture.writes.length;
+
+    const prepared = await fixture.service.prepareComparisonCheckpointSide({
+      side: fixture.side,
+      authority: {
+        ...fixture.repeated.authority,
+        operation: "refresh_sandbox_evidence"
+      },
+      tick: fixture.repeated.tick,
+      deadlineAt: fixture.repeated.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount:
+        fixture.attempt.activation_policy.maximum_provider_request_count_per_side,
+      signal: new AbortController().signal
+    });
+
+    expect(prepared).toMatchObject({
+      role: "challenger",
+      observation: {
+        sequence: 2,
+        status: "no_order",
+        paper_trading_comparison_tick_acknowledgement_ref:
+          acknowledgement.acknowledgement_ref,
+        paper_trading_comparison_tick_acknowledgement_digest:
+          acknowledgement.acknowledgement_digest
+      },
+      evaluation: { observation_count: 2 },
+      consumed_event_count: 0,
+      provider_request_count_after: 9
+    });
+    expect(prepared.ledger_inputs).toEqual([]);
+    expect(prepared.ledger_outcomes).toEqual([]);
+    expect(fixture.writes.slice(writesBefore)).toEqual([{
+      kind: "sandbox-evidence",
+      authority: {
+        ...fixture.repeated.authority,
+        operation: "refresh_sandbox_evidence"
+      }
+    }]);
+  });
+
   it("closes a comparison provider when aborted before the sandbox effect", async () => {
     const controller = new AbortController();
     const fixture = await authorizedComparisonSessionFixture("abort-provider", {
@@ -1557,10 +1794,12 @@ async function authorizedComparisonSessionFixture(
     authority_status: "not_live"
   };
   let activationOutcome: PaperTradingComparisonActivationOutcomeRecord | undefined;
-  let checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord | undefined;
-  let checkpointOutcome: PaperTradingComparisonCheckpointOutcomeRecord | undefined;
+  const ticks: PaperTradingComparisonTickRecord[] = [structuredClone(tick)];
+  const checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[] = [];
+  const checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[] = [];
   let checkpointObservations: PreparedPaperTradingComparisonCheckpointSide["observation"][] = [];
   let providerHooks: PaperTradingApiProviderComparisonTickHooks | undefined;
+  let providerRequestCount = 3;
   const tickDeliveries: PaperTradingComparisonTickDeliveryRecord[] = [];
   const tickAcknowledgements: PaperTradingComparisonTickAcknowledgementRecord[] = [];
   const startAuthority = comparisonSessionAuthority(attempt, "start");
@@ -1632,9 +1871,9 @@ async function authorizedComparisonSessionFixture(
         return async () => [structuredClone(attempt)];
       }
       if (property === "getPaperTradingComparisonTick") {
-        return async (id: string) => id === tick.paper_trading_comparison_tick_id
-          ? structuredClone(tick)
-          : undefined;
+        return async (id: string) => structuredClone(ticks.find((record) =>
+          record.paper_trading_comparison_tick_id === id
+        ));
       }
       if (property === "getPaperTradingComparisonActivationOutcome") {
         return async (id: string) =>
@@ -1646,22 +1885,24 @@ async function authorizedComparisonSessionFixture(
         return async () => activationOutcome ? [structuredClone(activationOutcome)] : [];
       }
       if (property === "getPaperTradingComparisonCheckpointAttempt") {
-        return async (id: string) =>
-          checkpointAttempt?.paper_trading_comparison_checkpoint_attempt_id === id
-            ? structuredClone(checkpointAttempt)
-            : undefined;
+        return async (id: string) => structuredClone(checkpointAttempts.find((record) =>
+          record.paper_trading_comparison_checkpoint_attempt_id === id
+        ));
       }
       if (property === "listPaperTradingComparisonCheckpointAttempts") {
-        return async () => checkpointAttempt ? [structuredClone(checkpointAttempt)] : [];
+        return async () => structuredClone(checkpointAttempts);
       }
       if (property === "listPaperTradingComparisonCheckpointOutcomes") {
-        return async () => checkpointOutcome ? [structuredClone(checkpointOutcome)] : [];
+        return async (checkpointAttemptId: string) => structuredClone(
+          checkpointOutcomes.filter((record) =>
+            record.checkpoint_attempt_ref.id === checkpointAttemptId
+          )
+        );
       }
       if (property === "getPaperTradingComparisonCheckpointOutcome") {
-        return async (id: string) =>
-          checkpointOutcome?.paper_trading_comparison_checkpoint_outcome_id === id
-            ? structuredClone(checkpointOutcome)
-            : undefined;
+        return async (id: string) => structuredClone(checkpointOutcomes.find((record) =>
+          record.paper_trading_comparison_checkpoint_outcome_id === id
+        ));
       }
       if (property === "recordPaperTradingComparisonTickDelivery") {
         return async (
@@ -1971,7 +2212,7 @@ async function authorizedComparisonSessionFixture(
           { at: attemptedAt, method: "GET", path: "/two", response_status: 200 },
           { at: attemptedAt, method: "GET", path: "/three", response_status: 200 }
         ],
-        request_count: () => 3,
+        request_count: () => providerRequestCount,
         candidate_input: {} as never
       };
     }
@@ -2032,7 +2273,7 @@ async function authorizedComparisonSessionFixture(
       observation_chain_digest: comparisonFixtureDigest(
         paperTradingComparisonObservationChainDigestInput([])
       ),
-      provider_request_count_before: 3
+      provider_request_count_before: providerRequestCount
     });
     const checkpointDraft: PaperTradingComparisonCheckpointAttemptRecord = {
       record_kind: "paper_trading_comparison_checkpoint_attempt",
@@ -2074,12 +2315,13 @@ async function authorizedComparisonSessionFixture(
       order_submission_authority: false,
       authority_status: "not_live"
     };
-    checkpointAttempt = {
+    const checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord = {
       ...checkpointDraft,
       attempt_digest: comparisonFixtureDigest(
         paperTradingComparisonCheckpointAttemptDigestInput(checkpointDraft)
       )
     };
+    checkpointAttempts.push(structuredClone(checkpointAttempt));
     const authority: PaperTradingComparisonCheckpointWriteContext = {
       paper_trading_comparison_activation_ref: {
         ...attempt.paper_trading_comparison_activation_ref
@@ -2114,6 +2356,7 @@ async function authorizedComparisonSessionFixture(
   const commitCheckpoint = (
     preparedSide: PreparedPaperTradingComparisonCheckpointSide
   ): PaperTradingComparisonCheckpointOutcomeRecord => {
+    const checkpointAttempt = checkpointAttempts[0];
     if (!checkpointAttempt) throw new Error("checkpoint attempt is not authorized");
     evaluation = structuredClone(preparedSide.evaluation);
     checkpointObservations = [structuredClone(preparedSide.observation)];
@@ -2187,13 +2430,125 @@ async function authorizedComparisonSessionFixture(
       order_submission_authority: false,
       authority_status: "not_live"
     };
-    checkpointOutcome = {
+    const checkpointOutcome: PaperTradingComparisonCheckpointOutcomeRecord = {
       ...draft,
       outcome_digest: comparisonFixtureDigest(
         paperTradingComparisonCheckpointOutcomeDigestInput(draft)
       )
     };
+    checkpointOutcomes.push(structuredClone(checkpointOutcome));
     return structuredClone(checkpointOutcome);
+  };
+  const authorizeRepeatedCheckpoint = () => {
+    const previousAttempt = checkpointAttempts[0];
+    const previousOutcome = checkpointOutcomes[0];
+    if (!activationOutcome || !previousAttempt || !previousOutcome ||
+      checkpointObservations.length !== 1) {
+      throw new Error("first checkpoint must be committed before repeated authorization");
+    }
+    const observedAt = new Date(
+      Date.parse(tick.observed_at) + prepared.evaluation.interval_ms
+    ).toISOString();
+    const nextTickDraft: PaperTradingComparisonTickRecord = {
+      ...structuredClone(tick),
+      paper_trading_comparison_tick_id: `${tick.paper_trading_comparison_tick_id}-2`,
+      sequence: 2,
+      previous_tick_ref: {
+        record_kind: "paper_trading_comparison_tick",
+        id: tick.paper_trading_comparison_tick_id
+      },
+      previous_tick_digest: tick.tick_digest,
+      market_snapshot: {
+        ...structuredClone(tick.market_snapshot),
+        price: tick.market_snapshot.price + 100,
+        observed_at: new Date(Date.parse(observedAt) - 2).toISOString()
+      },
+      public_execution_snapshot: {
+        ...structuredClone(tick.public_execution_snapshot),
+        observed_at: new Date(Date.parse(observedAt) - 1).toISOString(),
+        stream_marker: `${tick.public_execution_snapshot.stream_marker}-2`
+      },
+      observed_at: observedAt,
+      tick_digest: ""
+    };
+    const nextTick: PaperTradingComparisonTickRecord = {
+      ...nextTickDraft,
+      tick_digest: comparisonFixtureDigest(
+        paperTradingComparisonTickDigestInput(nextTickDraft)
+      )
+    };
+    const attemptedAt = new Date(Date.parse(observedAt) + 1).toISOString();
+    const sideFor = (role: "champion" | "challenger") => ({
+      role,
+      trading_run_ref: { ...attempt[role].trading_run_ref },
+      paper_trading_evaluation_ref: {
+        ...attempt[role].paper_trading_evaluation_ref
+      },
+      evaluation_record_digest: role === "challenger"
+        ? comparisonFixtureDigest(
+            paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+          )
+        : `sha256:champion-evaluation-${suffix}-checkpoint-1`,
+      observation_chain_digest: role === "challenger"
+        ? comparisonFixtureDigest(
+            paperTradingComparisonObservationChainDigestInput(checkpointObservations)
+          )
+        : `sha256:champion-observation-chain-${suffix}-checkpoint-1`,
+      provider_request_count_before: providerRequestCount
+    });
+    const nextAttemptDraft: PaperTradingComparisonCheckpointAttemptRecord = {
+      ...structuredClone(previousAttempt),
+      paper_trading_comparison_checkpoint_attempt_id:
+        `${attempt.paper_trading_comparison_activation_attempt_id}-checkpoint-2`,
+      tick_ref: {
+        record_kind: "paper_trading_comparison_tick",
+        id: nextTick.paper_trading_comparison_tick_id
+      },
+      tick_digest: nextTick.tick_digest,
+      checkpoint_sequence: 2,
+      previous_checkpoint_outcome_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_outcome",
+        id: previousOutcome.paper_trading_comparison_checkpoint_outcome_id
+      },
+      previous_checkpoint_outcome_digest: previousOutcome.outcome_digest,
+      champion: sideFor("champion"),
+      challenger: sideFor("challenger"),
+      attempted_at: attemptedAt,
+      checkpoint_deadline_at: new Date(Date.parse(attemptedAt) + 60_000).toISOString(),
+      attempt_digest: ""
+    };
+    const nextAttempt: PaperTradingComparisonCheckpointAttemptRecord = {
+      ...nextAttemptDraft,
+      attempt_digest: comparisonFixtureDigest(
+        paperTradingComparisonCheckpointAttemptDigestInput(nextAttemptDraft)
+      )
+    };
+    ticks.push(structuredClone(nextTick));
+    checkpointAttempts.push(structuredClone(nextAttempt));
+    const authority: PaperTradingComparisonCheckpointWriteContext & {
+      operation: "advance_tick_view";
+    } = {
+      paper_trading_comparison_activation_ref: {
+        ...nextAttempt.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        nextAttempt.paper_trading_comparison_activation_digest,
+      paper_trading_comparison_activation_attempt_ref: {
+        ...nextAttempt.paper_trading_comparison_activation_attempt_ref
+      },
+      paper_trading_comparison_activation_attempt_digest:
+        nextAttempt.paper_trading_comparison_activation_attempt_digest,
+      activation_outcome_ref: { ...nextAttempt.activation_outcome_ref },
+      activation_outcome_digest: nextAttempt.activation_outcome_digest,
+      checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: nextAttempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      checkpoint_attempt_digest: nextAttempt.attempt_digest,
+      role: "challenger",
+      operation: "advance_tick_view"
+    };
+    return { tick: nextTick, attempt: nextAttempt, authority };
   };
   return {
     store,
@@ -2209,13 +2564,44 @@ async function authorizedComparisonSessionFixture(
     effects,
     writes,
     authorizeCheckpoint,
+    authorizeRepeatedCheckpoint,
     commitCheckpoint,
     providerHooks() {
       if (!providerHooks) throw new Error("comparison tick hooks were not installed");
-      return providerHooks;
+      return {
+        deliver(input: Parameters<
+          PaperTradingApiProviderComparisonTickHooks["deliver"]
+        >[0]) {
+          providerRequestCount = Math.max(
+            providerRequestCount,
+            input.provider_request_count
+          );
+          return providerHooks!.deliver(input);
+        },
+        acknowledge(input: Parameters<
+          PaperTradingApiProviderComparisonTickHooks["acknowledge"]
+        >[0]) {
+          providerRequestCount = Math.max(
+            providerRequestCount,
+            input.provider_request_count
+          );
+          return providerHooks!.acknowledge(input);
+        }
+      };
     },
     tickDeliveries: () => structuredClone(tickDeliveries),
     tickAcknowledgements: () => structuredClone(tickAcknowledgements),
+    setProviderRequestCount(value: number) {
+      providerRequestCount = value;
+    },
+    async readBoundComparisonMarket() {
+      const internals = service as unknown as {
+        comparisonGatewayBindings: Map<string, { marketData: GatewayMarketDataPort }>;
+      };
+      const binding = internals.comparisonGatewayBindings.values().next().value;
+      if (!binding) throw new Error("comparison Gateway binding was not installed");
+      return binding.marketData.readMarketSnapshot();
+    },
     dropProviderSession() {
       const internals = service as unknown as {
         comparisonApiProviderSessions: Map<string, unknown>;
@@ -2254,6 +2640,32 @@ async function readyTickAttributionSessionFixture(suffix: string) {
   });
   const checkpointOutcome = fixture.commitCheckpoint(prepared);
   return { ...fixture, checkpointOutcome };
+}
+
+async function readyRepeatedCheckpointSessionFixture(suffix: string) {
+  const fixture = await readyTickAttributionSessionFixture(suffix);
+  const hooks = fixture.providerHooks();
+  await fixture.service.enableComparisonTickAttributionSide({
+    side: fixture.side,
+    authority: comparisonTickAttributionAuthority(fixture),
+    tick: fixture.tick
+  });
+  const deliveredAt = new Date(
+    Date.parse(fixture.checkpointOutcome.completed_at) + 1_000
+  ).toISOString();
+  const firstContext = await hooks.deliver({
+    market: comparisonTickMarket(fixture.tick),
+    provider_request_count: 4,
+    delivered_at: deliveredAt
+  });
+  if (!firstContext) throw new Error("first comparison tick delivery was not recorded");
+  await hooks.acknowledge({
+    context: firstContext,
+    provider_request_count: 6,
+    acknowledged_at: new Date(Date.parse(deliveredAt) + 1_000).toISOString()
+  });
+  const repeated = fixture.authorizeRepeatedCheckpoint();
+  return { ...fixture, hooks, firstContext, repeated };
 }
 
 function comparisonTickAttributionAuthority(input: {

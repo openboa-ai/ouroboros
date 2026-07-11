@@ -7,6 +7,7 @@ import type {
   PaperTradingDecisionOrderRequestSummary,
   PaperTradingDecisionSummary,
   PaperTradingComparisonCheckpointAttemptRecord,
+  PaperTradingComparisonTickAcknowledgementRecord,
   PaperTradingComparisonTickRecord,
   PaperTradingEvaluationRecord,
   PaperTradingFillSummary,
@@ -76,6 +77,7 @@ export interface PreparePaperTradingComparisonCheckpointEvidenceInput {
   evaluation: PaperTradingEvaluationRecord;
   tick: PaperTradingComparisonTickRecord;
   checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord;
+  tickAcknowledgement?: PaperTradingComparisonTickAcknowledgementRecord;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
   intervalMs: number;
 }
@@ -93,8 +95,7 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
 ): Promise<PreparedPaperTradingComparisonCheckpointEvidence> {
   const side = input.checkpointAttempt[input.role];
   if (
-    input.checkpointAttempt.checkpoint_sequence !== 1 ||
-    input.tick.sequence !== 1 ||
+    input.tick.sequence !== input.checkpointAttempt.checkpoint_sequence ||
     input.tick.paper_trading_comparison_tick_id !==
       input.checkpointAttempt.tick_ref.id ||
     input.tick.tick_digest !== input.checkpointAttempt.tick_digest ||
@@ -102,11 +103,37 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
       side.paper_trading_evaluation_ref.id ||
     input.evaluation.trading_run_ref.id !== side.trading_run_ref.id ||
     input.evaluation.status !== "running" ||
-    input.evaluation.observation_count !== 0
+    input.evaluation.observation_count !==
+      input.checkpointAttempt.checkpoint_sequence - 1
   ) {
     throw new PaperTradingObservationError(
       "paper_trading_comparison_checkpoint_state_mismatch",
-      "Paper comparison checkpoint preparation requires the exact running first-tick side."
+      "Paper comparison checkpoint preparation requires the exact running sequence side."
+    );
+  }
+  const acknowledgement = input.checkpointAttempt.checkpoint_sequence > 1
+    ? input.tickAcknowledgement
+    : undefined;
+  if (input.checkpointAttempt.checkpoint_sequence > 1 && !acknowledgement) {
+    throw new PaperTradingObservationError(
+      "paper_trading_comparison_tick_acknowledgement_required",
+      "Repeated paper comparison preparation requires its persisted tick acknowledgement."
+    );
+  }
+  if (acknowledgement && (
+    acknowledgement.paper_trading_comparison_activation_attempt_ref.id !==
+      input.checkpointAttempt.paper_trading_comparison_activation_attempt_ref.id ||
+    acknowledgement.paper_trading_comparison_activation_attempt_digest !==
+      input.checkpointAttempt.paper_trading_comparison_activation_attempt_digest ||
+    acknowledgement.role !== input.role ||
+    acknowledgement.trading_run_ref.id !== side.trading_run_ref.id ||
+    acknowledgement.tick_ref.id !== input.tick.paper_trading_comparison_tick_id ||
+    acknowledgement.tick_digest !== input.tick.tick_digest ||
+    acknowledgement.tick_sequence !== input.tick.sequence
+  )) {
+    throw new PaperTradingObservationError(
+      "paper_trading_comparison_tick_acknowledgement_mismatch",
+      "Paper comparison tick acknowledgement does not match the checkpoint side."
     );
   }
   const previousEngineState = engineStateFromEvaluation(input.evaluation);
@@ -114,6 +141,18 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
     .filter((event) =>
       !previousEngineState.processedTradingSystemEventIds.includes(event.event_id)
     );
+  if (input.checkpointAttempt.checkpoint_sequence > 1 &&
+    tradingSystemEvents.some((event) =>
+      !event.comparison_tick_acknowledgement_ref ||
+      event.comparison_tick_acknowledgement_ref.id !==
+        acknowledgement!.paper_trading_comparison_tick_acknowledgement_id ||
+      event.comparison_tick_acknowledgement_digest !==
+        acknowledgement!.acknowledgement_digest)) {
+    throw new PaperTradingObservationError(
+      "comparison_tick_acknowledgement_attribution_invalid",
+      "Repeated paper comparison events require the exact current tick acknowledgement."
+    );
+  }
   const decision = await preparePaperTradingObservationDecision({
     candidate: input.candidate,
     tradingRunId: side.trading_run_ref.id,
@@ -156,7 +195,7 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
   const observation = paperTradingObservationRecord({
     candidate: input.candidate,
     evaluation: input.evaluation,
-    sequence: 1,
+    sequence: input.checkpointAttempt.checkpoint_sequence,
     status: observationStatus,
     observedAt: input.tick.observed_at,
     marketSnapshot: structuredClone(input.tick.market_snapshot),
@@ -183,6 +222,13 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
       id: input.tick.paper_trading_comparison_tick_id
     },
     comparisonTickDigest: input.tick.tick_digest,
+    comparisonTickAcknowledgementRef: acknowledgement
+      ? {
+          record_kind: "paper_trading_comparison_tick_acknowledgement",
+          id: acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+        }
+      : undefined,
+    comparisonTickAcknowledgementDigest: acknowledgement?.acknowledgement_digest,
     checkpointAttemptRef: {
       record_kind: "paper_trading_comparison_checkpoint_attempt",
       id: input.checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
@@ -955,6 +1001,8 @@ function paperTradingObservationRecord(input: {
   failureReason?: string;
   comparisonTickRef?: Ref;
   comparisonTickDigest?: string;
+  comparisonTickAcknowledgementRef?: Ref;
+  comparisonTickAcknowledgementDigest?: string;
   checkpointAttemptRef?: Ref;
   checkpointAttemptDigest?: string;
 }): PaperTradingObservationRecord {
@@ -974,6 +1022,10 @@ function paperTradingObservationRecord(input: {
       input.evaluation.paper_trading_evaluation_commitment_ref,
     paper_trading_comparison_tick_ref: input.comparisonTickRef,
     paper_trading_comparison_tick_digest: input.comparisonTickDigest,
+    paper_trading_comparison_tick_acknowledgement_ref:
+      input.comparisonTickAcknowledgementRef,
+    paper_trading_comparison_tick_acknowledgement_digest:
+      input.comparisonTickAcknowledgementDigest,
     paper_trading_comparison_checkpoint_attempt_ref: input.checkpointAttemptRef,
     paper_trading_comparison_checkpoint_attempt_digest: input.checkpointAttemptDigest,
     candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
