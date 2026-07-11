@@ -1865,6 +1865,72 @@ export interface PaperTradingComparisonTickRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface PaperTradingComparisonTickContext {
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  delivery_ref: Ref;
+  delivery_digest: string;
+}
+
+export interface PaperTradingComparisonTickDeliveryRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick_delivery";
+  paper_trading_comparison_tick_delivery_id: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  provider_request_count_at_delivery: number;
+  endpoint: "GET /market/snapshot";
+  delivered_at: string;
+  delivery_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonTickAcknowledgementRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick_acknowledgement";
+  paper_trading_comparison_tick_acknowledgement_id: string;
+  delivery_ref: Ref;
+  delivery_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  provider_request_count_at_acknowledgement: number;
+  endpoint: "POST /comparison/tick/ack";
+  acknowledged_at: string;
+  acknowledgement_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonTickIOOperation =
+  | "deliver_market_snapshot"
+  | "acknowledge_tick";
+
+export interface PaperTradingComparisonTickIOWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  operation: PaperTradingComparisonTickIOOperation;
+}
+
 export interface PaperTradingComparisonActivationSide {
   role: "champion" | "challenger";
   trading_run_ref: Ref;
@@ -2312,6 +2378,32 @@ export function paperTradingComparisonTickDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function paperTradingComparisonTickDeliveryDigestInput(
+  record: PaperTradingComparisonTickDeliveryRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_delivery_id: _id,
+    delivery_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonTickAcknowledgementDigestInput(
+  record: PaperTradingComparisonTickAcknowledgementRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_acknowledgement_id: _id,
+    acknowledgement_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export function paperTradingComparisonActivationPolicyFor(
   comparisonPolicy: PaperTradingComparisonPolicy
 ): PaperTradingComparisonActivationPolicy {
@@ -2426,6 +2518,14 @@ export function paperTradingComparisonRefsEqual(left: unknown, right: unknown): 
 
 function comparisonObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function comparisonHasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[]
+): boolean {
+  const actual = Object.keys(value);
+  return actual.length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key));
 }
 function comparisonString(value: unknown): value is string { return typeof value === "string" && value.length > 0; }
 function comparisonRef(value: unknown, kind?: string): value is Ref {
@@ -2554,6 +2654,158 @@ export function paperTradingComparisonTickHasRuntimeShape(
     comparisonIso(value.observed_at) &&
     comparisonDigest(value.tick_digest) &&
     value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "delivery_ref",
+      "delivery_digest"
+    ]) &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonRef(value.delivery_ref, "paper_trading_comparison_tick_delivery") &&
+    comparisonDigest(value.delivery_digest);
+}
+
+export function paperTradingComparisonTickDeliveryHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickDeliveryRecord {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "record_kind",
+      "version",
+      "paper_trading_comparison_tick_delivery_id",
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "provider_request_count_at_delivery",
+      "endpoint",
+      "delivered_at",
+      "delivery_digest",
+      "live_exchange_authority",
+      "order_submission_authority",
+      "authority_status"
+    ]) &&
+    value.record_kind === "paper_trading_comparison_tick_delivery" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_delivery_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonPositive(value.provider_request_count_at_delivery) &&
+    value.endpoint === "GET /market/snapshot" &&
+    comparisonIso(value.delivered_at) &&
+    comparisonDigest(value.delivery_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickAcknowledgementHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickAcknowledgementRecord {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "record_kind",
+      "version",
+      "paper_trading_comparison_tick_acknowledgement_id",
+      "delivery_ref",
+      "delivery_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "provider_request_count_at_acknowledgement",
+      "endpoint",
+      "acknowledged_at",
+      "acknowledgement_digest",
+      "live_exchange_authority",
+      "order_submission_authority",
+      "authority_status"
+    ]) &&
+    value.record_kind === "paper_trading_comparison_tick_acknowledgement" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_acknowledgement_id) &&
+    comparisonRef(value.delivery_ref, "paper_trading_comparison_tick_delivery") &&
+    comparisonDigest(value.delivery_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonPositive(value.provider_request_count_at_acknowledgement) &&
+    value.endpoint === "POST /comparison/tick/ack" &&
+    comparisonIso(value.acknowledged_at) &&
+    comparisonDigest(value.acknowledgement_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickIOWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickIOWriteContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "operation"
+    ]) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    (value.operation === "deliver_market_snapshot" ||
+      value.operation === "acknowledge_tick");
 }
 
 export function paperTradingComparisonActivationSideHasRuntimeShape(
@@ -5436,6 +5688,8 @@ export type FixtureRecord =
   | PaperTradingComparisonPreparationRecord
   | PaperTradingComparisonCommitmentRecord
   | PaperTradingComparisonTickRecord
+  | PaperTradingComparisonTickDeliveryRecord
+  | PaperTradingComparisonTickAcknowledgementRecord
   | PaperTradingComparisonActivationRecord
   | PaperTradingComparisonActivationAttemptRecord
   | PaperTradingComparisonActivationSideResultRecord

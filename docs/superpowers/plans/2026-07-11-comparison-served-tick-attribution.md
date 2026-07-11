@@ -50,7 +50,7 @@ at commit `4f886e4`.
 - Produces: `PaperTradingComparisonTickIOWriteContext`
 - Produces: canonical digest-input and total runtime-shape functions for all three durable shapes
 
-- [ ] **Step 1: Write failing domain tests**
+- [x] **Step 1: Write failing domain tests**
 
 Construct one valid delivery, acknowledgement, response context, and write context. Assert:
 
@@ -66,7 +66,7 @@ delivery ref/digest shape, request count zero, wrong endpoint, malformed ISO tim
 digest drift, extra authority, and live/order authority. Cross-record delivery/ack time and request
 ordering belongs to Task 2 LocalStore validation.
 
-- [ ] **Step 2: Run the domain test and verify RED**
+- [x] **Step 2: Run the domain test and verify RED**
 
 Run:
 
@@ -76,7 +76,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-tick-attribution.tes
 
 Expected: FAIL because attribution types and predicates are missing.
 
-- [ ] **Step 3: Add exact domain records and total predicates**
+- [x] **Step 3: Add exact domain records and total predicates**
 
 Implement the design fields and these operation literals:
 
@@ -88,11 +88,12 @@ type PaperTradingComparisonTickIOOperation =
 
 The context predicate requires exact tick and delivery refs/digests. Delivery requires
 `endpoint: "GET /market/snapshot"`; acknowledgement requires
-`endpoint: "POST /comparison/tick/ack"` and a provider count strictly greater than or equal to the
-delivery count. Digest-input functions omit record kind, version, deterministic identity, and their
-own digest field exactly as existing comparison evidence functions do.
+`endpoint: "POST /comparison/tick/ack"` and a positive provider count. Task 2 LocalStore validation
+requires the acknowledgement count to be greater than or equal to the referenced delivery count.
+Digest-input functions omit record kind, version, deterministic identity, and their own digest field
+exactly as existing comparison evidence functions do.
 
-- [ ] **Step 4: Run domain regressions and typecheck**
+- [x] **Step 4: Run domain regressions and typecheck**
 
 Run:
 
@@ -103,7 +104,7 @@ npm run typecheck --workspace @ouroboros/domain
 
 Expected: selected domain tests and typecheck pass.
 
-- [ ] **Step 5: Commit the attribution domain contract**
+- [x] **Step 5: Commit the attribution domain contract**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-tick-attribution.test.ts
