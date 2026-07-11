@@ -323,7 +323,7 @@ git commit -m "feat: persist paper comparison research release"
 - Consumes: exact campaign outcome, origin candidate/admission/Finding/Lineage, and Task 2 decision
 - Persists only through Task 3's bundle writer
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Use:
 
@@ -343,13 +343,13 @@ exact replay after clock advance performs no extra mutation. Reject absent or ma
 campaign mismatch, missing admission/source Finding, ambiguous or late source Lineage, missing
 full-cycle direction, SystemCode drift, and changed Store replay.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-research-release-service.test.ts
 ```
 
-- [ ] **Step 3: Implement deterministic bundle construction**
+- [x] **Step 3: Implement deterministic bundle construction**
 
 Release IDs are:
 
@@ -364,14 +364,14 @@ Select only the origin Lineage matching child SystemCode, admission source Findi
 `created_at <= admission.decided_at`. Call the pure decision once and pass the finished bundle to
 `recordPaperTradingComparisonResearchRelease`.
 
-- [ ] **Step 4: Run focused service/Store regressions and typecheck**
+- [x] **Step 4: Run focused service/Store regressions and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-research-release-decision.test.ts packages/application/src/trading/paper/comparison-research-release-service.test.ts packages/local-store/test/local-store.test.ts -t "comparison research release|release materialization|release-bound"
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 5: Commit the service**
+- [x] **Step 5: Commit the service**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-research-release-service.ts packages/application/src/trading/paper/comparison-research-release-service.test.ts
