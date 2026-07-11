@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
   PAPER_TRADING_COMPARISON_ZERO_SCORE,
@@ -14,6 +14,7 @@ import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import type { OuroborosStorePort } from "../../ports/store";
 import type { SandboxStartInput } from "../../ports/sandbox";
 import { initialPaperTradingEngineState, paperTradingScoreFromAccount } from "./engine";
+import { PaperTradingEvaluationRunner } from "./evaluation-runner";
 import { PaperTradingSessionService } from "./session-service";
 
 let tmpDir: string;
@@ -246,6 +247,136 @@ describe("PaperTradingSessionService", () => {
       expect(effects).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
     }
   );
+
+  it("drains the target runner before persisting a stopped evaluation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-stop-drain-order",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const order: string[] = [];
+    const runner = new PaperTradingEvaluationRunner();
+    const originalDrain = runner.drain.bind(runner);
+    const drain = vi.spyOn(runner, "drain").mockImplementation((...args) => {
+      order.push("drain");
+      return Reflect.apply(originalDrain, runner, args);
+    });
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const service = activatableResearchSessionService(
+      stoppedEvaluationOrderStore(store, order),
+      effects,
+      runner
+    );
+    const prepared = await service.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await service.activate(prepared);
+    order.length = 0;
+
+    const stopped = await service.stop(run.trading_run_id);
+
+    expect(drain).toHaveBeenCalledWith(run.trading_run_id, 10_000);
+    expect(order).toEqual(["drain", "stopped"]);
+    expect(stopped?.status).toBe("stopped");
+    await expect(store.getLatestPaperTradingEvaluationForTradingRun(run.trading_run_id))
+      .resolves.toMatchObject({ status: "stopped" });
+  });
+
+  it("fails closed without stopped evidence when target-run drain times out", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-stop-drain-timeout",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const stoppedWrites = { count: 0 };
+    const runner = new PaperTradingEvaluationRunner();
+    vi.spyOn(runner, "drain").mockResolvedValue(false as never);
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const service = activatableResearchSessionService(
+      stoppedEvaluationCountingStore(store, stoppedWrites),
+      effects,
+      runner
+    );
+    const prepared = await service.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await service.activate(prepared);
+
+    await expect(service.stop(run.trading_run_id)).rejects.toMatchObject({
+      code: "paper_trading_observation_drain_timeout"
+    });
+    expect(stoppedWrites.count).toBe(0);
+    await expect(store.getLatestPaperTradingEvaluationForTradingRun(run.trading_run_id))
+      .resolves.toMatchObject({ status: "running" });
+  });
+
+  it("stops the latest evaluation after an in-flight observation drains", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-stop-reloads-after-drain",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const runner = new PaperTradingEvaluationRunner();
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const service = activatableResearchSessionService(store, effects, runner);
+    const prepared = await service.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await service.activate(prepared);
+    vi.spyOn(runner, "drain").mockImplementation(async () => {
+      const current = await store.getLatestPaperTradingEvaluationForTradingRun(run.trading_run_id);
+      if (!current) {
+        throw new Error("running evaluation was not found");
+      }
+      await store.recordPaperTradingEvaluation({
+        ...current,
+        observation_count: current.observation_count + 1
+      });
+      return true;
+    });
+
+    const stopped = await service.stop(run.trading_run_id);
+
+    expect(stopped).toMatchObject({ status: "stopped", observation_count: 1 });
+    await expect(store.getLatestPaperTradingEvaluationForTradingRun(run.trading_run_id))
+      .resolves.toMatchObject({ status: "stopped", observation_count: 1 });
+  });
 
   it("rejects commitment-only qualification artifact drift without evaluation writes", async () => {
     const partial = await commitmentOnlyQualificationFixture("artifact-drift");
@@ -722,12 +853,54 @@ function evaluationWriteCountingStore(
   });
 }
 
+function stoppedEvaluationOrderStore(
+  store: OuroborosStorePort,
+  order: string[]
+): OuroborosStorePort {
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === "recordPaperTradingEvaluation") {
+        return async (...args: Parameters<OuroborosStorePort["recordPaperTradingEvaluation"]>) => {
+          if (args[0].status === "stopped") {
+            order.push("stopped");
+          }
+          return target.recordPaperTradingEvaluation(...args);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function stoppedEvaluationCountingStore(
+  store: OuroborosStorePort,
+  writes: { count: number }
+): OuroborosStorePort {
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === "recordPaperTradingEvaluation") {
+        return async (...args: Parameters<OuroborosStorePort["recordPaperTradingEvaluation"]>) => {
+          if (args[0].status === "stopped") {
+            writes.count += 1;
+          }
+          return target.recordPaperTradingEvaluation(...args);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
 function activatableResearchSessionService(
   store: OuroborosStorePort,
-  effects: { providerStarts: number; sandboxStarts: number; marketReads: number }
+  effects: { providerStarts: number; sandboxStarts: number; marketReads: number },
+  runner?: PaperTradingEvaluationRunner
 ): PaperTradingSessionService {
   return new PaperTradingSessionService({
     store,
+    runner,
     intervalMs: 60_000,
     artifactResolver: {
       async resolveArtifactDigest() {

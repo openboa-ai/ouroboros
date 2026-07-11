@@ -43,6 +43,8 @@ import {
 
 export type PaperTradingSessionClock = "scheduled" | "external";
 
+const DEFAULT_OBSERVATION_DRAIN_TIMEOUT_MS = 10_000;
+
 export interface PaperTradingSessionServiceOptions {
   store: OuroborosStorePort;
   sandboxAdapters: SandboxAdapterRegistryPort;
@@ -50,6 +52,7 @@ export interface PaperTradingSessionServiceOptions {
   runner?: PaperTradingEvaluationRunner;
   intervalMs?: number;
   sandboxIntervalMs?: number;
+  observationDrainTimeoutMs?: number;
   apiProviderFactory?: (
     binding: GatewayRuntimeBinding,
     options: PaperTradingApiProviderOptions
@@ -106,12 +109,15 @@ export class PaperTradingSessionService {
   private readonly runner: PaperTradingEvaluationRunner;
   private readonly intervalMs: number;
   private readonly sandboxIntervalMs: number;
+  private readonly observationDrainTimeoutMs: number;
   private readonly apiProviderFactory: NonNullable<PaperTradingSessionServiceOptions["apiProviderFactory"]>;
 
   constructor(private readonly options: PaperTradingSessionServiceOptions) {
     this.runner = options.runner ?? new PaperTradingEvaluationRunner();
     this.intervalMs = options.intervalMs ?? 60_000;
     this.sandboxIntervalMs = options.sandboxIntervalMs ?? 1_000;
+    this.observationDrainTimeoutMs = options.observationDrainTimeoutMs ??
+      DEFAULT_OBSERVATION_DRAIN_TIMEOUT_MS;
     this.apiProviderFactory = options.apiProviderFactory ?? startPaperTradingApiProvider;
   }
 
@@ -436,10 +442,11 @@ export class PaperTradingSessionService {
     if (!run) {
       throw new PaperTradingSessionError("trading_run_not_found", "trading run was not found");
     }
-    const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
-    const commitment = existing?.paper_trading_evaluation_commitment_ref
+    const existingBeforeDrain = await this.options.store
+      .getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    const commitment = existingBeforeDrain?.paper_trading_evaluation_commitment_ref
       ? await this.options.store.getPaperTradingEvaluationCommitment(
-          existing.paper_trading_evaluation_commitment_ref.id
+          existingBeforeDrain.paper_trading_evaluation_commitment_ref.id
         )
       : undefined;
     if (
@@ -461,6 +468,23 @@ export class PaperTradingSessionService {
         "PaperTradingSession stop requires matching persisted TradingRun and commitment purposes."
       );
     }
+    this.runner.stop(tradingRunId);
+    this.activeSessions.delete(tradingRunId);
+    const observationDrained = await this.runner.drain(
+      tradingRunId,
+      this.observationDrainTimeoutMs
+    );
+    if (!observationDrained) {
+      await Promise.allSettled([
+        this.stopApiProviderSession(tradingRunId),
+        this.stopLinkedSandbox(tradingRunId)
+      ]);
+      throw new PaperTradingSessionError(
+        "paper_trading_observation_drain_timeout",
+        "PaperTradingSession stop timed out while draining the active observation.",
+        { trading_run_id: tradingRunId }
+      );
+    }
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
       idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
@@ -474,6 +498,9 @@ export class PaperTradingSessionService {
       message: "Trading run stop recorded."
     }));
     await this.stopTerminalSession(tradingRunId);
+    const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(
+      tradingRunId
+    );
     if (!existing || existing.status === "invalidated") {
       return existing;
     }
