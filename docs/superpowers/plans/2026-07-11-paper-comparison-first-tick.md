@@ -152,9 +152,10 @@ produced comparable evidence, qualified, improved the champion, or earned promot
 No production runtime composition imports the tick coordinator or view. No public command or
 qualification session authority changed.
 
-## Next Frontier
+## Follow-Up Frontier
 
-Design a durable `PaperTradingComparisonActivation` authorization bound to the exact verified pair
-and first tick. It must own symmetric provider/sandbox start, partial-start evidence, authority-aware
-cleanup, restart recovery, one shared advanceable view, provider request budgets, and the first
-paired checkpoint while leaving verdict and promotion authority closed.
+The durable `PaperTradingComparisonActivation` authorization bound to the exact verified pair and
+first tick was implemented in `a9a1d32`, `2af5995`, and `90b129b` without runtime effects. The next
+frontier must consume it through append-only attempt/outcome evidence, symmetric provider/sandbox
+start, partial-start cleanup, restart recovery, one shared advanceable view, provider request
+budgets, and the first paired checkpoint while leaving verdict and promotion authority closed.

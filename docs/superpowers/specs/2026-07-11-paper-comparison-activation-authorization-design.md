@@ -1,7 +1,7 @@
 # Paper Comparison Activation Authorization Design
 
 **Date:** 2026-07-11
-**Status:** Approved by the standing autonomous-goal instruction; implementation pending
+**Status:** Implemented and verified as an effect-free activation-authorization frontier
 **Scope:** CandidateArena P0, durable paper-only activation authorization without runtime effects
 **Depends on:** Verified inert comparison graph and one verified first comparison tick
 
@@ -307,6 +307,27 @@ This frontier is complete when current code and tests prove:
 6. session service still rejects qualification activation, stop, and recovery;
 7. no public or ResearchWorker surface can create or inspect the authorization;
 8. full validation passes.
+
+## Implementation Evidence
+
+- `a9a1d32` defines the activation side, bounded policy, append-only record, canonical digest, and
+  total runtime predicates.
+- `2af5995` adds StorePort and LocalStore append/get/list behavior under the shared comparison
+  transaction, with exact pair/tick/policy/time/inert-graph closure and corruption/conflict tests.
+- `90b129b` adds the deterministic effect-free authorization coordinator and real verified-pair,
+  first-tick, and LocalStore integration evidence.
+- Focused verification passed 79 domain comparison tests, 197 LocalStore tests, and 104 application
+  comparison tests. Qualification session guards passed 8 relevant tests.
+- Exact code HEAD verification passed 86/86 test files and 1,077/1,077 tests, every workspace
+  typecheck, and repository docs, architecture, naming, tracked-environment, secrets, and diff
+  guards.
+- No production session, provider, sandbox, runner, market-read, run-control, Ledger, observation,
+  verdict, promotion, command, route, CLI, TUI, Web, or Desktop composition path consumes the
+  authorization. Both qualification evaluations remain `not_started` in the real integration.
+
+This is authority preparation, not runtime or economic evidence. It does not prove that either side
+started, consumed the shared tick, emitted a decision, incurred cost, produced net revenue, or
+improved the champion.
 
 ## Next Frontier
 

@@ -1,284 +1,145 @@
-# Paper Comparison Activation Authorization Implementation Plan
+# Paper Comparison Activation Authorization Implementation Record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+**Date:** 2026-07-11
+**Status:** Implemented and verified
+**Design commit:** `6962b02`
+**Plan commit:** `896f3d4`
+**Design SHA-256:** `127fbd2b36cd120da51e0291b0f7b890fd34674e2e2fdb367ccbdfb05bcc3a2e`
 
-**Goal:** Persist exactly one paper-only activation authorization that binds a verified inert pair,
-its sole first tick, both side runtime refs, and one bounded derived policy without starting any
-runtime effect.
+This page is the compact historical implementation record. Active behavior is owned by source and
+tests. Product meaning is owned by [Paper Comparison Activation Authorization
+Design](../specs/2026-07-11-paper-comparison-activation-authorization-design.md), [Prospective Paper
+Comparison Design](../specs/2026-07-10-prospective-paper-comparison-design.md), and [CandidateArena
+Evaluation Protocol](../../candidate-arena-evaluation-protocol.md).
 
-**Architecture:** Add canonical activation contracts and policy derivation in domain, append the
-authorization under the existing LocalStore comparison-evidence transaction, and create an internal
-coordinator that reloads the full pair/tick closure before and after append. Do not touch session
-lifecycle, runtime composition, public commands, observations, verdicts, or promotion.
+## Goal
 
-**Tech Stack:** TypeScript 5.9, Vitest 4, Node.js `crypto`, filesystem-backed LocalStore
+Persist exactly one paper-only activation authorization that binds a verified inert comparison, its
+sole first tick, both exact side runtime refs, and one bounded derived policy without starting,
+scheduling, observing, stopping, or recovering either side.
 
-## Global Constraints
+## Implemented Boundary
 
-- Design source: `docs/superpowers/specs/2026-07-11-paper-comparison-activation-authorization-design.md`.
-- Frozen design SHA-256: `127fbd2b36cd120da51e0291b0f7b890fd34674e2e2fdb367ccbdfb05bcc3a2e`.
-- Caller input contains only comparison ID and idempotency key.
-- The authorization binds the sole first tick; callers cannot choose a tick or policy.
-- `PaperTradingSessionService` qualification activation, stop, and recovery guards remain unchanged.
-- Authorization creation has no market, provider, sandbox, runner, Gateway order, Ledger,
-  observation, run-control, verdict, promotion, or public dependency.
-- Existing pair/tick/frozen-evidence writer exclusions remain unchanged.
-- Every persisted read is total, shape-checked, digest-checked, and fail-closed.
+The frontier implements:
 
----
+- canonical `PaperTradingComparisonActivationSide`, policy, and append-only record contracts;
+- one policy builder that copies only frozen pair start-skew, retry, and provider-request bounds and
+  adds fixed activation, cleanup, both-running, partial-start, restart, and market-view rules;
+- canonical digest input that binds pair/tick digests, side refs, market configuration, policy,
+  scope, status, and closed authority while excluding record metadata, ID, server time, and digest;
+- strict total side, policy, and record runtime predicates;
+- StorePort append/get/list operations and LocalStore persistence under the existing comparison
+  evidence transaction;
+- exact pair digest, sole first-tick digest/ref, configuration, side-ref, derived-policy, time, and
+  complete inert-graph closure validation;
+- exact semantic replay, same-ID drift rejection, one authorization per comparison, concurrent
+  alternate exclusion, corrupt JSON rejection, and persisted digest verification;
+- deterministic `PaperTradingComparisonActivationCoordinator.authorize` identity, one in-process
+  promise-tail queue, server-owned time, pre/post graph and tick reload, and post-write semantic
+  verification;
+- real pair, first-tick, LocalStore, and authorization integration with explicit
+  `runtimeEffects: "not_started"`.
 
-## File Map
+The frontier does not implement:
 
-- Modify `packages/domain/src/index.ts`: add activation side/policy/record, policy derivation, digest,
-  and total predicates.
-- Create `packages/domain/src/paper-trading-comparison-activation.test.ts`: own domain tests.
-- Modify `packages/application/src/ports/store.ts`: add activation append/get/list methods.
-- Modify `packages/local-store/src/index.ts`: append and validate authorization under the comparison
-  transaction.
-- Modify `packages/local-store/test/local-store.test.ts`: prove closure, corruption, conflict, and
-  concurrency behavior.
-- Create `packages/application/src/trading/paper/comparison-activation-coordinator.ts`: own
-  deterministic, effect-free authorization.
-- Create `packages/application/src/trading/paper/comparison-activation-coordinator.test.ts`: own
-  application tests.
-- Modify `packages/application/src/trading/paper/comparison-coordinator.test.ts`: prove real pair,
-  tick, LocalStore, and authorization integration with zero runtime effects.
-- Modify `AGENTS.md`, `docs/naming-taxonomy.md`, comparison specs, evaluation protocol, and this plan:
-  record canonical vocabulary, partial conformance, evidence, and next runtime frontier.
+- provider, sandbox, runner, TradingSystem, or paper-session start/stop/recovery effects;
+- activation attempt, started-side, cleanup, completion, or recovery outcome records;
+- an advanceable shared market view, later tick, side checkpoint, or paired observation;
+- run-control, Ledger, score, account outcome, evidence release, verdict, confirmation, or promotion;
+- a public command, route, read-model mutation, CLI action, TUI action, Web control, or Desktop control;
+- ResearchWorker access to active comparison identity, peer evidence, or authorization;
+- private exchange access, credentials, signed requests, direct order submission, or live authority.
 
-### Task 1: Canonical Activation Authorization Contract
+## Invariants
 
-**Files:**
-- Modify: `packages/domain/src/index.ts`
-- Create: `packages/domain/src/paper-trading-comparison-activation.test.ts`
+1. Caller input contains only comparison ID and idempotency key.
+2. The complete comparison graph reloads as verified and still reports
+   `activation_authority: "not_granted"`.
+3. Exactly one self-digested first tick exists and still binds the pair, configuration, source
+   timestamps, and capture time.
+4. Champion and challenger run, evaluation-commitment, and evaluation refs come only from the
+   verified pair and remain distinct.
+5. Activation policy comes only from the frozen comparison policy; caller overrides are impossible.
+6. Server authorization time is exact ISO and cannot precede the first tick.
+7. LocalStore independently repeats all closure checks under the shared comparison write queue.
+8. One exact authorization exists per comparison; same-ID drift and alternate IDs fail closed.
+9. Every persisted activation read checks runtime shape and canonical SHA-256.
+10. Exact application retry revalidates graph, tick, and collection without reading server time or
+    writing again.
+11. Authorization status is `authorized`, scope is `qualification_pair`, and all live, order,
+    private, credential, and record authority fields remain closed.
+12. Both side evaluations remain `not_started`; no runtime or economic evidence is created.
 
-**Interfaces:**
-- Produces: `PaperTradingComparisonActivationSide`.
-- Produces: `PaperTradingComparisonActivationPolicy`.
-- Produces: `PaperTradingComparisonActivationRecord`.
-- Produces: `paperTradingComparisonActivationPolicyFor(policy)`.
-- Produces: `paperTradingComparisonActivationDigestInput(record)`.
-- Produces: total side, policy, and activation runtime predicates.
+## Commit Ledger
 
-- [ ] **Step 1: Write failing policy, digest, and total-predicate tests**
+### `a9a1d32` - Domain authorization contract
 
-Use the exact record shape and constants from the design. Assert policy derivation copies
-`maximum_start_skew_ms`, `maximum_retry_count_per_side`, and
-`maximum_provider_request_count_per_side`, then fixes:
+- Added activation side, bounded policy, and record types.
+- Added sole policy derivation, canonical digest input, total predicates, and malformed nested-value
+  tests.
 
-```ts
-{
-  policy_version: "paper-comparison-activation-v1",
-  maximum_activation_elapsed_ms: 60_000,
-  cleanup_timeout_ms: 10_000,
-  require_both_running_before_observation: true,
-  partial_start_policy: "stop_started_side_before_retry",
-  restart_policy: "recover_both_or_stop_both",
-  market_view_policy: "first_tick_then_contiguous_persisted_ticks"
-}
+### `2af5995` - Atomic authorization persistence
+
+- Added StorePort and LocalStore activation append/get/list operations.
+- Added pair/tick/side/policy/time/inert closure, byte-invariance, semantic replay, concurrent
+  conflict, corrupt collection, and persisted digest-drift tests.
+
+### `90b129b` - Effect-free authorization use case
+
+- Added deterministic internal authorization coordinator with total dependency validation and stable
+  application errors.
+- Added exact retry, alternate/concurrent identity, malformed StorePort, clock, write-race, and
+  post-persistence verification tests.
+- Extended the real comparison integration through prepare, first tick, and authorization while
+  proving inactive runners, `not_started` evaluations, and unchanged effect counters.
+
+## Evidence
+
+Focused verification passed:
+
+```text
+Domain comparison tests: 79 passed
+LocalStore tests: 197 passed
+Application comparison coordinator tests: 104 passed
+Qualification session guards: 8 passed, 15 filtered out
 ```
 
-Prove digest key-order independence and binding of pair/tick digests, side refs, configuration,
-policy, scope/status, and no-authority fields. Table-test malformed refs, role swaps, duplicate runs,
-zero/negative bounds, policy drift, non-ISO time, wrong scope/status, and any live/private/credential
-authority. Predicates must return false without throwing.
+Exact code HEAD passed:
 
-- [ ] **Step 2: Run focused test and confirm RED**
-
-```bash
-npx vitest run packages/domain/src/paper-trading-comparison-activation.test.ts
-```
-
-Expected: fail because activation exports do not exist.
-
-- [ ] **Step 3: Implement the minimal domain contract**
-
-Add the exact design types. Derive policy in one pure function. Canonically digest persisted content
-while excluding record metadata, activation ID, server authorization time, and digest. Reuse total
-comparison ref/string/number helpers and require distinct champion/challenger run, commitment, and
-evaluation refs.
-
-- [ ] **Step 4: Run domain tests and typecheck**
-
-```bash
-npx vitest run packages/domain/src/paper-trading-comparison-activation.test.ts packages/domain/src/paper-trading-comparison-tick.test.ts packages/domain/src/paper-trading-comparison-commitment.test.ts
-npm run typecheck -w @ouroboros/domain
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-activation.test.ts
-git commit -m "feat: define paper comparison activation authorization"
-```
-
-### Task 2: Atomic Authorization Persistence
-
-**Files:**
-- Modify: `packages/application/src/ports/store.ts`
-- Modify: `packages/local-store/src/index.ts`
-- Modify: `packages/local-store/test/local-store.test.ts`
-
-**Interfaces:**
-- Consumes: Task 1 contracts and existing pair/tick graph validators.
-- Produces: `recordPaperTradingComparisonActivation`,
-  `getPaperTradingComparisonActivation`, and `listPaperTradingComparisonActivations`.
-- Produces: stable activation shape/digest/reload/ref/policy/time/graph/conflict Store errors.
-
-- [ ] **Step 1: Write failing LocalStore tests**
-
-Use `storedComparisonFixture`, record its pair and valid first tick, derive side refs and policy, and
-assert exact append/get/list/replay. Add rejection cases for pair/tick digest or ref drift,
-configuration drift, side ref drift, policy override, authorization before tick, missing/non-sole or
-corrupt tick, non-inert pair, same-ID drift, alternate authorization ID, concurrent alternate writes,
-corrupt activation JSON, and persisted shape-valid digest drift.
-
-Capture comparison collection byte snapshots before/after rejected writes to prove no side,
-evaluation, observation, Ledger, run-control, sandbox, or tick mutation.
-
-- [ ] **Step 2: Run focused Store tests and confirm RED**
-
-```bash
-npx vitest run packages/local-store/test/local-store.test.ts -t "paper comparison activation"
-```
-
-- [ ] **Step 3: Implement StorePort and LocalStore**
-
-Add the collection, imports, error codes, shape/digest read validation, and three methods. Serialize
-append with `withComparisonEvidenceWriteTransaction`. Independently reload and digest-check the pair
-and sole first tick, call the existing full inert pair validator, compare exact side refs and derived
-policy, enforce tick-to-authorization time, and allow only one authorization per comparison.
-
-- [ ] **Step 4: Run Store comparison tests and typechecks**
-
-```bash
-npx vitest run packages/local-store/test/local-store.test.ts -t "paper comparison"
-npm run typecheck -w @ouroboros/local-store
-npm run typecheck -w @ouroboros/application
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
-git commit -m "feat: persist paper comparison activation authorization"
-```
-
-### Task 3: Effect-Free Authorization Coordinator
-
-**Files:**
-- Create: `packages/application/src/trading/paper/comparison-activation-coordinator.ts`
-- Create: `packages/application/src/trading/paper/comparison-activation-coordinator.test.ts`
-- Modify: `packages/application/src/trading/paper/comparison-coordinator.test.ts`
-
-**Interfaces:**
-- Consumes: verified graph reload and activation/tick StorePort methods.
-- Produces: `PaperTradingComparisonActivationCoordinator.authorize` with the exact design signature.
-- Produces: `PaperTradingComparisonActivationError` with stable application reason codes.
-
-- [ ] **Step 1: Write failing coordinator unit tests**
-
-Use in-memory StorePort methods and a verified graph stub. Prove:
-
-- caller input has only comparison ID/idempotency key;
-- one authorization binds exact graph/tick/side refs and derived policy;
-- server time is assigned after tick time;
-- exact retry revalidates graph/tick and performs no write;
-- alternate identity is rejected before calling server time/write;
-- missing, malformed, non-sole, or drifted graph/tick/policy state fails closed;
-- malformed StorePort objects never throw raw `TypeError`;
-- concurrent alternate calls produce one authorization;
-- returned `runtimeEffects` is `not_started` and graph remains `not_granted`.
-
-- [ ] **Step 2: Write failing real integration test**
-
-Extend the existing real comparison fixture: prepare the pair, capture the first tick, authorize it,
-then assert the LocalStore authorization exists while both side evaluations remain `not_started`,
-both runners are inactive, and provider/sandbox/market read counters do not change during
-authorization.
-
-- [ ] **Step 3: Run focused tests and confirm RED**
-
-```bash
-npx vitest run packages/application/src/trading/paper/comparison-activation-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts -t "activation authorization"
-```
-
-- [ ] **Step 4: Implement the coordinator**
-
-Use a SHA-256 suffix of comparison ID plus idempotency key and one promise-tail queue. Reload the
-verified graph, load exactly one tick, derive side/policy fields, assign server time only after all
-closure checks, append through StorePort, then reload graph/tick/authorization and compare persisted
-semantic content. Map raw dependency failures to stable errors without payloads or configuration.
-
-- [ ] **Step 5: Run focused integration and full typecheck**
-
-```bash
-npx vitest run packages/application/src/trading/paper/comparison-activation-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts -t "paper comparison"
-npm run typecheck
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add packages/application/src/trading/paper/comparison-activation-coordinator.ts packages/application/src/trading/paper/comparison-activation-coordinator.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts
-git commit -m "feat: authorize paper comparison activation"
-```
-
-### Task 4: Durable Writeback And Whole-Branch Verification
-
-**Files:**
-- Modify: `AGENTS.md`
-- Modify: `docs/naming-taxonomy.md`
-- Modify: `docs/candidate-arena-evaluation-protocol.md`
-- Modify: comparison design specs
-- Modify: `docs/superpowers/plans/2026-07-11-paper-comparison-activation-authorization.md`
-
-- [ ] **Step 1: Update durable truth**
-
-Add `PaperTradingComparisonActivation` to canonical vocabulary. Record authorization as implemented
-but runtime effects, attempts/outcomes, symmetric start/cleanup/recovery, paired observation,
-verdict, and promotion as pending. Explicitly state that authorization is not runtime evidence.
-
-- [ ] **Step 2: Historicalize this plan**
-
-Replace execution detail with a compact record containing goal, invariants, commit ledger, focused
-and full validation, review decision, and next runtime frontier.
-
-- [ ] **Step 3: Run full verification**
-
-```bash
+```text
 npm test
+86/86 test files, 1077/1077 tests
+
 npm run typecheck
+all workspaces passed
+
 npm run check:repo-guards
+docs, architecture, naming, tracked env, secrets, and diff checks passed
 ```
 
-Use local loopback/IPC test permission when required and record exact suite/test counts.
+The full suite requires local loopback and `tsx` IPC socket permission. The reported result was
+collected from the same code HEAD with those test-only local sockets enabled.
 
-- [ ] **Step 4: Review authority closure**
+## Review Decision
 
-Confirm no production runtime composition, public command, session lifecycle, market read, provider,
-sandbox, runner, run-control, Ledger, observation, verdict, or promotion path changed. Re-run focused
-guards proving session qualification activation/stop/recovery still reject or skip.
+**Decision:** keep the implementation and advance to a separate symmetric runtime-activation
+frontier.
 
-- [ ] **Step 5: Commit durable writeback**
+The record creates a durable paper-only activation precondition and closes the crash gap between first
+tick capture and future external effects. It is not runtime evidence: no side started, consumed a
+tick, emitted an order decision, accrued revenue or cost, qualified, beat the champion, or earned
+promotion.
 
-```bash
-git add AGENTS.md docs/naming-taxonomy.md docs/candidate-arena-evaluation-protocol.md docs/superpowers/specs docs/superpowers/plans/2026-07-11-paper-comparison-activation-authorization.md
-git commit -m "docs: record paper comparison activation authorization"
-```
+The production diff adds only domain contracts, StorePort/LocalStore persistence, and an uncomposed
+internal application coordinator. No session lifecycle, provider, sandbox, runner, market adapter,
+Gateway, Ledger, observation, command, route, operator, verdict, promotion, or UI implementation
+changed. Existing qualification session guards remain closed.
 
-## Self-Review
+## Next Frontier
 
-- [x] Spec coverage: domain, policy, StorePort, LocalStore closure, coordinator, corruption,
-  concurrency, zero-effect integration, taxonomy, and verification each have one owner.
-- [x] Scope: no task edits session service, runtime composition, commands, market adapters,
-  observation, Ledger, verdict, or promotion code.
-- [x] Type consistency: activation side/policy/record, digest/predicates, StorePort methods, and
-  coordinator names match the design.
-- [x] Ordering: graph and sole tick verify before server time/write; exact replay revalidates;
-  post-write reload verifies persisted semantic equality.
-- [x] Authority: record scope is qualification-pair-only and all live/private/credential/order
-  authority fields remain closed.
-- [x] Documentation: completed execution detail is historicalized after evidence collection.
+Design and implement a recoverable symmetric runtime activation protocol that consumes this exact
+authorization. It must record append-only attempt and per-side start outcome evidence, revalidate
+authority immediately before each external effect, start both sides against one shared advanceable
+view within the frozen skew/request/time budgets, stop a partially started side before retry, and
+recover both-or-neither after restart. The first paired checkpoint, later contiguous ticks,
+adjudication, evidence release, verdict, confirmation, and promotion remain separately closed.

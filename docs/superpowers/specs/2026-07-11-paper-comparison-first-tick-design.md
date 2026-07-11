@@ -344,8 +344,9 @@ created.
 
 ## Next Frontier
 
-A separate design may add a durable `PaperTradingComparisonActivation` authorization that binds the
-verified pair and first tick, starts both side sessions against one shared advanceable view, records
-partial-start state, supplies authority-aware cleanup, and recovers after restart. It must precede
-paired observations and later contiguous tick capture. Verdict, evidence release, confirmation, and
-promotion remain later frontiers.
+The separate `PaperTradingComparisonActivation` authorization is now implemented and binds the
+verified pair and first tick without starting either side. The next runtime design may consume that
+authorization to record append-only attempts/outcomes, start both side sessions against one shared
+advanceable view, stop a partially started side before retry, and recover both-or-neither after
+restart. It must precede paired observations and later contiguous tick capture. Verdict, evidence
+release, confirmation, and promotion remain later frontiers.

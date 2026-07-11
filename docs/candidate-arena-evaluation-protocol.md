@@ -65,9 +65,11 @@ time is server-owned. The promotion and preparation must bind the same exact eva
 second chain for the same candidate, CandidateVersion, and SystemCode is not interchangeable.
 The persisted graph remains inert, binds one exact baseline commitment/evaluation chain per side
 `TradingRun`, and does not activate qualification, repair a post-pair graph, mutate pair-bound side
-evidence, or implement promotion behavior. One first shared tick may now be appended while the graph
-remains inert; activation, side consumption, later ticks, verdicts, and pair recovery remain
-pending.
+evidence, or implement promotion behavior. One first shared tick and one separate
+`PaperTradingComparisonActivation` authorization may now be appended while both sides remain inert.
+The authorization freezes paper-only start, cleanup, retry, request-budget, restart, and market-view
+policy; it is not proof of runtime start or evidence consumption. Symmetric runtime activation, side
+consumption, later ticks, verdicts, and pair recovery remain pending.
 
 ## Candidate Freeze
 
@@ -127,9 +129,14 @@ read market data, create Gateway or Ledger evidence, consume an observation, or 
 A separate internal first-tick coordinator may reload that verified inert graph, perform exactly one
 Gateway market read plus one public-execution read, and atomically persist one fresh no-gap
 `PaperTradingComparisonTick`. Its fixed `ComparisonMarketDataView` serves only that stored content
-without retaining a Binance delegate. Capture leaves both side evaluations `not_started` and grants
-no activation authority. The implemented boundary does not provide side consumption, a running
-shared stream, later ticks, adjudication, confirmation, a verdict, or promotion authority.
+without retaining a Binance delegate. An internal effect-free authorization coordinator may then
+bind the exact verified pair, sole first tick, side refs, and derived bounded policy into one
+append-only `PaperTradingComparisonActivation`. It has no market, session, provider, sandbox,
+runner, Gateway order, Ledger, observation, run-control, verdict, promotion, or public dependency.
+Capture and authorization leave both side evaluations `not_started`; the existing session service
+still rejects qualification activation, scheduling, observation, stop, and recovery. The
+implemented boundary does not provide side consumption, a running shared stream, later ticks,
+adjudication, confirmation, a verdict, or promotion authority.
 
 ## Evaluator Information Barrier
 
@@ -234,9 +241,10 @@ The following current surfaces require implementation work before P0 can pass:
 - `packages/application/src/services/operator.ts` selects a created research candidate for paper
   without a separate conformance proof for the target protocol.
 - The internal comparison coordinators can create and verify an inert prospective `qualification`
-  pair and persist one eligible first shared public market checkpoint before outcomes exist. They
-  cannot authorize or recover activation, prove either side consumed the checkpoint, advance a
-  running shared stream, record paired observations, or adjudicate superiority.
+  pair, persist one eligible first shared public market checkpoint, and append one bounded
+  paper-only activation authorization before outcomes exist. They cannot start or recover either
+  side, prove either side consumed the checkpoint, advance a running shared stream, record paired
+  observations, or adjudicate superiority.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
@@ -263,26 +271,28 @@ qualification-purpose, invalidated, integrity-failed, and candidate-Ledger-only 
 from Arena paper-learning projections and next-generation source selection. Candidate-aggregate
 Ledger summaries remain absent until they can be resolved by exact TradingRun. Standalone
 qualification cannot create a new promotion. The first shared tick demonstrates only that a common
-immutable input is available; it does not demonstrate evaluator secrecy, side consumption,
-prospective qualification, champion/challenger comparability, a superiority verdict,
-post-adjudication release, or P0 completion.
+immutable input is available. The activation authorization demonstrates only that one exact inert
+pair may later enter a bounded paper-only start protocol; it does not demonstrate a started runtime,
+evaluator secrecy, side consumption, prospective qualification, champion/challenger comparability,
+a superiority verdict, post-adjudication release, or P0 completion.
 
 ## Implementation Frontier Order
 
 1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
-   comparison commitment graph, and exactly one first shared tick/fixed view are persisted and
-   validated; activation, side consumption, later ticks, and adjudication remain.
+   comparison commitment graph, exactly one first shared tick/fixed view, and one effect-free
+   activation authorization are persisted and validated; runtime activation, side consumption,
+   later ticks, and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
    broader adversarial coverage remain.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
-   Qualification-purpose creation is internal and inert; activation remains intentionally unavailable.
-5. **Next frontier:** persist a separate activation authorization bound to the verified pair and
-   first tick, then implement symmetric start, partial-start cleanup, restart recovery, and paired
-   consumption on one advanceable shared public market stream. Adjudication remains a later
-   frontier.
+   Qualification-purpose creation is internal and inert; public/default session activation remains
+   intentionally unavailable, and the new authorization does not weaken those guards.
+5. **Next frontier:** consume the authorization through append-only activation attempt/outcome
+   evidence, symmetric start, partial-start cleanup, restart recovery, and paired consumption on one
+   advanceable shared public market stream. Adjudication remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired

@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Inert comparison graph plus first shared tick and fixed view implemented; activation, consumption, later ticks, verdict, and recovery pending
+**Status:** Inert comparison graph, first shared tick/fixed view, and effect-free activation authorization implemented; runtime activation, consumption, later ticks, verdict, and recovery pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -284,7 +284,7 @@ no-order continuity as failure.
 
 The implemented fixed view is backed by one verified stored first tick. It cannot call the
 underlying Binance adapter independently, advance to a future tick, or synthesize public liveness.
-Repeated reads return independent clones of the same content. A later activation frontier must add
+Repeated reads return independent clones of the same content. A later runtime activation frontier must add
 an advanceable shared view and request logging without exposing future ticks, evaluator state, peer
 decisions, peer scores, or peer account state.
 
@@ -396,8 +396,10 @@ This design is intentionally split into independently reviewable frontiers:
    prepare/read-only coordinator are implemented.
 3. **First shared market checkpoint:** one self-digested first tick and a fixed non-delegating
    `ComparisonMarketDataView` are implemented while both sides remain inert.
-4. **Pending:** durable activation authorization, partial-start cleanup and recovery, an advanceable
-   shared view, later contiguous ticks, paired observations, sealing, adjudication, confirmation,
-   promotion integration, and restart recovery.
+4. **Effect-free activation authorization:** one append-only paper-only authorization binds the
+   verified pair, sole first tick, exact side refs, and bounded derived policy without runtime effects.
+5. **Pending:** append-only activation attempt/outcome evidence, symmetric start, partial-start
+   cleanup and recovery, an advanceable shared view, later contiguous ticks, paired observations,
+   sealing, adjudication, confirmation, promotion integration, and restart recovery.
 
 The second frontier must not begin by weakening the first frontier's identity or authority checks.
