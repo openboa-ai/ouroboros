@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Multi-run session prerequisite implemented; prospective comparison implementation pending
+**Status:** Inert comparison commitment graph implemented; shared ticks, activation, verdict, and recovery pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -54,7 +54,7 @@ must not be reused as paper qualification authority.
 
 The multi-run persistence and lifecycle boundary is implemented. A frozen CandidateVersion can own
 its default selected continuous paper session and additional isolated internal paper TradingRuns,
-including a future champion qualification run, without mutating the default session.
+including a champion qualification run, without mutating the default session.
 
 The implemented ownership rule is:
 
@@ -70,12 +70,50 @@ The implemented ownership rule is:
 
 Standalone qualification preparation may resolve and freeze executable artifact identity, then
 persist only its TradingRun and supporting refs, frozen commitment and account identity, and
-`not_started` evaluation. It remains runtime-inert: it cannot start provider, sandbox, market,
-Gateway, Ledger, observation, or lifecycle effects until the future `PaperTradingComparisonCoordinator`
-verifies a complete pair commitment. That future coordinator may establish per-run sandbox, provider,
-fake-account, cursor, run-control, and lifecycle ownership without reusing runtime state from another
-session. This prerequisite does not implement `PaperTradingComparisonCommitment`, shared comparison
-ticks, adjudication, non-overlapping confirmation, a verdict, or promotion integration.
+`not_started` evaluation. It remains runtime-inert: the internal `PaperTradingComparisonCoordinator`
+may prepare and verify a complete pair commitment, but it cannot start provider, sandbox, market,
+Gateway, Ledger, observation, or lifecycle effects. Shared comparison ticks, activation,
+adjudication, non-overlapping confirmation, a verdict, and promotion integration remain pending.
+
+## Commitment-Graph Frontier Status
+
+The first implementation frontier persists a `PaperTradingComparisonPreparationRecord` before
+either qualification side. It freezes the deterministic future pair ID, both role-specific
+candidate refs plus full-record CandidateVersion, SystemCode, and admission-decision digests and,
+for champion challenge, the full-record champion-promotion digest plus the exact stopped qualified
+promotion evaluation ref/full-record digest, exact qualification commitment ref/full-record digest,
+and canonical ordered full-record observation-chain digest. It also freezes each exact SystemCode
+artifact digest, the champion selection, the complete comparison policy, market-data configuration
+digest, paper policy identity, and a server-owned `committed_at`. Exact replay reuses that timestamp;
+caller and public command payloads cannot set it.
+
+The resulting commitment graph is append-only and inert. Both side provider identities must be
+qualification-eligible, both complete window policies must match, and the pair is persisted only
+after both distinct non-default qualification TradingRuns and side graphs exist. This frontier
+atomically reserves frozen authority evidence before side creation, rejects non-noop mutation or
+extension of the bound promotion qualification commitment/evaluation/observation chain, and
+atomically validates and appends the pair against run, commitment, evaluation, observation, Ledger,
+run-control, and sandbox writers. Each pair side freezes the existing side-commitment self-digest
+plus full persisted-record digests for its exact baseline commitment and evaluation, including
+their timestamps and complete zero state; pair-bound side mutation remains forbidden.
+
+The champion authority closure enforces `SystemCode.created_at <= admission.decided_at <=
+commitment.committed_at <= evaluation.started_at <= ordered observations <= evaluation.stopped_at
+<= promotion.promoted_at <= preparation.committed_at`. LocalStore and the application qualification
+API use one domain-owned qualification decision: complete key-order-insensitive score/account
+continuity, at least 30 observations and 30 minutes, at most ten percent failed observations,
+current market evidence, and matching public execution evidence for fills. LocalStore and
+application each independently verify the commitment self-digest before supplying that result to
+the decision; the application wrapper preserves its existing public API. Read-only verification
+applies full prepared-side validation, including SystemCode-before-admission, before loading
+champion selection authority or dereferencing nested side records.
+
+This frontier grants no activation authority and starts no provider, sandbox, market, runner,
+Gateway, Ledger, or observation effect. Each pair side binds the exact sole
+commitment/evaluation chain for its qualification `TradingRun` and a zero-score,
+zero-observation, empty-account-activity baseline. Post-pair reload is read-only and fails closed on
+missing, changed, or malformed side records without repair or invalidation. Shared ticks,
+`ComparisonMarketDataView`, verdict/adjudication, confirmations, promotion integration, and pair recovery remain pending.
 
 ## Domain Records
 
@@ -321,7 +359,8 @@ This design is intentionally split into two independently reviewable frontiers:
 
 1. **Multi-run paper sessions:** allow multiple isolated TradingRuns per CandidateVersion, extract
    internal prepare/activate/observe/stop lifecycle, and preserve default-session compatibility.
-2. **Prospective comparison:** add pair/tick/verdict persistence, shared market view, coordinator,
-   sealing, adjudication, confirmation, promotion integration, and recovery.
+2. **Prospective comparison:** the inert pair commitment graph and internal prepare/read-only
+   coordinator are implemented. Shared tick persistence, market view, activation authority,
+   sealing, adjudication, confirmation, promotion integration, and recovery remain pending.
 
 The second frontier must not begin by weakening the first frontier's identity or authority checks.

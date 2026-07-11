@@ -50,6 +50,23 @@ When a qualification window closes, its adjudicated result may become next-gener
 memory. That release does not contaminate the decision already made from the closed window, but the
 same evidence cannot be reused as fresh qualification for a descendant candidate.
 
+Prospective comparison preparation uses `PaperTradingComparisonPreparationRecord` and accepts only
+already-admitted, frozen candidates. Each side binds one exact `CandidateAdmissionDecisionRecord`
+with `status: "admitted"`, runnable paper handoff, `not_live` authority, and SystemCode
+identity/digest matching its CandidateVersion; duplicate, quarantined, missing, or mismatched
+evidence is rejected before any preparation or side write. Bootstrap requires no current
+TradingPromotion. Champion challenge binds the exact current TradingPromotion and its full-record
+digest plus champion refs. It also binds the promotion's exact stopped `PaperTradingEvaluation`,
+exact qualification commitment, and ordered observation chain; the total domain closure must
+satisfy runtime shape and causality, and the one domain qualification decision must return
+`qualified` with `runnerActive: false` after the accepting boundary independently verifies the
+commitment self-digest. The application qualification API delegates to that decision. Preparation
+time is server-owned. The promotion and preparation must bind the same exact evaluation ref; a
+second chain for the same candidate, CandidateVersion, and SystemCode is not interchangeable.
+The persisted graph remains inert, binds one exact baseline commitment/evaluation chain per side
+`TradingRun`, and does not activate qualification, repair a post-pair graph, mutate pair-bound side
+evidence, or implement promotion behavior. Shared ticks, verdicts, and pair recovery remain pending.
+
 ## Candidate Freeze
 
 Before qualification evidence starts, the evaluation record must commit at least:
@@ -102,10 +119,10 @@ run, evidence purpose, or comparison ID.
 
 An internal qualification-purpose run may be prepared as persistence-only state, but it is inert:
 preparation owns only the persisted TradingRun and supporting refs, frozen executable and account
-identity, commitment, and `not_started` evaluation. It must not start a provider or sandbox, read
-market data, create Gateway or Ledger evidence, consume an observation, or mutate lifecycle without
-future comparison authority. The implemented multi-run boundary is a prerequisite for the prospective
-paired-comparison design; it does not provide shared ticks, a pair commitment, adjudication,
+identity, commitment, and `not_started` evaluation. The implemented comparison coordinator can
+persist and verify the complete pair commitment graph, but it must not start a provider or sandbox,
+read market data, create Gateway or Ledger evidence, consume an observation, or mutate lifecycle.
+The implemented boundary does not provide shared ticks, activation authority, adjudication,
 confirmation, a verdict, or promotion authority.
 
 ## Evaluator Information Barrier
@@ -210,8 +227,9 @@ The following current surfaces require implementation work before P0 can pass:
   directional hints in its small replay scenario payload.
 - `packages/application/src/services/operator.ts` selects a created research candidate for paper
   without a separate conformance proof for the target protocol.
-- No application service can yet create a prospective `qualification` commitment, pair champion and
-  challenger before outcomes exist, or adjudicate superiority on one shared eligible market stream.
+- The internal comparison coordinator can create and verify an inert prospective `qualification`
+  pair before outcomes exist. It cannot activate the pair, supply one shared eligible market stream,
+  or adjudicate superiority.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
@@ -243,17 +261,17 @@ superiority verdict, post-adjudication release, or P0 completion.
 
 ## Implementation Frontier Order
 
-1. **Partial:** evidence purpose, candidate freeze, admission, and quarantine contracts are
-   persisted and validated; the paired comparison contract remains to be materialized.
+1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, and the inert paired
+   comparison commitment graph are persisted and validated; shared ticks and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
    broader adversarial coverage remain.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
-   Qualification-purpose creation remains intentionally unavailable.
-5. **Next frontier:** add comparable prospective paper sessions for champion and challenger on one
-   public market stream and produce a separate adjudication verdict.
+   Qualification-purpose creation is internal and inert; activation remains intentionally unavailable.
+5. **Next frontier:** activate the verified champion/challenger pair on one shared public market
+   stream, then produce a separate adjudication verdict.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired

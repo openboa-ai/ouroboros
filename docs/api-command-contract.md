@@ -37,8 +37,8 @@ Current command groups:
   failed, invalidated, or quality-blocked evaluations with qualification reasons. A standalone
   `qualified` window is also rejected with `paper_trading_comparison_required`; no promotion record
   is created until a persisted external comparison verdict is promotion eligible. Promotion is
-  deliberately unavailable until the prospective champion/challenger comparison service exists.
-  This command does not bind
+  deliberately unavailable until shared comparison evidence, adjudication, and promotion
+  integration exist. This command does not bind
   live authority, submit exchange orders, or bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
@@ -55,6 +55,12 @@ Current command groups:
   Resume, recovery, scheduled observation, and manual observation reverify the original commitment
   instead of reconstructing it from current mutable state. A mismatch terminally invalidates the
   evaluation and records no new paper observation.
+  Public commands cannot create or alter a `PaperTradingComparisonPreparationRecord`, select
+  qualification evidence purpose, comparison ID, comparison role, candidate admission decision,
+  champion promotion, comparison policy, or comparison `committed_at`. Internal comparison
+  preparation assigns time from its server-owned clock and persists an inert append-only authority
+  record. Public qualification activation remains closed; shared comparison ticks, verdict
+  authority, and pair recovery remain pending and are not part of this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -74,8 +80,8 @@ Current command groups:
   An activated additional `research_feedback` TradingRun owns its own provider, sandbox, fake
   account, cursors, Ledger, and lifecycle. A prepared qualification TradingRun owns only its
   persisted TradingRun and supporting refs, frozen commitment and account identity, and
-  `not_started` evaluation; it is persistence-only and inert until the future prospective comparison
-  coordinator verifies a complete pair commitment.
+  `not_started` evaluation. The internal prospective comparison coordinator may persist and verify
+  a complete pair commitment, but the graph remains persistence-only and inert.
   Sandbox JSONL output must follow the
   [TradingSystem Paper Event Protocol](trading-system-paper-event-protocol.md): stable `event_id`,
   `trace_only` authority, bounded `order_request`, `cancel_order`, and explicit `hold`/`no_action`
