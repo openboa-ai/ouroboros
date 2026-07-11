@@ -6592,6 +6592,174 @@ describe("LocalStore", () => {
     });
   });
 
+  describe("repeated paired checkpoint transaction", () => {
+    it("requires the exact previous paired outcome for checkpoint sequence 2", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedCapturedNextComparisonTickFixture(store);
+      const attempt = await validNextCheckpointAttempt(store, fixture);
+      const stale = withCheckpointAttemptDigest({
+        ...attempt,
+        previous_checkpoint_outcome_digest: "sha256:stale"
+      });
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointAttempt(stale),
+        "paper_trading_comparison_checkpoint_attempt_reference_mismatch"
+      );
+      await expect(store.listPaperTradingComparisonCheckpointAttempts(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([fixture.checkpointAttempt]);
+    });
+
+    it("atomically advances both acknowledged-silence sides from sequence 1 to 2", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRepeatedCheckpointIntentFixture(store);
+      const input = await validRepeatedPairedCheckpointTransactionInput(store, fixture);
+
+      await expect(store.recordPaperTradingComparisonPairedCheckpoint(input))
+        .resolves.toEqual(input.outcome);
+      await expect(store.recordPaperTradingComparisonPairedCheckpoint(input))
+        .resolves.toEqual(input.outcome);
+
+      await expect(store.listPaperTradingComparisonCheckpointAttempts(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([
+        fixture.checkpointAttempt,
+        fixture.nextCheckpointAttempt
+      ]);
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(store.listPaperTradingObservations(
+          fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual([
+          fixture.checkpoint[role].observation,
+          input[role].observation
+        ]);
+        await expect(store.getPaperTradingEvaluation(
+          fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual(input[role].evaluation);
+        expect(input.outcome[role]).toMatchObject({
+          observation_status: "no_order",
+          tick_acknowledgement_ref: {
+            id: fixture.nextAcknowledgements.find((record) =>
+              record.role === role
+            )?.paper_trading_comparison_tick_acknowledgement_id
+          }
+        });
+      }
+      expect(await readdir(path.join(
+        store.root(),
+        "paper-trading-comparison-checkpoint-transactions",
+        "items"
+      ))).toHaveLength(2);
+    });
+
+    it("rejects cross-role acknowledgement lineage before any sequence 2 mutation", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRepeatedCheckpointIntentFixture(store);
+      const input = await validRepeatedPairedCheckpointTransactionInput(store, fixture);
+      const challengerAcknowledgement = fixture.nextAcknowledgements.find((record) =>
+        record.role === "challenger"
+      );
+      if (!challengerAcknowledgement) throw new Error("missing challenger acknowledgement");
+      const invalid = {
+        ...input,
+        champion: withPreparedCheckpointSideDigest({
+          ...input.champion,
+          observation: {
+            ...input.champion.observation,
+            paper_trading_comparison_tick_acknowledgement_ref: {
+              record_kind: "paper_trading_comparison_tick_acknowledgement",
+              id: challengerAcknowledgement
+                .paper_trading_comparison_tick_acknowledgement_id
+            },
+            paper_trading_comparison_tick_acknowledgement_digest:
+              challengerAcknowledgement.acknowledgement_digest
+          }
+        })
+      };
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonPairedCheckpoint(invalid),
+        "paper_trading_comparison_paired_checkpoint_reference_mismatch"
+      );
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(store.listPaperTradingObservations(
+          fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual([fixture.checkpoint[role].observation]);
+      }
+      await expect(store.listPaperTradingComparisonCheckpointOutcomes(
+        fixture.nextCheckpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual([]);
+    });
+
+    it("records an incomplete sequence 2 outcome only after symmetric cleanup", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedCapturedNextComparisonTickFixture(store);
+      const attempt = await validNextCheckpointAttempt(store, fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const cleanup = await stopBothRunningRuntimeActivation(store, fixture);
+      const outcome = validIncompleteCheckpointOutcome(attempt, {
+        completedAt: new Date(Date.parse(cleanup.completed_at) + 1_000).toISOString()
+      });
+
+      await expect(store.recordPaperTradingComparisonCheckpointOutcome(outcome))
+        .resolves.toEqual(outcome);
+      await expect(store.listPaperTradingComparisonCheckpointOutcomes(
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual([outcome]);
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(store.listPaperTradingObservations(
+          attempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual([fixture.checkpoint[role].observation]);
+      }
+    });
+
+    it("recovers missing sequence 2 records without replaying sequence 1 over newer state", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRepeatedCheckpointIntentFixture(store);
+      const input = await validRepeatedPairedCheckpointTransactionInput(store, fixture);
+      await store.recordPaperTradingComparisonPairedCheckpoint(input);
+
+      await Promise.all([
+        rm(path.join(
+          store.root(),
+          "paper-trading-observations/items",
+          `${encodeURIComponent(input.champion.observation.paper_trading_observation_id)}.json`
+        )),
+        rm(path.join(
+          store.root(),
+          "paper-trading-observations/items",
+          `${encodeURIComponent(input.challenger.observation.paper_trading_observation_id)}.json`
+        )),
+        rm(path.join(
+          store.root(),
+          "paper-trading-comparison-checkpoint-outcomes/items",
+          `${encodeURIComponent(input.outcome.paper_trading_comparison_checkpoint_outcome_id)}.json`
+        ))
+      ]);
+
+      const reloaded = new LocalStore(store.root());
+      await expect(reloaded.recoverPaperTradingComparisonCheckpointTransactions())
+        .resolves.toEqual([fixture.checkpoint.outcome, input.outcome]);
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(reloaded.listPaperTradingObservations(
+          fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual([
+          fixture.checkpoint[role].observation,
+          input[role].observation
+        ]);
+        await expect(reloaded.getPaperTradingEvaluation(
+          fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual(input[role].evaluation);
+      }
+    });
+  });
+
   describe("comparison tick attribution", () => {
     it("appends, reloads, lists, and semantically replays exact delivery and acknowledgement", async () => {
       const store = new LocalStore(tmpDir);
@@ -7901,8 +8069,20 @@ async function stopBothRunningRuntimeActivation(
         Date.parse(fixture.attempt.attempted_at) + 7_000
       ).toISOString()
     }, {}, context);
+    const currentEvaluation = await store.getPaperTradingEvaluation(
+      fixture.attempt[role].paper_trading_evaluation_ref.id
+    );
+    if (!currentEvaluation) throw new Error(`missing ${role} runtime evaluation`);
     await store.recordPaperTradingEvaluation(
-      runtimeActivationEvaluation(fixture, fixture.attempt, role, "stopped"),
+      currentEvaluation.observation_count === 0
+        ? runtimeActivationEvaluation(fixture, fixture.attempt, role, "stopped")
+        : {
+            ...currentEvaluation,
+            status: "stopped",
+            stopped_at: new Date(
+              Date.parse(fixture.attempt.attempted_at) + 8_000
+            ).toISOString()
+          },
       context
     );
     const result = runtimeActivationSucceededStopResult(
@@ -8092,7 +8272,7 @@ function validIncompleteCheckpointOutcome(
     checkpoint_attempt_digest: attempt.attempt_digest,
     tick_ref: { ...attempt.tick_ref },
     tick_digest: attempt.tick_digest,
-    checkpoint_sequence: 1,
+    checkpoint_sequence: attempt.checkpoint_sequence,
     outcome_status: "incomplete",
     outcome_reason: "side_preparation_failed",
     stable_error_code: "checkpoint_side_preparation_failed",
@@ -8323,6 +8503,312 @@ async function storedAcknowledgedPairedCheckpointFixture(store: LocalStore) {
     ["champion", "challenger"]
   );
   return { ...fixture, ...attribution };
+}
+
+async function storedCapturedNextComparisonTickFixture(store: LocalStore) {
+  const fixture = await storedAcknowledgedPairedCheckpointFixture(store);
+  const nextTick = validNextPaperTradingComparisonTick(fixture);
+  await store.recordPaperTradingComparisonTick(
+    nextTick,
+    comparisonTickCaptureWriteContext(fixture)
+  );
+  return { ...fixture, nextTick };
+}
+
+async function validNextCheckpointAttempt(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedCapturedNextComparisonTickFixture>>
+): Promise<PaperTradingComparisonCheckpointAttemptRecord> {
+  const attemptedAt = new Date(
+    Math.max(
+      Date.parse(fixture.nextTick.observed_at),
+      Date.parse(fixture.checkpoint.outcome.completed_at)
+    ) + 1_000
+  ).toISOString();
+  const side = async (role: "champion" | "challenger") => {
+    const evaluation = await store.getPaperTradingEvaluation(
+      fixture.attempt[role].paper_trading_evaluation_ref.id
+    );
+    if (!evaluation) throw new Error(`missing ${role} repeated evaluation`);
+    const observations = await store.listPaperTradingObservations(
+      evaluation.paper_trading_evaluation_id
+    );
+    const acknowledgement = fixture.acknowledgements.find((record) =>
+      record.role === role
+    );
+    if (!acknowledgement) throw new Error(`missing ${role} previous acknowledgement`);
+    return {
+      role,
+      trading_run_ref: { ...fixture.attempt[role].trading_run_ref },
+      paper_trading_evaluation_ref: {
+        ...fixture.attempt[role].paper_trading_evaluation_ref
+      },
+      evaluation_record_digest: comparisonRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+      ),
+      observation_chain_digest: comparisonRecordDigest(
+        paperTradingComparisonObservationChainDigestInput(observations)
+      ),
+      provider_request_count_before:
+        acknowledgement.provider_request_count_at_acknowledgement
+    };
+  };
+  return withCheckpointAttemptDigest({
+    ...structuredClone(fixture.checkpointAttempt),
+    paper_trading_comparison_checkpoint_attempt_id:
+      `${fixture.attempt.paper_trading_comparison_activation_attempt_id}-checkpoint-2`,
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: fixture.nextTick.paper_trading_comparison_tick_id
+    },
+    tick_digest: fixture.nextTick.tick_digest,
+    checkpoint_sequence: 2,
+    previous_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: fixture.checkpoint.outcome.paper_trading_comparison_checkpoint_outcome_id
+    },
+    previous_checkpoint_outcome_digest: fixture.checkpoint.outcome.outcome_digest,
+    champion: await side("champion"),
+    challenger: await side("challenger"),
+    attempted_at: attemptedAt,
+    checkpoint_deadline_at: new Date(Date.parse(attemptedAt) + 60_000).toISOString(),
+    attempt_digest: ""
+  });
+}
+
+async function storedRepeatedCheckpointIntentFixture(store: LocalStore) {
+  const fixture = await storedCapturedNextComparisonTickFixture(store);
+  const nextCheckpointAttempt = await validNextCheckpointAttempt(store, fixture);
+  await store.recordPaperTradingComparisonCheckpointAttempt(nextCheckpointAttempt);
+  const attribution = await seedNextComparisonTickAttribution(
+    store,
+    fixture,
+    nextCheckpointAttempt
+  );
+  return { ...fixture, nextCheckpointAttempt, ...attribution };
+}
+
+async function seedNextComparisonTickAttribution(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedCapturedNextComparisonTickFixture>>,
+  attempt: PaperTradingComparisonCheckpointAttemptRecord
+) {
+  const nextDeliveries: PaperTradingComparisonTickDeliveryRecord[] = [];
+  const nextAcknowledgements: PaperTradingComparisonTickAcknowledgementRecord[] = [];
+  for (const role of ["champion", "challenger"] as const) {
+    const delivery = withComparisonTickDeliveryDigest({
+      record_kind: "paper_trading_comparison_tick_delivery",
+      version: 1,
+      paper_trading_comparison_tick_delivery_id:
+        `${fixture.attempt.paper_trading_comparison_activation_attempt_id}:${role}:` +
+        fixture.nextTick.paper_trading_comparison_tick_id,
+      paper_trading_comparison_activation_ref: {
+        ...fixture.attempt.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        fixture.attempt.paper_trading_comparison_activation_digest,
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: fixture.attempt.paper_trading_comparison_activation_attempt_id
+      },
+      paper_trading_comparison_activation_attempt_digest: fixture.attempt.attempt_digest,
+      role,
+      trading_run_ref: { ...fixture.attempt[role].trading_run_ref },
+      tick_ref: {
+        record_kind: "paper_trading_comparison_tick",
+        id: fixture.nextTick.paper_trading_comparison_tick_id
+      },
+      tick_digest: fixture.nextTick.tick_digest,
+      tick_sequence: fixture.nextTick.sequence,
+      provider_request_count_at_delivery:
+        attempt[role].provider_request_count_before + 1,
+      endpoint: "GET /market/snapshot",
+      delivered_at: new Date(Date.parse(attempt.attempted_at) + 1_000).toISOString(),
+      delivery_digest: "",
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "not_live"
+    });
+    const acknowledgement = validComparisonTickAcknowledgement(delivery);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-tick-deliveries",
+      delivery.paper_trading_comparison_tick_delivery_id,
+      delivery
+    );
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-tick-acknowledgements",
+      acknowledgement.paper_trading_comparison_tick_acknowledgement_id,
+      acknowledgement
+    );
+    nextDeliveries.push(delivery);
+    nextAcknowledgements.push(acknowledgement);
+  }
+  return { nextDeliveries, nextAcknowledgements };
+}
+
+async function validRepeatedPairedCheckpointTransactionInput(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedRepeatedCheckpointIntentFixture>>
+): Promise<PairedCheckpointTransactionFixture> {
+  const prepare = async (
+    role: "champion" | "challenger"
+  ): Promise<PreparedCheckpointSideFixture> => {
+    const current = await store.getPaperTradingEvaluation(
+      fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
+    );
+    const acknowledgement = fixture.nextAcknowledgements.find((record) =>
+      record.role === role
+    );
+    if (!current || !acknowledgement) {
+      throw new Error(`missing ${role} repeated checkpoint state`);
+    }
+    const candidate = role === "champion" ? fixture.champion : fixture.challenger;
+    const observation: PaperTradingObservationRecord = {
+      record_kind: "paper_trading_observation",
+      version: 1,
+      paper_trading_observation_id:
+        `${current.paper_trading_evaluation_id}-observation-0002`,
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: current.paper_trading_evaluation_id
+      },
+      paper_trading_evaluation_commitment_ref: {
+        ...fixture.attempt[role].paper_trading_evaluation_commitment_ref
+      },
+      paper_trading_comparison_tick_ref: {
+        record_kind: "paper_trading_comparison_tick",
+        id: fixture.nextTick.paper_trading_comparison_tick_id
+      },
+      paper_trading_comparison_tick_digest: fixture.nextTick.tick_digest,
+      paper_trading_comparison_tick_acknowledgement_ref: {
+        record_kind: "paper_trading_comparison_tick_acknowledgement",
+        id: acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+      },
+      paper_trading_comparison_tick_acknowledgement_digest:
+        acknowledgement.acknowledgement_digest,
+      paper_trading_comparison_checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: fixture.nextCheckpointAttempt
+          .paper_trading_comparison_checkpoint_attempt_id
+      },
+      paper_trading_comparison_checkpoint_attempt_digest:
+        fixture.nextCheckpointAttempt.attempt_digest,
+      candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: candidate.candidate_id
+      },
+      candidate_version_ref: {
+        record_kind: "candidate_version",
+        id: candidate.candidate_version.candidate_version_id
+      },
+      trading_run_ref: { ...fixture.nextCheckpointAttempt[role].trading_run_ref },
+      sequence: 2,
+      status: "no_order",
+      observed_at: fixture.nextTick.observed_at,
+      market_snapshot: structuredClone(fixture.nextTick.market_snapshot),
+      public_execution_snapshot: structuredClone(
+        fixture.nextTick.public_execution_snapshot
+      ),
+      paper_account_snapshot: structuredClone(current.paper_account_snapshot),
+      open_orders: structuredClone(current.open_orders ?? []),
+      processed_trading_system_event_ids: structuredClone(
+        current.processed_trading_system_event_ids ?? []
+      ),
+      processed_public_trade_ids: structuredClone(
+        current.processed_public_trade_ids ?? []
+      ),
+      score_delta: structuredClone(PAPER_TRADING_COMPARISON_ZERO_SCORE),
+      cumulative_score: structuredClone(current.latest_score),
+      authority_status: "not_live"
+    };
+    const evaluation: PaperTradingEvaluationRecord = {
+      ...structuredClone(current),
+      observation_count: current.observation_count + 1,
+      last_observed_at: fixture.nextTick.observed_at,
+      next_observation_at: new Date(
+        Date.parse(fixture.nextTick.observed_at) + current.interval_ms
+      ).toISOString(),
+      latest_public_execution_snapshot: structuredClone(
+        fixture.nextTick.public_execution_snapshot
+      )
+    };
+    return withPreparedCheckpointSideDigest({
+      role,
+      ledger_inputs: [],
+      ledger_outcomes: [],
+      observation,
+      evaluation,
+      consumed_event_count: 0,
+      provider_request_count_after:
+        acknowledgement.provider_request_count_at_acknowledgement,
+      preparation_digest: ""
+    });
+  };
+  const champion = await prepare("champion");
+  const challenger = await prepare("challenger");
+  const sideEvidence = (side: PreparedCheckpointSideFixture) => {
+    const acknowledgement = fixture.nextAcknowledgements.find((record) =>
+      record.role === side.role
+    );
+    if (!acknowledgement) throw new Error(`missing ${side.role} acknowledgement`);
+    return {
+      role: side.role,
+      observation_ref: {
+        record_kind: "paper_trading_observation",
+        id: side.observation.paper_trading_observation_id
+      },
+      observation_record_digest: comparisonRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(side.observation)
+      ),
+      evaluation_record_digest: comparisonRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(side.evaluation)
+      ),
+      ledger_chain_refs: [],
+      observation_status: side.observation.status,
+      consumed_event_count: 0,
+      provider_request_count_after:
+        acknowledgement.provider_request_count_at_acknowledgement,
+      tick_acknowledgement_ref: {
+        record_kind: "paper_trading_comparison_tick_acknowledgement",
+        id: acknowledgement.paper_trading_comparison_tick_acknowledgement_id
+      },
+      tick_acknowledgement_digest: acknowledgement.acknowledgement_digest
+    };
+  };
+  const outcome = withCheckpointOutcomeDigest({
+    record_kind: "paper_trading_comparison_checkpoint_outcome",
+    version: 1,
+    paper_trading_comparison_checkpoint_outcome_id:
+      `${fixture.nextCheckpointAttempt.paper_trading_comparison_checkpoint_attempt_id}-outcome`,
+    checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: fixture.nextCheckpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpoint_attempt_digest: fixture.nextCheckpointAttempt.attempt_digest,
+    tick_ref: { ...fixture.nextCheckpointAttempt.tick_ref },
+    tick_digest: fixture.nextCheckpointAttempt.tick_digest,
+    checkpoint_sequence: 2,
+    outcome_status: "paired",
+    outcome_reason: "paired_checkpoint_recorded",
+    champion: sideEvidence(champion),
+    challenger: sideEvidence(challenger),
+    next_action: "capture_next_tick",
+    completed_at: new Date(
+      Date.parse(fixture.nextCheckpointAttempt.attempted_at) + 3_000
+    ).toISOString(),
+    outcome_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+  return {
+    attempt: fixture.nextCheckpointAttempt,
+    outcome,
+    champion,
+    challenger
+  };
 }
 
 async function seedComparisonTickAttribution(
