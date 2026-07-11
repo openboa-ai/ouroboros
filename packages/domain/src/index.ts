@@ -1857,6 +1857,8 @@ export interface PaperTradingComparisonTickRecord extends BaseRecord {
   paper_trading_comparison_commitment_ref: Ref;
   paper_trading_comparison_commitment_digest: string;
   sequence: number;
+  previous_tick_ref?: Ref;
+  previous_tick_digest?: string;
   market_data_configuration_digest: string;
   market_snapshot: PaperTradingMarketSnapshotSummary;
   public_execution_snapshot: PaperTradingPublicExecutionSnapshotSummary;
@@ -1929,6 +1931,18 @@ export interface PaperTradingComparisonTickIOWriteContext {
   tick_ref: Ref;
   tick_digest: string;
   operation: PaperTradingComparisonTickIOOperation;
+}
+
+export interface PaperTradingComparisonTickCaptureWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  previous_checkpoint_attempt_ref: Ref;
+  previous_checkpoint_attempt_digest: string;
+  previous_checkpoint_outcome_ref: Ref;
+  previous_checkpoint_outcome_digest: string;
+  operation: "capture_next_tick";
 }
 
 export interface PaperTradingComparisonActivationSide {
@@ -2110,7 +2124,9 @@ export interface PaperTradingComparisonCheckpointAttemptRecord extends BaseRecor
   paper_trading_comparison_commitment_digest: string;
   tick_ref: Ref;
   tick_digest: string;
-  checkpoint_sequence: 1;
+  checkpoint_sequence: number;
+  previous_checkpoint_outcome_ref?: Ref;
+  previous_checkpoint_outcome_digest?: string;
   champion: PaperTradingComparisonCheckpointAttemptSide;
   challenger: PaperTradingComparisonCheckpointAttemptSide;
   attempted_at: string;
@@ -2131,6 +2147,8 @@ export interface PaperTradingComparisonCheckpointSideEvidence {
   observation_status: PaperTradingObservationStatus;
   consumed_event_count: number;
   provider_request_count_after: number;
+  tick_acknowledgement_ref?: Ref;
+  tick_acknowledgement_digest?: string;
 }
 
 export type PaperTradingComparisonCheckpointOutcomeStatus = "paired" | "incomplete";
@@ -2145,7 +2163,8 @@ export type PaperTradingComparisonCheckpointOutcomeReason =
   | "restart_cleanup";
 
 export type PaperTradingComparisonCheckpointNextAction =
-  | "design_attributed_next_tick"
+  | "serve_and_acknowledge_current_tick"
+  | "capture_next_tick"
   | "close_failed_comparison"
   | "recover_cleanup";
 
@@ -2156,7 +2175,7 @@ export interface PaperTradingComparisonCheckpointOutcomeRecord extends BaseRecor
   checkpoint_attempt_digest: string;
   tick_ref: Ref;
   tick_digest: string;
-  checkpoint_sequence: 1;
+  checkpoint_sequence: number;
   outcome_status: PaperTradingComparisonCheckpointOutcomeStatus;
   outcome_reason: PaperTradingComparisonCheckpointOutcomeReason;
   champion?: PaperTradingComparisonCheckpointSideEvidence;
@@ -2180,7 +2199,10 @@ export interface PaperTradingComparisonCheckpointWriteContext {
   checkpoint_attempt_ref: Ref;
   checkpoint_attempt_digest: string;
   role: "champion" | "challenger";
-  operation: "refresh_sandbox_evidence" | "commit_paired_checkpoint";
+  operation:
+    | "advance_tick_view"
+    | "refresh_sandbox_evidence"
+    | "commit_paired_checkpoint";
 }
 
 export function paperTradingComparisonRuntimeControlIdempotencyKey(
@@ -2622,6 +2644,11 @@ export function paperTradingComparisonTickHasRuntimeShape(
   }
   const market = value.market_snapshot;
   const execution = value.public_execution_snapshot;
+  const lineageValid = value.sequence === 1
+    ? value.previous_tick_ref === undefined && value.previous_tick_digest === undefined
+    : comparisonPositive(value.sequence) &&
+      comparisonRef(value.previous_tick_ref, "paper_trading_comparison_tick") &&
+      comparisonDigest(value.previous_tick_digest);
   return value.record_kind === "paper_trading_comparison_tick" &&
     value.version === 1 &&
     comparisonString(value.paper_trading_comparison_tick_id) &&
@@ -2630,7 +2657,7 @@ export function paperTradingComparisonTickHasRuntimeShape(
       "paper_trading_comparison_commitment"
     ) &&
     comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
-    value.sequence === 1 &&
+    lineageValid &&
     comparisonDigest(value.market_data_configuration_digest) &&
     comparisonMarketSnapshot(market) &&
     comparisonPositiveFinite(market.price) &&
@@ -2654,6 +2681,44 @@ export function paperTradingComparisonTickHasRuntimeShape(
     comparisonIso(value.observed_at) &&
     comparisonDigest(value.tick_digest) &&
     value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickCaptureWriteContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "previous_checkpoint_attempt_ref",
+      "previous_checkpoint_attempt_digest",
+      "previous_checkpoint_outcome_ref",
+      "previous_checkpoint_outcome_digest",
+      "operation"
+    ]) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    comparisonRef(
+      value.previous_checkpoint_attempt_ref,
+      "paper_trading_comparison_checkpoint_attempt"
+    ) &&
+    comparisonDigest(value.previous_checkpoint_attempt_digest) &&
+    comparisonRef(
+      value.previous_checkpoint_outcome_ref,
+      "paper_trading_comparison_checkpoint_outcome"
+    ) &&
+    comparisonDigest(value.previous_checkpoint_outcome_digest) &&
+    value.operation === "capture_next_tick";
 }
 
 export function paperTradingComparisonTickContextHasRuntimeShape(
@@ -3195,6 +3260,15 @@ export function paperTradingComparisonCheckpointAttemptHasRuntimeShape(
   }
   const champion = value.champion;
   const challenger = value.challenger;
+  const predecessorValid = value.checkpoint_sequence === 1
+    ? value.previous_checkpoint_outcome_ref === undefined &&
+      value.previous_checkpoint_outcome_digest === undefined
+    : comparisonPositive(value.checkpoint_sequence) &&
+      comparisonRef(
+        value.previous_checkpoint_outcome_ref,
+        "paper_trading_comparison_checkpoint_outcome"
+      ) &&
+      comparisonDigest(value.previous_checkpoint_outcome_digest);
   return value.record_kind === "paper_trading_comparison_checkpoint_attempt" &&
     value.version === 1 &&
     comparisonString(value.paper_trading_comparison_checkpoint_attempt_id) &&
@@ -3220,7 +3294,7 @@ export function paperTradingComparisonCheckpointAttemptHasRuntimeShape(
     comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
     comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
     comparisonDigest(value.tick_digest) &&
-    value.checkpoint_sequence === 1 &&
+    predecessorValid &&
     champion.trading_run_ref.id !== challenger.trading_run_ref.id &&
     champion.paper_trading_evaluation_ref.id !==
       challenger.paper_trading_evaluation_ref.id &&
@@ -3237,9 +3311,18 @@ export function paperTradingComparisonCheckpointAttemptHasRuntimeShape(
 
 function paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
   value: unknown,
-  role: "champion" | "challenger"
+  role: "champion" | "challenger",
+  checkpointSequence: number
 ): value is PaperTradingComparisonCheckpointSideEvidence {
-  return comparisonObject(value) &&
+  if (!comparisonObject(value)) return false;
+  const acknowledgementValid = checkpointSequence === 1
+    ? value.tick_acknowledgement_ref === undefined &&
+      value.tick_acknowledgement_digest === undefined
+    : comparisonRef(
+        value.tick_acknowledgement_ref,
+        "paper_trading_comparison_tick_acknowledgement"
+      ) && comparisonDigest(value.tick_acknowledgement_digest);
+  return acknowledgementValid &&
     value.role === role &&
     comparisonRef(value.observation_ref, "paper_trading_observation") &&
     comparisonDigest(value.observation_record_digest) &&
@@ -3271,7 +3354,7 @@ export function paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
     !comparisonDigest(value.checkpoint_attempt_digest) ||
     !comparisonRef(value.tick_ref, "paper_trading_comparison_tick") ||
     !comparisonDigest(value.tick_digest) ||
-    value.checkpoint_sequence !== 1 ||
+    !comparisonPositive(value.checkpoint_sequence) ||
     (value.outcome_status !== "paired" && value.outcome_status !== "incomplete") ||
     ![
       "paired_checkpoint_recorded",
@@ -3283,7 +3366,8 @@ export function paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
       "restart_cleanup"
     ].includes(value.outcome_reason as string) ||
     ![
-      "design_attributed_next_tick",
+      "serve_and_acknowledge_current_tick",
+      "capture_next_tick",
       "close_failed_comparison",
       "recover_cleanup"
     ].includes(value.next_action as string) ||
@@ -3301,13 +3385,18 @@ export function paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
       value.stable_error_code !== undefined ||
       !paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
         value.champion,
-        "champion"
+        "champion",
+        value.checkpoint_sequence
       ) ||
       !paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
         value.challenger,
-        "challenger"
+        "challenger",
+        value.checkpoint_sequence
       ) ||
-      value.champion.observation_ref.id === value.challenger.observation_ref.id
+      value.champion.observation_ref.id === value.challenger.observation_ref.id ||
+      value.checkpoint_sequence > 1 &&
+        value.champion.tick_acknowledgement_ref!.id ===
+          value.challenger.tick_acknowledgement_ref!.id
     ) {
       return false;
     }
@@ -3315,7 +3404,9 @@ export function paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
       value.challenger.observation_status === "failed";
     return value.next_action === (hasFailedSide
       ? "close_failed_comparison"
-      : "design_attributed_next_tick");
+      : value.checkpoint_sequence === 1
+        ? "serve_and_acknowledge_current_tick"
+        : "capture_next_tick");
   }
   if (
     value.outcome_reason === "paired_checkpoint_recorded" ||
@@ -3358,7 +3449,8 @@ export function paperTradingComparisonCheckpointWriteContextHasRuntimeShape(
     ) &&
     comparisonDigest(value.checkpoint_attempt_digest) &&
     (value.role === "champion" || value.role === "challenger") &&
-    (value.operation === "refresh_sandbox_evidence" ||
+    (value.operation === "advance_tick_view" ||
+      value.operation === "refresh_sandbox_evidence" ||
       value.operation === "commit_paired_checkpoint");
 }
 
@@ -3473,6 +3565,8 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   paper_trading_evaluation_commitment_ref?: Ref;
   paper_trading_comparison_tick_ref?: Ref;
   paper_trading_comparison_tick_digest?: string;
+  paper_trading_comparison_tick_acknowledgement_ref?: Ref;
+  paper_trading_comparison_tick_acknowledgement_digest?: string;
   paper_trading_comparison_checkpoint_attempt_ref?: Ref;
   paper_trading_comparison_checkpoint_attempt_digest?: string;
   candidate_ref: Ref;

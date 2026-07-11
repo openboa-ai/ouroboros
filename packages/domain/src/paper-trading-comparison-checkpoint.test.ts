@@ -50,6 +50,22 @@ describe("paper comparison checkpoint domain", () => {
     )).toBe(true);
   });
 
+  it("accepts an acknowledgement-bound repeated checkpoint", () => {
+    expect(paperTradingComparisonCheckpointAttemptHasRuntimeShape(validNextAttempt())).toBe(true);
+    expect(paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
+      validNextPairedOutcome()
+    )).toBe(true);
+    expect(paperTradingComparisonCheckpointWriteContextHasRuntimeShape({
+      ...validWriteContext(),
+      checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: "checkpoint-attempt-2"
+      },
+      checkpoint_attempt_digest: "sha256:checkpoint-attempt-2",
+      operation: "advance_tick_view"
+    })).toBe(true);
+  });
+
   it.each([
     ["null", () => null],
     ["wrong activation ref", (record: any) => {
@@ -68,7 +84,7 @@ describe("paper comparison checkpoint domain", () => {
       record.tick_ref.record_kind = "wrong";
       return record;
     }],
-    ["later sequence", (record: any) => {
+    ["later sequence without predecessor", (record: any) => {
       record.checkpoint_sequence = 2;
       return record;
     }],
@@ -106,6 +122,26 @@ describe("paper comparison checkpoint domain", () => {
     }]
   ])("returns false without throwing for malformed checkpoint attempt: %s", (_label, mutate) => {
     const malformed = mutate(structuredClone(validAttempt()));
+    expect(() => paperTradingComparisonCheckpointAttemptHasRuntimeShape(malformed)).not.toThrow();
+    expect(paperTradingComparisonCheckpointAttemptHasRuntimeShape(malformed)).toBe(false);
+  });
+
+  it.each([
+    ["missing previous outcome ref", (record: any) => {
+      delete record.previous_checkpoint_outcome_ref;
+    }],
+    ["missing previous outcome digest", (record: any) => {
+      delete record.previous_checkpoint_outcome_digest;
+    }],
+    ["wrong previous outcome kind", (record: any) => {
+      record.previous_checkpoint_outcome_ref.record_kind = "wrong";
+    }],
+    ["first sequence with previous outcome", (record: any) => {
+      record.checkpoint_sequence = 1;
+    }]
+  ])("rejects malformed repeated checkpoint attempt: %s", (_label, mutate) => {
+    const malformed = structuredClone(validNextAttempt()) as any;
+    mutate(malformed);
     expect(() => paperTradingComparisonCheckpointAttemptHasRuntimeShape(malformed)).not.toThrow();
     expect(paperTradingComparisonCheckpointAttemptHasRuntimeShape(malformed)).toBe(false);
   });
@@ -189,6 +225,33 @@ describe("paper comparison checkpoint domain", () => {
   });
 
   it.each([
+    ["missing champion acknowledgement ref", (record: any) => {
+      delete record.champion.tick_acknowledgement_ref;
+    }],
+    ["missing challenger acknowledgement digest", (record: any) => {
+      delete record.challenger.tick_acknowledgement_digest;
+    }],
+    ["wrong acknowledgement kind", (record: any) => {
+      record.champion.tick_acknowledgement_ref.record_kind = "wrong";
+    }],
+    ["shared acknowledgement", (record: any) => {
+      record.challenger.tick_acknowledgement_ref = record.champion.tick_acknowledgement_ref;
+    }],
+    ["repeated outcome with first action", (record: any) => {
+      record.next_action = "serve_and_acknowledge_current_tick";
+    }],
+    ["first outcome with acknowledgement", (record: any) => {
+      record.checkpoint_sequence = 1;
+      record.next_action = "serve_and_acknowledge_current_tick";
+    }]
+  ])("rejects malformed repeated checkpoint outcome: %s", (_label, mutate) => {
+    const malformed = structuredClone(validNextPairedOutcome()) as any;
+    mutate(malformed);
+    expect(() => paperTradingComparisonCheckpointOutcomeHasRuntimeShape(malformed)).not.toThrow();
+    expect(paperTradingComparisonCheckpointOutcomeHasRuntimeShape(malformed)).toBe(false);
+  });
+
+  it.each([
     ["null", null],
     ["wrong activation outcome kind", {
       ...validWriteContext(),
@@ -250,6 +313,39 @@ function validAttempt(): PaperTradingComparisonCheckpointAttemptRecord {
   };
 }
 
+function validNextAttempt(): PaperTradingComparisonCheckpointAttemptRecord {
+  return {
+    ...validAttempt(),
+    paper_trading_comparison_checkpoint_attempt_id: "checkpoint-attempt-2",
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: "tick-2"
+    },
+    tick_digest: "sha256:tick-2",
+    checkpoint_sequence: 2,
+    previous_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: "checkpoint-outcome-1"
+    },
+    previous_checkpoint_outcome_digest: "sha256:checkpoint-outcome-1",
+    champion: {
+      ...validAttemptSide("champion"),
+      evaluation_record_digest: "sha256:champion-evaluation-after-1",
+      observation_chain_digest: "sha256:champion-observations-after-1",
+      provider_request_count_before: 6
+    },
+    challenger: {
+      ...validAttemptSide("challenger"),
+      evaluation_record_digest: "sha256:challenger-evaluation-after-1",
+      observation_chain_digest: "sha256:challenger-observations-after-1",
+      provider_request_count_before: 7
+    },
+    attempted_at: "2026-07-11T00:01:01.000Z",
+    checkpoint_deadline_at: "2026-07-11T00:02:01.000Z",
+    attempt_digest: "sha256:checkpoint-attempt-2"
+  };
+}
+
 function validAttemptSide(role: "champion" | "challenger") {
   return {
     role,
@@ -301,12 +397,55 @@ function validPairedOutcome(): PaperTradingComparisonCheckpointOutcomeRecord {
     outcome_reason: "paired_checkpoint_recorded",
     champion: validSideEvidence("champion"),
     challenger: validSideEvidence("challenger"),
-    next_action: "design_attributed_next_tick",
+    next_action: "serve_and_acknowledge_current_tick",
     completed_at: "2026-07-11T00:00:11.000Z",
     outcome_digest: "sha256:checkpoint-outcome",
     live_exchange_authority: false,
     order_submission_authority: false,
     authority_status: "not_live"
+  };
+}
+
+function validNextPairedOutcome(): PaperTradingComparisonCheckpointOutcomeRecord {
+  const attempt = validNextAttempt();
+  return {
+    ...validPairedOutcome(),
+    paper_trading_comparison_checkpoint_outcome_id: "checkpoint-outcome-2",
+    checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: attempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpoint_attempt_digest: attempt.attempt_digest,
+    tick_ref: { ...attempt.tick_ref },
+    tick_digest: attempt.tick_digest,
+    checkpoint_sequence: 2,
+    champion: {
+      ...validSideEvidence("champion"),
+      observation_ref: {
+        record_kind: "paper_trading_observation",
+        id: "champion-observation-2"
+      },
+      tick_acknowledgement_ref: {
+        record_kind: "paper_trading_comparison_tick_acknowledgement",
+        id: "champion-ack-2"
+      },
+      tick_acknowledgement_digest: "sha256:champion-ack-2"
+    },
+    challenger: {
+      ...validSideEvidence("challenger"),
+      observation_ref: {
+        record_kind: "paper_trading_observation",
+        id: "challenger-observation-2"
+      },
+      tick_acknowledgement_ref: {
+        record_kind: "paper_trading_comparison_tick_acknowledgement",
+        id: "challenger-ack-2"
+      },
+      tick_acknowledgement_digest: "sha256:challenger-ack-2"
+    },
+    next_action: "capture_next_tick",
+    completed_at: "2026-07-11T00:01:11.000Z",
+    outcome_digest: "sha256:checkpoint-outcome-2"
   };
 }
 

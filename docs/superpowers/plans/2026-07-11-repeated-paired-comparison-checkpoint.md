@@ -54,7 +54,7 @@ at commit `c83a6e7`.
 - Extends: `PaperTradingObservationRecord` with optional comparison acknowledgement ref/digest
 - Extends: `PaperTradingComparisonCheckpointWriteContext.operation` with `advance_tick_view`
 
-- [ ] **Step 1: Write failing sequence-N domain tests**
+- [x] **Step 1: Write failing sequence-N domain tests**
 
 Create a valid sequence-2 tick whose predecessor is sequence 1, a capture authority bound to the
 exact activation attempt and prior paired checkpoint, a checkpoint attempt whose predecessor is the
@@ -71,7 +71,7 @@ Use table cases to reject:
 - incomplete outcome carrying either side evidence;
 - capture/write contexts with missing, extra, cross-role, order, private, or live authority.
 
-- [ ] **Step 2: Run domain tests and verify RED**
+- [x] **Step 2: Run domain tests and verify RED**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-tick.test.ts packages/domain/src/paper-trading-comparison-checkpoint.test.ts packages/domain/src/paper-trading-comparison-tick-attribution.test.ts
@@ -80,7 +80,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-tick.test.ts package
 Expected: FAIL because predecessor, sequence-N, acknowledgement, and capture-authority contracts do
 not exist.
 
-- [ ] **Step 3: Implement exact additive domain shapes**
+- [x] **Step 3: Implement exact additive domain shapes**
 
 Add:
 
@@ -115,7 +115,7 @@ type PaperTradingComparisonCheckpointNextAction =
 The outcome predicate requires `serve_and_acknowledge_current_tick` for a successful sequence-1
 outcome and `capture_next_tick` for a successful sequence-2+ outcome.
 
-- [ ] **Step 4: Run domain regressions and typecheck**
+- [x] **Step 4: Run domain regressions and typecheck**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-tick.test.ts packages/domain/src/paper-trading-comparison-checkpoint.test.ts packages/domain/src/paper-trading-comparison-tick-attribution.test.ts packages/domain/src/paper-trading-comparison-runtime-activation.test.ts
@@ -124,7 +124,9 @@ npm run typecheck --workspace @ouroboros/domain
 
 Expected: selected domain tests and domain typecheck pass.
 
-- [ ] **Step 5: Commit domain lineage**
+Actual: 4 domain files, 200 tests passed; `@ouroboros/domain` typecheck passed.
+
+- [x] **Step 5: Commit domain lineage**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-tick.test.ts packages/domain/src/paper-trading-comparison-checkpoint.test.ts packages/domain/src/paper-trading-comparison-tick-attribution.test.ts

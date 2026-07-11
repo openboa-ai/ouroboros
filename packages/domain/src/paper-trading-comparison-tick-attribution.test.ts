@@ -49,6 +49,32 @@ describe("paper comparison served-tick attribution domain", () => {
     ).toBe(true);
   });
 
+  it("accepts role-bound attribution for a later positive tick sequence", () => {
+    const delivery = {
+      ...validDelivery(),
+      paper_trading_comparison_tick_delivery_id: "activation-attempt-1:champion:tick-2",
+      tick_ref: { record_kind: "paper_trading_comparison_tick", id: "tick-2" },
+      tick_digest: "sha256:tick-2",
+      tick_sequence: 2
+    } satisfies PaperTradingComparisonTickDeliveryRecord;
+    const acknowledgement = {
+      ...validAcknowledgement(),
+      paper_trading_comparison_tick_acknowledgement_id:
+        "activation-attempt-1:champion:tick-2:acknowledgement",
+      delivery_ref: {
+        record_kind: "paper_trading_comparison_tick_delivery",
+        id: delivery.paper_trading_comparison_tick_delivery_id
+      },
+      delivery_digest: delivery.delivery_digest,
+      tick_ref: delivery.tick_ref,
+      tick_digest: delivery.tick_digest,
+      tick_sequence: delivery.tick_sequence
+    } satisfies PaperTradingComparisonTickAcknowledgementRecord;
+
+    expect(paperTradingComparisonTickDeliveryHasRuntimeShape(delivery)).toBe(true);
+    expect(paperTradingComparisonTickAcknowledgementHasRuntimeShape(acknowledgement)).toBe(true);
+  });
+
   it.each([
     ["null", () => null],
     ["wrong record kind", (record: any) => {

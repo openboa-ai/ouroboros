@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  paperTradingComparisonTickCaptureWriteContextHasRuntimeShape,
   paperTradingComparisonTickDigestInput,
   paperTradingComparisonTickHasRuntimeShape,
+  type PaperTradingComparisonTickCaptureWriteContext,
   type PaperTradingComparisonTickRecord
 } from "./index";
 
@@ -70,9 +72,72 @@ describe("PaperTradingComparisonTick", () => {
     expect(paperTradingComparisonTickHasRuntimeShape(validTick())).toBe(true);
   });
 
+  it("accepts one contiguous later tick and its exact capture authority", () => {
+    expect(paperTradingComparisonTickHasRuntimeShape(validNextTick())).toBe(true);
+    expect(
+      paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(validCaptureContext())
+    ).toBe(true);
+  });
+
+  it.each([
+    ["first tick with predecessor ref", { ...validTick(), previous_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: "prior"
+    }}],
+    ["first tick with predecessor digest", {
+      ...validTick(),
+      previous_tick_digest: "sha256:prior"
+    }],
+    ["later tick without predecessor ref", (() => {
+      const value: any = validNextTick();
+      delete value.previous_tick_ref;
+      return value;
+    })()],
+    ["later tick without predecessor digest", (() => {
+      const value: any = validNextTick();
+      delete value.previous_tick_digest;
+      return value;
+    })()],
+    ["later tick with wrong predecessor kind", {
+      ...validNextTick(),
+      previous_tick_ref: { record_kind: "wrong", id: "tick-1" }
+    }],
+    ["zero sequence", { ...validTick(), sequence: 0 }]
+  ])("rejects invalid tick lineage: %s", (_label, value) => {
+    expect(() => paperTradingComparisonTickHasRuntimeShape(value)).not.toThrow();
+    expect(paperTradingComparisonTickHasRuntimeShape(value)).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["wrong activation ref", {
+      ...validCaptureContext(),
+      paper_trading_comparison_activation_ref: { record_kind: "wrong", id: "activation-1" }
+    }],
+    ["wrong previous attempt ref", {
+      ...validCaptureContext(),
+      previous_checkpoint_attempt_ref: { record_kind: "wrong", id: "checkpoint-attempt-1" }
+    }],
+    ["wrong previous outcome ref", {
+      ...validCaptureContext(),
+      previous_checkpoint_outcome_ref: { record_kind: "wrong", id: "checkpoint-outcome-1" }
+    }],
+    ["empty previous outcome digest", {
+      ...validCaptureContext(),
+      previous_checkpoint_outcome_digest: ""
+    }],
+    ["wrong operation", { ...validCaptureContext(), operation: "capture_first_tick" }],
+    ["extra live authority", { ...validCaptureContext(), live_exchange_authority: false }]
+  ])("rejects invalid next-tick capture authority: %s", (_label, value) => {
+    expect(() =>
+      paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(value)
+    ).not.toThrow();
+    expect(paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(value)).toBe(false);
+  });
+
   it.each([
     ["null", (tick: any) => null],
-    ["later sequence", (tick: any) => ({ ...tick, sequence: 2 })],
+    ["later sequence without lineage", (tick: any) => ({ ...tick, sequence: 2 })],
     ["wrong symbol", (tick: any) => ({
       ...tick,
       market_snapshot: { ...tick.market_snapshot, symbol: "ETHUSDT" }
@@ -204,5 +269,57 @@ function validTick(): PaperTradingComparisonTickRecord {
     observed_at: "2026-07-11T00:00:01.000Z",
     tick_digest: "sha256:tick",
     authority_status: "not_live"
+  };
+}
+
+function validNextTick(): PaperTradingComparisonTickRecord {
+  const first = validTick();
+  return {
+    ...first,
+    paper_trading_comparison_tick_id: "paper-comparison-tick-002",
+    sequence: 2,
+    previous_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: first.paper_trading_comparison_tick_id
+    },
+    previous_tick_digest: first.tick_digest,
+    market_snapshot: {
+      ...first.market_snapshot,
+      price: 60_100,
+      observed_at: "2026-07-11T00:01:00.000Z"
+    },
+    public_execution_snapshot: {
+      ...first.public_execution_snapshot,
+      observed_at: "2026-07-11T00:01:00.000Z",
+      stream_marker: "public-execution-002"
+    },
+    observed_at: "2026-07-11T00:01:01.000Z",
+    tick_digest: "sha256:tick-2"
+  };
+}
+
+function validCaptureContext(): PaperTradingComparisonTickCaptureWriteContext {
+  return {
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation",
+      id: "activation-1"
+    },
+    paper_trading_comparison_activation_digest: "sha256:activation",
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: "activation-attempt-1"
+    },
+    paper_trading_comparison_activation_attempt_digest: "sha256:activation-attempt",
+    previous_checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: "checkpoint-attempt-1"
+    },
+    previous_checkpoint_attempt_digest: "sha256:checkpoint-attempt-1",
+    previous_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: "checkpoint-outcome-1"
+    },
+    previous_checkpoint_outcome_digest: "sha256:checkpoint-outcome-1",
+    operation: "capture_next_tick"
   };
 }
