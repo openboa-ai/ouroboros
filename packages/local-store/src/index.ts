@@ -50,6 +50,10 @@ import {
   paperTradingComparisonActivationPolicyFor,
   paperTradingComparisonActivationSideResultDigestInput,
   paperTradingComparisonActivationSideResultHasRuntimeShape,
+  paperTradingComparisonCheckpointAttemptDigestInput,
+  paperTradingComparisonCheckpointAttemptHasRuntimeShape,
+  paperTradingComparisonCheckpointOutcomeDigestInput,
+  paperTradingComparisonCheckpointOutcomeHasRuntimeShape,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCandidateVersionPairKey,
@@ -167,6 +171,8 @@ import type {
   PaperTradingComparisonActivationAttemptRecord,
   PaperTradingComparisonActivationOutcomeRecord,
   PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonCheckpointAttemptRecord,
+  PaperTradingComparisonCheckpointOutcomeRecord,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
@@ -350,6 +356,23 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_activation_outcome_sequence_mismatch"
   | "paper_trading_comparison_activation_outcome_state_mismatch"
   | "paper_trading_comparison_activation_outcome_graph_invalid"
+  | "invalid_paper_trading_comparison_checkpoint_attempt_input"
+  | "paper_trading_comparison_checkpoint_attempt_digest_mismatch"
+  | "paper_trading_comparison_checkpoint_attempt_conflict"
+  | "paper_trading_comparison_checkpoint_attempt_reload_failed"
+  | "paper_trading_comparison_checkpoint_attempt_reference_not_found"
+  | "paper_trading_comparison_checkpoint_attempt_reference_mismatch"
+  | "paper_trading_comparison_checkpoint_attempt_state_mismatch"
+  | "paper_trading_comparison_checkpoint_attempt_state_conflict"
+  | "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+  | "invalid_paper_trading_comparison_checkpoint_outcome_input"
+  | "paper_trading_comparison_checkpoint_outcome_digest_mismatch"
+  | "paper_trading_comparison_checkpoint_outcome_conflict"
+  | "paper_trading_comparison_checkpoint_outcome_reload_failed"
+  | "paper_trading_comparison_checkpoint_outcome_reference_not_found"
+  | "paper_trading_comparison_checkpoint_outcome_reference_mismatch"
+  | "paper_trading_comparison_checkpoint_outcome_state_conflict"
+  | "paper_trading_comparison_paired_checkpoint_transaction_required"
   | "invalid_paper_trading_comparison_runtime_write_context"
   | "paper_trading_comparison_runtime_write_context_reference_not_found"
   | "paper_trading_comparison_runtime_write_context_reference_mismatch"
@@ -433,6 +456,8 @@ type Collection =
   | "paper-trading-comparison-activation-attempts"
   | "paper-trading-comparison-activation-side-results"
   | "paper-trading-comparison-activation-outcomes"
+  | "paper-trading-comparison-checkpoint-attempts"
+  | "paper-trading-comparison-checkpoint-outcomes"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -1130,6 +1155,66 @@ export class LocalStore {
       throw new LocalStoreError(
         errorCode,
         "persisted paper comparison activation outcome digest does not match canonical content"
+      );
+    }
+  }
+
+  private assertPersistedComparisonCheckpointAttemptShape(
+    value: unknown,
+    errorCode: LocalStoreErrorCode =
+      "invalid_paper_trading_comparison_checkpoint_attempt_input"
+  ): asserts value is PaperTradingComparisonCheckpointAttemptRecord {
+    if (!paperTradingComparisonCheckpointAttemptHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint attempt has invalid runtime shape"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonCheckpointAttemptDigestInput(value)
+      );
+    } catch {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint attempt is not canonically digestible"
+      );
+    }
+    if (value.attempt_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint attempt digest does not match canonical content"
+      );
+    }
+  }
+
+  private assertPersistedComparisonCheckpointOutcomeShape(
+    value: unknown,
+    errorCode: LocalStoreErrorCode =
+      "invalid_paper_trading_comparison_checkpoint_outcome_input"
+  ): asserts value is PaperTradingComparisonCheckpointOutcomeRecord {
+    if (!paperTradingComparisonCheckpointOutcomeHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint outcome has invalid runtime shape"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonCheckpointOutcomeDigestInput(value)
+      );
+    } catch {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint outcome is not canonically digestible"
+      );
+    }
+    if (value.outcome_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison checkpoint outcome digest does not match canonical content"
       );
     }
   }
@@ -5755,6 +5840,506 @@ export class LocalStore {
       throw new LocalStoreError(
         "paper_trading_comparison_activation_outcome_reload_failed",
         "persisted paper trading comparison activation outcome collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  async recordPaperTradingComparisonCheckpointAttempt(
+    attempt: PaperTradingComparisonCheckpointAttemptRecord
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonCheckpointAttemptUnlocked(attempt)
+    );
+  }
+
+  private async recordPaperTradingComparisonCheckpointAttemptUnlocked(
+    attempt: PaperTradingComparisonCheckpointAttemptRecord
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord> {
+    if (!paperTradingComparisonCheckpointAttemptHasRuntimeShape(attempt)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_checkpoint_attempt_input",
+        "invalid paper trading comparison checkpoint attempt input"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonCheckpointAttemptDigestInput(attempt)
+      );
+    } catch {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_checkpoint_attempt_input",
+        "paper trading comparison checkpoint attempt is not canonically digestible"
+      );
+    }
+    if (attempt.attempt_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_digest_mismatch",
+        "paper trading comparison checkpoint attempt digest does not match canonical content"
+      );
+    }
+
+    const existing = await this.getPaperTradingComparisonCheckpointAttempt(
+      attempt.paper_trading_comparison_checkpoint_attempt_id
+    );
+    if (existing && !samePersistedComparisonRecord(existing, attempt)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_conflict",
+        "paper trading comparison checkpoint attempt is append-only"
+      );
+    }
+    if (existing) return existing;
+
+    const activationAttempt = await this.getPaperTradingComparisonActivationAttempt(
+      attempt.paper_trading_comparison_activation_attempt_ref.id
+    );
+    if (!activationAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reference_not_found",
+        "paper trading comparison activation attempt was not found"
+      );
+    }
+    let closure: {
+      activation: PaperTradingComparisonActivationRecord;
+      comparison: PaperTradingComparisonCommitmentRecord;
+      tick: PaperTradingComparisonTickRecord;
+    };
+    try {
+      closure = await this.loadPaperTradingComparisonActivationAttemptClosure(
+        activationAttempt
+      );
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_graph_invalid",
+        "paper trading comparison checkpoint activation graph is unreadable"
+      );
+    }
+    const [tick, activationOutcomes, activationResults, existingAttempts] =
+      await Promise.all([
+        this.getPaperTradingComparisonTick(attempt.tick_ref.id),
+        this.listPaperTradingComparisonActivationOutcomes(
+          activationAttempt.paper_trading_comparison_activation_attempt_id
+        ),
+        this.listPaperTradingComparisonActivationSideResults(
+          activationAttempt.paper_trading_comparison_activation_attempt_id
+        ),
+        this.listPaperTradingComparisonCheckpointAttempts(
+          activationAttempt.paper_trading_comparison_activation_attempt_id
+        )
+      ]);
+    const activationOutcome = activationOutcomes.at(-1);
+    if (!tick || !activationOutcome) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reference_not_found",
+        "paper trading comparison first tick or activation outcome was not found"
+      );
+    }
+    if (existingAttempts.length > 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_state_conflict",
+        "paper trading comparison activation attempt already has a checkpoint intent"
+      );
+    }
+    const championResult = latestPaperTradingComparisonActivationSideResult(
+      activationResults,
+      "champion"
+    );
+    const challengerResult = latestPaperTradingComparisonActivationSideResult(
+      activationResults,
+      "challenger"
+    );
+    if (
+      attempt.paper_trading_comparison_activation_digest !==
+        closure.activation.activation_digest ||
+      !paperTradingComparisonRefsEqual(
+        attempt.paper_trading_comparison_activation_ref,
+        activationAttempt.paper_trading_comparison_activation_ref
+      ) ||
+      attempt.paper_trading_comparison_activation_attempt_digest !==
+        activationAttempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        attempt.activation_outcome_ref,
+        {
+          record_kind: "paper_trading_comparison_activation_outcome",
+          id: activationOutcome.paper_trading_comparison_activation_outcome_id
+        }
+      ) ||
+      attempt.activation_outcome_digest !== activationOutcome.outcome_digest ||
+      activationOutcome.outcome_status !== "both_running" ||
+      !paperTradingComparisonRefsEqual(
+        attempt.paper_trading_comparison_commitment_ref,
+        activationAttempt.paper_trading_comparison_commitment_ref
+      ) ||
+      attempt.paper_trading_comparison_commitment_digest !==
+        activationAttempt.paper_trading_comparison_commitment_digest ||
+      !paperTradingComparisonRefsEqual(attempt.tick_ref, activationAttempt.first_tick_ref) ||
+      attempt.tick_digest !== activationAttempt.first_tick_digest ||
+      tick.tick_digest !== attempt.tick_digest
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reference_mismatch",
+        "paper trading comparison checkpoint attempt does not match its activation and first tick"
+      );
+    }
+    if (
+      Date.parse(attempt.attempted_at) <= Date.parse(activationOutcome.completed_at) ||
+      Date.parse(attempt.checkpoint_deadline_at) >
+        Date.parse(activationAttempt.attempted_at) +
+          closure.comparison.comparison_policy.maximum_elapsed_ms
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_state_mismatch",
+        "paper trading comparison checkpoint attempt exceeds its frozen time window"
+      );
+    }
+    const [championState, challengerState] = await Promise.all([
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "champion",
+        closure.comparison,
+        "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+      ),
+      this.loadPaperTradingComparisonRuntimeSideState(
+        activationAttempt,
+        "challenger",
+        closure.comparison,
+        "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+      )
+    ]);
+    const sideMatches = (
+      role: "champion" | "challenger",
+      state: PaperTradingComparisonRuntimeSideState,
+      result: PaperTradingComparisonActivationSideResultRecord | undefined
+    ): boolean => Boolean(
+      result &&
+      this.paperTradingComparisonSideIsRunningWithinAttempt(
+        activationAttempt,
+        result,
+        state
+      ) &&
+      paperTradingComparisonRefsEqual(
+        attempt[role].trading_run_ref,
+        activationAttempt[role].trading_run_ref
+      ) &&
+      paperTradingComparisonRefsEqual(
+        attempt[role].paper_trading_evaluation_ref,
+        activationAttempt[role].paper_trading_evaluation_ref
+      ) &&
+      attempt[role].evaluation_record_digest === comparisonExactRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(state.evaluation)
+      ) &&
+      attempt[role].observation_chain_digest === comparisonExactRecordDigest(
+        paperTradingComparisonObservationChainDigestInput([])
+      ) &&
+      attempt[role].provider_request_count_before === result.provider_request_count
+    );
+    if (!sideMatches("champion", championState, championResult) ||
+      !sideMatches("challenger", challengerState, challengerResult)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_state_mismatch",
+        "paper trading comparison checkpoint attempt does not match both running side baselines"
+      );
+    }
+
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-checkpoint-attempts",
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      ),
+      attempt
+    );
+    return attempt;
+  }
+
+  async getPaperTradingComparisonCheckpointAttempt(
+    attemptId: string
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-checkpoint-attempts",
+        attemptId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedComparisonCheckpointAttemptShape(
+        record,
+        "paper_trading_comparison_checkpoint_attempt_reload_failed"
+      );
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_checkpoint_attempt_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reload_failed",
+        "persisted paper trading comparison checkpoint attempt is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonCheckpointAttempts(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord[]> {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-checkpoint-attempts"
+      );
+      const validated = records.map((record) => {
+        this.assertPersistedComparisonCheckpointAttemptShape(
+          record,
+          "paper_trading_comparison_checkpoint_attempt_reload_failed"
+        );
+        return record;
+      });
+      return validated
+        .filter((record) =>
+          record.paper_trading_comparison_activation_attempt_ref.id ===
+            activationAttemptId
+        )
+        .sort((left, right) =>
+          left.attempted_at.localeCompare(right.attempted_at) ||
+          left.paper_trading_comparison_checkpoint_attempt_id.localeCompare(
+            right.paper_trading_comparison_checkpoint_attempt_id
+          )
+        );
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_checkpoint_attempt_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_attempt_reload_failed",
+        "persisted paper trading comparison checkpoint attempt collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  async recordPaperTradingComparisonCheckpointOutcome(
+    outcome: PaperTradingComparisonCheckpointOutcomeRecord
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonCheckpointOutcomeUnlocked(outcome)
+    );
+  }
+
+  private async recordPaperTradingComparisonCheckpointOutcomeUnlocked(
+    outcome: PaperTradingComparisonCheckpointOutcomeRecord
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord> {
+    if (!paperTradingComparisonCheckpointOutcomeHasRuntimeShape(outcome)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_checkpoint_outcome_input",
+        "invalid paper trading comparison checkpoint outcome input"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = comparisonExactRecordDigest(
+        paperTradingComparisonCheckpointOutcomeDigestInput(outcome)
+      );
+    } catch {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_checkpoint_outcome_input",
+        "paper trading comparison checkpoint outcome is not canonically digestible"
+      );
+    }
+    if (outcome.outcome_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_digest_mismatch",
+        "paper trading comparison checkpoint outcome digest does not match canonical content"
+      );
+    }
+    const existing = await this.getPaperTradingComparisonCheckpointOutcome(
+      outcome.paper_trading_comparison_checkpoint_outcome_id
+    );
+    if (existing && !samePersistedComparisonRecord(existing, outcome)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_conflict",
+        "paper trading comparison checkpoint outcome is append-only"
+      );
+    }
+    if (existing) return existing;
+    if (outcome.outcome_status === "paired") {
+      throw new LocalStoreError(
+        "paper_trading_comparison_paired_checkpoint_transaction_required",
+        "paired paper comparison checkpoint outcome requires the atomic transaction writer"
+      );
+    }
+
+    const attempt = await this.getPaperTradingComparisonCheckpointAttempt(
+      outcome.checkpoint_attempt_ref.id
+    );
+    if (!attempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_reference_not_found",
+        "paper trading comparison checkpoint attempt was not found"
+      );
+    }
+    if (
+      outcome.checkpoint_attempt_digest !== attempt.attempt_digest ||
+      !paperTradingComparisonRefsEqual(outcome.tick_ref, attempt.tick_ref) ||
+      outcome.tick_digest !== attempt.tick_digest ||
+      outcome.checkpoint_sequence !== attempt.checkpoint_sequence
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_reference_mismatch",
+        "paper trading comparison checkpoint outcome does not match its attempt"
+      );
+    }
+    const outcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
+      attempt.paper_trading_comparison_checkpoint_attempt_id
+    );
+    if (outcomes.length > 0) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_state_conflict",
+        "paper trading comparison checkpoint attempt already has a terminal outcome"
+      );
+    }
+    const activationAttempt = await this.getPaperTradingComparisonActivationAttempt(
+      attempt.paper_trading_comparison_activation_attempt_ref.id
+    );
+    if (!activationAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_reference_not_found",
+        "paper trading comparison activation attempt was not found"
+      );
+    }
+    const closure = await this.loadPaperTradingComparisonActivationAttemptClosure(
+      activationAttempt
+    );
+    const [activationOutcomes, activationResults] = await Promise.all([
+      this.listPaperTradingComparisonActivationOutcomes(
+        activationAttempt.paper_trading_comparison_activation_attempt_id
+      ),
+      this.listPaperTradingComparisonActivationSideResults(
+        activationAttempt.paper_trading_comparison_activation_attempt_id
+      )
+    ]);
+    const latestActivationOutcome = activationOutcomes.at(-1);
+    if (!latestActivationOutcome ||
+      latestActivationOutcome.paper_trading_comparison_activation_outcome_id ===
+        attempt.activation_outcome_ref.id ||
+      Date.parse(outcome.completed_at) < Date.parse(latestActivationOutcome.completed_at)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_state_conflict",
+        "paper trading comparison checkpoint incomplete outcome requires later cleanup evidence"
+      );
+    }
+    const recoverCleanup = outcome.next_action === "recover_cleanup";
+    if (recoverCleanup
+      ? latestActivationOutcome.outcome_status !== "cleanup_required"
+      : latestActivationOutcome.outcome_status !== "stopped_cleanly") {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_state_conflict",
+        "paper trading comparison checkpoint cleanup status does not match its next action"
+      );
+    }
+    if (!recoverCleanup) {
+      const championResult = latestPaperTradingComparisonActivationSideResult(
+        activationResults,
+        "champion"
+      );
+      const challengerResult = latestPaperTradingComparisonActivationSideResult(
+        activationResults,
+        "challenger"
+      );
+      const [championState, challengerState] = await Promise.all([
+        this.loadPaperTradingComparisonRuntimeSideState(
+          activationAttempt,
+          "champion",
+          closure.comparison,
+          "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+        ),
+        this.loadPaperTradingComparisonRuntimeSideState(
+          activationAttempt,
+          "challenger",
+          closure.comparison,
+          "paper_trading_comparison_checkpoint_attempt_graph_invalid"
+        )
+      ]);
+      if (!championResult || !challengerResult ||
+        !this.paperTradingComparisonOutcomeResultRefMatches(
+          latestActivationOutcome.champion_latest_result_ref,
+          championResult
+        ) ||
+        !this.paperTradingComparisonOutcomeResultRefMatches(
+          latestActivationOutcome.challenger_latest_result_ref,
+          challengerResult
+        ) ||
+        !this.paperTradingComparisonSideIsStoppedCleanly(championResult, championState) ||
+        !this.paperTradingComparisonSideIsStoppedCleanly(challengerResult, challengerState)) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_checkpoint_outcome_state_conflict",
+          "paper trading comparison checkpoint incomplete outcome lacks symmetric cleanup"
+        );
+      }
+    }
+
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-checkpoint-outcomes",
+        outcome.paper_trading_comparison_checkpoint_outcome_id
+      ),
+      outcome
+    );
+    return outcome;
+  }
+
+  async getPaperTradingComparisonCheckpointOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-checkpoint-outcomes",
+        outcomeId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedComparisonCheckpointOutcomeShape(
+        record,
+        "paper_trading_comparison_checkpoint_outcome_reload_failed"
+      );
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_checkpoint_outcome_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_reload_failed",
+        "persisted paper trading comparison checkpoint outcome is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonCheckpointOutcomes(
+    checkpointAttemptId: string
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord[]> {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-checkpoint-outcomes"
+      );
+      const validated = records.map((record) => {
+        this.assertPersistedComparisonCheckpointOutcomeShape(
+          record,
+          "paper_trading_comparison_checkpoint_outcome_reload_failed"
+        );
+        return record;
+      });
+      return validated
+        .filter((record) => record.checkpoint_attempt_ref.id === checkpointAttemptId)
+        .sort((left, right) =>
+          left.completed_at.localeCompare(right.completed_at) ||
+          left.paper_trading_comparison_checkpoint_outcome_id.localeCompare(
+            right.paper_trading_comparison_checkpoint_outcome_id
+          )
+        );
+    } catch (error) {
+      if (error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_checkpoint_outcome_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_outcome_reload_failed",
+        "persisted paper trading comparison checkpoint outcome collection is unreadable or corrupt"
       );
     }
   }

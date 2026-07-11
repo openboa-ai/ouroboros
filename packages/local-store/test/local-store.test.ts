@@ -47,6 +47,8 @@ import type {
   PaperTradingComparisonActivationRecord,
   PaperTradingComparisonActivationSide,
   PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonCheckpointAttemptRecord,
+  PaperTradingComparisonCheckpointOutcomeRecord,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
@@ -82,6 +84,8 @@ import {
   paperTradingComparisonActivationOutcomeDigestInput,
   paperTradingComparisonActivationPolicyFor,
   paperTradingComparisonActivationSideResultDigestInput,
+  paperTradingComparisonCheckpointAttemptDigestInput,
+  paperTradingComparisonCheckpointOutcomeDigestInput,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCommitmentDigestInput,
@@ -5951,6 +5955,213 @@ describe("LocalStore", () => {
       );
     });
   });
+
+  describe("paper comparison checkpoint lifecycle", () => {
+    it("appends, reloads, lists, and semantically replays one exact checkpoint attempt", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+
+      await expect(store.recordPaperTradingComparisonCheckpointAttempt(attempt))
+        .resolves.toEqual(attempt);
+      await expect(store.recordPaperTradingComparisonCheckpointAttempt(attempt))
+        .resolves.toEqual(attempt);
+      const reordered = Object.fromEntries(
+        Object.entries(attempt).reverse()
+      ) as unknown as PaperTradingComparisonCheckpointAttemptRecord;
+      await expect(store.recordPaperTradingComparisonCheckpointAttempt(reordered))
+        .resolves.toEqual(attempt);
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointAttempt(
+          withCheckpointAttemptDigest({
+            ...attempt,
+            attempted_at: new Date(Date.parse(attempt.attempted_at) + 1).toISOString(),
+            checkpoint_deadline_at: new Date(
+              Date.parse(attempt.checkpoint_deadline_at) + 1
+            ).toISOString()
+          })
+        ),
+        "paper_trading_comparison_checkpoint_attempt_conflict"
+      );
+      await expect(store.getPaperTradingComparisonCheckpointAttempt(
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual(attempt);
+      await expect(store.listPaperTradingComparisonCheckpointAttempts(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([attempt]);
+    });
+
+    it.each([
+      ["digest", (attempt: PaperTradingComparisonCheckpointAttemptRecord) => ({
+        ...attempt,
+        attempt_digest: "sha256:wrong"
+      }), "paper_trading_comparison_checkpoint_attempt_digest_mismatch"],
+      ["activation outcome", (attempt: PaperTradingComparisonCheckpointAttemptRecord) =>
+        withCheckpointAttemptDigest({
+          ...attempt,
+          activation_outcome_digest: "sha256:wrong"
+        }), "paper_trading_comparison_checkpoint_attempt_reference_mismatch"],
+      ["tick", (attempt: PaperTradingComparisonCheckpointAttemptRecord) =>
+        withCheckpointAttemptDigest({
+          ...attempt,
+          tick_digest: "sha256:wrong"
+        }), "paper_trading_comparison_checkpoint_attempt_reference_mismatch"],
+      ["side evaluation", (attempt: PaperTradingComparisonCheckpointAttemptRecord) =>
+        withCheckpointAttemptDigest({
+          ...attempt,
+          challenger: {
+            ...attempt.challenger,
+            evaluation_record_digest: "sha256:wrong"
+          }
+        }), "paper_trading_comparison_checkpoint_attempt_state_mismatch"],
+      ["provider baseline", (attempt: PaperTradingComparisonCheckpointAttemptRecord) =>
+        withCheckpointAttemptDigest({
+          ...attempt,
+          champion: {
+            ...attempt.champion,
+            provider_request_count_before: 0
+          }
+        }), "paper_trading_comparison_checkpoint_attempt_state_mismatch"]
+    ] as const)("rejects checkpoint attempt %s mismatch without mutation", async (
+      label,
+      mutate,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `checkpoint-attempt-${label}`));
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointAttempt(
+          mutate(validCheckpointAttempt(fixture))
+        ),
+        code
+      );
+      await expect(store.listPaperTradingComparisonCheckpointAttempts(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([]);
+    });
+
+    it("serializes alternate checkpoint attempts and keeps one open intent", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const first = validCheckpointAttempt(fixture);
+      const alternate = withCheckpointAttemptDigest({
+        ...first,
+        paper_trading_comparison_checkpoint_attempt_id: "checkpoint-attempt-alternate"
+      });
+
+      const results = await Promise.allSettled([
+        store.recordPaperTradingComparisonCheckpointAttempt(first),
+        store.recordPaperTradingComparisonCheckpointAttempt(alternate)
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect((results.find((result) => result.status === "rejected") as PromiseRejectedResult)
+        .reason).toMatchObject({
+          code: "paper_trading_comparison_checkpoint_attempt_state_conflict"
+        });
+    });
+
+    it("reserves paired outcome persistence for the atomic transaction", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointOutcome(
+          validPairedCheckpointOutcome(attempt)
+        ),
+        "paper_trading_comparison_paired_checkpoint_transaction_required"
+      );
+      await expect(store.listPaperTradingComparisonCheckpointOutcomes(
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual([]);
+    });
+
+    it("appends an exact incomplete outcome only after symmetric cleanup", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const beforeCleanup = validIncompleteCheckpointOutcome(attempt);
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointOutcome(beforeCleanup),
+        "paper_trading_comparison_checkpoint_outcome_state_conflict"
+      );
+      await stopBothRunningRuntimeActivation(store, fixture);
+      const outcome = validIncompleteCheckpointOutcome(attempt, {
+        completedAt: new Date(
+          Date.parse(fixture.outcome.completed_at) + 20_000
+        ).toISOString()
+      });
+
+      await expect(store.recordPaperTradingComparisonCheckpointOutcome(outcome))
+        .resolves.toEqual(outcome);
+      await expect(store.recordPaperTradingComparisonCheckpointOutcome(outcome))
+        .resolves.toEqual(outcome);
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointOutcome(
+          withCheckpointOutcomeDigest({
+            ...outcome,
+            stable_error_code: "drifted-error"
+          })
+        ),
+        "paper_trading_comparison_checkpoint_outcome_conflict"
+      );
+      await expect(store.getPaperTradingComparisonCheckpointOutcome(
+        outcome.paper_trading_comparison_checkpoint_outcome_id
+      )).resolves.toEqual(outcome);
+      await expect(store.listPaperTradingComparisonCheckpointOutcomes(
+        attempt.paper_trading_comparison_checkpoint_attempt_id
+      )).resolves.toEqual([outcome]);
+    });
+
+    it.each([
+      ["attempt", "paper-trading-comparison-checkpoint-attempts",
+        "paper_trading_comparison_checkpoint_attempt_reload_failed"],
+      ["outcome", "paper-trading-comparison-checkpoint-outcomes",
+        "paper_trading_comparison_checkpoint_outcome_reload_failed"]
+    ] as const)("fails closed on corrupt persisted checkpoint %s", async (
+      kind,
+      collection,
+      code
+    ) => {
+      const store = new LocalStore(path.join(tmpDir, `checkpoint-corrupt-${kind}`));
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      if (kind === "outcome") {
+        await stopBothRunningRuntimeActivation(store, fixture);
+        await store.recordPaperTradingComparisonCheckpointOutcome(
+          validIncompleteCheckpointOutcome(attempt, {
+            completedAt: new Date(
+              Date.parse(fixture.outcome.completed_at) + 20_000
+            ).toISOString()
+          })
+        );
+      }
+      const itemDir = path.join(store.root(), collection, "items");
+      await mkdir(itemDir, { recursive: true });
+      await writeFile(path.join(itemDir, "corrupt.json"), "{");
+
+      const listing = kind === "attempt"
+        ? store.listPaperTradingComparisonCheckpointAttempts(
+            fixture.attempt.paper_trading_comparison_activation_attempt_id
+          )
+        : store.listPaperTradingComparisonCheckpointOutcomes(
+            attempt.paper_trading_comparison_checkpoint_attempt_id
+          );
+      await expectStoreError(listing, code);
+    });
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -6882,6 +7093,246 @@ async function storedRuntimeActivationFixture(store: LocalStore) {
   const activation = validPaperTradingComparisonActivation(fixture.comparison, tick);
   await store.recordPaperTradingComparisonActivation(activation);
   return { ...fixture, tick, activation };
+}
+
+async function storedBothRunningRuntimeActivationFixture(store: LocalStore) {
+  const fixture = await storedRuntimeActivationFixture(store);
+  const attempt = validRuntimeActivationAttempt(fixture.activation);
+  await store.recordPaperTradingComparisonActivationAttempt(attempt);
+  const startResults: PaperTradingComparisonActivationSideResultRecord[] = [];
+  for (const role of ["champion", "challenger"] as const) {
+    const context = runtimeActivationWriteContext(attempt, role, "start");
+    const sandbox = runtimeActivationSandboxStart(fixture, attempt, role);
+    await store.recordSandboxStart(sandbox, context);
+    await store.recordRunControlAudit(
+      runtimeActivationRunControlInput(fixture, attempt, role, "start"),
+      context
+    );
+    await store.recordPaperTradingEvaluation(
+      runtimeActivationEvaluation(fixture, attempt, role, "running"),
+      context
+    );
+    const result = runtimeActivationSucceededStartResult(
+      attempt,
+      role,
+      sandbox.instance.sandbox_id
+    );
+    await store.recordPaperTradingComparisonActivationSideResult(result);
+    startResults.push(result);
+  }
+  const outcome = validRuntimeActivationOutcome(attempt, startResults, "both_running");
+  await store.recordPaperTradingComparisonActivationOutcome(outcome);
+  return { ...fixture, attempt, startResults, outcome };
+}
+
+async function stopBothRunningRuntimeActivation(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedBothRunningRuntimeActivationFixture>>
+): Promise<PaperTradingComparisonActivationOutcomeRecord> {
+  const stopResults: PaperTradingComparisonActivationSideResultRecord[] = [];
+  for (const role of ["champion", "challenger"] as const) {
+    const context = runtimeActivationWriteContext(fixture.attempt, role, "stop");
+    const sandboxId = fixture.startResults.find((result) => result.role === role)
+      ?.sandbox_ref?.id;
+    if (!sandboxId) throw new Error(`missing ${role} runtime sandbox`);
+    await store.recordRunControlAudit(
+      runtimeActivationRunControlInput(fixture, fixture.attempt, role, "stop"),
+      context
+    );
+    await store.stopSandbox({
+      sandbox_id: sandboxId,
+      stopped_at: new Date(
+        Date.parse(fixture.attempt.attempted_at) + 7_000
+      ).toISOString()
+    }, {}, context);
+    await store.recordPaperTradingEvaluation(
+      runtimeActivationEvaluation(fixture, fixture.attempt, role, "stopped"),
+      context
+    );
+    const result = runtimeActivationSucceededStopResult(
+      fixture.attempt,
+      role,
+      sandboxId
+    );
+    await store.recordPaperTradingComparisonActivationSideResult(result);
+    stopResults.push(result);
+  }
+  const outcome = validRuntimeActivationOutcome(
+    fixture.attempt,
+    stopResults,
+    "stopped_cleanly",
+    fixture.outcome
+  );
+  await store.recordPaperTradingComparisonActivationOutcome(outcome);
+  return outcome;
+}
+
+function validCheckpointAttempt(
+  fixture: Awaited<ReturnType<typeof storedBothRunningRuntimeActivationFixture>>
+): PaperTradingComparisonCheckpointAttemptRecord {
+  const attemptedAt = new Date(Date.parse(fixture.outcome.completed_at) + 1_000)
+    .toISOString();
+  const side = (role: "champion" | "challenger") => {
+    const evaluation = runtimeActivationEvaluation(
+      fixture,
+      fixture.attempt,
+      role,
+      "running"
+    );
+    const startResult = fixture.startResults.find((result) => result.role === role);
+    if (!startResult) throw new Error(`missing ${role} start result`);
+    return {
+      role,
+      trading_run_ref: { ...fixture.attempt[role].trading_run_ref },
+      paper_trading_evaluation_ref: {
+        ...fixture.attempt[role].paper_trading_evaluation_ref
+      },
+      evaluation_record_digest: comparisonRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+      ),
+      observation_chain_digest: comparisonRecordDigest(
+        paperTradingComparisonObservationChainDigestInput([])
+      ),
+      provider_request_count_before: startResult.provider_request_count
+    };
+  };
+  return withCheckpointAttemptDigest({
+    record_kind: "paper_trading_comparison_checkpoint_attempt",
+    version: 1,
+    paper_trading_comparison_checkpoint_attempt_id:
+      `${fixture.attempt.paper_trading_comparison_activation_attempt_id}-checkpoint-1`,
+    paper_trading_comparison_activation_ref: {
+      ...fixture.attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      fixture.attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: fixture.attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: fixture.attempt.attempt_digest,
+    activation_outcome_ref: {
+      record_kind: "paper_trading_comparison_activation_outcome",
+      id: fixture.outcome.paper_trading_comparison_activation_outcome_id
+    },
+    activation_outcome_digest: fixture.outcome.outcome_digest,
+    paper_trading_comparison_commitment_ref: {
+      ...fixture.attempt.paper_trading_comparison_commitment_ref
+    },
+    paper_trading_comparison_commitment_digest:
+      fixture.attempt.paper_trading_comparison_commitment_digest,
+    tick_ref: { ...fixture.attempt.first_tick_ref },
+    tick_digest: fixture.attempt.first_tick_digest,
+    checkpoint_sequence: 1,
+    champion: side("champion"),
+    challenger: side("challenger"),
+    attempted_at: attemptedAt,
+    checkpoint_deadline_at: new Date(Date.parse(attemptedAt) + 60_000).toISOString(),
+    attempt_status: "preparing",
+    attempt_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withCheckpointAttemptDigest(
+  attempt: PaperTradingComparisonCheckpointAttemptRecord
+): PaperTradingComparisonCheckpointAttemptRecord {
+  return {
+    ...attempt,
+    attempt_digest: comparisonRecordDigest(
+      paperTradingComparisonCheckpointAttemptDigestInput(attempt)
+    )
+  };
+}
+
+function validPairedCheckpointOutcome(
+  attempt: PaperTradingComparisonCheckpointAttemptRecord
+): PaperTradingComparisonCheckpointOutcomeRecord {
+  const side = (role: "champion" | "challenger") => ({
+    role,
+    observation_ref: {
+      record_kind: "paper_trading_observation",
+      id: `${role}-checkpoint-observation-1`
+    },
+    observation_record_digest: `sha256:${role}-checkpoint-observation`,
+    evaluation_record_digest: `sha256:${role}-checkpoint-evaluation`,
+    ledger_chain_refs: [],
+    observation_status: "no_order" as const,
+    consumed_event_count: 0,
+    provider_request_count_after: attempt[role].provider_request_count_before
+  });
+  return withCheckpointOutcomeDigest({
+    record_kind: "paper_trading_comparison_checkpoint_outcome",
+    version: 1,
+    paper_trading_comparison_checkpoint_outcome_id:
+      `${attempt.paper_trading_comparison_checkpoint_attempt_id}-outcome`,
+    checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: attempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpoint_attempt_digest: attempt.attempt_digest,
+    tick_ref: { ...attempt.tick_ref },
+    tick_digest: attempt.tick_digest,
+    checkpoint_sequence: 1,
+    outcome_status: "paired",
+    outcome_reason: "paired_checkpoint_recorded",
+    champion: side("champion"),
+    challenger: side("challenger"),
+    next_action: "design_attributed_next_tick",
+    completed_at: new Date(Date.parse(attempt.attempted_at) + 1_000).toISOString(),
+    outcome_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function validIncompleteCheckpointOutcome(
+  attempt: PaperTradingComparisonCheckpointAttemptRecord,
+  options: { completedAt?: string } = {}
+): PaperTradingComparisonCheckpointOutcomeRecord {
+  return withCheckpointOutcomeDigest({
+    record_kind: "paper_trading_comparison_checkpoint_outcome",
+    version: 1,
+    paper_trading_comparison_checkpoint_outcome_id:
+      `${attempt.paper_trading_comparison_checkpoint_attempt_id}-outcome`,
+    checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: attempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpoint_attempt_digest: attempt.attempt_digest,
+    tick_ref: { ...attempt.tick_ref },
+    tick_digest: attempt.tick_digest,
+    checkpoint_sequence: 1,
+    outcome_status: "incomplete",
+    outcome_reason: "side_preparation_failed",
+    stable_error_code: "checkpoint_side_preparation_failed",
+    next_action: "close_failed_comparison",
+    completed_at: options.completedAt ?? new Date(
+      Date.parse(attempt.attempted_at) + 1_000
+    ).toISOString(),
+    outcome_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withCheckpointOutcomeDigest(
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord
+): PaperTradingComparisonCheckpointOutcomeRecord {
+  return {
+    ...outcome,
+    outcome_digest: comparisonRecordDigest(
+      paperTradingComparisonCheckpointOutcomeDigestInput(outcome)
+    )
+  };
+}
+
+function comparisonRecordDigest(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
 }
 
 function validRuntimeActivationAttempt(
