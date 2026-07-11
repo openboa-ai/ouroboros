@@ -67,10 +67,15 @@ Current command groups:
   zero-observation operational state only. Another uncomposed internal coordinator may persist one
   first-checkpoint intent, refresh both sandboxes under exact checkpoint authority, prepare both
   sides without economic writes, and commit one atomic paired first-tick bundle. Restart recovery
-  rematerializes that exact bundle and stops unowned sessions without replaying decisions. None of
-  these records or operations has public command exposure. Later ticks, repeated checkpoints,
-  resume, qualification, adjudication, verdict, promotion, private access, and live authority remain
-  pending and outside this command contract.
+  rematerializes that exact bundle and stops unowned sessions without replaying decisions. After
+  that bundle, the exact running role-bound provider may be internally enabled to persist a
+  `PaperTradingComparisonTickDelivery` before returning first-tick context from
+  `/market/snapshot`, then persist a matching `PaperTradingComparisonTickAcknowledgement` through
+  `/comparison/tick/ack`. These sandbox-internal routes and records are not public
+  `OuroborosCommand`s, create no economic or lifecycle authority, and do not advance the shared
+  market view. None of these records or operations has public command exposure. Later ticks,
+  repeated checkpoints, resume, qualification, adjudication, verdict, promotion, private access,
+  and live authority remain pending and outside this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read

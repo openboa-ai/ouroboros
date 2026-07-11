@@ -78,8 +78,16 @@ now persists one first-checkpoint intent before side effects, prepares both side
 against the exact stored first tick without economic writes, and commits both Ledger/Observation/
 Evaluation transitions plus one `paired` outcome through a single recoverable LocalStore bundle.
 Silence, `hold`, and `no_action` remain valid no-order continuity; malformed candidate events remain
-paired negative evidence. Later ticks, repeated checkpoints, resume, qualification, adjudication,
-verdicts, and promotion remain pending.
+paired negative evidence. After that exact first checkpoint, the role-bound provider may be
+explicitly enabled to append one deterministic `PaperTradingComparisonTickDelivery` before a
+candidate-facing market response and one exact `PaperTradingComparisonTickAcknowledgement` after
+the candidate returns its opaque context. Startup, candidate input, account reads, order validation,
+and checkpoint preparation create neither record. Delivery and acknowledgement are non-economic
+causal evidence only: they grant no lifecycle, Ledger, evaluation, private, direct-order, verdict,
+promotion, or live authority. Restart preserves exact records and never fabricates them. The first
+checkpoint remains the sole acknowledgement-optional exception; a later checkpoint may count an
+event or silence only after both roles acknowledge its exact tick. Later ticks, repeated
+checkpoints, resume, qualification, adjudication, verdicts, and promotion remain pending.
 
 ## Candidate Freeze
 
@@ -166,6 +174,16 @@ bundle leaves no economic write; a crash after it rematerializes the same record
 never reconstructs a candidate decision and stops unowned sessions. This boundary still does not
 advance the shared view, append a later tick, schedule repeated observation, adjudicate superiority,
 release qualification evidence, confirm a result, authorize promotion, or expose public commands.
+
+Once the exact first paired bundle exists, `PaperTradingSessionService` may enable dormant
+comparison hooks separately for the two owned roles. Only a successful candidate-facing
+`GET /market/snapshot` persists a role/run/tick-bound delivery before returning its context, and only
+`POST /comparison/tick/ack` with that exact context persists the matching acknowledgement. Repeated
+requests reuse the deterministic records while still consuming the frozen provider-request budget.
+These hooks do not read a new market source or expose peer state. They are an internal transport
+protocol, not an `OuroborosCommand`; existing first-checkpoint economics remain unchanged. A future
+sequence-N checkpoint must validate the exact acknowledgement for each role and tick before
+attributing a decision or acknowledged silence.
 
 ## Evaluator Information Barrier
 
@@ -306,15 +324,18 @@ durable intent, bounded parallel start, partial cleanup, and conservative restar
 implemented first paired checkpoint additionally proves both sides consumed one common opportunity
 through a single atomic evidence bundle. It does not prove prospective qualification,
 champion/challenger superiority, repeated comparability, a verdict, post-adjudication release,
-promotion, or P0 completion.
+promotion, or P0 completion. The served-tick attribution substrate additionally proves that the
+running role-bound provider can persist delivery before response and acknowledgement after exact
+candidate return without fabricating records on restart. It does not yet prove sequence-2 input,
+acknowledged sequence-N decisions, or a repeated paired checkpoint.
 
 ## Implementation Frontier Order
 
 1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
    comparison commitment graph, exactly one first shared tick/fixed view, one effect-free activation
-   authorization, bounded symmetric runtime activation/recovery, and one atomic first paired
-   checkpoint are persisted and validated; later ticks, repeated checkpoints, and adjudication
-   remain.
+   authorization, bounded symmetric runtime activation/recovery, one atomic first paired checkpoint,
+   and role-bound delivery/acknowledgement evidence are persisted and validated; later ticks,
+   repeated checkpoints, and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -323,11 +344,12 @@ promotion, or P0 completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Implemented first-checkpoint boundary:** append-only activation and checkpoint intent/outcome
-   evidence; symmetric start; hard provider-request caps; no-write concurrent side preparation; one
-   atomic paired LocalStore bundle; partial cleanup; and conservative restart recovery. **Next
-   frontier:** causal served-tick attribution before any later shared tick or repeated checkpoint.
-   Adjudication remains a later frontier.
+5. **Implemented first-checkpoint and attribution substrate:** append-only activation and checkpoint
+   intent/outcome evidence; symmetric start; hard provider-request caps; no-write concurrent side
+   preparation; one atomic paired LocalStore bundle; partial cleanup; conservative restart recovery;
+   and exact role-bound tick delivery/acknowledgement with no public composition. **Next frontier:**
+   contiguous tick sequence 2, one owned view advance, acknowledgement-required sequence-N
+   preparation, and a repeated atomic paired checkpoint. Adjudication remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; first-tick

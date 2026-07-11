@@ -421,7 +421,7 @@ git commit -m "feat: wire role-bound tick attribution"
 - Produces: real LocalStore/provider/session evidence and maintained implementation status
 - Leaves: tick sequence 2 and repeated checkpoints explicitly closed
 
-- [ ] **Step 1: Write the real integration test**
+- [x] **Step 1: Write the real integration test**
 
 Extend the real first paired checkpoint fixture. Keep both sessions running after paired commit,
 enable attribution for both roles, call each provider's candidate-facing market and ack endpoints,
@@ -429,7 +429,7 @@ and assert exact delivery/ack records with distinct role/run identities and the 
 Assert provider startup and checkpoint preparation created no delivery, repeated GET/ack are
 idempotent, no underlying market read occurs, and restart recovery does not fabricate attribution.
 
-- [ ] **Step 2: Run integration and verify the attribution path**
+- [x] **Step 2: Run integration and verify the attribution path**
 
 Run:
 
@@ -439,7 +439,7 @@ npx vitest run packages/application/src/trading/paper/comparison-coordinator.tes
 
 Expected: PASS only when real LocalStore, provider, session, and authority boundaries agree.
 
-- [ ] **Step 3: Verify no production composition**
+- [x] **Step 3: Verify no production composition**
 
 Run:
 
@@ -450,14 +450,26 @@ rg -n "enableComparisonTickAttributionSide|paper_trading_comparison_tick_deliver
 Expected: domain, Store, provider, and application internals only; no runtime controller, public
 command, CLI, TUI, Web, or Desktop composition.
 
-- [ ] **Step 4: Update canonical docs**
+- [x] **Step 4: Update canonical docs**
 
 Add the three canonical attribution nouns, state that delivery/ack substrate is implemented for the
 existing first-tick session, and preserve explicit closure of later ticks, repeated checkpoints,
 resume, adjudication, verdict, promotion, private access, and live authority. Record actual commits
 and verification counts in this plan.
 
-- [ ] **Step 5: Run focused and repository-wide verification**
+Implemented evidence before final verification:
+
+| Boundary | Commit or evidence |
+| --- | --- |
+| Domain contract | `543ebad` |
+| LocalStore authority | `66dd4ab` |
+| Provider protocol | `1f60b21` |
+| Candidate event lineage | `f2ac1e0` |
+| Session integration | `f7d52d7` |
+| Real HTTP path | `comparison-coordinator.test.ts`, both role-bound provider URLs |
+| Public composition | `rg` inspection: internal domain/Store/provider/application paths only |
+
+- [x] **Step 5: Run focused and repository-wide verification**
 
 Run:
 
@@ -471,7 +483,15 @@ git diff --check
 
 Expected: all focused tests, workspace typechecks, repository guards, and the full suite pass.
 
-- [ ] **Step 6: Commit durable implementation evidence**
+Actual verification on 2026-07-11:
+
+- focused six-file regression: 6 files, 462 tests passed;
+- workspace typecheck: every workspace passed, including the Tauri Desktop build check;
+- repository guards: docs, architecture, naming, tracked env, secret scan, and diff checks passed;
+- full suite: 94 files, 1,392 tests passed;
+- production-composition `rg`: internal domain, Store, provider, and application paths only.
+
+- [x] **Step 6: Commit durable implementation evidence**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-11-comparison-served-tick-attribution-design.md docs/superpowers/plans/2026-07-11-comparison-served-tick-attribution.md packages/application/src/trading/paper/comparison-coordinator.test.ts

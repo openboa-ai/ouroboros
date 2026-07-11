@@ -1,7 +1,7 @@
 # Comparison Served-Tick Attribution Design
 
 **Date:** 2026-07-11
-**Status:** Approved by standing goal authority; implementation not started
+**Status:** Implemented and verified as an internal first-tick attribution substrate
 **Depends on:** One committed first paired checkpoint and its owned `both_running` activation
 
 ## Goal
@@ -211,7 +211,7 @@ must echo the acknowledgement just like an `OrderRequest` or cancel.
 
 `PaperTradingSessionService` installs the optional provider hooks only for an exact comparison
 activation side, but leaves attribution dormant during startup. An internal
-`enableComparisonTickAttribution` call may enable one role only after the activation coordinator
+`enableComparisonTickAttributionSide` call may enable one role only after the activation coordinator
 owns the exact `both_running` attempt. Until then, `/market/snapshot` retains its current response
 without comparison context and creates no delivery. The enabled closure knows role, TradingRun,
 frozen request cap, Store, and the current `ComparisonMarketDataView` tick. It creates no market read
@@ -268,3 +268,18 @@ After this substrate is proven, extend `PaperTradingComparisonTick` to contiguou
 one owned view-advance intent, require one acknowledgement per role for the new tick, and generalize
 the paired checkpoint transaction to sequence N. Only after repeated windows exist should Ouroboros
 design external adjudication, non-overlapping confirmation, or promotion release.
+
+## Implementation Evidence
+
+- `543ebad` defines the total domain records, contexts, digests, and authority predicates.
+- `66dd4ab` adds append-only LocalStore persistence and exact cross-record validation.
+- `1f60b21` adds the optional provider delivery/acknowledgement protocol while preserving generic
+  provider response bytes.
+- `f2ac1e0` preserves all-or-none acknowledgement lineage in candidate events.
+- `f7d52d7` wires dormant role-bound provider hooks through `PaperTradingSessionService`.
+- The real-path integration test uses LocalStore, actual HTTP provider endpoints, both sandbox-bound
+  URLs, deterministic replay, and restart readback. It proves no provider-start/checkpoint
+  fabrication and no underlying market-source read.
+- Production-composition inspection finds the feature only in domain, Store, provider, and
+  application internals; no runtime controller, public command, CLI, TUI, Web, or Desktop surface
+  exposes it.
