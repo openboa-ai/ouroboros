@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
+import type { GatewayRuntimeBinding } from "../gateway/runtime-binding";
+import type { PaperTradingApiProviderComparisonTickHooks } from "../research/types";
 import type { SandboxStartInput } from "../../ports/sandbox";
 import type { OuroborosStorePort } from "../../ports/store";
 import {
@@ -15,6 +17,7 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTickAcknowledgementDigestInput,
   paperTradingEvaluationCommitmentDigestInput
 } from "@ouroboros/domain";
 import type {
@@ -62,6 +65,10 @@ import { PaperTradingComparisonActivationCoordinator } from "./comparison-activa
 import { PaperTradingComparisonTickCoordinator } from "./comparison-tick-coordinator";
 import { PaperTradingComparisonRuntimeActivationCoordinator } from "./comparison-runtime-activation-coordinator";
 import { PaperTradingComparisonCheckpointCoordinator } from "./comparison-checkpoint-coordinator";
+import { PaperTradingComparisonWindowDriver } from "./comparison-window-driver";
+import { LocalStorePaperTradingComparisonWindowStateReader } from
+  "./comparison-window-reader";
+import { PaperTradingComparisonWindowRunner } from "./comparison-window-runner";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -249,8 +256,15 @@ describe("PaperTradingComparisonCoordinator", () => {
     expect(authorized.comparison.verification.activation_authority).toBe("not_granted");
   });
 
-  it("commits the first paired checkpoint and recovers it without decision replay", async () => {
-    const fixture = await comparisonFixture();
+  it("drives three paired checkpoints to the frozen window bound without decision replay", async () => {
+    const fixture = await comparisonFixture({
+      comparisonPolicy: {
+        minimum_observation_count: 3,
+        minimum_elapsed_ms: 120_000,
+        maximum_observation_count: 3,
+        maximum_elapsed_ms: 600_000
+      }
+    });
     const prepared = await fixture.coordinator.prepare(fixture.input);
     const captureMarketData = comparisonFirstTickMarketData(fixture.marketData);
     const captured = await new PaperTradingComparisonTickCoordinator({
@@ -278,6 +292,12 @@ describe("PaperTradingComparisonCoordinator", () => {
       sandboxLogReads: 0,
       fixedMarketReads: 0
     };
+    const providerByRun = new Map<string, string>();
+    const fakeProviders = new Map<string, {
+      binding: GatewayRuntimeBinding;
+      hooks?: PaperTradingApiProviderComparisonTickHooks;
+      requestCount: number;
+    }>();
     const runtimeSessions = (store: OuroborosStorePort = fixture.store) =>
       new PaperTradingSessionService({
       store,
@@ -292,6 +312,10 @@ describe("PaperTradingComparisonCoordinator", () => {
         deterministic_test: {
           async startArtifactInstance(input: SandboxStartInput) {
             runtimeEffects.sandboxStarts += 1;
+            const providerBaseUrl = input.env?.TRADING_API_BASE_URL;
+            if (input.runtime_ref && providerBaseUrl) {
+              providerByRun.set(input.runtime_ref.id, providerBaseUrl);
+            }
             return {
               placement: {
                 record_kind: "sandbox_placement" as const,
@@ -340,12 +364,19 @@ describe("PaperTradingComparisonCoordinator", () => {
           }
         }
       } as never,
-      async apiProviderFactory(binding) {
+      async apiProviderFactory(binding, providerOptions) {
         runtimeEffects.providerStarts += 1;
         await binding.marketData.readMarketSnapshot();
         runtimeEffects.fixedMarketReads += 1;
+        const baseUrl = `http://comparison-provider-${runtimeEffects.providerStarts}.test`;
+        const providerState = {
+          binding,
+          hooks: providerOptions.comparison_tick_hooks,
+          requestCount: 1
+        };
+        fakeProviders.set(baseUrl, providerState);
         return {
-          base_url: `http://comparison-provider-${runtimeEffects.providerStarts}.test`,
+          base_url: baseUrl,
           async close() {
             runtimeEffects.providerCloses += 1;
           },
@@ -355,7 +386,7 @@ describe("PaperTradingComparisonCoordinator", () => {
             path: "/market/snapshot",
             response_status: 200
           }],
-          request_count: () => 1,
+          request_count: () => providerState.requestCount,
           candidate_input: {} as never
         };
       }
@@ -389,11 +420,77 @@ describe("PaperTradingComparisonCoordinator", () => {
       prepared.challenger.evaluation.paper_trading_evaluation_id
     )).resolves.toEqual([]);
 
-    const checkpoint = await new PaperTradingComparisonCheckpointCoordinator({
+    const driftedEvaluationStore = new Proxy(fixture.store, {
+      get(target, property) {
+        if (property === "getPaperTradingEvaluation") {
+          return async (evaluationId: string) => {
+            const evaluation = await target.getPaperTradingEvaluation(evaluationId);
+            if (evaluationId !== prepared.champion.evaluation.paper_trading_evaluation_id ||
+              !evaluation) return evaluation;
+            return {
+              ...evaluation,
+              latest_score: {
+                ...evaluation.latest_score,
+                net_revenue_usdt: evaluation.latest_score.net_revenue_usdt + 1
+              }
+            };
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    await expect(new LocalStorePaperTradingComparisonWindowStateReader({
+      store: driftedEvaluationStore,
+      activations: runtime,
+      now: () => new Date(Math.max(
+        Date.parse(started.attempt.attempted_at),
+        Date.parse(captured.tick.observed_at) + fixture.input.comparisonPolicy.interval_ms
+      )).toISOString()
+    }).load({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_window_graph_invalid"
+    });
+
+    const failedEvaluationStore = new Proxy(fixture.store, {
+      get(target, property) {
+        if (property === "getPaperTradingEvaluation") {
+          return async (evaluationId: string) => {
+            const evaluation = await target.getPaperTradingEvaluation(evaluationId);
+            return evaluationId === prepared.champion.evaluation.paper_trading_evaluation_id &&
+                evaluation
+              ? { ...evaluation, status: "failed" as const }
+              : evaluation;
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    await expect(new LocalStorePaperTradingComparisonWindowStateReader({
+      store: failedEvaluationStore,
+      activations: runtime,
+      now: () => new Date(Math.max(
+        Date.parse(started.attempt.attempted_at),
+        Date.parse(captured.tick.observed_at) + fixture.input.comparisonPolicy.interval_ms
+      )).toISOString()
+    }).load({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_window_graph_invalid"
+    });
+
+    const checkpoints = new PaperTradingComparisonCheckpointCoordinator({
       store: fixture.store,
       sessions: activeSessions,
       activations: runtime
-    }).captureFirst({
+    });
+    const checkpoint = await checkpoints.captureFirst({
       activationId: authorized.activation.paper_trading_comparison_activation_id,
       activationAttemptId:
         started.attempt.paper_trading_comparison_activation_attempt_id,
@@ -423,6 +520,338 @@ describe("PaperTradingComparisonCoordinator", () => {
       prepared.challenger.evaluation.paper_trading_evaluation_id
     )).resolves.toMatchObject({ status: "running", observation_count: 1 });
 
+    for (const role of ["champion", "challenger"] as const) {
+      await activeSessions.enableComparisonTickAttributionSide({
+        side: authorized.activation[role],
+        authority: servedTickAttributionAuthority(
+          started.attempt,
+          role,
+          captured.tick
+        ),
+        tick: captured.tick
+      });
+    }
+    const serveAndAcknowledge = async (
+      role: "champion" | "challenger",
+      deliveredAt: string
+    ) => {
+      const providerBaseUrl = providerByRun.get(
+        authorized.activation[role].trading_run_ref.id
+      );
+      const provider = providerBaseUrl
+        ? fakeProviders.get(providerBaseUrl)
+        : undefined;
+      if (!provider?.hooks) throw new Error(`missing ${role} fake provider hooks`);
+      provider.requestCount += 1;
+      const market = await provider.binding.marketData.readMarketSnapshot();
+      const context = await provider.hooks.deliver({
+        market,
+        provider_request_count: provider.requestCount,
+        delivered_at: deliveredAt
+      });
+      if (!context) throw new Error(`${role} fake provider omitted tick context`);
+      provider.requestCount += 1;
+      const acknowledgement = await provider.hooks.acknowledge({
+        context,
+        provider_request_count: provider.requestCount,
+        acknowledged_at: new Date(Date.parse(deliveredAt) + 1).toISOString()
+      });
+      return { context, acknowledgement };
+    };
+    const firstDeliveredAt = new Date(
+      Date.parse(checkpoint.completed_at) + 1
+    ).toISOString();
+    const firstAttribution = await Promise.all(
+      (["champion", "challenger"] as const).map((role) =>
+        serveAndAcknowledge(role, firstDeliveredAt)
+      )
+    );
+    expect(firstAttribution[0].context.delivery_ref.id).not.toBe(
+      firstAttribution[1].context.delivery_ref.id
+    );
+    const firstAcknowledgements = await fixture.store
+      .listPaperTradingComparisonTickAcknowledgements(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      );
+    const nextObservedAt = new Date(Math.max(
+      Date.parse(captured.tick.observed_at) + comparisonPolicy.interval_ms,
+      ...firstAcknowledgements.map((record) => Date.parse(record.acknowledged_at) + 1)
+    )).toISOString();
+    const nextReads = { market: 0, publicExecution: 0 };
+    const next = await new PaperTradingComparisonTickCoordinator({
+      store: fixture.store,
+      comparisons: fixture.coordinator,
+      marketData: comparisonNextTickMarketData(
+        fixture.marketData,
+        nextReads,
+        nextObservedAt
+      ),
+      activations: runtime,
+      now: () => nextObservedAt
+    }).captureNextTick({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id,
+      idempotencyKey: "real-runtime-pair-next-tick"
+    });
+    expect(nextReads).toEqual({ market: 1, publicExecution: 1 });
+
+    const repeatedAttempt = await checkpoints.beginNext({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id,
+      tickId: next.tick.paper_trading_comparison_tick_id,
+      idempotencyKey: "real-runtime-pair-checkpoint-2"
+    });
+    const secondDeliveredAt = new Date(
+      Date.parse(repeatedAttempt.attempted_at) + 1
+    ).toISOString();
+    await Promise.all(([
+      "champion",
+      "challenger"
+    ] as const).map((role) => serveAndAcknowledge(role, secondDeliveredAt)));
+    const repeatedCheckpoint = await checkpoints.completeNext({
+      checkpointAttemptId:
+        repeatedAttempt.paper_trading_comparison_checkpoint_attempt_id
+    });
+    expect(repeatedCheckpoint).toMatchObject({
+      checkpoint_sequence: 2,
+      outcome_status: "paired",
+      next_action: "capture_next_tick",
+      champion: {
+        observation_status: "no_order",
+        tick_acknowledgement_ref: { id: expect.any(String) }
+      },
+      challenger: {
+        observation_status: "no_order",
+        tick_acknowledgement_ref: { id: expect.any(String) }
+      }
+    });
+    for (const role of ["champion", "challenger"] as const) {
+      await expect(fixture.store.listPaperTradingObservations(
+        authorized.activation[role].paper_trading_evaluation_ref.id
+      )).resolves.toEqual([
+        expect.objectContaining({ sequence: 1 }),
+        expect.objectContaining({
+          sequence: 2,
+          paper_trading_comparison_tick_acknowledgement_ref: expect.objectContaining({
+            id: expect.any(String)
+          })
+        })
+      ]);
+    }
+
+    const secondAcknowledgements = (await fixture.store
+      .listPaperTradingComparisonTickAcknowledgements(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).filter((record) => record.tick_sequence === 2);
+    const thirdObservedAt = new Date(Math.max(
+      Date.parse(next.tick.observed_at) + fixture.input.comparisonPolicy.interval_ms,
+      ...secondAcknowledgements.map((record) =>
+        Date.parse(record.acknowledged_at) + 1
+      )
+    )).toISOString();
+    const thirdReads = { market: 0, publicExecution: 0 };
+    const driverNow = new Date(Math.max(
+      Date.parse(thirdObservedAt) + 2,
+      Date.parse(started.attempt.attempted_at) + 2
+    )).toISOString();
+    const windowCheckpoints = new PaperTradingComparisonCheckpointCoordinator({
+      store: fixture.store,
+      sessions: activeSessions,
+      activations: runtime,
+      now: () => driverNow
+    });
+    const driver = new PaperTradingComparisonWindowDriver({
+      reader: new LocalStorePaperTradingComparisonWindowStateReader({
+        store: fixture.store,
+        activations: runtime,
+        now: () => driverNow
+      }),
+      ticks: new PaperTradingComparisonTickCoordinator({
+        store: fixture.store,
+        comparisons: fixture.coordinator,
+        marketData: comparisonNextTickMarketData(
+          fixture.marketData,
+          thirdReads,
+          thirdObservedAt
+        ),
+        activations: runtime,
+        now: () => thirdObservedAt
+      }),
+      checkpoints: windowCheckpoints,
+      activations: runtime
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const windowRunner = new PaperTradingComparisonWindowRunner({ driver });
+    const windowRunnerInput = {
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id,
+      pollIntervalMs: 1
+    };
+    expect(windowRunner.start(windowRunnerInput)).toBe("started");
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(windowRunner.drain(windowRunnerInput.activationAttemptId, 1_000))
+      .resolves.toBe(true);
+    expect(windowRunner.status(windowRunnerInput.activationAttemptId)).toMatchObject({
+      status: "running",
+      latest_step: {
+        transition: "capture_next_tick",
+        phase: "next_tick_captured",
+        checkpoint_sequence: 3
+      }
+    });
+    expect(thirdReads).toEqual({ market: 1, publicExecution: 1 });
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(windowRunner.drain(windowRunnerInput.activationAttemptId, 1_000))
+      .resolves.toBe(true);
+    expect(windowRunner.status(windowRunnerInput.activationAttemptId)).toMatchObject({
+      status: "running",
+      latest_step: {
+        transition: "begin_next_checkpoint",
+        phase: "views_advanced",
+        checkpoint_sequence: 3
+      }
+    });
+    const thirdAttempt = (await fixture.store
+      .listPaperTradingComparisonCheckpointAttempts(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).at(-1);
+    if (!thirdAttempt || thirdAttempt.checkpoint_sequence !== 3) {
+      throw new Error("driver did not persist checkpoint 3 intent");
+    }
+    const thirdDeliveredAt = new Date(
+      Date.parse(thirdAttempt.attempted_at) + 1
+    ).toISOString();
+    await Promise.all(([
+      "champion",
+      "challenger"
+    ] as const).map((role) => serveAndAcknowledge(role, thirdDeliveredAt)));
+
+    const missingPriorAcknowledgementStore = new Proxy(fixture.store, {
+      get(target, property) {
+        if (property === "listPaperTradingComparisonTickAcknowledgements") {
+          return async (activationAttemptId: string) =>
+            (await target.listPaperTradingComparisonTickAcknowledgements(
+              activationAttemptId
+            )).filter((record) =>
+              !(record.role === "champion" && record.tick_sequence === 2)
+            );
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    await expect(new LocalStorePaperTradingComparisonWindowStateReader({
+      store: missingPriorAcknowledgementStore,
+      activations: runtime,
+      now: () => driverNow
+    }).load({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_window_graph_invalid"
+    });
+
+    const crossRoleAcknowledgementStore = new Proxy(fixture.store, {
+      get(target, property) {
+        if (property === "listPaperTradingComparisonTickAcknowledgements") {
+          return async (activationAttemptId: string) => {
+            const records = await target.listPaperTradingComparisonTickAcknowledgements(
+              activationAttemptId
+            );
+            const champion = records.find((record) =>
+              record.role === "champion" && record.tick_sequence === 3
+            );
+            const challenger = records.find((record) =>
+              record.role === "challenger" && record.tick_sequence === 3
+            );
+            if (!champion || !challenger) return records;
+            return records.map((record) => {
+              if (record.paper_trading_comparison_tick_acknowledgement_id !==
+                champion.paper_trading_comparison_tick_acknowledgement_id) return record;
+              const changed = {
+                ...record,
+                delivery_ref: { ...challenger.delivery_ref },
+                delivery_digest: challenger.delivery_digest,
+                acknowledgement_digest: ""
+              };
+              return {
+                ...changed,
+                acknowledgement_digest: comparisonExactRecordDigest(
+                  paperTradingComparisonTickAcknowledgementDigestInput(changed)
+                )
+              };
+            });
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    await expect(new LocalStorePaperTradingComparisonWindowStateReader({
+      store: crossRoleAcknowledgementStore,
+      activations: runtime,
+      now: () => driverNow
+    }).load({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_window_graph_invalid"
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(windowRunner.drain(windowRunnerInput.activationAttemptId, 1_000))
+      .resolves.toBe(true);
+    expect(windowRunner.status(windowRunnerInput.activationAttemptId)).toMatchObject({
+      status: "running",
+      latest_step: {
+        transition: "complete_next_checkpoint",
+        phase: "checkpoint_committed",
+        checkpoint_sequence: 3,
+        terminal: false
+      }
+    });
+    const thirdCheckpoint = (await fixture.store
+      .listPaperTradingComparisonCheckpointOutcomes(
+        thirdAttempt.paper_trading_comparison_checkpoint_attempt_id
+      )).at(-1);
+    if (!thirdCheckpoint || thirdCheckpoint.outcome_status !== "paired") {
+      throw new Error("driver did not commit checkpoint 3");
+    }
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(windowRunner.drain(windowRunnerInput.activationAttemptId, 1_000))
+      .resolves.toBe(true);
+    expect(windowRunner.status(windowRunnerInput.activationAttemptId)).toMatchObject({
+      status: "completed",
+      latest_step: {
+        transition: "stop_window",
+        phase: "window_stopped",
+        checkpoint_sequence: 3,
+        terminal: true
+      }
+    });
+    expect(windowRunner.active(windowRunnerInput.activationAttemptId)).toBe(false);
+    vi.useRealTimers();
+    for (const role of ["champion", "challenger"] as const) {
+      await expect(fixture.store.listPaperTradingObservations(
+        authorized.activation[role].paper_trading_evaluation_ref.id
+      )).resolves.toEqual([
+        expect.objectContaining({ sequence: 1 }),
+        expect.objectContaining({ sequence: 2 }),
+        expect.objectContaining({
+          sequence: 3,
+          paper_trading_comparison_tick_acknowledgement_ref:
+            expect.objectContaining({ id: expect.any(String) })
+        })
+      ]);
+    }
+
     const restartedStore = new LocalStore(fixture.store.root());
     await restartedStore.initialize();
     const restartedSessions = runtimeSessions(restartedStore);
@@ -437,7 +866,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       activations: restarted
     }).recoverIncompleteCheckpoints();
 
-    expect(recovered).toEqual([checkpoint]);
+    expect(recovered).toEqual([checkpoint, repeatedCheckpoint, thirdCheckpoint]);
     await expect(restartedStore.getTradingRun(
       prepared.champion.run.trading_run_id
     )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
@@ -446,25 +875,25 @@ describe("PaperTradingComparisonCoordinator", () => {
     )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
     await expect(restartedStore.getPaperTradingEvaluation(
       prepared.champion.evaluation.paper_trading_evaluation_id
-    )).resolves.toMatchObject({ status: "stopped", observation_count: 1 });
+    )).resolves.toMatchObject({ status: "stopped", observation_count: 3 });
     await expect(restartedStore.getPaperTradingEvaluation(
       prepared.challenger.evaluation.paper_trading_evaluation_id
-    )).resolves.toMatchObject({ status: "stopped", observation_count: 1 });
+    )).resolves.toMatchObject({ status: "stopped", observation_count: 3 });
     await expect(restartedStore.listPaperTradingComparisonActivationOutcomes(
       started.attempt.paper_trading_comparison_activation_attempt_id
     )).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({
         outcome_sequence: 2,
         outcome_status: "stopped_cleanly",
-        outcome_reason: "restart_cleanup"
+        outcome_reason: "handoff_cleanup"
       })
     ]));
     expect(runtimeEffects).toEqual({
       providerStarts: 2,
-      providerCloses: 0,
+      providerCloses: 2,
       sandboxStarts: 2,
       sandboxStops: 2,
-      sandboxLogReads: 2,
+      sandboxLogReads: 6,
       fixedMarketReads: 2
     });
     expect(fixture.effects.marketReads).toBe(0);
@@ -472,7 +901,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       .toBe(authorized.activation.first_tick_ref.id);
   });
 
-  it("records served attribution and captures the next tick without changing provider views", async () => {
+  it("records served attribution and completes a repeated paired checkpoint", async () => {
     const fixture = await comparisonFixture();
     const prepared = await fixture.coordinator.prepare(fixture.input);
     const captureMarketData = comparisonFirstTickMarketData(fixture.marketData);
@@ -576,11 +1005,12 @@ describe("PaperTradingComparisonCoordinator", () => {
         activationId: authorized.activation.paper_trading_comparison_activation_id,
         idempotencyKey: "real-served-attribution-start"
       });
-      const checkpoint = await new PaperTradingComparisonCheckpointCoordinator({
+      const checkpoints = new PaperTradingComparisonCheckpointCoordinator({
         store: fixture.store,
         sessions: activeSessions,
         activations: runtime
-      }).captureFirst({
+      });
+      const checkpoint = await checkpoints.captureFirst({
         activationId: authorized.activation.paper_trading_comparison_activation_id,
         activationAttemptId:
           started.attempt.paper_trading_comparison_activation_attempt_id,
@@ -749,6 +1179,121 @@ describe("PaperTradingComparisonCoordinator", () => {
         started.attempt.paper_trading_comparison_activation_attempt_id
       )).resolves.toEqual(beforeRestart.deliveries);
       expect(fixture.effects.marketReads).toBe(0);
+
+      const providerUrlsBeforeAdvance = structuredClone(
+        Object.fromEntries(providerBaseUrls)
+      );
+      const repeatedAttempt = await checkpoints.beginNext({
+        activationId: authorized.activation.paper_trading_comparison_activation_id,
+        activationAttemptId:
+          started.attempt.paper_trading_comparison_activation_attempt_id,
+        tickId: next.tick.paper_trading_comparison_tick_id,
+        idempotencyKey: "real-served-attribution-checkpoint-2"
+      });
+      expect(repeatedAttempt).toMatchObject({
+        checkpoint_sequence: 2,
+        tick_ref: { id: next.tick.paper_trading_comparison_tick_id },
+        previous_checkpoint_outcome_ref: {
+          id: checkpoint.paper_trading_comparison_checkpoint_outcome_id
+        }
+      });
+      expect(Object.fromEntries(providerBaseUrls)).toEqual(providerUrlsBeforeAdvance);
+
+      const secondContexts = new Map<
+        "champion" | "challenger",
+        PaperTradingComparisonTickContext
+      >();
+      for (const role of ["champion", "challenger"] as const) {
+        const providerBaseUrl = providerBaseUrls.get(
+          authorized.activation[role].trading_run_ref.id
+        );
+        if (!providerBaseUrl) throw new Error(`missing ${role} provider URL`);
+        const marketResponse = await fetch(`${providerBaseUrl}/market/snapshot`);
+        const marketPayload = await marketResponse.json() as {
+          price?: number;
+          comparison_tick_context?: PaperTradingComparisonTickContext;
+        };
+        expect(marketResponse.status).toBe(200);
+        expect(marketPayload.price).toBe(60_100);
+        expect(marketPayload.comparison_tick_context).toMatchObject({
+          tick_ref: { id: next.tick.paper_trading_comparison_tick_id },
+          tick_digest: next.tick.tick_digest,
+          tick_sequence: 2
+        });
+        if (!marketPayload.comparison_tick_context) {
+          throw new Error(`${role} tick 2 market response omitted context`);
+        }
+        secondContexts.set(role, marketPayload.comparison_tick_context);
+        const acknowledgement = await fetch(
+          `${providerBaseUrl}/comparison/tick/ack`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(marketPayload.comparison_tick_context)
+          }
+        );
+        expect(acknowledgement.status).toBe(200);
+      }
+      expect(secondContexts.get("champion")?.delivery_ref.id).not.toBe(
+        secondContexts.get("challenger")?.delivery_ref.id
+      );
+
+      const repeatedOutcome = await checkpoints.completeNext({
+        checkpointAttemptId:
+          repeatedAttempt.paper_trading_comparison_checkpoint_attempt_id
+      });
+      expect(repeatedOutcome).toMatchObject({
+        checkpoint_sequence: 2,
+        outcome_status: "paired",
+        next_action: "capture_next_tick",
+        champion: {
+          observation_status: "no_order",
+          tick_acknowledgement_ref: { id: expect.any(String) }
+        },
+        challenger: {
+          observation_status: "no_order",
+          tick_acknowledgement_ref: { id: expect.any(String) }
+        }
+      });
+      await expect(fixture.store.listPaperTradingComparisonCheckpointAttempts(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([
+        expect.objectContaining({ checkpoint_sequence: 1 }),
+        expect.objectContaining({ checkpoint_sequence: 2 })
+      ]);
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(fixture.store.listPaperTradingObservations(
+          authorized.activation[role].paper_trading_evaluation_ref.id
+        )).resolves.toEqual([
+          expect.objectContaining({ sequence: 1 }),
+          expect.objectContaining({
+            sequence: 2,
+            status: "no_order",
+            paper_trading_comparison_tick_acknowledgement_ref: expect.objectContaining({
+              id: expect.any(String)
+            })
+          })
+        ]);
+        await expect(fixture.store.getPaperTradingEvaluation(
+          authorized.activation[role].paper_trading_evaluation_ref.id
+        )).resolves.toMatchObject({
+          status: "running",
+          observation_count: 2,
+          last_observed_at: next.tick.observed_at
+        });
+      }
+
+      const completedRestartStore = new LocalStore(fixture.store.root());
+      await completedRestartStore.initialize();
+      await expect(
+        completedRestartStore.recoverPaperTradingComparisonCheckpointTransactions()
+      ).resolves.toEqual([checkpoint, repeatedOutcome]);
+      await expect(completedRestartStore.listPaperTradingComparisonTickDeliveries(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toHaveLength(4);
+      await expect(completedRestartStore.listPaperTradingComparisonTickAcknowledgements(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toHaveLength(4);
     } finally {
       if (started) {
         await Promise.allSettled((["champion", "challenger"] as const).map((role) =>
@@ -2283,6 +2828,7 @@ interface ComparisonFixtureOptions {
   preAdmissionQualification?: boolean;
   reversePromotionObservationTime?: boolean;
   challengerSystemCodeAfterAdmission?: boolean;
+  comparisonPolicy?: Partial<PaperTradingComparisonPolicy>;
 }
 
 function comparisonFirstTickMarketData(
@@ -2601,6 +3147,7 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     },
     comparisonPolicy: {
       ...comparisonPolicy,
+      ...options.comparisonPolicy,
       comparison_mode: options.comparisonMode ?? "champion_challenge"
     },
     marketDataConfigurationDigest: paperTradingMarketDataConfigurationDigest(marketData),
