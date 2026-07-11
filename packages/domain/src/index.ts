@@ -1851,6 +1851,20 @@ export interface PaperTradingComparisonCommitmentRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface PaperTradingComparisonTickRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick";
+  paper_trading_comparison_tick_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  sequence: number;
+  market_data_configuration_digest: string;
+  market_snapshot: PaperTradingMarketSnapshotSummary;
+  public_execution_snapshot: PaperTradingPublicExecutionSnapshotSummary;
+  observed_at: string;
+  tick_digest: string;
+  authority_status: "not_live";
+}
+
 export interface PaperTradingQualificationPolicy {
   minObservationCount: number;
   minElapsedMs: number;
@@ -2022,6 +2036,19 @@ export function paperTradingComparisonCommitmentDigestInput(
   return canonicalPaperTradingCommitmentJson(payload);
 }
 
+export function paperTradingComparisonTickDigestInput(
+  record: PaperTradingComparisonTickRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_id: _id,
+    tick_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export const PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT: PaperTradingAccountSnapshot = {
   wallet_balance_usdt: "10000", available_balance_usdt: "10000", equity_usdt: "10000",
   realized_pnl_usdt: "0", unrealized_pnl_usdt: "0", fee_paid_usdt: "0",
@@ -2051,6 +2078,12 @@ function comparisonIso(value: unknown): value is string {
 function comparisonPositive(value: unknown): value is number { return Number.isInteger(value) && Number(value) > 0; }
 function comparisonNonNegative(value: unknown): value is number { return Number.isInteger(value) && Number(value) >= 0; }
 function comparisonFinite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
+function comparisonPositiveFinite(value: unknown): value is number {
+  return comparisonFinite(value) && value > 0;
+}
+function comparisonNonNegativeFinite(value: unknown): value is number {
+  return comparisonFinite(value) && value >= 0;
+}
 function comparisonDigest(value: unknown): value is string { return comparisonString(value); }
 function comparisonPolicyIdentity(value: unknown): boolean {
   return comparisonObject(value) && ["market_data_policy_version", "gateway_policy_version", "cost_policy_version", "funding_policy_version", "slippage_policy_version", "fill_policy_version", "risk_policy_version", "paper_account_policy_version", "decision_event_protocol_version", "persistent_state_boundary_version"].every((key) => comparisonString(value[key]));
@@ -2115,6 +2148,52 @@ export function paperTradingComparisonCommitmentHasRuntimeShape(value: unknown):
     paperTradingComparisonSideHasRuntimeShape(value.champion, "champion") && paperTradingComparisonSideHasRuntimeShape(value.challenger, "challenger") &&
     value.champion.candidate_version_ref.id !== value.challenger.candidate_version_ref.id && value.champion.trading_run_ref.id !== value.challenger.trading_run_ref.id &&
     paperTradingComparisonChampionSelectionHasRuntimeShape(value.champion_selection, value.comparison_policy.comparison_mode) && comparisonDigest(value.market_data_configuration_digest) && comparisonPolicyIdentity(value.paper_policy_identity) && comparisonIso(value.committed_at) && comparisonDigest(value.commitment_digest) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickRecord {
+  if (
+    !comparisonObject(value) ||
+    !comparisonObject(value.market_snapshot) ||
+    !comparisonObject(value.public_execution_snapshot)
+  ) {
+    return false;
+  }
+  const market = value.market_snapshot;
+  const execution = value.public_execution_snapshot;
+  return value.record_kind === "paper_trading_comparison_tick" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
+    value.sequence === 1 &&
+    comparisonDigest(value.market_data_configuration_digest) &&
+    comparisonMarketSnapshot(market) &&
+    comparisonPositiveFinite(market.price) &&
+    comparisonPositiveFinite(market.moving_average_fast) &&
+    comparisonPositiveFinite(market.moving_average_slow) &&
+    comparisonNonNegativeFinite(market.volatility) &&
+    (market.expected_direction === "long" ||
+      market.expected_direction === "short" ||
+      market.expected_direction === "flat") &&
+    comparisonMarketSourcePriority(market.source_priority) &&
+    market.freshness === "fresh" &&
+    typeof market.ws_connected === "boolean" &&
+    typeof market.rest_fallback_used === "boolean" &&
+    market.gap_detected === false &&
+    comparisonPublicExecution(execution) &&
+    comparisonMarketSourcePriority(execution.source_priority) &&
+    execution.freshness === "fresh" &&
+    typeof execution.ws_connected === "boolean" &&
+    typeof execution.rest_fallback_used === "boolean" &&
+    execution.gap_detected === false &&
+    comparisonIso(value.observed_at) &&
+    comparisonDigest(value.tick_digest) &&
+    value.authority_status === "not_live";
 }
 
 export interface PaperTradingEvaluationRecord extends BaseRecord {
@@ -2353,6 +2432,9 @@ function comparisonMarketSnapshot(value: unknown): boolean {
     (value.stream_marker === undefined || comparisonString(value.stream_marker)) && value.authority_status === "read_only";
 }
 function comparisonMarketSource(value: unknown): boolean { return ["binance_production_public_rest", "binance_production_public_websocket", "binance_production_public_hybrid", "binance_production_public_stream"].includes(value as string); }
+function comparisonMarketSourcePriority(value: unknown): boolean {
+  return ["websocket_primary", "rest_fallback", "hybrid_recovered"].includes(value as string);
+}
 function comparisonOrderBook(value: unknown): boolean {
   return value === undefined || comparisonObject(value) && value.symbol === "BTCUSDT" && comparisonIso(value.observed_at) && comparisonMarketSource(value.source_kind) &&
     ["not_started", "buffering", "synced", "recovering", "stale"].includes(value.sync_status as string) &&
@@ -4357,6 +4439,7 @@ export type FixtureRecord =
   | PaperTradingEvaluationCommitmentRecord
   | PaperTradingComparisonPreparationRecord
   | PaperTradingComparisonCommitmentRecord
+  | PaperTradingComparisonTickRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord
