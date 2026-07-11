@@ -1,7 +1,7 @@
 # Paired Paper Comparison Qualification Design
 
 **Date:** 2026-07-12
-**Status:** Approved by standing Goal authority; implementation not started
+**Status:** Implemented and repository-verified internally; not production-composed
 **Depends on:** Internally proven bounded paper comparison window through sequence 3
 
 ## Goal
@@ -15,6 +15,20 @@ This is an evidence-quality decision only. `qualified` means both frozen sides s
 prospective comparison protocol and their evidence can be handed to a separate adjudicator. It does
 not mean the challenger is better, statistically significant, confirmed, released, promoted, or
 live-capable.
+
+## Implementation Evidence
+
+- A pure decision returns stable ordered blockers for window, minimum, canonical-side, exact-run,
+  chain-completeness, and ref-set failures without mutating input.
+- The Store-backed service calls the existing window reader first, rejects readback drift, invokes
+  canonical side qualification with frozen minimums, and performs no writes.
+- A real LocalStore/session sequence-3 window qualifies after orderly `handoff_cleanup`; replay and
+  restart-rematerialized assessment are deeply equal and preserve record counts.
+- Default-run substitution, extra and partial chains, hidden or duplicate refs, side evidence
+  drift, incomplete checkpoints, and unsupported/cross-run refs are covered by stable blockers or
+  graph rejection.
+- No app, controller, command, operator read model, adjudicator, release, promotion, private, or
+  live composition was added.
 
 ## Selected Architecture
 
@@ -113,6 +127,10 @@ Qualification then requires:
 - no open runtime ownership and both exact TradingRuns/evaluations stopped;
 - checkpoint count within the frozen maximum; minimum count/time are evaluated independently below.
 
+The pure decision receives `checkpointOutcomesComplete` explicitly. This keeps an incomplete
+terminal attempt distinct from a below-minimum but otherwise clean paired window instead of trying
+to infer both states from one phase string.
+
 An elapsed-bound window may contain fewer than the maximum observation count. That is valid only if
 both sides still satisfy the frozen minimum qualification policy. Restart cleanup, cleanup-required,
 candidate-failed, open, and partially persisted windows are not qualified.
@@ -153,6 +171,11 @@ Every actual chain must be complete and internally role/run-bound by the Store p
 expected and actual ref sets must be exactly equal: no missing, extra, duplicate, or cross-run
 records. A side with only acknowledged silence is valid when both sets are empty and its observations
 contain no Ledger refs. An order-bearing observation with no complete chain is blocked.
+
+LocalStore represents a zero-chain Ledger with `has_activity=false`, `chain_count=0`, null latest
+records, and aggregate `chain_complete=false` because there is no chain to complete. That exact
+projection is valid only against an empty expected ref set. A missing projection or Ledger remains
+incomplete; any non-empty chain still must carry `chain_complete=true` and complete internal refs.
 
 This gate proves evidence completeness only. Gateway rejection and paper execution failure remain
 valid complete chains when their canonical records say so; qualification does not rewrite their

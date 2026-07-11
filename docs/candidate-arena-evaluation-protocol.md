@@ -308,9 +308,11 @@ The following current surfaces require implementation work before P0 can pass:
   pair, persist a contiguous Gateway-owned tick sequence, run both paper-only sides, record exact
   role-bound delivery and acknowledgement, and atomically commit paired observations through a
   proven third checkpoint. Internal application-only driver/runner components can advance an owned
-  graph to its frozen maximum boundary. They are not composed into a production command or runtime,
-  cannot resume provider processes after restart, and cannot qualify a minimum window, adjudicate
-  superiority, release evidence, or promote a candidate.
+  graph to its frozen maximum boundary. A read-only paired qualification service now admits only a
+  cleanly stopped window whose shared count/elapsed minimums, both canonical side qualifications,
+  and exact run-specific Ledger sets are complete. These components are not composed into a
+  production command or runtime, cannot resume provider processes after restart, and cannot
+  adjudicate superiority, release evidence, or promote a candidate.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
@@ -345,9 +347,11 @@ bundle, then advances contiguous ticks only after exact role-bound acknowledgeme
 acknowledged silence and exact acknowledgement-bound events can produce sequence-N paired evidence
 through sequence 3 without provider or sandbox restart, a bounded internal runner can schedule one
 reconstructible transition at a time, exact terminal successors survive transaction recovery, and
-restart rematerializes bundles without decision replay. This is repeated causal comparability
-substrate, not production composition, prospective
-minimum-window qualification, champion/challenger superiority, confirmation, a verdict,
+restart rematerializes bundles without decision replay. The read-only paired qualification path
+then proves the clean stop, shared prospective minimums, both canonical side qualifications, exact
+additional TradingRun identity, and complete Ledger ref-set equality without writing evidence.
+This is repeated causal comparability and evidence-quality substrate, not production composition,
+champion/challenger superiority, confirmation, a verdict,
 post-adjudication release, promotion, or P0 completion.
 
 ## Implementation Frontier Order
@@ -356,7 +360,8 @@ post-adjudication release, promotion, or P0 completion.
    comparison commitment graph, contiguous shared ticks, one effect-free activation authorization,
    bounded symmetric runtime activation/recovery, atomic paired checkpoints through sequence 3,
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
-   implemented and validated; production composition, qualification, and adjudication remain.
+   implemented and validated; read-only paired qualification is also implemented internally, while
+   production composition and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -365,16 +370,17 @@ post-adjudication release, promotion, or P0 completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Implemented internally through a bounded three-checkpoint window:** append-only activation,
+5. **Implemented internally through paired qualification:** append-only activation,
    contiguous tick, and checkpoint intent/outcome evidence; symmetric start and view advance; hard
    provider-request caps; acknowledgement-required sequence-N preparation; recoverable atomic
    paired LocalStore bundles through sequence 3; one-step graph reconstruction; non-overlapping
    process-local scheduling; frozen maximum-bound stopping; symmetric cleanup; conservative restart
-   recovery; and no public composition. **Next frontier:** a read-only paired qualification decision
-   over a cleanly stopped exact run-specific window. Adjudication and production composition remain
-   later frontiers.
+   recovery; read-only clean-stop, canonical-side, shared-minimum, and exact-run Ledger
+   qualification; and no public composition. **Next frontier:** a separately persisted external
+   comparison verdict over qualified evidence with exact input digests and non-overlapping
+   confirmation requirements. Production composition remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
-   three-checkpoint scientific-control window is proven internally, while production composition,
-   longer soak evidence, qualification, adjudication, and full P0 evidence remain.
+   three-checkpoint scientific-control window and its read-only qualification are proven internally,
+   while production composition, longer soak evidence, adjudication, and full P0 evidence remain.

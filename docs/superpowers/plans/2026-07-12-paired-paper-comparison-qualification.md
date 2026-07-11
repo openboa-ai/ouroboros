@@ -7,6 +7,8 @@
 **Goal:** Add a deterministic read-only qualification decision that admits only cleanly stopped,
 canonically qualified champion/challenger windows with complete exact-TradingRun Ledger lineage.
 
+**Status:** Implemented and repository-verified internally; not production-composed.
+
 **Architecture:** A pure decision module maps validated window, side qualification, and Ledger facts
 to stable paired blockers. A Store-backed application service reuses the comparison-window reader
 as the graph gate, invokes canonical side qualification, and passes exact-run evidence to the pure
@@ -41,7 +43,7 @@ decision. No record or public composition is added.
 - Produces: `PaperTradingComparisonQualificationResult`
 - Produces: `decidePaperTradingComparisonQualification`
 
-- [ ] **Step 1: Write failing decision tests**
+- [x] **Step 1: Write failing decision tests**
 
 Define the exact input:
 
@@ -53,6 +55,7 @@ interface PaperTradingComparisonQualificationDecisionInput {
   windowPhase: PaperTradingComparisonWindowPhase;
   finalOutcomeReason?: PaperTradingComparisonActivationOutcomeReason;
   checkpointCount: number;
+  checkpointOutcomesComplete: boolean;
   minimumObservationCount: number;
   minimumElapsedMs: number;
   activationAttemptedAt: string;
@@ -76,7 +79,7 @@ running/failed/recovery/non-handoff windows; missing projection; wrong exact run
 duplicate, missing, extra, and cross-run refs; deterministic reason order; input immutability; and
 exact replay.
 
-- [ ] **Step 2: Run decision tests and verify RED**
+- [x] **Step 2: Run decision tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-decision.test.ts
@@ -84,7 +87,7 @@ npx vitest run packages/application/src/trading/paper/comparison-qualification-d
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement the pure decision**
+- [x] **Step 3: Implement the pure decision**
 
 Create:
 
@@ -120,8 +123,10 @@ export interface PaperTradingComparisonQualificationResult {
 Flatten actual refs from every chain's order request, gateway result, and execution result. Require
 every chain complete, exact projected run identity, supported ref kinds, no duplicates, and sorted
 set equality. An absent ledger is incomplete; an exact empty ledger matches only empty expected refs.
+LocalStore's exact zero-chain projection has `chain_complete=false`; its no-activity/count/latest
+fields distinguish it from a partial non-empty chain.
 
-- [ ] **Step 4: Run decision tests and typecheck**
+- [x] **Step 4: Run decision tests and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-decision.test.ts
@@ -130,12 +135,19 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: all decision tests and typecheck pass.
 
-- [ ] **Step 5: Commit the decision**
+Actual: 10 decision tests and `@ouroboros/application` typecheck passed. The real LocalStore
+zero-chain projection (`chain_complete=false`) is accepted only when all other empty-Ledger fields
+and expected refs are empty.
+
+- [x] **Step 5: Commit the decision**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-qualification-decision.ts packages/application/src/trading/paper/comparison-qualification-decision.test.ts
 git commit -m "feat: decide paired paper qualification"
 ```
+
+Actual: committed as `f95f42f`; empty-Ledger semantics were corrected under real integration in
+`daabe00`.
 
 ### Task 2: Load exact Store evidence and canonical side qualification
 
@@ -149,7 +161,7 @@ git commit -m "feat: decide paired paper qualification"
 - Consumes: `decidePaperTradingComparisonQualification`
 - Produces: `PaperTradingComparisonQualificationService.assess`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Define:
 
@@ -174,7 +186,7 @@ qualification receives `runnerActive: false` plus frozen minimum count/elapsed; 
 refs are flattened per role; reader facts supply shared activation/latest-tick elapsed time to the
 pure decision; no mutation method runs; and replay is deeply equal.
 
-- [ ] **Step 2: Run service tests and verify RED**
+- [x] **Step 2: Run service tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-service.test.ts
@@ -182,7 +194,7 @@ npx vitest run packages/application/src/trading/paper/comparison-qualification-s
 
 Expected: FAIL because the service does not exist.
 
-- [ ] **Step 3: Implement strict Store loading**
+- [x] **Step 3: Implement strict Store loading**
 
 Normalize IDs, call the window reader first, load exact activation and latest attempt, load the bound
 comparison commitment, require contiguous checkpoint attempts with one terminal outcome each, load
@@ -201,7 +213,7 @@ new PaperTradingComparisonQualificationServiceError(
 
 Expected `not_qualified` decisions are returned, not thrown.
 
-- [ ] **Step 4: Run service and qualification regressions**
+- [x] **Step 4: Run service and qualification regressions**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-service.test.ts packages/application/src/trading/paper/comparison-window-state.test.ts packages/application/src/trading/paper/qualification.test.ts
@@ -210,12 +222,17 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: service, window, canonical qualification, and typecheck pass.
 
-- [ ] **Step 5: Commit the service**
+Actual: 9 service tests plus decision, window, and canonical qualification regressions passed;
+application typecheck passed. Observation-count readback drift rejects with a stable graph cause.
+
+- [x] **Step 5: Commit the service**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-qualification-service.ts packages/application/src/trading/paper/comparison-qualification-service.test.ts
 git commit -m "feat: qualify stopped paper comparisons"
 ```
+
+Actual: committed as `ff083f1`; expanded Ledger blocker coverage is `d0dbc4b`.
 
 ### Task 3: Prove stopped-window and exact-run Ledger behavior
 
@@ -227,7 +244,7 @@ git commit -m "feat: qualify stopped paper comparisons"
 - Consumes: Tasks 1-2
 - Produces: real LocalStore/session paired qualification evidence
 
-- [ ] **Step 1: Extend the sequence-3 integration**
+- [x] **Step 1: Extend the sequence-3 integration**
 
 After runner-driven orderly stop, assess the same activation and require:
 
@@ -244,14 +261,19 @@ expect(await qualifier.assess({ activationId, activationAttemptId })).toMatchObj
 
 Repeat assessment and assert no record count changes.
 
-- [ ] **Step 2: Add exact-run negative integrations**
+- [x] **Step 2: Add exact-run negative integrations**
 
 Use Store proxies to substitute the default run, add an extra chain, remove gateway/execution from
 an expected chain, hide an expected ref, and drift evaluation/checkpoint evidence. Require stable
 Ledger blockers or graph rejection. Restart-rematerialized evidence must return the same qualified
 result.
 
-- [ ] **Step 3: Run integration and LocalStore regressions**
+Actual: real LocalStore/session evidence covers exact-run substitution, replay, record-count
+stability, and restart parity. Focused Store service coverage adds extra and partial chains, hidden
+checkpoint refs, evaluation-count drift, and checkpoint/activation graph drift; the pure matrix
+covers duplicate, missing, unsupported, and cross-run refs.
+
+- [x] **Step 3: Run integration and LocalStore regressions**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-decision.test.ts packages/application/src/trading/paper/comparison-qualification-service.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts -t "paired qualification|three paired checkpoints"
@@ -260,12 +282,18 @@ npx vitest run packages/local-store/test/local-store.test.ts
 
 Expected: qualified no-order window, exact-run negatives, restart parity, and LocalStore pass.
 
-- [ ] **Step 4: Commit integration evidence**
+Actual: 19 selected qualification/integration tests passed with 70 unrelated tests skipped; all
+298 LocalStore tests passed.
+
+- [x] **Step 4: Commit integration evidence**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts
 git commit -m "test: prove paired paper qualification"
 ```
+
+Actual: real sequence-3/restart evidence and empty-Ledger correction were committed as `daabe00`;
+the expanded Ledger blocker matrix was committed as `d0dbc4b`.
 
 ### Task 4: Update durable truth and verify the frontier
 
@@ -281,13 +309,13 @@ git commit -m "test: prove paired paper qualification"
 - Records: read-only paired evidence-quality qualification
 - Leaves closed: adjudication, verdict, release, confirmation, promotion, and public composition
 
-- [ ] **Step 1: Update canonical docs**
+- [x] **Step 1: Update canonical docs**
 
 Record `PaperTradingComparisonQualification` as a read-only application decision that requires both
 canonical side qualifications and exact run-specific Ledger lineage. `qualified` permits only later
 adjudication and carries `not_verdict` authority.
 
-- [ ] **Step 2: Verify no forbidden composition or verdict output**
+- [x] **Step 2: Verify no forbidden composition or verdict output**
 
 ```bash
 rg -n "PaperTradingComparisonQualificationService|decidePaperTradingComparisonQualification" apps packages --glob '!**/*.test.ts'
@@ -296,7 +324,10 @@ rg -n "winner|promotion_eligible|score_lift|p_value" packages/application/src/tr
 
 Expected: internal application definitions only and no winner/statistical/promotion output.
 
-- [ ] **Step 3: Run repository verification**
+Actual: only the two internal application modules match outside tests; no app match and no
+winner, score-lift, p-value, or promotion-eligibility output exists.
+
+- [x] **Step 3: Run repository verification**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-qualification-decision.test.ts packages/application/src/trading/paper/comparison-qualification-service.test.ts packages/application/src/trading/paper/comparison-window-state.test.ts packages/application/src/trading/paper/comparison-window-driver.test.ts packages/application/src/trading/paper/comparison-window-runner.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts
@@ -309,7 +340,11 @@ git diff --check
 Expected: focused tests, all typechecks, guards, full suite, and diff checks pass in the required
 localhost/subprocess-capable environment.
 
-- [ ] **Step 4: Commit durable evidence**
+Actual: 7 focused files passed all 424 tests; all workspace typechecks and repository guards passed;
+the localhost/subprocess-capable full suite passed all 1,504 tests across 99 files; `git diff
+--check` passed.
+
+- [x] **Step 4: Commit durable evidence**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-paired-paper-comparison-qualification-design.md docs/superpowers/plans/2026-07-12-paired-paper-comparison-qualification.md

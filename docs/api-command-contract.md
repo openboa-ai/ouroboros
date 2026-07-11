@@ -82,9 +82,15 @@ Current command groups:
   committed bundles and stops unowned sessions without replaying decisions; the runner never
   adopts or resumes provider identity. These internal routes, records, coordinators, driver, and
   runner are not composed into an app/controller or public `OuroborosCommand` and create no private,
-  direct-order, qualification, promotion, or live authority. Public composition, process resume,
-  minimum-window qualification, adjudication, confirmation, verdict, evidence release, promotion,
-  private access, and live authority remain pending and outside this command contract.
+  direct-order, promotion, or live authority. An internal read-only
+  `PaperTradingComparisonQualificationService` may assess one cleanly stopped window only after the
+  shared graph gate passes. It requires both canonical side qualifications, the frozen pair count
+  and activation-to-latest-tick elapsed minimums, and exact equality between checkpoint-declared
+  Ledger refs and complete chains from each additional qualification TradingRun. Its result carries
+  `not_verdict`, performs no writes, and is not a command, score comparison, winner, release, or
+  promotion decision. Public composition, process resume, adjudication, confirmation, verdict,
+  evidence release, promotion, private access, and live authority remain pending and outside this
+  command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -181,6 +187,13 @@ score/account must match the evaluation. A mature profitable
 research-feedback row or provider-ineligible window remains
 `not_qualification_evidence`. UI, CLI, and TUI must distinguish board rank from qualification and
 promotion authority, while CandidateArena leaderboard remains research preflight.
+Paired qualification is a separate application-only gate over a stopped shared comparison. It does
+not recompute side quality: both exact side results must already be `qualified`. It additionally
+requires contiguous paired checkpoints, a clean `handoff_cleanup`, shared count/elapsed minimums,
+and exact run-specific Ledger set equality. A zero-chain LocalStore Ledger is valid only when
+`has_activity=false`, `chain_count=0`, all latest records are null, and checkpoint-declared refs are
+also empty. The paired result is `not_verdict` and cannot affect rank, findings, release, or
+promotion.
 When compacting this board into researcher context, do not invent runner authority: if the current
 process cannot see the in-memory runner, keep the paper status and score but mark runner state as
 unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`. The
