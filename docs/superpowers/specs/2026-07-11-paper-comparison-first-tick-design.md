@@ -1,7 +1,7 @@
 # Paper Comparison First Tick Design
 
 **Date:** 2026-07-11
-**Status:** Approved by the standing autonomous-goal instruction; implementation pending
+**Status:** Implemented and verified as an inert first-checkpoint frontier
 **Scope:** CandidateArena P0 prospective comparison, first shared market checkpoint only
 **Depends on:** Verified inert `PaperTradingComparisonCommitment` graph
 
@@ -240,8 +240,8 @@ peer state.
 
 ## Public REST Metadata
 
-The REST-only Binance market snapshot currently omits source/freshness fields even after a
-successful read. This frontier makes that evidence explicit:
+The REST-only Binance market snapshot now records explicit source/freshness evidence after a
+successful read:
 
 ```text
 source_kind: binance_production_public_rest
@@ -321,6 +321,26 @@ This frontier is complete when current code and tests prove:
    future/peer/evaluator state;
 7. no qualification runtime or public authority is granted;
 8. focused and repository-wide validation passes.
+
+## Implementation Evidence
+
+- `b419854` defines the canonical tick record, digest input, and strict total predicate.
+- `5753fe2` adds StorePort and atomic LocalStore append/get/list behavior under the existing
+  comparison-evidence transaction.
+- `601c96f` adds the fixed non-delegating view, first-tick coordinator, explicit REST provenance,
+  and a real coordinator-plus-LocalStore integration test.
+- Domain, Store, application, adapter, and integration tests prove exact replay, one read per source,
+  alternate/concurrent conflict, source eligibility, persisted digest validation, JSON omission
+  semantics, graph revalidation, and zero provider/sandbox/runner/observation effects.
+- Exact frontier verification passed 184/184 test suites and 1013/1013 tests, every workspace
+  typecheck, and repository docs, architecture, naming, tracked environment, secrets, and diff
+  guards.
+- The graph still returns `activation_authority: "not_granted"`; both qualification evaluations
+  remain `not_started` after capture.
+
+This is partial conformance evidence only. No side has consumed the tick, and no direct economic
+comparison, qualification result, verdict, evidence release, confirmation, or promotion has been
+created.
 
 ## Next Frontier
 

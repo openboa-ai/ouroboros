@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Inert comparison commitment graph implemented; shared ticks, activation, verdict, and recovery pending
+**Status:** Inert comparison graph plus first shared tick and fixed view implemented; activation, consumption, later ticks, verdict, and recovery pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -72,8 +72,10 @@ Standalone qualification preparation may resolve and freeze executable artifact 
 persist only its TradingRun and supporting refs, frozen commitment and account identity, and
 `not_started` evaluation. It remains runtime-inert: the internal `PaperTradingComparisonCoordinator`
 may prepare and verify a complete pair commitment, but it cannot start provider, sandbox, market,
-Gateway, Ledger, observation, or lifecycle effects. Shared comparison ticks, activation,
-adjudication, non-overlapping confirmation, a verdict, and promotion integration remain pending.
+Gateway, Ledger, observation, or lifecycle effects. A separate internal tick coordinator may now
+persist one eligible first shared public market checkpoint without changing that inert state.
+Activation, side consumption, later ticks, adjudication, non-overlapping confirmation, a verdict,
+and promotion integration remain pending.
 
 ## Commitment-Graph Frontier Status
 
@@ -112,8 +114,31 @@ This frontier grants no activation authority and starts no provider, sandbox, ma
 Gateway, Ledger, or observation effect. Each pair side binds the exact sole
 commitment/evaluation chain for its qualification `TradingRun` and a zero-score,
 zero-observation, empty-account-activity baseline. Post-pair reload is read-only and fails closed on
-missing, changed, or malformed side records without repair or invalidation. Shared ticks,
-`ComparisonMarketDataView`, verdict/adjudication, confirmations, promotion integration, and pair recovery remain pending.
+missing, changed, or malformed side records without repair or invalidation. The first shared tick
+frontier below consumes only this verified inert graph; activation, side observations,
+verdict/adjudication, confirmations, promotion integration, and pair recovery remain pending.
+
+## First Shared Tick Frontier Status
+
+The next implemented frontier adds a self-digested `PaperTradingComparisonTickRecord` with exactly
+`sequence: 1`. It binds the exact comparison ref and digest, frozen market-data configuration
+digest, one fresh no-gap Gateway market snapshot, one fresh no-gap public-execution snapshot, and a
+server-owned capture-completion time. LocalStore appends it in the existing comparison-evidence
+transaction only after independently revalidating the complete pair as inert. Same-ID content
+drift, alternate first ticks, stale or malformed evidence, source-time reversal, pair/configuration
+drift, and corrupt persisted records fail closed.
+
+`PaperTradingComparisonTickCoordinator` verifies the pair before either external read, performs one
+market read and one public-execution read, and revalidates the persisted pair and tick after append.
+Exact retries perform no new Gateway read. `ComparisonMarketDataView` copies the frozen port
+identity and serves deep clones of only that stored tick; it retains no Binance read delegate and
+cannot fabricate a liveness surface. Candidate API conversion still removes `expected_direction`.
+
+This frontier creates no provider, sandbox, runner, TradingSystem, run-control, Gateway order,
+Ledger, paper observation, score, account outcome, or public command effect. Both side evaluations
+remain `not_started`, and graph verification still returns
+`activation_authority: "not_granted"`. Therefore the first tick proves only that one common input is
+available; it does not prove that either side consumed it or that the candidates are comparable.
 
 ## Domain Records
 
@@ -174,18 +199,22 @@ interface PaperTradingComparisonTickRecord extends BaseRecord {
   record_kind: "paper_trading_comparison_tick";
   paper_trading_comparison_tick_id: string;
   paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
   sequence: number;
-  observed_at: string;
+  market_data_configuration_digest: string;
   market_snapshot: PaperTradingMarketSnapshotSummary;
   public_execution_snapshot: PaperTradingPublicExecutionSnapshotSummary;
+  observed_at: string;
+  tick_digest: string;
   authority_status: "not_live";
 }
 ```
 
-The coordinator reads the underlying Gateway market port once per tick and persists the result
-before either paired observation. Both observations reference the same tick and must embed matching
-market/public-execution content. Missing, rewritten, skipped, or cross-comparison tick refs make the
-pair incomparable.
+The implemented tick coordinator reads the underlying Gateway market port once for sequence 1 and
+persists the result before activation. The fixed view can return that exact content without another
+underlying read. Later activation and paired-observation work must make both observations reference
+the same tick and embed matching market/public-execution content. Missing, rewritten, skipped, or
+cross-comparison tick refs make the future pair incomparable.
 
 ### PaperTradingComparisonVerdict
 
@@ -233,27 +262,31 @@ IDs from payloads.
 ### PaperTradingComparisonCoordinator
 
 The coordinator is the only application owner allowed to create qualification-purpose sessions.
-Preparation is two phase:
+Implemented preparation owns:
 
 1. select explicit incumbent/challenger candidate versions and deterministic new TradingRun IDs;
 2. resolve both executable artifacts and build both qualification commitments in memory;
 3. persist the two TradingRuns, commitments, evaluations, and pair commitment idempotently;
 4. reload and verify the complete graph;
-5. capture the initial shared market tick;
-6. activate both isolated sessions only after steps 1 through 5 succeed.
+5. return only `activation_authority: "not_granted"`.
 
-For each later tick, the coordinator reads one Gateway snapshot and one public-execution snapshot,
-records one comparison tick, then asks both sessions to checkpoint against that exact tick. The two
-checkpoint calls may run concurrently. Each TradingSystem keeps its own internal decision cadence;
-the coordinator never synthesizes a decision, forces equal trade counts, or treats no-order
-continuity as failure.
+`PaperTradingComparisonTickCoordinator` separately reloads that complete graph, captures and
+persists the first shared tick, then returns a fixed non-delegating view. It does not call session
+activation.
+
+Future activation and later-tick work must read one Gateway snapshot and one public-execution
+snapshot, record one comparison tick, then ask both sessions to checkpoint against that exact tick.
+The two checkpoint calls may run concurrently. Each TradingSystem keeps its own internal decision
+cadence; the coordinator never synthesizes a decision, forces equal trade counts, or treats
+no-order continuity as failure.
 
 ### ComparisonMarketDataView
 
-Qualification provider sessions receive a read-only view backed by the latest persisted comparison
-tick. They cannot call the underlying Binance adapter independently. Repeated candidate reads return
-the current tick and are request-logged; future ticks, evaluator state, peer decisions, peer scores,
-and peer account state are unavailable.
+The implemented fixed view is backed by one verified stored first tick. It cannot call the
+underlying Binance adapter independently, advance to a future tick, or synthesize public liveness.
+Repeated reads return independent clones of the same content. A later activation frontier must add
+an advanceable shared view and request logging without exposing future ticks, evaluator state, peer
+decisions, peer scores, or peer account state.
 
 ## Selection And Champion Continuity
 
@@ -355,12 +388,16 @@ verdict. Profit cannot offset a hard-constraint failure.
 
 ## Implementation Decomposition
 
-This design is intentionally split into two independently reviewable frontiers:
+This design is intentionally split into independently reviewable frontiers:
 
 1. **Multi-run paper sessions:** allow multiple isolated TradingRuns per CandidateVersion, extract
    internal prepare/activate/observe/stop lifecycle, and preserve default-session compatibility.
-2. **Prospective comparison:** the inert pair commitment graph and internal prepare/read-only
-   coordinator are implemented. Shared tick persistence, market view, activation authority,
-   sealing, adjudication, confirmation, promotion integration, and recovery remain pending.
+2. **Inert prospective pair:** the append-only pair commitment graph and internal
+   prepare/read-only coordinator are implemented.
+3. **First shared market checkpoint:** one self-digested first tick and a fixed non-delegating
+   `ComparisonMarketDataView` are implemented while both sides remain inert.
+4. **Pending:** durable activation authorization, partial-start cleanup and recovery, an advanceable
+   shared view, later contiguous ticks, paired observations, sealing, adjudication, confirmation,
+   promotion integration, and restart recovery.
 
 The second frontier must not begin by weakening the first frontier's identity or authority checks.

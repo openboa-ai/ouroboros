@@ -65,7 +65,9 @@ time is server-owned. The promotion and preparation must bind the same exact eva
 second chain for the same candidate, CandidateVersion, and SystemCode is not interchangeable.
 The persisted graph remains inert, binds one exact baseline commitment/evaluation chain per side
 `TradingRun`, and does not activate qualification, repair a post-pair graph, mutate pair-bound side
-evidence, or implement promotion behavior. Shared ticks, verdicts, and pair recovery remain pending.
+evidence, or implement promotion behavior. One first shared tick may now be appended while the graph
+remains inert; activation, side consumption, later ticks, verdicts, and pair recovery remain
+pending.
 
 ## Candidate Freeze
 
@@ -122,8 +124,12 @@ preparation owns only the persisted TradingRun and supporting refs, frozen execu
 identity, commitment, and `not_started` evaluation. The implemented comparison coordinator can
 persist and verify the complete pair commitment graph, but it must not start a provider or sandbox,
 read market data, create Gateway or Ledger evidence, consume an observation, or mutate lifecycle.
-The implemented boundary does not provide shared ticks, activation authority, adjudication,
-confirmation, a verdict, or promotion authority.
+A separate internal first-tick coordinator may reload that verified inert graph, perform exactly one
+Gateway market read plus one public-execution read, and atomically persist one fresh no-gap
+`PaperTradingComparisonTick`. Its fixed `ComparisonMarketDataView` serves only that stored content
+without retaining a Binance delegate. Capture leaves both side evaluations `not_started` and grants
+no activation authority. The implemented boundary does not provide side consumption, a running
+shared stream, later ticks, adjudication, confirmation, a verdict, or promotion authority.
 
 ## Evaluator Information Barrier
 
@@ -227,9 +233,10 @@ The following current surfaces require implementation work before P0 can pass:
   directional hints in its small replay scenario payload.
 - `packages/application/src/services/operator.ts` selects a created research candidate for paper
   without a separate conformance proof for the target protocol.
-- The internal comparison coordinator can create and verify an inert prospective `qualification`
-  pair before outcomes exist. It cannot activate the pair, supply one shared eligible market stream,
-  or adjudicate superiority.
+- The internal comparison coordinators can create and verify an inert prospective `qualification`
+  pair and persist one eligible first shared public market checkpoint before outcomes exist. They
+  cannot authorize or recover activation, prove either side consumed the checkpoint, advance a
+  running shared stream, record paired observations, or adjudicate superiority.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
@@ -255,14 +262,16 @@ drift invalidates before new evidence; research history cannot qualify or promot
 qualification-purpose, invalidated, integrity-failed, and candidate-Ledger-only evidence is excluded
 from Arena paper-learning projections and next-generation source selection. Candidate-aggregate
 Ledger summaries remain absent until they can be resolved by exact TradingRun. Standalone
-qualification cannot create a new promotion. It does not
-demonstrate evaluator secrecy, prospective qualification, champion/challenger comparability, a
-superiority verdict, post-adjudication release, or P0 completion.
+qualification cannot create a new promotion. The first shared tick demonstrates only that a common
+immutable input is available; it does not demonstrate evaluator secrecy, side consumption,
+prospective qualification, champion/challenger comparability, a superiority verdict,
+post-adjudication release, or P0 completion.
 
 ## Implementation Frontier Order
 
-1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, and the inert paired
-   comparison commitment graph are persisted and validated; shared ticks and adjudication remain.
+1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
+   comparison commitment graph, and exactly one first shared tick/fixed view are persisted and
+   validated; activation, side consumption, later ticks, and adjudication remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -270,8 +279,10 @@ superiority verdict, post-adjudication release, or P0 completion.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; activation remains intentionally unavailable.
-5. **Next frontier:** activate the verified champion/challenger pair on one shared public market
-   stream, then produce a separate adjudication verdict.
+5. **Next frontier:** persist a separate activation authorization bound to the verified pair and
+   first tick, then implement symmetric start, partial-start cleanup, restart recovery, and paired
+   consumption on one advanceable shared public market stream. Adjudication remains a later
+   frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired

@@ -207,6 +207,8 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes a paper evaluation's evidence purpose and executable, runtime, policy, data, account, and authority identities before evidence exists. |
+| `PaperTradingComparisonCommitment` | Append-only champion/challenger qualification envelope that binds two frozen, distinct, inert paper sessions and one comparison policy before market outcomes exist. |
+| `PaperTradingComparisonTick` | Append-only Gateway-owned market and public-execution checkpoint for one comparison sequence; the implemented first tick is shared input evidence, not activation, consumption, verdict, or promotion proof. |
 | `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one evaluation window cannot carry both or be upgraded after outcomes are known. |
 | `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |

@@ -19,6 +19,8 @@ that pack every axis into one identifier.
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
+| `PaperTradingComparisonCommitment` | Append-only champion/challenger qualification envelope that binds two frozen, distinct, inert paper sessions and one comparison policy before market outcomes exist. |
+| `PaperTradingComparisonTick` | Append-only Gateway-owned market and public-execution checkpoint for one comparison sequence; shared input evidence does not prove activation, consumption, a verdict, or promotion. |
 | `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one paper window cannot carry both or be upgraded after outcomes are known. |
 | `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
