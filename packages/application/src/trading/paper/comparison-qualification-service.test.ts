@@ -98,6 +98,44 @@ describe("paired paper comparison qualification service", () => {
     });
   });
 
+  it("classifies extra, partial, and hidden exact-run Ledger evidence", async () => {
+    const extraGraph = qualificationGraph();
+    const extraLedger = extraGraph.champion.projection.ledger!;
+    const extraChain = structuredClone(extraLedger.chains[0]!);
+    extraChain.chain_id = "champion-extra-order";
+    extraChain.order_request.order_request_id = extraChain.chain_id;
+    extraChain.gateway_result!.gateway_result_id = "champion-extra-gateway";
+    extraChain.gateway_result!.order_request_ref.id = extraChain.chain_id;
+    extraChain.execution_result!.execution_result_id = "champion-extra-execution";
+    extraChain.execution_result!.order_request_ref.id = extraChain.chain_id;
+    extraChain.execution_result!.gateway_result_ref.id =
+      extraChain.gateway_result!.gateway_result_id;
+    extraLedger.chains.push(extraChain);
+    extraLedger.chain_count = 2;
+    await expect(qualificationHarness(extraGraph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_reasons: ["champion_ledger_lineage_mismatch"]
+      });
+
+    const partialGraph = qualificationGraph();
+    const partialLedger = partialGraph.champion.projection.ledger!;
+    partialLedger.chain_complete = false;
+    partialLedger.chains[0]!.chain_complete = false;
+    partialLedger.chains[0]!.execution_result = null;
+    await expect(qualificationHarness(partialGraph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_reasons: ["champion_ledger_incomplete"]
+      });
+
+    const hiddenRefGraph = qualificationGraph();
+    hiddenRefGraph.checkpointOutcomes[0]!.champion.ledger_chain_refs =
+      hiddenRefGraph.checkpointOutcomes[0]!.champion.ledger_chain_refs.slice(0, 2);
+    await expect(qualificationHarness(hiddenRefGraph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_reasons: ["champion_ledger_lineage_mismatch"]
+      });
+  });
+
   it("returns paired checkpoint blockers for an incomplete terminal attempt", async () => {
     const graph = qualificationGraph();
     graph.checkpointOutcomes[2] = {
