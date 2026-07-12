@@ -972,11 +972,13 @@ process.exit(17);
   it("freezes development selection before one sealed admission and releases no sealed feedback", async () => {
     const controlledRunner = controlledPaperHandoffArtifactRunner(["rejected"]);
     const previousBestScores: Array<number | undefined> = [];
+    const workerInputSurfaces: string[] = [];
     const delegate = new NoopTradingResearchAgentAdapter();
     const adapter = {
       agent: delegate.agent,
       async improveArtifact(input: AgentEditInput) {
         previousBestScores.push(input.previous_best_score);
+        workerInputSurfaces.push(JSON.stringify(input));
         return delegate.improveArtifact();
       }
     };
@@ -999,6 +1001,10 @@ process.exit(17);
 
     expect(runner.probe_count()).toBe(1);
     expect(previousBestScores).toEqual([undefined, 1]);
+    expect(workerInputSurfaces).toHaveLength(2);
+    expect(workerInputSurfaces.join("\n")).not.toMatch(
+      /research_preflight|commitment|sealed|suite|scenario_id|scenario_results|paper_handoff|evaluator|events_path|runner_command_evidence/i
+    );
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
     expect(result.entries.every((entry) =>
       entry.evaluation.paper_handoff_conformance === undefined

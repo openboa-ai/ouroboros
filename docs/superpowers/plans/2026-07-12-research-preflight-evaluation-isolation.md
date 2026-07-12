@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** In progress; Tasks 1-4 complete, Task 5 next
+**Status:** In progress; Tasks 1-5 complete, Task 6 next
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -287,40 +287,49 @@ admission, and materialization gating.
 **Files:**
 - Modify: `packages/domain/src/index.ts`
 - Modify: `packages/application/src/candidate/arena.ts`
-- Modify: `packages/application/src/trading/research/replay-set-runner.ts`
+- Review: `packages/application/src/trading/research/replay-set-runner.ts`
+- Modify: `packages/local-store/src/index.ts`
 - Modify: `apps/runtime/test/trading-research-loop.test.ts`
 - Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 
-- [ ] **Step 1: Write failing worker-surface barrier tests**
+- [x] **Step 1: Write failing worker-surface barrier tests**
 
 Inspect prompt stdin, notebook, replay-set feedback, Arena context, and direction readback. Assert
 sealed seed, digest, scenario IDs, outcomes, per-scenario metrics, score deltas, raw events, paths,
 commands, and evaluator internals are absent while development feedback remains present.
 
-- [ ] **Step 2: Write failing differential-probe control**
+- [x] **Step 2: Write failing differential-probe control**
 
 Use a fixture worker that alters one decision across its full development budget. Assert it can
 observe development movement but cannot infer any sealed delta, request a second sealed evaluation,
 or alter the frozen candidate after terminal evidence.
 
-- [ ] **Step 3: Add compact readback and efficiency split**
+- [x] **Step 3: Add compact readback and efficiency split**
 
 Expose commitment ID, development submission count, sealed terminal status, and generic reason
 only. Split development versus sealed scenario/request counts under `not_promotion_authority`.
 
-- [ ] **Step 4: Prove closed authority**
+- [x] **Step 4: Prove closed authority**
 
 Assert isolation changes no research leaderboard rank semantics, PaperTradingEvaluation rank,
 qualification, comparison, Trading review, promotion, Gateway order, private, or live path.
 
-- [ ] **Step 5: Implement and verify**
+- [x] **Step 5: Implement and verify**
 
 ```bash
 npx vitest run packages/domain/src/research-preflight-commitment.test.ts packages/application/src/trading/research/preflight-plan.test.ts apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
 npm run typecheck --workspace @ouroboros/runtime
-git add packages/domain/src/index.ts packages/application/src/candidate/arena.ts packages/application/src/trading/research/replay-set-runner.ts apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
+git add packages/domain/src/index.ts packages/application/src/candidate/arena.ts packages/local-store/src/index.ts apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
 git commit -m "feat: close sealed preflight feedback"
 ```
+
+**Evidence:** The Task 5 focused matrix passed `5` files and `141` tests with loopback listener
+permission, including domain commitment, evaluator-plan rotation, worker notebook/stdin barriers,
+differential development feedback, CandidateArena compact readback, and operator product-loop smoke.
+Domain, application, and LocalStore typechecks passed. Readback exposes only commitment ID,
+development submission count, generic sealed terminal status/reason, and authority-free phase cost
+counts; worker context contains no commitment, digest, suite, scenario identity/result, evaluator
+trace, event path, or runner command evidence.
 
 ---
 

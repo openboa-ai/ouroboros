@@ -172,7 +172,12 @@ describe("CandidateArena paper evidence context", () => {
         direction_kind: "trend_following",
         status: "quarantined",
         admission_reason: "research_worker_failed",
-        finding: "ResearchWorker failed before artifact execution: diagnostic_worker_failed"
+        finding: "ResearchWorker failed before artifact execution: diagnostic_worker_failed",
+        research_preflight: expect.objectContaining({
+          development_submission_count: 1,
+          sealed_terminal_status: "not_run",
+          reason: "no_development_winner"
+        })
       })
     ]);
     await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
@@ -219,7 +224,12 @@ describe("CandidateArena paper evidence context", () => {
       expect.objectContaining({
         direction_kind: "trend_following",
         status: "failed",
-        error: "research worker process terminated"
+        error: "research worker process terminated",
+        research_preflight: expect.objectContaining({
+          development_submission_count: 0,
+          sealed_terminal_status: "not_run",
+          reason: "execution_failed"
+        })
       })
     ]);
     await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
@@ -548,9 +558,40 @@ describe("CandidateArena paper evidence context", () => {
           status: "passed",
           reason: "passed",
           authority_status: "research_only"
+        }),
+        research_preflight: {
+          commitment_id: expect.any(String),
+          development_submission_count: 1,
+          sealed_terminal_status: "accepted",
+          reason: "accepted",
+          authority_status: "not_promotion_authority"
+        },
+        research_efficiency: expect.objectContaining({
+          development: expect.objectContaining({
+            submission_count: 1,
+            provider_request_total: 6,
+            scenario_count: 2
+          }),
+          sealed_admission: expect.objectContaining({
+            submission_count: 1,
+            provider_request_total: 21,
+            scenario_count: 6
+          })
         })
       })
     ]);
+    const compactPreflight = outcome.arena.latest_ticks[0]
+      ?.direction_results[0]?.research_preflight;
+    expect(Object.keys(compactPreflight ?? {}).sort()).toEqual([
+      "authority_status",
+      "commitment_id",
+      "development_submission_count",
+      "reason",
+      "sealed_terminal_status"
+    ]);
+    expect(JSON.stringify(compactPreflight)).not.toMatch(
+      /digest|seed|suite|scenario|score|metric|event|path|command|evaluator/i
+    );
     const [admission] = await store.listCandidateAdmissionDecisions();
     const sourceSnapshot = admission
       ? await store.getSystemCode(admission.source_system_code_ref.id)
@@ -643,6 +684,12 @@ describe("CandidateArena paper evidence context", () => {
           status: "rejected",
           reason: "runtime_heartbeat_missing",
           authority_status: "research_only"
+        }),
+        research_preflight: expect.objectContaining({
+          development_submission_count: 1,
+          sealed_terminal_status: "rejected",
+          reason: "candidate_rejected",
+          authority_status: "not_promotion_authority"
         })
       })
     ]);
@@ -694,7 +741,12 @@ describe("CandidateArena paper evidence context", () => {
       expect.objectContaining({
         direction_kind: "trend_following",
         status: "failed",
-        error: "paper handoff test runner unavailable"
+        error: "paper handoff test runner unavailable",
+        research_preflight: expect.objectContaining({
+          development_submission_count: 1,
+          sealed_terminal_status: "not_run",
+          reason: "execution_failed"
+        })
       })
     ]);
     await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([]);
@@ -2255,6 +2307,20 @@ describe("CandidateArena paper evidence context", () => {
         provider_request_total: 6,
         runner_command_total: 0,
         scenario_count: 2,
+        development: {
+          submission_count: 1,
+          provider_request_total: 6,
+          runner_command_total: 0,
+          scenario_count: 2,
+          elapsed_ms: expect.any(Number)
+        },
+        sealed_admission: {
+          submission_count: 1,
+          provider_request_total: 21,
+          runner_command_total: 0,
+          scenario_count: 6,
+          elapsed_ms: expect.any(Number)
+        },
         authority_status: "not_promotion_authority"
       }
     });
@@ -2277,6 +2343,16 @@ describe("CandidateArena paper evidence context", () => {
         provider_request_total: number;
         runner_command_total: number;
         scenario_count: number;
+        development: {
+          submission_count: number;
+          provider_request_total: number;
+          scenario_count: number;
+        };
+        sealed_admission: {
+          submission_count: number;
+          provider_request_total: number;
+          scenario_count: number;
+        };
         authority_status: string;
       }>;
     };
@@ -2287,9 +2363,23 @@ describe("CandidateArena paper evidence context", () => {
         provider_request_total: 6,
         runner_command_total: 0,
         scenario_count: 2,
+        development: expect.objectContaining({
+          submission_count: 1,
+          provider_request_total: 6,
+          scenario_count: 2
+        }),
+        sealed_admission: expect.objectContaining({
+          submission_count: 1,
+          provider_request_total: 21,
+          scenario_count: 6
+        }),
         authority_status: "not_promotion_authority"
       })
     ]);
+    const workerContextSurface = JSON.stringify(context);
+    expect(workerContextSurface).not.toMatch(
+      /research_preflight|commitment_id|sealed_terminal_status|sealed_admission_suite_digest|rotation_commitment_digest|scenario_id|scenario_results|evaluator_trace|events_path|runner_command_evidence/i
+    );
   });
 
   it("prioritizes default research directions from research efficiency budget pressure", async () => {

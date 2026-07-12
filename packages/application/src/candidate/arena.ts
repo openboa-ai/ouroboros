@@ -20,6 +20,7 @@ import type {
   CandidateArenaResearchAllocationRecord,
   CandidateArenaResearchAllocationSelection,
   CandidateArenaResearchEfficiencyReadModel,
+  CandidateArenaResearchPreflightReadModel,
   CandidateArenaResearcherReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationInput,
@@ -138,6 +139,7 @@ type ArenaDirectionRunOutcome =
       admission: CandidateAdmissionDecisionRecord;
       conformance: PaperTradingHandoffConformanceRecord;
       research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
     }
   | {
       status: "duplicate" | "quarantined";
@@ -145,6 +147,7 @@ type ArenaDirectionRunOutcome =
       finding: ResearchFindingRecord;
       conformance?: PaperTradingHandoffConformanceRecord;
       research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
     };
 
 export interface RunCandidateArenaTickInput {
@@ -413,7 +416,8 @@ export async function runCandidateArenaTick(
             created.full_cycle_lineage?.evidence?.evaluation_status
           ),
           net_revenue_usdt: profitLoss.net_revenue_usdt,
-          research_efficiency: directionOutcome.research_efficiency
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
         });
       } else {
         directionResults.push({
@@ -430,16 +434,23 @@ export async function runCandidateArenaTick(
                   compactPaperHandoffConformance(directionOutcome.conformance)
               }
             : {}),
-          research_efficiency: directionOutcome.research_efficiency
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
         });
       }
     } else {
+      const researchPreflight = await failedArenaResearchPreflightReadback(
+        input.store,
+        tickId,
+        direction
+      );
       directionResults.push({
         direction_kind: direction,
         status: "failed",
         agent_provider: input.researchAgent,
         error: conciseError(settled.reason),
-        finding: `${directionLabel(direction)} researcher failed before candidate materialization.`
+        finding: `${directionLabel(direction)} researcher failed before candidate materialization.`,
+        ...(researchPreflight ? { research_preflight: researchPreflight } : {})
       });
     }
   }
@@ -694,8 +705,16 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   if (!entry) {
     throw new Error("candidate_arena_missing_research_entry");
   }
-  const researchEfficiency = researchEfficiencySummary(research.entries);
   const sealedAdmission = research.sealed_admission;
+  const researchEfficiency = researchEfficiencySummary(
+    research.entries,
+    sealedAdmission
+  );
+  const researchPreflight = arenaResearchPreflightReadModel({
+    commitment: preflight.plan.commitment,
+    developmentSubmissionCount: research.entries.length,
+    sealedAdmission
+  });
   assertArenaResearchPreflightResult({
     commitment: preflight.plan.commitment,
     returnedCommitment: research.research_preflight_commitment,
@@ -741,7 +760,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         admission: researchRecords.admission,
         finding: researchRecords.finding,
         conformance: researchRecords.conformance,
-        research_efficiency: researchEfficiency
+        research_efficiency: researchEfficiency,
+        research_preflight: researchPreflight
       };
     }
     if (!researchRecords.conformance ||
@@ -776,7 +796,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       candidate,
       admission: researchRecords.admission,
       conformance: researchRecords.conformance,
-      research_efficiency: researchEfficiency
+      research_efficiency: researchEfficiency,
+      research_preflight: researchPreflight
     };
   });
 }
@@ -814,6 +835,73 @@ function assertArenaResearchPreflightResult(input: {
       input.commitment.sealed_admission_policy.suite_digest ||
     input.sealedAdmission.submission_sequence !== 1) {
     throw new Error("candidate_arena_sealed_admission_binding_mismatch");
+  }
+}
+
+function arenaResearchPreflightReadModel(input: {
+  commitment: ResearchPreflightCommitmentRecord;
+  developmentSubmissionCount: number;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
+}): CandidateArenaResearchPreflightReadModel {
+  const status = input.sealedAdmission?.evaluation.status;
+  return {
+    commitment_id: input.commitment.research_preflight_commitment_id,
+    development_submission_count: input.developmentSubmissionCount,
+    sealed_terminal_status: status === "accepted"
+      ? "accepted"
+      : status === "disqualified" ? "rejected" : "not_run",
+    reason: status === "accepted"
+      ? "accepted"
+      : status === "disqualified"
+        ? "candidate_rejected"
+        : "no_development_winner",
+    authority_status: "not_promotion_authority"
+  };
+}
+
+async function failedArenaResearchPreflightReadback(
+  store: OuroborosStorePort,
+  tickId: string,
+  direction: ResearchDirectionKind
+): Promise<CandidateArenaResearchPreflightReadModel | undefined> {
+  const commitments = await store.listResearchPreflightCommitments();
+  for (const commitment of commitments) {
+    if (commitment.candidate_arena_tick_id !== tickId) continue;
+    const persistedDirection = await store.getResearchDirection(
+      commitment.research_direction_ref.id
+    );
+    if (persistedDirection?.direction_kind === direction) {
+      return {
+        commitment_id: commitment.research_preflight_commitment_id,
+        development_submission_count:
+          await failedArenaDevelopmentSubmissionCount(store, tickId, direction),
+        sealed_terminal_status: "not_run",
+        reason: "execution_failed",
+        authority_status: "not_promotion_authority"
+      };
+    }
+  }
+  return undefined;
+}
+
+async function failedArenaDevelopmentSubmissionCount(
+  store: OuroborosStorePort,
+  tickId: string,
+  direction: ResearchDirectionKind
+): Promise<number> {
+  const sessionId = `candidate-arena-${safeId(tickId)}-${safeId(direction)}`;
+  try {
+    const notebook = JSON.parse(await readFile(path.join(
+      store.root(),
+      "candidate-arena-runs",
+      sessionId,
+      "notebook.json"
+    ), "utf8")) as { entries?: unknown };
+    return Array.isArray(notebook.entries)
+      ? Math.min(notebook.entries.length, 2)
+      : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -2298,25 +2386,52 @@ function arenaResearcher(
 }
 
 function researchEfficiencySummary(
-  entries: TradingResearchNotebookEntry[]
+  entries: TradingResearchNotebookEntry[],
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"]
 ): CandidateArenaResearchEfficiencyReadModel {
-  const scenarioResults = entries.flatMap(
+  const developmentScenarioResults = entries.flatMap(
     (entry) => entry.evaluation.scenario_results ?? []
   );
-  return {
-    provider_request_total: scenarioResults.reduce(
+  const sealedScenarioResults = sealedAdmission?.evaluation.scenario_results ?? [];
+  const paperHandoff = sealedAdmission?.evaluation.paper_handoff_conformance;
+  const development = {
+    submission_count: entries.length,
+    provider_request_total: developmentScenarioResults.reduce(
       (total, result) => total + result.provider_request_count,
       0
     ),
-    runner_command_total: scenarioResults.reduce(
+    runner_command_total: developmentScenarioResults.reduce(
       (total, result) => total + result.runner_command_count,
       0
     ),
-    scenario_count: scenarioResults.length,
+    scenario_count: developmentScenarioResults.length,
     elapsed_ms: entries.reduce(
       (total, entry) => total + elapsedMs(entry.started_at, entry.completed_at),
       0
+    )
+  };
+  const sealed = {
+    submission_count: sealedAdmission ? 1 : 0,
+    provider_request_total: sealedScenarioResults.reduce(
+      (total, result) => total + result.provider_request_count,
+      0
+    ) + (paperHandoff?.provider_request_count ?? 0),
+    runner_command_total: sealedScenarioResults.reduce(
+      (total, result) => total + result.runner_command_count,
+      0
     ),
+    scenario_count: sealedScenarioResults.length,
+    elapsed_ms: paperHandoff
+      ? elapsedMs(paperHandoff.started_at, paperHandoff.completed_at)
+      : 0
+  };
+  return {
+    provider_request_total: development.provider_request_total,
+    runner_command_total: development.runner_command_total,
+    scenario_count: development.scenario_count,
+    elapsed_ms: development.elapsed_ms,
+    development,
+    sealed_admission: sealed,
     authority_status: "not_promotion_authority"
   };
 }

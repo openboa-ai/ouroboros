@@ -16016,6 +16016,7 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     admission_reason?: unknown;
     net_revenue_usdt?: unknown;
     research_efficiency?: unknown;
+    research_preflight?: unknown;
     paper_handoff_conformance?: unknown;
   };
   const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
@@ -16029,6 +16030,8 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
   const hasResearchEfficiency = raw.research_efficiency === undefined ||
     isCandidateArenaResearchEfficiency(raw.research_efficiency);
+  const hasResearchPreflight = raw.research_preflight === undefined ||
+    isCandidateArenaResearchPreflight(raw.research_preflight);
   const hasPaperHandoffConformance = raw.paper_handoff_conformance === undefined ||
     isCandidateArenaPaperHandoffConformance(raw.paper_handoff_conformance);
   return (
@@ -16041,6 +16044,7 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     hasAdmissionReason &&
     hasNetRevenue &&
     hasResearchEfficiency &&
+    hasResearchPreflight &&
     hasPaperHandoffConformance &&
     (
       raw.status === "created"
@@ -16082,8 +16086,47 @@ function isCandidateArenaResearchEfficiency(value: unknown): boolean {
     typeof raw.elapsed_ms === "number" &&
     Number.isFinite(raw.elapsed_ms) &&
     raw.elapsed_ms >= 0 &&
+    (raw.development === undefined ||
+      isCandidateArenaResearchEfficiencyPhase(raw.development)) &&
+    (raw.sealed_admission === undefined ||
+      isCandidateArenaResearchEfficiencyPhase(raw.sealed_admission)) &&
     raw.authority_status === "not_promotion_authority"
   );
+}
+
+function isCandidateArenaResearchEfficiencyPhase(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return [
+    raw.submission_count,
+    raw.provider_request_total,
+    raw.runner_command_total,
+    raw.scenario_count,
+    raw.elapsed_ms
+  ].every((metric) =>
+    typeof metric === "number" && Number.isInteger(metric) && metric >= 0
+  );
+}
+
+function isCandidateArenaResearchPreflight(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return Object.keys(raw).length === 5 &&
+    nonEmpty(raw.commitment_id) &&
+    typeof raw.development_submission_count === "number" &&
+    Number.isInteger(raw.development_submission_count) &&
+    raw.development_submission_count >= 0 &&
+    raw.development_submission_count <= 2 &&
+    (raw.sealed_terminal_status === "accepted" ||
+      raw.sealed_terminal_status === "rejected" ||
+      raw.sealed_terminal_status === "not_run") &&
+    (raw.sealed_terminal_status === "accepted"
+      ? raw.reason === "accepted"
+      : raw.sealed_terminal_status === "rejected"
+        ? raw.reason === "candidate_rejected"
+        : raw.reason === "no_development_winner" ||
+          raw.reason === "execution_failed") &&
+    raw.authority_status === "not_promotion_authority";
 }
 
 function isTradingEvaluationResultStatus(value: unknown): boolean {

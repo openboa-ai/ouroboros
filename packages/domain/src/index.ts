@@ -5978,6 +5978,28 @@ export interface CandidateArenaResearchEfficiencyReadModel {
   runner_command_total: number;
   scenario_count: number;
   elapsed_ms: number;
+  development?: CandidateArenaResearchEfficiencyPhaseReadModel;
+  sealed_admission?: CandidateArenaResearchEfficiencyPhaseReadModel;
+  authority_status: "not_promotion_authority";
+}
+
+export interface CandidateArenaResearchEfficiencyPhaseReadModel {
+  submission_count: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+export interface CandidateArenaResearchPreflightReadModel {
+  commitment_id: string;
+  development_submission_count: number;
+  sealed_terminal_status: "accepted" | "rejected" | "not_run";
+  reason:
+    | "accepted"
+    | "candidate_rejected"
+    | "no_development_winner"
+    | "execution_failed";
   authority_status: "not_promotion_authority";
 }
 
@@ -6391,6 +6413,7 @@ export interface CandidateArenaTickDirectionResultReadModel {
   admission_reason?: CandidateAdmissionReason;
   net_revenue_usdt?: number;
   research_efficiency?: CandidateArenaResearchEfficiencyReadModel;
+  research_preflight?: CandidateArenaResearchPreflightReadModel;
   paper_handoff_conformance?: {
     conformance_id: string;
     status: PaperTradingHandoffConformanceStatus;
