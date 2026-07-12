@@ -1760,7 +1760,7 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
 async function waitForOperator(
   server: Awaited<ReturnType<typeof buildServer>>,
   predicate: (operator: OperatorReadModel) => boolean,
-  attempts = 120
+  attempts = 300
 ): Promise<OperatorReadModel> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await server.inject({

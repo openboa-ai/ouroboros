@@ -778,7 +778,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       source: input.source,
       sourceSystemCodeRef: input.source.system_code?.ref,
       systemCode,
-      evaluation: sealedAdmission.evaluation,
+      evaluation: entry.evaluation,
       direction: input.direction,
       agent: adapter.agent,
       sessionId

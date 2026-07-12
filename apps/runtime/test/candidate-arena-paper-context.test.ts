@@ -606,6 +606,20 @@ describe("CandidateArena paper evidence context", () => {
     expect(sourceSnapshot.artifact_path).toContain(path.join("seed", "run.py"));
     const candidate = await store.getCandidate(outcome.created_candidate_ids[0]!);
     expect(candidate?.full_cycle_lineage?.evidence?.evaluation_status).toBe("accepted");
+    const notebook = JSON.parse(await readFile(path.join(
+      tmpDir,
+      "candidate-arena-runs",
+      `candidate-arena-${outcome.tick_id}-trend_following`,
+      "notebook.json"
+    ), "utf8")) as {
+      entries: Array<{
+        decision: string;
+        evaluation: { profit_loss: unknown };
+      }>;
+    };
+    expect(candidate?.full_cycle_lineage?.evidence?.profit_loss).toEqual(
+      notebook.entries.find((entry) => entry.decision === "keep")?.evaluation.profit_loss
+    );
     const netRevenue = candidate?.full_cycle_lineage?.evidence?.profit_loss?.net_revenue_usdt;
     if (netRevenue === undefined) {
       throw new Error("admitted negative candidate missing profit and loss evidence");
