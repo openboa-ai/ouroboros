@@ -21,6 +21,7 @@ import type {
   ResearchBehaviorFingerprintRecord,
   ResearchDirectionRecord,
   ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignOutcomeRecord,
   ResearchControlCampaignRecord,
   ResearchControlCampaignReportRecord,
   ResearchPreflightCommitmentRecord,
@@ -182,6 +183,15 @@ export interface OuroborosStorePort {
   ): Promise<ResearchControlCampaignReportRecord | undefined>;
   listResearchControlCampaignReports(): Promise<
     ResearchControlCampaignReportRecord[]
+  >;
+  recordResearchControlCampaignOutcome(
+    outcome: ResearchControlCampaignOutcomeRecord
+  ): Promise<ResearchControlCampaignOutcomeRecord>;
+  getResearchControlCampaignOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlCampaignOutcomeRecord | undefined>;
+  listResearchControlCampaignOutcomes(): Promise<
+    ResearchControlCampaignOutcomeRecord[]
   >;
   recordResearchDirection(
     direction: ResearchDirectionRecord

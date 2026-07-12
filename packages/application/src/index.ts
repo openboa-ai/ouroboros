@@ -4,6 +4,7 @@ export * from "./candidate/arena";
 export * from "./candidate/research-allocation";
 export * from "./candidate/research-population-diversity";
 export * from "./candidate/research-control-campaign";
+export * from "./candidate/research-control-campaign-outcome";
 export * from "./candidate/evaluation";
 export * from "./candidate/materialization";
 export * from "./controllers/operator";

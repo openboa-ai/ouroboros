@@ -80,6 +80,8 @@ import {
   researchControlCampaignArmIntentHasRuntimeShape,
   researchControlCampaignDigestInput,
   researchControlCampaignHasRuntimeShape,
+  researchControlCampaignOutcomeDigestInput,
+  researchControlCampaignOutcomeHasRuntimeShape,
   researchControlCampaignReportDigestInput,
   researchControlCampaignReportHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
@@ -135,6 +137,7 @@ import type {
   ResearchDirectionRecord,
   ResearchBehaviorFingerprintRecord,
   ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignOutcomeRecord,
   ResearchControlCampaignRecord,
   ResearchControlCampaignReportRecord,
   ResearchOrchestrationRunRecord,
@@ -391,6 +394,12 @@ export type LocalStoreErrorCode =
   | "research_control_campaign_report_reference_mismatch"
   | "research_control_campaign_report_conflict"
   | "research_control_campaign_report_reload_failed"
+  | "invalid_research_control_campaign_outcome_input"
+  | "research_control_campaign_outcome_digest_mismatch"
+  | "research_control_campaign_outcome_reference_not_found"
+  | "research_control_campaign_outcome_reference_mismatch"
+  | "research_control_campaign_outcome_conflict"
+  | "research_control_campaign_outcome_reload_failed"
   | "invalid_candidate_arena_tick_input"
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
@@ -679,6 +688,7 @@ type Collection =
   | "research-control-campaigns"
   | "research-control-campaign-arm-intents"
   | "research-control-campaign-reports"
+  | "research-control-campaign-outcomes"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
 
@@ -3872,6 +3882,154 @@ export class LocalStore {
         ) && armReport.allocation_refs.every((allocationRef, tickIndex) =>
           allocationRef.id ===
             `candidate-arena-research-allocation-${campaignArm.tick_ids[tickIndex]}`
+        );
+    });
+  }
+
+  async recordResearchControlCampaignOutcome(
+    outcome: ResearchControlCampaignOutcomeRecord
+  ): Promise<ResearchControlCampaignOutcomeRecord> {
+    if (!researchControlCampaignOutcomeHasRuntimeShape(outcome)) {
+      throw new LocalStoreError(
+        "invalid_research_control_campaign_outcome_input",
+        "invalid ResearchControlCampaign outcome input"
+      );
+    }
+    if (outcome.outcome_digest !== comparisonExactRecordDigest(
+      researchControlCampaignOutcomeDigestInput(outcome)
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_outcome_digest_mismatch",
+        "ResearchControlCampaign outcome digest does not match its content"
+      );
+    }
+    const [campaign, report, promotion] = await Promise.all([
+      this.getResearchControlCampaign(outcome.campaign_ref.id),
+      this.getResearchControlCampaignReport(outcome.report_ref.id),
+      this.getTradingPromotion(
+        outcome.paper_comparator.trading_promotion_ref.id
+      )
+    ]);
+    if (!campaign || !report || !promotion) {
+      throw new LocalStoreError(
+        "research_control_campaign_outcome_reference_not_found",
+        "ResearchControlCampaign outcome source evidence was not found"
+      );
+    }
+    if (!this.researchControlCampaignOutcomeGraphMatches(
+      outcome,
+      campaign,
+      report,
+      promotion
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_outcome_reference_mismatch",
+        "ResearchControlCampaign outcome does not match frozen source evidence"
+      );
+    }
+    const existing = await this.getResearchControlCampaignOutcome(
+      outcome.research_control_campaign_outcome_id
+    );
+    if (existing) {
+      if (!sameJson(existing, outcome)) {
+        throw new LocalStoreError(
+          "research_control_campaign_outcome_conflict",
+          "ResearchControlCampaign outcome is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(this.itemPath(
+      "research-control-campaign-outcomes",
+      outcome.research_control_campaign_outcome_id
+    ), outcome);
+    return outcome;
+  }
+
+  async getResearchControlCampaignOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlCampaignOutcomeRecord | undefined> {
+    const outcome = await this.readOptionalRecord<unknown>(
+      "research-control-campaign-outcomes",
+      outcomeId
+    );
+    return outcome === undefined
+      ? undefined
+      : this.assertPersistedResearchControlCampaignOutcome(outcome);
+  }
+
+  async listResearchControlCampaignOutcomes(): Promise<
+    ResearchControlCampaignOutcomeRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "research-control-campaign-outcomes"
+    )).map((outcome) =>
+      this.assertPersistedResearchControlCampaignOutcome(outcome)
+    ).sort((left, right) =>
+      left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+      left.research_control_campaign_outcome_id.localeCompare(
+        right.research_control_campaign_outcome_id
+      )
+    );
+  }
+
+  private assertPersistedResearchControlCampaignOutcome(
+    value: unknown
+  ): ResearchControlCampaignOutcomeRecord {
+    if (!researchControlCampaignOutcomeHasRuntimeShape(value) ||
+      value.outcome_digest !== comparisonExactRecordDigest(
+        researchControlCampaignOutcomeDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_control_campaign_outcome_reload_failed",
+        "persisted ResearchControlCampaign outcome is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private researchControlCampaignOutcomeGraphMatches(
+    outcome: ResearchControlCampaignOutcomeRecord,
+    campaign: ResearchControlCampaignRecord,
+    report: ResearchControlCampaignReportRecord,
+    promotion: TradingPromotionRecord
+  ): boolean {
+    if (campaign.paper_comparator.comparator_status !== "trading_review" ||
+      outcome.campaign_ref.record_kind !== "research_control_campaign" ||
+      outcome.campaign_ref.id !== campaign.research_control_campaign_id ||
+      outcome.campaign_digest !== campaign.campaign_digest ||
+      outcome.report_ref.record_kind !== "research_control_campaign_report" ||
+      outcome.report_ref.id !== report.research_control_campaign_report_id ||
+      outcome.report_digest !== report.report_digest ||
+      report.campaign_ref.id !== campaign.research_control_campaign_id ||
+      report.campaign_digest !== campaign.campaign_digest ||
+      !sameJson(outcome.paper_comparator, campaign.paper_comparator) ||
+      outcome.paper_comparator.trading_promotion_ref.id !==
+        promotion.trading_promotion_id ||
+      outcome.paper_comparator.trading_promotion_digest !==
+        comparisonExactRecordDigest(
+          paperTradingComparisonTradingPromotionDigestInput(promotion)
+        ) || outcome.paper_comparator.candidate_ref.id !==
+        promotion.candidate_ref.id ||
+      outcome.paper_comparator.candidate_version_ref.id !==
+        promotion.candidate_version_ref.id ||
+      outcome.paper_comparator.paper_trading_evaluation_ref.id !==
+        promotion.paper_trading_evaluation_ref.id ||
+      Date.parse(promotion.promoted_at) > Date.parse(campaign.committed_at) ||
+      Date.parse(outcome.adjudicated_at) < Date.parse(report.completed_at)) {
+      return false;
+    }
+    return outcome.arms.every((outcomeArm, armIndex) => {
+      const reportArm = report.arms[armIndex]!;
+      return outcomeArm.arm_kind === reportArm.arm_kind &&
+        outcomeArm.allocation_mode === reportArm.allocation_mode &&
+        outcomeArm.slot_results.length ===
+          reportArm.paper_candidate_slots.length &&
+        outcomeArm.slot_results.every((result, slotIndex) =>
+          researchControlCampaignOutcomeSlotMatchesReport(
+            result,
+            reportArm.paper_candidate_slots[slotIndex]!
+          )
         );
     });
   }
@@ -17640,6 +17798,31 @@ function sameRef(left: Ref | undefined, right: Ref | undefined): boolean {
 
 function sameOptionalRef(left: Ref | undefined, right: Ref | undefined): boolean {
   return left === undefined && right === undefined || sameRef(left, right);
+}
+
+function researchControlCampaignOutcomeSlotMatchesReport(
+  result: ResearchControlCampaignOutcomeRecord["arms"][number]["slot_results"][number],
+  slot: ResearchControlCampaignReportRecord["arms"][number]["paper_candidate_slots"][number]
+): boolean {
+  if (result.sequence !== slot.sequence || !paperTradingComparisonRefsEqual(
+    result.tick_ref,
+    slot.tick_ref
+  )) {
+    return false;
+  }
+  if (slot.status === "no_admitted_candidate") {
+    return result.terminal_status === "no_admitted_candidate";
+  }
+  return result.terminal_status !== "no_admitted_candidate" &&
+    paperTradingComparisonRefsEqual(result.candidate_ref, slot.candidate_ref) &&
+    paperTradingComparisonRefsEqual(
+      result.candidate_version_ref,
+      slot.candidate_version_ref
+    ) && paperTradingComparisonRefsEqual(
+      result.system_code_ref,
+      slot.system_code_ref
+    ) && result.system_code_artifact_digest ===
+      slot.system_code_artifact_digest;
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

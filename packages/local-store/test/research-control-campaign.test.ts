@@ -8,8 +8,10 @@ import {
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
   researchControlCampaignArmIntentDigestInput,
+  researchControlCampaignOutcomeDigestInput,
   researchControlCampaignReportDigestInput,
   type ResearchControlCampaignArmIntentRecord,
+  type ResearchControlCampaignOutcomeRecord,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchPopulationDiversityReadModel,
@@ -19,6 +21,8 @@ import {
   decideResearchControlCampaign,
   decideResearchControlCampaignArmIntent
 } from "@ouroboros/application/candidate/research-control-campaign";
+import { adjudicateResearchControlCampaignOutcome } from
+  "@ouroboros/application/candidate/research-control-campaign-outcome";
 import { LocalStore, LocalStoreError } from "../src/index";
 
 describe("LocalStore ResearchControlCampaign", () => {
@@ -295,7 +299,132 @@ describe("LocalStore ResearchControlCampaign", () => {
       code: "research_control_campaign_report_reload_failed"
     });
   });
+
+  it("appends and reloads one exact terminal campaign outcome", async () => {
+    const fixture = await persistOutcomeSourceGraph(root, store);
+
+    expect(await store.recordResearchControlCampaignOutcome(fixture.outcome))
+      .toEqual(fixture.outcome);
+    expect(await store.getResearchControlCampaignOutcome(
+      fixture.outcome.research_control_campaign_outcome_id
+    )).toEqual(fixture.outcome);
+    expect(await store.listResearchControlCampaignOutcomes()).toEqual([
+      fixture.outcome
+    ]);
+    expect(await store.recordResearchControlCampaignOutcome(fixture.outcome))
+      .toEqual(fixture.outcome);
+  });
+
+  it("rejects outcome digest drift, graph drift, and append conflict", async () => {
+    const fixture = await persistOutcomeSourceGraph(root, store);
+    const digestMismatch = structuredClone(fixture.outcome);
+    digestMismatch.outcome_digest = digest("9");
+    await expect(store.recordResearchControlCampaignOutcome(digestMismatch))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_outcome_digest_mismatch"
+      });
+
+    const graphMismatch = finalizeOutcome({
+      ...fixture.outcome,
+      report_digest: digest("8")
+    });
+    await expect(store.recordResearchControlCampaignOutcome(graphMismatch))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_outcome_reference_mismatch"
+      });
+
+    await store.recordResearchControlCampaignOutcome(fixture.outcome);
+    const conflict = finalizeOutcome({
+      ...fixture.outcome,
+      adjudicated_at: "2026-07-12T11:01:00.000Z"
+    });
+    await expect(store.recordResearchControlCampaignOutcome(conflict))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_outcome_conflict"
+      });
+  });
+
+  it("requires the exact persisted pre-effect comparator at outcome write", async () => {
+    const fixture = await persistOutcomeSourceGraph(root, store);
+    await rm(path.join(
+      root,
+      "trading-promotions/items",
+      `${fixture.promotion.trading_promotion_id}.json`
+    ));
+
+    await expect(store.recordResearchControlCampaignOutcome(fixture.outcome))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_outcome_reference_not_found"
+      });
+  });
+
+  it("detects corrupt terminal outcome content on reload", async () => {
+    const fixture = await persistOutcomeSourceGraph(root, store);
+    await store.recordResearchControlCampaignOutcome(fixture.outcome);
+    const file = path.join(
+      root,
+      "research-control-campaign-outcomes/items",
+      `${fixture.outcome.research_control_campaign_outcome_id}.json`
+    );
+    const persisted = JSON.parse(await readFile(file, "utf8"));
+    persisted.observed_result = "adaptive_rate_higher";
+    await writeFile(file, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+    await expect(store.getResearchControlCampaignOutcome(
+      fixture.outcome.research_control_campaign_outcome_id
+    )).rejects.toMatchObject({
+      code: "research_control_campaign_outcome_reload_failed"
+    });
+  });
 });
+
+async function persistOutcomeSourceGraph(root: string, store: LocalStore) {
+  const promotion = tradingPromotionFixture();
+  await mkdir(path.join(root, "trading-promotions/items"), { recursive: true });
+  await writeFile(
+    path.join(
+      root,
+      "trading-promotions/items",
+      `${promotion.trading_promotion_id}.json`
+    ),
+    `${JSON.stringify(promotion, null, 2)}\n`,
+    "utf8"
+  );
+  const campaign = campaignFixture({
+    paperComparator: {
+      comparator_status: "trading_review",
+      trading_promotion_ref: {
+        record_kind: "trading_promotion",
+        id: promotion.trading_promotion_id
+      },
+      trading_promotion_digest: canonicalDigest(
+        paperTradingComparisonTradingPromotionDigestInput(promotion)
+      ),
+      candidate_ref: { ...promotion.candidate_ref },
+      candidate_version_ref: { ...promotion.candidate_version_ref },
+      paper_trading_evaluation_ref: {
+        ...promotion.paper_trading_evaluation_ref
+      }
+    }
+  });
+  const adaptive = armIntentFixture(campaign, "adaptive_treatment");
+  const control = armIntentFixture(campaign, "static_control");
+  const report = reportFixture(campaign, adaptive, control);
+  await store.recordResearchControlCampaign(campaign);
+  await store.recordResearchControlCampaignArmIntent(adaptive);
+  await store.recordResearchControlCampaignArmIntent(control);
+  await store.recordResearchControlCampaignReport(report);
+  const outcome = adjudicateResearchControlCampaignOutcome({
+    campaign,
+    report,
+    arms: [
+      { armKind: "adaptive_treatment", paperClosures: [] },
+      { armKind: "static_control", paperClosures: [] }
+    ],
+    adjudicatedAt: "2026-07-12T11:00:00.000Z"
+  });
+  return { promotion, campaign, report, outcome };
+}
 
 function campaignFixture(input: {
   baselineDigest?: string;
@@ -546,6 +675,16 @@ function finalizeReport(
   const result = structuredClone(report);
   result.report_digest = canonicalDigest(
     researchControlCampaignReportDigestInput(result)
+  );
+  return result;
+}
+
+function finalizeOutcome(
+  outcome: ResearchControlCampaignOutcomeRecord
+): ResearchControlCampaignOutcomeRecord {
+  const result = structuredClone(outcome);
+  result.outcome_digest = canonicalDigest(
+    researchControlCampaignOutcomeDigestInput(result)
   );
   return result;
 }
