@@ -7241,6 +7241,89 @@ export interface ResearchControlCampaignReportRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
+export type ResearchControlCampaignOutcomeTerminalStatus =
+  | "qualified_improvement"
+  | "not_reproduced"
+  | "evidence_ineligible"
+  | "paper_slot_expired";
+
+interface ResearchControlCampaignOutcomeSlotBase {
+  sequence: number;
+  tick_ref: Ref;
+}
+
+export type ResearchControlCampaignOutcomeSlotResult =
+  | (ResearchControlCampaignOutcomeSlotBase & {
+      terminal_status: "no_admitted_candidate";
+      discovery_credit: 0;
+    })
+  | (ResearchControlCampaignOutcomeSlotBase & {
+      terminal_status: ResearchControlCampaignOutcomeTerminalStatus;
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      system_code_ref: Ref;
+      system_code_artifact_digest: string;
+      confirmation_campaign_ref: Ref;
+      confirmation_campaign_digest: string;
+      confirmation_outcome_ref: Ref;
+      confirmation_outcome_digest: string;
+      research_release_ref: Ref;
+      research_release_digest: string;
+      release_kind: PaperTradingComparisonResearchReleaseKind;
+      discovery_credit: 0 | 1;
+    });
+
+export interface ResearchControlCampaignOutcomeArmMetrics {
+  slot_count: number;
+  admitted_candidate_slot_count: number;
+  no_admitted_candidate_count: number;
+  qualified_discovery_count: number;
+  not_reproduced_count: number;
+  evidence_ineligible_count: number;
+  paper_slot_expired_count: number;
+  qualified_discovery_rate: number;
+}
+
+export interface ResearchControlCampaignOutcomeArm {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  slot_results: ResearchControlCampaignOutcomeSlotResult[];
+  metrics: ResearchControlCampaignOutcomeArmMetrics;
+}
+
+export interface ResearchControlCampaignOutcomeRecord extends BaseRecord {
+  record_kind: "research_control_campaign_outcome";
+  research_control_campaign_outcome_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  report_ref: Ref;
+  report_digest: string;
+  paper_comparator: Extract<
+    ResearchControlCampaignPaperComparator,
+    { comparator_status: "trading_review" }
+  >;
+  shared_evaluation_policy_digest: string;
+  arms: [
+    ResearchControlCampaignOutcomeArm,
+    ResearchControlCampaignOutcomeArm
+  ];
+  observed_rate_difference: number;
+  observed_result:
+    | "adaptive_rate_higher"
+    | "rates_equal"
+    | "static_rate_higher";
+  causal_conclusion: "single_campaign_observation_only";
+  policy_replacement_eligibility: "not_eligible";
+  next_action: "accumulate_replicated_control_campaigns";
+  adjudicated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
 export function researchControlCampaignDigestInput(
   record: ResearchControlCampaignRecord
 ): string {
@@ -7275,6 +7358,19 @@ export function researchControlCampaignReportDigestInput(
     version: _version,
     research_control_campaign_report_id: _id,
     report_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignOutcomeDigestInput(
+  record: ResearchControlCampaignOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_outcome_id: _id,
+    outcome_digest: _digest,
     ...payload
   } = record;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
@@ -7457,6 +7553,303 @@ export function researchControlCampaignReportHasRuntimeShape(
   const tickIds = report.arms.flatMap((arm) => arm.tick_refs.map((ref) => ref.id));
   return candidateArenaAllocationStringsUnique(intentIds) &&
     candidateArenaAllocationStringsUnique(tickIds);
+}
+
+export function researchControlCampaignOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_outcome_id",
+    "campaign_ref",
+    "campaign_digest",
+    "report_ref",
+    "report_digest",
+    "paper_comparator",
+    "shared_evaluation_policy_digest",
+    "arms",
+    "observed_rate_difference",
+    "observed_result",
+    "causal_conclusion",
+    "policy_replacement_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_outcome_id) ||
+    !researchControlCampaignOutcomeRef(
+      value.campaign_ref,
+      "research_control_campaign"
+    ) || !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !researchControlCampaignOutcomeRef(
+      value.report_ref,
+      "research_control_campaign_report"
+    ) || !researchControlCampaignSha256Digest(value.report_digest) ||
+    !researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) || value.paper_comparator.comparator_status !== "trading_review" ||
+    !researchControlCampaignSha256Digest(
+      value.shared_evaluation_policy_digest
+    ) || !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    !comparisonFinite(value.observed_rate_difference) ||
+    ![
+      "adaptive_rate_higher",
+      "rates_equal",
+      "static_rate_higher"
+    ].includes(value.observed_result as string) ||
+    value.causal_conclusion !== "single_campaign_observation_only" ||
+    value.policy_replacement_eligibility !== "not_eligible" ||
+    value.next_action !== "accumulate_replicated_control_campaigns" ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+
+  const outcome = value as unknown as ResearchControlCampaignOutcomeRecord;
+  if (!researchControlCampaignOutcomeArmHasRuntimeShape(
+    outcome.arms[0],
+    "adaptive_treatment",
+    "adaptive_default"
+  ) || !researchControlCampaignOutcomeArmHasRuntimeShape(
+    outcome.arms[1],
+    "static_control",
+    "static_control"
+  ) || outcome.arms[0].metrics.slot_count !==
+      outcome.arms[1].metrics.slot_count) {
+    return false;
+  }
+
+  const adaptiveRate = outcome.arms[0].metrics.qualified_discovery_rate;
+  const staticRate = outcome.arms[1].metrics.qualified_discovery_rate;
+  const difference = comparisonRound6(adaptiveRate - staticRate);
+  const expectedResult = difference > 0
+    ? "adaptive_rate_higher"
+    : difference < 0
+    ? "static_rate_higher"
+    : "rates_equal";
+  if (outcome.observed_rate_difference !== difference ||
+    outcome.observed_result !== expectedResult) {
+    return false;
+  }
+
+  const slots = outcome.arms.flatMap((arm) => arm.slot_results);
+  const paperSlots = slots.filter(
+    (slot): slot is Extract<
+      ResearchControlCampaignOutcomeSlotResult,
+      { terminal_status: ResearchControlCampaignOutcomeTerminalStatus }
+    > => slot.terminal_status !== "no_admitted_candidate"
+  );
+  return researchControlCampaignOutcomeRefsUnique(
+    slots.map((slot) => slot.tick_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.candidate_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.candidate_version_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.confirmation_campaign_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.confirmation_outcome_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.research_release_ref)
+  );
+}
+
+function researchControlCampaignOutcomeArmHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control"
+): value is ResearchControlCampaignOutcomeArm {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "slot_results",
+    "metrics"
+  ]) || value.arm_kind !== armKind || value.allocation_mode !== allocationMode ||
+    !Array.isArray(value.slot_results) || value.slot_results.length < 1 ||
+    value.slot_results.length > 5 || !value.slot_results.every(
+      (slot, index) =>
+        researchControlCampaignOutcomeSlotHasRuntimeShape(slot, index + 1)
+    ) || !researchControlCampaignOutcomeMetricsHasRuntimeShape(
+      value.metrics,
+      value.slot_results as ResearchControlCampaignOutcomeSlotResult[]
+    )) {
+    return false;
+  }
+  return true;
+}
+
+function researchControlCampaignOutcomeSlotHasRuntimeShape(
+  value: unknown,
+  sequence: number
+): value is ResearchControlCampaignOutcomeSlotResult {
+  if (!comparisonObject(value) || value.terminal_status ===
+      "no_admitted_candidate") {
+    return comparisonObject(value) && comparisonHasExactKeys(value, [
+      "sequence",
+      "tick_ref",
+      "terminal_status",
+      "discovery_credit"
+    ]) && value.sequence === sequence && researchControlCampaignOutcomeRef(
+      value.tick_ref,
+      "candidate_arena_tick"
+    ) && value.terminal_status === "no_admitted_candidate" &&
+      value.discovery_credit === 0;
+  }
+
+  if (!comparisonHasExactKeys(value, [
+    "sequence",
+    "tick_ref",
+    "terminal_status",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "confirmation_campaign_ref",
+    "confirmation_campaign_digest",
+    "confirmation_outcome_ref",
+    "confirmation_outcome_digest",
+    "research_release_ref",
+    "research_release_digest",
+    "release_kind",
+    "discovery_credit"
+  ]) || value.sequence !== sequence || !researchControlCampaignOutcomeRef(
+    value.tick_ref,
+    "candidate_arena_tick"
+  ) || !researchControlCampaignOutcomeRef(
+    value.candidate_ref,
+    "trading_system_candidate"
+  ) || !researchControlCampaignOutcomeRef(
+    value.candidate_version_ref,
+    "candidate_version"
+  ) || !researchControlCampaignOutcomeRef(
+    value.system_code_ref,
+    "system_code"
+  ) || !researchControlCampaignSha256Digest(
+    value.system_code_artifact_digest
+  ) || !researchControlCampaignOutcomeRef(
+    value.confirmation_campaign_ref,
+    "paper_trading_comparison_confirmation_campaign"
+  ) || !researchControlCampaignSha256Digest(
+    value.confirmation_campaign_digest
+  ) || !researchControlCampaignOutcomeRef(
+    value.confirmation_outcome_ref,
+    "paper_trading_comparison_confirmation_campaign_outcome"
+  ) || !researchControlCampaignSha256Digest(
+    value.confirmation_outcome_digest
+  ) || !researchControlCampaignOutcomeRef(
+    value.research_release_ref,
+    "paper_trading_comparison_research_release"
+  ) || !researchControlCampaignSha256Digest(value.research_release_digest)) {
+    return false;
+  }
+
+  const expected = researchControlCampaignOutcomeReleaseMapping(
+    value.terminal_status
+  );
+  return expected !== undefined && value.release_kind === expected.releaseKind &&
+    value.discovery_credit === expected.discoveryCredit;
+}
+
+function researchControlCampaignOutcomeMetricsHasRuntimeShape(
+  value: unknown,
+  slots: readonly ResearchControlCampaignOutcomeSlotResult[]
+): value is ResearchControlCampaignOutcomeArmMetrics {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_count",
+    "admitted_candidate_slot_count",
+    "no_admitted_candidate_count",
+    "qualified_discovery_count",
+    "not_reproduced_count",
+    "evidence_ineligible_count",
+    "paper_slot_expired_count",
+    "qualified_discovery_rate"
+  ]) || ![
+    value.slot_count,
+    value.admitted_candidate_slot_count,
+    value.no_admitted_candidate_count,
+    value.qualified_discovery_count,
+    value.not_reproduced_count,
+    value.evidence_ineligible_count,
+    value.paper_slot_expired_count
+  ].every(comparisonNonNegative) ||
+    !comparisonNonNegativeFinite(value.qualified_discovery_rate) ||
+    value.qualified_discovery_rate > 1) {
+    return false;
+  }
+
+  const metrics = value as unknown as ResearchControlCampaignOutcomeArmMetrics;
+  const count = (status: ResearchControlCampaignOutcomeSlotResult["terminal_status"]) =>
+    slots.filter((slot) => slot.terminal_status === status).length;
+  const noCandidateCount = count("no_admitted_candidate");
+  const qualifiedCount = count("qualified_improvement");
+  const notReproducedCount = count("not_reproduced");
+  const evidenceIneligibleCount = count("evidence_ineligible");
+  const expiredCount = count("paper_slot_expired");
+  return metrics.slot_count === slots.length &&
+    metrics.admitted_candidate_slot_count === slots.length - noCandidateCount &&
+    metrics.no_admitted_candidate_count === noCandidateCount &&
+    metrics.qualified_discovery_count === qualifiedCount &&
+    metrics.not_reproduced_count === notReproducedCount &&
+    metrics.evidence_ineligible_count === evidenceIneligibleCount &&
+    metrics.paper_slot_expired_count === expiredCount &&
+    metrics.admitted_candidate_slot_count === qualifiedCount +
+      notReproducedCount + evidenceIneligibleCount + expiredCount &&
+    metrics.qualified_discovery_rate === comparisonRound6(
+      qualifiedCount / slots.length
+    );
+}
+
+function researchControlCampaignOutcomeReleaseMapping(
+  status: unknown
+): {
+  releaseKind: PaperTradingComparisonResearchReleaseKind;
+  discoveryCredit: 0 | 1;
+} | undefined {
+  switch (status) {
+    case "qualified_improvement":
+      return { releaseKind: "confirmed_improvement", discoveryCredit: 1 };
+    case "not_reproduced":
+      return { releaseKind: "challenger_not_reproduced", discoveryCredit: 0 };
+    case "evidence_ineligible":
+      return {
+        releaseKind: "comparison_evidence_ineligible",
+        discoveryCredit: 0
+      };
+    case "paper_slot_expired":
+      return { releaseKind: "campaign_slot_expired", discoveryCredit: 0 };
+    default:
+      return undefined;
+  }
+}
+
+function researchControlCampaignOutcomeRef(
+  value: unknown,
+  kind: string
+): value is Ref {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "record_kind",
+    "id"
+  ]) && comparisonRef(value, kind);
+}
+
+function researchControlCampaignOutcomeRefsUnique(
+  refs: readonly Ref[]
+): boolean {
+  return candidateArenaAllocationStringsUnique(
+    refs.map((ref) => `${ref.record_kind}:${ref.id}`)
+  );
 }
 
 function researchControlCampaignBaselineHasRuntimeShape(
@@ -9002,6 +9395,7 @@ export type FixtureRecord =
   | ResearchControlCampaignRecord
   | ResearchControlCampaignArmIntentRecord
   | ResearchControlCampaignReportRecord
+  | ResearchControlCampaignOutcomeRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord
   | ResearcherProviderSelectionRecord
