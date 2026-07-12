@@ -35,6 +35,7 @@ problem
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -47,7 +48,11 @@ continuous paper `revenue - cost`, and Gateway/Ledger evidence decide what count
 runnable handoff must bind its exact pre-effect commitment, sealed terminal evaluation, submitted
 `SystemCode`, and passed `PaperTradingHandoffConformance`. Development feedback has no admission
 authority; raw evaluator seed, sealed scenarios, and sealed outcome stay unavailable to the
-ResearchWorker, and process loss fails the direction closed rather than resampling. Generated
+ResearchWorker, and process loss fails the exact commitment closed rather than resampling. A stable
+logical ResearchWorker may continue only through a new allocation and commitment after one
+append-only `ResearchWorkerCheckpoint`; restart recovery reconstructs an exact persisted admission
+closure or records `failed_closed/restart_recovery` before any new worker effect. It never resumes
+the old provider process, budget, evaluator seed, or sealed suite. Generated
 single-file Python SystemCode identity is the canonical digest of its
 frozen manifest-plus-entrypoint closure, not the entrypoint alone; generated-candidate paper start
 revalidates that closure and conformance evidence before paper effects.
@@ -213,11 +218,12 @@ Canonical Ouroboros nouns for the current product surface:
 | Canonical noun | Meaning |
 | --- | --- |
 | `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
-| `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
+| `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and candidate artifact runs remain disposable. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick/direction/worker/allocation/source SystemCode to bounded development feedback and one evaluator-owned rotating sealed-admission suite; it stores commitments and digests, never the raw evaluator seed or sealed scenarios, and grants no admission, promotion, order, private, or live authority. |
+| `ResearchWorkerCheckpoint` | Append-only terminal lifecycle evidence for one stable ResearchWorker and exact ResearchPreflightCommitment; it carries bounded sanitized notebook continuity and closed budget history into a later new commitment without resuming old effects or granting downstream authority. |
 | `ResearchBehaviorFingerprint` | Append-only development-only record of normalized effective decisions for one exact protocol, suite digest, commitment, and frozen SystemCode; exact matching is bounded observational duplicate evidence, not semantic equivalence, score, qualification, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that binds the complete new-format ResearchPreflight commitment/terminal/submitted-SystemCode graph and paper handoff conformance to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |

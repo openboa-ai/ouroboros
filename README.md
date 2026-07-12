@@ -30,6 +30,7 @@ parallel TradingSystem candidates
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -46,7 +47,7 @@ persists a `ResearchPreflightCommitment` that binds allocation, direction, worke
 development budget, and evaluator-owned sealed-suite commitments before worker effects. The worker
 may receive bounded aggregate development feedback, but one frozen artifact is submitted only once
 to the rotating sealed set. Raw evaluator seed and sealed scenarios remain process-local; process
-loss closes the direction instead of reconstructing or resampling them. Every new admitted candidate
+loss closes that commitment instead of reconstructing or resampling it. Every new admitted candidate
 must then bind the exact commitment, sealed terminal evaluation, submitted `SystemCode`, and one
 external `PaperTradingHandoffConformance`, and a
 generated candidate must revalidate that evidence before paper effects. For generated single-file
@@ -64,11 +65,22 @@ quarantine an otherwise admissible submission. This is bounded observational equ
 development suite, not semantic program equivalence or economic evidence, and sealed or paper
 outcomes never enter the fingerprint.
 
+One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
+managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
+artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
+one append-only `ResearchWorkerCheckpoint`: completed admission or failed-closed execution, zero
+remaining submission authority, cumulative bounded budget accounting, and at most six recent
+development-visible notebook entries. Before a new tick effect, restart recovery closes every
+orphan in commitment order. An already persisted exact admission reconstructs only the terminal
+checkpoint; otherwise the orphan becomes `failed_closed/restart_recovery`. Neither path reruns the
+old worker, artifact, provider, sandbox, budget, evaluator seed, or sealed suite.
+
 This isolation reduces direct evaluator reuse and differential probing; it does not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
-or cross-suite behavior clustering, durable ResearchWorker recovery, production comparison
-scheduling, automatic promotion, champion runner handoff, private/live authority, P0, and the
-overall Goal remain open.
+or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
+de-risking sequences, controlled discovery-yield and long-duration restart soak evidence,
+production comparison scheduling, automatic promotion, champion runner handoff, private/live
+authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after

@@ -95,8 +95,20 @@ of five directions with at most two focus lanes and at least one exploration lan
 two; focus and exploration receive two and one experiment iterations respectively within a total
 budget of five; completed allocations drive exploration coverage; and `static_control` provides an
 equal-bound `2`, `2`, `1` ablation. This does not complete the Adaptive allocation axis or the Goal:
-long-lived worker ownership, provider-dollar cost, controlled discovery-yield results, and the
-remaining completion evidence are still open.
+provider-dollar cost, learned allocation, controlled discovery-yield results, and the remaining
+completion evidence are still open.
+
+Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
+direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized
+notebook for each tick. Every checkpoint-enabled commitment closes through one append-only
+`ResearchWorkerCheckpoint` with a contiguous previous link, current and cumulative bounded
+submission counts, zero remaining retry authority, and completed or failed-closed status. Before a
+new tick effect, restart recovery closes orphan commitments oldest first: an exact persisted
+admission reconstructs only completed lifecycle evidence, while an orphan without admission becomes
+`failed_closed/restart_recovery`. Later same-worker prompts receive at most six recent public
+development summaries and never sealed, paper, path, command, provider-request, stdout/stderr, or
+private/live fields. This does not revive a provider process or sandbox, let the worker choose an
+open-ended de-risking sequence, or prove long-duration autonomous restart soak.
 
 Current partial implementation evidence also covers isolated research preflight and the
 candidate-to-paper handoff boundary. Before a worker effect, CandidateArena persists direction,
@@ -121,9 +133,10 @@ equivalence or near-duplicate clustering.
 
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
-clustering, broader adversarial side-channel coverage, durable ResearchWorker recovery, production
-comparison scheduling, automatic promotion, champion runner handoff, private/live authority, and
-the other completion axes remain open.
+clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
+worker-chosen research sequences, controlled memory and AI-agent ablations, production comparison
+scheduling, automatic promotion, champion runner handoff, private/live authority, and the other
+completion axes remain open.
 
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a
 versioned evaluation policy. They must be declared before a run rather than chosen after results are
@@ -136,7 +149,8 @@ Any one of these conditions vetoes Goal completion:
 - Candidate or ResearchWorker can read hidden outcomes, future data, evaluator internals, or
   qualification results before their release boundary.
 - A worker effect can occur before its ResearchPreflight commitment, or one commitment can receive
-  a second sealed submission, retry, reconstruction, or silent resample after process loss.
+  a second sealed submission, retry, reconstruction, or silent resample after process loss, or a
+  later worker effect can start before an orphan checkpoint-enabled commitment is terminally closed.
 - Candidate self-report, generated explanation, or provider optimism can count as evaluation proof.
 - Replay success or a manifest declaration can claim runnable paper handoff without exact external
   target-protocol conformance for the submitted artifact.

@@ -26,7 +26,9 @@ Current command groups:
   `PaperTradingEvaluation`. `arena.tick` is one research round: pre-effect allocation and
   ResearchPreflight commitment, bounded development feedback, one frozen sealed submission,
   handoff, development-only behavior fingerprint comparison, admission, leaderboard update,
-  findings, and lineage. By itself it
+  findings, lineage, and terminal ResearchWorker checkpoint. Before new tick effects it also
+  reconciles checkpoint-enabled orphan commitments without replaying old worker or evaluator
+  effects. By itself it
   is not continuous paper trading and must not be treated as final evaluation authority.
   `arena.cycle` runs one below-authority autonomous paper cycle: execute a research tick, select
   the highest-ranked candidate created by that tick, then start or resume its selected continuous

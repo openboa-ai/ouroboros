@@ -12,6 +12,7 @@ CandidateArena
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard, findings, and lineage
 -> selected continuous Paper Trading
 -> Gateway
@@ -28,7 +29,8 @@ research tool, not admission or final evaluation authority. Before worker effect
 one `ResearchPreflightCommitment` to the allocation, direction, worker, source SystemCode, bounded
 development suite, and evaluator-owned sealed suite commitment. The worker never receives the raw
 seed, sealed scenarios, or sealed outcome; one development-selected artifact is frozen and may be
-submitted to that sealed set only once. Process loss fails closed rather than resampling. Exact
+submitted to that sealed set only once. Process loss fails that commitment closed rather than
+resampling. Exact
 terminal commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and generated
 paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
 canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
@@ -40,6 +42,13 @@ effective orders on the exact development suite. LocalStore compares only protoc
 suite-compatible fingerprints linked from earlier admitted decisions. An exact match keeps its
 Finding and Lineage but receives no population slot; unavailable evidence fails closed. This
 comparison consumes no sealed or paper result and claims no global semantic equivalence.
+`ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
+not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
+commitment still runs isolated candidate bytes and closes through one append-only
+`ResearchWorkerCheckpoint` with a contiguous prior link, bounded cumulative submission accounting,
+zero retry authority, and completed or failed-closed status. Restart reconciliation runs before a
+new tick effect: it reconstructs a terminal checkpoint from an exact persisted admission or closes
+the orphan as restart recovery. It never adopts a process or recreates evaluator-held sealed state.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
 
@@ -52,8 +61,8 @@ market subscriptions, internal agent loop, or risk logic says to act. Paper obse
 checkpoint/readback events: refresh market evidence, consume newly emitted orders, record Gateway
 validation and fake execution, or record no-order continuity.
 
-Candidate generation may be parallel across `ResearchWorker` and `ResearchDirection` lanes or
-iterative across ticks. The architecture should preserve candidate population memory: losing
+Candidate generation may be parallel across stable `ResearchWorker` and `ResearchDirection` lanes
+or iterative across new tick commitments. The architecture should preserve candidate population memory: losing
 candidates, failed directions, findings, parent links, and lineage are inputs to the next
 generation.
 

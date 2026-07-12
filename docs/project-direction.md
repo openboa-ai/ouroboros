@@ -30,6 +30,9 @@ satisfies the bounded target paper event protocol before admission and generated
 separate from one rotating, evaluator-owned sealed admission submission.
 `ResearchBehaviorFingerprint` is the development-only population identity record that binds one
 frozen SystemCode to normalized effective orders on one exact protocol and suite digest.
+`ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
+carry a sanitized notebook and closed budget history into a later new commitment without resuming
+an old process or sealed evaluator plan.
 
 ## Source Of Truth
 
@@ -51,6 +54,7 @@ parallel TradingSystem candidates
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -73,6 +77,14 @@ effects. Generated single-file Python SystemCode identity includes its frozen ma
 editable entrypoint; undeclared closure state is invalid. Rejected protocol evidence stays in causal research memory, while infrastructure failure
 stays platform-attributed. Conformance has no economic, qualification, promotion, order, private,
 or live authority.
+
+ResearchWorker identity persists across ticks only when direction, provider, model, and managed
+agent profile are exact. The worker owns a stable workspace with one sanitized notebook per tick;
+candidate artifact bytes remain isolated. Every new commitment closes through one append-only
+checkpoint with a contiguous prior link, bounded cumulative submission counts, and zero remaining
+retry authority. Restart recovery runs before the next worker effect. It reconstructs a checkpoint
+from an already persisted exact admission or fails the orphan closed, and never reruns the old
+artifact, process, provider, sandbox, budget, seed, or sealed suite.
 
 Candidate population identity is not source-text identity. CandidateArena records normalized
 effective `symbol`, `side`, exact `quantity`, and `order_type` decisions from every canonical

@@ -1,6 +1,6 @@
 # ResearchWorker Lifecycle Design
 
-**Status:** Approved for implementation
+**Status:** Complete and verified
 
 ## Goal
 
@@ -228,3 +228,24 @@ The frontier is complete when tests prove:
 - malformed, forked, mismatched, corrupt-digest, or authority-bearing checkpoints fail closed;
 - historical tick-scoped workers and admissions remain readable but cannot enter v1 recovery;
 - focused tests, typechecks, repository guards, product-loop regression, and the full suite pass.
+
+## Verification Evidence
+
+- Domain RED failed all 47 new checkpoint tests before the contract existed; the final adjacent
+  domain matrix passed 2 files and 81 tests.
+- Store RED failed all 6 lifecycle graph scenarios before checkpoint-enabled workers and
+  persistence existed; the final adjacent Store/admission/preflight matrix passed 6 files and 91
+  tests.
+- Notebook RED failed both custom-path/prior-context tests; the complete trading research loop then
+  passed 39/39.
+- CandidateArena RED failed stable identity, immediate closure, restart-before-effect, and terminal
+  admission reconstruction; the final CandidateArena file passed 41/41 and the cross-layer matrix
+  passed 7 files and 114 tests.
+- All workspace typechecks passed, including the Tauri desktop Rust build check.
+- The first full-suite run exposed one test-only 429 caused by 50 ms product-loop polling under
+  parallel CPU contention. The isolated scenario passed; reducing bounded polling to 100 ms kept it
+  below the runtime rate limit. The rerun passed 283/283 suites and 2065/2065 tests with zero
+  failed, pending, or todo tests. JSON evidence is at
+  `/private/tmp/ouroboros-research-worker-lifecycle-full.json`.
+- `npm run check:repo-guards` passed docs, architecture, naming, tracked environment, secret, and
+  diff checks on the final implementation and canonical writeback.

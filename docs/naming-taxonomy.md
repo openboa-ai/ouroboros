@@ -9,7 +9,7 @@ that pack every axis into one identifier.
 | Canonical noun | Meaning |
 | --- | --- |
 | `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
-| `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
+| `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and isolated candidate runs remain disposable. |
 | `ResearchWorkerCheckpoint` | Append-only lifecycle closure for one stable ResearchWorker and exact ResearchPreflightCommitment. It carries bounded sanitized development notebook continuity and closed budget history into a later new commitment, but cannot resume old effects or grant evaluation, admission, promotion, order, private, or live authority. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |

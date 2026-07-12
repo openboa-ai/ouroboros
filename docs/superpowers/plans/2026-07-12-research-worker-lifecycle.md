@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development to implement this plan task-by-task.
 
-**Status:** In progress
+**Status:** Complete and verified; durable docs commit pending
 
 **Goal:** Persist a stable logical ResearchWorker, sanitized notebook and closed budget history,
 and fail-closed restart recovery without replaying an old ResearchPreflight commitment.
@@ -100,7 +100,7 @@ application and runtime typechecks passed.
   workspace, append checkpoints on every current path, and recover orphans before allocation.
 - [x] Bind every new CandidateArena admission to its exact commitment.
 - [x] Run CandidateArena, managed-provider, Operator product-loop, and restart regression GREEN.
-- [ ] Commit `feat: recover durable research workers`.
+- [x] Commit `feat: recover durable research workers` (`08c5b51`).
 
 Evidence: the four core RED scenarios failed on tick-scoped identities, absent terminal
 checkpoints, and absent recovery. The final CandidateArena file passed 41/41; the cross-layer
@@ -120,9 +120,17 @@ matrix passed 7 files and 114 tests; application and runtime typechecks passed.
 - Modify: `docs/autonomy-model.md`
 - Modify this design and plan with final evidence.
 
-- [ ] Replace the tick-scoped-worker gap with exact implemented and residual claims.
-- [ ] Run focused cross-layer tests and all affected workspace typechecks.
-- [ ] Run `npm run check:repo-guards` and `git diff --check`.
-- [ ] Run the full test suite and record exact suite/test counts.
-- [ ] Mark design and plan complete only after current-head evidence passes.
+- [x] Replace the tick-scoped-worker gap with exact implemented and residual claims.
+- [x] Run focused cross-layer tests and all affected workspace typechecks.
+- [x] Run `npm run check:repo-guards` and `git diff --check`.
+- [x] Run the full test suite and record exact suite/test counts.
+- [x] Mark design and plan complete only after current-head evidence passes.
 - [ ] Commit `docs: record durable research worker recovery`.
+
+Evidence: all workspace typechecks passed. The first full-suite run found one test-only 429 under
+parallel contention; the isolated product-loop scenario passed, and bounded polling was reduced
+from 50 ms to 100 ms. The rerun passed 283/283 suites and 2065/2065 tests with zero failed,
+pending, or todo tests. JSON evidence is stored at
+`/private/tmp/ouroboros-research-worker-lifecycle-full.json`.
+`npm run check:repo-guards` then passed docs, architecture, naming, tracked environment, secret,
+and diff checks.

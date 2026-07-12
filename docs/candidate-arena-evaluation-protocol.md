@@ -5,9 +5,9 @@ frontiers required by [CandidateArena And Research Goal](candidate-arena-researc
 allocation and ResearchPreflight commitments, split development/sealed preflight, exact
 development behavior fingerprints, external paper handoff conformance, admission, sealed
 comparison, confirmation, causal ResearchRelease, explicit comparison-backed TradingPromotion,
-and bounded adaptive ResearchWorker allocation tests demonstrate only the explicitly listed
-partial conformance; they do not establish production composition, automatic champion operation,
-or P0 completion.
+bounded adaptive ResearchWorker allocation, and durable logical ResearchWorker checkpoint/restart
+tests demonstrate only the explicitly listed partial conformance; they do not establish production
+composition, automatic champion operation, or P0 completion.
 
 ## Purpose
 
@@ -44,6 +44,9 @@ persisted schema names. Any future public or persisted fields require a separate
 11. Population identity must distinguish artifact bytes from bounded behavior. One exact
     development protocol/suite fingerprint may own at most one admitted population slot; sealed and
     paper outcomes never define that fingerprint.
+12. A checkpoint-enabled logical ResearchWorker may continue only through a new allocation and
+    commitment. Every old commitment closes once as completed or failed-closed before a later
+    worker effect; restart never adopts its process, budget, seed, or sealed suite.
 
 ## Evidence Lifecycle
 
@@ -77,6 +80,14 @@ decisions; quarantined, duplicate, orphaned, cross-suite, later, or corrupt evid
 a baseline. Exact duplicates retain Finding and Lineage without materialization. Missing complete
 canonical observations quarantine an otherwise admissible candidate. Version 1 keeps exact
 quantity, so approximate sizing similarity remains a separate future policy.
+
+`ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
+contiguous stable-worker link, current and cumulative development submission counts, zero remaining
+submission authority, and a bounded sanitized notebook tail. A same-worker next tick receives that
+tail in a separate prior context while its current notebook starts empty. Restart scans only
+checkpoint-enabled orphan commitments before new effects. Exact persisted admission reconstructs a
+completed checkpoint without rerunning materialization; otherwise recovery records failed-closed.
+Neither path recreates or claims the lost sealed plan.
 
 `PaperTradingHandoffConformance` is a research-only compatibility gate between sealed admission and
 admission. It runs the same exact submitted bytes against the bounded production paper event protocol,
@@ -428,9 +439,11 @@ The following current surfaces require implementation work before P0 can pass:
   bounded policy selects three default lanes with at most two focus and at least one exploration,
   runs no more than two workers concurrently, applies focus/exploration budgets of two/one within
   five total experiments, counts only completed tick-bound allocations for exploration coverage,
-  and exposes an equal-bound static control. ResearchWorkers are still tick-scoped invocations
-  rather than durable long-lived workers with workspace, process, recovery, and causal memory
-  ownership; provider-dollar cost and learned allocation also remain open.
+  and exposes an equal-bound static control. ResearchWorkers now have stable logical identity by
+  direction/provider/model/profile, a stable workspace, sanitized per-tick notebook continuity,
+  closed cumulative budget history, and restart-safe orphan reconciliation. Provider-process and
+  sandbox adoption, worker-chosen experiment sequencing, provider-dollar cost, and learned
+  allocation remain open.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -529,10 +542,12 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
    changes actual three-of-five selection, concurrency, and experiment budgets before effects;
    completed allocation history preserves exploration and static control supplies an equal-bound
-   ablation. Durable ResearchWorker workspace/process recovery, provider-dollar cost, learned
+   ablation. Stable ResearchWorker workspace identity, bounded sanitized notebook continuity,
+   append-only budget closure, and fail-closed restart reconciliation are implemented. Durable
+   provider-process/sandbox adoption, worker-chosen sequencing, provider-dollar cost, learned
    allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, and explicit comparison-backed
    TradingPromotion are proven, while production composition, longer soak evidence, durable worker
-   recovery, and full P0 evidence remain.
+   process adoption, and full P0 evidence remain.
