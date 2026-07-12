@@ -269,13 +269,13 @@ git commit -m "feat: gate research on paper conformance"
 - Binds exact conformance ref/digest/status to admission.
 - Materializes only exact passed evidence.
 
-- [ ] **Step 1: Write failing LocalStore tests**
+- [x] **Step 1: Write failing LocalStore tests**
 
 Cover persist/get/list/restart/exact replay, digest drift, malformed status, missing SystemCode or
 ExperimentRun, SystemCode digest mismatch, task mismatch, admission ref/digest mismatch,
 cross-SystemCode reuse, rejected-as-runnable, and same-ID mutation.
 
-- [ ] **Step 2: Write failing CandidateArena tests**
+- [x] **Step 2: Write failing CandidateArena tests**
 
 Prove ordering:
 
@@ -291,12 +291,12 @@ Assert passed evidence creates one candidate. Replay-pass/paper-rejected creates
 one quarantined direction, one causal Finding, and no materialization call. Infrastructure failure
 produces a failed direction and no strategy quarantine.
 
-- [ ] **Step 3: Add compact readback**
+- [x] **Step 3: Add compact readback**
 
 Direction results carry conformance ID/status/reason with research-only authority. Leaderboard and
 paper rank remain unchanged.
 
-- [ ] **Step 4: Implement and verify**
+- [x] **Step 4: Implement and verify**
 
 ```bash
 npm test -- packages/local-store/test/paper-trading-handoff-conformance.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts

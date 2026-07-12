@@ -1,4 +1,5 @@
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -617,8 +618,10 @@ process.exit(17);
   });
 
   it("preserves a leakage reason when an earlier scenario has an ordinary risk rejection", async () => {
+    const artifactDir = path.join(tmpDir, "mixed-disqualification-artifact");
+    await prepareSyntheticArtifact(artifactDir);
     const replay = await runTradingReplaySet({
-      artifact_dir: path.join(tmpDir, "mixed-disqualification-artifact"),
+      artifact_dir: artifactDir,
       manifest: {
         id: "mixed-disqualification-artifact",
         name: "Mixed disqualification artifact",
@@ -715,6 +718,37 @@ process.exit(17);
     });
   });
 
+  it("restores and rejects submitted SystemCode that mutates during paper handoff", async () => {
+    const artifactDir = path.join(tmpDir, "paper-handoff-mutating-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const runPath = path.join(artifactDir, "run.py");
+    const submittedBytes = await readFile(runPath);
+    const runner = controlledPaperHandoffArtifactRunner(["mutated"]);
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: artifactDir,
+      manifest: await readTradingSystemManifest(artifactDir),
+      output_dir: path.join(tmpDir, "paper-handoff-mutating-run"),
+      scenarios: [defaultReplayTradingScenarioSet[0]],
+      artifact_runner: runner
+    });
+
+    expect(replay.evaluation).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "unreproducible",
+      paper_handoff_conformance: {
+        status: "rejected",
+        reason: "artifact_digest_mismatch",
+        system_code_artifact_digest: `sha256:${createHash("sha256")
+          .update(submittedBytes)
+          .digest("hex")}`,
+        runnable_paper_handoff: false
+      }
+    });
+    await expect(readFile(runPath)).resolves.toEqual(submittedBytes);
+  });
+
   it("does not spend a paper handoff probe after replay already rejects", async () => {
     const base = mixedDisqualificationArtifactRunner();
     let probeCount = 0;
@@ -726,8 +760,10 @@ process.exit(17);
       }
     };
 
+    const artifactDir = path.join(tmpDir, "skip-conformance-artifact");
+    await prepareSyntheticArtifact(artifactDir);
     const replay = await runTradingReplaySet({
-      artifact_dir: path.join(tmpDir, "skip-conformance-artifact"),
+      artifact_dir: artifactDir,
       manifest: {
         id: "skip-conformance-artifact",
         name: "Skip conformance artifact",
@@ -820,8 +856,10 @@ process.exit(17);
 
   it("removes evaluator scenario files even when provider close fails", async () => {
     const outputDir = path.join(tmpDir, "provider-close-failure");
+    const artifactDir = path.join(tmpDir, "provider-close-failure-artifact");
+    await prepareSyntheticArtifact(artifactDir);
     await expect(runTradingReplaySet({
-      artifact_dir: path.join(tmpDir, "provider-close-failure-artifact"),
+      artifact_dir: artifactDir,
       manifest: {
         id: "provider-close-failure-artifact",
         name: "Provider close failure artifact",
@@ -1482,6 +1520,11 @@ function replayRunForOrder(input: {
   };
 }
 
+async function prepareSyntheticArtifact(artifactDir: string): Promise<void> {
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(path.join(artifactDir, "run.py"), "# sealed synthetic artifact\n", "utf8");
+}
+
 function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
@@ -1550,7 +1593,7 @@ function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {
 }
 
 function controlledPaperHandoffArtifactRunner(
-  outcomes: Array<"passed" | "rejected" | "infrastructure_failed">
+  outcomes: Array<"passed" | "rejected" | "mutated" | "infrastructure_failed">
 ): TradingArtifactRunner & { probe_count(): number } {
   const host = new HostTradingArtifactRunner({ allowHostExecution: true });
   let probeCount = 0;
@@ -1568,6 +1611,10 @@ function controlledPaperHandoffArtifactRunner(
         );
       }
       const probe = passingPaperHandoffProbe(input);
+      if (outcome === "mutated") {
+        const runPath = path.resolve(input.artifact_dir, input.manifest.entrypoint[1]!);
+        await writeFile(runPath, `${await readFile(runPath, "utf8")}\n# probe mutation\n`, "utf8");
+      }
       if (outcome === "rejected") {
         return {
           ...probe,

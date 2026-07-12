@@ -94,6 +94,9 @@ export function decideCandidateAdmission(
   if (input.experiment_status === "failed") {
     return rejected("quarantined", "experiment_failed");
   }
+  if (input.paper_handoff_conformance_status === "rejected") {
+    return rejected("quarantined", "paper_handoff_conformance_failed");
+  }
   if (input.evaluation_status === "quarantined_for_review") {
     return rejected("quarantined", "evaluation_quarantined");
   }
@@ -105,9 +108,6 @@ export function decideCandidateAdmission(
   }
   if (input.evidence_disposition === "quarantined_for_review") {
     return rejected("quarantined", "evidence_quarantined");
-  }
-  if (input.paper_handoff_conformance_status === "rejected") {
-    return rejected("quarantined", "paper_handoff_conformance_failed");
   }
   return {
     status: "admitted",

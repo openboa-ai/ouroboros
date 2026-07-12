@@ -13,6 +13,8 @@ import {
 import { createPaperTradingEvaluationCommitment } from "@ouroboros/application/trading/paper/commitment";
 import { initialPaperTradingEngineState } from "@ouroboros/application/trading/paper/engine";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
+import { PaperTradingHandoffConformanceInfrastructureError } from
+  "@ouroboros/application/trading/research/paper-handoff-conformance";
 import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   AgentEditInput,
@@ -391,13 +393,62 @@ describe("CandidateArena paper evidence context", () => {
   it("admits a changed loss-making candidate after recording its negative research evidence", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
+    const writeOrder: string[] = [];
+    const recordSystemCode = store.recordSystemCode.bind(store);
+    store.recordSystemCode = async (record) => {
+      writeOrder.push(`system_code:${record.system_code_id}`);
+      return recordSystemCode(record);
+    };
+    const recordExperimentRun = store.recordExperimentRun.bind(store);
+    store.recordExperimentRun = async (record) => {
+      writeOrder.push(`experiment_run:${record.experiment_run_id}`);
+      return recordExperimentRun(record);
+    };
+    const recordConformance = store.recordPaperTradingHandoffConformance.bind(store);
+    store.recordPaperTradingHandoffConformance = async (record) => {
+      writeOrder.push(`paper_handoff:${record.paper_trading_handoff_conformance_id}`);
+      return recordConformance(record);
+    };
+    const recordEvaluation = store.recordTradingEvaluationResult.bind(store);
+    store.recordTradingEvaluationResult = async (record) => {
+      writeOrder.push(`evaluation:${record.trading_evaluation_result_id}`);
+      return recordEvaluation(record);
+    };
+    const recordFinding = store.recordResearchFinding.bind(store);
+    store.recordResearchFinding = async (record) => {
+      writeOrder.push(`finding:${record.research_finding_id}`);
+      return recordFinding(record);
+    };
+    const recordLineage = store.recordArtifactLineage.bind(store);
+    store.recordArtifactLineage = async (record) => {
+      writeOrder.push(`lineage:${record.artifact_lineage_id}`);
+      return recordLineage(record);
+    };
+    const recordAdmission = store.recordCandidateAdmissionDecision.bind(store);
+    store.recordCandidateAdmissionDecision = async (record) => {
+      writeOrder.push(`admission:${record.candidate_admission_decision_id}`);
+      return recordAdmission(record);
+    };
     const materializeCandidate = store.materializeCandidate.bind(store);
     store.materializeCandidate = async (input) => {
+      writeOrder.push("materialize");
+      await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([
+        expect.objectContaining({
+          status: "passed",
+          reason: "passed",
+          runnable_paper_handoff: true
+        })
+      ]);
       await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
         expect.objectContaining({
           status: "admitted",
           reason: "evaluation_accepted",
-          runnable_paper_handoff: true
+          runnable_paper_handoff: true,
+          paper_handoff_conformance_status: "passed",
+          paper_trading_handoff_conformance_ref: expect.objectContaining({
+            record_kind: "paper_trading_handoff_conformance"
+          }),
+          paper_trading_handoff_conformance_digest: expect.stringMatching(/^sha256:/)
         })
       ]);
       return materializeCandidate(input);
@@ -418,7 +469,12 @@ describe("CandidateArena paper evidence context", () => {
         status: "created",
         candidate_id: outcome.created_candidate_ids[0],
         admission_decision_id: expect.any(String),
-        admission_reason: "evaluation_accepted"
+        admission_reason: "evaluation_accepted",
+        paper_handoff_conformance: expect.objectContaining({
+          status: "passed",
+          reason: "passed",
+          authority_status: "research_only"
+        })
       })
     ]);
     const [admission] = await store.listCandidateAdmissionDecisions();
@@ -446,6 +502,102 @@ describe("CandidateArena paper evidence context", () => {
         summary: "Candidate remained executable but lost money after costs."
       })
     ]);
+    const orderKinds = writeOrder.map((item) => item.split(":")[0]);
+    expect(orderKinds.indexOf("experiment_run")).toBeLessThan(orderKinds.indexOf("paper_handoff"));
+    expect(orderKinds.indexOf("paper_handoff")).toBeLessThan(orderKinds.indexOf("evaluation"));
+    expect(orderKinds.indexOf("evaluation")).toBeLessThan(orderKinds.indexOf("finding"));
+    expect(orderKinds.indexOf("finding")).toBeLessThan(orderKinds.indexOf("lineage"));
+    expect(orderKinds.indexOf("lineage")).toBeLessThan(orderKinds.indexOf("admission"));
+    expect(orderKinds.indexOf("admission")).toBeLessThan(orderKinds.indexOf("materialize"));
+  });
+
+  it("quarantines replay-passed paper-rejected evidence without materialization", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let materializationCount = 0;
+    const materializeCandidate = store.materializeCandidate.bind(store);
+    store.materializeCandidate = async (input) => {
+      materializationCount += 1;
+      return materializeCandidate(input);
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: paperRejectedReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(materializationCount).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "quarantined",
+        admission_reason: "paper_handoff_conformance_failed",
+        paper_handoff_conformance: expect.objectContaining({
+          status: "rejected",
+          reason: "runtime_heartbeat_missing",
+          authority_status: "research_only"
+        })
+      })
+    ]);
+    await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([
+      expect.objectContaining({
+        status: "rejected",
+        reason: "runtime_heartbeat_missing",
+        runnable_paper_handoff: false
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        status: "quarantined",
+        reason: "paper_handoff_conformance_failed",
+        runnable_paper_handoff: false,
+        paper_handoff_conformance_status: "rejected"
+      })
+    ]);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "failure_analysis",
+        summary: expect.stringContaining("runtime_heartbeat_missing")
+      })
+    ]);
+  });
+
+  it("records paper handoff infrastructure failure as a failed direction without strategy evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let materializationCount = 0;
+    const materializeCandidate = store.materializeCandidate.bind(store);
+    store.materializeCandidate = async (input) => {
+      materializationCount += 1;
+      return materializeCandidate(input);
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: paperInfrastructureFailureArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(materializationCount).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed",
+        error: "paper handoff test runner unavailable"
+      })
+    ]);
+    await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
+    await expect(store.listResearchFindings()).resolves.toEqual([]);
   });
 
   it("feeds latest paper trading evidence into the next researcher context even before replay leaderboard ranking", async () => {
@@ -2915,6 +3067,35 @@ function evaluatorProbingReplayArtifactRunner(): TradingArtifactRunner {
           providerRequest("GET", "/evaluation/outcome")
         ]
       };
+    }
+  };
+}
+
+function paperRejectedReplayArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    ...runner,
+    async probePaperHandoff(input) {
+      const probe = passingPaperHandoffProbe(input);
+      return {
+        ...probe,
+        output_lines: probe.output_lines.filter((line) =>
+          JSON.parse(line).event !== "runtime_heartbeat"
+        )
+      };
+    }
+  };
+}
+
+function paperInfrastructureFailureArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    ...runner,
+    async probePaperHandoff() {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        "paper handoff test runner unavailable"
+      );
     }
   };
 }

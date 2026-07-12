@@ -240,6 +240,7 @@ export interface TradingProfitLoss {
 
 export interface TradingPaperHandoffConformanceEvidence {
   protocol_version: "paper_trading_event_protocol_v1";
+  system_code_artifact_digest: string;
   runner_kind: TradingArtifactRunnerKind;
   status: PaperTradingHandoffConformanceStatus;
   reason: PaperTradingHandoffConformanceReason;

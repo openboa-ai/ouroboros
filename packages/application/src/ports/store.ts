@@ -27,6 +27,7 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
+  PaperTradingHandoffConformanceRecord,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonTickRecord,
@@ -151,6 +152,13 @@ export interface OuroborosStorePort {
   >;
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
+  recordPaperTradingHandoffConformance(
+    record: PaperTradingHandoffConformanceRecord
+  ): Promise<PaperTradingHandoffConformanceRecord>;
+  getPaperTradingHandoffConformance(
+    conformanceId: string
+  ): Promise<PaperTradingHandoffConformanceRecord | undefined>;
+  listPaperTradingHandoffConformances(): Promise<PaperTradingHandoffConformanceRecord[]>;
   recordCandidateAdmissionDecision(
     record: CandidateAdmissionDecisionRecord
   ): Promise<CandidateAdmissionDecisionRecord>;

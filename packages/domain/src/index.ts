@@ -1506,6 +1506,7 @@ export type PaperTradingHandoffConformanceReason =
   | "runtime_heartbeat_missing"
   | "runtime_stop_missing"
   | "instance_identity_mismatch"
+  | "artifact_digest_mismatch"
   | "hidden_evaluator_field"
   | "candidate_self_report"
   | "private_or_live_authority";
@@ -1550,6 +1551,7 @@ const PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS = new Set<
   "runtime_heartbeat_missing",
   "runtime_stop_missing",
   "instance_identity_mismatch",
+  "artifact_digest_mismatch",
   "hidden_evaluator_field",
   "candidate_self_report",
   "private_or_live_authority"
@@ -6198,6 +6200,12 @@ export interface CandidateArenaTickDirectionResultReadModel {
   admission_reason?: CandidateAdmissionReason;
   net_revenue_usdt?: number;
   research_efficiency?: CandidateArenaResearchEfficiencyReadModel;
+  paper_handoff_conformance?: {
+    conformance_id: string;
+    status: PaperTradingHandoffConformanceStatus;
+    reason: PaperTradingHandoffConformanceReason;
+    authority_status: "research_only";
+  };
 }
 
 export interface CandidateArenaTickReadModel {

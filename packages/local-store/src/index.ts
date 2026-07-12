@@ -72,6 +72,8 @@ import {
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonObservationChainDigestInput,
+  paperTradingHandoffConformanceDigestInput,
+  paperTradingHandoffConformanceHasRuntimeShape,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonPreparationHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
@@ -185,6 +187,7 @@ import type {
   PrivateReadinessPreflightSurfaceRecord,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
+  PaperTradingHandoffConformanceRecord,
   PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
   PaperTradingComparisonActivationRecord,
@@ -285,6 +288,13 @@ export type LocalStoreErrorCode =
   | "invalid_private_readiness_posture_input"
   | "invalid_account_position_risk_mirror_surface_input"
   | "invalid_system_code_input"
+  | "invalid_paper_trading_handoff_conformance_input"
+  | "paper_trading_handoff_conformance_digest_mismatch"
+  | "paper_trading_handoff_conformance_reference_not_found"
+  | "paper_trading_handoff_conformance_reference_mismatch"
+  | "paper_trading_handoff_conformance_conflict"
+  | "invalid_persisted_paper_trading_handoff_conformance"
+  | "persisted_paper_trading_handoff_conformance_digest_mismatch"
   | "runtime_not_found"
   | "runtime_mismatch"
   | "invalid_paper_trading_run_input"
@@ -582,6 +592,7 @@ type Collection =
   | "improvement-proposal-materialization-attempts"
   | "research-orchestration-runs"
   | "experiment-runs"
+  | "paper-trading-handoff-conformances"
   | "candidate-admission-decisions"
   | "candidate-arena-research-allocations"
   | "candidate-arena-ticks"
@@ -2799,7 +2810,7 @@ export class LocalStore {
         }
       );
     }
-    const [sourceSystemCode, systemCode, experiment, evaluation, finding] = await Promise.all([
+    const [sourceSystemCode, systemCode, experiment, evaluation, finding, conformance] = await Promise.all([
       this.readOptionalRecord<SystemCodeRecord>(
         "system-codes",
         decision.source_system_code_ref.id
@@ -2816,16 +2827,23 @@ export class LocalStore {
       this.readOptionalRecord<ResearchFindingRecord>(
         "research-findings",
         decision.research_finding_ref.id
-      )
+      ),
+      decision.paper_trading_handoff_conformance_ref
+        ? this.readOptionalRecord<PaperTradingHandoffConformanceRecord>(
+            "paper-trading-handoff-conformances",
+            decision.paper_trading_handoff_conformance_ref.id
+          )
+        : Promise.resolve(undefined)
     ]);
     const referencedRecords: Array<{
-      ref: CandidateAdmissionDecisionRecord[
+      ref: NonNullable<CandidateAdmissionDecisionRecord[
         | "source_system_code_ref"
         | "system_code_ref"
         | "experiment_run_ref"
         | "trading_evaluation_result_ref"
         | "research_finding_ref"
-      ];
+        | "paper_trading_handoff_conformance_ref"
+      ]>;
       record: FixtureRecord | undefined;
     }> = [
       {
@@ -2847,7 +2865,13 @@ export class LocalStore {
       {
         ref: decision.research_finding_ref,
         record: finding
-      }
+      },
+      ...(decision.paper_trading_handoff_conformance_ref
+        ? [{
+            ref: decision.paper_trading_handoff_conformance_ref,
+            record: conformance
+          }]
+        : [])
     ];
     for (const reference of referencedRecords) {
       if (!reference.record || reference.record.record_kind !== reference.ref.record_kind) {
@@ -2868,6 +2892,9 @@ export class LocalStore {
         "candidate admission reference not found",
         { candidate_admission_decision_id: decision.candidate_admission_decision_id }
       );
+    }
+    if (conformance) {
+      this.assertPersistedPaperTradingHandoffConformance(conformance);
     }
     const mismatchFields = [
       sourceSystemCode.artifact_digest !== decision.source_artifact_digest
@@ -2899,6 +2926,28 @@ export class LocalStore {
         : undefined,
       finding.trading_evaluation_result_ref.id !== decision.trading_evaluation_result_ref.id
         ? "research_finding.trading_evaluation_result_ref"
+        : undefined,
+      conformance && conformance.system_code_ref.id !== decision.system_code_ref.id
+        ? "paper_trading_handoff_conformance.system_code_ref"
+        : undefined,
+      conformance && conformance.experiment_run_ref.id !== decision.experiment_run_ref.id
+        ? "paper_trading_handoff_conformance.experiment_run_ref"
+        : undefined,
+      conformance &&
+        conformance.trading_evaluation_task_ref.id !== evaluation.trading_evaluation_task_ref.id
+        ? "paper_trading_handoff_conformance.trading_evaluation_task_ref"
+        : undefined,
+      conformance &&
+        conformance.status !== decision.paper_handoff_conformance_status
+        ? "paper_trading_handoff_conformance.status"
+        : undefined,
+      conformance &&
+        conformance.evidence_digest !== decision.paper_trading_handoff_conformance_digest
+        ? "paper_trading_handoff_conformance.evidence_digest"
+        : undefined,
+      conformance && decision.runnable_paper_handoff &&
+        (conformance.status !== "passed" || !conformance.runnable_paper_handoff)
+        ? "paper_trading_handoff_conformance.runnable_paper_handoff"
         : undefined
     ].filter((field): field is string => Boolean(field));
     if (mismatchFields.length > 0) {
@@ -2938,6 +2987,137 @@ export class LocalStore {
       "candidate-admission-decisions",
       decisionId
     );
+  }
+
+  async recordPaperTradingHandoffConformance(
+    record: PaperTradingHandoffConformanceRecord
+  ): Promise<PaperTradingHandoffConformanceRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingHandoffConformanceUnlocked(record)
+    );
+  }
+
+  private async recordPaperTradingHandoffConformanceUnlocked(
+    record: PaperTradingHandoffConformanceRecord
+  ): Promise<PaperTradingHandoffConformanceRecord> {
+    if (!paperTradingHandoffConformanceHasRuntimeShape(record)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_handoff_conformance_input",
+        "invalid paper trading handoff conformance input",
+        {
+          paper_trading_handoff_conformance_id:
+            (record as Partial<PaperTradingHandoffConformanceRecord> | undefined)
+              ?.paper_trading_handoff_conformance_id
+        }
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      paperTradingHandoffConformanceDigestInput(record)
+    );
+    if (record.evidence_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_handoff_conformance_digest_mismatch",
+        "paper trading handoff conformance digest does not match canonical content",
+        { paper_trading_handoff_conformance_id: record.paper_trading_handoff_conformance_id }
+      );
+    }
+    const [systemCode, experiment] = await Promise.all([
+      this.readOptionalRecord<SystemCodeRecord>("system-codes", record.system_code_ref.id),
+      this.readOptionalRecord<ExperimentRunRecord>(
+        "experiment-runs",
+        record.experiment_run_ref.id
+      )
+    ]);
+    if (!systemCode || !experiment) {
+      throw new LocalStoreError(
+        "paper_trading_handoff_conformance_reference_not_found",
+        "paper trading handoff conformance reference not found",
+        {
+          paper_trading_handoff_conformance_id: record.paper_trading_handoff_conformance_id,
+          missing_record_kind: !systemCode ? "system_code" : "experiment_run"
+        }
+      );
+    }
+    const mismatchFields = [
+      systemCode.artifact_digest !== record.system_code_artifact_digest
+        ? "system_code.artifact_digest"
+        : undefined,
+      experiment.system_code_ref.id !== record.system_code_ref.id
+        ? "experiment_run.system_code_ref"
+        : undefined,
+      experiment.trading_evaluation_task_ref.id !== record.trading_evaluation_task_ref.id
+        ? "experiment_run.trading_evaluation_task_ref"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (mismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "paper_trading_handoff_conformance_reference_mismatch",
+        "paper trading handoff conformance references do not match persisted evidence",
+        {
+          paper_trading_handoff_conformance_id: record.paper_trading_handoff_conformance_id,
+          mismatch_fields: mismatchFields
+        }
+      );
+    }
+    const existing = await this.readOptionalRecord<PaperTradingHandoffConformanceRecord>(
+      "paper-trading-handoff-conformances",
+      record.paper_trading_handoff_conformance_id
+    );
+    if (existing && !sameJson(existing, record)) {
+      throw new LocalStoreError(
+        "paper_trading_handoff_conformance_conflict",
+        "paper trading handoff conformance is immutable under its deterministic identity",
+        { paper_trading_handoff_conformance_id: record.paper_trading_handoff_conformance_id }
+      );
+    }
+    if (!existing) {
+      await this.writeJson(
+        this.itemPath(
+          "paper-trading-handoff-conformances",
+          record.paper_trading_handoff_conformance_id
+        ),
+        record
+      );
+    }
+    return record;
+  }
+
+  async getPaperTradingHandoffConformance(
+    conformanceId: string
+  ): Promise<PaperTradingHandoffConformanceRecord | undefined> {
+    const record = await this.readOptionalRecord<PaperTradingHandoffConformanceRecord>(
+      "paper-trading-handoff-conformances",
+      conformanceId
+    );
+    if (record) this.assertPersistedPaperTradingHandoffConformance(record);
+    return record;
+  }
+
+  async listPaperTradingHandoffConformances(): Promise<PaperTradingHandoffConformanceRecord[]> {
+    const records = await this.readCollection<PaperTradingHandoffConformanceRecord>(
+      "paper-trading-handoff-conformances"
+    );
+    records.forEach((record) => this.assertPersistedPaperTradingHandoffConformance(record));
+    return records.sort(comparePaperTradingHandoffConformances);
+  }
+
+  private assertPersistedPaperTradingHandoffConformance(
+    record: PaperTradingHandoffConformanceRecord
+  ): void {
+    if (!paperTradingHandoffConformanceHasRuntimeShape(record)) {
+      throw new LocalStoreError(
+        "invalid_persisted_paper_trading_handoff_conformance",
+        "persisted paper trading handoff conformance has invalid runtime shape"
+      );
+    }
+    if (record.evidence_digest !== comparisonExactRecordDigest(
+      paperTradingHandoffConformanceDigestInput(record)
+    )) {
+      throw new LocalStoreError(
+        "persisted_paper_trading_handoff_conformance_digest_mismatch",
+        "persisted paper trading handoff conformance digest does not match canonical content"
+      );
+    }
   }
 
   async listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]> {
@@ -14082,6 +14262,16 @@ function compareCandidateAdmissionDecisions(
   );
 }
 
+function comparePaperTradingHandoffConformances(
+  left: PaperTradingHandoffConformanceRecord,
+  right: PaperTradingHandoffConformanceRecord
+): number {
+  return right.completed_at.localeCompare(left.completed_at) ||
+    right.paper_trading_handoff_conformance_id.localeCompare(
+      left.paper_trading_handoff_conformance_id
+    );
+}
+
 function compareCandidateArenaTicks(a: CandidateArenaTickRecord, b: CandidateArenaTickRecord): number {
   const timeCompare = b.completed_at.localeCompare(a.completed_at);
   if (timeCompare !== 0) {
@@ -14894,7 +15084,8 @@ function isCandidateAdmissionReason(value: unknown): boolean {
     value === "evaluation_disqualified" ||
     value === "evaluation_quarantined" ||
     value === "evidence_already_counted" ||
-    value === "evidence_quarantined";
+    value === "evidence_quarantined" ||
+    value === "paper_handoff_conformance_failed";
 }
 
 function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord {
@@ -15213,6 +15404,7 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     admission_reason?: unknown;
     net_revenue_usdt?: unknown;
     research_efficiency?: unknown;
+    paper_handoff_conformance?: unknown;
   };
   const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
   const hasFinding = raw.finding === undefined || nonEmpty(raw.finding);
@@ -15225,6 +15417,8 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
   const hasResearchEfficiency = raw.research_efficiency === undefined ||
     isCandidateArenaResearchEfficiency(raw.research_efficiency);
+  const hasPaperHandoffConformance = raw.paper_handoff_conformance === undefined ||
+    isCandidateArenaPaperHandoffConformance(raw.paper_handoff_conformance);
   return (
     isCandidateArenaResearchDirection(raw.direction_kind) &&
     isCandidateArenaDirectionResultStatus(raw.status) &&
@@ -15235,6 +15429,7 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     hasAdmissionReason &&
     hasNetRevenue &&
     hasResearchEfficiency &&
+    hasPaperHandoffConformance &&
     (
       raw.status === "created"
         ? nonEmpty(raw.candidate_id)
@@ -15245,6 +15440,16 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
             isCandidateAdmissionReason(raw.admission_reason)
     )
   );
+}
+
+function isCandidateArenaPaperHandoffConformance(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return Object.keys(raw).length === 4 &&
+    nonEmpty(raw.conformance_id) &&
+    (raw.status === "passed" || raw.status === "rejected") &&
+    nonEmpty(raw.reason) &&
+    raw.authority_status === "research_only";
 }
 
 function isCandidateArenaResearchEfficiency(value: unknown): boolean {

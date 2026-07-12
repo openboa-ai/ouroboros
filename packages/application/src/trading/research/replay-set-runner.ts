@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { TradingEvaluationDisqualificationReason } from "@ouroboros/domain";
 import { DockerSandboxesSbxTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
@@ -56,9 +56,11 @@ export async function runTradingReplaySet(
   }
 
   const artifactRunner = input.artifact_runner ?? new DockerSandboxesSbxTradingArtifactRunner();
+  const sealedArtifact = await sealEntrypointArtifact(input.artifact_dir, input.manifest);
   const outputRoot = safeAbsoluteRoot(input.output_dir);
   await mkdir(outputRoot, { recursive: true });
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
+  let artifactMutationDetected = false;
 
   for (const [scenarioIndex, scenario] of scenarios.entries()) {
     const scenarioSlot = `scenario-${String(scenarioIndex + 1).padStart(3, "0")}`;
@@ -98,13 +100,21 @@ export async function runTradingReplaySet(
       try {
         await provider.close();
       } finally {
-        await rm(scenarioOutputDir, { recursive: true, force: true });
+        try {
+          artifactMutationDetected = await restoreSealedEntrypoint(sealedArtifact) ||
+            artifactMutationDetected;
+        } finally {
+          await rm(scenarioOutputDir, { recursive: true, force: true });
+        }
       }
     }
   }
 
   const eventsPath = resolvePathInsideRoot(outputRoot, ["replay-set.json"], "replay_set_events");
-  const replayEvaluation = aggregateScenarioResults(scenarioResults);
+  const aggregate = aggregateScenarioResults(scenarioResults);
+  const replayEvaluation = artifactMutationDetected
+    ? rejectArtifactMutation(aggregate)
+    : aggregate;
   const evaluation = replayEvaluation.status === "accepted"
     ? await composePaperHandoffConformance({
         artifact_dir: input.artifact_dir,
@@ -113,6 +123,7 @@ export async function runTradingReplaySet(
         artifact_runner: artifactRunner,
         replay_provider_factory: input.replay_provider_factory ?? startReplayTradingApiProvider,
         scenario: scenarios[0],
+        sealed_artifact: sealedArtifact,
         evaluation: replayEvaluation
       })
     : replayEvaluation;
@@ -138,6 +149,7 @@ async function composePaperHandoffConformance(input: {
   artifact_runner: TradingArtifactRunner;
   replay_provider_factory: ReplayTradingApiProviderFactory;
   scenario: ReplayTradingScenario;
+  sealed_artifact: SealedEntrypointArtifact;
   evaluation: TradingEvaluationResult;
 }): Promise<TradingEvaluationResult> {
   let provider: ReplayTradingApiProviderSession;
@@ -154,6 +166,7 @@ async function composePaperHandoffConformance(input: {
   }
 
   let probeFailed = false;
+  let integrityChecked = false;
   try {
     const probe = await input.artifact_runner.probePaperHandoff({
       artifact_dir: input.artifact_dir,
@@ -167,9 +180,20 @@ async function composePaperHandoffConformance(input: {
       instance_id: `paper-handoff-${randomUUID()}`,
       start_at: new Date().toISOString()
     });
-    const conformance = evaluatePaperTradingHandoffProbe(probe);
+    const artifactMutated = await restoreSealedEntrypoint(input.sealed_artifact);
+    integrityChecked = true;
+    const observedConformance = evaluatePaperTradingHandoffProbe(probe);
+    const conformance = artifactMutated
+      ? {
+          ...observedConformance,
+          status: "rejected" as const,
+          reason: "artifact_digest_mismatch" as const,
+          runnable_paper_handoff: false
+        }
+      : observedConformance;
     const evidence: TradingPaperHandoffConformanceEvidence = {
       protocol_version: "paper_trading_event_protocol_v1",
+      system_code_artifact_digest: input.sealed_artifact.digest,
       runner_kind: probe.runner_kind,
       status: conformance.status,
       reason: conformance.reason,
@@ -212,6 +236,9 @@ async function composePaperHandoffConformance(input: {
     probeFailed = true;
     throw error;
   } finally {
+    if (!integrityChecked) {
+      await restoreSealedEntrypoint(input.sealed_artifact);
+    }
     try {
       await provider.close();
     } catch (error) {
@@ -223,6 +250,65 @@ async function composePaperHandoffConformance(input: {
       }
     }
   }
+}
+
+interface SealedEntrypointArtifact {
+  path: string;
+  bytes: Buffer;
+  digest: string;
+}
+
+async function sealEntrypointArtifact(
+  artifactDir: string,
+  manifest: TradingSystemManifest
+): Promise<SealedEntrypointArtifact> {
+  const entrypointPath = manifest.entrypoint[1];
+  if (!entrypointPath) {
+    throw new PaperTradingHandoffConformanceInfrastructureError(
+      "runner_unavailable",
+      "Trading artifact manifest entrypoint file is missing"
+    );
+  }
+  const root = safeAbsoluteRoot(artifactDir);
+  const pathname = path.resolve(root, entrypointPath);
+  const rootPrefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+  if (pathname !== root && !pathname.startsWith(rootPrefix)) {
+    throw new PaperTradingHandoffConformanceInfrastructureError(
+      "runner_unavailable",
+      "candidate_arena_entrypoint_escapes_artifact_dir"
+    );
+  }
+  const bytes = await readFile(pathname);
+  return {
+    path: pathname,
+    bytes,
+    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`
+  };
+}
+
+async function restoreSealedEntrypoint(sealed: SealedEntrypointArtifact): Promise<boolean> {
+  const current = await readFile(sealed.path);
+  if (current.equals(sealed.bytes)) return false;
+  await writeFile(sealed.path, sealed.bytes);
+  return true;
+}
+
+function rejectArtifactMutation(evaluation: TradingEvaluationResult): TradingEvaluationResult {
+  return {
+    ...evaluation,
+    status: "disqualified",
+    score: 0,
+    metrics: [
+      ...evaluation.metrics,
+      {
+        name: "artifact_integrity",
+        score: 0,
+        detail: "Submitted SystemCode entrypoint changed during external ResearchPreflight."
+      }
+    ],
+    summary: "Rejected replay set because submitted SystemCode bytes changed during ResearchPreflight.",
+    disqualification_reason: "unreproducible"
+  };
 }
 
 function paperHandoffDisqualificationReason(

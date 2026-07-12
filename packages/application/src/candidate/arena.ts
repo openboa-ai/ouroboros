@@ -29,6 +29,7 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
   PaperTradingObservationRecord,
+  PaperTradingHandoffConformanceRecord,
   PaperTradingComparisonResearchReleaseRecord,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
@@ -42,6 +43,7 @@ import type {
 import {
   decideCandidateAdmission,
   deriveCandidateAdmissionResearchWorkerOutcome,
+  paperTradingHandoffConformanceDigestInput,
   paperTradingComparisonResearchReleaseHasRuntimeShape
 } from "@ouroboros/domain";
 import {
@@ -122,12 +124,14 @@ type ArenaDirectionRunOutcome =
       status: "created";
       candidate: CandidateInspectReadModel;
       admission: CandidateAdmissionDecisionRecord;
+      conformance: PaperTradingHandoffConformanceRecord;
       research_efficiency: CandidateArenaResearchEfficiencyReadModel;
     }
   | {
       status: "duplicate" | "quarantined";
       admission: CandidateAdmissionDecisionRecord;
       finding: ResearchFindingRecord;
+      conformance?: PaperTradingHandoffConformanceRecord;
       research_efficiency: CandidateArenaResearchEfficiencyReadModel;
     };
 
@@ -390,6 +394,8 @@ export async function runCandidateArenaTick(
           admission_decision_id:
             directionOutcome.admission.candidate_admission_decision_id,
           admission_reason: directionOutcome.admission.reason,
+          paper_handoff_conformance:
+            compactPaperHandoffConformance(directionOutcome.conformance),
           finding: findingSummaryForProfitLoss(
             profitLoss,
             created.full_cycle_lineage?.evidence?.evaluation_status
@@ -406,6 +412,12 @@ export async function runCandidateArenaTick(
           admission_decision_id:
             directionOutcome.admission.candidate_admission_decision_id,
           admission_reason: directionOutcome.admission.reason,
+          ...(directionOutcome.conformance
+            ? {
+                paper_handoff_conformance:
+                  compactPaperHandoffConformance(directionOutcome.conformance)
+              }
+            : {}),
           research_efficiency: directionOutcome.research_efficiency
         });
       }
@@ -639,8 +651,18 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
           : "quarantined",
         admission: researchRecords.admission,
         finding: researchRecords.finding,
+        conformance: researchRecords.conformance,
         research_efficiency: researchEfficiency
       };
+    }
+    if (!researchRecords.conformance ||
+      researchRecords.conformance.status !== "passed" ||
+      !researchRecords.conformance.runnable_paper_handoff ||
+      researchRecords.admission.paper_trading_handoff_conformance_ref?.id !==
+        researchRecords.conformance.paper_trading_handoff_conformance_id ||
+      researchRecords.admission.paper_trading_handoff_conformance_digest !==
+        researchRecords.conformance.evidence_digest) {
+      throw new Error("candidate_arena_paper_handoff_conformance_binding_invalid");
     }
     const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
       source: input.source,
@@ -663,6 +685,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       status: "created",
       candidate,
       admission: researchRecords.admission,
+      conformance: researchRecords.conformance,
       research_efficiency: researchEfficiency
     };
   });
@@ -1105,6 +1128,7 @@ async function recordArenaResearchRecords(input: {
   sessionId: string;
 }): Promise<{
   admission: CandidateAdmissionDecisionRecord;
+  conformance?: PaperTradingHandoffConformanceRecord;
   finding: ResearchFindingRecord;
   result: TradingEvaluationResultRecord;
 }> {
@@ -1123,11 +1147,24 @@ async function recordArenaResearchRecords(input: {
     system_code_ref: ref("system_code", input.systemCode.system_code_id),
     trading_evaluation_task_ref: ref("trading_evaluation_task", "candidate-arena-revenue-cost-v1"),
     trace_ref: ref("trace_placeholder", `trace-${suffix}`),
-    submitted_at: now,
+    submitted_at: input.entry.started_at,
     status: experimentStatus,
     authority_status: "not_live"
   };
   await input.store.recordExperimentRun(experiment);
+
+  const conformance = arenaPaperHandoffConformance({
+    entry: input.entry,
+    experiment,
+    systemCode: input.systemCode,
+    suffix
+  });
+  if (input.entry.evaluation.status === "accepted" && !conformance) {
+    throw new Error("candidate_arena_missing_paper_handoff_conformance");
+  }
+  if (conformance) {
+    await input.store.recordPaperTradingHandoffConformance(conformance);
+  }
 
   const metricRefs = evaluation.metrics.map((metric) =>
     ref("metric_snapshot", `metric-${suffix}-${safeId(metric.name)}`)
@@ -1171,7 +1208,10 @@ async function recordArenaResearchRecords(input: {
     }),
     experiment_status: experimentStatus,
     evaluation_status: result.result_status,
-    evidence_disposition: result.evidence_disposition
+    evidence_disposition: result.evidence_disposition,
+    ...(conformance
+      ? { paper_handoff_conformance_status: conformance.status }
+      : {})
   } as const;
   const decision = decideCandidateAdmission(admissionInput);
   const findingContent = arenaFindingForAdmission(input.entry, decision);
@@ -1188,6 +1228,12 @@ async function recordArenaResearchRecords(input: {
     summary: findingContent.summary,
     supporting_record_refs: [
       ref("trading_evaluation_result", result.trading_evaluation_result_id),
+      ...(conformance
+        ? [ref(
+            "paper_trading_handoff_conformance",
+            conformance.paper_trading_handoff_conformance_id
+          )]
+        : []),
       ...metricRefs
     ],
     created_at: now,
@@ -1222,12 +1268,77 @@ async function recordArenaResearchRecords(input: {
     research_finding_ref: ref("research_finding", finding.research_finding_id),
     source_artifact_digest: input.sourceArtifactDigest,
     submitted_artifact_digest: input.systemCode.artifact_digest,
+    ...(conformance
+      ? {
+          paper_trading_handoff_conformance_ref: ref(
+            "paper_trading_handoff_conformance",
+            conformance.paper_trading_handoff_conformance_id
+          ),
+          paper_trading_handoff_conformance_digest: conformance.evidence_digest
+        }
+      : {}),
     ...admissionInput,
     ...decision,
     decided_at: now
   };
   await input.store.recordCandidateAdmissionDecision(admission);
-  return { admission, finding, result };
+  return { admission, conformance, finding, result };
+}
+
+function arenaPaperHandoffConformance(input: {
+  entry: TradingResearchNotebookEntry;
+  experiment: ExperimentRunRecord;
+  systemCode: SystemCodeRecord;
+  suffix: string;
+}): PaperTradingHandoffConformanceRecord | undefined {
+  const evidence = input.entry.evaluation.paper_handoff_conformance;
+  if (!evidence) return undefined;
+  if (evidence.system_code_artifact_digest !== input.systemCode.artifact_digest) {
+    throw new Error("candidate_arena_paper_handoff_artifact_digest_mismatch");
+  }
+  const record: PaperTradingHandoffConformanceRecord = {
+    record_kind: "paper_trading_handoff_conformance",
+    version: 1,
+    paper_trading_handoff_conformance_id: `paper-handoff-conformance-${input.suffix}`,
+    system_code_ref: ref("system_code", input.systemCode.system_code_id),
+    system_code_artifact_digest: evidence.system_code_artifact_digest,
+    experiment_run_ref: ref("experiment_run", input.experiment.experiment_run_id),
+    trading_evaluation_task_ref: input.experiment.trading_evaluation_task_ref,
+    protocol_version: evidence.protocol_version,
+    runner_kind: evidence.runner_kind,
+    status: evidence.status,
+    reason: evidence.reason,
+    provider_request_count: evidence.provider_request_count,
+    ...(evidence.decision_event_kind === undefined
+      ? {}
+      : { decision_event_kind: evidence.decision_event_kind }),
+    heartbeat_count: evidence.heartbeat_count,
+    runtime_stopped: evidence.runtime_stopped,
+    started_at: evidence.started_at,
+    completed_at: evidence.completed_at,
+    evidence_digest: "pending",
+    research_preflight_authority: true,
+    runnable_paper_handoff: evidence.runnable_paper_handoff,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  record.evidence_digest = `sha256:${createHash("sha256")
+    .update(paperTradingHandoffConformanceDigestInput(record))
+    .digest("hex")}`;
+  return record;
+}
+
+function compactPaperHandoffConformance(
+  record: PaperTradingHandoffConformanceRecord
+): NonNullable<CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]> {
+  return {
+    conformance_id: record.paper_trading_handoff_conformance_id,
+    status: record.status,
+    reason: record.reason,
+    authority_status: "research_only"
+  };
 }
 
 function arenaDisqualificationReason(
@@ -1265,6 +1376,12 @@ function arenaFindingForAdmission(
     return {
       finding_kind: "duplicate_result",
       summary: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+    };
+  }
+  if (admission.reason === "paper_handoff_conformance_failed") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `Candidate failed PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason ?? "unknown"}).`
     };
   }
   if (isAntiHackingEvaluation(entry)) {
