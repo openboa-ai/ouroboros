@@ -312,37 +312,38 @@ git commit -m "feat: bind arena admission to paper conformance"
 
 **Files:**
 - Modify: `packages/application/src/trading/paper/commands.ts`
-- Modify: `apps/runtime/test/paper-trading-event-protocol.test.ts`
+- Create: `packages/application/src/trading/paper/commands.test.ts`
+- Modify: `packages/application/src/ports/store.ts`
+- Modify: `packages/local-store/src/index.ts`
 - Modify: `apps/runtime/test/operator-product-loop-smoke.test.tsx`
-- Modify: `apps/runtime/src/server.ts`
 
 **Interfaces:**
 - Revalidates exact active SystemCode conformance before `PaperTradingSession.prepare`.
 - Preserves fixture candidate compatibility.
 
-- [ ] **Step 1: Write failing no-effect rejection tests**
+- [x] **Step 1: Write failing no-effect rejection tests**
 
 For generated candidates, reject missing, rejected, malformed, tampered, wrong-SystemCode,
 wrong-ExperimentRun, and non-admitted conformance. Assert zero commitment, evaluation, provider,
 sandbox, run-control, Ledger, observation, runner, private, and live effects.
 
-- [ ] **Step 2: Write passing start tests**
+- [x] **Step 2: Write passing start tests**
 
 Exact passed admission-bound evidence permits the existing paper-only start path. Fixture candidates
 without materialization attempts continue through their existing path. Repeated start and restart
 reuse the same evidence without recomputation.
 
-- [ ] **Step 3: Prove autonomous continuation behavior**
+- [x] **Step 3: Prove autonomous continuation behavior**
 
 CandidateArena automatic continuation records `failed` with stable conformance reason when start
 revalidation fails, keeps the arena loop running, and never reports `started` early.
 
-- [ ] **Step 4: Implement and verify**
+- [x] **Step 4: Implement and verify**
 
 ```bash
-npm test -- apps/runtime/test/paper-trading-event-protocol.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx apps/runtime/test/candidate-arena-paper-context.test.ts
+npm test -- packages/application/src/trading/paper/commands.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx apps/runtime/test/candidate-arena-paper-context.test.ts
 npm run typecheck --workspace @ouroboros/runtime
-git add packages/application/src/trading/paper/commands.ts apps/runtime/src/server.ts apps/runtime/test/paper-trading-event-protocol.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
+git add packages/application/src/trading/paper/commands.ts packages/application/src/trading/paper/commands.test.ts packages/application/src/ports/store.ts packages/local-store/src/index.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
 git commit -m "feat: enforce paper conformance at start"
 ```
 

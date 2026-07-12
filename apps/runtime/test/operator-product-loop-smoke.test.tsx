@@ -1,12 +1,11 @@
 import React from "react";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
 import {
-  toReplayTradingCandidateInput,
   validateOrderRequest
 } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
@@ -15,9 +14,10 @@ import type {
   TradingProviderRequestLog,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
-import type {
-  GatewayRuntimeBinding,
-  PaperTradingApiProviderOptions
+import {
+  startPaperTradingApiProvider,
+  type GatewayRuntimeBinding,
+  type PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { runOuroborosCli } from "@ouroboros/cli";
@@ -93,6 +93,9 @@ describe("operator product loop smoke", () => {
         payload: {}
       });
       const leader = tick.operator.candidate_arena.leaderboard[0]!;
+      const conformanceBeforeStart = await store.listPaperTradingHandoffConformances();
+      expect(conformanceBeforeStart.length).toBeGreaterThan(0);
+      expect(conformanceBeforeStart.every((record) => record.status === "passed")).toBe(true);
 
       await postCommand(server, {
         command_kind: "candidate.select",
@@ -102,8 +105,15 @@ describe("operator product loop smoke", () => {
         command_kind: "trading_run.start",
         payload: { candidate_id: leader.candidate_id }
       });
+      const repeated = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: leader.candidate_id }
+      });
 
       expect(started.operator.selected_candidate_id).toBe(leader.candidate_id);
+      expect(repeated.operator.selected_candidate_id).toBe(leader.candidate_id);
+      await expect(store.listPaperTradingHandoffConformances())
+        .resolves.toEqual(conformanceBeforeStart);
       expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
       expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
@@ -948,6 +958,81 @@ describe("operator product loop smoke", () => {
         command_kind: "arena.stop"
       });
       expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails autonomous continuation on missing admitted conformance without paper effects", async () => {
+    const store = new LocalStore(tmpDir);
+    const getConformance = store.getPaperTradingHandoffConformance.bind(store);
+    store.getPaperTradingHandoffConformance = async (conformanceId) => {
+      await getConformance(conformanceId);
+      return undefined;
+    };
+    let providerStartCount = 0;
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: async (...args) => {
+        providerStartCount += 1;
+        return networklessPaperTradingApiProvider(...args);
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      const baseline = {
+        commitments: (await store.listPaperTradingEvaluationCommitments()).length,
+        evaluations: (await store.listPaperTradingEvaluations()).length,
+        observations: await paperTradingObservationCount(store),
+        sandboxes: (await store.listSandboxes()).length
+      };
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, { command_kind: "arena.start" });
+
+      const operator = await waitForOperator(server, (readModel) =>
+        readModel.candidate_arena.runner_status === "running" &&
+        readModel.candidate_arena.latest_ticks.some((tick) =>
+          tick.paper_trading_continuation?.status === "failed" &&
+          tick.paper_trading_continuation.error === "paper_handoff_conformance_missing"
+        )
+      );
+      const failed = operator.candidate_arena.latest_ticks.find((tick) =>
+        tick.paper_trading_continuation?.error === "paper_handoff_conformance_missing"
+      );
+      expect(failed?.paper_trading_continuation).toMatchObject({
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: expect.any(String),
+        error: "paper_handoff_conformance_missing",
+        authority_status: "not_live"
+      });
+      expect(operator.candidate_arena.runner_status).toBe("running");
+      expect(providerStartCount).toBe(0);
+      expect(await store.listPaperTradingEvaluationCommitments()).toHaveLength(
+        baseline.commitments
+      );
+      expect(await store.listPaperTradingEvaluations()).toHaveLength(baseline.evaluations);
+      expect(await paperTradingObservationCount(store)).toBe(baseline.observations);
+      expect(await store.listSandboxes()).toHaveLength(baseline.sandboxes);
+
+      await postCommand(server, { command_kind: "arena.stop" });
     } finally {
       await server.close();
     }
@@ -1845,6 +1930,14 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
   };
 }
 
+async function paperTradingObservationCount(store: LocalStore): Promise<number> {
+  const evaluations = await store.listPaperTradingEvaluations();
+  const observations = await Promise.all(evaluations.map((evaluation) =>
+    store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
+  ));
+  return observations.reduce((count, items) => count + items.length, 0);
+}
+
 function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
   const replayRunner = networklessReplayArtifactRunner();
   return {
@@ -1852,12 +1945,7 @@ function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
     async probePaperHandoff(input) {
       return passingPaperHandoffProbe(input);
     },
-    async run(input) {
-      const runPath = path.join(input.artifact_dir, "run.py");
-      const source = await readFile(runPath, "utf8");
-      await writeFile(runPath, paperDirectArenaArtifact(arenaResearchDirection(source)), "utf8");
-      return replayRunner.run(input);
-    }
+    run: (input) => replayRunner.run(input)
   };
 }
 
@@ -1888,89 +1976,9 @@ function delayedPaperDirectArenaArtifactRunner(): TradingArtifactRunner & {
         blocked = true;
         await released;
       }
-      const runPath = path.join(input.artifact_dir, "run.py");
-      const source = await readFile(runPath, "utf8");
-      await writeFile(runPath, paperDirectArenaArtifact(arenaResearchDirection(source)), "utf8");
       return replayRunner.run(input);
     }
   };
-}
-
-function arenaResearchDirection(source: string): string {
-  return /^ARENA_RESEARCH_DIRECTION = "([^"]+)"$/m.exec(source)?.[1] ?? "other";
-}
-
-function paperDirectArenaArtifact(direction: string): string {
-  return `#!/usr/bin/env python3
-import argparse
-import json
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-
-ARENA_RESEARCH_DIRECTION = "${direction}"
-
-def utc_now():
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def append_line(line, log_path, heartbeat_path=None):
-    print(line, flush=True)
-    if log_path is not None:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\\n")
-    if heartbeat_path is not None:
-        heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
-        heartbeat_path.write_text(line + "\\n", encoding="utf-8")
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--instance-id", required=True)
-parser.add_argument("--ticks", type=int, default=0)
-parser.add_argument("--interval-ms", type=int, default=1000)
-parser.add_argument("--log-file")
-parser.add_argument("--heartbeat-file")
-parser.add_argument("--start-at", required=True)
-parser.add_argument("--paper-order-request", default="valid")
-args = parser.parse_args()
-
-log_path = Path(args.log_file) if args.log_file else None
-heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
-append_line(json.dumps({
-    "event": "order_request",
-    "event_id": f"{args.instance_id}:order-request:0001",
-    "instance_id": args.instance_id,
-    "at": args.start_at,
-    "authority_status": "trace_only",
-    "intent_kind": "place_order",
-    "symbol": "BTCUSDT",
-    "side": "buy",
-    "order_type": "market",
-    "quantity": "0.001",
-    "reason": f"{ARENA_RESEARCH_DIRECTION} paper-direct arena fixture order",
-}, sort_keys=True), log_path)
-
-tick = 0
-while True:
-    tick += 1
-    append_line(json.dumps({
-        "event": "runtime_heartbeat",
-        "instance_id": args.instance_id,
-        "tick": tick,
-        "at": utc_now(),
-    }, sort_keys=True), log_path, heartbeat_path)
-    if args.ticks and tick >= args.ticks:
-        break
-    time.sleep(args.interval_ms / 1000)
-
-append_line(json.dumps({
-    "event": "runtime_stopped",
-    "instance_id": args.instance_id,
-    "tick": tick,
-    "at": utc_now(),
-}, sort_keys=True), log_path)
-`;
 }
 
 async function networklessReplayTradingApiProvider(
@@ -1988,27 +1996,7 @@ async function networklessPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions
 ): Promise<ReplayTradingApiProviderSession> {
-  const market = await binding.marketData.readMarketSnapshot();
-  const account = options.readAccountState
-    ? await options.readAccountState()
-    : binding.account.provider_kind === "fake_paper_account"
-      ? binding.account.state
-      : {
-          equity: 10_000,
-          max_position_notional: 350,
-          max_risk_fraction: 0.03,
-          target_risk_fraction: 0.02
-        };
-  return {
-    base_url: "http://paper-runtime.test",
-    sandbox_base_url: "http://paper-runtime.test",
-    close: async () => undefined,
-    requests: () => [],
-    candidate_input: toReplayTradingCandidateInput({
-      market,
-      account
-    })
-  };
+  return startPaperTradingApiProvider(binding, options);
 }
 
 function delayedPaperTradingApiProviderFactory(): {

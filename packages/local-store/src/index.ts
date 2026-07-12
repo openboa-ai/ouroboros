@@ -3694,6 +3694,10 @@ export class LocalStore {
     return experiment;
   }
 
+  async getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined> {
+    return this.readOptionalRecord<ExperimentRunRecord>("experiment-runs", experimentRunId);
+  }
+
   async listExperimentRuns(): Promise<ExperimentRunRecord[]> {
     return (await this.readCollection<ExperimentRunRecord>("experiment-runs"))
       .sort(compareExperimentRuns);
@@ -3717,6 +3721,15 @@ export class LocalStore {
       result
     );
     return result;
+  }
+
+  async getTradingEvaluationResult(
+    evaluationResultId: string
+  ): Promise<TradingEvaluationResultRecord | undefined> {
+    return this.readOptionalRecord<TradingEvaluationResultRecord>(
+      "trading-evaluation-results",
+      evaluationResultId
+    );
   }
 
   async listTradingEvaluationResults(): Promise<TradingEvaluationResultRecord[]> {
