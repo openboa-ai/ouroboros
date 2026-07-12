@@ -110,9 +110,18 @@ count, generic terminal status/reason, and authority-free phase cost counts. Gen
 paper start revalidates the graph before effects. Rejected sealed evidence remains causal memory;
 infrastructure failure remains platform-attributed without fabricated terminal evidence.
 
+Current partial implementation evidence also covers exact development behavior identity. One
+`ResearchBehaviorFingerprint` binds the frozen SystemCode and commitment to sorted normalized
+effective orders over the complete canonical development suite. Only a prior admitted exact match
+on the same protocol and suite can exclude a submission. The duplicate keeps Finding and Lineage
+but no population slot; unavailable observations quarantine an otherwise admissible candidate.
+Raw fingerprint evidence is absent from next-worker context, and sealed or paper outcomes do not
+enter the key. This proves bounded exact observational duplicate detection only, not semantic
+equivalence or near-duplicate clustering.
+
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
-not prove reward-hacking resistance or economic generalization. Behavior-level duplicate
-detection, broader adversarial side-channel coverage, durable ResearchWorker recovery, production
+not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
+clustering, broader adversarial side-channel coverage, durable ResearchWorker recovery, production
 comparison scheduling, automatic promotion, champion runner handoff, private/live authority, and
 the other completion axes remain open.
 

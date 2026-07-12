@@ -1,6 +1,6 @@
 # ResearchBehaviorFingerprint Design
 
-**Status:** Approved for implementation by the standing Goal
+**Status:** Complete and verified
 
 ## Goal
 
@@ -232,3 +232,29 @@ The frontier is complete when tests prove:
 - duplicate evidence reaches next-generation Finding context without entering the leaderboard;
 - focused tests, package typechecks, repository guards, reference-paper soak, operator product-loop
   smoke, and the full test suite pass.
+
+## Verification Evidence
+
+- Domain RED failed all 34 new tests before `ResearchBehaviorFingerprint` existed; the canonical
+  domain matrix then passed 2 files and 80 tests.
+- Application derivation RED failed on the absent module; the final derivation/preflight matrix
+  passed 2 files and 25 tests.
+- LocalStore RED failed all 4 initial graph tests on absent persistence. Two later adversarial RED
+  tests proved future-dated admitted baselines and foreign source identities could bypass the first
+  graph implementation; the corrected focused matrix passed 5 files and 72 tests, and the broader
+  LocalStore/admission regression passed 7 files and 422 tests.
+- CandidateArena end-to-end RED proved a second textually different but behaviorally identical
+  artifact still received a population slot. The corrected CandidateArena file passed 37 tests,
+  including exact duplicate, generic next-generation feedback, sealed-surface exclusion, and
+  unavailable-observation quarantine.
+- The final cross-layer matrix passed 8 files and 135 tests, including managed Codex execution,
+  reference-paper soak, and Operator product-loop smoke.
+- `npm run typecheck` passed every workspace. `npm run check:repo-guards` passed docs,
+  architecture, naming, tracked-env, secret, and diff checks.
+- The final full suite passed 279 of 279 files and 2,007 of 2,007 tests with zero failures or
+  pending tests.
+
+This evidence closes exact same-protocol, same-suite observational duplicate admission only. Tiny
+quantity perturbations remain distinct in version 1; approximate distance policy, cross-suite
+comparability, prospective paper behavior clustering, static semantic equivalence, and adversarial
+evasion beyond exact normalized decisions remain future frontiers.

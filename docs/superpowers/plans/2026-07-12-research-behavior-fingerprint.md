@@ -4,7 +4,7 @@
 > superpowers:test-driven-development to implement this plan task-by-task. Steps use checkbox
 > (`- [ ]`) syntax for tracking.
 
-**Status:** In progress
+**Status:** Complete and verified
 
 **Goal:** Reject textually different CandidateArena submissions that are observationally identical
 on the exact development replay protocol while preserving causal research evidence and all sealed,
@@ -285,20 +285,20 @@ behavior; the dedicated duplicate runner alone intentionally ignores artifact di
 - Records `ResearchBehaviorFingerprint` as bounded development evidence and explicit non-authority.
 - Records exact duplicate, unavailable, compatibility, and remaining approximate-clustering gaps.
 
-- [ ] **Step 1: Update canonical truth**
+- [x] **Step 1: Update canonical truth**
 
 Document the artifact-vs-behavior distinction, admitted-only exact matching, development-only
 scope, fail-closed unavailable behavior, generic Finding feedback, and explicit non-claims about
 global semantic identity or economic quality.
 
-- [ ] **Step 2: Run focused and package verification**
+- [x] **Step 2: Run focused and package verification**
 
 ```bash
 npx vitest run packages/domain/src/research-behavior-fingerprint.test.ts packages/domain/src/candidate-admission-policy.test.ts packages/application/src/trading/research/behavior-fingerprint.test.ts packages/local-store/test/research-behavior-fingerprint.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
 npm run typecheck
 ```
 
-- [ ] **Step 3: Run product and repository verification**
+- [x] **Step 3: Run product and repository verification**
 
 ```bash
 npx vitest run apps/runtime/test/reference-paper-soak-trading-system.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
@@ -306,7 +306,7 @@ npm run check:repo-guards
 npm test
 ```
 
-- [ ] **Step 4: Mark evidence complete and commit**
+- [x] **Step 4: Mark evidence complete and commit**
 
 Record exact suite/test counts and any residual risks in the design and plan, then run:
 
@@ -315,6 +315,12 @@ git diff --check
 git add README.md ARCHITECTURE.md AGENTS.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-research-behavior-fingerprint-design.md docs/superpowers/plans/2026-07-12-research-behavior-fingerprint.md
 git commit -m "docs: record arena behavior identity"
 ```
+
+Evidence: canonical README, architecture, policy, Goal, API, autonomy, and taxonomy truth now
+distinguishes artifact identity from exact protocol-scoped behavior identity. The final focused
+cross-layer matrix passed 8 files and 135 tests; managed Codex, reference-paper soak, and Operator
+product-loop coverage are included. All workspace typechecks and repository guards passed. The
+full current-head suite passed 279 files and 2,007 tests with zero failures or pending tests.
 
 ## Promotion Decision
 

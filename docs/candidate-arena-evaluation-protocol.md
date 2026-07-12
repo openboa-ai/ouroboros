@@ -2,8 +2,8 @@
 
 Status: P0 target contract with partial implementation evidence. This document defines the bounded
 frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
-allocation and ResearchPreflight commitments, split development/sealed preflight, external paper
-handoff conformance, admission, sealed
+allocation and ResearchPreflight commitments, split development/sealed preflight, exact
+development behavior fingerprints, external paper handoff conformance, admission, sealed
 comparison, confirmation, causal ResearchRelease, explicit comparison-backed TradingPromotion,
 and bounded adaptive ResearchWorker allocation tests demonstrate only the explicitly listed
 partial conformance; they do not establish production composition, automatic champion operation,
@@ -41,6 +41,9 @@ persisted schema names. Any future public or persisted fields require a separate
 10. One pre-effect `ResearchPreflightCommitment` must bind source, allocation, worker, development
     budget, and rotating sealed-suite commitments. Development feedback selects and freezes one
     artifact before one sealed submission; process loss closes rather than reconstructs the plan.
+11. Population identity must distinguish artifact bytes from bounded behavior. One exact
+    development protocol/suite fingerprint may own at most one admitted population slot; sealed and
+    paper outcomes never define that fingerprint.
 
 ## Evidence Lifecycle
 
@@ -48,6 +51,7 @@ persisted schema names. Any future public or persisted fields require a separate
 | --- | --- | --- | --- | --- |
 | Inspectable research experiment | Yes | Yes | No | No |
 | Development `ResearchPreflight` | Aggregate development feedback only | Yes | No | No |
+| `ResearchBehaviorFingerprint` | No raw cross-candidate observations; generic duplicate Finding after close | Yes | No; may exclude an exact admitted duplicate | No |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
@@ -64,6 +68,15 @@ frozen winner. A lost process cannot reconstruct or silently resample that plan.
 CandidateArena rank, materialized research lineage, and next-worker context retain the
 development-visible evaluation. The sealed terminal score decides admission only and is not
 released through the research leaderboard.
+
+`ResearchBehaviorFingerprint` uses only the final externally recorded validation order for every
+canonical development scenario. Its digest covers protocol, development-suite version/digest, and
+sorted normalized decisions. SystemCode identity and time bind the evidence record but do not alter
+the behavioral key. LocalStore compares only fingerprints referenced by prior `admitted`
+decisions; quarantined, duplicate, orphaned, cross-suite, later, or corrupt evidence cannot become
+a baseline. Exact duplicates retain Finding and Lineage without materialization. Missing complete
+canonical observations quarantine an otherwise admissible candidate. Version 1 keeps exact
+quantity, so approximate sizing similarity remains a separate future policy.
 
 `PaperTradingHandoffConformance` is a research-only compatibility gate between sealed admission and
 admission. It runs the same exact submitted bytes against the bounded production paper event protocol,
@@ -423,8 +436,13 @@ The following current surfaces require implementation work before P0 can pass:
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
   result, and conformance-bound admission mismatch. The raw seed and sealed suite are process-local,
   so crash recovery deliberately fails closed rather than resuming the evaluator plan.
+- Every frozen submission now also records one development-only `ResearchBehaviorFingerprint` when
+  complete canonical observations exist. CandidateArena and LocalStore permit only the first prior
+  admitted exact protocol/suite/decision key to own a population slot, preserve later matches as
+  `behavior_duplicate` Finding/Lineage, and quarantine an otherwise admissible submission when the
+  fingerprint is unavailable.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
-  provider-identity ineligibility, and behavior-level duplicate detection is incomplete.
+  provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
 The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
@@ -480,12 +498,14 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    are also implemented internally, while production comparison and runner composition remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
-   and passed `PaperTradingHandoffConformance` gate materialization; generated-candidate paper start
+   passed `PaperTradingHandoffConformance`, and admitted-only exact development
+   `ResearchBehaviorFingerprint` comparison gate materialization; generated-candidate paper start
    revalidates the same persisted graph before effects.
 3. **Partial:** worker surfaces exclude sealed seed/scenarios/outcomes and paper-handoff fixtures
    reject bounded protocol, provider, self-report, hidden-field, private/live, and timeout
-   violations. Cross-commitment probing, broader evaluator side channels, window cherry-picking,
-   and behavior-level duplicate coverage remain. Query bounds alone are not a reward-hacking proof.
+   violations. Exact same-suite behavior duplicates are isolated, while cross-commitment probing,
+   broader evaluator side channels, window cherry-picking, and approximate behavior clustering
+   remain. Query bounds alone are not a reward-hacking proof.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

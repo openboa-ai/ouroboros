@@ -136,9 +136,11 @@ The next level of detail should improve the autonomous loop without widening aut
 - Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
   conformance, and admission are now bound before materialization and generated-candidate paper
   start. Direction readback is compact, and efficiency separates development from sealed counts
-  without promotion authority. Behavior-level duplicate detection, broader evaluator side
-  channels, durable worker recovery, and economic generalization remain future detail; a query cap
-  is not treated as a reward-hacking proof.
+  without promotion authority. Exact same-suite `ResearchBehaviorFingerprint` comparison now keeps
+  one admitted population slot and preserves duplicate Finding/Lineage without exposing raw
+  observations. Approximate or cross-suite behavior clustering, broader evaluator side channels,
+  durable worker recovery, and economic generalization remain future detail; a query cap is not
+  treated as a reward-hacking proof.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

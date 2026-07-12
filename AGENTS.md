@@ -33,6 +33,7 @@ problem
 -> bounded adaptive development ResearchPreflight
 -> frozen one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
@@ -50,6 +51,11 @@ ResearchWorker, and process loss fails the direction closed rather than resampli
 single-file Python SystemCode identity is the canonical digest of its
 frozen manifest-plus-entrypoint closure, not the entrypoint alone; generated-candidate paper start
 revalidates that closure and conformance evidence before paper effects.
+CandidateArena also fingerprints normalized effective order decisions from the exact development
+suite. Only an earlier admitted fingerprint on the same protocol and suite may exclude a later
+exact behavioral duplicate; missing canonical observations fail closed, duplicate Finding/Lineage
+remain research memory, and sealed scores, paper outcomes, rationale text, and event noise never
+define the fingerprint.
 Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted
@@ -212,6 +218,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick/direction/worker/allocation/source SystemCode to bounded development feedback and one evaluator-owned rotating sealed-admission suite; it stores commitments and digests, never the raw evaluator seed or sealed scenarios, and grants no admission, promotion, order, private, or live authority. |
+| `ResearchBehaviorFingerprint` | Append-only development-only record of normalized effective decisions for one exact protocol, suite digest, commitment, and frozen SystemCode; exact matching is bounded observational duplicate evidence, not semantic equivalence, score, qualification, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that binds the complete new-format ResearchPreflight commitment/terminal/submitted-SystemCode graph and paper handoff conformance to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |

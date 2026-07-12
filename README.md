@@ -28,6 +28,7 @@ parallel TradingSystem candidates
 -> bounded development replay/backtest feedback
 -> frozen artifact and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
@@ -54,10 +55,20 @@ undeclared files, directories, symlinks, or manifest drift invalidate the closur
 target-protocol compatibility only; it does not add economic score, qualification, promotion,
 order, private, or live authority.
 
+Before population materialization, CandidateArena also derives one `ResearchBehaviorFingerprint`
+from the final externally recorded order decision for every exact development scenario. Different
+SystemCode artifacts with the same protocol, development-suite digest, and normalized decisions
+share one behavioral key. Only a prior admitted fingerprint can exclude a later exact match;
+duplicates retain Finding and Lineage but receive no candidate slot. Missing canonical observations
+quarantine an otherwise admissible submission. This is bounded observational equality on a public
+development suite, not semantic program equivalence or economic evidence, and sealed or paper
+outcomes never enter the fingerprint.
+
 This isolation reduces direct evaluator reuse and differential probing; it does not prove that a
-query cap prevents reward hacking or that synthetic replay generalizes economically. Behavior-level
-duplicate detection, durable ResearchWorker recovery, production comparison scheduling, automatic
-promotion, champion runner handoff, private/live authority, P0, and the overall Goal remain open.
+query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
+or cross-suite behavior clustering, durable ResearchWorker recovery, production comparison
+scheduling, automatic promotion, champion runner handoff, private/live authority, P0, and the
+overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after

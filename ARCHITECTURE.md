@@ -10,6 +10,7 @@ CandidateArena
 -> bounded development replay/backtest feedback
 -> frozen SystemCode and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> leaderboard, findings, and lineage
 -> selected continuous Paper Trading
@@ -19,8 +20,8 @@ CandidateArena
 
 Canonical naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
 Inside that compact product-facing sequence, the enforced evidence spine inserts
-`PaperTradingHandoffConformance` and `CandidateAdmissionDecision` between ResearchPreflight and
-selected Paper Trading.
+`PaperTradingHandoffConformance`, `ResearchBehaviorFingerprint`, and
+`CandidateAdmissionDecision` between ResearchPreflight and selected Paper Trading.
 
 Researchers and LLM agents are candidate generators. Development replay/backtest is an adaptive
 research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
@@ -34,6 +35,11 @@ canonical manifest-plus-entrypoint closure digest, and both research and paper r
 undeclared closure state. Continuous paper trading is the product evaluation
 authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs only to selected
 Trading Runs, not to every candidate.
+CandidateArena separately derives an append-only `ResearchBehaviorFingerprint` from normalized
+effective orders on the exact development suite. LocalStore compares only protocol- and
+suite-compatible fingerprints linked from earlier admitted decisions. An exact match keeps its
+Finding and Lineage but receives no population slot; unavailable evidence fails closed. This
+comparison consumes no sealed or paper result and claims no global semantic equivalence.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
 
@@ -157,7 +163,8 @@ This file is a compact development map. The canonical architecture contract live
 ## Current Development Boundary
 
 Preserve these separations: Candidate Arena state vs selected Trading Run execution,
-TradingSystem identity vs ResearchPreflight evidence, research-time replay/backtest vs continuous
+SystemCode artifact identity vs protocol-scoped behavior identity, TradingSystem identity vs
+ResearchPreflight evidence, research-time replay/backtest vs continuous
 paper trading evaluation, replay score vs exact PaperTradingHandoffConformance, handoff conformance
 vs economic/qualification authority, entrypoint bytes vs complete declared artifact closure,
 TradingRun control vs OrderRequest generation, paper observation

@@ -25,7 +25,8 @@ Current command groups:
   created by that tick, and starts or resumes that candidate's selected continuous
   `PaperTradingEvaluation`. `arena.tick` is one research round: pre-effect allocation and
   ResearchPreflight commitment, bounded development feedback, one frozen sealed submission,
-  handoff/admission, leaderboard update, findings, and lineage. By itself it
+  handoff, development-only behavior fingerprint comparison, admission, leaderboard update,
+  findings, and lineage. By itself it
   is not continuous paper trading and must not be treated as final evaluation authority.
   `arena.cycle` runs one below-authority autonomous paper cycle: execute a research tick, select
   the highest-ranked candidate created by that tick, then start or resume its selected continuous
@@ -186,7 +187,8 @@ path, command evidence, or evaluator internals.
 `CandidateAdmissionDecision` is the research-only external gate between `ResearchPreflight` and
 candidate materialization. Every new-format admitted decision binds the exact pre-effect
 `ResearchPreflightCommitment`, source/submitted SystemCode digests, sealed suite and sequence-one
-terminal evaluation, and `PaperTradingHandoffConformance` ref/digest/status. Duplicate or
+terminal evaluation, `PaperTradingHandoffConformance` ref/digest/status, and, for the new Arena
+path, `ResearchBehaviorFingerprint` comparison status/ref/digest. Duplicate or
 pre-probe quarantine decisions may have no conformance linkage. A CandidateArena direction result
 is `created` only when the persisted decision is `admitted` with
 `runnable_paper_handoff: true` and exact passed conformance. Unchanged output is `duplicate` and
@@ -201,6 +203,14 @@ handoff. A tick is `completed` when every direction
 reaches an admission outcome, even if none is admitted; `completed_with_errors` or `failed` is
 reserved for partial or total infrastructure failure. Admission does not qualify paper evidence,
 change paper rank, grant promotion, or enable live authority.
+
+`ResearchBehaviorFingerprint` normalizes only the final externally recorded `symbol`, `side`,
+exact `quantity`, and `order_type` for every canonical development scenario. The key excludes
+rationale, timestamps, event noise, score, PnL, sealed results, and paper evidence. Status is
+`distinct`, `duplicate`, or `unavailable`; only an earlier admitted exact protocol/suite/key may be
+the matching ref. `behavior_duplicate` creates no candidate but retains Finding/Lineage, while
+`behavior_fingerprint_unavailable` quarantines an otherwise admissible submission. Operator and
+worker readback expose only the generic admission reason and Finding, not raw fingerprint records.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the

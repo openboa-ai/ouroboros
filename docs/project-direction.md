@@ -28,6 +28,8 @@ paper trading over live public market data. Between them,
 satisfies the bounded target paper event protocol before admission and generated-candidate start.
 `ResearchPreflightCommitment` is the pre-effect record that keeps adaptive development feedback
 separate from one rotating, evaluator-owned sealed admission submission.
+`ResearchBehaviorFingerprint` is the development-only population identity record that binds one
+frozen SystemCode to normalized effective orders on one exact protocol and suite digest.
 
 ## Source Of Truth
 
@@ -47,6 +49,7 @@ parallel TradingSystem candidates
 -> bounded development replay/backtest feedback
 -> frozen artifact and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
@@ -70,6 +73,13 @@ effects. Generated single-file Python SystemCode identity includes its frozen ma
 editable entrypoint; undeclared closure state is invalid. Rejected protocol evidence stays in causal research memory, while infrastructure failure
 stays platform-attributed. Conformance has no economic, qualification, promotion, order, private,
 or live authority.
+
+Candidate population identity is not source-text identity. CandidateArena records normalized
+effective `symbol`, `side`, exact `quantity`, and `order_type` decisions from every canonical
+development scenario, excluding rationale, timestamps, event noise, score, PnL, sealed evidence,
+and paper evidence. Only an earlier admitted exact match on the same protocol and suite can consume
+the population slot; duplicate attempts remain causal research memory. This does not claim that
+programs are semantically equivalent outside the bounded suite.
 
 This is a bounded information-barrier improvement, not evidence that synthetic replay predicts
 future paper economics or that evaluator query caps eliminate reward hacking. Prospective paper

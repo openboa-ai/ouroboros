@@ -14,6 +14,7 @@ that pack every axis into one identifier.
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick, direction, worker, allocation, source SystemCode, bounded development policy, and evaluator-owned rotating sealed-admission suite. It stores only commitments/digests, permits one sealed submission, and grants no admission, promotion, order, private, or live authority. |
+| `ResearchBehaviorFingerprint` | Append-only development-only evidence that one frozen SystemCode emitted one sorted normalized effective decision per scenario on one exact protocol and development-suite digest. Equal fingerprints mean bounded observational duplication only, not semantic equivalence, profitability, qualification, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
@@ -98,6 +99,9 @@ standard term fits. Record that decision in repo docs and tests.
   precede worker effects; sealed admission starts only after artifact freeze and runs at most once.
 - Do not expose raw evaluator seed, sealed scenarios, scenario outcomes, score deltas, raw events,
   paths, command evidence, or evaluator internals as ResearchWorker context or compact readback.
+- Do not call equal `ResearchBehaviorFingerprint` values universal strategy or program identity.
+  They mean exact normalized behavior only on the named development protocol and suite. Never use
+  sealed or paper outcomes, rationale, timestamps, event noise, score, or PnL in that key.
 - Do not infer paper readiness from replay success. Every new runnable handoff requires one exact
   passed `PaperTradingHandoffConformance`, and generated-candidate paper start must revalidate its
   admission linkage before paper effects.
