@@ -39,7 +39,7 @@
 - Produces: `candidateArenaResearchAllocationHasRuntimeShape(value)`.
 - Adds the record to the domain persisted-record union.
 
-- [ ] **Step 1: Write failing canonical-shape and digest tests**
+- [x] **Step 1: Write failing canonical-shape and digest tests**
 
 Create a canonical adaptive fixture with three selections and two deferred directions:
 
@@ -158,7 +158,7 @@ Assert the fixture is accepted. Assert digest input changes after mutating mode,
 signal score, selected order, experiment budget, deferred directions, source refs, time, or any
 authority field.
 
-- [ ] **Step 2: Write failing invalid-shape table tests**
+- [x] **Step 2: Write failing invalid-shape table tests**
 
 Reject each of these mutations independently:
 
@@ -190,7 +190,7 @@ Also accept one canonical `static_control` and one canonical `explicit` fixture.
 use three default directions with budgets `2`, `2`, `1`; explicit mode must use one to five unique
 directions with budget `1` and no adaptive signal snapshot.
 
-- [ ] **Step 3: Run the domain test and observe RED**
+- [x] **Step 3: Run the domain test and observe RED**
 
 ```bash
 npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts
@@ -198,7 +198,7 @@ npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts
 
 Expected: FAIL because the allocation exports do not exist.
 
-- [ ] **Step 4: Implement the domain contract**
+- [x] **Step 4: Implement the domain contract**
 
 Add the exact policy:
 
@@ -226,7 +226,7 @@ Steps 1 and 2, exact policy constants, unique directions, finite integer scores/
 refs/times, and closed authority. It validates digest shape but does not hash; LocalStore owns hash
 comparison.
 
-- [ ] **Step 5: Run domain tests and typecheck**
+- [x] **Step 5: Run domain tests and typecheck**
 
 ```bash
 npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts
@@ -235,7 +235,7 @@ npm run typecheck --workspace @ouroboros/domain
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit domain evidence**
+- [x] **Step 6: Commit domain evidence**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/candidate-arena-research-allocation.test.ts

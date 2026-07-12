@@ -5623,6 +5623,347 @@ export interface CandidateArenaResearchEfficiencyReadModel {
   authority_status: "not_promotion_authority";
 }
 
+export type CandidateArenaResearchAllocationMode =
+  | "adaptive_default"
+  | "static_control"
+  | "explicit";
+
+export type CandidateArenaResearchSelectionKind =
+  | "focus"
+  | "exploration"
+  | "static_control"
+  | "explicit";
+
+export interface CandidateArenaResearchAllocationPolicy {
+  policy_kind: "bounded_adaptive_v1";
+  default_direction_slot_count: 3;
+  maximum_focus_direction_count: 2;
+  minimum_exploration_direction_count: 1;
+  concurrency_limit: 2;
+  focus_experiment_budget: 2;
+  exploration_experiment_budget: 1;
+  explicit_experiment_budget: 1;
+  maximum_total_experiment_budget: 5;
+}
+
+export const CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY = {
+  policy_kind: "bounded_adaptive_v1",
+  default_direction_slot_count: 3,
+  maximum_focus_direction_count: 2,
+  minimum_exploration_direction_count: 1,
+  concurrency_limit: 2,
+  focus_experiment_budget: 2,
+  exploration_experiment_budget: 1,
+  explicit_experiment_budget: 1,
+  maximum_total_experiment_budget: 5
+} as const satisfies CandidateArenaResearchAllocationPolicy;
+
+export interface CandidateArenaResearchAllocationSignal {
+  direction_kind: ResearchDirectionKind;
+  finding_pressure_score: number;
+  research_efficiency_score: number;
+  recent_outcome_score: number;
+  focus_score: number;
+  completed_selection_count: number;
+  last_completed_allocation_ref?: Ref;
+  source_candidate_ids: string[];
+  source_tick_ids: string[];
+  reasons: string[];
+}
+
+export interface CandidateArenaResearchAllocationSelection {
+  direction_kind: ResearchDirectionKind;
+  selection_kind: CandidateArenaResearchSelectionKind;
+  priority: number;
+  experiment_budget: number;
+  signal_score: number;
+  reasons: string[];
+}
+
+export interface CandidateArenaResearchAllocationRecord extends BaseRecord {
+  record_kind: "candidate_arena_research_allocation";
+  candidate_arena_research_allocation_id: string;
+  tick_id: string;
+  allocation_mode: CandidateArenaResearchAllocationMode;
+  policy: CandidateArenaResearchAllocationPolicy;
+  source_tick_refs: Ref[];
+  signal_snapshot: CandidateArenaResearchAllocationSignal[];
+  selected_directions: CandidateArenaResearchAllocationSelection[];
+  deferred_directions: ResearchDirectionKind[];
+  allocated_at: string;
+  allocation_digest: string;
+  research_scheduling_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+const CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS = [
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "execution_cost_robustness"
+] as const satisfies readonly ResearchDirectionKind[];
+
+const CANDIDATE_ARENA_RESEARCH_DIRECTIONS = new Set<ResearchDirectionKind>([
+  ...CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS,
+  "liquidation_aware_risk",
+  "other"
+]);
+
+export function candidateArenaResearchAllocationDigestInput(
+  record: CandidateArenaResearchAllocationRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    candidate_arena_research_allocation_id: _id,
+    allocation_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function candidateArenaResearchAllocationHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "candidate_arena_research_allocation_id",
+    "tick_id",
+    "allocation_mode",
+    "policy",
+    "source_tick_refs",
+    "signal_snapshot",
+    "selected_directions",
+    "deferred_directions",
+    "allocated_at",
+    "allocation_digest",
+    "research_scheduling_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "candidate_arena_research_allocation" ||
+    value.version !== 1 ||
+    !comparisonString(value.candidate_arena_research_allocation_id) ||
+    !comparisonString(value.tick_id) ||
+    !candidateArenaResearchAllocationMode(value.allocation_mode) ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(value.policy) ||
+    !Array.isArray(value.source_tick_refs) ||
+    value.source_tick_refs.some((item) =>
+      !comparisonRef(item, "candidate_arena_tick")
+    ) || !candidateArenaAllocationStringsUnique(
+      value.source_tick_refs.map((item) => item.id)
+    ) ||
+    !Array.isArray(value.signal_snapshot) ||
+    !value.signal_snapshot.every(candidateArenaResearchAllocationSignalHasRuntimeShape) ||
+    !Array.isArray(value.selected_directions) ||
+    !value.selected_directions.every(
+      candidateArenaResearchAllocationSelectionHasRuntimeShape
+    ) || !Array.isArray(value.deferred_directions) ||
+    !value.deferred_directions.every(candidateArenaResearchDirection) ||
+    !candidateArenaAllocationStringsUnique(value.deferred_directions) ||
+    !comparisonIso(value.allocated_at) ||
+    !comparisonDigest(value.allocation_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+
+  const allocation = value as unknown as CandidateArenaResearchAllocationRecord;
+  const selectedDirections = allocation.selected_directions.map(
+    (selection) => selection.direction_kind
+  );
+  if (!candidateArenaAllocationStringsUnique(selectedDirections) ||
+    allocation.selected_directions.some(
+      (selection, index) => selection.priority !== index + 1
+    ) || allocation.selected_directions.reduce(
+      (total, selection) => total + selection.experiment_budget,
+      0
+    ) > allocation.policy.maximum_total_experiment_budget) {
+    return false;
+  }
+
+  if (allocation.allocation_mode === "explicit") {
+    const expectedDeferred = CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.filter(
+      (direction) => !selectedDirections.includes(direction)
+    );
+    return allocation.signal_snapshot.length === 0 &&
+      allocation.source_tick_refs.length === 0 &&
+      allocation.selected_directions.length >= 1 &&
+      allocation.selected_directions.length <= 5 &&
+      allocation.selected_directions.every((selection) =>
+        selection.selection_kind === "explicit" &&
+        selection.experiment_budget ===
+          allocation.policy.explicit_experiment_budget &&
+        selection.signal_score === 0
+      ) && arraysEqual(allocation.deferred_directions, expectedDeferred);
+  }
+
+  if (!arraysEqual(
+    allocation.signal_snapshot.map((signal) => signal.direction_kind),
+    CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS
+  )) {
+    return false;
+  }
+  const combinedDefaultDirections = [
+    ...selectedDirections,
+    ...allocation.deferred_directions
+  ];
+  if (combinedDefaultDirections.length !==
+      CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.length ||
+    !CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.every((direction) =>
+      combinedDefaultDirections.includes(direction)
+    ) || !candidateArenaAllocationStringsUnique(combinedDefaultDirections)) {
+    return false;
+  }
+
+  if (allocation.allocation_mode === "static_control") {
+    return arraysEqual(
+      selectedDirections,
+      CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.slice(0, 3)
+    ) && allocation.selected_directions.every((selection, index) =>
+      selection.selection_kind === "static_control" &&
+      selection.experiment_budget === (index < 2 ? 2 : 1) &&
+      selection.signal_score === 0
+    );
+  }
+
+  const focusSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "focus"
+  );
+  const explorationSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "exploration"
+  );
+  return allocation.selected_directions.length ===
+      allocation.policy.default_direction_slot_count &&
+    focusSelections.length <= allocation.policy.maximum_focus_direction_count &&
+    explorationSelections.length >=
+      allocation.policy.minimum_exploration_direction_count &&
+    focusSelections.every((selection) =>
+      selection.experiment_budget === allocation.policy.focus_experiment_budget
+    ) && explorationSelections.every((selection) =>
+      selection.experiment_budget ===
+        allocation.policy.exploration_experiment_budget
+    ) && allocation.selected_directions.every((selection) =>
+      selection.selection_kind === "focus" ||
+      selection.selection_kind === "exploration"
+    );
+}
+
+function candidateArenaResearchAllocationMode(
+  value: unknown
+): value is CandidateArenaResearchAllocationMode {
+  return value === "adaptive_default" ||
+    value === "static_control" ||
+    value === "explicit";
+}
+
+function candidateArenaResearchAllocationPolicyHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_kind",
+    "default_direction_slot_count",
+    "maximum_focus_direction_count",
+    "minimum_exploration_direction_count",
+    "concurrency_limit",
+    "focus_experiment_budget",
+    "exploration_experiment_budget",
+    "explicit_experiment_budget",
+    "maximum_total_experiment_budget"
+  ]) && Object.entries(CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY).every(
+    ([key, expected]) => value[key] === expected
+  );
+}
+
+function candidateArenaResearchAllocationSignalHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationSignal {
+  const keys = [
+    "direction_kind",
+    "finding_pressure_score",
+    "research_efficiency_score",
+    "recent_outcome_score",
+    "focus_score",
+    "completed_selection_count",
+    "source_candidate_ids",
+    "source_tick_ids",
+    "reasons"
+  ];
+  if (comparisonObject(value) && Object.hasOwn(
+    value,
+    "last_completed_allocation_ref"
+  )) {
+    keys.push("last_completed_allocation_ref");
+  }
+  return comparisonObject(value) && comparisonHasExactKeys(value, keys) &&
+    candidateArenaResearchDirection(value.direction_kind) &&
+    comparisonFinite(value.finding_pressure_score) &&
+    comparisonFinite(value.research_efficiency_score) &&
+    comparisonFinite(value.recent_outcome_score) &&
+    comparisonFinite(value.focus_score) &&
+    value.focus_score === value.finding_pressure_score +
+      value.research_efficiency_score + value.recent_outcome_score &&
+    comparisonNonNegative(value.completed_selection_count) &&
+    (value.last_completed_allocation_ref === undefined || comparisonRef(
+      value.last_completed_allocation_ref,
+      "candidate_arena_research_allocation"
+    )) && stringArray(value.source_candidate_ids) &&
+    stringArray(value.source_tick_ids) && stringArray(value.reasons);
+}
+
+function candidateArenaResearchAllocationSelectionHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationSelection {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "direction_kind",
+    "selection_kind",
+    "priority",
+    "experiment_budget",
+    "signal_score",
+    "reasons"
+  ]) && candidateArenaResearchDirection(value.direction_kind) &&
+    (value.selection_kind === "focus" ||
+      value.selection_kind === "exploration" ||
+      value.selection_kind === "static_control" ||
+      value.selection_kind === "explicit") &&
+    comparisonPositive(value.priority) &&
+    comparisonPositive(value.experiment_budget) &&
+    comparisonFinite(value.signal_score) &&
+    stringArray(value.reasons) && value.reasons.length > 0;
+}
+
+function candidateArenaResearchDirection(
+  value: unknown
+): value is ResearchDirectionKind {
+  return typeof value === "string" &&
+    CANDIDATE_ARENA_RESEARCH_DIRECTIONS.has(value as ResearchDirectionKind);
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(comparisonString) &&
+    candidateArenaAllocationStringsUnique(value);
+}
+
+function candidateArenaAllocationStringsUnique(
+  values: readonly string[]
+): boolean {
+  return new Set(values).size === values.length;
+}
+
+function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
 export type CandidateArenaTickSourceKind =
   | "fixture_seed"
   | "evaluated_arena_leader"
@@ -6852,6 +7193,7 @@ export type FixtureRecord =
   | PaperTradingComparisonCheckpointOutcomeRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
+  | CandidateArenaResearchAllocationRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord
   | ResearcherProviderSelectionRecord
