@@ -593,35 +593,35 @@ git commit -m "feat: execute bounded arena allocations"
 **Interfaces:**
 - Verifies the complete allocation lifecycle without adding a public command or UI control.
 
-- [ ] **Step 1: Add completed-history exploration coverage test**
+- [x] **Step 1: Add completed-history exploration coverage test**
 
 Generate consecutive adaptive decisions, mark each prior tick completed, and assert the union of
 selected directions contains every default direction by the second no-signal allocation. Repeat
 under persistent execution-cost focus and assert at least one non-focus direction remains selected
 on every tick.
 
-- [ ] **Step 2: Add restart and frozen replay test**
+- [x] **Step 2: Add restart and frozen replay test**
 
 Persist an adaptive allocation, restart LocalStore, add a new released finding that would change a
 fresh decision, then allocate the same tick ID. Assert strict equality with the original record,
 one allocation file, and unchanged compact readback. Re-entering the same tick with static mode or
 different explicit directions must fail closed.
 
-- [ ] **Step 3: Add equal-bound static ablation**
+- [x] **Step 3: Add equal-bound static ablation**
 
 Under one public-execution failure cluster, run pure decisions for adaptive and static-control
 modes. Assert both use three workers, concurrency two, and total budget five. Assert adaptive
 includes `execution_cost_robustness` while static remains exactly `trend_following`,
 `mean_reversion`, and `volatility_regime`.
 
-- [ ] **Step 4: Update old reorder-only expectations**
+- [x] **Step 4: Update old reorder-only expectations**
 
 Change existing default-direction tests from five reordered results to the three directions
 actually selected by the allocation. Change context slices and counts from five to the exact summed
 experiment budgets. Keep explicit-direction tests unchanged except for the new allocation
 projection.
 
-- [ ] **Step 5: Add authority and side-effect scan**
+- [x] **Step 5: Add authority and side-effect scan**
 
 Use a Store proxy or spies to prove allocation decision/persistence calls none of:
 
@@ -639,7 +639,7 @@ readPrivateAccount
 Assert every allocation and projection carries research-only scheduling authority and explicit
 false promotion, order, and live authority.
 
-- [ ] **Step 6: Run the full focused allocation regression**
+- [x] **Step 6: Run the full focused allocation regression**
 
 ```bash
 npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts packages/application/src/candidate/research-allocation.test.ts packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -647,7 +647,7 @@ npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts pack
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit lifecycle evidence**
+- [x] **Step 7: Commit lifecycle evidence**
 
 ```bash
 git add packages/application/src/candidate/research-allocation.test.ts packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts

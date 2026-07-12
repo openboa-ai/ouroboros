@@ -1,9 +1,14 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCandidateArenaTick } from "@ouroboros/application/candidate/arena";
-import { decideCandidateArenaResearchAllocation } from
+import {
+  CandidateArenaResearchAllocationService,
+  CandidateArenaResearchAllocationServiceError,
+  decideCandidateArenaResearchAllocation,
+  toCandidateArenaResearchAllocationReadModel
+} from
   "@ouroboros/application/candidate/research-allocation";
 import { createPaperTradingEvaluationCommitment } from "@ouroboros/application/trading/paper/commitment";
 import { initialPaperTradingEngineState } from "@ouroboros/application/trading/paper/engine";
@@ -1796,6 +1801,69 @@ describe("CandidateArena paper evidence context", () => {
     expect(tick.research_allocation?.allocation_id).toBe(
       allocation?.candidate_arena_research_allocation_id
     );
+  });
+
+  it("replays frozen allocation after restart and rejects request drift", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const first = await new CandidateArenaResearchAllocationService({
+      store,
+      now: () => "2026-07-12T10:00:00.000Z"
+    }).allocate({
+      tickId: "restart-allocation-tick",
+      allocationMode: "adaptive_default",
+      findingClusters: [],
+      latestTicks: []
+    });
+
+    const restartedStore = new LocalStore(tmpDir);
+    await restartedStore.initialize();
+    const restartedService = new CandidateArenaResearchAllocationService({
+      store: restartedStore,
+      now: () => "2026-07-13T10:00:00.000Z"
+    });
+    const replay = await restartedService.allocate({
+      tickId: "restart-allocation-tick",
+      allocationMode: "adaptive_default",
+      findingClusters: [{
+        direction_kind: "trend_following",
+        top_blocker: "paper_evaluation_failed",
+        blocker_group_kind: "observation_quality",
+        market_regime: "unknown",
+        protocol_failure_kind: "public_execution_evidence_gap",
+        candidate_count: 1,
+        candidate_ids: ["new-candidate"],
+        next_research_focus: "New evidence would focus execution robustness.",
+        authority_status: "not_promotion_authority"
+      }],
+      latestTicks: []
+    });
+
+    expect(replay).toEqual(first);
+    expect(toCandidateArenaResearchAllocationReadModel(replay)).toEqual(
+      toCandidateArenaResearchAllocationReadModel(first)
+    );
+    await expect(restartedStore.listCandidateArenaResearchAllocations())
+      .resolves.toEqual([first]);
+    await expect(readdir(path.join(
+      tmpDir,
+      "candidate-arena-research-allocations",
+      "items"
+    ))).resolves.toHaveLength(1);
+    await expect(restartedService.allocate({
+      tickId: "restart-allocation-tick",
+      allocationMode: "static_control",
+      findingClusters: [],
+      latestTicks: []
+    })).rejects.toMatchObject({
+      code: "candidate_arena_research_allocation_request_conflict"
+    });
+    await expect(restartedService.allocate({
+      tickId: "restart-allocation-tick",
+      allocationMode: "static_control",
+      findingClusters: [],
+      latestTicks: []
+    })).rejects.toThrowError(CandidateArenaResearchAllocationServiceError);
   });
 
   it("uses only released campaign findings for context and direction ablation", async () => {

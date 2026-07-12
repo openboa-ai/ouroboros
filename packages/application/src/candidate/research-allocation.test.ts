@@ -6,8 +6,10 @@ import type {
   ResearchDirectionKind
 } from "@ouroboros/domain";
 import { describe, expect, it } from "vitest";
+import type { OuroborosStorePort } from "../ports/store";
 import {
   CandidateArenaResearchAllocationDecisionError,
+  CandidateArenaResearchAllocationService,
   DEFAULT_ARENA_DIRECTIONS,
   decideCandidateArenaResearchAllocation
 } from "./research-allocation";
@@ -179,6 +181,67 @@ describe("decideCandidateArenaResearchAllocation", () => {
     expect(allocation.policy.concurrency_limit).toBe(2);
   });
 
+  it("proves an equal-bound adaptive versus static selection ablation", () => {
+    const adaptive = decide({
+      tickId: "adaptive-tick",
+      findingClusters: [publicExecutionFailureCluster()],
+      latestTicks: [efficiencyTick()]
+    });
+    const control = decide({
+      tickId: "control-tick",
+      allocationMode: "static_control",
+      findingClusters: [publicExecutionFailureCluster()],
+      latestTicks: [efficiencyTick()]
+    });
+    const totalBudget = (allocation: CandidateArenaResearchAllocationRecord) =>
+      allocation.selected_directions.reduce(
+        (total, selection) => total + selection.experiment_budget,
+        0
+      );
+
+    expect(adaptive.selected_directions).toHaveLength(3);
+    expect(control.selected_directions).toHaveLength(3);
+    expect(adaptive.policy.concurrency_limit).toBe(2);
+    expect(control.policy.concurrency_limit).toBe(2);
+    expect(totalBudget(adaptive)).toBe(5);
+    expect(totalBudget(control)).toBe(5);
+    expect(adaptive.selected_directions.map((selection) =>
+      selection.direction_kind
+    )).toContain("execution_cost_robustness");
+    expect(control.selected_directions.map((selection) =>
+      selection.direction_kind
+    )).toEqual([
+      "trend_following",
+      "mean_reversion",
+      "volatility_regime"
+    ]);
+  });
+
+  it("preserves an exploration floor and covers every direction under persistent focus", () => {
+    const priorAllocations: CandidateArenaResearchAllocationRecord[] = [];
+    const completedTickIds: string[] = [];
+    const selected = new Set<ResearchDirectionKind>();
+
+    for (let index = 1; index <= 3; index += 1) {
+      const allocation = decide({
+        tickId: `focused-tick-${index}`,
+        findingClusters: [publicExecutionFailureCluster()],
+        priorAllocations,
+        completedTickIds
+      });
+      expect(allocation.selected_directions.filter((selection) =>
+        selection.selection_kind === "exploration"
+      ).length).toBeGreaterThanOrEqual(1);
+      allocation.selected_directions.forEach((selection) =>
+        selected.add(selection.direction_kind)
+      );
+      priorAllocations.push(allocation);
+      completedTickIds.push(allocation.tick_id);
+    }
+
+    expect(selected).toEqual(new Set(DEFAULT_ARENA_DIRECTIONS));
+  });
+
   it("preserves bounded explicit direction order", () => {
     const allocation = decide({
       tickId: "tick-explicit",
@@ -232,6 +295,72 @@ describe("decideCandidateArenaResearchAllocation", () => {
     });
 
     expect({ findingClusters, latestTicks, priorAllocations }).toEqual(snapshot);
+  });
+
+  it("persists through only the research-allocation Store surface", async () => {
+    const calls: string[] = [];
+    let recorded: CandidateArenaResearchAllocationRecord | undefined;
+    const forbidden = [
+      "materializeCandidate",
+      "recordPaperTradingEvaluation",
+      "recordPaperTradingObservation",
+      "recordTradingPromotion",
+      "recordLedger",
+      "startComparisonSide",
+      "submitOrder",
+      "readPrivateAccount"
+    ];
+    const store = {
+      async getCandidateArenaResearchAllocation() {
+        calls.push("getCandidateArenaResearchAllocation");
+        return recorded;
+      },
+      async listCandidateArenaResearchAllocations() {
+        calls.push("listCandidateArenaResearchAllocations");
+        return recorded ? [recorded] : [];
+      },
+      async listCandidateArenaTicks() {
+        calls.push("listCandidateArenaTicks");
+        return [];
+      },
+      async recordCandidateArenaResearchAllocation(
+        allocation: CandidateArenaResearchAllocationRecord
+      ) {
+        calls.push("recordCandidateArenaResearchAllocation");
+        recorded = structuredClone(allocation);
+        return structuredClone(allocation);
+      },
+      ...Object.fromEntries(forbidden.map((method) => [method, async () => {
+        calls.push(method);
+        throw new Error(`${method} must not be called`);
+      }]))
+    } as unknown as OuroborosStorePort;
+    const service = new CandidateArenaResearchAllocationService({
+      store,
+      now: () => "2026-07-12T10:00:00.000Z"
+    });
+
+    const allocation = await service.allocate({
+      tickId: "service-tick",
+      allocationMode: "adaptive_default",
+      findingClusters: [publicExecutionFailureCluster()],
+      latestTicks: []
+    });
+
+    expect(calls).toEqual([
+      "getCandidateArenaResearchAllocation",
+      "listCandidateArenaResearchAllocations",
+      "listCandidateArenaTicks",
+      "recordCandidateArenaResearchAllocation"
+    ]);
+    expect(calls).not.toEqual(expect.arrayContaining(forbidden));
+    expect(allocation).toMatchObject({
+      research_scheduling_authority: true,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "research_only"
+    });
   });
 });
 
