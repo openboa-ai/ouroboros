@@ -157,19 +157,19 @@ matrix passed 2 files and 25 tests, including full canonical v1 suite coverage, 
 - Adds optional historical-compatible current/matched fingerprint linkage to
   `CandidateAdmissionDecisionRecord`.
 
-- [ ] **Step 1: Write failing persistence tests**
+- [x] **Step 1: Write failing persistence tests**
 
 Prove exact append-only replay, canonical digest checking, commitment/SystemCode/suite linkage,
 timestamp ordering, malformed-record rejection, and deterministic list ordering.
 
-- [ ] **Step 2: Write failing policy and graph tests**
+- [x] **Step 2: Write failing policy and graph tests**
 
 Prove safety failures take precedence; a comparable admitted match yields
 `duplicate/behavior_duplicate`; missing evidence quarantines an otherwise-admissible candidate;
 quarantined or duplicate records cannot become baselines; and a claimed `distinct` decision is
 rejected when an admitted matching key already exists.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run packages/domain/src/candidate-admission-policy.test.ts packages/local-store/test/research-behavior-fingerprint.test.ts
@@ -177,13 +177,13 @@ npx vitest run packages/domain/src/candidate-admission-policy.test.ts packages/l
 
 Expected: FAIL on the new status, reasons, methods, and graph invariants.
 
-- [ ] **Step 4: Implement persistence and comparison validation**
+- [x] **Step 4: Implement persistence and comparison validation**
 
 Add the collection, runtime validator, canonical digest check, exact refs, all-or-none admission
 linkage, admitted-only baseline lookup, and append-only semantics. Preserve reads for historical
 admission records without linkage.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 ```bash
 npx vitest run packages/domain/src/research-behavior-fingerprint.test.ts packages/domain/src/candidate-admission-policy.test.ts packages/local-store/test/research-behavior-fingerprint.test.ts packages/local-store/test/paper-trading-handoff-conformance.test.ts
@@ -193,6 +193,13 @@ npm run typecheck --workspace @ouroboros/local-store
 git add packages/application/src/ports/store.ts packages/domain/src/candidate-admission-policy.ts packages/domain/src/candidate-admission-policy.test.ts packages/local-store/src/index.ts packages/local-store/test/research-behavior-fingerprint.test.ts
 git commit -m "feat: enforce admitted behavior identity"
 ```
+
+Evidence: the initial Store RED run failed all 4 new graph scenarios because persistence methods
+were absent. Two added adversarial tests then proved that a future-dated admitted baseline and a
+foreign source identity could bypass the first implementation; both failed before the graph checks
+were strengthened. The final focused matrix passed 5 files and 72 tests, all three affected
+workspace typechecks passed, and the broader LocalStore/admission regression passed 7 files and
+422 tests.
 
 ---
 

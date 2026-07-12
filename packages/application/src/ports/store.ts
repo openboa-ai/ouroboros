@@ -18,6 +18,7 @@ import type {
   OuroborosCommandRecord,
   Ref,
   ResearchOrchestrationRunRecord,
+  ResearchBehaviorFingerprintRecord,
   ResearchDirectionRecord,
   ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
@@ -170,6 +171,13 @@ export interface OuroborosStorePort {
     commitmentId: string
   ): Promise<ResearchPreflightCommitmentRecord | undefined>;
   listResearchPreflightCommitments(): Promise<ResearchPreflightCommitmentRecord[]>;
+  recordResearchBehaviorFingerprint(
+    fingerprint: ResearchBehaviorFingerprintRecord
+  ): Promise<ResearchBehaviorFingerprintRecord>;
+  getResearchBehaviorFingerprint(
+    fingerprintId: string
+  ): Promise<ResearchBehaviorFingerprintRecord | undefined>;
+  listResearchBehaviorFingerprints(): Promise<ResearchBehaviorFingerprintRecord[]>;
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
   getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined>;

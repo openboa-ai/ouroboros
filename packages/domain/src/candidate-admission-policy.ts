@@ -16,6 +16,11 @@ export type CandidateAdmissionStatus = "admitted" | "duplicate" | "quarantined";
 
 export type CandidateAdmissionPaperHandoffConformanceStatus = "passed" | "rejected";
 
+export type CandidateAdmissionBehaviorComparisonStatus =
+  | "distinct"
+  | "duplicate"
+  | "unavailable";
+
 export type CandidateAdmissionReason =
   | "evaluation_accepted"
   | "research_worker_failed"
@@ -25,7 +30,9 @@ export type CandidateAdmissionReason =
   | "evaluation_quarantined"
   | "evidence_already_counted"
   | "evidence_quarantined"
-  | "paper_handoff_conformance_failed";
+  | "paper_handoff_conformance_failed"
+  | "behavior_duplicate"
+  | "behavior_fingerprint_unavailable";
 
 export interface CandidateAdmissionPolicyInput {
   research_worker_outcome: CandidateAdmissionResearchWorkerOutcome;
@@ -33,6 +40,7 @@ export interface CandidateAdmissionPolicyInput {
   evaluation_status: CandidateAdmissionEvaluationStatus;
   evidence_disposition: CandidateAdmissionEvidenceDisposition;
   paper_handoff_conformance_status?: CandidateAdmissionPaperHandoffConformanceStatus;
+  behavior_comparison_status?: CandidateAdmissionBehaviorComparisonStatus;
 }
 
 export interface CandidateAdmissionArtifactComparisonInput {
@@ -68,6 +76,10 @@ export interface CandidateAdmissionDecisionRecord
   submitted_artifact_digest: string;
   paper_trading_handoff_conformance_ref?: CandidateAdmissionRecordRef;
   paper_trading_handoff_conformance_digest?: string;
+  research_behavior_fingerprint_ref?: CandidateAdmissionRecordRef;
+  research_behavior_fingerprint_digest?: string;
+  matching_research_behavior_fingerprint_ref?: CandidateAdmissionRecordRef;
+  matching_research_behavior_fingerprint_digest?: string;
   decided_at: string;
 }
 
@@ -109,6 +121,12 @@ export function decideCandidateAdmission(
   if (input.evidence_disposition === "quarantined_for_review") {
     return rejected("quarantined", "evidence_quarantined");
   }
+  if (input.behavior_comparison_status === "unavailable") {
+    return rejected("quarantined", "behavior_fingerprint_unavailable");
+  }
+  if (input.behavior_comparison_status === "duplicate") {
+    return rejected("duplicate", "behavior_duplicate");
+  }
   return {
     status: "admitted",
     reason: "evaluation_accepted",
@@ -145,11 +163,44 @@ export function isCandidateAdmissionDecisionConsistent(
       submitted_artifact_digest: record.submitted_artifact_digest
     });
   return conformanceLinkageIsConsistent &&
+    behaviorFingerprintLinkageIsConsistent(record) &&
     artifactComparisonIsConsistent &&
     record.status === expected.status &&
     record.reason === expected.reason &&
     record.runnable_paper_handoff === expected.runnable_paper_handoff &&
     record.authority_status === expected.authority_status;
+}
+
+function behaviorFingerprintLinkageIsConsistent(
+  record: CandidateAdmissionDecisionRecord
+): boolean {
+  const currentRef = record.research_behavior_fingerprint_ref;
+  const currentDigest = record.research_behavior_fingerprint_digest;
+  const matchingRef = record.matching_research_behavior_fingerprint_ref;
+  const matchingDigest = record.matching_research_behavior_fingerprint_digest;
+  if (record.behavior_comparison_status === undefined) {
+    return currentRef === undefined && currentDigest === undefined &&
+      matchingRef === undefined && matchingDigest === undefined;
+  }
+  if (record.behavior_comparison_status === "unavailable") {
+    return currentRef === undefined && currentDigest === undefined &&
+      matchingRef === undefined && matchingDigest === undefined;
+  }
+  const currentIsValid = currentRef?.record_kind === "research_behavior_fingerprint" &&
+    typeof currentRef.id === "string" && currentRef.id.length > 0 &&
+    typeof currentDigest === "string" && currentDigest.length > 0;
+  if (record.behavior_comparison_status === "distinct") {
+    return currentIsValid && matchingRef === undefined && matchingDigest === undefined;
+  }
+  if (record.behavior_comparison_status === "duplicate") {
+    return currentIsValid &&
+      matchingRef?.record_kind === "research_behavior_fingerprint" &&
+      typeof matchingRef.id === "string" && matchingRef.id.length > 0 &&
+      matchingRef.id !== currentRef?.id &&
+      typeof matchingDigest === "string" && matchingDigest.length > 0 &&
+      matchingDigest === currentDigest;
+  }
+  return false;
 }
 
 function rejected(

@@ -134,7 +134,136 @@ describe("candidate admission policy", () => {
       authority_status: "not_live"
     });
   });
+
+  it.each([
+    ["distinct", "admitted", "evaluation_accepted", true],
+    ["duplicate", "duplicate", "behavior_duplicate", false],
+    ["unavailable", "quarantined", "behavior_fingerprint_unavailable", false]
+  ] as const)(
+    "applies %s behavior comparison only after otherwise valid admission evidence",
+    (behaviorStatus, status, reason, runnablePaperHandoff) => {
+      expect(decideCandidateAdmission({
+        research_worker_outcome: "changed",
+        experiment_status: "evaluated",
+        evaluation_status: "accepted",
+        evidence_disposition: "not_counted",
+        paper_handoff_conformance_status: "passed",
+        behavior_comparison_status: behaviorStatus
+      } as any)).toEqual({
+        status,
+        reason,
+        runnable_paper_handoff: runnablePaperHandoff,
+        authority_status: "not_live"
+      });
+    }
+  );
+
+  it.each([
+    ["failed", "evaluated", "accepted", "not_counted", "research_worker_failed"],
+    ["changed", "failed", "accepted", "not_counted", "experiment_failed"],
+    ["changed", "evaluated", "disqualified", "quarantined_for_review", "evaluation_disqualified"],
+    ["changed", "evaluated", "accepted", "counted", "evidence_already_counted"]
+  ] as const)(
+    "keeps causal safety reason %s/%s/%s/%s ahead of behavior duplicate",
+    (
+      researchWorkerOutcome,
+      experimentStatus,
+      evaluationStatus,
+      evidenceDisposition,
+      reason
+    ) => {
+      expect(decideCandidateAdmission({
+        research_worker_outcome: researchWorkerOutcome,
+        experiment_status: experimentStatus,
+        evaluation_status: evaluationStatus,
+        evidence_disposition: evidenceDisposition,
+        behavior_comparison_status: "duplicate"
+      } as any)).toEqual(expect.objectContaining({
+        status: "quarantined",
+        reason
+      }));
+    }
+  );
+
+  it("requires exact all-or-none behavior fingerprint linkage", () => {
+    const distinct = behaviorAdmissionRecord("distinct");
+    expect(isCandidateAdmissionDecisionConsistent(distinct)).toBe(true);
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...distinct,
+      research_behavior_fingerprint_digest: undefined
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...distinct,
+      matching_research_behavior_fingerprint_ref: {
+        record_kind: "research_behavior_fingerprint",
+        id: "unexpected-match"
+      },
+      matching_research_behavior_fingerprint_digest: "sha256:unexpected"
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+
+    const duplicate = behaviorAdmissionRecord("duplicate");
+    expect(isCandidateAdmissionDecisionConsistent(duplicate)).toBe(true);
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...duplicate,
+      matching_research_behavior_fingerprint_digest: "sha256:different"
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...duplicate,
+      matching_research_behavior_fingerprint_ref:
+        duplicate.research_behavior_fingerprint_ref
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+
+    const unavailable = behaviorAdmissionRecord("unavailable");
+    expect(isCandidateAdmissionDecisionConsistent(unavailable)).toBe(true);
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...unavailable,
+      research_behavior_fingerprint_ref: distinct.research_behavior_fingerprint_ref,
+      research_behavior_fingerprint_digest: distinct.research_behavior_fingerprint_digest
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+
+    expect(isCandidateAdmissionDecisionConsistent({
+      ...admissionRecord(),
+      research_behavior_fingerprint_ref: distinct.research_behavior_fingerprint_ref,
+      research_behavior_fingerprint_digest: distinct.research_behavior_fingerprint_digest
+    } as unknown as CandidateAdmissionDecisionRecord)).toBe(false);
+  });
 });
+
+function behaviorAdmissionRecord(
+  behaviorStatus: "distinct" | "duplicate" | "unavailable"
+): CandidateAdmissionDecisionRecord {
+  const input = {
+    research_worker_outcome: "changed" as const,
+    experiment_status: "evaluated" as const,
+    evaluation_status: "accepted" as const,
+    evidence_disposition: "not_counted" as const,
+    behavior_comparison_status: behaviorStatus
+  };
+  const decision = decideCandidateAdmission(input as any);
+  return {
+    ...admissionRecord(),
+    ...input,
+    ...decision,
+    ...(behaviorStatus === "unavailable"
+      ? {}
+      : {
+          research_behavior_fingerprint_ref: {
+            record_kind: "research_behavior_fingerprint",
+            id: "behavior-fingerprint-current"
+          },
+          research_behavior_fingerprint_digest: "sha256:behavior"
+        }),
+    ...(behaviorStatus === "duplicate"
+      ? {
+          matching_research_behavior_fingerprint_ref: {
+            record_kind: "research_behavior_fingerprint",
+            id: "behavior-fingerprint-prior"
+          },
+          matching_research_behavior_fingerprint_digest: "sha256:behavior"
+        }
+      : {})
+  } as CandidateAdmissionDecisionRecord;
+}
 
 function admissionRecord(): CandidateAdmissionDecisionRecord {
   return {

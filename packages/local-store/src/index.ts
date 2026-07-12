@@ -74,6 +74,8 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
+  researchBehaviorFingerprintDigestInput,
+  researchBehaviorFingerprintHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
   paperTradingComparisonPreparationDigestInput,
@@ -123,6 +125,7 @@ import type {
   ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchDirectionRecord,
+  ResearchBehaviorFingerprintRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
   ResearchWorkerRecord,
@@ -334,6 +337,13 @@ export type LocalStoreErrorCode =
   | "research_preflight_commitment_rotation_reuse"
   | "research_preflight_terminal_graph_mismatch"
   | "research_preflight_terminal_reuse"
+  | "invalid_research_behavior_fingerprint_input"
+  | "research_behavior_fingerprint_digest_mismatch"
+  | "research_behavior_fingerprint_conflict"
+  | "research_behavior_fingerprint_reload_failed"
+  | "research_behavior_fingerprint_reference_not_found"
+  | "research_behavior_fingerprint_reference_mismatch"
+  | "candidate_admission_behavior_comparison_mismatch"
   | "invalid_candidate_arena_research_allocation_input"
   | "candidate_arena_research_allocation_digest_mismatch"
   | "candidate_arena_research_allocation_conflict"
@@ -619,6 +629,7 @@ type Collection =
   | "research-directions"
   | "research-workers"
   | "research-preflight-commitments"
+  | "research-behavior-fingerprints"
   | "experiment-runs"
   | "paper-trading-handoff-conformances"
   | "candidate-admission-decisions"
@@ -2838,7 +2849,16 @@ export class LocalStore {
         }
       );
     }
-    const [sourceSystemCode, systemCode, experiment, evaluation, finding, conformance] = await Promise.all([
+    const [
+      sourceSystemCode,
+      systemCode,
+      experiment,
+      evaluation,
+      finding,
+      conformance,
+      behaviorFingerprint,
+      matchingBehaviorFingerprint
+    ] = await Promise.all([
       this.readOptionalRecord<SystemCodeRecord>(
         "system-codes",
         decision.source_system_code_ref.id
@@ -2861,6 +2881,16 @@ export class LocalStore {
             "paper-trading-handoff-conformances",
             decision.paper_trading_handoff_conformance_ref.id
           )
+        : Promise.resolve(undefined),
+      decision.research_behavior_fingerprint_ref
+        ? this.getResearchBehaviorFingerprint(
+            decision.research_behavior_fingerprint_ref.id
+          )
+        : Promise.resolve(undefined),
+      decision.matching_research_behavior_fingerprint_ref
+        ? this.getResearchBehaviorFingerprint(
+            decision.matching_research_behavior_fingerprint_ref.id
+          )
         : Promise.resolve(undefined)
     ]);
     const referencedRecords: Array<{
@@ -2871,6 +2901,8 @@ export class LocalStore {
         | "trading_evaluation_result_ref"
         | "research_finding_ref"
         | "paper_trading_handoff_conformance_ref"
+        | "research_behavior_fingerprint_ref"
+        | "matching_research_behavior_fingerprint_ref"
       ]>;
       record: FixtureRecord | undefined;
     }> = [
@@ -2898,6 +2930,18 @@ export class LocalStore {
         ? [{
             ref: decision.paper_trading_handoff_conformance_ref,
             record: conformance
+        }]
+        : []),
+      ...(decision.research_behavior_fingerprint_ref
+        ? [{
+            ref: decision.research_behavior_fingerprint_ref,
+            record: behaviorFingerprint
+          }]
+        : []),
+      ...(decision.matching_research_behavior_fingerprint_ref
+        ? [{
+            ref: decision.matching_research_behavior_fingerprint_ref,
+            record: matchingBehaviorFingerprint
           }]
         : [])
     ];
@@ -2976,6 +3020,40 @@ export class LocalStore {
       conformance && decision.runnable_paper_handoff &&
         (conformance.status !== "passed" || !conformance.runnable_paper_handoff)
         ? "paper_trading_handoff_conformance.runnable_paper_handoff"
+        : undefined,
+      behaviorFingerprint &&
+        behaviorFingerprint.system_code_ref.id !== decision.system_code_ref.id
+        ? "research_behavior_fingerprint.system_code_ref"
+        : undefined,
+      behaviorFingerprint &&
+        behaviorFingerprint.system_code_artifact_digest !==
+          decision.submitted_artifact_digest
+        ? "research_behavior_fingerprint.system_code_artifact_digest"
+        : undefined,
+      behaviorFingerprint &&
+        behaviorFingerprint.fingerprint_digest !==
+          decision.research_behavior_fingerprint_digest
+        ? "research_behavior_fingerprint.fingerprint_digest"
+        : undefined,
+      behaviorFingerprint && evaluation.research_preflight_commitment_ref &&
+        behaviorFingerprint.research_preflight_commitment_ref.id !==
+          evaluation.research_preflight_commitment_ref.id
+        ? "research_behavior_fingerprint.research_preflight_commitment_ref"
+        : undefined,
+      behaviorFingerprint &&
+        Date.parse(behaviorFingerprint.created_at) > Date.parse(decision.decided_at)
+        ? "research_behavior_fingerprint.created_at"
+        : undefined,
+      behaviorFingerprint && !finding.supporting_record_refs.some((supportingRef) =>
+        supportingRef.record_kind === "research_behavior_fingerprint" &&
+        supportingRef.id === behaviorFingerprint.research_behavior_fingerprint_id
+      )
+        ? "research_finding.research_behavior_fingerprint_ref"
+        : undefined,
+      matchingBehaviorFingerprint &&
+        matchingBehaviorFingerprint.protocol_version !==
+          behaviorFingerprint?.protocol_version
+        ? "matching_research_behavior_fingerprint.protocol_version"
         : undefined
     ].filter((field): field is string => Boolean(field));
     if (mismatchFields.length > 0) {
@@ -3070,6 +3148,12 @@ export class LocalStore {
         );
       }
     }
+    await this.assertCandidateAdmissionBehaviorComparison({
+      decision,
+      evaluation,
+      behaviorFingerprint,
+      matchingBehaviorFingerprint
+    });
     const identity = await this.assertExactAuthorityIdentity({
       collection: "candidate-admission-decisions",
       id: decision.candidate_admission_decision_id,
@@ -3563,6 +3647,261 @@ export class LocalStore {
       await this.assertResearchPreflightCommitmentGraph(commitment);
     }
     return commitments.sort(compareResearchPreflightCommitments);
+  }
+
+  async recordResearchBehaviorFingerprint(
+    fingerprint: ResearchBehaviorFingerprintRecord
+  ): Promise<ResearchBehaviorFingerprintRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchBehaviorFingerprintUnlocked(fingerprint)
+    );
+  }
+
+  private async recordResearchBehaviorFingerprintUnlocked(
+    fingerprint: ResearchBehaviorFingerprintRecord
+  ): Promise<ResearchBehaviorFingerprintRecord> {
+    if (!researchBehaviorFingerprintHasRuntimeShape(fingerprint)) {
+      throw new LocalStoreError(
+        "invalid_research_behavior_fingerprint_input",
+        "invalid ResearchBehaviorFingerprint input",
+        {
+          research_behavior_fingerprint_id:
+            (fingerprint as Partial<ResearchBehaviorFingerprintRecord> | undefined)
+              ?.research_behavior_fingerprint_id
+        }
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      researchBehaviorFingerprintDigestInput(fingerprint)
+    );
+    if (fingerprint.fingerprint_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "research_behavior_fingerprint_digest_mismatch",
+        "ResearchBehaviorFingerprint digest does not match canonical observations",
+        {
+          research_behavior_fingerprint_id:
+            fingerprint.research_behavior_fingerprint_id
+        }
+      );
+    }
+    const existing = await this.readOptionalRecord<ResearchBehaviorFingerprintRecord>(
+      "research-behavior-fingerprints",
+      fingerprint.research_behavior_fingerprint_id
+    );
+    if (existing) {
+      this.assertPersistedResearchBehaviorFingerprint(existing);
+      await this.assertResearchBehaviorFingerprintGraph(existing);
+      if (!sameJson(existing, fingerprint)) {
+        throw new LocalStoreError(
+          "research_behavior_fingerprint_conflict",
+          "ResearchBehaviorFingerprint is append-only",
+          {
+            research_behavior_fingerprint_id:
+              fingerprint.research_behavior_fingerprint_id
+          }
+        );
+      }
+      return existing;
+    }
+    await this.assertResearchBehaviorFingerprintGraph(fingerprint);
+    await this.writeJson(
+      this.itemPath(
+        "research-behavior-fingerprints",
+        fingerprint.research_behavior_fingerprint_id
+      ),
+      fingerprint
+    );
+    return fingerprint;
+  }
+
+  async getResearchBehaviorFingerprint(
+    fingerprintId: string
+  ): Promise<ResearchBehaviorFingerprintRecord | undefined> {
+    const fingerprint = await this.readOptionalRecord<unknown>(
+      "research-behavior-fingerprints",
+      fingerprintId
+    );
+    if (fingerprint === undefined) return undefined;
+    const persisted = this.assertPersistedResearchBehaviorFingerprint(fingerprint);
+    await this.assertResearchBehaviorFingerprintGraph(persisted);
+    return persisted;
+  }
+
+  async listResearchBehaviorFingerprints(): Promise<ResearchBehaviorFingerprintRecord[]> {
+    const fingerprints = (await this.readCollection<unknown>(
+      "research-behavior-fingerprints"
+    )).map((fingerprint) => this.assertPersistedResearchBehaviorFingerprint(fingerprint));
+    for (const fingerprint of fingerprints) {
+      await this.assertResearchBehaviorFingerprintGraph(fingerprint);
+    }
+    return fingerprints.sort(compareResearchBehaviorFingerprints);
+  }
+
+  private assertPersistedResearchBehaviorFingerprint(
+    value: unknown
+  ): ResearchBehaviorFingerprintRecord {
+    if (!researchBehaviorFingerprintHasRuntimeShape(value) ||
+      value.fingerprint_digest !== comparisonExactRecordDigest(
+        researchBehaviorFingerprintDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_behavior_fingerprint_reload_failed",
+        "persisted ResearchBehaviorFingerprint is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchBehaviorFingerprintGraph(
+    fingerprint: ResearchBehaviorFingerprintRecord
+  ): Promise<void> {
+    const [commitment, systemCode] = await Promise.all([
+      this.getResearchPreflightCommitment(
+        fingerprint.research_preflight_commitment_ref.id
+      ),
+      this.getSystemCode(fingerprint.system_code_ref.id)
+    ]);
+    if (!commitment || !systemCode) {
+      throw new LocalStoreError(
+        "research_behavior_fingerprint_reference_not_found",
+        "ResearchBehaviorFingerprint reference was not found",
+        {
+          research_behavior_fingerprint_id:
+            fingerprint.research_behavior_fingerprint_id,
+          missing_record_kind: !commitment
+            ? "research_preflight_commitment"
+            : "system_code"
+        }
+      );
+    }
+    const mismatchFields = [
+      commitment.commitment_digest !==
+        fingerprint.research_preflight_commitment_digest
+        ? "research_preflight_commitment_digest"
+        : undefined,
+      commitment.development_policy.suite_version !==
+        fingerprint.development_suite_version
+        ? "development_suite_version"
+        : undefined,
+      commitment.development_policy.suite_digest !==
+        fingerprint.development_suite_digest
+        ? "development_suite_digest"
+        : undefined,
+      systemCode.artifact_digest !== fingerprint.system_code_artifact_digest
+        ? "system_code_artifact_digest"
+        : undefined,
+      Date.parse(fingerprint.created_at) < Date.parse(commitment.committed_at)
+        ? "created_at.before_commitment"
+        : undefined,
+      Date.parse(fingerprint.created_at) < Date.parse(systemCode.created_at)
+        ? "created_at.before_system_code"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (mismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "research_behavior_fingerprint_reference_mismatch",
+        "ResearchBehaviorFingerprint does not match persisted research evidence",
+        {
+          research_behavior_fingerprint_id:
+            fingerprint.research_behavior_fingerprint_id,
+          mismatch_fields: mismatchFields
+        }
+      );
+    }
+  }
+
+  private async assertCandidateAdmissionBehaviorComparison(input: {
+    decision: CandidateAdmissionDecisionRecord;
+    evaluation: TradingEvaluationResultRecord;
+    behaviorFingerprint?: ResearchBehaviorFingerprintRecord;
+    matchingBehaviorFingerprint?: ResearchBehaviorFingerprintRecord;
+  }): Promise<void> {
+    const status = input.decision.behavior_comparison_status;
+    if (status === undefined || status === "unavailable") return;
+    if (!input.behaviorFingerprint) {
+      throw new LocalStoreError(
+        "candidate_admission_behavior_comparison_mismatch",
+        "candidate admission behavior fingerprint is unavailable"
+      );
+    }
+    const commitment = await this.getResearchPreflightCommitment(
+      input.behaviorFingerprint.research_preflight_commitment_ref.id
+    );
+    if (!commitment ||
+      commitment.source_system_code_ref.id !==
+        input.decision.source_system_code_ref.id ||
+      commitment.source_artifact_digest !== input.decision.source_artifact_digest ||
+      input.evaluation.research_preflight_commitment_ref?.id !==
+        commitment.research_preflight_commitment_id ||
+      input.evaluation.research_preflight_commitment_digest !==
+        commitment.commitment_digest ||
+      input.evaluation.submitted_system_code_ref?.id !==
+        input.behaviorFingerprint.system_code_ref.id ||
+      input.evaluation.submitted_artifact_digest !==
+        input.behaviorFingerprint.system_code_artifact_digest ||
+      input.evaluation.sealed_admission_suite_digest !==
+        commitment.sealed_admission_policy.suite_digest ||
+      input.evaluation.evaluation_phase !== "sealed_admission" ||
+      input.evaluation.submission_sequence !== 1) {
+      throw new LocalStoreError(
+        "candidate_admission_behavior_comparison_mismatch",
+        "candidate admission behavior does not match its sealed ResearchPreflight graph",
+        {
+          candidate_admission_decision_id:
+            input.decision.candidate_admission_decision_id
+        }
+      );
+    }
+    const priorAdmissions = await this.readCollection<CandidateAdmissionDecisionRecord>(
+      "candidate-admission-decisions"
+    );
+    const admittedByFingerprintId = new Map(priorAdmissions
+      .filter((admission) =>
+        isCandidateAdmissionDecisionRecord(admission) &&
+        admission.status === "admitted" &&
+        admission.research_behavior_fingerprint_ref
+      )
+      .map((admission) => [
+        admission.research_behavior_fingerprint_ref!.id,
+        admission
+      ]));
+    if (status === "duplicate") {
+      const matching = input.matchingBehaviorFingerprint;
+      const matchingAdmission = matching
+        ? admittedByFingerprintId.get(matching.research_behavior_fingerprint_id)
+        : undefined;
+      if (!matching || !matchingAdmission ||
+        Date.parse(matchingAdmission.decided_at) >
+          Date.parse(input.decision.decided_at) ||
+        matchingAdmission.system_code_ref.id !== matching.system_code_ref.id ||
+        matching.created_at > input.behaviorFingerprint.created_at ||
+        !sameResearchBehaviorFingerprintKey(input.behaviorFingerprint, matching)) {
+        throw new LocalStoreError(
+          "candidate_admission_behavior_comparison_mismatch",
+          "candidate admission duplicate does not reference an earlier admitted exact match",
+          {
+            candidate_admission_decision_id:
+              input.decision.candidate_admission_decision_id
+          }
+        );
+      }
+      return;
+    }
+    for (const fingerprintId of admittedByFingerprintId.keys()) {
+      const prior = await this.getResearchBehaviorFingerprint(fingerprintId);
+      if (prior && sameResearchBehaviorFingerprintKey(input.behaviorFingerprint, prior)) {
+        throw new LocalStoreError(
+          "candidate_admission_behavior_comparison_mismatch",
+          "candidate admission claimed distinct behavior already admitted by the Arena",
+          {
+            candidate_admission_decision_id:
+              input.decision.candidate_admission_decision_id,
+            prior_research_behavior_fingerprint_id:
+              prior.research_behavior_fingerprint_id
+          }
+        );
+      }
+    }
   }
 
   private assertPersistedResearchPreflightCommitment(
@@ -14830,6 +15169,16 @@ function compareResearchPreflightCommitments(
     );
 }
 
+function compareResearchBehaviorFingerprints(
+  left: ResearchBehaviorFingerprintRecord,
+  right: ResearchBehaviorFingerprintRecord
+): number {
+  return right.created_at.localeCompare(left.created_at) ||
+    right.research_behavior_fingerprint_id.localeCompare(
+      left.research_behavior_fingerprint_id
+    );
+}
+
 function compareArtifactLineages(
   a: ArtifactLineageRecord,
   b: ArtifactLineageRecord
@@ -15658,6 +16007,9 @@ function isCandidateAdmissionDecisionRecord(
     !isCandidateAdmissionExperimentStatus(raw.experiment_status) ||
     !isCandidateAdmissionEvaluationStatus(raw.evaluation_status) ||
     !isEvidenceDisposition(raw.evidence_disposition) ||
+    !isOptionalCandidateAdmissionBehaviorComparisonStatus(
+      raw.behavior_comparison_status
+    ) ||
     !isCandidateAdmissionStatus(raw.status) ||
     !isCandidateAdmissionReason(raw.reason) ||
     typeof raw.runnable_paper_handoff !== "boolean" ||
@@ -15687,6 +16039,11 @@ function isCandidateAdmissionStatus(value: unknown): boolean {
   return value === "admitted" || value === "duplicate" || value === "quarantined";
 }
 
+function isOptionalCandidateAdmissionBehaviorComparisonStatus(value: unknown): boolean {
+  return value === undefined || value === "distinct" || value === "duplicate" ||
+    value === "unavailable";
+}
+
 function isCandidateAdmissionReason(value: unknown): boolean {
   return value === "evaluation_accepted" ||
     value === "research_worker_failed" ||
@@ -15696,7 +16053,9 @@ function isCandidateAdmissionReason(value: unknown): boolean {
     value === "evaluation_quarantined" ||
     value === "evidence_already_counted" ||
     value === "evidence_quarantined" ||
-    value === "paper_handoff_conformance_failed";
+    value === "paper_handoff_conformance_failed" ||
+    value === "behavior_duplicate" ||
+    value === "behavior_fingerprint_unavailable";
 }
 
 function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord {
@@ -16497,6 +16856,16 @@ function sameOptionalRef(left: Ref | undefined, right: Ref | undefined): boolean
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameResearchBehaviorFingerprintKey(
+  left: ResearchBehaviorFingerprintRecord,
+  right: ResearchBehaviorFingerprintRecord
+): boolean {
+  return left.protocol_version === right.protocol_version &&
+    left.development_suite_version === right.development_suite_version &&
+    left.development_suite_digest === right.development_suite_digest &&
+    left.fingerprint_digest === right.fingerprint_digest;
 }
 
 function samePersistedComparisonRecord(left: unknown, right: unknown): boolean {
