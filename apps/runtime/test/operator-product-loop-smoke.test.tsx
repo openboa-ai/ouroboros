@@ -1,5 +1,5 @@
 import React from "react";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
@@ -1887,7 +1887,10 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
       const eventsPath = path.join(input.output_dir, "events.jsonl");
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
-      const orderRequest = market.moving_average_fast === market.moving_average_slow
+      const declaredBehavior = await declaredArenaArtifactBehavior(input.artifact_dir);
+      const shouldHold = market.moving_average_fast === market.moving_average_slow ||
+        declaredBehavior.forceHold;
+      const orderRequest = shouldHold
         ? {
             symbol: market.symbol,
             side: "hold" as const,
@@ -1897,8 +1900,14 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
           }
         : {
             symbol: market.symbol,
-            side: market.moving_average_fast < market.moving_average_slow ? "sell" as const : "buy" as const,
-            quantity: Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
+            side: declaredBehavior.forceSell ||
+              market.moving_average_fast < market.moving_average_slow
+              ? "sell" as const
+              : "buy" as const,
+            quantity: Number((account.equity * Math.min(
+              declaredBehavior.riskFraction,
+              account.max_risk_fraction
+            ) / market.price).toFixed(8)),
             order_type: "market" as const,
             reason: "networkless smoke runner preserves TradingApiProvider boundary events"
           };
@@ -1927,6 +1936,22 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
+  };
+}
+
+async function declaredArenaArtifactBehavior(artifactDir: string): Promise<{
+  riskFraction: number;
+  forceSell: boolean;
+  forceHold: boolean;
+}> {
+  const source = await readFile(path.join(artifactDir, "run.py"), "utf8");
+  const riskFraction = Number(source.match(/RISK_FRACTION = ([0-9.]+)/)?.[1]);
+  return {
+    riskFraction: Number.isFinite(riskFraction) && riskFraction > 0
+      ? riskFraction
+      : 0.02,
+    forceSell: source.includes("mean reversion candidate shorts"),
+    forceHold: source.includes("funding-aware candidate holds")
   };
 }
 

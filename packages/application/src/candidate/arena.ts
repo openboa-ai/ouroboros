@@ -36,6 +36,7 @@ import type {
   PaperTradingQualificationStatus,
   Ref,
   ResearchDirectionRecord,
+  ResearchBehaviorFingerprintRecord,
   ResearchDirectionKind,
   ResearchFindingRecord,
   ResearchPreflightCommitmentRecord,
@@ -74,6 +75,10 @@ import {
   buildResearchPreflightPlan,
   generateResearchPreflightEvaluatorSeed
 } from "../trading/research/preflight-plan";
+import {
+  deriveResearchBehaviorFingerprint,
+  ResearchBehaviorFingerprintUnavailableError
+} from "../trading/research/behavior-fingerprint";
 import type { ReplayTradingApiProviderFactory } from "../trading/research/replay-set-runner";
 import type {
   AgentEditInput,
@@ -743,6 +748,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       source: input.source,
       direction: input.direction,
       entry: terminalEntry,
+      developmentEntry: entry,
       sourceSystemCode: preflight.sourceSystemCode,
       systemCode,
       sourceArtifactDigest: sourceArtifact.artifactDigest,
@@ -1352,6 +1358,7 @@ async function recordArenaResearchRecords(input: {
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
   entry: TradingResearchNotebookEntry;
+  developmentEntry: TradingResearchNotebookEntry;
   sourceSystemCode: SystemCodeRecord;
   systemCode: SystemCodeRecord;
   sourceArtifactDigest: string;
@@ -1371,6 +1378,13 @@ async function recordArenaResearchRecords(input: {
     Date.now(),
     Date.parse(input.preflightCommitment.committed_at)
   )).toISOString();
+  const behaviorComparison = await arenaResearchBehaviorComparison({
+    store: input.store,
+    developmentEntry: input.developmentEntry,
+    preflightCommitment: input.preflightCommitment,
+    systemCode: input.systemCode,
+    createdAt: now
+  });
   const evaluation = input.entry.evaluation;
   const experimentStatus = input.entry.agent_status === "failed" || input.entry.decision === "crash"
     ? "failed" as const
@@ -1473,7 +1487,8 @@ async function recordArenaResearchRecords(input: {
     evidence_disposition: result.evidence_disposition,
     ...(conformance
       ? { paper_handoff_conformance_status: conformance.status }
-      : {})
+      : {}),
+    behavior_comparison_status: behaviorComparison.status
   } as const;
   const decision = decideCandidateAdmission(admissionInput);
   const findingContent = arenaFindingForAdmission(input.entry, decision);
@@ -1496,7 +1511,19 @@ async function recordArenaResearchRecords(input: {
             conformance.paper_trading_handoff_conformance_id
           )]
         : []),
-      ...metricRefs
+      ...metricRefs,
+      ...(behaviorComparison.fingerprint
+        ? [ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.fingerprint.research_behavior_fingerprint_id
+          )]
+        : []),
+      ...(behaviorComparison.matchingFingerprint
+        ? [ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.matchingFingerprint.research_behavior_fingerprint_id
+          )]
+        : [])
     ],
     created_at: now,
     authority_status: "research_trace_only"
@@ -1539,12 +1566,100 @@ async function recordArenaResearchRecords(input: {
           paper_trading_handoff_conformance_digest: conformance.evidence_digest
         }
       : {}),
+    ...(behaviorComparison.fingerprint
+      ? {
+          research_behavior_fingerprint_ref: ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.fingerprint.research_behavior_fingerprint_id
+          ),
+          research_behavior_fingerprint_digest:
+            behaviorComparison.fingerprint.fingerprint_digest
+        }
+      : {}),
+    ...(behaviorComparison.matchingFingerprint
+      ? {
+          matching_research_behavior_fingerprint_ref: ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.matchingFingerprint.research_behavior_fingerprint_id
+          ),
+          matching_research_behavior_fingerprint_digest:
+            behaviorComparison.matchingFingerprint.fingerprint_digest
+        }
+      : {}),
     ...admissionInput,
     ...decision,
     decided_at: now
   };
   await input.store.recordCandidateAdmissionDecision(admission);
   return { admission, conformance, finding, result };
+}
+
+type ArenaResearchBehaviorComparison =
+  | {
+      status: "distinct";
+      fingerprint: ResearchBehaviorFingerprintRecord;
+      matchingFingerprint?: undefined;
+    }
+  | {
+      status: "duplicate";
+      fingerprint: ResearchBehaviorFingerprintRecord;
+      matchingFingerprint: ResearchBehaviorFingerprintRecord;
+    }
+  | {
+      status: "unavailable";
+      fingerprint?: undefined;
+      matchingFingerprint?: undefined;
+    };
+
+async function arenaResearchBehaviorComparison(input: {
+  store: OuroborosStorePort;
+  developmentEntry: TradingResearchNotebookEntry;
+  preflightCommitment: ResearchPreflightCommitmentRecord;
+  systemCode: SystemCodeRecord;
+  createdAt: string;
+}): Promise<ArenaResearchBehaviorComparison> {
+  let fingerprint: ResearchBehaviorFingerprintRecord;
+  try {
+    fingerprint = deriveResearchBehaviorFingerprint({
+      commitment: input.preflightCommitment,
+      system_code_ref: ref("system_code", input.systemCode.system_code_id),
+      system_code_artifact_digest: input.systemCode.artifact_digest,
+      scenario_results: input.developmentEntry.evaluation.scenario_results ?? [],
+      created_at: input.createdAt
+    });
+  } catch (error) {
+    if (error instanceof ResearchBehaviorFingerprintUnavailableError) {
+      return { status: "unavailable" };
+    }
+    throw error;
+  }
+  await input.store.recordResearchBehaviorFingerprint(fingerprint);
+  const admittedFingerprintIds = new Set(
+    (await input.store.listCandidateAdmissionDecisions())
+      .filter((admission) => admission.status === "admitted")
+      .map((admission) => admission.research_behavior_fingerprint_ref?.id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const matchingFingerprint = (await input.store.listResearchBehaviorFingerprints())
+    .find((candidate) =>
+      candidate.research_behavior_fingerprint_id !==
+        fingerprint.research_behavior_fingerprint_id &&
+      admittedFingerprintIds.has(candidate.research_behavior_fingerprint_id) &&
+      sameResearchBehaviorFingerprintKey(candidate, fingerprint)
+    );
+  return matchingFingerprint
+    ? { status: "duplicate", fingerprint, matchingFingerprint }
+    : { status: "distinct", fingerprint };
+}
+
+function sameResearchBehaviorFingerprintKey(
+  left: ResearchBehaviorFingerprintRecord,
+  right: ResearchBehaviorFingerprintRecord
+): boolean {
+  return left.protocol_version === right.protocol_version &&
+    left.development_suite_version === right.development_suite_version &&
+    left.development_suite_digest === right.development_suite_digest &&
+    left.fingerprint_digest === right.fingerprint_digest;
 }
 
 function arenaPaperHandoffConformance(input: {
@@ -1638,6 +1753,18 @@ function arenaFindingForAdmission(
     return {
       finding_kind: "duplicate_result",
       summary: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+    };
+  }
+  if (admission.reason === "behavior_duplicate") {
+    return {
+      finding_kind: "duplicate_result",
+      summary: "ResearchWorker produced behavior already admitted under the exact development protocol; duplicate population entry rejected."
+    };
+  }
+  if (admission.reason === "behavior_fingerprint_unavailable") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: "Candidate behavior fingerprint was unavailable; admission quarantined before population materialization."
     };
   }
   if (admission.reason === "paper_handoff_conformance_failed") {

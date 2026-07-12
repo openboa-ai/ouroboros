@@ -379,6 +379,149 @@ describe("CandidateArena paper evidence context", () => {
     ]);
   });
 
+  it("rejects different artifacts with identical development behavior as one population duplicate", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "behavior-fingerprint-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: invariantBehaviorReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "behavior-fingerprint-tick-2",
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: invariantBehaviorReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(first.created_candidate_count).toBe(1);
+    expect(second.created_candidate_count).toBe(0);
+    expect(second.arena.leaderboard).toHaveLength(1);
+    expect(second.arena.latest_ticks.find((tick) =>
+      tick.tick_id === second.tick_id
+    )?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        status: "duplicate",
+        admission_reason: "behavior_duplicate",
+        finding: "ResearchWorker produced behavior already admitted under the exact development protocol; duplicate population entry rejected."
+      })
+    ]);
+
+    const fingerprints = await store.listResearchBehaviorFingerprints();
+    expect(fingerprints).toHaveLength(2);
+    expect(new Set(fingerprints.map((fingerprint) =>
+      fingerprint.system_code_artifact_digest
+    )).size).toBe(2);
+    expect(new Set(fingerprints.map((fingerprint) =>
+      fingerprint.fingerprint_digest
+    )).size).toBe(1);
+
+    const admissions = await store.listCandidateAdmissionDecisions();
+    const admitted = admissions.find((admission) => admission.status === "admitted");
+    const duplicate = admissions.find((admission) =>
+      admission.reason === "behavior_duplicate"
+    );
+    expect(admitted).toEqual(expect.objectContaining({
+      behavior_comparison_status: "distinct",
+      research_behavior_fingerprint_ref: expect.any(Object)
+    }));
+    expect(duplicate).toEqual(expect.objectContaining({
+      status: "duplicate",
+      behavior_comparison_status: "duplicate",
+      matching_research_behavior_fingerprint_ref:
+        admitted?.research_behavior_fingerprint_ref
+    }));
+    await expect(store.listResearchFindings()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        finding_kind: "duplicate_result",
+        summary: expect.stringContaining("exact development protocol")
+      })
+    ]));
+    expect((await store.listArtifactLineages()).some((lineage) =>
+      lineage.child_system_code_ref.id === duplicate?.system_code_ref.id
+    )).toBe(true);
+    expect((await store.listCandidates()).filter((candidate) =>
+      candidate.status === "materialized"
+    )).toHaveLength(1);
+
+    const capturedContexts: string[] = [];
+    await runCandidateArenaTick({
+      store,
+      tickId: "behavior-fingerprint-tick-3",
+      directions: ["volatility_regime"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const nextContext = JSON.parse(capturedContexts[0]!) as {
+      latest_candidate_admission_rejections: Array<{
+        tick_id: string;
+        admission_reason?: string;
+        finding?: string;
+      }>;
+    };
+    expect(nextContext.latest_candidate_admission_rejections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tick_id: "behavior-fingerprint-tick-2",
+          admission_reason: "behavior_duplicate",
+          finding: expect.stringContaining("exact development protocol")
+        })
+      ])
+    );
+    expect(capturedContexts[0]).not.toMatch(
+      /research_behavior_fingerprint|fingerprint_digest|development_suite_digest/
+    );
+  });
+
+  it("quarantines an otherwise accepted candidate when behavior observations are unavailable", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "behavior-fingerprint-unavailable-tick",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: fingerprintUnavailableReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        status: "quarantined",
+        admission_reason: "behavior_fingerprint_unavailable",
+        finding: "Candidate behavior fingerprint was unavailable; admission quarantined before population materialization."
+      })
+    ]);
+    await expect(store.listResearchBehaviorFingerprints()).resolves.toEqual([]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        evaluation_status: "accepted",
+        paper_handoff_conformance_status: "passed",
+        behavior_comparison_status: "unavailable",
+        status: "quarantined",
+        reason: "behavior_fingerprint_unavailable",
+        runnable_paper_handoff: false
+      })
+    ]);
+    expect((await store.listCandidates()).filter((candidate) =>
+      candidate.status === "materialized"
+    )).toHaveLength(0);
+  });
+
   it("feeds rejected research into the next generation without rewarding rejection efficiency", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -2581,9 +2724,25 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
     this.contexts.push(input.arena_context ?? "");
     const runPath = path.join(input.artifact_dir, "run.py");
     const source = await readFile(runPath, "utf8");
+    const requestedDirection = (JSON.parse(input.arena_context ?? "{}") as {
+      requested_direction?: string;
+    }).requested_direction;
+    const riskFraction = requestedDirection === "mean_reversion"
+      ? "0.018"
+      : requestedDirection === "volatility_regime"
+        ? "0.006"
+        : requestedDirection === "funding_aware_risk"
+          ? "0.014"
+          : requestedDirection === "execution_cost_robustness"
+            ? "0.01"
+            : "0.02";
+    const directionAdjusted = source.replace(
+      /RISK_FRACTION = [0-9.]+/,
+      `RISK_FRACTION = ${riskFraction}`
+    );
     await writeFile(
       runPath,
-      `${source}\n# CandidateArena context captured for iteration ${input.iteration}.\n`,
+      `${directionAdjusted}\n# CandidateArena context captured for iteration ${input.iteration}.\n`,
       "utf8"
     );
     return {
@@ -3187,7 +3346,9 @@ async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
   await store.recordCandidateArenaTick(tick);
 }
 
-function networklessReplayArtifactRunner(): TradingArtifactRunner {
+function networklessReplayArtifactRunner(options: {
+  useArtifactRisk?: boolean;
+} = {}): TradingArtifactRunner {
   return {
     kind: "host_process",
     async probePaperHandoff(input) {
@@ -3197,6 +3358,9 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
       const shouldHold = market.moving_average_fast === market.moving_average_slow;
+      const riskFraction = options.useArtifactRisk === false
+        ? 0.02
+        : await declaredArtifactRiskFraction(input.artifact_dir);
       const orderRequest = {
         symbol: market.symbol,
         side: shouldHold
@@ -3206,7 +3370,7 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
             : "buy" as const,
         quantity: shouldHold
           ? 0
-          : Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
+          : Number((account.equity * Math.min(riskFraction, account.max_risk_fraction) / market.price).toFixed(8)),
         order_type: shouldHold ? "none" as const : "market" as const,
         reason: "networkless arena context runner preserves TradingApiProvider boundary"
       };
@@ -3234,6 +3398,43 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
       };
     }
   };
+}
+
+function invariantBehaviorReplayArtifactRunner(): TradingArtifactRunner {
+  return networklessReplayArtifactRunner({ useArtifactRisk: false });
+}
+
+function fingerprintUnavailableReplayArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    ...runner,
+    async run(input) {
+      const run = await runner.run(input);
+      const providerRequests = new Proxy(run.provider_requests, {
+        get(target, property, receiver) {
+          if (property === "map") {
+            return (callback: (
+              request: TradingProviderRequestLog,
+              index: number,
+              requests: TradingProviderRequestLog[]
+            ) => unknown) => target
+              .filter((request) => !(
+                request.method === "POST" && request.path === "/orders/validate"
+              ))
+              .map(callback);
+          }
+          return Reflect.get(target, property, receiver);
+        }
+      });
+      return { ...run, provider_requests: providerRequests };
+    }
+  };
+}
+
+async function declaredArtifactRiskFraction(artifactDir: string): Promise<number> {
+  const source = await readFile(path.join(artifactDir, "run.py"), "utf8");
+  const value = Number(source.match(/RISK_FRACTION = ([0-9.]+)/)?.[1]);
+  return Number.isFinite(value) && value > 0 ? value : 0.02;
 }
 
 function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {

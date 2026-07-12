@@ -216,20 +216,20 @@ workspace typechecks passed, and the broader LocalStore/admission regression pas
 - Persists: one current fingerprint before admission.
 - Produces: exact distinct, duplicate, or unavailable admission input and linkage.
 
-- [ ] **Step 1: Write failing end-to-end duplicate test**
+- [x] **Step 1: Write failing end-to-end duplicate test**
 
 Run two ticks whose agents produce different artifact digests while a controlled runner emits the
 same effective development orders. Assert one candidate slot, a second
 `duplicate/behavior_duplicate` decision, exact prior-fingerprint linkage, a `duplicate_result`
 Finding and Lineage, and no second leaderboard entry.
 
-- [ ] **Step 2: Write failing boundary tests**
+- [x] **Step 2: Write failing boundary tests**
 
 Prove changes only to reason/event noise/sealed score do not create novelty; a real side or exact
 quantity change does; an unavailable fingerprint quarantines before materialization; and duplicate
 Finding context reaches the next generation without raw fingerprint or sealed details.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -237,14 +237,14 @@ npx vitest run apps/runtime/test/candidate-arena-paper-context.test.ts
 
 Expected: FAIL because CandidateArena does not derive or bind behavior identity.
 
-- [ ] **Step 4: Implement the CandidateArena gate**
+- [x] **Step 4: Implement the CandidateArena gate**
 
 Pass the development-selected entry separately from the sealed terminal entry, persist its
 fingerprint, compare against prior admitted linkage inside the serialized store mutation, then bind
 the status and refs into Finding and admission. Never feed sealed data into the fingerprint or
 materialized research rank.
 
-- [ ] **Step 5: Repair test fixture fidelity and run GREEN**
+- [x] **Step 5: Repair test fixture fidelity and run GREEN**
 
 Where a networkless runner is intended to represent different executable artifacts, make its
 effective order depend on the artifact's declared behavior while staying within risk limits. Keep a
@@ -257,6 +257,14 @@ npm run typecheck --workspace @ouroboros/runtime
 git add packages/application/src/candidate/arena.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/managed-codex-researcher-execution.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
 git commit -m "feat: reject duplicate arena behavior"
 ```
+
+Evidence: the end-to-end RED run proved the second textually different artifact still created a
+candidate. The implemented gate admitted one exact behavior, rejected the second as
+`behavior_duplicate`, retained its Finding and Lineage, exposed only generic next-generation
+feedback, and quarantined unavailable observations. The final CandidateArena file passed 37 tests,
+managed Codex execution passed 1 test, Operator product-loop smoke passed 16 tests, and affected
+application/runtime typechecks passed. Test-only runners now execute declared direction/risk
+behavior; the dedicated duplicate runner alone intentionally ignores artifact differences.
 
 ---
 

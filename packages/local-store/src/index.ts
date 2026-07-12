@@ -3830,7 +3830,21 @@ export class LocalStore {
     if (!commitment ||
       commitment.source_system_code_ref.id !==
         input.decision.source_system_code_ref.id ||
-      commitment.source_artifact_digest !== input.decision.source_artifact_digest ||
+      commitment.source_artifact_digest !== input.decision.source_artifact_digest) {
+      throw new LocalStoreError(
+        "candidate_admission_behavior_comparison_mismatch",
+        "candidate admission behavior does not match its ResearchPreflight source graph",
+        {
+          candidate_admission_decision_id:
+            input.decision.candidate_admission_decision_id
+        }
+      );
+    }
+    if (input.decision.reason !== "evaluation_accepted" &&
+      input.decision.reason !== "behavior_duplicate") {
+      return;
+    }
+    if (
       input.evaluation.research_preflight_commitment_ref?.id !==
         commitment.research_preflight_commitment_id ||
       input.evaluation.research_preflight_commitment_digest !==

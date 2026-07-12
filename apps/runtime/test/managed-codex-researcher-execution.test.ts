@@ -223,7 +223,13 @@ process.stdin.on("end", () => {
   const runPath = path.join(process.cwd(), "run.py");
   if (fs.existsSync(runPath)) {
     const source = fs.readFileSync(runPath, "utf8");
-    fs.writeFileSync(runPath, source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0.02"));
+    const direction = stdin.match(/"requested_direction":"([^"]+)"/)?.[1];
+    const risk = direction === "mean_reversion" ? "0.018"
+      : direction === "volatility_regime" ? "0.006"
+      : direction === "funding_aware_risk" ? "0.014"
+      : direction === "execution_cost_robustness" ? "0.01"
+      : "0.02";
+    fs.writeFileSync(runPath, source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = " + risk));
   }
 });
 `;
@@ -238,6 +244,7 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
     async run(input) {
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
+      const riskFraction = await declaredArtifactRiskFraction(input.artifact_dir);
       const orderRequest = market.moving_average_fast === market.moving_average_slow
         ? {
             symbol: market.symbol,
@@ -249,7 +256,7 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         : {
             symbol: market.symbol,
             side: market.moving_average_fast < market.moving_average_slow ? "sell" as const : "buy" as const,
-            quantity: Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
+            quantity: Number((account.equity * Math.min(riskFraction, account.max_risk_fraction) / market.price).toFixed(8)),
             order_type: "market" as const,
             reason: "networkless managed Codex runner preserves TradingApiProvider boundary"
           };
@@ -277,6 +284,12 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
       };
     }
   };
+}
+
+async function declaredArtifactRiskFraction(artifactDir: string): Promise<number> {
+  const source = await readFile(path.join(artifactDir, "run.py"), "utf8");
+  const value = Number(source.match(/RISK_FRACTION = ([0-9.]+)/)?.[1]);
+  return Number.isFinite(value) && value > 0 ? value : 0.02;
 }
 
 async function networklessReplayTradingApiProvider(
