@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for implementation
+**Status:** Complete
 
 **Goal:** Persist one pre-effect bounded ResearchAllocation per CandidateArena tick and make its focus, exploration, concurrency, and experiment budgets control actual ResearchWorker execution.
 
@@ -669,7 +669,7 @@ git commit -m "test: prove adaptive arena allocation"
 - Modify: `docs/superpowers/specs/2026-07-12-candidate-arena-research-allocation-design.md`
 - Modify: `docs/superpowers/plans/2026-07-12-candidate-arena-research-allocation.md`
 
-- [ ] **Step 1: Update canonical truth**
+- [x] **Step 1: Update canonical truth**
 
 Record that every new tick persists a pre-effect allocation; default adaptive mode selects three
 lanes with at most two focus and at least one exploration; concurrency is two; actual experiment
@@ -681,7 +681,7 @@ Keep long-lived worker workspace recovery, provider-dollar cost, learned/bandit 
 production comparison scheduling, automatic promotion, runner handoff, private/live authority, P0
 completion, and Goal completion explicitly open.
 
-- [ ] **Step 2: Mark design and plan implemented**
+- [x] **Step 2: Mark design and plan implemented**
 
 Set design status to:
 
@@ -691,7 +691,7 @@ Implemented and verified as persisted bounded adaptive ResearchWorker allocation
 
 Set this plan Status to Complete and check each completed step.
 
-- [ ] **Step 3: Run focused regression**
+- [x] **Step 3: Run focused regression**
 
 ```bash
 npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts packages/application/src/candidate/research-allocation.test.ts packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -699,7 +699,7 @@ npm test -- packages/domain/src/candidate-arena-research-allocation.test.ts pack
 
 Expected: PASS.
 
-- [ ] **Step 4: Run workspace and repository validation**
+- [x] **Step 4: Run workspace and repository validation**
 
 ```bash
 npm run typecheck
@@ -711,7 +711,7 @@ Expected: all workspace typechecks, docs, architecture, naming, environment, sec
 tests pass. Run the full test suite outside the filesystem/network sandbox because existing tests
 open local HTTP listeners.
 
-- [ ] **Step 5: Commit durable truth**
+- [x] **Step 5: Commit durable truth**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/autonomy-model.md docs/naming-taxonomy.md docs/product-quality-design.md docs/superpowers/specs/2026-07-12-candidate-arena-research-allocation-design.md docs/superpowers/plans/2026-07-12-candidate-arena-research-allocation.md
@@ -719,6 +719,14 @@ git commit -m "docs: record adaptive arena allocation"
 ```
 
 ## Completion Evidence
+
+Verified on 2026-07-12:
+
+- focused allocation regression: 4 files, 81 tests passed;
+- workspace typecheck: every declared workspace typecheck passed;
+- repository guards: docs, architecture, naming, tracked environment, secret scan, and diff checks
+  passed;
+- full regression: 116 files, 1,785 tests passed.
 
 Keep this frontier only when current evidence proves:
 

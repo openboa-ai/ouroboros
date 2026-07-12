@@ -112,10 +112,15 @@ blaming the model.
 
 The next level of detail should improve the autonomous loop without widening authority:
 
-- Adaptive research direction selection now prioritizes default CandidateArena directions from
-  paper-backed finding clusters, classified paper failures, and low-cost/low-latency
-  `ResearchEfficiency` signals while preserving `not_promotion_authority`; provider-dollar cost
-  remains future detail until adapters expose reliable usage.
+- CandidateArena now persists one `CandidateArenaResearchAllocation` before worker effects. Its
+  adaptive default selects three of five directions, caps focus at two, preserves at least one
+  exploration lane, runs no more than two workers concurrently, and applies two/one focus and
+  exploration experiment budgets within five total iterations. Completed tick-bound allocations
+  drive exploration coverage, while `static_control` provides the equal-bound `2`, `2`, `1`
+  no-evidence comparison.
+- Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
+  signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost and durable
+  ResearchWorker workspace/process recovery remain future detail.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

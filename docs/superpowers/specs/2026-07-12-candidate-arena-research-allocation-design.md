@@ -1,6 +1,6 @@
 # CandidateArena Research Allocation Design
 
-**Status:** Approved for implementation
+**Status:** Implemented and verified as persisted bounded adaptive ResearchWorker allocation
 
 ## Goal
 
@@ -9,20 +9,20 @@ causal research evidence while persisting the complete decision before any worke
 an exploration floor, provide an equal-bound static control, survive restart without recomputing a
 tick's allocation, and keep every signal under research-only authority.
 
-## Why This Frontier Is Next
+## Why This Frontier Was Selected
 
-CandidateArena currently derives `adaptive_direction_focus` from paper-backed FindingClusters,
-released comparison findings, and ResearchEfficiency. When a caller omits `directions`, it uses
-those signals only to reorder all five default ResearchDirections. It then starts all five workers
-concurrently and gives each one research-loop iteration.
+Before this frontier, CandidateArena derived `adaptive_direction_focus` from paper-backed
+FindingClusters, released comparison findings, and ResearchEfficiency. When a caller omitted
+`directions`, it used those signals only to reorder all five default ResearchDirections, started all
+five workers concurrently, and gave each one research-loop iteration.
 
-That is adaptive context and ordering, but not adaptive allocation. Findings, failures, regime
-evidence, novelty, and cost do not change which workers run, how many run together, or how many
-experiments a worker receives. The decision is also absent from durable evidence before provider
-effects, so restart cannot explain why a lane was selected or deferred.
+That baseline provided adaptive context and ordering, but not adaptive allocation. Findings,
+failures, regime evidence, novelty, and cost did not change which workers ran, how many ran
+together, or how many experiments a worker received. The decision was also absent from durable
+evidence before provider effects, so restart could not explain why a lane was selected or deferred.
 
-This frontier closes that specific gap. It does not claim the broader CandidateArena Goal, P0, or
-long-lived ResearchWorker lifecycle complete.
+The implemented frontier closes that specific gap. It does not claim the broader CandidateArena
+Goal, P0, or long-lived ResearchWorker lifecycle complete.
 
 ## Source Interpretation
 

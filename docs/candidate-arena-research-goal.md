@@ -89,6 +89,15 @@ progress, not completion.
 | Execution continuity | The selected champion continues its paper decision cadence while research and challenger evaluation run; research failure cannot interrupt it, and replacement is an explicit qualified transition with complete evidence. |
 | Bounded and legible operation | Concurrency, time, cost, storage, retries, and paper sessions are bounded; every selection, rejection, restart, and lineage transition is reconstructable from external records. |
 
+Current partial implementation evidence now covers the bounded allocation mechanism: every new
+tick persists a pre-effect `CandidateArenaResearchAllocation`; adaptive-default ticks select three
+of five directions with at most two focus lanes and at least one exploration lane; concurrency is
+two; focus and exploration receive two and one experiment iterations respectively within a total
+budget of five; completed allocations drive exploration coverage; and `static_control` provides an
+equal-bound `2`, `2`, `1` ablation. This does not complete the Adaptive allocation axis or the Goal:
+long-lived worker ownership, provider-dollar cost, controlled discovery-yield results, and the
+remaining completion evidence are still open.
+
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a
 versioned evaluation policy. They must be declared before a run rather than chosen after results are
 visible.

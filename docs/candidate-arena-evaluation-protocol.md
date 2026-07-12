@@ -2,10 +2,10 @@
 
 Status: P0 target contract with partial implementation evidence. This document defines the bounded
 frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
-commitment, admission, sealed comparison, confirmation, causal ResearchRelease, and explicit
-comparison-backed TradingPromotion tests demonstrate only the explicitly listed partial
-conformance; they do not establish production composition, automatic champion operation, or P0
-completion.
+commitment, admission, sealed comparison, confirmation, causal ResearchRelease, explicit
+comparison-backed TradingPromotion, and bounded adaptive ResearchWorker allocation tests
+demonstrate only the explicitly listed partial conformance; they do not establish production
+composition, automatic champion operation, or P0 completion.
 
 ## Purpose
 
@@ -380,8 +380,14 @@ The following current surfaces require implementation work before P0 can pass:
   campaign is committed before campaign-bound outcomes and counts every reserved terminal result.
   Candidate-level aggregate Ledger state is insufficient once one CandidateVersion owns multiple
   TradingRuns.
-- ResearchWorkers are tick-scoped invocations rather than durable long-lived workers with explicit
-  budget, recovery, and causal memory ownership.
+- Every new CandidateArena tick now persists a pre-effect `CandidateArenaResearchAllocation` and
+  uses it to control actual direction selection, concurrency, and experiment iterations. The
+  bounded policy selects three default lanes with at most two focus and at least one exploration,
+  runs no more than two workers concurrently, applies focus/exploration budgets of two/one within
+  five total experiments, counts only completed tick-bound allocations for exploration coverage,
+  and exposes an equal-bound static control. ResearchWorkers are still tick-scoped invocations
+  rather than durable long-lived workers with workspace, process, recovery, and causal memory
+  ownership; provider-dollar cost and learned allocation also remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and behavior-level duplicate detection is incomplete.
 
@@ -416,8 +422,9 @@ then proves every precommitted reserved result, releases terminal evidence into 
 Finding/Lineage only through ResearchRelease, and lets only an explicit operator command bind an
 eligible all-improved outcome to the exact current champion and final qualified challenger
 evaluation. This is restart-stable comparison-backed Trading review, not production composition,
-automatic promotion, champion runner replacement, adaptive allocation, private/live authority, or
-P0 completion.
+automatic promotion, champion runner replacement, private/live authority, or P0 completion. The
+separate allocation path proves restart-stable bounded scheduling intent and actual worker resource
+control, not long-lived worker recovery, calibrated reward learning, or economic improvement.
 
 ## Implementation Frontier Order
 
@@ -445,17 +452,19 @@ P0 completion.
    precommitted confirmation slots; strict sequence, non-overlap, and deadline gates; all-result
    confirmed/not-confirmed aggregation; restart-stable exact replay; campaign-bound pair release;
    deterministic positive, non-reproduced, ineligible, and expired ResearchRelease classification;
-   recoverable Finding/Lineage materialization; causal CandidateArena context and direction-order
-   ablation; exact campaign/outcome/final-verdict promotion binding; atomic current-champion
+   recoverable Finding/Lineage materialization; causal CandidateArena context; exact
+   campaign/outcome/final-verdict promotion binding; atomic current-champion
    revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
-   `trading_candidate.promote` composition. **Next frontier:** persisted bounded adaptive
-   ResearchWorker allocation. Automatic promotion, production scheduling, and runner handoff remain
-   later frontiers.
+   `trading_candidate.promote` composition. Automatic promotion, production scheduling, and runner
+   handoff remain later frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
-   while unreleased qualification evidence stays hidden; durable ResearchWorkers and adaptive
-   budget/recovery ownership remain.
+   while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
+   changes actual three-of-five selection, concurrency, and experiment budgets before effects;
+   completed allocation history preserves exploration and static control supplies an equal-bound
+   ablation. Durable ResearchWorker workspace/process recovery, provider-dollar cost, learned
+   allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, and explicit comparison-backed
-   TradingPromotion are proven, while production composition, longer soak evidence, adaptive
-   allocation, and full P0 evidence remain.
+   TradingPromotion are proven, while production composition, longer soak evidence, durable worker
+   recovery, and full P0 evidence remain.

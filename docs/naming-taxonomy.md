@@ -12,6 +12,7 @@ that pack every axis into one identifier.
 | `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
 | `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests and external evaluation to classify a submission as admitted, duplicate, or quarantined before candidate materialization; it grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
@@ -113,6 +114,10 @@ standard term fits. Record that decision in repo docs and tests.
   failure kind for product action and raw reason for debugging.
 - Do not let `ResearchEfficiency` become a rank metric or promotion gate. It is a cost and latency
   comparison signal for improving CandidateArena autonomy.
+- Do not treat `CandidateArenaResearchAllocation.focus_score`, selection `signal_score`, or
+  experiment budget as reward, expected profit, candidate quality, or promotion evidence. They are
+  deterministic research scheduling pressure; only allocations linked from completed ticks count
+  toward later exploration coverage.
 - Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
   It is read-only generation context for the next ResearchWorker.
 - Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical

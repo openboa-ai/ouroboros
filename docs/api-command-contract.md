@@ -163,7 +163,8 @@ snapshot, market data mode, local order book sync state, fake paper account, ope
 fill, latest classified paper failure, agent/provider status, latest ticks, latest candidates,
 latest command results, latest `TradingPromotion` state and compact comparison-confirmation
 provenance, `TradingReview` active target binding, latest TradingSystem paper decision when one has
-been emitted, research-efficiency summaries for latest CandidateArena ticks, and authority flags.
+been emitted, research-efficiency summaries and compact `CandidateArenaResearchAllocation`
+projections for latest CandidateArena ticks, and authority flags.
 
 `ResearchEfficiency` is not a leaderboard or promotion metric. It summarizes provider request
 count, runner command count, scenario count, and elapsed milliseconds for a CandidateArena
@@ -265,13 +266,22 @@ change paper rank, qualification, Trading review readiness, or promotion decisio
 `CandidateArenaReadModel` and CandidateArena researcher context should also carry
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
 protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
-generation only. When no explicit `directions` list is supplied, CandidateArena may use those
-clusters and recent `ResearchEfficiency` cost/latency pressure to prioritize the next default
-ResearchDirection order and include an `adaptive_direction_focus` summary in researcher context.
-That direction focus is still
-`not_promotion_authority`: it must not change paper ranking, qualification, Trading review
-readiness, or promotion decisions. Operator surfaces may render it in Research as read-only
-next-generation context, but they must not treat it as a blocker, rank, or action.
+generation only. Every new tick must persist one pre-effect `CandidateArenaResearchAllocation`.
+Without explicit directions, `adaptive_default` selects exactly three of five default lanes from
+released clusters, recent direction outcomes, `ResearchEfficiency`, and completed allocation
+history: at most two focus lanes, at least one exploration lane, concurrency two, focus budget two,
+exploration budget one, and at most five total experiment iterations. Only allocations linked from
+completed ticks count toward future exploration coverage; orphan intent is replayable only for its
+own tick. `static_control` ignores evidence and selects the first three canonical lanes with budgets
+`2`, `2`, `1` under the same concurrency and total bound. Explicit input persists one to five unique
+ordered lanes with one experiment each. The read model and researcher context expose the compact
+allocation, current selection, and `adaptive_direction_focus` summary.
+
+Allocation signal and direction focus are research scheduling context only. They must not change
+paper ranking, qualification, Trading review readiness, promotion decisions, order submission,
+private access, or live authority. Operator surfaces may render them in Research as read-only
+next-generation context, but must not treat them as a blocker, rank, or action. There is no public
+allocation mutation command.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
