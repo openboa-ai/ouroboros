@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,10 +10,17 @@ import {
   type TradingArtifactRunner
 } from "./artifact-runner";
 import {
-  runTradingReplaySet,
+  runTradingDevelopmentReplaySet,
+  runTradingSealedAdmission,
   toResearchPreflightFeedback
 } from "./replay-set-runner";
 import type { ReplayTradingApiProviderFactory } from "./replay-set-runner";
+import { sealSingleFileTradingArtifactClosure } from "./artifact-closure";
+import {
+  buildResearchPreflightPlan,
+  generateResearchPreflightEvaluatorSeed,
+  type ResearchPreflightPlanHandle
+} from "./preflight-plan";
 import {
   createTradingResearchAgentAdapter,
   loadTradingResearchRuntimeConfig,
@@ -49,6 +57,7 @@ export interface RunTradingResearchLoopInput {
   artifact_runner_kind?: TradingArtifactRunnerKind;
   replay_provider_factory?: ReplayTradingApiProviderFactory;
   arena_context?: string;
+  preflight_plan?: ResearchPreflightPlanHandle;
 }
 
 export async function runTradingResearchLoop(
@@ -59,7 +68,10 @@ export async function runTradingResearchLoop(
   const runRoot = input.run_root ?? path.join(repoRoot, ".ouroboros/trading-research", sessionId);
   const artifactSourceDir = input.artifact_source_dir ?? path.join(repoRoot, "artifacts/trading-system");
   const programPath = input.program_path ?? path.join(repoRoot, "research/program.md");
-  const iterations = input.iterations ?? 3;
+  const iterations = input.iterations ?? 2;
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 2) {
+    throw new Error("research_preflight_development_budget_invalid");
+  }
   const mode = input.mode ?? "replay";
   const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter({
     timeout_ms: input.agent_timeout_ms
@@ -73,6 +85,18 @@ export async function runTradingResearchLoop(
   await rm(seedDir, { recursive: true, force: true });
   await cp(artifactSourceDir, seedDir, { recursive: true });
   const frozenManifest = await readTradingSystemManifest(seedDir);
+  const sealedSource = await sealSingleFileTradingArtifactClosure(seedDir, frozenManifest);
+  const preflightPlan = input.preflight_plan ?? buildStandalonePreflightPlan({
+    sessionId,
+    iterations,
+    sourceArtifactDigest: sealedSource.closure_digest
+  });
+  assertPreflightPlanMatches(preflightPlan, iterations, sealedSource.closure_digest);
+  const developmentSuite = preflightPlan.evaluatorDevelopmentSuite();
+  if (developmentSuite.suite_digest !==
+    preflightPlan.commitment.development_policy.suite_digest) {
+    throw new Error("research_preflight_development_suite_mismatch");
+  }
   await rm(bestDir, { recursive: true, force: true });
   await cp(seedDir, bestDir, { recursive: true });
 
@@ -140,10 +164,11 @@ export async function runTradingResearchLoop(
       continue;
     }
 
-    const replaySet = await runTradingReplaySet({
+    const replaySet = await runTradingDevelopmentReplaySet({
       artifact_dir: candidateDir,
       manifest: frozenManifest,
       output_dir: outputDir,
+      scenarios: developmentSuite.scenarios,
       artifact_runner: artifactRunner,
       replay_provider_factory: input.replay_provider_factory
     });
@@ -185,14 +210,107 @@ export async function runTradingResearchLoop(
     await writeNotebook(notebookPath, notebook);
   }
 
+  let submittedArtifactDir: string | undefined;
+  let submittedArtifactDigest: string | undefined;
+  let sealedAdmission: TradingResearchLoopResult["sealed_admission"];
+  if (bestArtifactDir) {
+    submittedArtifactDir = path.join(runRoot, "submitted-artifact");
+    await rm(submittedArtifactDir, { recursive: true, force: true });
+    await cp(bestArtifactDir, submittedArtifactDir, { recursive: true });
+    const submittedArtifact = await sealSingleFileTradingArtifactClosure(
+      submittedArtifactDir,
+      frozenManifest
+    );
+    submittedArtifactDigest = submittedArtifact.closure_digest;
+    const sealedSuite = preflightPlan.claimSealedAdmissionSuite();
+    if (sealedSuite.suite_digest !==
+      preflightPlan.commitment.sealed_admission_policy.suite_digest) {
+      throw new Error("research_preflight_sealed_suite_mismatch");
+    }
+    const sealed = await runTradingSealedAdmission({
+      artifact_dir: submittedArtifactDir,
+      manifest: frozenManifest,
+      output_dir: path.join(runRoot, "sealed-admission"),
+      scenarios: sealedSuite.scenarios,
+      artifact_runner: artifactRunner,
+      replay_provider_factory: input.replay_provider_factory
+    });
+    const conformanceDigest = sealed.evaluation.paper_handoff_conformance
+      ?.system_code_artifact_digest;
+    if (conformanceDigest !== undefined && conformanceDigest !== submittedArtifactDigest) {
+      throw new Error("research_preflight_sealed_artifact_mismatch");
+    }
+    sealedAdmission = {
+      commitment_id: preflightPlan.commitment.research_preflight_commitment_id,
+      commitment_digest: preflightPlan.commitment.commitment_digest,
+      suite_digest: sealedSuite.suite_digest,
+      submission_sequence: 1,
+      artifact_digest: submittedArtifactDigest,
+      events_path: sealed.events_path,
+      evaluation: sealed.evaluation
+    };
+  }
+
   return {
     session_id: sessionId,
     run_root: runRoot,
     notebook_path: notebookPath,
+    research_preflight_commitment: preflightPlan.commitment,
     best_score: Number.isFinite(bestScore) ? bestScore : undefined,
     best_artifact_dir: bestArtifactDir,
+    submitted_artifact_dir: submittedArtifactDir,
+    submitted_artifact_digest: submittedArtifactDigest,
+    sealed_admission: sealedAdmission,
     entries: notebook.entries
   };
+}
+
+function buildStandalonePreflightPlan(input: {
+  sessionId: string;
+  iterations: number;
+  sourceArtifactDigest: string;
+}): ResearchPreflightPlanHandle {
+  const allocationDigest = sha256(`standalone-allocation:${input.sessionId}:${input.iterations}`);
+  return buildResearchPreflightPlan({
+    candidate_arena_tick_id: `standalone-${input.sessionId}`,
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: `standalone-direction-${input.sessionId}`
+    },
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: `standalone-worker-${input.sessionId}`
+    },
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: `standalone-allocation-${input.sessionId}`
+    },
+    research_allocation_digest: allocationDigest,
+    source_system_code_ref: {
+      record_kind: "system_code",
+      id: `standalone-source-system-code-${input.sessionId}`
+    },
+    source_artifact_digest: input.sourceArtifactDigest,
+    development_submission_limit: input.iterations,
+    committed_at: new Date().toISOString(),
+    evaluator_seed: generateResearchPreflightEvaluatorSeed()
+  });
+}
+
+function assertPreflightPlanMatches(
+  plan: ResearchPreflightPlanHandle,
+  iterations: number,
+  sourceArtifactDigest: string
+): void {
+  plan.assertSealedAdmissionUnclaimed();
+  if (plan.commitment.development_policy.submission_limit !== iterations ||
+    plan.commitment.source_artifact_digest !== sourceArtifactDigest) {
+    throw new Error("research_preflight_plan_binding_mismatch");
+  }
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 async function writeNotebook(pathname: string, notebook: TradingResearchNotebook): Promise<void> {
@@ -228,7 +346,7 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {
   model?: string;
   reasoning_effort?: TradingResearchReasoningEffort;
 } {
-  const config = loadTradingResearchRuntimeConfig(process.env, { iterations: 3 });
+  const config = loadTradingResearchRuntimeConfig(process.env, { iterations: 2 });
   const parsed: RunTradingResearchLoopInput & {
     agent?: TradingResearchRuntimeAgent;
     agent_command?: string;

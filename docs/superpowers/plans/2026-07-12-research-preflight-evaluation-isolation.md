@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** In progress; Tasks 1-2 complete, Task 3 next
+**Status:** In progress; Tasks 1-3 complete, Task 4 next
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -172,36 +172,36 @@ after locale-independent ordering, and `@ouroboros/application` typecheck passed
 - Keeps the existing standalone replay helper behavior explicit rather than adding an unsafe phase
   boolean to public callers.
 
-- [ ] **Step 1: Write failing adaptive-development tests**
+- [x] **Step 1: Write failing adaptive-development tests**
 
 Prove the committed development budget permits current one/two iterations, exact aggregate
 development feedback remains in prompt/notebook, `previous_best_score` is development-only, and no
 development iteration runs paper handoff conformance.
 
-- [ ] **Step 2: Write failing freeze-before-sealed tests**
+- [x] **Step 2: Write failing freeze-before-sealed tests**
 
 Record the artifact digest and adapter-call count at selection close. Assert one frozen artifact is
 selected using development evidence before sealed evaluation starts, and no adapter call occurs
 after any sealed result exists.
 
-- [ ] **Step 3: Write failing one-shot and no-retry tests**
+- [x] **Step 3: Write failing one-shot and no-retry tests**
 
 An adversarial artifact may improve development score across iterations but receives exactly zero
 sealed score feedback before freeze and at most one sealed submission. Sealed rejection returns no
 new candidate artifact, no retry, and no paper handoff probe.
 
-- [ ] **Step 4: Write failing exact-byte conformance tests**
+- [x] **Step 4: Write failing exact-byte conformance tests**
 
 Sealed pass runs one handoff probe over the same digest. Mutation between selection, sealed replay,
 and probe rejects and restores bytes. Infrastructure failure propagates without strategy score.
 
-- [ ] **Step 5: Run RED**
+- [x] **Step 5: Run RED**
 
 ```bash
 npx vitest run apps/runtime/test/trading-research-loop.test.ts
 ```
 
-- [ ] **Step 6: Implement and verify**
+- [x] **Step 6: Implement and verify**
 
 ```bash
 npx vitest run packages/application/src/trading/research/preflight-plan.test.ts packages/application/src/trading/research/paper-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts
@@ -209,6 +209,11 @@ npm run typecheck --workspace @ouroboros/application
 git add packages/application/src/trading/research/replay-set-runner.ts packages/application/src/trading/research/run-trading-research.ts packages/application/src/trading/research/agent-adapters.ts packages/application/src/trading/research/types.ts apps/runtime/test/trading-research-loop.test.ts
 git commit -m "feat: isolate sealed research admission"
 ```
+
+Evidence: the listener-backed RED run failed all five selected phase tests against the combined
+loop. The final explicit development/sealed plan, handoff, and runtime regression passed 3 files and
+65 tests; freeze-time instrumentation proves no adapter call occurs after sealed evaluation starts,
+and both `@ouroboros/application` and `@ouroboros/runtime` typechecks passed.
 
 ---
 

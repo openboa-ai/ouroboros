@@ -6,6 +6,7 @@ import type {
   PaperTradingMarketDataSourcePriority,
   PaperTradingComparisonTickContext,
   Ref,
+  ResearchPreflightCommitmentRecord,
   TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
 
@@ -316,7 +317,19 @@ export interface TradingResearchLoopResult {
   session_id: string;
   run_root: string;
   notebook_path: string;
+  research_preflight_commitment: ResearchPreflightCommitmentRecord;
   best_score?: number;
   best_artifact_dir?: string;
+  submitted_artifact_dir?: string;
+  submitted_artifact_digest?: string;
+  sealed_admission?: {
+    commitment_id: string;
+    commitment_digest: string;
+    suite_digest: string;
+    submission_sequence: 1;
+    artifact_digest: string;
+    events_path: string;
+    evaluation: TradingEvaluationResult;
+  };
   entries: TradingResearchNotebookEntry[];
 }

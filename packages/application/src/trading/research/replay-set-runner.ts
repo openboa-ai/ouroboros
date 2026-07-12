@@ -56,6 +56,25 @@ export interface TradingReplaySetRunnerResult {
 export async function runTradingReplaySet(
   input: TradingReplaySetRunnerInput
 ): Promise<TradingReplaySetRunnerResult> {
+  return runTradingSealedAdmission(input);
+}
+
+export async function runTradingDevelopmentReplaySet(
+  input: TradingReplaySetRunnerInput
+): Promise<TradingReplaySetRunnerResult> {
+  return runTradingReplayPhase(input, false);
+}
+
+export async function runTradingSealedAdmission(
+  input: TradingReplaySetRunnerInput
+): Promise<TradingReplaySetRunnerResult> {
+  return runTradingReplayPhase(input, true);
+}
+
+async function runTradingReplayPhase(
+  input: TradingReplaySetRunnerInput,
+  includePaperHandoffConformance: boolean
+): Promise<TradingReplaySetRunnerResult> {
   const scenarios = input.scenarios ?? defaultReplayTradingScenarioSet;
   if (scenarios.length === 0) {
     throw new Error("Replay scenario set must include at least one scenario");
@@ -132,7 +151,7 @@ export async function runTradingReplaySet(
   const replayEvaluation = artifactMutationDetected
     ? rejectArtifactMutation(aggregate)
     : aggregate;
-  const evaluation = replayEvaluation.status === "accepted"
+  const evaluation = includePaperHandoffConformance && replayEvaluation.status === "accepted"
     ? await composePaperHandoffConformance({
         artifact_dir: input.artifact_dir,
         manifest: input.manifest,

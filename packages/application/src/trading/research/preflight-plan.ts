@@ -47,10 +47,14 @@ export class ResearchPreflightPlanHandle {
     return structuredClone(this.#developmentSuite);
   }
 
-  claimSealedAdmissionSuite(): ResearchPreflightEvaluationSuite {
+  assertSealedAdmissionUnclaimed(): void {
     if (this.#sealedAdmissionClaimed) {
       throw new Error("research_preflight_sealed_submission_already_claimed");
     }
+  }
+
+  claimSealedAdmissionSuite(): ResearchPreflightEvaluationSuite {
+    this.assertSealedAdmissionUnclaimed();
     this.#sealedAdmissionClaimed = true;
     return structuredClone(this.#sealedAdmissionSuite);
   }

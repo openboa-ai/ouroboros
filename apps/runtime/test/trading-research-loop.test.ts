@@ -21,9 +21,14 @@ import { evaluatePaperTradingHandoffProbe } from
 import { PaperTradingHandoffConformanceInfrastructureError } from
   "@ouroboros/application/trading/research/paper-handoff-conformance";
 import type {
+  AgentEditInput,
   ArtifactRunResult,
   ReplayTradingScenario
 } from "@ouroboros/application/trading/research/types";
+import {
+  buildResearchPreflightPlan,
+  type ResearchPreflightPlanHandle
+} from "@ouroboros/application/trading/research/preflight-plan";
 import {
   defaultReplayTradingScenarioSet,
   startReplayTradingApiProvider,
@@ -31,7 +36,9 @@ import {
 } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 import {
+  runTradingDevelopmentReplaySet,
   runTradingReplaySet,
+  runTradingSealedAdmission
 } from "@ouroboros/application/trading/research/replay-set-runner";
 import {
   readNotebook,
@@ -71,6 +78,20 @@ describe("Trading research research loop MVP", () => {
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
     expect(result.best_score).toBe(1);
     expect(result.best_artifact_dir).toContain("kept-artifact");
+    expect(result.submitted_artifact_dir).toContain("submitted-artifact");
+    expect(result.submitted_artifact_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(result.sealed_admission).toMatchObject({
+      submission_sequence: 1,
+      suite_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      artifact_digest: result.submitted_artifact_digest,
+      evaluation: {
+        status: "accepted",
+        paper_handoff_conformance: {
+          status: "passed",
+          runnable_paper_handoff: true
+        }
+      }
+    });
     expect(result.entries[0].evaluation.scenario_results?.map((scenario) => scenario.scenario_id)).toEqual([
       "trend_long",
       "range_flat"
@@ -104,7 +125,9 @@ describe("Trading research research loop MVP", () => {
     const notebookSurface = JSON.stringify(notebook);
     expect(notebookSurface).toContain("provider_boundary");
     expect(notebookSurface).toContain("replay_set_average");
-    expect(notebookSurface).not.toMatch(/scenario_results|scenario_id|trend_long|range_flat|runner_command_evidence/i);
+    expect(notebookSurface).not.toMatch(
+      /scenario_results|scenario_id|trend_long|range_flat|runner_command_evidence|paper_handoff_conformance/i
+    );
     expect(notebookSurface).not.toMatch(
       /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|sealed-replay|\bvenue\b/i
     );
@@ -114,11 +137,11 @@ describe("Trading research research loop MVP", () => {
       /scenario_results|scenario_id|trend_long|range_flat|expected_direction|exit_price|runner_command_evidence/i
     );
     await expect(readdir(path.dirname(notebook.entries[0].events_path))).resolves.toEqual([
-      "paper-handoff-conformance",
       "replay-set.json"
     ]);
     await expect(readdir(path.join(
-      path.dirname(notebook.entries[0].events_path),
+      runRoot,
+      "sealed-admission",
       "paper-handoff-conformance"
     ))).resolves.toEqual([
       "paper-handoff-heartbeat.jsonl",
@@ -946,20 +969,43 @@ process.exit(17);
     expect(probeCount).toBe(0);
   });
 
-  it("retains a prior conformance-passed best when a later paper handoff rejects", async () => {
-    const runner = controlledPaperHandoffArtifactRunner(["passed", "rejected"]);
+  it("freezes development selection before one sealed admission and releases no sealed feedback", async () => {
+    const controlledRunner = controlledPaperHandoffArtifactRunner(["rejected"]);
+    const previousBestScores: Array<number | undefined> = [];
+    const delegate = new NoopTradingResearchAgentAdapter();
+    const adapter = {
+      agent: delegate.agent,
+      async improveArtifact(input: AgentEditInput) {
+        previousBestScores.push(input.previous_best_score);
+        return delegate.improveArtifact();
+      }
+    };
+    const runner: TradingArtifactRunner & { probe_count(): number } = {
+      ...controlledRunner,
+      async probePaperHandoff(input) {
+        expect(previousBestScores).toEqual([undefined, 1]);
+        return controlledRunner.probePaperHandoff(input);
+      }
+    };
+    const preflightPlan = await fixedPreflightPlan(2);
     const result = await runTradingResearchLoop({
       run_root: path.join(tmpDir, "paper-handoff-best-barrier"),
       session_id: "paper-handoff-best-barrier",
       iterations: 2,
-      agent_adapter: new NoopTradingResearchAgentAdapter(),
-      artifact_runner: runner
+      agent_adapter: adapter,
+      artifact_runner: runner,
+      preflight_plan: preflightPlan
     });
 
-    expect(runner.probe_count()).toBe(2);
+    expect(runner.probe_count()).toBe(1);
+    expect(previousBestScores).toEqual([undefined, 1]);
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
-    expect(result.entries[1]).toMatchObject({
-      score: 0,
+    expect(result.entries.every((entry) =>
+      entry.evaluation.paper_handoff_conformance === undefined
+    )).toBe(true);
+    expect(result.sealed_admission).toMatchObject({
+      submission_sequence: 1,
+      artifact_digest: result.submitted_artifact_digest,
       evaluation: {
         status: "disqualified",
         paper_handoff_conformance: {
@@ -970,15 +1016,16 @@ process.exit(17);
     });
     expect(result.best_score).toBe(1);
     expect(result.best_artifact_dir).toContain(path.join("iterations", "001", "kept-artifact"));
+    expect(result.submitted_artifact_dir).toContain("submitted-artifact");
+    expect(() => preflightPlan.claimSealedAdmissionSuite()).toThrow(
+      "research_preflight_sealed_submission_already_claimed"
+    );
 
     const notebook = await readNotebook(result.notebook_path);
     const notebookSurface = JSON.stringify(notebook);
-    expect(notebookSurface).toContain("paper_handoff_conformance");
     expect(notebookSurface).not.toMatch(
-      /output_lines|provider_requests|command_evidence|instance_id|paper-handoff-output\.jsonl/i
+      /paper_handoff_conformance|sealed_admission|output_lines|provider_requests|command_evidence|instance_id|paper-handoff-output\.jsonl/i
     );
-    expect(notebook.entries[0].evaluation).not.toHaveProperty("paper_handoff_conformance");
-    expect(notebook.entries[1].evaluation).not.toHaveProperty("paper_handoff_conformance");
   });
 
   it("propagates paper handoff infrastructure failure instead of scoring strategy evidence", async () => {
@@ -997,7 +1044,60 @@ process.exit(17);
       candidate_rejection: false
     });
     expect(runner.probe_count()).toBe(1);
-    expect((await readNotebook(path.join(runRoot, "notebook.json"))).entries).toEqual([]);
+    expect((await readNotebook(path.join(runRoot, "notebook.json"))).entries).toHaveLength(1);
+  });
+
+  it("restores the frozen submission when the sealed paper probe mutates it", async () => {
+    const preflightPlan = await fixedPreflightPlan(1);
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "sealed-probe-mutation"),
+      session_id: "sealed-probe-mutation",
+      iterations: 1,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: controlledPaperHandoffArtifactRunner(["mutated"]),
+      preflight_plan: preflightPlan
+    });
+
+    expect(result.sealed_admission).toMatchObject({
+      artifact_digest: result.submitted_artifact_digest,
+      evaluation: {
+        status: "disqualified",
+        paper_handoff_conformance: {
+          status: "rejected",
+          reason: "artifact_digest_mismatch"
+        }
+      }
+    });
+    const restored = await sealSingleFileTradingArtifactClosure(
+      result.submitted_artifact_dir!,
+      await readTradingSystemManifest(result.submitted_artifact_dir!)
+    );
+    expect(restored.closure_digest).toBe(result.submitted_artifact_digest);
+  });
+
+  it("keeps standalone development and sealed runner entry points phase-explicit", async () => {
+    const artifactDir = path.join(tmpDir, "phase-explicit-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const manifest = await readTradingSystemManifest(artifactDir);
+    const runner = controlledPaperHandoffArtifactRunner(["passed"]);
+
+    const development = await runTradingDevelopmentReplaySet({
+      artifact_dir: artifactDir,
+      manifest,
+      output_dir: path.join(tmpDir, "phase-explicit-development"),
+      artifact_runner: runner
+    });
+    expect(development.evaluation).not.toHaveProperty("paper_handoff_conformance");
+    expect(runner.probe_count()).toBe(0);
+
+    const sealed = await runTradingSealedAdmission({
+      artifact_dir: artifactDir,
+      manifest,
+      output_dir: path.join(tmpDir, "phase-explicit-sealed"),
+      artifact_runner: runner
+    });
+    expect(sealed.evaluation).toHaveProperty("paper_handoff_conformance.status", "passed");
+    expect(runner.probe_count()).toBe(1);
   });
 
   it("never keeps a disqualified first iteration as the research best", async () => {
@@ -1236,28 +1336,42 @@ process.exit(17);
       })
     ]);
     expect(scenarioResults.every((result) => result.sandbox_name?.startsWith("ouro-s10-test-"))).toBe(true);
+    expect(result.sealed_admission).toMatchObject({
+      submission_sequence: 1,
+      evaluation: {
+        status: "accepted",
+        paper_handoff_conformance: { status: "passed" }
+      }
+    });
 
     const scenarioOutputRoots = ["scenario-001", "scenario-002"].map((scenarioSlot) =>
       path.join(tmpDir, "sbx-session", "iterations", "001", "run", scenarioSlot)
     );
-    const executionOutputRoots = [
-      ...scenarioOutputRoots,
+    const sealedScenarioOutputRoots = Array.from({ length: 6 }, (_, index) =>
       path.join(
         tmpDir,
         "sbx-session",
-        "iterations",
-        "001",
-        "run",
+        "sealed-admission",
+        `scenario-${String(index + 1).padStart(3, "0")}`
+      )
+    );
+    const executionOutputRoots = [
+      ...scenarioOutputRoots,
+      ...sealedScenarioOutputRoots,
+      path.join(
+        tmpDir,
+        "sbx-session",
+        "sealed-admission",
         "paper-handoff-conformance"
       )
     ];
     await expect(readdir(path.join(tmpDir, "sbx-session", "iterations", "001", "run")))
-      .resolves.toEqual(["paper-handoff-conformance", "replay-set.json"]);
+      .resolves.toEqual(["replay-set.json"]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands.join("\n")).not.toMatch(/trend_long|range_flat/i);
-    expect(commands.filter((command) => command === "version")).toHaveLength(3);
-    expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(3);
+    expect(commands.filter((command) => command === "version")).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(9);
     expect(executionOutputRoots.every((outputRoot) =>
       commands.some((command) => command.startsWith("create --name ") &&
         command.endsWith(` shell ${path.join(outputRoot, "sandbox-workspace")}`))
@@ -1268,9 +1382,9 @@ process.exit(17);
       ))
     )).toBe(true);
     expect(commands.filter((command) => command.startsWith("exec -d -w "))).toHaveLength(0);
-    expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(3);
-    expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(3);
-    expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(3);
+    expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(9);
     expect(commands.join("\n")).toContain("replay-provider-runner.py --sidecar-script");
     expect(commands.join("\n")).toContain("--provider-base-url http://127.0.0.1:");
     delete process.env.SBX_FAKE_COMMAND_LOG;
@@ -1705,6 +1819,40 @@ function syntheticManifest(id: string, name: string) {
     editable_paths: ["run.py"],
     api_contract: "trading_api_provider_v1" as const
   };
+}
+
+async function fixedPreflightPlan(
+  developmentSubmissionLimit: number
+): Promise<ResearchPreflightPlanHandle> {
+  const sourceDir = path.resolve("artifacts/trading-system");
+  const source = await sealSingleFileTradingArtifactClosure(
+    sourceDir,
+    await readTradingSystemManifest(sourceDir)
+  );
+  return buildResearchPreflightPlan({
+    candidate_arena_tick_id: "runtime-test-tick",
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: "research-direction-runtime-test"
+    },
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: "research-worker-runtime-test"
+    },
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: "research-allocation-runtime-test"
+    },
+    research_allocation_digest: `sha256:${"1".repeat(64)}`,
+    source_system_code_ref: {
+      record_kind: "system_code",
+      id: "source-system-code-runtime-test"
+    },
+    source_artifact_digest: source.closure_digest,
+    development_submission_limit: developmentSubmissionLimit,
+    committed_at: "2026-07-12T10:00:00.000Z",
+    evaluator_seed: new Uint8Array(32).fill(73)
+  });
 }
 
 function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {

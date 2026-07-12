@@ -132,7 +132,7 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
       "Prefer a small direction-specific change that could improve net revenue after fee, slippage, and funding costs.",
       "If the artifact already matches the requested direction and cannot be improved safely, leave it unchanged and stop.",
       `Iteration: ${input.iteration}`,
-      `Previous best score: ${input.previous_best_score ?? "none"}`,
+      `Previous best development score: ${input.previous_best_score ?? "none"}`,
       "",
       "Research program:",
       program,
