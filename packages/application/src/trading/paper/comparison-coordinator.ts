@@ -411,29 +411,57 @@ export class PaperTradingComparisonCoordinator {
         "TradingPromotion has invalid persisted shape."
       );
     }
-    const { evaluation, commitment, observations } = await this.readPersistedGraph(async () => {
-      const persistedEvaluation = await this.options.store.getPaperTradingEvaluation(
-        promotion.paper_trading_evaluation_ref.id
-      );
-      const persistedCommitment = persistedEvaluation?.paper_trading_evaluation_commitment_ref
-        ? await this.options.store.getPaperTradingEvaluationCommitment(
-            persistedEvaluation.paper_trading_evaluation_commitment_ref.id
-          )
-        : undefined;
-      const persistedObservations = persistedEvaluation
-        ? await this.options.store.listPaperTradingObservations(
-            persistedEvaluation.paper_trading_evaluation_id
-          )
-        : [];
-      return {
-        evaluation: persistedEvaluation,
-        commitment: persistedCommitment,
-        observations: persistedObservations
-      };
-    }, "TradingPromotion qualification records could not be read.");
+    const { evaluation, commitment, observations, campaign } =
+      await this.readPersistedGraph(async () => {
+        const persistedEvaluation = await this.options.store
+          .getPaperTradingEvaluation(
+            promotion.paper_trading_evaluation_ref.id
+          );
+        const persistedCommitment = persistedEvaluation
+          ?.paper_trading_evaluation_commitment_ref
+          ? await this.options.store.getPaperTradingEvaluationCommitment(
+              persistedEvaluation.paper_trading_evaluation_commitment_ref.id
+            )
+          : undefined;
+        const persistedObservations = persistedEvaluation
+          ? await this.options.store.listPaperTradingObservations(
+              persistedEvaluation.paper_trading_evaluation_id
+            )
+          : [];
+        return {
+          evaluation: persistedEvaluation,
+          commitment: persistedCommitment,
+          observations: persistedObservations,
+          campaign: await this.options.store
+            .getPaperTradingComparisonConfirmationCampaign(
+              promotion.comparison_confirmation.campaign_ref.id
+            )
+        };
+      }, "TradingPromotion qualification records could not be read.");
     if (
       !evaluation ||
       !commitment ||
+      !campaign ||
+      campaign.paper_trading_comparison_confirmation_campaign_id !==
+        promotion.comparison_confirmation.campaign_ref.id ||
+      campaign.campaign_digest !==
+        promotion.comparison_confirmation.campaign_digest ||
+      !paperTradingComparisonRefsEqual(
+        campaign.challenger.candidate_ref,
+        champion.side.candidate_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        campaign.challenger.candidate_version_ref,
+        champion.side.candidate_version_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        campaign.challenger.system_code_ref,
+        champion.side.system_code_ref
+      ) ||
+      campaign.challenger.system_code_artifact_digest !==
+        champion.side.system_code_artifact_digest ||
+      campaign.evaluation_authority !== "external_to_trading_systems" ||
+      campaign.authority_status !== "not_live" ||
       !paperTradingComparisonStoppedQualificationClosureHasRuntimeShape({
         systemCode: champion.systemCode,
         admission: champion.admission,
@@ -471,7 +499,12 @@ export class PaperTradingComparisonCoordinator {
       evaluation,
       commitment,
       observations: ordered,
-      runnerActive: false
+      runnerActive: false,
+      policy: {
+        minObservationCount:
+          campaign.comparison_policy.minimum_observation_count,
+        minElapsedMs: campaign.comparison_policy.minimum_elapsed_ms
+      }
     });
     if (
       !refsMatch ||

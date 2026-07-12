@@ -644,6 +644,9 @@ function normalizedRunningEvaluation(
   const normalized = {
     ...evaluation,
     status: "running" as const,
+    next_observation_at: new Date(
+      Date.parse(evaluation.last_observed_at!) + evaluation.interval_ms
+    ).toISOString(),
     stopped_at: undefined
   };
   return Object.fromEntries(Object.entries(normalized).filter(([, value]) =>

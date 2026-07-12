@@ -3485,7 +3485,7 @@ describe("LocalStore", () => {
         },
         preparation_digest: ""
       })),
-      "paper_trading_comparison_active_pair_conflict"
+      "paper_trading_comparison_champion_selection_mismatch"
     );
     await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([
       fixture.preparation
@@ -4044,6 +4044,7 @@ describe("LocalStore", () => {
       {
         ...slot1.champion.evaluation,
         status: "stopped",
+        next_observation_at: undefined,
         stopped_at: new Date(Date.parse(outcome.evaluated_at) - 1).toISOString()
       }
     );
@@ -7414,6 +7415,7 @@ describe("LocalStore", () => {
       await store.recordPaperTradingEvaluation({
         ...input.challenger.evaluation,
         status: "stopped",
+        next_observation_at: undefined,
         stopped_at: stoppedAt
       }, stopAuthority);
 
@@ -7864,6 +7866,7 @@ describe("LocalStore", () => {
         const evaluation: PaperTradingEvaluationRecord = {
           ...input[role].evaluation,
           status: "stopped",
+          next_observation_at: undefined,
           stopped_at: stoppedAt
         };
         const run = await store.getTradingRun(evaluation.trading_run_ref.id);
@@ -8460,6 +8463,27 @@ async function comparisonPreparationFixture(
       : "2026-07-09T21:31:00.000Z",
     authority_status: "not_live"
   };
+  const promotionCampaign = {
+    record_kind: "paper_trading_comparison_confirmation_campaign",
+    paper_trading_comparison_confirmation_campaign_id:
+      promotion.comparison_confirmation.campaign_ref.id,
+    campaign_digest: promotion.comparison_confirmation.campaign_digest,
+    challenger: {
+      role: "challenger",
+      candidate_ref: promotion.candidate_ref,
+      candidate_version_ref: promotion.candidate_version_ref,
+      system_code_ref: championPromotionEvidence.commitment.system_code_ref,
+      system_code_artifact_digest:
+        championPromotionEvidence.commitment.system_code_artifact_digest
+    },
+    comparison_policy: {
+      ...validPaperTradingComparisonCommitment().comparison_policy,
+      comparison_mode: "bootstrap"
+    },
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as PaperTradingComparisonConfirmationCampaignRecord;
+  installComparisonPromotionCampaignFixture(store, promotionCampaign);
   if (options.missingPromotionEvaluation) {
     await rm(path.join(
       store.root(),
@@ -8550,10 +8574,25 @@ async function comparisonPreparationFixture(
     challengerAdmission,
     challengerMaterializationInput,
     promotion,
+    promotionCampaign,
     championPromotionEvidence,
     alternateChampionPromotionEvidence,
     preparation: withPreparationDigest(preparationWithoutDigest)
   };
+}
+
+function installComparisonPromotionCampaignFixture(
+  store: LocalStore,
+  campaign: PaperTradingComparisonConfirmationCampaignRecord
+): void {
+  const readPersisted = store
+    .getPaperTradingComparisonConfirmationCampaign.bind(store);
+  store.getPaperTradingComparisonConfirmationCampaign = async (
+    campaignId: string
+  ) => campaignId ===
+    campaign.paper_trading_comparison_confirmation_campaign_id
+    ? structuredClone(campaign)
+    : readPersisted(campaignId);
 }
 
 async function comparisonCandidateSide(
@@ -9326,6 +9365,7 @@ async function stopBothRunningRuntimeActivation(
         : {
             ...currentEvaluation,
             status: "stopped",
+            next_observation_at: undefined,
             stopped_at: new Date(handoffBase + (options.handoff ? 3_000 : 8_000))
               .toISOString()
           },
@@ -12097,6 +12137,7 @@ async function invokeForbiddenTickIOWriter(
     return Reflect.apply(store.recordPaperTradingEvaluation, store, [{
       ...fixture.checkpoint.challenger.evaluation,
       status: "stopped",
+      next_observation_at: undefined,
       stopped_at: new Date(
         Date.parse(fixture.checkpoint.outcome.completed_at) + 2_000
       ).toISOString()
@@ -12300,6 +12341,7 @@ async function invokeFrozenPromotionEvidenceWriter(
     status: "stopped",
     observation_count: observation.sequence,
     last_observed_at: observedAt,
+    next_observation_at: undefined,
     stopped_at: observedAt
   });
 }

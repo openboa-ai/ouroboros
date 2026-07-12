@@ -27,6 +27,7 @@ import type {
   ExperimentRunRecord,
   PaperTradingAccountSnapshot,
   PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonConfirmationCampaignRecord,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPolicy,
   PaperTradingComparisonPreparationRecord,
@@ -1035,6 +1036,7 @@ describe("PaperTradingComparisonCoordinator", () => {
 
     const restartedStore = new LocalStore(fixture.store.root());
     await restartedStore.initialize();
+    installPromotionCampaignFixture(restartedStore, fixture.promotionCampaign);
     const restartedSessions = runtimeSessions(restartedStore);
     const restarted = new PaperTradingComparisonRuntimeActivationCoordinator({
       store: restartedStore,
@@ -1319,6 +1321,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       };
       const restartedStore = new LocalStore(fixture.store.root());
       await restartedStore.initialize();
+      installPromotionCampaignFixture(restartedStore, fixture.promotionCampaign);
       await expect(restartedStore.listPaperTradingComparisonTickDeliveries(
         started.attempt.paper_trading_comparison_activation_attempt_id
       )).resolves.toEqual(beforeRestart.deliveries);
@@ -1495,6 +1498,10 @@ describe("PaperTradingComparisonCoordinator", () => {
 
       const completedRestartStore = new LocalStore(fixture.store.root());
       await completedRestartStore.initialize();
+      installPromotionCampaignFixture(
+        completedRestartStore,
+        fixture.promotionCampaign
+      );
       await expect(
         completedRestartStore.recoverPaperTradingComparisonCheckpointTransactions()
       ).resolves.toEqual([checkpoint, repeatedOutcome]);
@@ -1907,7 +1914,9 @@ describe("PaperTradingComparisonCoordinator", () => {
         champion: fixture.input.challenger,
         challenger: fixture.input.champion
       })
-    ).rejects.toMatchObject({ code: "paper_trading_comparison_active_pair_conflict" });
+    ).rejects.toMatchObject({
+      code: "paper_trading_comparison_champion_selection_mismatch"
+    });
   });
 
   it("rejects distinct candidate versions that resolve to duplicate SystemCode bytes", async () => {
@@ -3362,20 +3371,37 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
       "utf8"
     );
   }
-  const coordinatorStore = options.wrongPromotionEvaluationRef
-    ? (new Proxy(store, {
-        get(target, property, receiver) {
-          if (property === "getPaperTradingEvaluation") {
-            return async (evaluationId: string) =>
-              evaluationId === promotionEvidence.evaluation.paper_trading_evaluation_id
-                ? structuredClone(alternateChampionPromotionEvidence!.evaluation)
-                : target.getPaperTradingEvaluation(evaluationId);
-          }
-          const value = Reflect.get(target, property, receiver);
-          return typeof value === "function" ? value.bind(target) : value;
-        }
-      }) as OuroborosStorePort)
-    : store;
+  const promotionCampaign = {
+    record_kind: "paper_trading_comparison_confirmation_campaign",
+    paper_trading_comparison_confirmation_campaign_id:
+      promotion.comparison_confirmation.campaign_ref.id,
+    campaign_digest: promotion.comparison_confirmation.campaign_digest,
+    challenger: {
+      role: "challenger",
+      candidate_ref: promotion.candidate_ref,
+      candidate_version_ref: promotion.candidate_version_ref,
+      system_code_ref: promotionEvidence.commitment.system_code_ref,
+      system_code_artifact_digest:
+        promotionEvidence.commitment.system_code_artifact_digest
+    },
+    comparison_policy: comparisonPolicy,
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as PaperTradingComparisonConfirmationCampaignRecord;
+  installPromotionCampaignFixture(store, promotionCampaign);
+  const coordinatorStore = new Proxy(store, {
+    get(target, property, receiver) {
+      if (options.wrongPromotionEvaluationRef &&
+        property === "getPaperTradingEvaluation") {
+        return async (evaluationId: string) =>
+          evaluationId === promotionEvidence.evaluation.paper_trading_evaluation_id
+            ? structuredClone(alternateChampionPromotionEvidence!.evaluation)
+            : target.getPaperTradingEvaluation(evaluationId);
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  }) as OuroborosStorePort;
   const coordinator = new PaperTradingComparisonCoordinator({
     store: coordinatorStore,
     sessions,
@@ -3408,6 +3434,7 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     championAdmission,
     challengerAdmission,
     promotion,
+    promotionCampaign,
     promotionEvidence,
     alternateChampionPromotionEvidence,
     sessions,
@@ -3417,6 +3444,20 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     input,
     effects
   };
+}
+
+function installPromotionCampaignFixture(
+  store: LocalStore,
+  campaign: PaperTradingComparisonConfirmationCampaignRecord
+): void {
+  const readPersisted = store
+    .getPaperTradingComparisonConfirmationCampaign.bind(store);
+  store.getPaperTradingComparisonConfirmationCampaign = async (
+    campaignId: string
+  ) => campaignId ===
+    campaign.paper_trading_comparison_confirmation_campaign_id
+    ? structuredClone(campaign)
+    : readPersisted(campaignId);
 }
 
 async function recordCoordinatorAdmissionEvidence(
@@ -3792,6 +3833,7 @@ function readOnlyStoreProxy(
     "getTradingPromotion",
     "getPaperTradingEvaluationCommitment",
     "getPaperTradingEvaluation",
+    "getPaperTradingComparisonConfirmationCampaign",
     "getPaperTradingComparisonPreparation",
     "getPaperTradingComparisonCommitment",
     "listPaperTradingEvaluationCommitments",

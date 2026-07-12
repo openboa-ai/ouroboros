@@ -404,23 +404,23 @@ git commit -m "feat: promote confirmed paper challengers"
 - Consumes the real campaign runner, terminal outcome, independent research release, promotion service, LocalStore, and restart initialization.
 - Proves one explicit review transition with no runtime or authority side effects.
 
-- [ ] **Step 1: Extend the actual lifecycle test**
+- [x] **Step 1: Extend the actual lifecycle test**
 
 After the confirmed outcome and independent research release, promote the real challenger. Assert the final slot verdict's challenger evaluation is bound, the exact campaign/outcome/verdict provenance is stored, and authority remains not_live.
 
-- [ ] **Step 2: Prove no side effects**
+- [x] **Step 2: Prove no side effects**
 
 Snapshot TradingRuns, paper evaluations, observations, Ledger records, comparisons, releases, findings, lineage, candidates, and SystemCode before promotion. After promotion, only the trading-promotions collection changes.
 
-- [ ] **Step 3: Prove replay and restart**
+- [x] **Step 3: Prove replay and restart**
 
 Advance the clock and repeat promote; expect strict equality. Restart LocalStore, read the same latest promotion, repeat promote again, and expect strict equality. Use the restarted promotion as the exact champion frozen by a subsequent champion_challenge preparation.
 
-- [ ] **Step 4: Prove lifecycle vetoes**
+- [x] **Step 4: Prove lifecycle vetoes**
 
 The existing mixed campaign produces no promotion. Add stale-champion, newer unrelated research-feedback evaluation, and drifted final outcome/verdict restart cases.
 
-- [ ] **Step 5: Verify writer and authority boundaries**
+- [x] **Step 5: Verify writer and authority boundaries**
 
 ~~~bash
 npm test -- packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts
@@ -431,7 +431,7 @@ rg -n "credentials|signed|live_order|order_submission|startSandbox|stopSandbox|r
 
 Expected: lifecycle tests pass; writer paths are limited to port, LocalStore, service, and explicit command; the service has no private/live/order/runner mutation.
 
-- [ ] **Step 6: Commit lifecycle evidence**
+- [x] **Step 6: Commit lifecycle evidence**
 
 ~~~bash
 git add packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts packages/local-store/test/local-store.test.ts

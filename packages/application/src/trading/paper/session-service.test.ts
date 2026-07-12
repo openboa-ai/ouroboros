@@ -779,6 +779,10 @@ describe("PaperTradingSessionService", () => {
       provider_request_count: 3,
       provider_session_active: false
     });
+    const stoppedEvaluation = await fixture.store.getPaperTradingEvaluation(
+      fixture.side.paper_trading_evaluation_ref.id
+    );
+    expect(stoppedEvaluation?.next_observation_at).toBeUndefined();
     expect(fixture.writes.slice(3).map((write) => [write.kind, write.authority]))
       .toEqual([
         ["run-control-stop", fixture.stopAuthority],
@@ -945,6 +949,7 @@ describe("PaperTradingSessionService", () => {
     )).resolves.toMatchObject({
       status: "stopped",
       observation_count: 1,
+      next_observation_at: undefined,
       processed_trading_system_event_ids:
         prepared.evaluation.processed_trading_system_event_ids
     });

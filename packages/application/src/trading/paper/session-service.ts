@@ -743,6 +743,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
           ? loaded.evaluation
           : loaded.baseline),
         status: "stopped",
+        next_observation_at: undefined,
         stopped_at: new Date().toISOString()
       }, input.authority);
     }
@@ -1979,6 +1980,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         ? {
             ...input.evaluation,
             status: "running" as const,
+            next_observation_at: new Date(
+              Date.parse(input.evaluation.last_observed_at!) +
+                input.evaluation.interval_ms
+            ).toISOString(),
             stopped_at: undefined
           }
         : input.evaluation;

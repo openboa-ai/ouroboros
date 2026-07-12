@@ -1,8 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  paperTradingComparisonTradingPromotionDigestInput,
   type ArtifactLineageRecord,
   type CandidateAdmissionDecisionRecord,
   type CandidateInspectReadModel,
@@ -56,6 +58,8 @@ import { PaperTradingComparisonConfirmationWindowService } from
   "./comparison-confirmation-window-service";
 import { PaperTradingComparisonResearchReleaseService } from
   "./comparison-research-release-service";
+import { PaperTradingComparisonPromotionService } from
+  "./comparison-promotion-service";
 
 let tmpDir: string;
 
@@ -126,6 +130,21 @@ describe("paper comparison confirmation campaign integration", () => {
     });
     expect(mixedOutcome.slot_results.map((result) => result.verdict_ref?.id))
       .not.toContain(mixedSource.paper_trading_comparison_verdict_id);
+    const mixedPromotionSnapshot = await storeSnapshotWithoutPromotions(
+      fixture.store.root()
+    );
+    const effectsBeforeMixedPromotion = structuredClone(fixture.effects);
+    await expect(new PaperTradingComparisonPromotionService({
+      store: fixture.store
+    }).promote({
+      candidateId: mixedCampaign.challenger.candidate_ref.id
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_promotion_evidence_required"
+    });
+    expect(fixture.effects).toEqual(effectsBeforeMixedPromotion);
+    expect(await storeSnapshotWithoutPromotions(fixture.store.root()))
+      .toEqual(mixedPromotionSnapshot);
+    await expect(fixture.store.getLatestTradingPromotion()).resolves.toBeUndefined();
 
     fixture.setNowAfter(mixedOutcome.evaluated_at, 1_000);
     const confirmedSourceGraph = await fixture.coordinator.prepare({
@@ -237,6 +256,59 @@ describe("paper comparison confirmation campaign integration", () => {
     )).toEqual([release.lineage]);
     await expect(fixture.store.getLatestTradingPromotion()).resolves.toBeUndefined();
 
+    const effectsBeforePromotion = structuredClone(fixture.effects);
+    const storeBeforePromotion = await storeSnapshotWithoutPromotions(
+      fixture.store.root()
+    );
+    const promotion = await new PaperTradingComparisonPromotionService({
+      store: fixture.store,
+      now: () => new Date(Date.parse(release.released_at) + 1).toISOString()
+    }).promote({
+      candidateId: confirmedCampaign.challenger.candidate_ref.id
+    });
+    const finalVerdict = confirmedVerdicts.at(-1)!;
+    expect(promotion).toMatchObject({
+      candidate_ref: confirmedCampaign.challenger.candidate_ref,
+      candidate_version_ref: confirmedCampaign.challenger.candidate_version_ref,
+      paper_trading_evaluation_ref:
+        finalVerdict.challenger.paper_trading_evaluation_ref,
+      comparison_confirmation: {
+        campaign_ref: {
+          id: confirmedCampaign
+            .paper_trading_comparison_confirmation_campaign_id
+        },
+        campaign_outcome_ref: {
+          id: confirmedOutcome
+            .paper_trading_comparison_confirmation_campaign_outcome_id
+        },
+        final_verdict_ref: {
+          id: finalVerdict.paper_trading_comparison_verdict_id
+        }
+      },
+      authority_status: "not_live"
+    });
+    expect(fixture.effects).toEqual(effectsBeforePromotion);
+    expect(await storeSnapshotWithoutPromotions(fixture.store.root()))
+      .toEqual(storeBeforePromotion);
+    await expect(promotionRecordFileNames(fixture.store.root())).resolves
+      .toEqual([
+        encodeURIComponent(promotion.trading_promotion_id) + ".json"
+      ]);
+    await expect(fixture.store.getLatestTradingPromotion()).resolves.toEqual(
+      promotion
+    );
+    await expect(new PaperTradingComparisonPromotionService({
+      store: fixture.store,
+      now: () => new Date(Date.parse(promotion.promoted_at) + 86_400_000)
+        .toISOString()
+    }).promote({
+      candidateId: confirmedCampaign.challenger.candidate_ref.id
+    })).resolves.toEqual(promotion);
+    await expect(promotionRecordFileNames(fixture.store.root())).resolves
+      .toEqual([
+        encodeURIComponent(promotion.trading_promotion_id) + ".json"
+      ]);
+
     fixture.setNowAfter(release.released_at, 24 * 60 * 60_000);
     await expect(fixture.releases.release({
       campaignOutcomeId:
@@ -269,13 +341,52 @@ describe("paper comparison confirmation campaign integration", () => {
       campaignOutcomeId:
         confirmedOutcome.paper_trading_comparison_confirmation_campaign_outcome_id
     })).resolves.toEqual(release);
+    await expect(new PaperTradingComparisonPromotionService({
+      store: restartedStore,
+      now: () => new Date(Date.parse(promotion.promoted_at) + 48 * 60 * 60_000)
+        .toISOString()
+    }).promote({
+      candidateId: confirmedCampaign.challenger.candidate_ref.id
+    })).resolves.toEqual(promotion);
     expect((await restartedStore.listResearchFindings()).filter((finding) =>
       finding.research_finding_id === release.finding.research_finding_id
     )).toEqual([release.finding]);
     expect((await restartedStore.listArtifactLineages()).filter((lineage) =>
       lineage.artifact_lineage_id === release.lineage.artifact_lineage_id
     )).toEqual([release.lineage]);
-    await expect(restartedStore.getLatestTradingPromotion()).resolves.toBeUndefined();
+    await expect(restartedStore.getLatestTradingPromotion()).resolves.toEqual(
+      promotion
+    );
+    const challengeCommittedAt = new Date(
+      Date.parse(promotion.promoted_at) + 72 * 60 * 60_000
+    ).toISOString();
+    vi.setSystemTime(challengeCommittedAt);
+    const challenge = await new PaperTradingComparisonCoordinator({
+      store: restartedStore,
+      sessions: fixture.sessions,
+      now: () => challengeCommittedAt
+    }).prepare({
+      ...fixture.input,
+      idempotencyKey: "confirmation-integration-restarted-champion-challenge",
+      champion: fixture.input.challenger,
+      challenger: fixture.input.champion,
+      comparisonPolicy: {
+        ...fixture.input.comparisonPolicy,
+        comparison_mode: "champion_challenge"
+      }
+    });
+    expect(challenge.preparation.champion_selection).toMatchObject({
+      selection_kind: "trading_review",
+      trading_promotion_ref: {
+        record_kind: "trading_promotion",
+        id: promotion.trading_promotion_id
+      },
+      trading_promotion_digest: digest(
+        paperTradingComparisonTradingPromotionDigestInput(promotion)
+      ),
+      paper_trading_evaluation_ref:
+        promotion.paper_trading_evaluation_ref
+    });
   }, 60_000);
 });
 
@@ -648,6 +759,7 @@ async function integrationFixture(root: string) {
 
   return {
     store,
+    sessions,
     coordinator,
     campaigns,
     windows,
@@ -659,6 +771,42 @@ async function integrationFixture(root: string) {
     runWindow,
     setNowAfter
   };
+}
+
+async function storeSnapshotWithoutPromotions(
+  root: string
+): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
+  const visit = async (relativePath: string): Promise<void> => {
+    const entries = await readdir(path.join(root, relativePath), {
+      withFileTypes: true
+    });
+    for (const entry of entries.sort((left, right) =>
+      left.name.localeCompare(right.name))) {
+      const child = path.join(relativePath, entry.name);
+      if (child === "trading-promotions" ||
+        child.startsWith(`trading-promotions${path.sep}`)) {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        await visit(child);
+      } else if (entry.isFile()) {
+        snapshot[child] = await readFile(path.join(root, child), "utf8");
+      }
+    }
+  };
+  await visit("");
+  return snapshot;
+}
+
+async function promotionRecordFileNames(root: string): Promise<string[]> {
+  return (await readdir(path.join(root, "trading-promotions/items")))
+    .filter((name) => name.endsWith(".json"))
+    .sort();
+}
+
+function digest(value: string): string {
+  return "sha256:" + createHash("sha256").update(value).digest("hex");
 }
 
 function tickMarketData(

@@ -2082,6 +2082,7 @@ export class LocalStore {
             stripUndefined({
               ...existing,
               status: "stopped" as const,
+              next_observation_at: undefined,
               stopped_at: evaluation.stopped_at
             })
           )) ||
@@ -7639,6 +7640,7 @@ export class LocalStore {
         ? stripUndefined({
             ...input.evaluation,
             status: "running" as const,
+            next_observation_at: committedEvaluation.next_observation_at,
             stopped_at: committedEvaluation.stopped_at
           })
         : input.evaluation;
@@ -10276,7 +10278,11 @@ export class LocalStore {
       !isIsoTimestamp(stopped.stopped_at)) return false;
     const { stopped_at: _stoppedAt, ...withoutStoppedAt } = stopped;
     return samePersistedComparisonRecord(
-      { ...withoutStoppedAt, status: "running" },
+      {
+        ...withoutStoppedAt,
+        status: "running",
+        next_observation_at: running.next_observation_at
+      },
       running
     );
   }
@@ -10767,6 +10773,45 @@ export class LocalStore {
         "bound TradingPromotion selection was not found"
       );
     }
+    const promotionCampaign = await this
+      .getPaperTradingComparisonConfirmationCampaign(
+        boundPromotion.comparison_confirmation.campaign_ref.id
+      );
+    if (!promotionCampaign ||
+      promotionCampaign.paper_trading_comparison_confirmation_campaign_id !==
+        boundPromotion.comparison_confirmation.campaign_ref.id ||
+      promotionCampaign.campaign_digest !==
+        boundPromotion.comparison_confirmation.campaign_digest ||
+      !paperTradingComparisonRefsEqual(
+        promotionCampaign.challenger.candidate_ref,
+        boundPromotion.candidate_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        promotionCampaign.challenger.candidate_version_ref,
+        boundPromotion.candidate_version_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        promotionCampaign.challenger.candidate_ref,
+        preparation.champion.candidate_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        promotionCampaign.challenger.candidate_version_ref,
+        preparation.champion.candidate_version_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        promotionCampaign.challenger.system_code_ref,
+        preparation.champion.system_code_ref
+      ) ||
+      promotionCampaign.challenger.system_code_artifact_digest !==
+        preparation.champion.system_code_artifact_digest ||
+      promotionCampaign.evaluation_authority !==
+        "external_to_trading_systems" ||
+      promotionCampaign.authority_status !== "not_live") {
+      throw new LocalStoreError(
+        "paper_trading_comparison_champion_selection_mismatch",
+        "bound TradingPromotion confirmation campaign is missing or inconsistent"
+      );
+    }
     const [allEvaluations, allCommitments, allObservations] = await Promise.all([
       this.scanPaperTradingComparisonEvaluations(persistedEvidenceErrorCode),
       this.scanPaperTradingComparisonCommitments(persistedEvidenceErrorCode),
@@ -10836,7 +10881,12 @@ export class LocalStore {
       commitment: promotionCommitment,
       observations: promotionObservations,
       runnerActive: false,
-      commitmentDigestVerified: promotionCommitmentDigestVerified
+      commitmentDigestVerified: promotionCommitmentDigestVerified,
+      policy: {
+        minObservationCount:
+          promotionCampaign.comparison_policy.minimum_observation_count,
+        minElapsedMs: promotionCampaign.comparison_policy.minimum_elapsed_ms
+      }
     });
     if (!promotionCommitmentDigestVerified ||
       qualification.qualification_status !== "qualified") {
