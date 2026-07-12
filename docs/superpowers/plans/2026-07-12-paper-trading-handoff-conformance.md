@@ -119,7 +119,7 @@ git commit -m "feat: define paper handoff conformance"
 - Produces: `evaluatePaperTradingHandoffProbe(result)`.
 - Reuses: `parseTradingSystemPaperEventLine` and sealed evaluator boundary checks.
 
-- [ ] **Step 1: Write failing pure pass tests**
+- [x] **Step 1: Write failing pure pass tests**
 
 Accept an exact bounded probe containing:
 
@@ -129,7 +129,7 @@ Accept an exact bounded probe containing:
 - successful market, account, and validation provider requests;
 - no undeclared routes, hidden fields, self-reported economics, or authority.
 
-- [ ] **Step 2: Write failing adversarial table tests**
+- [x] **Step 2: Write failing adversarial table tests**
 
 Reject independently: runner crash after attributable start, timeout, malformed JSON decision,
 invalid paper event, missing/multiple decisions, wrong instance, missing heartbeat, missing stop,
@@ -137,24 +137,24 @@ missing required request, unexpected route, more than eight requests, non-200 re
 validation body, expected/outcome field, self-reported profit, private/account credential field,
 direct-order or live field, and paper protocol error event.
 
-- [ ] **Step 3: Prove infrastructure classification**
+- [x] **Step 3: Prove infrastructure classification**
 
 Runner unavailable, sandbox creation failure, and provider startup failure must throw
 `PaperTradingHandoffConformanceInfrastructureError`; they must not return candidate rejection.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 npm test -- packages/application/src/trading/research/paper-handoff-conformance.test.ts
 ```
 
-- [ ] **Step 5: Implement pure evaluation**
+- [x] **Step 5: Implement pure evaluation**
 
 Export the existing evaluator boundary classifier instead of copying hidden/self-report field
 logic. Return only stable bounded status/reason/count/event summaries. Raw output remains runner
 evidence and is not part of worker feedback.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ```bash
 npm test -- packages/application/src/trading/research/paper-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts

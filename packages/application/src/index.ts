@@ -12,6 +12,7 @@ export * from "./ports/market-data";
 export * from "./safe-id";
 export * from "./trading/research/runtime-config";
 export * from "./trading/research/types";
+export * from "./trading/research/paper-handoff-conformance";
 export * from "./trading/candidate/promoted-candidate-bundles";
 export * from "./trading/candidate/replay-run-ledger";
 export * from "./trading/candidate/run-replay";

@@ -20,7 +20,7 @@ export function evaluateTradingRun(
   run: ArtifactRunResult,
   scenario?: ReplayTradingScenario
 ): TradingEvaluationResult {
-  const boundaryViolation = evaluatorBoundaryViolation(run);
+  const boundaryViolation = tradingResearchEvaluatorBoundaryViolation(run);
   if (boundaryViolation) {
     return disqualifiedResult(
       boundaryViolation,
@@ -150,8 +150,8 @@ function disqualifiedResult(
   };
 }
 
-function evaluatorBoundaryViolation(
-  run: ArtifactRunResult
+export function tradingResearchEvaluatorBoundaryViolation(
+  run: Pick<ArtifactRunResult, "events" | "provider_requests">
 ): TradingEvaluationDisqualificationReason | undefined {
   const unexpectedRequest = run.provider_requests.some((request) => !(
     (request.method === "GET" && request.path === "/market/snapshot") ||

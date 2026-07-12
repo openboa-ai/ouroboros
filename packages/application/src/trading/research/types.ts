@@ -181,6 +181,24 @@ export interface ArtifactRunResult {
   error?: string;
 }
 
+export interface TradingArtifactPaperHandoffProbeResult {
+  status: "completed" | "crashed";
+  runner_kind: TradingArtifactRunnerKind;
+  artifact_dir: string;
+  entrypoint: string[];
+  instance_id: string;
+  started_at: string;
+  completed_at: string;
+  timed_out: boolean;
+  stdout: string;
+  stderr: string;
+  exit_code?: number;
+  output_lines: string[];
+  provider_requests: TradingProviderRequestLog[];
+  command_evidence?: TradingArtifactCommandEvidence[];
+  error?: string;
+}
+
 export interface TradingArtifactCommandEvidence {
   command: string[];
   exit_code: number | null;
