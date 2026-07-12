@@ -63,6 +63,7 @@ import {
   candidateArenaResearchEfficiencyBudgetFocus,
   toCandidateArenaResearchAllocationReadModel
 } from "./research-allocation";
+import { buildResearchPopulationDiversity } from "./research-population-diversity";
 import {
   closeResearchWorkerCheckpoint,
   recoverIncompleteResearchWorkerCheckpoints,
@@ -524,7 +525,27 @@ export async function buildCandidateArenaReadModel(
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
   );
-  const latestTickRecords = (await store.listCandidateArenaTicks()).slice(0, 10);
+  const tickRecords = await store.listCandidateArenaTicks();
+  const latestTickRecords = [...tickRecords]
+    .sort((left, right) =>
+      right.completed_at.localeCompare(left.completed_at) ||
+      right.tick_id.localeCompare(left.tick_id)
+    )
+    .slice(0, 10);
+  const [directions, commitments, fingerprints, admissions] = await Promise.all([
+    typeof store.listResearchDirections === "function"
+      ? store.listResearchDirections()
+      : Promise.resolve([]),
+    typeof store.listResearchPreflightCommitments === "function"
+      ? store.listResearchPreflightCommitments()
+      : Promise.resolve([]),
+    typeof store.listResearchBehaviorFingerprints === "function"
+      ? store.listResearchBehaviorFingerprints()
+      : Promise.resolve([]),
+    typeof store.listCandidateAdmissionDecisions === "function"
+      ? store.listCandidateAdmissionDecisions()
+      : Promise.resolve([])
+  ]);
   const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
       "function"
     ? await store.listCandidateArenaResearchAllocations()
@@ -559,6 +580,13 @@ export async function buildCandidateArenaReadModel(
     arena_kind: "candidate_arena",
     runner_status: runnerStatus,
     tick_count: tickCount,
+    research_population_diversity: buildResearchPopulationDiversity({
+      ticks: latestTickRecords,
+      directions,
+      commitments,
+      fingerprints,
+      admissions
+    }),
     active_researchers: DEFAULT_ARENA_DIRECTIONS.map((direction) => arenaResearcher(direction, latestTicks)),
     leaderboard: entries.map((entry, index) => ({
       rank: index + 1,
@@ -1854,6 +1882,7 @@ async function arenaContext(
       ...allocationSelection,
       reasons: [...allocationSelection.reasons]
     },
+    research_population_diversity: arena.research_population_diversity,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
     leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
       rank: entry.rank,
