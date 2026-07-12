@@ -20,6 +20,9 @@ import type {
   ResearchOrchestrationRunRecord,
   ResearchBehaviorFingerprintRecord,
   ResearchDirectionRecord,
+  ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignRecord,
+  ResearchControlCampaignReportRecord,
   ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
@@ -154,6 +157,31 @@ export interface OuroborosStorePort {
   ): Promise<CandidateArenaResearchAllocationRecord | undefined>;
   listCandidateArenaResearchAllocations(): Promise<
     CandidateArenaResearchAllocationRecord[]
+  >;
+  recordResearchControlCampaign(
+    campaign: ResearchControlCampaignRecord
+  ): Promise<ResearchControlCampaignRecord>;
+  getResearchControlCampaign(
+    campaignId: string
+  ): Promise<ResearchControlCampaignRecord | undefined>;
+  listResearchControlCampaigns(): Promise<ResearchControlCampaignRecord[]>;
+  recordResearchControlCampaignArmIntent(
+    intent: ResearchControlCampaignArmIntentRecord
+  ): Promise<ResearchControlCampaignArmIntentRecord>;
+  getResearchControlCampaignArmIntent(
+    intentId: string
+  ): Promise<ResearchControlCampaignArmIntentRecord | undefined>;
+  listResearchControlCampaignArmIntents(): Promise<
+    ResearchControlCampaignArmIntentRecord[]
+  >;
+  recordResearchControlCampaignReport(
+    report: ResearchControlCampaignReportRecord
+  ): Promise<ResearchControlCampaignReportRecord>;
+  getResearchControlCampaignReport(
+    reportId: string
+  ): Promise<ResearchControlCampaignReportRecord | undefined>;
+  listResearchControlCampaignReports(): Promise<
+    ResearchControlCampaignReportRecord[]
   >;
   recordResearchDirection(
     direction: ResearchDirectionRecord

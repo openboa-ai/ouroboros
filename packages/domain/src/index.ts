@@ -8943,6 +8943,9 @@ export type FixtureRecord =
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaResearchAllocationRecord
+  | ResearchControlCampaignRecord
+  | ResearchControlCampaignArmIntentRecord
+  | ResearchControlCampaignReportRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord
   | ResearcherProviderSelectionRecord

@@ -76,6 +76,12 @@ import {
   paperTradingHandoffConformanceHasRuntimeShape,
   researchBehaviorFingerprintDigestInput,
   researchBehaviorFingerprintHasRuntimeShape,
+  researchControlCampaignArmIntentDigestInput,
+  researchControlCampaignArmIntentHasRuntimeShape,
+  researchControlCampaignDigestInput,
+  researchControlCampaignHasRuntimeShape,
+  researchControlCampaignReportDigestInput,
+  researchControlCampaignReportHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
   researchWorkerCheckpointDigestInput,
@@ -128,6 +134,9 @@ import type {
   ResearchFindingRecord,
   ResearchDirectionRecord,
   ResearchBehaviorFingerprintRecord,
+  ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignRecord,
+  ResearchControlCampaignReportRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
   ResearchWorkerRecord,
@@ -364,6 +373,22 @@ export type LocalStoreErrorCode =
   | "candidate_arena_research_allocation_reload_failed"
   | "candidate_arena_research_allocation_reference_not_found"
   | "candidate_arena_research_allocation_tick_graph_mismatch"
+  | "invalid_research_control_campaign_input"
+  | "research_control_campaign_digest_mismatch"
+  | "research_control_campaign_conflict"
+  | "research_control_campaign_reload_failed"
+  | "invalid_research_control_campaign_arm_intent_input"
+  | "research_control_campaign_arm_intent_digest_mismatch"
+  | "research_control_campaign_arm_intent_reference_not_found"
+  | "research_control_campaign_arm_intent_reference_mismatch"
+  | "research_control_campaign_arm_intent_conflict"
+  | "research_control_campaign_arm_intent_reload_failed"
+  | "invalid_research_control_campaign_report_input"
+  | "research_control_campaign_report_digest_mismatch"
+  | "research_control_campaign_report_reference_not_found"
+  | "research_control_campaign_report_reference_mismatch"
+  | "research_control_campaign_report_conflict"
+  | "research_control_campaign_report_reload_failed"
   | "invalid_candidate_arena_tick_input"
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
@@ -649,6 +674,9 @@ type Collection =
   | "paper-trading-handoff-conformances"
   | "candidate-admission-decisions"
   | "candidate-arena-research-allocations"
+  | "research-control-campaigns"
+  | "research-control-campaign-arm-intents"
+  | "research-control-campaign-reports"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
 
@@ -3492,6 +3520,327 @@ export class LocalStore {
       );
     }
     return value;
+  }
+
+  async recordResearchControlCampaign(
+    campaign: ResearchControlCampaignRecord
+  ): Promise<ResearchControlCampaignRecord> {
+    if (!researchControlCampaignHasRuntimeShape(campaign)) {
+      throw new LocalStoreError(
+        "invalid_research_control_campaign_input",
+        "invalid ResearchControlCampaign input"
+      );
+    }
+    if (campaign.campaign_digest !== comparisonExactRecordDigest(
+      researchControlCampaignDigestInput(campaign)
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_digest_mismatch",
+        "ResearchControlCampaign digest does not match its content"
+      );
+    }
+    const existing = await this.getResearchControlCampaign(
+      campaign.research_control_campaign_id
+    );
+    if (existing) {
+      if (!sameJson(existing, campaign)) {
+        throw new LocalStoreError(
+          "research_control_campaign_conflict",
+          "ResearchControlCampaign is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(this.itemPath(
+      "research-control-campaigns",
+      campaign.research_control_campaign_id
+    ), campaign);
+    return campaign;
+  }
+
+  async getResearchControlCampaign(
+    campaignId: string
+  ): Promise<ResearchControlCampaignRecord | undefined> {
+    const campaign = await this.readOptionalRecord<unknown>(
+      "research-control-campaigns",
+      campaignId
+    );
+    return campaign === undefined
+      ? undefined
+      : this.assertPersistedResearchControlCampaign(campaign);
+  }
+
+  async listResearchControlCampaigns(): Promise<ResearchControlCampaignRecord[]> {
+    return (await this.readCollection<unknown>("research-control-campaigns"))
+      .map((campaign) => this.assertPersistedResearchControlCampaign(campaign))
+      .sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_control_campaign_id.localeCompare(
+          right.research_control_campaign_id
+        )
+      );
+  }
+
+  private assertPersistedResearchControlCampaign(
+    value: unknown
+  ): ResearchControlCampaignRecord {
+    if (!researchControlCampaignHasRuntimeShape(value) ||
+      value.campaign_digest !== comparisonExactRecordDigest(
+        researchControlCampaignDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_control_campaign_reload_failed",
+        "persisted ResearchControlCampaign is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  async recordResearchControlCampaignArmIntent(
+    intent: ResearchControlCampaignArmIntentRecord
+  ): Promise<ResearchControlCampaignArmIntentRecord> {
+    if (!researchControlCampaignArmIntentHasRuntimeShape(intent)) {
+      throw new LocalStoreError(
+        "invalid_research_control_campaign_arm_intent_input",
+        "invalid ResearchControlCampaign arm intent input"
+      );
+    }
+    if (intent.intent_digest !== comparisonExactRecordDigest(
+      researchControlCampaignArmIntentDigestInput(intent)
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_arm_intent_digest_mismatch",
+        "ResearchControlCampaign arm intent digest does not match its content"
+      );
+    }
+    const campaign = await this.getResearchControlCampaign(intent.campaign_ref.id);
+    if (!campaign) {
+      throw new LocalStoreError(
+        "research_control_campaign_arm_intent_reference_not_found",
+        "ResearchControlCampaign arm intent campaign was not found"
+      );
+    }
+    const arm = campaign.arms.find((candidate) =>
+      candidate.research_control_campaign_arm_intent_id ===
+        intent.research_control_campaign_arm_intent_id
+    );
+    if (!arm || intent.campaign_ref.record_kind !== "research_control_campaign" ||
+      intent.campaign_ref.id !== campaign.research_control_campaign_id ||
+      intent.campaign_digest !== campaign.campaign_digest ||
+      intent.arm_kind !== arm.arm_kind ||
+      intent.allocation_mode !== arm.allocation_mode ||
+      intent.baseline_snapshot_digest !== campaign.baseline.snapshot_digest ||
+      !sameJson(intent.tick_ids, arm.tick_ids) ||
+      Date.parse(intent.committed_at) < Date.parse(campaign.committed_at)) {
+      throw new LocalStoreError(
+        "research_control_campaign_arm_intent_reference_mismatch",
+        "ResearchControlCampaign arm intent does not match campaign evidence"
+      );
+    }
+    const existing = await this.getResearchControlCampaignArmIntent(
+      intent.research_control_campaign_arm_intent_id
+    );
+    if (existing) {
+      if (!sameJson(existing, intent)) {
+        throw new LocalStoreError(
+          "research_control_campaign_arm_intent_conflict",
+          "ResearchControlCampaign arm intent is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(this.itemPath(
+      "research-control-campaign-arm-intents",
+      intent.research_control_campaign_arm_intent_id
+    ), intent);
+    return intent;
+  }
+
+  async getResearchControlCampaignArmIntent(
+    intentId: string
+  ): Promise<ResearchControlCampaignArmIntentRecord | undefined> {
+    const intent = await this.readOptionalRecord<unknown>(
+      "research-control-campaign-arm-intents",
+      intentId
+    );
+    return intent === undefined
+      ? undefined
+      : this.assertPersistedResearchControlCampaignArmIntent(intent);
+  }
+
+  async listResearchControlCampaignArmIntents(): Promise<
+    ResearchControlCampaignArmIntentRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "research-control-campaign-arm-intents"
+    )).map((intent) =>
+      this.assertPersistedResearchControlCampaignArmIntent(intent)
+    ).sort((left, right) =>
+      left.committed_at.localeCompare(right.committed_at) ||
+      left.research_control_campaign_arm_intent_id.localeCompare(
+        right.research_control_campaign_arm_intent_id
+      )
+    );
+  }
+
+  private assertPersistedResearchControlCampaignArmIntent(
+    value: unknown
+  ): ResearchControlCampaignArmIntentRecord {
+    if (!researchControlCampaignArmIntentHasRuntimeShape(value) ||
+      value.intent_digest !== comparisonExactRecordDigest(
+        researchControlCampaignArmIntentDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_control_campaign_arm_intent_reload_failed",
+        "persisted ResearchControlCampaign arm intent is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  async recordResearchControlCampaignReport(
+    report: ResearchControlCampaignReportRecord
+  ): Promise<ResearchControlCampaignReportRecord> {
+    if (!researchControlCampaignReportHasRuntimeShape(report)) {
+      throw new LocalStoreError(
+        "invalid_research_control_campaign_report_input",
+        "invalid ResearchControlCampaign report input"
+      );
+    }
+    if (report.report_digest !== comparisonExactRecordDigest(
+      researchControlCampaignReportDigestInput(report)
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_report_digest_mismatch",
+        "ResearchControlCampaign report digest does not match its content"
+      );
+    }
+    const campaign = await this.getResearchControlCampaign(report.campaign_ref.id);
+    const intents = await Promise.all(report.arms.map((arm) =>
+      this.getResearchControlCampaignArmIntent(arm.arm_intent_ref.id)
+    ));
+    if (!campaign || intents.some((intent) => intent === undefined)) {
+      throw new LocalStoreError(
+        "research_control_campaign_report_reference_not_found",
+        "ResearchControlCampaign report campaign or arm intent was not found"
+      );
+    }
+    if (!this.researchControlCampaignReportGraphMatches(
+      report,
+      campaign,
+      intents as [
+        ResearchControlCampaignArmIntentRecord,
+        ResearchControlCampaignArmIntentRecord
+      ]
+    )) {
+      throw new LocalStoreError(
+        "research_control_campaign_report_reference_mismatch",
+        "ResearchControlCampaign report does not match campaign evidence"
+      );
+    }
+    const existing = await this.getResearchControlCampaignReport(
+      report.research_control_campaign_report_id
+    );
+    if (existing) {
+      if (!sameJson(existing, report)) {
+        throw new LocalStoreError(
+          "research_control_campaign_report_conflict",
+          "ResearchControlCampaign report is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(this.itemPath(
+      "research-control-campaign-reports",
+      report.research_control_campaign_report_id
+    ), report);
+    return report;
+  }
+
+  async getResearchControlCampaignReport(
+    reportId: string
+  ): Promise<ResearchControlCampaignReportRecord | undefined> {
+    const report = await this.readOptionalRecord<unknown>(
+      "research-control-campaign-reports",
+      reportId
+    );
+    return report === undefined
+      ? undefined
+      : this.assertPersistedResearchControlCampaignReport(report);
+  }
+
+  async listResearchControlCampaignReports(): Promise<
+    ResearchControlCampaignReportRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "research-control-campaign-reports"
+    )).map((report) =>
+      this.assertPersistedResearchControlCampaignReport(report)
+    ).sort((left, right) =>
+      left.completed_at.localeCompare(right.completed_at) ||
+      left.research_control_campaign_report_id.localeCompare(
+        right.research_control_campaign_report_id
+      )
+    );
+  }
+
+  private assertPersistedResearchControlCampaignReport(
+    value: unknown
+  ): ResearchControlCampaignReportRecord {
+    if (!researchControlCampaignReportHasRuntimeShape(value) ||
+      value.report_digest !== comparisonExactRecordDigest(
+        researchControlCampaignReportDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_control_campaign_report_reload_failed",
+        "persisted ResearchControlCampaign report is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private researchControlCampaignReportGraphMatches(
+    report: ResearchControlCampaignReportRecord,
+    campaign: ResearchControlCampaignRecord,
+    intents: [
+      ResearchControlCampaignArmIntentRecord,
+      ResearchControlCampaignArmIntentRecord
+    ]
+  ): boolean {
+    if (report.campaign_ref.record_kind !== "research_control_campaign" ||
+      report.campaign_ref.id !== campaign.research_control_campaign_id ||
+      report.campaign_digest !== campaign.campaign_digest) {
+      return false;
+    }
+    return report.arms.every((armReport, index) => {
+      const campaignArm = campaign.arms[index]!;
+      const intent = intents[index]!;
+      const tickIds = armReport.population_diversity.tick_series.map(
+        (tick) => tick.tick_id
+      );
+      return armReport.arm_kind === campaignArm.arm_kind &&
+        armReport.allocation_mode === campaignArm.allocation_mode &&
+        armReport.arm_intent_ref.record_kind ===
+          "research_control_campaign_arm_intent" &&
+        armReport.arm_intent_ref.id ===
+          campaignArm.research_control_campaign_arm_intent_id &&
+        intent.research_control_campaign_arm_intent_id ===
+          armReport.arm_intent_ref.id &&
+        intent.intent_digest === armReport.arm_intent_digest &&
+        intent.campaign_ref.id === campaign.research_control_campaign_id &&
+        intent.campaign_digest === campaign.campaign_digest &&
+        intent.arm_kind === campaignArm.arm_kind &&
+        intent.allocation_mode === campaignArm.allocation_mode &&
+        sameJson(intent.tick_ids, campaignArm.tick_ids) &&
+        tickIds.length === campaignArm.tick_ids.length &&
+        campaignArm.tick_ids.every((tickId) => tickIds.includes(tickId)) &&
+        armReport.tick_refs.every((tickRef, tickIndex) =>
+          tickRef.id === `candidate-arena-tick-${campaignArm.tick_ids[tickIndex]}`
+        ) && armReport.allocation_refs.every((allocationRef, tickIndex) =>
+          allocationRef.id ===
+            `candidate-arena-research-allocation-${campaignArm.tick_ids[tickIndex]}`
+        );
+    });
   }
 
   async recordResearchDirection(
