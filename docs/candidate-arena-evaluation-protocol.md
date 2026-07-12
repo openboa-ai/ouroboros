@@ -47,6 +47,10 @@ persisted schema names. Any future public or persisted fields require a separate
 12. A checkpoint-enabled logical ResearchWorker may continue only through a new allocation and
     commitment. Every old commitment closes once as completed or failed-closed before a later
     worker effect; restart never adopts its process, budget, seed, or sealed suite.
+13. Population diversity is a read-only diagnostic. Assigned direction and exact observed behavior
+    distributions remain separate; behavior comparisons require one exact protocol/development-
+    suite cohort, and no entropy value may become rank, admission, allocation, qualification, or
+    promotion authority.
 
 ## Evidence Lifecycle
 
@@ -55,6 +59,7 @@ persisted schema names. Any future public or persisted fields require a separate
 | Inspectable research experiment | Yes | Yes | No | No |
 | Development `ResearchPreflight` | Aggregate development feedback only | Yes | No | No |
 | `ResearchBehaviorFingerprint` | No raw cross-candidate observations; generic duplicate Finding after close | Yes | No; may exclude an exact admitted duplicate | No |
+| `ResearchPopulationDiversity` | Aggregate counts and entropy only; no raw identity or evaluator evidence | Yes, as concentration context only | No | No |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
@@ -80,6 +85,18 @@ decisions; quarantined, duplicate, orphaned, cross-suite, later, or corrupt evid
 a baseline. Exact duplicates retain Finding and Lineage without materialization. Missing complete
 canonical observations quarantine an otherwise admissible candidate. Version 1 keeps exact
 quantity, so approximate sizing similarity remains a separate future policy.
+
+`ResearchPopulationDiversity` is reconstructed rather than persisted as authority. It uses at most
+the latest ten completed CandidateArena ticks. Every direction result counts as an assigned sample;
+only complete fingerprints with exact window commitment and direction linkage count as observed
+behavior. Shannon entropy is rounded to six places. Assigned normalization uses the maximum
+possible entropy for the smaller of sample count and seven canonical directions; behavior
+normalization uses the maximum for its sample count. Multiple fingerprint protocol/development-
+suite cohorts report `incomparable_suites` and omit global and per-direction unique/entropy claims.
+Admission classifications join only through the exact commitment graph. Missing historical links
+are ignored, while a window commitment missing its ResearchDirection fails the derived read. The
+same aggregate enters CandidateArena and next-worker context without raw IDs, digests,
+observations, scenarios, sealed outcomes, or paper evidence.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
 contiguous stable-worker link, current and cumulative development submission counts, zero remaining
@@ -454,6 +471,11 @@ The following current surfaces require implementation work before P0 can pass:
   admitted exact protocol/suite/decision key to own a population slot, preserve later matches as
   `behavior_duplicate` Finding/Lineage, and quarantine an otherwise admissible submission when the
   fingerprint is unavailable.
+- CandidateArena now derives `ResearchPopulationDiversity` over its latest ten completed ticks and
+  exposes the same aggregate to the next ResearchWorker. Assigned labels and exact observed
+  behavior remain orthogonal; cross-suite evidence is incomparable, and entropy changes no
+  allocation, rank, admission, qualification, or promotion policy. Directed/undirected,
+  memory/no-memory, adaptive/static, and agent/baseline causal controls remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 

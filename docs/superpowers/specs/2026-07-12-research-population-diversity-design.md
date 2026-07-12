@@ -1,6 +1,6 @@
 # ResearchPopulationDiversity Design
 
-**Status:** Approved for implementation
+**Status:** Complete
 
 ## Goal
 
@@ -204,3 +204,26 @@ The frontier is complete when tests prove:
   the behavior distribution;
 - CandidateArena and next-worker context expose only bounded aggregate metrics;
 - focused tests, typechecks, repository guards, product-loop regression, and the full suite pass.
+
+## Implemented Evidence
+
+The completed implementation uses a strict domain read model plus a pure application builder. The
+builder selects the same sorted latest-ten-tick window exposed by CandidateArena, joins only exact
+commitment-bound direction, fingerprint, and admission evidence, and returns aggregate fields that
+pass `researchPopulationDiversityHasRuntimeShape`. CandidateArena and next-worker context share the
+same aggregate object. They expose no raw fingerprint identity, digest, observation, scenario,
+sealed result, or paper outcome.
+
+Runtime-shape and pure calculation tests cover measured, insufficient, and incomparable states;
+known uniform and non-uniform Shannon entropy; label/behavior disagreement; separate admission
+classifications; canonical direction order; orphan and historical-unbound exclusion; hidden-field
+non-interference; latest-ten truncation; cross-suite closure; and corrupted direction linkage. A
+real CandidateArena distinct-to-exact-duplicate sequence proves the shared Operator read model and
+next-worker context behavior.
+
+Implementation and canonical-doc evidence is 287/287 suites and 2103/2103 tests, with all
+workspace typechecks passing; the final design/plan-only writeback also passed repository guards.
+This closes aggregate concentration observability only. Semantic method
+families, approximate behavior similarity, entropy-driven allocation, directed/undirected,
+memory/no-memory, adaptive/static discovery-yield, agent/baseline, and prospective economic controls
+remain separate frontiers.

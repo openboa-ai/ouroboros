@@ -30,6 +30,9 @@ satisfies the bounded target paper event protocol before admission and generated
 separate from one rotating, evaluator-owned sealed admission submission.
 `ResearchBehaviorFingerprint` is the development-only population identity record that binds one
 frozen SystemCode to normalized effective orders on one exact protocol and suite digest.
+`ResearchPopulationDiversity` is the read-only aggregate that separately measures assigned
+direction concentration and exact same-suite observed-behavior concentration over the latest ten
+completed ticks.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.
@@ -92,6 +95,14 @@ development scenario, excluding rationale, timestamps, event noise, score, PnL, 
 and paper evidence. Only an earlier admitted exact match on the same protocol and suite can consume
 the population slot; duplicate attempts remain causal research memory. This does not claim that
 programs are semantically equivalent outside the bounded suite.
+
+Population concentration is now observable without becoming policy. CandidateArena derives
+Shannon entropy for assigned directions and, only when every sample shares one exact fingerprint
+protocol and development-suite cohort, for observed behavior keys. A mixed cohort is explicitly
+`incomparable_suites`; global and per-direction unique claims are omitted. The next worker receives
+only the aggregate counts and entropy, never raw identity or evaluator evidence. High entropy does
+not prove quality or independence, low entropy does not prove failure, and neither value changes
+allocation, rank, admission, paper qualification, or promotion.
 
 This is a bounded information-barrier improvement, not evidence that synthetic replay predicts
 future paper economics or that evaluator query caps eliminate reward hacking. Prospective paper

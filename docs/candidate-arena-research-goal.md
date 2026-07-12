@@ -131,12 +131,23 @@ Raw fingerprint evidence is absent from next-worker context, and sealed or paper
 enter the key. This proves bounded exact observational duplicate detection only, not semantic
 equivalence or near-duplicate clustering.
 
+Current partial implementation evidence also makes population concentration reconstructible.
+`ResearchPopulationDiversity` uses the same latest ten completed ticks as CandidateArena readback,
+reports assigned-direction Shannon entropy separately from exact observed-behavior entropy, and
+counts admitted submissions, exact behavior duplicates, artifact duplicates, and unavailable
+fingerprints separately. Behavior entropy and unique counts exist only for one exact fingerprint
+protocol/development-suite cohort; mixed cohorts are `incomparable_suites` globally and by
+direction. The next worker receives the bounded aggregate without raw fingerprint identity,
+observations, scenarios, sealed results, or paper outcomes. This is direct measurement evidence for
+concentration, not completion of Genuine population diversity, Adaptive allocation, AI-agent
+leverage, Causal research memory, or Economic frontier improvement.
+
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
 clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
-worker-chosen research sequences, controlled memory and AI-agent ablations, production comparison
-scheduling, automatic promotion, champion runner handoff, private/live authority, and the other
-completion axes remain open.
+worker-chosen research sequences, controlled directed/undirected, memory, allocation, and AI-agent
+ablations, production comparison scheduling, automatic promotion, champion runner handoff,
+private/live authority, and the other completion axes remain open.
 
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a
 versioned evaluation policy. They must be declared before a run rather than chosen after results are

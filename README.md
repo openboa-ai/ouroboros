@@ -65,6 +65,14 @@ quarantine an otherwise admissible submission. This is bounded observational equ
 development suite, not semantic program equivalence or economic evidence, and sealed or paper
 outcomes never enter the fingerprint.
 
+CandidateArena reconstructs `ResearchPopulationDiversity` over the same latest ten completed ticks
+shown in its read model. Assigned `ResearchDirection` entropy and exact observed-behavior entropy
+remain separate. Behavior is comparable only inside one exact fingerprint protocol and development
+suite; mixed cohorts report `incomparable_suites` and make no unique-count or entropy claim. The
+aggregate is also available to the next ResearchWorker without raw fingerprint, observation,
+scenario, suite-digest, sealed, or paper evidence. It is a search diagnostic with no rank,
+admission, allocation, qualification, promotion, order, private, or live authority.
+
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
 artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
@@ -75,10 +83,12 @@ orphan in commitment order. An already persisted exact admission reconstructs on
 checkpoint; otherwise the orphan becomes `failed_closed/restart_recovery`. Neither path reruns the
 old worker, artifact, provider, sandbox, budget, evaluator seed, or sealed suite.
 
-This isolation reduces direct evaluator reuse and differential probing; it does not prove that a
+This isolation and diversity measurement reduce direct evaluator reuse and make population
+concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
 or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
-de-risking sequences, controlled discovery-yield and long-duration restart soak evidence,
+de-risking sequences, directed-versus-undirected and memory/baseline controls, controlled
+discovery-yield and long-duration restart soak evidence,
 production comparison scheduling, automatic promotion, champion runner handoff, private/live
 authority, P0, and the overall Goal remain open.
 

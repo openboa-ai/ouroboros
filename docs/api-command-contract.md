@@ -177,7 +177,7 @@ provenance, `TradingReview` active target binding, latest TradingSystem paper de
 been emitted, research-efficiency summaries and compact `CandidateArenaResearchAllocation`
 projections for latest CandidateArena ticks, compact handoff-conformance ID/status/reason for each
 direction result, compact research-preflight commitment ID/development submission count/generic
-terminal status and reason, and authority flags. It never exposes raw preflight seed, sealed suite,
+terminal status and reason, `ResearchPopulationDiversity`, and authority flags. It never exposes raw preflight seed, sealed suite,
 scenario identity/result, score delta, evaluator trace, event path, or runner command evidence.
 
 `ResearchEfficiency` is not a leaderboard or promotion metric. Its compatibility totals retain
@@ -213,6 +213,16 @@ rationale, timestamps, event noise, score, PnL, sealed results, and paper eviden
 the matching ref. `behavior_duplicate` creates no candidate but retains Finding/Lineage, while
 `behavior_fingerprint_unavailable` quarantines an otherwise admissible submission. Operator and
 worker readback expose only the generic admission reason and Finding, not raw fingerprint records.
+
+`CandidateArenaReadModel.research_population_diversity` is required and uses protocol
+`research_population_diversity_v1`. It reports the latest completed-tick count, separate assigned-
+direction and observed-behavior distributions, aggregate admission/duplicate/unavailable counts,
+canonical per-direction aggregate rows, and closed authority. Comparable distributions include
+sample count, unique count, Shannon entropy bits, and normalized entropy; fewer than two samples
+are `insufficient_evidence`. Observed behavior from more than one exact fingerprint protocol and
+development-suite cohort is `incomparable_suites` and omits global and per-direction unique or
+entropy fields. No raw fingerprint ID, digest, observation, scenario, sealed result, paper outcome,
+or allocation mutation is part of this read model.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the

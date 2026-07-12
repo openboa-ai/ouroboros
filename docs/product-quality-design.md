@@ -593,6 +593,7 @@ element is probably decoration or misplaced behavior.
 | `CandidateArena` | Keep many candidate hypotheses moving through research, evaluation, findings, and lineage. | Application use case and read model; UI only controls and displays it. | Autonomy must increase candidate diversity, not edit one artifact until it looks convincing. | Durable ResearchWorker workspace/recovery ownership and discovery-yield evidence under controlled runs. |
 | `ResearchDirection` | Name the lane being explored so parallel candidates do not become random variants. | Domain vocabulary plus CandidateArena context. | Directions must be distinct enough to teach the next tick something. | Direction scoring that includes paper-board learning without making it promotion authority. |
 | `CandidateArenaResearchAllocation` | Freeze which directions run, why they run, and their bounded concurrency and experiment budgets before worker effects. | Domain record, application allocator, LocalStore, latest-tick read model, and researcher context. | Focus must change actual resources while completed-history exploration prevents entropy collapse. | Longitudinal adaptive-versus-static discovery-yield evidence; do not infer a learned reward model from scheduling scores. |
+| `ResearchPopulationDiversity` | Make assigned-lane and exact observed-behavior concentration separately visible. | Pure application read-model builder over bounded append-only evidence; shared CandidateArena and next-worker aggregate. | Cross-suite samples must be incomparable, raw fingerprints must stay hidden, and entropy must never become quality or authority. | Add semantic-family classification or policy feedback only through a separately versioned evaluator and controlled causal design. |
 | `ResearchPreflightCommitment` | Freeze source, worker, allocation, development policy, and one evaluator-owned rotating sealed set before worker effects. | Domain record, in-memory evaluator plan, application use case, and append-only LocalStore graph. | Development feedback must remain useful without becoming admission evidence; raw seed and sealed scenarios stay unavailable to workers. | Durable evaluator-owned recovery only with an explicit design; current process loss deliberately fails closed. |
 | `ResearchWorker` | Generate a candidate inside one direction with repo context and tool limits. | Provider adapter plus application orchestration. | Worker output is material, not proof. | Better prompt context from failed paper evidence, lineage clusters, and protocol violations. |
 | `TradingSystem` | Own its decision cadence and emit bounded paper events. | Candidate runtime and paper event protocol. | It must be able to include code, tools, or internal agents without touching exchange authority. | Richer internal agent/tool loops that still emit only validated `OrderRequest`, `cancel_order`, `hold`, or `no_action` events. |
@@ -747,6 +748,7 @@ urgency. Each item should become a bounded frontier with tests before implementa
 | P2 | Make market chart freshness and source mode more visible than visual movement. | Trading charts are context; stale or fixture data must not look persuasive. | BTCUSDT chart and market readback. | UI tests for stale, fixture, WebSocket, and REST fallback states. | Chart remains below qualification and provenance. |
 | P2 | Keep finding clusters and bounded allocation as shared read-model and Research context. | Research should improve from accumulated evidence while preserving exploration and reconstructable resource choices. | `CandidateArenaReadModel`, researcher context, and Web Research surface. | Allocation/read-model/context tests showing actual three-of-five selection, focus/exploration budgets, completed-history coverage, equal-bound static control, and closed authority. | Clusters and efficiency guide research scheduling only; no rank, qualification, Trading review blocker, promotion, order, private, or live authority. |
 | P2 | Add provider-dollar cost when adapters expose reliable usage. | Cost matters for autonomous loops but should not be guessed. | Provider adapters, `ResearchEfficiency`. | Adapter tests with explicit usage evidence and no value when unavailable. | Cost is research efficiency, not rank or promotion gate. |
+| P3 | Keep `ResearchPopulationDiversity` as a shared aggregate diagnostic before testing policy feedback. | The system must distinguish scheduler diversity from observed behavior diversity without manufacturing cross-suite novelty. | `CandidateArenaReadModel`, pure application builder, and next-worker context. | Known-distribution entropy tests, exact-linkage and mixed-cohort adversarial tests, E2E distinct/duplicate context tests, and equal-bound future controls. | No automatic collapse threshold or rank, admission, allocation, qualification, promotion, order, private, or live authority. |
 
 Current P0 recommendation evidence: `buildTradingFirstViewportRecommendation` in `packages/domain`
 now owns the read-only first-viewport recommendation contract. It uses
@@ -918,6 +920,19 @@ the source cluster as read-only next-generation context and labels its `Research
 Allocation/read-model/context tests and Web surface tests prove paper failures can change actual
 bounded research resources without changing paper rank, qualification, Trading review, promotion,
 order, private, or live authority.
+
+Current P3 concentration evidence: `ResearchPopulationDiversity` reconstructs the same latest ten
+completed ticks exposed by CandidateArena. It separately reports assigned `ResearchDirection`
+Shannon entropy and exact observed `ResearchBehaviorFingerprint` entropy, with six-place canonical
+rounding. Observed behavior is comparable only within one exact fingerprint protocol and
+development-suite cohort; mixed cohorts report `incomparable_suites` and omit global and
+per-direction unique/entropy claims. Admission, exact behavior duplicate, artifact duplicate, and
+unavailable fingerprint counts remain separate. CandidateArena and the next ResearchWorker share
+only this bounded aggregate. Tests prove label/behavior disagreement, known uniform and non-uniform
+entropy, orphan and hidden-evidence non-interference, latest-ten truncation, cross-suite closure,
+and real distinct-to-duplicate Arena readback. This measures concentration but does not establish
+semantic strategy families, directed-worker lift, memory lift, allocation lift, agent leverage, or
+economic improvement; those require equal-bound causal controls.
 
 Current failure-remediation evidence: `PaperTradingFailure` now stays classified across CLI, TUI,
 and Web surfaces as kind, human summary, next action, then raw reason. That order makes the failure
