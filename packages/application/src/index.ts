@@ -14,6 +14,7 @@ export * from "./trading/research/runtime-config";
 export * from "./trading/research/types";
 export * from "./trading/research/paper-handoff-conformance";
 export * from "./trading/research/preflight-plan";
+export * from "./trading/research/behavior-fingerprint";
 export * from "./trading/candidate/promoted-candidate-bundles";
 export * from "./trading/candidate/replay-run-ledger";
 export * from "./trading/candidate/run-replay";

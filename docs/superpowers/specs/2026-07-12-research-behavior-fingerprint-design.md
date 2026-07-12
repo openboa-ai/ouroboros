@@ -137,7 +137,8 @@ not sealed data.
 For the development evaluation selected before sealed admission:
 
 1. require the commitment's exact `research_development_replay_v1` suite identity;
-2. require a non-empty scenario result set with unique scenario IDs;
+2. require the complete canonical scenario ID set for the committed suite with no missing,
+   additional, or duplicate IDs;
 3. for every scenario, select the final externally recorded `POST /orders/validate` body;
 4. require an exact valid order shape with finite quantity and official BTCUSDT spelling preserved;
 5. remove `reason` and all other fields;
@@ -231,4 +232,3 @@ The frontier is complete when tests prove:
 - duplicate evidence reaches next-generation Finding context without entering the leaderboard;
 - focused tests, package typechecks, repository guards, reference-paper soak, operator product-loop
   smoke, and the full test suite pass.
-

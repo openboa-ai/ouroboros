@@ -99,19 +99,19 @@ matrix passed 2 files and 80 tests, and the `@ouroboros/domain` typecheck passed
 - Produces: `deriveResearchBehaviorFingerprint(input): ResearchBehaviorFingerprintRecord`.
 - Produces: a typed unavailable error for incomplete canonical observations.
 
-- [ ] **Step 1: Write failing normalization tests**
+- [x] **Step 1: Write failing normalization tests**
 
 Assert that scenario input order, timestamps, rationale, candidate event noise, scores, metrics,
 PnL, and sealed result objects do not alter the record's fingerprint digest. Assert that the final
 externally recorded `POST /orders/validate` decision is selected and stripped to the four canonical
 order fields.
 
-- [ ] **Step 2: Write failing fail-closed tests**
+- [x] **Step 2: Write failing fail-closed tests**
 
 Reject empty results, duplicate scenario IDs, missing validation requests, malformed orders,
 non-finite quantities, and commitment/SystemCode/suite linkage mismatches.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run packages/application/src/trading/research/behavior-fingerprint.test.ts
@@ -119,20 +119,24 @@ npx vitest run packages/application/src/trading/research/behavior-fingerprint.te
 
 Expected: FAIL because the derivation module is absent.
 
-- [ ] **Step 4: Implement pure derivation**
+- [x] **Step 4: Implement pure derivation**
 
 Read only development `provider_requests`, normalize the final effective validation body, sort by
 scenario ID, compute the canonical digest, and return a closed-authority domain record. Do not read
 sealed admission data.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 ```bash
-npx vitest run packages/application/src/trading/research/behavior-fingerprint.test.ts packages/application/src/trading/research/replay-set-runner.test.ts
+npx vitest run packages/application/src/trading/research/behavior-fingerprint.test.ts packages/application/src/trading/research/preflight-plan.test.ts
 npm run typecheck --workspace @ouroboros/application
 git add packages/application/src/index.ts packages/application/src/trading/research/behavior-fingerprint.ts packages/application/src/trading/research/behavior-fingerprint.test.ts
 git commit -m "feat: derive development behavior fingerprints"
 ```
+
+Evidence: the RED run failed because the derivation module did not exist. The final application
+matrix passed 2 files and 25 tests, including full canonical v1 suite coverage, and the
+`@ouroboros/application` typecheck passed.
 
 ---
 
