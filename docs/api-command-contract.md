@@ -23,8 +23,9 @@ Current command groups:
 - `arena`: status, start, stop, tick, cycle. `arena.start` starts the repeating below-authority
   autonomous paper loop: each runner tick creates candidates, selects the highest-ranked candidate
   created by that tick, and starts or resumes that candidate's selected continuous
-  `PaperTradingEvaluation`. `arena.tick` is one research round: candidate generation,
-  research-time replay/backtest preflight, leaderboard update, findings, and lineage. By itself it
+  `PaperTradingEvaluation`. `arena.tick` is one research round: pre-effect allocation and
+  ResearchPreflight commitment, bounded development feedback, one frozen sealed submission,
+  handoff/admission, leaderboard update, findings, and lineage. By itself it
   is not continuous paper trading and must not be treated as final evaluation authority.
   `arena.cycle` runs one below-authority autonomous paper cycle: execute a research tick, select
   the highest-ranked candidate created by that tick, then start or resume its selected continuous
@@ -172,16 +173,20 @@ latest command results, latest `TradingPromotion` state and compact comparison-c
 provenance, `TradingReview` active target binding, latest TradingSystem paper decision when one has
 been emitted, research-efficiency summaries and compact `CandidateArenaResearchAllocation`
 projections for latest CandidateArena ticks, compact handoff-conformance ID/status/reason for each
-direction result, and authority flags.
+direction result, compact research-preflight commitment ID/development submission count/generic
+terminal status and reason, and authority flags. It never exposes raw preflight seed, sealed suite,
+scenario identity/result, score delta, evaluator trace, event path, or runner command evidence.
 
-`ResearchEfficiency` is not a leaderboard or promotion metric. It summarizes provider request
-count, runner command count, scenario count, and elapsed milliseconds for a CandidateArena
-direction result with `not_promotion_authority`, so researchers can compare autonomy efficiency
-without weakening paper evidence or Trading review authority.
+`ResearchEfficiency` is not a leaderboard or promotion metric. Its compatibility totals retain
+development provider-request, runner-command, scenario, and elapsed-time semantics used by bounded
+allocation. Nested `development` and `sealed_admission` summaries expose phase submission and cost
+counts under `not_promotion_authority`; they contain no scenario identity, outcome, score, event,
+path, command evidence, or evaluator internals.
 
 `CandidateAdmissionDecision` is the research-only external gate between `ResearchPreflight` and
-candidate materialization. Every new admitted decision binds the exact source/submitted SystemCode
-digests, external evaluation, and `PaperTradingHandoffConformance` ref/digest/status. Duplicate or
+candidate materialization. Every new-format admitted decision binds the exact pre-effect
+`ResearchPreflightCommitment`, source/submitted SystemCode digests, sealed suite and sequence-one
+terminal evaluation, and `PaperTradingHandoffConformance` ref/digest/status. Duplicate or
 pre-probe quarantine decisions may have no conformance linkage. A CandidateArena direction result
 is `created` only when the persisted decision is `admitted` with
 `runnable_paper_handoff: true` and exact passed conformance. Unchanged output is `duplicate` and
@@ -200,8 +205,9 @@ change paper rank, grant promotion, or enable live authority.
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the
 ExperimentRun, handoff conformance, TradingEvaluationResult, and ResearchFinding form one
-consistent evidence chain. Historical admissions without conformance linkage remain readable but
-cannot authorize generated-candidate paper start.
+consistent evidence chain. Historical evaluation/admission records without preflight linkage remain
+readable for compatibility, but they cannot satisfy the new sealed-admission graph or authorize
+generated-candidate paper start.
 
 The legacy `runAgentTradingCycle` and `runCandidateGeneration` direct-materialization helpers are
 retired and return `agent_trading_cycle_retired_use_candidate_arena` and

@@ -6,7 +6,9 @@ Ouroboros is organized around the Candidate Arena trust kernel:
 CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded development replay/backtest feedback
+-> frozen SystemCode and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> CandidateAdmissionDecision and materialization
 -> leaderboard, findings, and lineage
@@ -20,8 +22,13 @@ Inside that compact product-facing sequence, the enforced evidence spine inserts
 `PaperTradingHandoffConformance` and `CandidateAdmissionDecision` between ResearchPreflight and
 selected Paper Trading.
 
-Researchers and LLM agents are candidate generators. Replay/backtest is a research tool, not final
-evaluation authority. Exact external paper handoff conformance gates new admission and generated
+Researchers and LLM agents are candidate generators. Development replay/backtest is an adaptive
+research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
+one `ResearchPreflightCommitment` to the allocation, direction, worker, source SystemCode, bounded
+development suite, and evaluator-owned sealed suite commitment. The worker never receives the raw
+seed, sealed scenarios, or sealed outcome; one development-selected artifact is frozen and may be
+submitted to that sealed set only once. Process loss fails closed rather than resampling. Exact
+terminal commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and generated
 paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
 canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
 undeclared closure state. Continuous paper trading is the product evaluation
@@ -29,6 +36,9 @@ authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs
 Trading Runs, not to every candidate.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
+
+The separation is an evaluator-isolation control, not a proof of economic generalization or a
+complete reward-hacking defense. Prospective continuous paper comparison remains above it.
 
 Selected Paper Trading is a running `TradingSystem` session, not a snapshot-driven decision helper.
 The TradingSystem owns its decision cadence and emits `OrderRequest`s when its own strategy, tools,

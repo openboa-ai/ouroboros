@@ -28,7 +28,7 @@ authority that belongs to a higher layer.
 
 | Layer | Autonomous work | Authority boundary | Evidence |
 | --- | --- | --- | --- |
-| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across `ResearchDirection` lanes; run sealed `ResearchPreflight` and external target paper-protocol conformance; record admission, findings, and lineage. | Researchers and providers generate candidates; they do not grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `SystemCode`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Evaluation`, `Finding`, `Lineage`, research leaderboard. |
+| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across `ResearchDirection` lanes; precommit bounded development and one rotating sealed admission set; freeze one submission; run external target paper-protocol conformance; record admission, findings, and lineage. | Researchers may consume aggregate development feedback, but never sealed seed/scenarios/outcomes, grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `ResearchPreflightCommitment`, `SystemCode`, sealed terminal `Evaluation`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Finding`, `Lineage`, research leaderboard. |
 | Selected paper evaluation | Run the selected `TradingSystem` as a managed paper session; inject `TRADING_API_BASE_URL`; observe emitted events on a schedule; update fake account, fills, score, and Ledger evidence. | `TradingSystem` owns decision cadence; Gateway validates and fake executes; paper observation never invents a trade decision from a refreshed snapshot. | `PaperTradingEvaluation`, observations, public market snapshots, public execution evidence, fake account state, Ledger chain. |
 | Paper qualification | Decide whether accumulated paper evidence is mature enough to trust. | Rank is not readiness. A high paper score can still be collecting evidence or blocked by quality. | `PaperTradingQualification` status, reasons, evidence window, runner state, market/fill quality. |
 | Trading review promotion | Move one qualified paper-backed candidate into Trading review. | Operator or explicit policy decides promotion. `TradingPromotion` remains `not_live`; it does not bind exchange authority. | `TradingPromotion`, `TradingReview`, selected candidate match/mismatch, paper board row, Ledger readback. |
@@ -44,6 +44,9 @@ For Ouroboros, "prototype" and "production" are product states, not UI polish le
 - Prototype or research work lives in `ResearchPreflight`: replay, backtest, fixtures, generated
   code, provider traces, and candidate self-reports. These are useful for search and rejection, but
   they are not final product proof.
+- `ResearchPreflightCommitment` is persisted before worker effects. It separates bounded adaptive
+  development feedback from one evaluator-owned rotating sealed admission submission and stores no
+  raw seed or sealed scenario. Process loss is terminal for that in-memory plan.
 - `PaperTradingHandoffConformance` externally checks the exact submitted artifact against the
   bounded target paper event protocol before admission and generated-candidate paper start. It is
   runtime compatibility evidence, not economic or qualification evidence.
@@ -130,10 +133,12 @@ The next level of detail should improve the autonomous loop without widening aut
 - Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
   signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost and durable
   ResearchWorker workspace/process recovery remain future detail.
-- Exact submitted-artifact paper handoff conformance is now enforced before new admission,
-  materialization, and generated-candidate paper start. Repeated-score/window probing,
-  behavior-level duplicate detection, long-duration liveness, and durable worker recovery remain
-  future detail rather than being implied by this bounded proof.
+- Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
+  conformance, and admission are now bound before materialization and generated-candidate paper
+  start. Direction readback is compact, and efficiency separates development from sealed counts
+  without promotion authority. Behavior-level duplicate detection, broader evaluator side
+  channels, durable worker recovery, and economic generalization remain future detail; a query cap
+  is not treated as a reward-hacking proof.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

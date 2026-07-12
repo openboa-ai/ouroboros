@@ -26,6 +26,8 @@ simulation inside candidate creation; `PaperTradingEvaluation` is selected-candi
 paper trading over live public market data. Between them,
 `PaperTradingHandoffConformance` is external research-only proof that the exact submitted artifact
 satisfies the bounded target paper event protocol before admission and generated-candidate start.
+`ResearchPreflightCommitment` is the pre-effect record that keeps adaptive development feedback
+separate from one rotating, evaluator-owned sealed admission submission.
 
 ## Source Of Truth
 
@@ -41,7 +43,9 @@ authority.
 
 ```text
 parallel TradingSystem candidates
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded development replay/backtest feedback
+-> frozen artifact and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
@@ -56,12 +60,20 @@ research tool, not final evaluation authority. It can help researchers create, c
 ideas before a candidate enters paper, but it must not become the product leaderboard authority for
 living agent-based systems.
 
-Replay success alone does not establish runnable handoff. New admitted candidates bind exact
-passed `PaperTradingHandoffConformance`, and generated-candidate paper start revalidates it before
+Development replay success alone does not establish runnable handoff. CandidateArena persists the
+allocation, direction, worker, source bytes, development budget, and sealed-suite commitments
+before worker effects. It freezes one development-selected artifact, allows one sealed submission,
+and exposes no raw seed, sealed scenario, score, or evaluator internals to the worker. New admitted
+candidates bind that exact terminal graph and passed `PaperTradingHandoffConformance`, and
+generated-candidate paper start revalidates it before
 effects. Generated single-file Python SystemCode identity includes its frozen manifest and sole
 editable entrypoint; undeclared closure state is invalid. Rejected protocol evidence stays in causal research memory, while infrastructure failure
 stays platform-attributed. Conformance has no economic, qualification, promotion, order, private,
 or live authority.
+
+This is a bounded information-barrier improvement, not evidence that synthetic replay predicts
+future paper economics or that evaluator query caps eliminate reward hacking. Prospective paper
+evidence and the remaining P0 controls stay authoritative.
 
 Continuous paper trading is the evaluation authority. Selected candidates run against live public
 market data through the Gateway-owned `MarketDataPort`, fake account, fake executor, and Ledger.

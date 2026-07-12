@@ -10,7 +10,9 @@ economic accounting, not self-sufficient proof of strategy quality.
 
 ```text
 parallel TradingSystem candidates
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded development replay/backtest feedback
+-> frozen one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
@@ -45,6 +47,9 @@ paper event protocol before admission and generated-candidate paper start.
    - Generate many candidates, not one best bot.
    - Use replay, backtest, and simulation as research-time tools for candidate creation, sanity
      checks, and preflight rejection.
+   - Commit allocation, source identity, development budget, and an evaluator-owned rotating sealed
+     set before worker effects. Let development feedback guide artifact selection, then freeze one
+     artifact before its only sealed admission submission.
    - Require exact external paper handoff conformance before a new candidate can claim runnable
      handoff; do not turn compatibility into economic or qualification evidence.
    - Rank by selected-candidate paper trading performance once a candidate enters the paper
@@ -67,6 +72,9 @@ paper event protocol before admission and generated-candidate paper start.
    - Researcher cannot grade.
    - Candidate cannot grade itself.
    - Replay/backtest is a research tool, not final evaluation authority.
+   - ResearchWorker-visible notebooks and prompts may contain bounded aggregate development
+     feedback, but not sealed seed, scenarios, outcomes, score deltas, raw events, or evaluator
+     internals. Process loss closes that commitment rather than resampling it.
    - Replay success cannot self-certify the target paper runtime. Exact submitted-artifact
      conformance is externally evaluated and revalidated before generated paper effects.
    - Generated single-file Python SystemCode identity covers its frozen manifest and sole editable
@@ -122,6 +130,12 @@ paper event protocol before admission and generated-candidate paper start.
 | The New SDLC With Vibe Coding | shift from ad-hoc prompting to agentic engineering through context, skills, harnesses, evals, and human judgment |
 | Codex, Claude Code, Gemini agents | external improving agent labor |
 | Ouroboros | apply the pattern to trading, where continuous paper `revenue - cost` is the score |
+
+These references are design pressure, not transferred proof. In particular, Anthropic AAR supports
+the usefulness of parallel researchers, external evaluation, memory, and adversarial evaluator
+thinking in its studied setting; it does not establish trading profitability, economic
+generalization, evaluator security, or autonomous production readiness for Ouroboros. The repo must
+prove those claims independently with prospective evidence and explicit controls.
 
 ## References
 

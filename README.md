@@ -24,7 +24,9 @@ market data with fake account, fake execution, and fake Ledger, and are judged b
 
 ```text
 parallel TradingSystem candidates
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded development replay/backtest feedback
+-> frozen artifact and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
@@ -38,13 +40,24 @@ parallel TradingSystem candidates
 an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
 evaluated in paper before it earns authority.
 
-Replay success alone cannot claim runnable paper handoff. Every new admitted candidate must bind
-one external `PaperTradingHandoffConformance` for the exact sealed submitted `SystemCode`, and a
+Development replay success alone cannot claim runnable paper handoff. Each direction first
+persists a `ResearchPreflightCommitment` that binds allocation, direction, worker, source bytes,
+development budget, and evaluator-owned sealed-suite commitments before worker effects. The worker
+may receive bounded aggregate development feedback, but one frozen artifact is submitted only once
+to the rotating sealed set. Raw evaluator seed and sealed scenarios remain process-local; process
+loss closes the direction instead of reconstructing or resampling them. Every new admitted candidate
+must then bind the exact commitment, sealed terminal evaluation, submitted `SystemCode`, and one
+external `PaperTradingHandoffConformance`, and a
 generated candidate must revalidate that evidence before paper effects. For generated single-file
 Python candidates, the SystemCode digest covers the frozen manifest plus sole editable entrypoint;
 undeclared files, directories, symlinks, or manifest drift invalidate the closure. This gate proves bounded
 target-protocol compatibility only; it does not add economic score, qualification, promotion,
 order, private, or live authority.
+
+This isolation reduces direct evaluator reuse and differential probing; it does not prove that a
+query cap prevents reward hacking or that synthetic replay generalizes economically. Behavior-level
+duplicate detection, durable ResearchWorker recovery, production comparison scheduling, automatic
+promotion, champion runner handoff, private/live authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after
@@ -74,6 +87,9 @@ qualification are deliberately separate: a high paper `net_revenue_usdt` can sti
 `collecting_evidence` or `blocked_by_quality` when the evidence window is too small, the runner is
 inactive, failure ratio is high, market snapshots are missing, or fill-bearing results lack public
 execution evidence.
+CandidateArena rank and next-generation context use development-visible preflight evidence; the
+sealed terminal score is an admission gate and never becomes a leaderboard value or worker
+feedback channel.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.

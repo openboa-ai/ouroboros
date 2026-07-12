@@ -29,7 +29,9 @@ loop:
 ```text
 problem
 -> parallel or iterative TradingSystem candidate generation
--> sealed ResearchPreflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded adaptive development ResearchPreflight
+-> frozen one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> CandidateAdmissionDecision and materialization
 -> leaderboard
@@ -41,8 +43,11 @@ problem
 Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
 exact submitted-artifact paper handoff conformance, provider/risk validation, selected-candidate
 continuous paper `revenue - cost`, and Gateway/Ledger evidence decide what counts. Every new
-runnable handoff must bind one passed `PaperTradingHandoffConformance` for the exact admitted
-`SystemCode`. Generated single-file Python SystemCode identity is the canonical digest of its
+runnable handoff must bind its exact pre-effect commitment, sealed terminal evaluation, submitted
+`SystemCode`, and passed `PaperTradingHandoffConformance`. Development feedback has no admission
+authority; raw evaluator seed, sealed scenarios, and sealed outcome stay unavailable to the
+ResearchWorker, and process loss fails the direction closed rather than resampling. Generated
+single-file Python SystemCode identity is the canonical digest of its
 frozen manifest-plus-entrypoint closure, not the entrypoint alone; generated-candidate paper start
 revalidates that closure and conformance evidence before paper effects.
 Binance public market data enters through the Gateway-owned
@@ -206,8 +211,9 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
-| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
-| `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
+| `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick/direction/worker/allocation/source SystemCode to bounded development feedback and one evaluator-owned rotating sealed-admission suite; it stores commitments and digests, never the raw evaluator seed or sealed scenarios, and grants no admission, promotion, order, private, or live authority. |
+| `CandidateAdmissionDecision` | Research-only external gate that binds the complete new-format ResearchPreflight commitment/terminal/submitted-SystemCode graph and paper handoff conformance to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
+| `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |

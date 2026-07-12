@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** In progress; Tasks 1-5 complete, Task 6 next
+**Status:** Complete and verified
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -350,7 +350,7 @@ trace, event path, or runner command evidence.
 - Modify: `docs/superpowers/specs/2026-07-12-research-preflight-evaluation-isolation-design.md`
 - Modify: `docs/superpowers/plans/2026-07-12-research-preflight-evaluation-isolation.md`
 
-- [ ] **Step 1: Correct canonical truth**
+- [x] **Step 1: Correct canonical truth**
 
 Record the development/admission split, pre-effect commitment, one-shot rotating sealed set,
 feedback release boundary, exact conformance chain, and remaining limits. Do not claim caps prevent
@@ -360,17 +360,17 @@ Keep behavior-level duplicate detection, durable ResearchWorker workspace/proces
 production comparison scheduling, automatic promotion, champion runner handoff, private/live, full
 adversarial coverage, P0, and Goal completion open.
 
-- [ ] **Step 2: Mark design and plan implemented**
+- [x] **Step 2: Mark design and plan implemented**
 
 Only after every verification step passes, set both statuses to Complete and check all steps.
 
-- [ ] **Step 3: Run focused regression**
+- [x] **Step 3: Run focused regression**
 
 ```bash
 npx vitest run packages/domain/src/research-preflight-commitment.test.ts packages/domain/src/paper-trading-handoff-conformance.test.ts packages/domain/src/candidate-admission-policy.test.ts packages/application/src/trading/research/preflight-plan.test.ts packages/application/src/trading/research/paper-handoff-conformance.test.ts packages/local-store/test/research-preflight-commitment.test.ts packages/local-store/test/paper-trading-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
 ```
 
-- [ ] **Step 4: Run workspace and repository validation**
+- [x] **Step 4: Run workspace and repository validation**
 
 ```bash
 npm run typecheck
@@ -380,7 +380,7 @@ npm test
 
 Run listener tests outside the filesystem/network sandbox.
 
-- [ ] **Step 5: Commit durable truth**
+- [x] **Step 5: Commit durable truth**
 
 ```bash
 git add README.md ARCHITECTURE.md AGENTS.md docs/project-direction.md docs/ouroboros-doctrine.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/autonomy-model.md docs/naming-taxonomy.md docs/product-quality-design.md docs/superpowers/specs/2026-07-12-research-preflight-evaluation-isolation-design.md docs/superpowers/plans/2026-07-12-research-preflight-evaluation-isolation.md
@@ -405,3 +405,14 @@ Keep this frontier only when current evidence proves:
 
 After completion, route back to auto-project and choose behavior-level duplicate detection or
 durable ResearchWorker recovery from current evidence.
+
+## Final Verification
+
+- Focused regression: `10` files, `214` tests passed.
+- Full suite: `273` suites, `1,938` tests passed; `0` failed and `0` skipped.
+- `npm run typecheck` passed for every workspace.
+- `npm run check:repo-guards` passed docs, architecture, naming, tracked environment, secret, and
+  diff checks.
+- Reference paper soak and operator product-loop smoke passed with listener permission.
+- The frontier remains explicitly below economic generalization, P0, and CandidateArena Goal
+  completion.

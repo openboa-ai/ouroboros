@@ -13,11 +13,12 @@ that pack every axis into one identifier.
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
+| `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick, direction, worker, allocation, source SystemCode, bounded development policy, and evaluator-owned rotating sealed-admission suite. It stores only commitments/digests, permits one sealed submission, and grants no admission, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
-| `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
+| `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
-| `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
+| `ResearchPreflight` | Candidate-creation evaluation family: bounded adaptive development feedback plus one evaluator-owned rotating sealed admission over a development-selected frozen artifact. It is not prospective economic or promotion authority. |
 | `PaperTradingHandoffConformance` | External research-only proof that one exact submitted SystemCode artifact closure satisfies the bounded target paper event protocol before admission, materialization, and generated-candidate paper start; it carries no economic, qualification, promotion, order, private, or live authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
@@ -93,6 +94,10 @@ standard term fits. Record that decision in repo docs and tests.
   selection fields.
 - Do not call candidate output proof. ResearchPreflight is not final authority; selected continuous
   PaperTradingEvaluation and Ledger evidence are proof.
+- Do not call development replay sealed or admission evidence. `ResearchPreflightCommitment` must
+  precede worker effects; sealed admission starts only after artifact freeze and runs at most once.
+- Do not expose raw evaluator seed, sealed scenarios, scenario outcomes, score deltas, raw events,
+  paths, command evidence, or evaluator internals as ResearchWorker context or compact readback.
 - Do not infer paper readiness from replay success. Every new runnable handoff requires one exact
   passed `PaperTradingHandoffConformance`, and generated-candidate paper start must revalidate its
   admission linkage before paper effects.

@@ -1,6 +1,6 @@
 # ResearchPreflight Evaluation Isolation Design
 
-**Status:** Approved for implementation
+**Status:** Complete and verified
 
 ## Goal
 
@@ -29,12 +29,14 @@ workflow. It does not claim that synthetic replay proves economic quality. Prosp
 
 ## Source Interpretation
 
-Anthropic's Automated Weak-to-Strong Researcher demonstrates the value of independent long-running
-researchers, broad directions, external evaluation, rich process evidence, shared findings, and
-code lineage. It also demonstrates the failure mode directly relevant here: repeated access to a
-remote held-out score turned the test set into a validation set, enabled iterative seed
-cherry-picking and label exfiltration, and was not fixed by practical submission caps. The authors
-recommend evaluation on entirely held-out datasets.
+Anthropic's Automated Weak-to-Strong Researcher reports useful evidence, in its studied setting,
+for independent long-running researchers, broad directions, external evaluation, rich process
+evidence, shared findings, and code lineage. That result does not establish universal research
+efficiency, trading transfer, evaluator security, or economic generalization. The same work also
+reports the failure mode directly relevant here: repeated access to a remote held-out score turned
+the test set into a validation set, enabled iterative seed cherry-picking and label exfiltration,
+and was not fixed by practical submission caps. The authors recommend evaluation on entirely
+held-out datasets.
 
 Ouroboros should preserve the useful half of that model rather than copying the failure:
 
@@ -313,3 +315,15 @@ This frontier is complete only when current code and tests prove:
 After evaluation isolation is verified, reassess behavior-level duplicate detection versus durable
 ResearchWorker workspace/recovery ownership. Choose from current evidence rather than assuming
 synthetic holdout isolation proves economic generalization.
+
+## Implementation Evidence
+
+- `ResearchPreflightCommitment`, evaluator-owned plan rotation, one-shot sealed submission, exact
+  LocalStore terminal/admission graph, and compact feedback-safe readback are implemented.
+- The focused matrix passed `10` files and `214` tests with listener permission.
+- The full suite passed `273` suites and `1,938` tests with zero failures or skips.
+- All workspace typechecks and repository docs, architecture, naming, environment, secret, and diff
+  guards passed.
+- This evidence closes this design frontier only. Behavior-level duplicate detection, durable
+  ResearchWorker recovery, broader adversarial coverage, economic generalization, P0, and the
+  CandidateArena Goal remain open.

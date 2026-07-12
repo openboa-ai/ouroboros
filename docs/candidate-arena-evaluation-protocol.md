@@ -2,7 +2,8 @@
 
 Status: P0 target contract with partial implementation evidence. This document defines the bounded
 frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
-commitment, sealed ResearchPreflight, external paper handoff conformance, admission, sealed
+allocation and ResearchPreflight commitments, split development/sealed preflight, external paper
+handoff conformance, admission, sealed
 comparison, confirmation, causal ResearchRelease, explicit comparison-backed TradingPromotion,
 and bounded adaptive ResearchWorker allocation tests demonstrate only the explicitly listed
 partial conformance; they do not establish production composition, automatic champion operation,
@@ -37,13 +38,17 @@ persisted schema names. Any future public or persisted fields require a separate
 8. Research and paper remain public-data and fake-execution only.
 9. Replay success alone cannot claim runnable paper handoff. The exact sealed submitted artifact
    must pass an external bounded target paper-protocol probe before admission and materialization.
+10. One pre-effect `ResearchPreflightCommitment` must bind source, allocation, worker, development
+    budget, and rotating sealed-suite commitments. Development feedback selects and freezes one
+    artifact before one sealed submission; process loss closes rather than reconstructs the plan.
 
 ## Evidence Lifecycle
 
 | Evidence stage | Visible to ResearchWorker | May guide future research | May admit a candidate | May qualify a candidate |
 | --- | --- | --- | --- | --- |
 | Inspectable research experiment | Yes | Yes | No | No |
-| Sealed `ResearchPreflight` | Aggregate feedback only | Yes | No, until handoff conformance and admission | No |
+| Development `ResearchPreflight` | Aggregate development feedback only | Yes | No | No |
+| One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
 | Prospective paper qualification window | No outcome feedback before close | Only after adjudication | Already admitted and frozen | Yes |
@@ -52,8 +57,16 @@ persisted schema names. Any future public or persisted fields require a separate
 Research feedback and qualification are different evidence purposes even when both use
 `PaperTradingEvaluation`. One physical observation or window cannot carry both purposes.
 
-`PaperTradingHandoffConformance` is a research-only compatibility gate between sealed preflight and
-admission. It runs the exact submitted bytes against the bounded production paper event protocol,
+`ResearchPreflightCommitment` is append-only and precedes every worker effect. It stores canonical
+digests and a seed commitment, not the raw evaluator seed or sealed scenarios. The evaluator-owned
+in-memory plan supports bounded adaptive development and exactly one sealed submission over the
+frozen winner. A lost process cannot reconstruct or silently resample that plan.
+CandidateArena rank, materialized research lineage, and next-worker context retain the
+development-visible evaluation. The sealed terminal score decides admission only and is not
+released through the research leaderboard.
+
+`PaperTradingHandoffConformance` is a research-only compatibility gate between sealed admission and
+admission. It runs the same exact submitted bytes against the bounded production paper event protocol,
 persists only an external evidence summary, and contributes no economic score, qualification,
 comparison verdict, promotion, order, private, or live authority.
 
@@ -271,8 +284,13 @@ The evaluator and its durable logs live outside ResearchWorker and candidate san
 - Hidden outcomes, future events, raw labels, evaluator implementation, held-out event selection,
   and per-example correctness remain unavailable. The committed duration and policy are visible
   when a candidate needs them to operate, but cannot change after outcomes are observed.
-- `ResearchPreflight` may return bounded aggregate feedback needed for hill climbing. Query budgets,
-  rate limits, granularity, and repeated-submission detection are evaluator policy.
+- Development `ResearchPreflight` may return bounded aggregate feedback needed for hill climbing.
+  Query budgets, rate limits, and granularity are evaluator policy, but those caps are not treated
+  as proof that reward hacking is impossible.
+- Sealed seed, scenarios, scenario IDs, outcomes, metrics, score deltas, raw events, paths, commands,
+  and evaluator internals never enter worker prompt, notebook, replay feedback, or next-generation
+  Arena context. Operator readback receives only commitment ID, development submission count,
+  generic terminal status/reason, and authority-free development/sealed cost counts.
 - Qualification outcomes remain sealed until the window closes or the run is invalidated.
 - Score probing, seed cherry-picking, window selection after observation, evaluator endpoint
   exfiltration, and side-channel access are recorded as anti-hacking findings.
@@ -285,7 +303,7 @@ The evaluator and its durable logs live outside ResearchWorker and candidate san
 
 | Outcome | Required treatment |
 | --- | --- |
-| Valid and distinct preflight plus exact passed handoff conformance | Materialize the candidate and record complete experiment, conformance, evaluation, finding, admission, and lineage references. |
+| Valid and distinct one-shot sealed admission plus exact passed handoff conformance | Materialize only when commitment, source, submitted SystemCode, suite, terminal evaluation, experiment, conformance, finding, admission, and lineage form one exact graph. |
 | Valid negative economic result | Preserve it as research evidence and lineage; do not erase it or present it as a qualified winner. |
 | Duplicate hypothesis, artifact, or behavior | Record the duplicate finding and source lineage; do not allocate a distinct population slot merely because the identifier differs. |
 | Crash, malformed output, protocol violation, risk invalidation, provider bypass, hidden-data access, private/live attempt | Quarantine the evidence, create no runnable paper handoff, and preserve the exact failure reason. |
@@ -299,10 +317,10 @@ paper qualification.
 
 ```text
 ResearchDirection
--> long-running ResearchWorker sandbox
--> inspectable experiments and notebook
--> candidate submission
--> sealed ResearchPreflight
+-> pre-effect allocation, direction, worker, source, and ResearchPreflightCommitment
+-> bounded development experiments and aggregate notebook feedback
+-> freeze one development-selected artifact
+-> one-shot rotating sealed admission with no worker feedback
 -> external PaperTradingHandoffConformance over the exact submitted artifact
 -> admit | negative evidence | duplicate | quarantine
 -> frozen candidate plus committed evaluation policy
@@ -400,20 +418,25 @@ The following current surfaces require implementation work before P0 can pass:
   and exposes an equal-bound static control. ResearchWorkers are still tick-scoped invocations
   rather than durable long-lived workers with workspace, process, recovery, and causal memory
   ownership; provider-dollar cost and learned allocation also remain open.
+- Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
+  development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
+  source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
+  result, and conformance-bound admission mismatch. The raw seed and sealed suite are process-local,
+  so crash recovery deliberately fails closed rather than resuming the evaluator plan.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and behavior-level duplicate detection is incomplete.
 
-The sealed candidate-to-paper handoff is now partial conformance evidence rather than a current
-gap. Candidate-facing replay and paper-probe payloads omit evaluator direction, outcome, hidden
-risk, private, credential, direct-order, and live fields. Every replay-accepted iteration runs the
-exact sealed submitted bytes through bounded host or `sbx` target-protocol probing with the
-production paper event parser. LocalStore binds the resulting
-`PaperTradingHandoffConformanceRecord` to SystemCode, ExperimentRun, evaluation task, and admission;
-materialization requires `passed`, and generated-candidate paper start revalidates the exact graph
-before any paper effect. Rejection creates no candidate and remains causal research memory, while
-runner/provider setup failure remains infrastructure attribution. This proves bounded protocol
-compatibility only, not long-duration liveness, economic quality, qualification, comparison,
-promotion, production scheduling, private/live authority, or P0 completion.
+The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
+gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
+credential, direct-order, and live fields; sealed evidence is not released to the worker at all.
+Only the frozen development winner runs the one-shot sealed set and bounded host or `sbx`
+target-protocol probe. LocalStore binds commitment, submitted SystemCode, terminal evaluation,
+ExperimentRun, evaluation task, conformance, and admission; materialization requires the complete
+passed graph, and generated-candidate paper start revalidates it before effects. Rejection creates
+no candidate and remains causal memory, while runner/provider setup failure remains infrastructure
+attribution without fabricated terminal evidence. This proves evaluator isolation and bounded
+protocol compatibility only, not reward-hacking immunity, long-duration liveness, economic quality,
+qualification, production scheduling, private/live authority, P0, or Goal completion.
 
 These are target gaps, not permission to widen one patch across every subsystem. Each implementation
 frontier must preserve the full protocol while remaining independently testable.
@@ -447,10 +470,6 @@ then proves every precommitted reserved result, releases terminal evidence into 
 Finding/Lineage only through ResearchRelease, and lets only an explicit operator command bind an
 eligible all-improved outcome to the exact current champion and final qualified challenger
 evaluation. This is restart-stable comparison-backed Trading review, not production composition,
-automatic promotion, champion runner replacement, private/live authority, or P0 completion. The
-separate allocation path proves restart-stable bounded scheduling intent and actual worker resource
-control, not long-lived worker recovery, calibrated reward learning, or economic improvement.
-
 ## Implementation Frontier Order
 
 1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
@@ -459,13 +478,14 @@ control, not long-lived worker recovery, calibrated reward learning, or economic
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
    implemented and validated; read-only paired qualification and sealed single-window adjudication
    are also implemented internally, while production comparison and runner composition remain.
-2. **Implemented:** a dedicated admission policy gates candidate materialization after sealed
-   `ResearchPreflight` and exact passed `PaperTradingHandoffConformance`; generated-candidate paper
-   start revalidates the same persisted graph before effects.
-3. **Partial:** sealed-preflight and paper-handoff anti-hacking fixtures remove direct evaluator
-   direction/outcome exposure and reject bounded protocol, provider, self-report, hidden-field,
-   private/live, and timeout violations. Repeated-score/window probing, broader evaluator side
-   channels, window cherry-picking, and behavior-level duplicate coverage remain.
+2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
+   development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
+   and passed `PaperTradingHandoffConformance` gate materialization; generated-candidate paper start
+   revalidates the same persisted graph before effects.
+3. **Partial:** worker surfaces exclude sealed seed/scenarios/outcomes and paper-handoff fixtures
+   reject bounded protocol, provider, self-report, hidden-field, private/live, and timeout
+   violations. Cross-commitment probing, broader evaluator side channels, window cherry-picking,
+   and behavior-level duplicate coverage remain. Query bounds alone are not a reward-hacking proof.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

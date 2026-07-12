@@ -593,10 +593,11 @@ element is probably decoration or misplaced behavior.
 | `CandidateArena` | Keep many candidate hypotheses moving through research, evaluation, findings, and lineage. | Application use case and read model; UI only controls and displays it. | Autonomy must increase candidate diversity, not edit one artifact until it looks convincing. | Durable ResearchWorker workspace/recovery ownership and discovery-yield evidence under controlled runs. |
 | `ResearchDirection` | Name the lane being explored so parallel candidates do not become random variants. | Domain vocabulary plus CandidateArena context. | Directions must be distinct enough to teach the next tick something. | Direction scoring that includes paper-board learning without making it promotion authority. |
 | `CandidateArenaResearchAllocation` | Freeze which directions run, why they run, and their bounded concurrency and experiment budgets before worker effects. | Domain record, application allocator, LocalStore, latest-tick read model, and researcher context. | Focus must change actual resources while completed-history exploration prevents entropy collapse. | Longitudinal adaptive-versus-static discovery-yield evidence; do not infer a learned reward model from scheduling scores. |
+| `ResearchPreflightCommitment` | Freeze source, worker, allocation, development policy, and one evaluator-owned rotating sealed set before worker effects. | Domain record, in-memory evaluator plan, application use case, and append-only LocalStore graph. | Development feedback must remain useful without becoming admission evidence; raw seed and sealed scenarios stay unavailable to workers. | Durable evaluator-owned recovery only with an explicit design; current process loss deliberately fails closed. |
 | `ResearchWorker` | Generate a candidate inside one direction with repo context and tool limits. | Provider adapter plus application orchestration. | Worker output is material, not proof. | Better prompt context from failed paper evidence, lineage clusters, and protocol violations. |
 | `TradingSystem` | Own its decision cadence and emit bounded paper events. | Candidate runtime and paper event protocol. | It must be able to include code, tools, or internal agents without touching exchange authority. | Richer internal agent/tool loops that still emit only validated `OrderRequest`, `cancel_order`, `hold`, or `no_action` events. |
 | `SystemCode` | Package executable candidate behavior for sandboxed runs. | Candidate materialization and Sandbox boundary. | Code quality matters only as part of a TradingSystem that can be externally evaluated. | Verification metadata that explains run commands, dependencies, and protocol capability. |
-| `ResearchPreflight` | Reject weak candidates cheaply during creation. | Research evaluation records. | Useful for search, never final authority. | More realistic scenarios and sharper failure findings, while keeping the paper board above it. |
+| `ResearchPreflight` | Use bounded adaptive development to select one artifact, then run one rotating sealed admission over its frozen bytes. | Research evaluator plan, replay runner, terminal evidence, and compact direction readback. | Development score has no admission authority; sealed content never returns to the worker; neither phase proves future economics. | Broader adversarial side-channel and cross-commitment probing controls without turning query caps into a reward-hacking claim. |
 | `Evaluation` | Record preflight/backtest score and acceptance status. | Domain evidence record. | Must not be confused with selected continuous paper evidence. | Explicit labels for preflight vs paper authority in every projection. |
 | `Finding` | Preserve what a candidate, failure, or direction taught the arena. | CandidateArena lineage memory. | Findings must be reusable context, not narrative decoration. | Cluster findings by direction, blocker, market regime, and protocol failure. |
 | `FindingCluster` | Group paper-backed findings into reusable next-generation research pressure. | CandidateArena read model, researcher context, and Research tab read-only surface. | Clusters may feed bounded ResearchWorker allocation and context, but must not become rank, qualification, Trading review blockers, or promotion authority. | Change allocation scoring only with separate tests, equal-bound controls, and `not_promotion_authority` evidence. |
@@ -610,7 +611,7 @@ element is probably decoration or misplaced behavior.
 | `Gateway` | Validate requests, own public market data access, and route fake execution. | Application port plus concrete adapters. | Gateway has authority; TradingSystem has intent. | Authority decorators for timeout, retry, audit, and provenance without changing candidate identity. |
 | `MarketDataPort` | Keep Binance public market data behind a Gateway-owned boundary. | Adapter port and Binance adapter. | Public evidence must be attributable and retryable; private/live access stays outside MLP-01. | More explicit source health, cache age, WebSocket continuity, and REST fallback summaries. |
 | `Ledger` | Preserve order, Gateway, execution, and observation evidence chain. | Domain evidence and store records. | Ledger truth is record truth; it should not explain beyond evidence. | Better no-order checkpoint and incomplete-chain summaries in review packet surfaces. |
-| `ResearchEfficiency` | Compare autonomy cost and latency without creating a rank metric. | CandidateArena tick direction result. | Efficiency is a research signal, not promotion authority. | Add provider-dollar cost only when adapters expose it reliably. |
+| `ResearchEfficiency` | Compare development and sealed submission/cost counts without creating a rank metric or exposing evaluator content. | CandidateArena tick direction result and next-worker count context. | Efficiency is a research signal, not promotion authority; compatibility totals keep development scheduling semantics. | Add provider-dollar cost only when adapters expose it reliably. |
 
 #### Operator Surface Objects
 
@@ -1069,8 +1070,9 @@ read-model frontier should prove that it preserves this scan order before claimi
 
 ### Audit Outcomes
 
-The current product spine is sound: CandidateArena owns search, sealed ResearchPreflight plus
-PaperTradingHandoffConformance and admission own candidate-to-paper compatibility,
+The current product spine is sound: CandidateArena owns search; pre-effect commitment, bounded
+development, one-shot sealed admission, PaperTradingHandoffConformance, and admission own
+candidate-to-paper compatibility;
 PaperTradingEvaluation owns MLP-01 product evidence, PaperTradingQualification owns readiness,
 TradingReviewPacket owns operator judgment, and Gateway/Ledger own evidence boundaries.
 
@@ -1351,8 +1353,13 @@ Acceptance:
   protocol failure with `not_promotion_authority`.
 - `CandidateArenaReadModel` carries the same `finding_clusters`, and Web Research renders them as
   read-only next-generation context without adding controls or Trading review authority.
-- CandidateArena tick direction results record `ResearchEfficiency`: provider requests, runner
-  commands, scenario count, elapsed milliseconds, and `not_promotion_authority`.
+- CandidateArena tick direction results record compact `ResearchPreflight` closure: commitment ID,
+  development submission count, generic sealed terminal status/reason, and
+  `not_promotion_authority`. They never expose seed, suite digest, scenario identity/outcome, score,
+  raw event, path, command evidence, or evaluator internals.
+- `ResearchEfficiency` preserves development-only compatibility totals for allocation and splits
+  development versus sealed submission, provider request, runner command, scenario, and elapsed
+  counts under `not_promotion_authority`.
 - Next researcher context carries prior `ResearchEfficiency` so cost and latency proxies become
   comparable signals without becoming promotion authority. Actual provider-dollar cost remains a
   future adapter detail when providers expose it.
