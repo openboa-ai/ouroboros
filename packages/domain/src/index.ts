@@ -1429,6 +1429,27 @@ export type SystemCodeRecord =
       image_ref: string;
     });
 
+export interface SystemCodeArtifactClosureDigestEntry {
+  relative_path: string;
+  content_digest: string;
+}
+
+export function systemCodeArtifactClosureDigestInput(
+  entries: SystemCodeArtifactClosureDigestEntry[]
+): string {
+  return JSON.stringify({
+    closure_kind: "single_file_python_v1",
+    entries: [...entries]
+      .sort((left, right) => left.relative_path === right.relative_path
+        ? 0
+        : left.relative_path < right.relative_path ? -1 : 1)
+      .map((entry) => ({
+        relative_path: entry.relative_path,
+        content_digest: entry.content_digest
+      }))
+  });
+}
+
 export interface ResearchDirectionRecord extends BaseRecord {
   record_kind: "research_direction";
   research_direction_id: string;

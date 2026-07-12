@@ -119,6 +119,30 @@ describe("CandidateArena paper evidence context", () => {
     ]);
   });
 
+  it("rejects malformed arena manifests without leaking an internal TypeError", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new MissingEditablePathsResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    const tick = outcome.arena.latest_ticks.find((entry) => entry.tick_id === outcome.tick_id);
+    expect(tick?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed",
+        error: "candidate_arena_research_manifest_invalid"
+      })
+    ]);
+  });
+
   it("quarantines a failed ResearchWorker before runnable candidate materialization", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -2501,12 +2525,37 @@ class EscapingEntrypointResearchAgent implements TradingResearchAgentAdapter {
     await writeFile(outsidePath, "print('outside artifact root')\n", "utf8");
     await writeFile(path.join(input.artifact_dir, "manifest.json"), `${JSON.stringify({
       id: "escaping-entrypoint",
+      name: "Escaping Entrypoint",
       api_contract: "trading_api_provider_v1",
-      entrypoint: ["python3", "../outside.py"]
+      entrypoint: ["python3", "../outside.py"],
+      editable_paths: ["../outside.py"]
     }, null, 2)}\n`, "utf8");
     return {
       status: "edited",
       summary: "Repointed manifest outside the artifact root.",
+      changed_paths: ["manifest.json"]
+    };
+  }
+}
+
+class MissingEditablePathsResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-missing-editable-paths",
+    provider: "codex",
+    model: "missing-editable-paths",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    await writeFile(path.join(input.artifact_dir, "manifest.json"), `${JSON.stringify({
+      id: "missing-editable-paths",
+      name: "Missing Editable Paths",
+      api_contract: "trading_api_provider_v1",
+      entrypoint: ["python3", "run.py"]
+    }, null, 2)}\n`, "utf8");
+    return {
+      status: "edited",
+      summary: "Removed required editable path declaration.",
       changed_paths: ["manifest.json"]
     };
   }

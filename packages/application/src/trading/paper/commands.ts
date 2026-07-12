@@ -12,6 +12,7 @@ import {
 import { isStoreErrorLike, type OuroborosStorePort } from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import type { PaperOrderRequestFixture } from "../../ports/sandbox";
+import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-artifact";
 import {
   createGatewayRuntimeBinding,
   LIVE_GATEWAY_DISABLED_REASON,
@@ -42,6 +43,7 @@ export interface PaperTradingCommandServiceOptions {
   marketData: GatewayMarketDataPort;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
   sessions: PaperTradingSessionService;
+  artifactResolver: SystemCodeArtifactResolverPort;
 }
 
 export class PaperTradingCommandError extends Error {
@@ -98,7 +100,8 @@ export class PaperTradingCommandService {
     }
     const handoffConformanceFailure = await generatedCandidatePaperHandoffConformanceFailure(
       this.options.store,
-      candidate
+      candidate,
+      this.options.artifactResolver
     );
     if (handoffConformanceFailure) {
       return {
@@ -298,13 +301,15 @@ export type GeneratedCandidatePaperHandoffConformanceFailure =
   | "paper_handoff_conformance_invalid"
   | "paper_handoff_conformance_not_passed"
   | "paper_handoff_conformance_not_admitted"
+  | "paper_handoff_conformance_artifact_drift"
   | "paper_handoff_conformance_system_code_mismatch"
   | "paper_handoff_conformance_experiment_mismatch"
   | "paper_handoff_conformance_evaluation_task_mismatch";
 
 export async function generatedCandidatePaperHandoffConformanceFailure(
   store: OuroborosStorePort,
-  candidate: CandidateInspectReadModel
+  candidate: CandidateInspectReadModel,
+  artifactResolver: SystemCodeArtifactResolverPort
 ): Promise<GeneratedCandidatePaperHandoffConformanceFailure | undefined> {
   if (!candidate.materialization_attempt &&
     !candidate.candidate_version.materialization_attempt_ref) {
@@ -377,6 +382,13 @@ export async function generatedCandidatePaperHandoffConformanceFailure(
     evaluation.trading_evaluation_task_ref.id !==
       experiment.trading_evaluation_task_ref.id) {
     return "paper_handoff_conformance_evaluation_task_mismatch";
+  }
+  try {
+    if (await artifactResolver.resolveArtifactDigest(systemCode) !== systemCode.artifact_digest) {
+      return "paper_handoff_conformance_artifact_drift";
+    }
+  } catch {
+    return "paper_handoff_conformance_artifact_drift";
   }
   return undefined;
 }

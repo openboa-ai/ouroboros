@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -50,7 +50,70 @@ describe("FileSystemCodeArtifactResolver", () => {
       "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
   });
+
+  it("requires CandidateArena generated Python artifacts to retain a single-file closure", async () => {
+    const artifactDir = path.join(tmpDir, "generated");
+    const script = await writeGeneratedArtifact(artifactDir);
+    const resolver = new FileSystemCodeArtifactResolver({ repoRoot: tmpDir });
+    const systemCode = generatedPythonSystemCode(script);
+
+    const first = await resolver.resolveArtifactDigest(systemCode);
+    expect(first).toBe(
+      "sha256:a59805b441ad3e541c40549f15c2ca398d58e3fab1f5896a6a8adda29842fe56"
+    );
+
+    await writeFile(path.join(artifactDir, "manifest.json"), `${JSON.stringify({
+      id: "generated",
+      name: "Changed Generated Name",
+      entrypoint: ["python3", "run.py"],
+      editable_paths: ["run.py"],
+      api_contract: "trading_api_provider_v1"
+    }, null, 2)}\n`, "utf8");
+    const second = await resolver.resolveArtifactDigest(systemCode);
+    expect(second).not.toBe(first);
+
+    await writeFile(path.join(artifactDir, "helper.py"), "SIDE = 'sell'\n", "utf8");
+    await expect(resolver.resolveArtifactDigest(systemCode))
+      .rejects.toThrow("generated_system_code_artifact_closure_invalid");
+    await rm(path.join(artifactDir, "helper.py"));
+
+    await symlink(script, path.join(artifactDir, "alias.py"));
+    await expect(resolver.resolveArtifactDigest(systemCode))
+      .rejects.toThrow("generated_system_code_artifact_closure_invalid");
+  });
+
+  it("rejects generated artifact manifest drift before resolving paper bytes", async () => {
+    const artifactDir = path.join(tmpDir, "manifest-drift");
+    const script = await writeGeneratedArtifact(artifactDir);
+    const resolver = new FileSystemCodeArtifactResolver({ repoRoot: tmpDir });
+    const systemCode = generatedPythonSystemCode(script);
+
+    await writeFile(path.join(artifactDir, "manifest.json"), JSON.stringify({
+      id: "generated",
+      name: "Generated",
+      entrypoint: ["python3", "run.py"],
+      editable_paths: ["run.py", "helper.py"],
+      api_contract: "trading_api_provider_v1"
+    }), "utf8");
+
+    await expect(resolver.resolveArtifactDigest(systemCode))
+      .rejects.toThrow("generated_system_code_artifact_closure_invalid");
+  });
 });
+
+async function writeGeneratedArtifact(root: string): Promise<string> {
+  await mkdir(root, { recursive: true });
+  const script = path.join(root, "run.py");
+  await writeFile(script, "print('generated')\n", "utf8");
+  await writeFile(path.join(root, "manifest.json"), `${JSON.stringify({
+    id: "generated",
+    name: "Generated",
+    entrypoint: ["python3", "run.py"],
+    editable_paths: ["run.py"],
+    api_contract: "trading_api_provider_v1"
+  }, null, 2)}\n`, "utf8");
+  return script;
+}
 
 function pythonSystemCode(artifactPath: string): SystemCodeRecord {
   return {
@@ -72,12 +135,23 @@ function pythonSystemCode(artifactPath: string): SystemCodeRecord {
     },
     capability_policy_ref: {
       record_kind: "capability_policy",
-      id: "candidate-arena-paper-system-code"
+      id: "test-python-system-code"
     },
     provenance_refs: [],
     status: "registered",
     created_at: "2026-07-10T09:00:00.000Z",
     authority_status: "not_live"
+  };
+}
+
+function generatedPythonSystemCode(artifactPath: string): SystemCodeRecord {
+  return {
+    ...pythonSystemCode(artifactPath),
+    system_code_id: "system-code-artifact-resolver-generated",
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "candidate-arena-paper-system-code"
+    }
   };
 }
 

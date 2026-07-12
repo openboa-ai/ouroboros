@@ -60,6 +60,10 @@ import {
 } from "./research-allocation";
 import { readTradingSystemManifest } from "../trading/research/artifact-runner";
 import type { TradingArtifactRunner } from "../trading/research/artifact-runner";
+import {
+  assertSingleFileTradingArtifactClosure,
+  sealSingleFileTradingArtifactClosure
+} from "../trading/research/artifact-closure";
 import { FixtureTradingResearchAgentAdapter } from "../trading/research/agent-adapters";
 import { runTradingResearchLoop } from "../trading/research/run-trading-research";
 import type { ReplayTradingApiProviderFactory } from "../trading/research/replay-set-runner";
@@ -69,7 +73,8 @@ import type {
   ManagedResearchAgent,
   TradingEvaluationResult,
   TradingResearchNotebookEntry,
-  TradingResearchAgentAdapter
+  TradingResearchAgentAdapter,
+  TradingSystemManifest
 } from "../trading/research/types";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
 import {
@@ -588,6 +593,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     repoRoot
   });
   const sourceManifest = await readTradingSystemManifest(artifactSourceDir);
+  assertCandidateArenaResearchManifest(sourceManifest);
   const adapter = input.researchAgent === "fixture"
     ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
     : input.agentFactory(input.researchAgent);
@@ -609,7 +615,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   });
   const sourceArtifact = await arenaEntrypointArtifact(
     path.join(research.run_root, "seed"),
-    sourceManifest.entrypoint
+    sourceManifest
   );
   const entry = [...research.entries].reverse().find((candidate) =>
     candidate.decision === "keep"
@@ -620,6 +626,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   const researchEfficiency = researchEfficiencySummary(research.entries);
   const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
+  assertCandidateArenaResearchManifest(manifest);
+  await assertSingleFileTradingArtifactClosure(artifactDir, manifest);
   return withArenaStoreMutation(input.store, async () => {
     const sourceSystemCode = await recordArenaSourceSystemCode({
       store: input.store,
@@ -631,7 +639,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       store: input.store,
       artifactDir,
       sessionId,
-      manifestEntrypoint: manifest.entrypoint,
+      manifest,
       agent: adapter.agent
     });
     const researchRecords = await recordArenaResearchRecords({
@@ -954,10 +962,10 @@ async function recordArenaSystemCode(input: {
   store: OuroborosStorePort;
   artifactDir: string;
   sessionId: string;
-  manifestEntrypoint: string[];
+  manifest: TradingSystemManifest;
   agent: ManagedResearchAgent;
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
-  const artifact = await arenaEntrypointArtifact(input.artifactDir, input.manifestEntrypoint);
+  const artifact = await arenaEntrypointArtifact(input.artifactDir, input.manifest);
   return input.store.recordSystemCode({
     record_kind: "system_code",
     version: 1,
@@ -981,6 +989,37 @@ async function recordArenaSystemCode(input: {
     created_at: new Date().toISOString(),
     authority_status: "not_live"
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
+}
+
+function assertCandidateArenaResearchManifest(
+  manifest: unknown
+): asserts manifest is TradingSystemManifest {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
+  const candidate = manifest as Partial<TradingSystemManifest>;
+  const entrypoint = candidate.entrypoint;
+  const editablePaths = candidate.editable_paths;
+  if (typeof candidate.id !== "string" || candidate.id.length === 0 ||
+    typeof candidate.name !== "string" || candidate.name.length === 0 ||
+    !Array.isArray(entrypoint) || entrypoint.length !== 2 ||
+    !entrypoint.every((part) => typeof part === "string") ||
+    (entrypoint[0] !== "python" && entrypoint[0] !== "python3") ||
+    !Array.isArray(editablePaths) ||
+    !editablePaths.every((editablePath) => typeof editablePath === "string") ||
+    candidate.api_contract !== "trading_api_provider_v1") {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
+  const entrypointPath = entrypoint[1]!;
+  const normalizedEntrypointPath = path.normalize(entrypointPath);
+  if (path.isAbsolute(entrypointPath) ||
+    normalizedEntrypointPath === ".." ||
+    normalizedEntrypointPath.startsWith(`..${path.sep}`)) {
+    throw new Error("candidate_arena_entrypoint_escapes_artifact_dir");
+  }
+  if (!entrypointPath || editablePaths.length !== 1 || editablePaths[0] !== entrypointPath) {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
 }
 
 async function recordArenaSourceSystemCode(input: {
@@ -1020,29 +1059,20 @@ async function recordArenaSourceSystemCode(input: {
 
 async function arenaEntrypointArtifact(
   artifactDir: string,
-  manifestEntrypoint: string[]
+  manifest: TradingSystemManifest
 ): Promise<{
   artifactPath: string;
   artifactDigest: string;
   digest: string;
 }> {
-  const entrypointPath = manifestEntrypoint[1] ?? "run.py";
-  const artifactPath = path.resolve(artifactDir, entrypointPath);
-  assertArenaEntrypointInsideArtifactDir(artifactDir, artifactPath);
-  const digest = await fileDigest(artifactPath);
+  const sealed = await sealSingleFileTradingArtifactClosure(artifactDir, manifest);
+  const artifactPath = path.resolve(artifactDir, sealed.entrypoint_relative_path);
+  const digest = sealed.closure_digest.slice("sha256:".length);
   return {
     artifactPath,
-    artifactDigest: `sha256:${digest}`,
+    artifactDigest: sealed.closure_digest,
     digest
   };
-}
-
-function assertArenaEntrypointInsideArtifactDir(artifactDir: string, artifactPath: string): void {
-  const resolvedArtifactDir = path.resolve(artifactDir);
-  const relativePath = path.relative(resolvedArtifactDir, artifactPath);
-  if (relativePath && (relativePath.startsWith("..") || path.isAbsolute(relativePath))) {
-    throw new Error("candidate_arena_entrypoint_escapes_artifact_dir");
-  }
 }
 
 function arenaMaterializationInput(input: {
@@ -2243,10 +2273,6 @@ function conciseError(error: unknown): string {
 
 function directionLabel(direction: ResearchDirectionKind): string {
   return direction.replaceAll("_", " ");
-}
-
-async function fileDigest(filePath: string): Promise<string> {
-  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
 function ref(record_kind: string, id: string): Ref {

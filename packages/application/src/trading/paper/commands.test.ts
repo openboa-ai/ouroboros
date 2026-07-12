@@ -97,6 +97,29 @@ describe("PaperTradingCommandService handoff conformance", () => {
     })).rejects.toThrow("fixture_reached_session_prepare");
     expect(effects.prepare).toHaveBeenCalledOnce();
   });
+
+  it("rejects generated artifact closure drift before paper session effects", async () => {
+    const graph = testGraph();
+    const effects = effectSpies();
+    effects.resolveArtifactDigest.mockResolvedValueOnce("sha256:drifted-closure");
+    const service = commandService(graph, effects);
+
+    await expect(service.start(graph.candidate.candidate_id, {
+      runtime_environment: "paper",
+      paper_order_request: "valid"
+    })).resolves.toMatchObject({
+      statusCode: 409,
+      body: {
+        error: "trading_run_failed",
+        reason: "paper_handoff_conformance_artifact_drift"
+      }
+    });
+    expect(effects.resolveArtifactDigest).toHaveBeenCalledOnce();
+    expect(effects.prepare).not.toHaveBeenCalled();
+    expect(effects.activate).not.toHaveBeenCalled();
+    expect(effects.observe).not.toHaveBeenCalled();
+    expect(effects.schedule).not.toHaveBeenCalled();
+  });
 });
 
 interface TestGraph {
@@ -134,7 +157,10 @@ function commandService(
     store,
     marketData: {} as never,
     tradingGatewayEnvironment: {} as never,
-    sessions
+    sessions,
+    artifactResolver: {
+      resolveArtifactDigest: effects.resolveArtifactDigest
+    }
   });
 }
 
@@ -143,7 +169,10 @@ function effectSpies() {
     prepare: vi.fn(),
     activate: vi.fn(),
     observe: vi.fn(),
-    schedule: vi.fn()
+    schedule: vi.fn(),
+    resolveArtifactDigest: vi.fn(async (systemCode: SystemCodeRecord) =>
+      systemCode.artifact_digest
+    )
   };
 }
 

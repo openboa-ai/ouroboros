@@ -72,6 +72,7 @@ export async function runTradingResearchLoop(
   await mkdir(runRoot, { recursive: true });
   await rm(seedDir, { recursive: true, force: true });
   await cp(artifactSourceDir, seedDir, { recursive: true });
+  const frozenManifest = await readTradingSystemManifest(seedDir);
   await rm(bestDir, { recursive: true, force: true });
   await cp(seedDir, bestDir, { recursive: true });
 
@@ -139,10 +140,9 @@ export async function runTradingResearchLoop(
       continue;
     }
 
-    const manifest = await readTradingSystemManifest(candidateDir);
     const replaySet = await runTradingReplaySet({
       artifact_dir: candidateDir,
-      manifest,
+      manifest: frozenManifest,
       output_dir: outputDir,
       artifact_runner: artifactRunner,
       replay_provider_factory: input.replay_provider_factory

@@ -1,5 +1,4 @@
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -15,6 +14,8 @@ import {
   type TradingArtifactRunner
 } from "@ouroboros/application/trading/research/artifact-runner";
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
+import { sealSingleFileTradingArtifactClosure } from
+  "@ouroboros/application/trading/research/artifact-closure";
 import { evaluatePaperTradingHandoffProbe } from
   "@ouroboros/application/trading/research/paper-handoff-conformance";
 import { PaperTradingHandoffConformanceInfrastructureError } from
@@ -619,16 +620,14 @@ process.exit(17);
 
   it("preserves a leakage reason when an earlier scenario has an ordinary risk rejection", async () => {
     const artifactDir = path.join(tmpDir, "mixed-disqualification-artifact");
-    await prepareSyntheticArtifact(artifactDir);
+    const manifest = syntheticManifest(
+      "mixed-disqualification-artifact",
+      "Mixed disqualification artifact"
+    );
+    await prepareSyntheticArtifact(artifactDir, manifest);
     const replay = await runTradingReplaySet({
       artifact_dir: artifactDir,
-      manifest: {
-        id: "mixed-disqualification-artifact",
-        name: "Mixed disqualification artifact",
-        entrypoint: ["python3", "run.py"],
-        editable_paths: ["run.py"],
-        api_contract: "trading_api_provider_v1"
-      },
+      manifest,
       output_dir: path.join(tmpDir, "mixed-disqualification-run"),
       artifact_runner: mixedDisqualificationArtifactRunner()
     });
@@ -723,11 +722,15 @@ process.exit(17);
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     const runPath = path.join(artifactDir, "run.py");
     const submittedBytes = await readFile(runPath);
+    const manifest = await readTradingSystemManifest(artifactDir);
+    const submittedClosureDigest = (
+      await sealSingleFileTradingArtifactClosure(artifactDir, manifest)
+    ).closure_digest;
     const runner = controlledPaperHandoffArtifactRunner(["mutated"]);
 
     const replay = await runTradingReplaySet({
       artifact_dir: artifactDir,
-      manifest: await readTradingSystemManifest(artifactDir),
+      manifest,
       output_dir: path.join(tmpDir, "paper-handoff-mutating-run"),
       scenarios: [defaultReplayTradingScenarioSet[0]],
       artifact_runner: runner
@@ -740,13 +743,178 @@ process.exit(17);
       paper_handoff_conformance: {
         status: "rejected",
         reason: "artifact_digest_mismatch",
-        system_code_artifact_digest: `sha256:${createHash("sha256")
-          .update(submittedBytes)
-          .digest("hex")}`,
+        system_code_artifact_digest: submittedClosureDigest,
         runnable_paper_handoff: false
       }
     });
     await expect(readFile(runPath)).resolves.toEqual(submittedBytes);
+  });
+
+  it("restores and rejects undeclared artifact-closure mutation during paper handoff", async () => {
+    const artifactDir = path.join(tmpDir, "paper-handoff-closure-mutating-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const manifestPath = path.join(artifactDir, "manifest.json");
+    const submittedManifest = await readFile(manifestPath);
+    const scenario = defaultReplayTradingScenarioSet[0]!;
+    const runner: TradingArtifactRunner = {
+      kind: "host_process",
+      async run(input) {
+        return {
+          ...replayRunForOrder({
+            scenario,
+            side: "buy",
+            accepted: true,
+            validationReason: "risk_limits_passed",
+            quantity: 0.0033333333333333335
+          }),
+          artifact_dir: input.artifact_dir,
+          entrypoint: input.manifest.entrypoint,
+          events_path: path.join(input.output_dir, "events.jsonl")
+        };
+      },
+      async probePaperHandoff(input) {
+        await writeFile(
+          path.join(input.artifact_dir, "helper.py"),
+          "SIDE = 'sell'\n",
+          "utf8"
+        );
+        await writeFile(manifestPath, "{}\n", "utf8");
+        return passingPaperHandoffProbe(input);
+      }
+    };
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: artifactDir,
+      manifest: await readTradingSystemManifest(artifactDir),
+      output_dir: path.join(tmpDir, "paper-handoff-closure-mutating-run"),
+      scenarios: [scenario],
+      artifact_runner: runner,
+      replay_provider_factory: async (candidateInput) => ({
+        base_url: "",
+        close: async () => undefined,
+        requests: () => [],
+        candidate_input: candidateInput
+      })
+    });
+
+    expect(replay.evaluation).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "unreproducible",
+      paper_handoff_conformance: {
+        status: "rejected",
+        reason: "artifact_digest_mismatch",
+        runnable_paper_handoff: false
+      }
+    });
+    await expect(readFile(manifestPath)).resolves.toEqual(submittedManifest);
+    await expect(readFile(path.join(artifactDir, "helper.py"))).rejects.toThrow();
+  });
+
+  it("rejects an undeclared submitted artifact closure before provider or runner effects", async () => {
+    const artifactDir = path.join(tmpDir, "submitted-closure-invalid-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(path.join(artifactDir, "helper.py"), "SIDE = 'sell'\n", "utf8");
+    let providerStarts = 0;
+    let runnerCalls = 0;
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: artifactDir,
+      manifest: await readTradingSystemManifest(artifactDir),
+      output_dir: path.join(tmpDir, "submitted-closure-invalid-run"),
+      replay_provider_factory: async () => {
+        providerStarts += 1;
+        throw new Error("provider must not start for invalid artifact closure");
+      },
+      artifact_runner: {
+        kind: "host_process",
+        async run() {
+          runnerCalls += 1;
+          throw new Error("runner must not execute invalid artifact closure");
+        },
+        async probePaperHandoff() {
+          runnerCalls += 1;
+          throw new Error("probe must not execute invalid artifact closure");
+        }
+      }
+    });
+
+    expect(replay).toMatchObject({
+      scenario_results: [],
+      evaluation: {
+        status: "disqualified",
+        score: 0,
+        disqualification_reason: "unreproducible",
+        risk_decision: "no_order_request"
+      }
+    });
+    expect(replay.evaluation.paper_handoff_conformance).toBeUndefined();
+    expect(providerStarts).toBe(0);
+    expect(runnerCalls).toBe(0);
+    await expect(readFile(replay.events_path, "utf8"))
+      .resolves.toContain("artifact_integrity");
+  });
+
+  it("freezes the source manifest before ResearchWorker effects", async () => {
+    let providerStarts = 0;
+    let runnerCalls = 0;
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "research-manifest-freeze"),
+      session_id: "research-manifest-freeze",
+      iterations: 1,
+      artifact_source_dir: path.resolve("artifacts/trading-system"),
+      agent_adapter: {
+        agent: {
+          id: "manifest-mutating-worker",
+          provider: "fixture",
+          model: "manifest-mutating-fixture",
+          permission_policy: "fixture_only"
+        },
+        async improveArtifact(input) {
+          const manifestPath = path.join(input.artifact_dir, "manifest.json");
+          const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+          await writeFile(
+            manifestPath,
+            `${JSON.stringify({ ...manifest, name: "mutated after commitment" }, null, 2)}\n`,
+            "utf8"
+          );
+          return {
+            status: "edited",
+            summary: "mutated manifest",
+            changed_paths: ["manifest.json"]
+          };
+        }
+      },
+      replay_provider_factory: async () => {
+        providerStarts += 1;
+        throw new Error("provider must not start after manifest drift");
+      },
+      artifact_runner: {
+        kind: "host_process",
+        async run() {
+          runnerCalls += 1;
+          throw new Error("runner must not execute after manifest drift");
+        },
+        async probePaperHandoff() {
+          runnerCalls += 1;
+          throw new Error("probe must not execute after manifest drift");
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      best_score: undefined,
+      best_artifact_dir: undefined,
+      entries: [{
+        decision: "discard",
+        evaluation: {
+          status: "disqualified",
+          disqualification_reason: "unreproducible"
+        }
+      }]
+    });
+    expect(providerStarts).toBe(0);
+    expect(runnerCalls).toBe(0);
   });
 
   it("does not spend a paper handoff probe after replay already rejects", async () => {
@@ -761,16 +929,14 @@ process.exit(17);
     };
 
     const artifactDir = path.join(tmpDir, "skip-conformance-artifact");
-    await prepareSyntheticArtifact(artifactDir);
+    const manifest = syntheticManifest(
+      "skip-conformance-artifact",
+      "Skip conformance artifact"
+    );
+    await prepareSyntheticArtifact(artifactDir, manifest);
     const replay = await runTradingReplaySet({
       artifact_dir: artifactDir,
-      manifest: {
-        id: "skip-conformance-artifact",
-        name: "Skip conformance artifact",
-        entrypoint: ["python3", "run.py"],
-        editable_paths: ["run.py"],
-        api_contract: "trading_api_provider_v1"
-      },
+      manifest,
       output_dir: path.join(tmpDir, "skip-conformance-run"),
       artifact_runner: runner
     });
@@ -857,16 +1023,14 @@ process.exit(17);
   it("removes evaluator scenario files even when provider close fails", async () => {
     const outputDir = path.join(tmpDir, "provider-close-failure");
     const artifactDir = path.join(tmpDir, "provider-close-failure-artifact");
-    await prepareSyntheticArtifact(artifactDir);
+    const manifest = syntheticManifest(
+      "provider-close-failure-artifact",
+      "Provider close failure artifact"
+    );
+    await prepareSyntheticArtifact(artifactDir, manifest);
     await expect(runTradingReplaySet({
       artifact_dir: artifactDir,
-      manifest: {
-        id: "provider-close-failure-artifact",
-        name: "Provider close failure artifact",
-        entrypoint: ["python3", "run.py"],
-        editable_paths: ["run.py"],
-        api_contract: "trading_api_provider_v1"
-      },
+      manifest,
       output_dir: outputDir,
       scenarios: [defaultReplayTradingScenarioSet[0]],
       artifact_runner: mixedDisqualificationArtifactRunner(),
@@ -1520,9 +1684,27 @@ function replayRunForOrder(input: {
   };
 }
 
-async function prepareSyntheticArtifact(artifactDir: string): Promise<void> {
+async function prepareSyntheticArtifact(
+  artifactDir: string,
+  manifest: ReturnType<typeof syntheticManifest>
+): Promise<void> {
   await mkdir(artifactDir, { recursive: true });
   await writeFile(path.join(artifactDir, "run.py"), "# sealed synthetic artifact\n", "utf8");
+  await writeFile(
+    path.join(artifactDir, "manifest.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+function syntheticManifest(id: string, name: string) {
+  return {
+    id,
+    name,
+    entrypoint: ["python3", "run.py"],
+    editable_paths: ["run.py"],
+    api_contract: "trading_api_provider_v1" as const
+  };
 }
 
 function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {

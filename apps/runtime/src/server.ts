@@ -278,7 +278,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     store,
     marketData: gatewayMarketDataPort,
     tradingGatewayEnvironment,
-    sessions: paperTradingSessionService
+    sessions: paperTradingSessionService,
+    artifactResolver: paperTradingArtifactResolver
   });
   await store.initialize();
   const paperTradingRecoveryOutcomes = options.recoverPaperTradingSessionsOnStart === false
