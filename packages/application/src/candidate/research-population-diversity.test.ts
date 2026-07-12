@@ -39,6 +39,7 @@ describe("buildResearchPopulationDiversity", () => {
         unavailable_fingerprint_count: 0
       },
       by_direction: [],
+      tick_series: [],
       evaluation_authority: false,
       promotion_authority: false,
       authority_status: "not_promotion_authority"
@@ -96,10 +97,110 @@ describe("buildResearchPopulationDiversity", () => {
         directionRow("mean_reversion", 1, 1, 1),
         directionRow("volatility_regime", 1, 1, 1)
       ],
+      tick_series: [
+        tickDiversity("tick-2", "2026-07-12T10:02:00.000Z", 2, 2, 2, 2),
+        tickDiversity("tick-1", "2026-07-12T10:01:00.000Z", 2, 2, 2, 2)
+      ],
       evaluation_authority: false,
       promotion_authority: false,
       authority_status: "not_promotion_authority"
     });
+  });
+
+  it("keeps an earlier diverse cross-section separate from latest behavior collapse", () => {
+    const ticks = [
+      tick(
+        "tick-2",
+        "2026-07-12T10:02:00.000Z",
+        ["trend_following", "mean_reversion", "volatility_regime"]
+      ),
+      tick(
+        "tick-1",
+        "2026-07-12T10:01:00.000Z",
+        ["trend_following", "mean_reversion", "volatility_regime"]
+      )
+    ];
+    const commitments = ticks.flatMap((entry) => entry.direction_results.map((result) =>
+      commitment(entry.tick_id, result.direction_kind)
+    ));
+    const result = buildResearchPopulationDiversity({
+      ticks,
+      directions: directions("trend_following", "mean_reversion", "volatility_regime"),
+      commitments,
+      fingerprints: [
+        fingerprint(commitments[0]!, "behavior-a"),
+        fingerprint(commitments[1]!, "behavior-a"),
+        fingerprint(commitments[2]!, "behavior-a"),
+        fingerprint(commitments[3]!, "behavior-a"),
+        fingerprint(commitments[4]!, "behavior-b"),
+        fingerprint(commitments[5]!, "behavior-c")
+      ],
+      admissions: []
+    });
+
+    expect(result.tick_series.map((entry) => ({
+      tick_id: entry.tick_id,
+      assigned_entropy: entry.assigned_directions.normalized_entropy,
+      observed_unique: entry.observed_behaviors.unique_count,
+      observed_entropy: entry.observed_behaviors.normalized_entropy
+    }))).toEqual([
+      {
+        tick_id: "tick-2",
+        assigned_entropy: 1,
+        observed_unique: 1,
+        observed_entropy: 0
+      },
+      {
+        tick_id: "tick-1",
+        assigned_entropy: 1,
+        observed_unique: 3,
+        observed_entropy: 1
+      }
+    ]);
+    expect(result.observed_behaviors).toMatchObject({
+      measurement_status: "measured",
+      sample_count: 6,
+      unique_count: 3
+    });
+  });
+
+  it("keeps single-cohort ticks measurable across a window suite transition", () => {
+    const ticks = [
+      tick("tick-2", "2026-07-12T10:02:00.000Z", ["trend_following", "mean_reversion"]),
+      tick("tick-1", "2026-07-12T10:01:00.000Z", ["trend_following", "mean_reversion"])
+    ];
+    const commitments = [
+      commitment("tick-2", "trend_following", digest("suite-b")),
+      commitment("tick-2", "mean_reversion", digest("suite-b")),
+      commitment("tick-1", "trend_following", digest("suite-a")),
+      commitment("tick-1", "mean_reversion", digest("suite-a"))
+    ];
+    const result = buildResearchPopulationDiversity({
+      ticks,
+      directions: directions("trend_following", "mean_reversion"),
+      commitments,
+      fingerprints: [
+        fingerprint(commitments[0]!, "behavior-a"),
+        fingerprint(commitments[1]!, "behavior-b"),
+        fingerprint(commitments[2]!, "behavior-a"),
+        fingerprint(commitments[3]!, "behavior-b")
+      ],
+      admissions: []
+    });
+
+    expect(result.observed_behaviors).toEqual({
+      measurement_status: "incomparable_suites",
+      sample_count: 4,
+      cohort_count: 2,
+      admitted_submission_count: 0,
+      exact_behavior_duplicate_count: 0,
+      artifact_duplicate_count: 0,
+      unavailable_fingerprint_count: 0
+    });
+    expect(result.tick_series.map((entry) => entry.observed_behaviors)).toEqual([
+      measuredDistributionWithCounts(2, 2, 1, 1),
+      measuredDistributionWithCounts(2, 2, 1, 1)
+    ]);
   });
 
   it("keeps assigned labels and observed behavior as orthogonal distributions", () => {
@@ -236,6 +337,21 @@ describe("buildResearchPopulationDiversity", () => {
       directionRow("volatility_regime", 1, 0, 0),
       directionRow("funding_aware_risk", 1, 0, 0)
     ]);
+    expect(result.tick_series[0]).toEqual({
+      tick_id: "tick-1",
+      completed_at: "2026-07-12T10:01:00.000Z",
+      assigned_directions: {
+        measurement_status: "measured",
+        sample_count: 4,
+        unique_count: 4,
+        entropy_bits: 2,
+        normalized_entropy: 1
+      },
+      observed_behaviors: result.observed_behaviors,
+      evaluation_authority: false,
+      promotion_authority: false,
+      authority_status: "not_promotion_authority"
+    });
   });
 
   it("fails closed across protocol or development-suite cohorts", () => {
@@ -270,6 +386,9 @@ describe("buildResearchPopulationDiversity", () => {
       directionRow("mean_reversion", 1, 1)
     ]);
     expect(Object.hasOwn(result.by_direction[0]!, "unique_behavior_count")).toBe(false);
+    expect(result.tick_series[0]!.observed_behaviors).toEqual(
+      result.observed_behaviors
+    );
   });
 
   it("ignores orphan, historical-unbound, sealed, paper, score, and rationale noise", () => {
@@ -328,6 +447,18 @@ describe("buildResearchPopulationDiversity", () => {
     });
     expect(result.by_direction.map((row) => row.direction_kind)).toEqual([
       "trend_following"
+    ]);
+    expect(result.tick_series.map((entry) => entry.tick_id)).toEqual([
+      "tick-10",
+      "tick-9",
+      "tick-8",
+      "tick-7",
+      "tick-6",
+      "tick-5",
+      "tick-4",
+      "tick-3",
+      "tick-2",
+      "tick-1"
     ]);
   });
 
@@ -566,6 +697,68 @@ function directionRow(
     ...(unique_behavior_count === undefined ? {} : { unique_behavior_count }),
     admitted_submission_count,
     exact_behavior_duplicate_count
+  };
+}
+
+function tickDiversity(
+  tick_id: string,
+  completed_at: string,
+  assignedSampleCount: number,
+  assignedUniqueCount: number,
+  behaviorSampleCount: number,
+  behaviorUniqueCount: number
+) {
+  return {
+    tick_id,
+    completed_at,
+    assigned_directions: distribution(
+      assignedSampleCount,
+      assignedUniqueCount,
+      assignedUniqueCount === assignedSampleCount ? 1 : 0
+    ),
+    observed_behaviors: measuredDistributionWithCounts(
+      behaviorSampleCount,
+      behaviorUniqueCount,
+      behaviorUniqueCount === behaviorSampleCount ? 1 : 0,
+      behaviorUniqueCount === behaviorSampleCount ? 1 : 0
+    ),
+    evaluation_authority: false,
+    promotion_authority: false,
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function distribution(
+  sample_count: number,
+  unique_count: number,
+  normalized_entropy: number
+) {
+  return {
+    measurement_status: "measured" as const,
+    sample_count,
+    unique_count,
+    entropy_bits: normalized_entropy === 1 ? Math.log2(sample_count) : 0,
+    normalized_entropy
+  };
+}
+
+function measuredDistributionWithCounts(
+  sample_count: number,
+  unique_count: number,
+  entropy_bits: number,
+  normalized_entropy: number
+) {
+  return {
+    measurement_status: "measured" as const,
+    sample_count,
+    unique_count,
+    entropy_bits,
+    normalized_entropy,
+    cohort_count: 1,
+    admitted_submission_count: 0,
+    exact_behavior_duplicate_count: 0,
+    artifact_duplicate_count: 0,
+    unavailable_fingerprint_count: 0
   };
 }
 

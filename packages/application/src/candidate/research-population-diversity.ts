@@ -48,6 +48,15 @@ interface DirectionAccumulator {
   exactBehaviorDuplicateCount: number;
 }
 
+interface TickEvidenceAccumulator {
+  behaviorKeys: string[];
+  cohortKeys: Set<string>;
+  admittedSubmissionCount: number;
+  exactBehaviorDuplicateCount: number;
+  artifactDuplicateCount: number;
+  unavailableFingerprintCount: number;
+}
+
 export function buildResearchPopulationDiversity(
   input: BuildResearchPopulationDiversityInput
 ): ResearchPopulationDiversityReadModel {
@@ -63,6 +72,9 @@ export function buildResearchPopulationDiversity(
   const directionById = directionRecordMap(input.directions);
   const accumulators = new Map<ResearchDirectionKind, DirectionAccumulator>(
     RESEARCH_DIRECTION_KINDS.map((direction) => [direction, emptyAccumulator()])
+  );
+  const tickEvidence = new Map<string, TickEvidenceAccumulator>(
+    windowTicks.map((tick) => [tick.tick_id, emptyTickEvidenceAccumulator()])
   );
 
   for (const tick of windowTicks) {
@@ -120,6 +132,9 @@ export function buildResearchPopulationDiversity(
     const behaviorKey = exactBehaviorKey(fingerprint);
     behaviorKeys.push(behaviorKey);
     cohortKeys.add(exactCohortKey(fingerprint));
+    const tickAccumulator = tickEvidence.get(commitment.candidate_arena_tick_id)!;
+    tickAccumulator.behaviorKeys.push(behaviorKey);
+    tickAccumulator.cohortKeys.add(exactCohortKey(fingerprint));
     const direction = directionByCommitmentId.get(commitmentId)!;
     const accumulator = accumulators.get(direction)!;
     accumulator.observedBehaviorCount += 1;
@@ -145,15 +160,23 @@ export function buildResearchPopulationDiversity(
     if (admission.status === "admitted" &&
       admission.reason === "evaluation_accepted") {
       accumulator.admittedSubmissionCount += 1;
+      tickEvidence.get(commitment.candidate_arena_tick_id)!
+        .admittedSubmissionCount += 1;
     } else if (admission.status === "duplicate" &&
       admission.reason === "behavior_duplicate") {
       accumulator.exactBehaviorDuplicateCount += 1;
+      tickEvidence.get(commitment.candidate_arena_tick_id)!
+        .exactBehaviorDuplicateCount += 1;
     } else if (admission.status === "duplicate" &&
       admission.reason === "no_candidate_change") {
       artifactDuplicateCount += 1;
+      tickEvidence.get(commitment.candidate_arena_tick_id)!
+        .artifactDuplicateCount += 1;
     } else if (admission.status === "quarantined" &&
       admission.reason === "behavior_fingerprint_unavailable") {
       unavailableFingerprintCount += 1;
+      tickEvidence.get(commitment.candidate_arena_tick_id)!
+        .unavailableFingerprintCount += 1;
     }
   }
 
@@ -189,6 +212,28 @@ export function buildResearchPopulationDiversity(
       exact_behavior_duplicate_count: accumulator.exactBehaviorDuplicateCount
     } satisfies ResearchPopulationDiversityDirectionReadModel];
   });
+  const tickSeries = windowTicks.map((tick) => {
+    const evidence = tickEvidence.get(tick.tick_id)!;
+    return {
+      tick_id: tick.tick_id,
+      completed_at: tick.completed_at,
+      assigned_directions: comparableDistribution(
+        tick.direction_results.map((result) => result.direction_kind),
+        RESEARCH_DIRECTION_KINDS.length
+      ),
+      observed_behaviors: behaviorDistribution({
+        behaviorKeys: evidence.behaviorKeys,
+        cohortCount: evidence.cohortKeys.size,
+        admittedSubmissionCount: evidence.admittedSubmissionCount,
+        exactBehaviorDuplicateCount: evidence.exactBehaviorDuplicateCount,
+        artifactDuplicateCount: evidence.artifactDuplicateCount,
+        unavailableFingerprintCount: evidence.unavailableFingerprintCount
+      }),
+      evaluation_authority: false as const,
+      promotion_authority: false as const,
+      authority_status: "not_promotion_authority" as const
+    };
+  });
   const result: ResearchPopulationDiversityReadModel = {
     protocol_version: "research_population_diversity_v1",
     window_tick_count: windowTicks.length,
@@ -198,6 +243,7 @@ export function buildResearchPopulationDiversity(
     ),
     observed_behaviors: observedBehaviors,
     by_direction: byDirection,
+    tick_series: tickSeries,
     evaluation_authority: false,
     promotion_authority: false,
     authority_status: "not_promotion_authority"
@@ -290,6 +336,17 @@ function emptyAccumulator(): DirectionAccumulator {
     behaviorKeys: new Set(),
     admittedSubmissionCount: 0,
     exactBehaviorDuplicateCount: 0
+  };
+}
+
+function emptyTickEvidenceAccumulator(): TickEvidenceAccumulator {
+  return {
+    behaviorKeys: [],
+    cohortKeys: new Set(),
+    admittedSubmissionCount: 0,
+    exactBehaviorDuplicateCount: 0,
+    artifactDuplicateCount: 0,
+    unavailableFingerprintCount: 0
   };
 }
 
