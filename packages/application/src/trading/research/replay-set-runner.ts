@@ -1,7 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { TradingEvaluationDisqualificationReason } from "@ouroboros/domain";
 import { DockerSandboxesSbxTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
 import { evaluateTradingRun } from "./evaluator";
+import {
+  evaluatePaperTradingHandoffProbe,
+  PaperTradingHandoffConformanceInfrastructureError
+} from "./paper-handoff-conformance";
 import {
   defaultReplayTradingScenarioSet,
   type ReplayTradingApiProviderOptions,
@@ -15,6 +21,7 @@ import type {
   TradingArtifactCommandEvidence,
   TradingArtifactCommandEvidenceSummary,
   TradingEvaluationResult,
+  TradingPaperHandoffConformanceEvidence,
   TradingProfitLoss,
   TradingScenarioEvaluationResult,
   TradingSystemManifest
@@ -97,7 +104,18 @@ export async function runTradingReplaySet(
   }
 
   const eventsPath = resolvePathInsideRoot(outputRoot, ["replay-set.json"], "replay_set_events");
-  const evaluation = aggregateScenarioResults(scenarioResults);
+  const replayEvaluation = aggregateScenarioResults(scenarioResults);
+  const evaluation = replayEvaluation.status === "accepted"
+    ? await composePaperHandoffConformance({
+        artifact_dir: input.artifact_dir,
+        manifest: input.manifest,
+        output_root: outputRoot,
+        artifact_runner: artifactRunner,
+        replay_provider_factory: input.replay_provider_factory ?? startReplayTradingApiProvider,
+        scenario: scenarios[0],
+        evaluation: replayEvaluation
+      })
+    : replayEvaluation;
   await writeFile(
     eventsPath,
     `${JSON.stringify({
@@ -111,6 +129,112 @@ export async function runTradingReplaySet(
     scenario_results: scenarioResults,
     events_path: eventsPath
   };
+}
+
+async function composePaperHandoffConformance(input: {
+  artifact_dir: string;
+  manifest: TradingSystemManifest;
+  output_root: string;
+  artifact_runner: TradingArtifactRunner;
+  replay_provider_factory: ReplayTradingApiProviderFactory;
+  scenario: ReplayTradingScenario;
+  evaluation: TradingEvaluationResult;
+}): Promise<TradingEvaluationResult> {
+  let provider: ReplayTradingApiProviderSession;
+  try {
+    provider = await input.replay_provider_factory(
+      toReplayTradingCandidateInput(input.scenario),
+      replayProviderOptionsFor(input.artifact_runner.kind)
+    );
+  } catch (error) {
+    throw new PaperTradingHandoffConformanceInfrastructureError(
+      "provider_start_failed",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
+  let probeFailed = false;
+  try {
+    const probe = await input.artifact_runner.probePaperHandoff({
+      artifact_dir: input.artifact_dir,
+      manifest: input.manifest,
+      provider,
+      output_dir: resolvePathInsideRoot(
+        input.output_root,
+        ["paper-handoff-conformance"],
+        "paper_handoff_conformance_output"
+      ),
+      instance_id: `paper-handoff-${randomUUID()}`,
+      start_at: new Date().toISOString()
+    });
+    const conformance = evaluatePaperTradingHandoffProbe(probe);
+    const evidence: TradingPaperHandoffConformanceEvidence = {
+      protocol_version: "paper_trading_event_protocol_v1",
+      runner_kind: probe.runner_kind,
+      status: conformance.status,
+      reason: conformance.reason,
+      provider_request_count: conformance.provider_request_count,
+      ...(conformance.decision_event_kind === undefined
+        ? {}
+        : { decision_event_kind: conformance.decision_event_kind }),
+      heartbeat_count: conformance.heartbeat_count,
+      runtime_stopped: conformance.runtime_stopped,
+      started_at: probe.started_at,
+      completed_at: probe.completed_at,
+      runnable_paper_handoff: conformance.runnable_paper_handoff
+    };
+    const metric = {
+      name: "paper_handoff_conformance",
+      score: conformance.status === "passed" ? 1 : 0,
+      detail: conformance.status === "passed"
+        ? "External target paper protocol conformance passed."
+        : `External target paper protocol conformance rejected: ${conformance.reason}.`
+    };
+
+    if (conformance.status === "passed") {
+      return {
+        ...input.evaluation,
+        metrics: [...input.evaluation.metrics, metric],
+        summary: `${input.evaluation.summary} Target paper protocol conformance passed.`,
+        paper_handoff_conformance: evidence
+      };
+    }
+    return {
+      ...input.evaluation,
+      status: "disqualified",
+      score: 0,
+      metrics: [...input.evaluation.metrics, metric],
+      summary: `Rejected accepted replay set because target paper protocol conformance failed (${conformance.reason}).`,
+      disqualification_reason: paperHandoffDisqualificationReason(conformance.reason),
+      paper_handoff_conformance: evidence
+    };
+  } catch (error) {
+    probeFailed = true;
+    throw error;
+  } finally {
+    try {
+      await provider.close();
+    } catch (error) {
+      if (!probeFailed) {
+        throw new PaperTradingHandoffConformanceInfrastructureError(
+          "probe_cleanup_failed",
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+  }
+}
+
+function paperHandoffDisqualificationReason(
+  reason: TradingPaperHandoffConformanceEvidence["reason"]
+): TradingEvaluationDisqualificationReason {
+  if (reason === "hidden_evaluator_field") {
+    return "lookahead_leakage";
+  }
+  if (reason === "candidate_self_report" || reason === "private_or_live_authority") {
+    return "runtime_self_report_only";
+  }
+  return "unreproducible";
 }
 
 export function toResearchPreflightFeedback(

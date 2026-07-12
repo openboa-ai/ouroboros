@@ -1,4 +1,6 @@
 import type {
+  PaperTradingHandoffConformanceReason,
+  PaperTradingHandoffConformanceStatus,
   PaperTradingMarketDataFreshness,
   PaperTradingMarketDataSourceKind,
   PaperTradingMarketDataSourcePriority,
@@ -236,6 +238,20 @@ export interface TradingProfitLoss {
   net_return_pct: number;
 }
 
+export interface TradingPaperHandoffConformanceEvidence {
+  protocol_version: "paper_trading_event_protocol_v1";
+  runner_kind: TradingArtifactRunnerKind;
+  status: PaperTradingHandoffConformanceStatus;
+  reason: PaperTradingHandoffConformanceReason;
+  provider_request_count: number;
+  decision_event_kind?: "order_request" | "hold" | "no_action";
+  heartbeat_count: number;
+  runtime_stopped: boolean;
+  started_at: string;
+  completed_at: string;
+  runnable_paper_handoff: boolean;
+}
+
 export interface TradingEvaluationResult {
   status: TradingEvaluationStatus;
   score: number;
@@ -245,6 +261,7 @@ export interface TradingEvaluationResult {
   profit_loss: TradingProfitLoss;
   disqualification_reason?: TradingEvaluationDisqualificationReason;
   scenario_results?: TradingScenarioEvaluationResult[];
+  paper_handoff_conformance?: TradingPaperHandoffConformanceEvidence;
 }
 
 export interface TradingScenarioEvaluationResult {

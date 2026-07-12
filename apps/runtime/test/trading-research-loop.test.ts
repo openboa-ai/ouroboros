@@ -16,6 +16,8 @@ import {
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
 import { evaluatePaperTradingHandoffProbe } from
   "@ouroboros/application/trading/research/paper-handoff-conformance";
+import { PaperTradingHandoffConformanceInfrastructureError } from
+  "@ouroboros/application/trading/research/paper-handoff-conformance";
 import type {
   ArtifactRunResult,
   ReplayTradingScenario
@@ -109,7 +111,17 @@ describe("Trading research research loop MVP", () => {
     expect(replayFeedback).not.toMatch(
       /scenario_results|scenario_id|trend_long|range_flat|expected_direction|exit_price|runner_command_evidence/i
     );
-    await expect(readdir(path.dirname(notebook.entries[0].events_path))).resolves.toEqual(["replay-set.json"]);
+    await expect(readdir(path.dirname(notebook.entries[0].events_path))).resolves.toEqual([
+      "paper-handoff-conformance",
+      "replay-set.json"
+    ]);
+    await expect(readdir(path.join(
+      path.dirname(notebook.entries[0].events_path),
+      "paper-handoff-conformance"
+    ))).resolves.toEqual([
+      "paper-handoff-heartbeat.jsonl",
+      "paper-handoff-output.jsonl"
+    ]);
   });
 
   it("proves the artifact uses the external TradingApiProvider boundary", async () => {
@@ -628,6 +640,164 @@ process.exit(17);
     });
   });
 
+  it("keeps accepted replay only after bounded paper handoff conformance passes", async () => {
+    const artifactDir = path.join(tmpDir, "composed-conformance-pass-artifact");
+    const outputDir = path.join(tmpDir, "composed-conformance-pass-run");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const runner = controlledPaperHandoffArtifactRunner(["passed"]);
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: artifactDir,
+      manifest: await readTradingSystemManifest(artifactDir),
+      output_dir: outputDir,
+      scenarios: [defaultReplayTradingScenarioSet[0]],
+      artifact_runner: runner
+    });
+
+    expect(runner.probe_count()).toBe(1);
+    expect(replay.evaluation).toMatchObject({
+      status: "accepted",
+      score: 1,
+      metrics: expect.arrayContaining([
+        expect.objectContaining({
+          name: "paper_handoff_conformance",
+          score: 1
+        })
+      ]),
+      paper_handoff_conformance: {
+        protocol_version: "paper_trading_event_protocol_v1",
+        status: "passed",
+        reason: "passed",
+        runner_kind: "host_process",
+        provider_request_count: 3,
+        heartbeat_count: 1,
+        runtime_stopped: true,
+        runnable_paper_handoff: true
+      }
+    });
+    const feedback = await readFile(replay.events_path, "utf8");
+    expect(feedback).toContain("paper_handoff_conformance");
+    expect(feedback).not.toMatch(
+      /output_lines|provider_requests|command_evidence|instance_id|paper-handoff-output\.jsonl/i
+    );
+  });
+
+  it("zeroes an accepted replay when target paper handoff conformance rejects", async () => {
+    const artifactDir = path.join(tmpDir, "composed-conformance-reject-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const runner = controlledPaperHandoffArtifactRunner(["rejected"]);
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: artifactDir,
+      manifest: await readTradingSystemManifest(artifactDir),
+      output_dir: path.join(tmpDir, "composed-conformance-reject-run"),
+      scenarios: [defaultReplayTradingScenarioSet[0]],
+      artifact_runner: runner
+    });
+
+    expect(runner.probe_count()).toBe(1);
+    expect(replay.evaluation).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "unreproducible",
+      metrics: expect.arrayContaining([
+        expect.objectContaining({
+          name: "paper_handoff_conformance",
+          score: 0,
+          detail: expect.stringContaining("runtime_heartbeat_missing")
+        })
+      ]),
+      paper_handoff_conformance: {
+        status: "rejected",
+        reason: "runtime_heartbeat_missing",
+        runnable_paper_handoff: false
+      }
+    });
+  });
+
+  it("does not spend a paper handoff probe after replay already rejects", async () => {
+    const base = mixedDisqualificationArtifactRunner();
+    let probeCount = 0;
+    const runner: TradingArtifactRunner = {
+      ...base,
+      async probePaperHandoff(input) {
+        probeCount += 1;
+        return base.probePaperHandoff(input);
+      }
+    };
+
+    const replay = await runTradingReplaySet({
+      artifact_dir: path.join(tmpDir, "skip-conformance-artifact"),
+      manifest: {
+        id: "skip-conformance-artifact",
+        name: "Skip conformance artifact",
+        entrypoint: ["python3", "run.py"],
+        editable_paths: ["run.py"],
+        api_contract: "trading_api_provider_v1"
+      },
+      output_dir: path.join(tmpDir, "skip-conformance-run"),
+      artifact_runner: runner
+    });
+
+    expect(replay.evaluation.status).toBe("disqualified");
+    expect(replay.evaluation).not.toHaveProperty("paper_handoff_conformance");
+    expect(probeCount).toBe(0);
+  });
+
+  it("retains a prior conformance-passed best when a later paper handoff rejects", async () => {
+    const runner = controlledPaperHandoffArtifactRunner(["passed", "rejected"]);
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "paper-handoff-best-barrier"),
+      session_id: "paper-handoff-best-barrier",
+      iterations: 2,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: runner
+    });
+
+    expect(runner.probe_count()).toBe(2);
+    expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
+    expect(result.entries[1]).toMatchObject({
+      score: 0,
+      evaluation: {
+        status: "disqualified",
+        paper_handoff_conformance: {
+          status: "rejected",
+          reason: "runtime_heartbeat_missing"
+        }
+      }
+    });
+    expect(result.best_score).toBe(1);
+    expect(result.best_artifact_dir).toContain(path.join("iterations", "001", "kept-artifact"));
+
+    const notebook = await readNotebook(result.notebook_path);
+    const notebookSurface = JSON.stringify(notebook);
+    expect(notebookSurface).toContain("paper_handoff_conformance");
+    expect(notebookSurface).not.toMatch(
+      /output_lines|provider_requests|command_evidence|instance_id|paper-handoff-output\.jsonl/i
+    );
+    expect(notebook.entries[0].evaluation).not.toHaveProperty("paper_handoff_conformance");
+    expect(notebook.entries[1].evaluation).not.toHaveProperty("paper_handoff_conformance");
+  });
+
+  it("propagates paper handoff infrastructure failure instead of scoring strategy evidence", async () => {
+    const runner = controlledPaperHandoffArtifactRunner(["infrastructure_failed"]);
+    const runRoot = path.join(tmpDir, "paper-handoff-infrastructure-failure");
+
+    await expect(runTradingResearchLoop({
+      run_root: runRoot,
+      session_id: "paper-handoff-infrastructure-failure",
+      iterations: 1,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: runner
+    })).rejects.toMatchObject({
+      name: "PaperTradingHandoffConformanceInfrastructureError",
+      code: "runner_unavailable",
+      candidate_rejection: false
+    });
+    expect(runner.probe_count()).toBe(1);
+    expect((await readNotebook(path.join(runRoot, "notebook.json"))).entries).toEqual([]);
+  });
+
   it("never keeps a disqualified first iteration as the research best", async () => {
     const result = await runTradingResearchLoop({
       run_root: path.join(tmpDir, "disqualified-first-iteration"),
@@ -868,26 +1038,37 @@ process.exit(17);
     const scenarioOutputRoots = ["scenario-001", "scenario-002"].map((scenarioSlot) =>
       path.join(tmpDir, "sbx-session", "iterations", "001", "run", scenarioSlot)
     );
+    const executionOutputRoots = [
+      ...scenarioOutputRoots,
+      path.join(
+        tmpDir,
+        "sbx-session",
+        "iterations",
+        "001",
+        "run",
+        "paper-handoff-conformance"
+      )
+    ];
     await expect(readdir(path.join(tmpDir, "sbx-session", "iterations", "001", "run")))
-      .resolves.toEqual(["replay-set.json"]);
+      .resolves.toEqual(["paper-handoff-conformance", "replay-set.json"]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands.join("\n")).not.toMatch(/trend_long|range_flat/i);
-    expect(commands.filter((command) => command === "version")).toHaveLength(2);
-    expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(2);
-    expect(scenarioOutputRoots.every((outputRoot) =>
+    expect(commands.filter((command) => command === "version")).toHaveLength(3);
+    expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(3);
+    expect(executionOutputRoots.every((outputRoot) =>
       commands.some((command) => command.startsWith("create --name ") &&
         command.endsWith(` shell ${path.join(outputRoot, "sandbox-workspace")}`))
     )).toBe(true);
-    expect(scenarioOutputRoots.every((outputRoot) =>
+    expect(executionOutputRoots.every((outputRoot) =>
       commands.some((command) => command.startsWith(
         `exec -w ${path.join(outputRoot, "sandbox-workspace", "artifact")} `
       ))
     )).toBe(true);
     expect(commands.filter((command) => command.startsWith("exec -d -w "))).toHaveLength(0);
-    expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(2);
-    expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(2);
-    expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(3);
+    expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(3);
+    expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(3);
     expect(commands.join("\n")).toContain("replay-provider-runner.py --sidecar-script");
     expect(commands.join("\n")).toContain("--provider-base-url http://127.0.0.1:");
     delete process.env.SBX_FAKE_COMMAND_LOG;
@@ -1364,6 +1545,38 @@ function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {
         events,
         provider_requests: providerRequests
       };
+    }
+  };
+}
+
+function controlledPaperHandoffArtifactRunner(
+  outcomes: Array<"passed" | "rejected" | "infrastructure_failed">
+): TradingArtifactRunner & { probe_count(): number } {
+  const host = new HostTradingArtifactRunner({ allowHostExecution: true });
+  let probeCount = 0;
+  return {
+    kind: "host_process",
+    probe_count: () => probeCount,
+    run: (input) => host.run(input),
+    async probePaperHandoff(input) {
+      const outcome = outcomes[Math.min(probeCount, outcomes.length - 1)];
+      probeCount += 1;
+      if (outcome === "infrastructure_failed") {
+        throw new PaperTradingHandoffConformanceInfrastructureError(
+          "runner_unavailable",
+          "paper handoff test runner unavailable"
+        );
+      }
+      const probe = passingPaperHandoffProbe(input);
+      if (outcome === "rejected") {
+        return {
+          ...probe,
+          output_lines: probe.output_lines.filter((line) =>
+            JSON.parse(line).event !== "runtime_heartbeat"
+          )
+        };
+      }
+      return probe;
     }
   };
 }

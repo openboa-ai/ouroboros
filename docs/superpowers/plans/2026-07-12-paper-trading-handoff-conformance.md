@@ -225,25 +225,25 @@ git commit -m "feat: probe paper handoff in sandboxes"
 - Composes conformance into external `ResearchPreflight` without exposing raw evidence.
 - Keeps an iteration only when replay and target protocol both pass.
 
-- [ ] **Step 1: Write failing composition tests**
+- [x] **Step 1: Write failing composition tests**
 
 Prove accepted replay plus passed conformance remains accepted and adds one generic metric. Prove
 accepted replay plus rejected conformance becomes disqualified with zero score and stable reason.
 Prove an already rejected replay does not spend a conformance probe.
 
-- [ ] **Step 2: Write failing notebook barrier tests**
+- [x] **Step 2: Write failing notebook barrier tests**
 
 The in-process result retains bounded conformance evidence for persistence. ResearchWorker notebook,
 prompt summary, and replay-set feedback expose only generic status/reason; they omit raw events,
 provider requests, commands, paths, hidden fields, and evaluator state.
 
-- [ ] **Step 3: Prove best-artifact semantics**
+- [x] **Step 3: Prove best-artifact semantics**
 
 A replay-high/paper-rejected iteration is never kept. A prior passed keep remains selected when a
 later iteration rejects. Infrastructure failure aborts the loop/direction instead of becoming a
 discarded strategy score.
 
-- [ ] **Step 4: Implement and verify**
+- [x] **Step 4: Implement and verify**
 
 ```bash
 npm test -- packages/application/src/trading/research/paper-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts
