@@ -18,8 +18,11 @@ import type {
   OuroborosCommandRecord,
   Ref,
   ResearchOrchestrationRunRecord,
+  ResearchDirectionRecord,
+  ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
+  ResearchWorkerRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingPromotionRecord,
@@ -150,6 +153,23 @@ export interface OuroborosStorePort {
   listCandidateArenaResearchAllocations(): Promise<
     CandidateArenaResearchAllocationRecord[]
   >;
+  recordResearchDirection(
+    direction: ResearchDirectionRecord
+  ): Promise<ResearchDirectionRecord>;
+  getResearchDirection(
+    directionId: string
+  ): Promise<ResearchDirectionRecord | undefined>;
+  listResearchDirections(): Promise<ResearchDirectionRecord[]>;
+  recordResearchWorker(worker: ResearchWorkerRecord): Promise<ResearchWorkerRecord>;
+  getResearchWorker(workerId: string): Promise<ResearchWorkerRecord | undefined>;
+  listResearchWorkers(): Promise<ResearchWorkerRecord[]>;
+  recordResearchPreflightCommitment(
+    commitment: ResearchPreflightCommitmentRecord
+  ): Promise<ResearchPreflightCommitmentRecord>;
+  getResearchPreflightCommitment(
+    commitmentId: string
+  ): Promise<ResearchPreflightCommitmentRecord | undefined>;
+  listResearchPreflightCommitments(): Promise<ResearchPreflightCommitmentRecord[]>;
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
   getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined>;

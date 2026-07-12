@@ -74,6 +74,8 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
+  researchPreflightCommitmentDigestInput,
+  researchPreflightCommitmentHasRuntimeShape,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonPreparationHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
@@ -97,7 +99,8 @@ import {
   paperTradingComparisonVerdictDigestInput,
   paperTradingComparisonVerdictHasRuntimeShape,
   paperTradingComparisonBaselineEvaluation,
-  paperTradingEvaluationCommitmentDigestInput
+  paperTradingEvaluationCommitmentDigestInput,
+  tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape
 } from "@ouroboros/domain";
 export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
@@ -119,7 +122,10 @@ import type {
   CandidateAdmissionDecisionRecord,
   ImprovementProposalRecord,
   ResearchFindingRecord,
+  ResearchDirectionRecord,
   ResearchOrchestrationRunRecord,
+  ResearchPreflightCommitmentRecord,
+  ResearchWorkerRecord,
   ArtifactRuntimeContractRecord,
   AgentSpecRecord,
   ImprovementProposalMaterializationAttemptRecord,
@@ -311,6 +317,23 @@ export type LocalStoreErrorCode =
   | "invalid_research_orchestration_run_input"
   | "invalid_experiment_run_input"
   | "invalid_trading_evaluation_result_input"
+  | "invalid_research_direction_input"
+  | "research_direction_conflict"
+  | "research_direction_reload_failed"
+  | "invalid_research_worker_input"
+  | "research_worker_reference_not_found"
+  | "research_worker_reference_mismatch"
+  | "research_worker_conflict"
+  | "research_worker_reload_failed"
+  | "invalid_research_preflight_commitment_input"
+  | "research_preflight_commitment_digest_mismatch"
+  | "research_preflight_commitment_conflict"
+  | "research_preflight_commitment_reload_failed"
+  | "research_preflight_commitment_reference_not_found"
+  | "research_preflight_commitment_graph_mismatch"
+  | "research_preflight_commitment_rotation_reuse"
+  | "research_preflight_terminal_graph_mismatch"
+  | "research_preflight_terminal_reuse"
   | "invalid_candidate_arena_research_allocation_input"
   | "candidate_arena_research_allocation_digest_mismatch"
   | "candidate_arena_research_allocation_conflict"
@@ -324,6 +347,8 @@ export type LocalStoreErrorCode =
   | "artifact_lineage_not_found"
   | "candidate_admission_reference_not_found"
   | "candidate_admission_reference_mismatch"
+  | "candidate_admission_research_preflight_required"
+  | "candidate_admission_research_preflight_mismatch"
   | "invalid_paper_trading_evaluation_commitment_input"
   | "paper_trading_evaluation_commitment_digest_mismatch"
   | "paper_trading_evaluation_commitment_conflict"
@@ -591,6 +616,9 @@ type Collection =
   | "improvement-proposals"
   | "improvement-proposal-materialization-attempts"
   | "research-orchestration-runs"
+  | "research-directions"
+  | "research-workers"
+  | "research-preflight-commitments"
   | "experiment-runs"
   | "paper-trading-handoff-conformances"
   | "candidate-admission-decisions"
@@ -2960,6 +2988,88 @@ export class LocalStore {
         }
       );
     }
+    if (decision.status === "admitted" &&
+      evaluation.research_preflight_commitment_ref) {
+      if (!conformance ||
+        !decision.paper_trading_handoff_conformance_ref ||
+        !decision.paper_trading_handoff_conformance_digest ||
+        !evaluation.research_preflight_commitment_ref ||
+        !evaluation.research_preflight_commitment_digest ||
+        !evaluation.submitted_system_code_ref ||
+        !evaluation.submitted_artifact_digest ||
+        !evaluation.sealed_admission_suite_digest ||
+        evaluation.evaluation_phase !== "sealed_admission" ||
+        evaluation.submission_sequence !== 1) {
+        throw new LocalStoreError(
+          "candidate_admission_research_preflight_required",
+          "new admitted decisions require a complete sealed ResearchPreflight chain",
+          {
+            candidate_admission_decision_id:
+              decision.candidate_admission_decision_id
+          }
+        );
+      }
+      const commitment = await this.getResearchPreflightCommitment(
+        evaluation.research_preflight_commitment_ref.id
+      );
+      const preflightMismatchFields = [
+        !commitment ? "research_preflight_commitment_ref" : undefined,
+        commitment && commitment.commitment_digest !==
+          evaluation.research_preflight_commitment_digest
+          ? "research_preflight_commitment_digest"
+          : undefined,
+        commitment && commitment.source_system_code_ref.id !==
+          decision.source_system_code_ref.id
+          ? "source_system_code_ref"
+          : undefined,
+        commitment && commitment.source_artifact_digest !==
+          decision.source_artifact_digest
+          ? "source_artifact_digest"
+          : undefined,
+        commitment && commitment.research_worker_ref.id !==
+          experiment.research_worker_ref.id
+          ? "research_worker_ref"
+          : undefined,
+        commitment && commitment.research_direction_ref.id !==
+          experiment.research_direction_ref.id
+          ? "research_direction_ref"
+          : undefined,
+        commitment && commitment.sealed_admission_policy.suite_digest !==
+          evaluation.sealed_admission_suite_digest
+          ? "sealed_admission_suite_digest"
+          : undefined,
+        evaluation.submitted_system_code_ref.id !== decision.system_code_ref.id
+          ? "submitted_system_code_ref"
+          : undefined,
+        evaluation.submitted_artifact_digest !== decision.submitted_artifact_digest
+          ? "submitted_artifact_digest"
+          : undefined,
+        conformance.system_code_ref.id !== evaluation.submitted_system_code_ref.id
+          ? "paper_handoff.system_code_ref"
+          : undefined,
+        conformance.system_code_artifact_digest !==
+          evaluation.submitted_artifact_digest
+          ? "paper_handoff.system_code_artifact_digest"
+          : undefined,
+        Date.parse(decision.decided_at) < Date.parse(evaluation.completed_at)
+          ? "decided_at.before_evaluation"
+          : undefined,
+        Date.parse(decision.decided_at) < Date.parse(conformance.completed_at)
+          ? "decided_at.before_paper_handoff"
+          : undefined
+      ].filter((field): field is string => Boolean(field));
+      if (preflightMismatchFields.length > 0) {
+        throw new LocalStoreError(
+          "candidate_admission_research_preflight_mismatch",
+          "candidate admission does not match the sealed ResearchPreflight graph",
+          {
+            candidate_admission_decision_id:
+              decision.candidate_admission_decision_id,
+            mismatch_fields: preflightMismatchFields
+          }
+        );
+      }
+    }
     const identity = await this.assertExactAuthorityIdentity({
       collection: "candidate-admission-decisions",
       id: decision.candidate_admission_decision_id,
@@ -3236,6 +3346,311 @@ export class LocalStore {
       );
     }
     return value;
+  }
+
+  async recordResearchDirection(
+    direction: ResearchDirectionRecord
+  ): Promise<ResearchDirectionRecord> {
+    if (!isResearchDirectionRecord(direction)) {
+      throw new LocalStoreError(
+        "invalid_research_direction_input",
+        "invalid ResearchDirection input"
+      );
+    }
+    const existing = await this.getResearchDirection(direction.research_direction_id);
+    if (existing) {
+      if (!sameJson(existing, direction)) {
+        throw new LocalStoreError(
+          "research_direction_conflict",
+          "ResearchDirection is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(
+      this.itemPath("research-directions", direction.research_direction_id),
+      direction
+    );
+    return direction;
+  }
+
+  async getResearchDirection(
+    directionId: string
+  ): Promise<ResearchDirectionRecord | undefined> {
+    const direction = await this.readOptionalRecord<unknown>(
+      "research-directions",
+      directionId
+    );
+    if (direction === undefined) return undefined;
+    if (!isResearchDirectionRecord(direction)) {
+      throw new LocalStoreError(
+        "research_direction_reload_failed",
+        "persisted ResearchDirection is unreadable or corrupt"
+      );
+    }
+    return direction;
+  }
+
+  async listResearchDirections(): Promise<ResearchDirectionRecord[]> {
+    return (await this.readCollection<unknown>("research-directions"))
+      .map((direction) => {
+        if (!isResearchDirectionRecord(direction)) {
+          throw new LocalStoreError(
+            "research_direction_reload_failed",
+            "persisted ResearchDirection is unreadable or corrupt"
+          );
+        }
+        return direction;
+      })
+      .sort(compareResearchDirections);
+  }
+
+  async recordResearchWorker(worker: ResearchWorkerRecord): Promise<ResearchWorkerRecord> {
+    if (!isResearchWorkerRecord(worker)) {
+      throw new LocalStoreError(
+        "invalid_research_worker_input",
+        "invalid ResearchWorker input"
+      );
+    }
+    const direction = await this.getResearchDirection(worker.research_direction_ref.id);
+    if (!direction) {
+      throw new LocalStoreError(
+        "research_worker_reference_not_found",
+        "ResearchWorker ResearchDirection was not found"
+      );
+    }
+    if (Date.parse(worker.created_at) < Date.parse(direction.created_at)) {
+      throw new LocalStoreError(
+        "research_worker_reference_mismatch",
+        "ResearchWorker predates its ResearchDirection"
+      );
+    }
+    const existing = await this.getResearchWorker(worker.research_worker_id);
+    if (existing) {
+      if (!sameJson(existing, worker)) {
+        throw new LocalStoreError(
+          "research_worker_conflict",
+          "ResearchWorker is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(
+      this.itemPath("research-workers", worker.research_worker_id),
+      worker
+    );
+    return worker;
+  }
+
+  async getResearchWorker(
+    workerId: string
+  ): Promise<ResearchWorkerRecord | undefined> {
+    const worker = await this.readOptionalRecord<unknown>("research-workers", workerId);
+    if (worker === undefined) return undefined;
+    if (!isResearchWorkerRecord(worker)) {
+      throw new LocalStoreError(
+        "research_worker_reload_failed",
+        "persisted ResearchWorker is unreadable or corrupt"
+      );
+    }
+    return worker;
+  }
+
+  async listResearchWorkers(): Promise<ResearchWorkerRecord[]> {
+    return (await this.readCollection<unknown>("research-workers"))
+      .map((worker) => {
+        if (!isResearchWorkerRecord(worker)) {
+          throw new LocalStoreError(
+            "research_worker_reload_failed",
+            "persisted ResearchWorker is unreadable or corrupt"
+          );
+        }
+        return worker;
+      })
+      .sort(compareResearchWorkers);
+  }
+
+  async recordResearchPreflightCommitment(
+    commitment: ResearchPreflightCommitmentRecord
+  ): Promise<ResearchPreflightCommitmentRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchPreflightCommitmentUnlocked(commitment)
+    );
+  }
+
+  private async recordResearchPreflightCommitmentUnlocked(
+    commitment: ResearchPreflightCommitmentRecord
+  ): Promise<ResearchPreflightCommitmentRecord> {
+    if (!researchPreflightCommitmentHasRuntimeShape(commitment)) {
+      throw new LocalStoreError(
+        "invalid_research_preflight_commitment_input",
+        "invalid ResearchPreflightCommitment input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      researchPreflightCommitmentDigestInput(commitment)
+    );
+    if (commitment.commitment_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_digest_mismatch",
+        "ResearchPreflightCommitment digest does not match canonical content"
+      );
+    }
+    const existing = await this.getResearchPreflightCommitment(
+      commitment.research_preflight_commitment_id
+    );
+    if (existing) {
+      if (!sameJson(existing, commitment)) {
+        throw new LocalStoreError(
+          "research_preflight_commitment_conflict",
+          "ResearchPreflightCommitment is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.assertResearchPreflightCommitmentGraph(commitment);
+    const priorCommitments = (await this.readCollection<unknown>(
+      "research-preflight-commitments"
+    )).map((value) => this.assertPersistedResearchPreflightCommitment(value));
+    const reused = priorCommitments.find((prior) =>
+      prior.sealed_admission_policy.rotation_commitment_digest ===
+        commitment.sealed_admission_policy.rotation_commitment_digest ||
+      prior.sealed_admission_policy.suite_digest ===
+        commitment.sealed_admission_policy.suite_digest
+    );
+    if (reused) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_rotation_reuse",
+        "sealed ResearchPreflight evaluator rotation or suite was already committed",
+        {
+          research_preflight_commitment_id:
+            commitment.research_preflight_commitment_id,
+          prior_research_preflight_commitment_id:
+            reused.research_preflight_commitment_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath(
+        "research-preflight-commitments",
+        commitment.research_preflight_commitment_id
+      ),
+      commitment
+    );
+    return commitment;
+  }
+
+  async getResearchPreflightCommitment(
+    commitmentId: string
+  ): Promise<ResearchPreflightCommitmentRecord | undefined> {
+    const value = await this.readOptionalRecord<unknown>(
+      "research-preflight-commitments",
+      commitmentId
+    );
+    if (value === undefined) return undefined;
+    const commitment = this.assertPersistedResearchPreflightCommitment(value);
+    await this.assertResearchPreflightCommitmentGraph(commitment);
+    return commitment;
+  }
+
+  async listResearchPreflightCommitments(): Promise<
+    ResearchPreflightCommitmentRecord[]
+  > {
+    const commitments = (await this.readCollection<unknown>(
+      "research-preflight-commitments"
+    )).map((value) => this.assertPersistedResearchPreflightCommitment(value));
+    for (const commitment of commitments) {
+      await this.assertResearchPreflightCommitmentGraph(commitment);
+    }
+    return commitments.sort(compareResearchPreflightCommitments);
+  }
+
+  private assertPersistedResearchPreflightCommitment(
+    value: unknown
+  ): ResearchPreflightCommitmentRecord {
+    if (!researchPreflightCommitmentHasRuntimeShape(value) ||
+      value.commitment_digest !== comparisonExactRecordDigest(
+        researchPreflightCommitmentDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_reload_failed",
+        "persisted ResearchPreflightCommitment is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchPreflightCommitmentGraph(
+    commitment: ResearchPreflightCommitmentRecord
+  ): Promise<void> {
+    const [direction, worker, allocation, sourceSystemCode] = await Promise.all([
+      this.getResearchDirection(commitment.research_direction_ref.id),
+      this.getResearchWorker(commitment.research_worker_ref.id),
+      this.getCandidateArenaResearchAllocation(commitment.research_allocation_ref.id),
+      this.getSystemCode(commitment.source_system_code_ref.id)
+    ]);
+    if (!direction || !worker || !allocation || !sourceSystemCode) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_reference_not_found",
+        "ResearchPreflightCommitment reference was not found",
+        {
+          research_preflight_commitment_id:
+            commitment.research_preflight_commitment_id,
+          missing_record_kind: !direction
+            ? "research_direction"
+            : !worker
+              ? "research_worker"
+              : !allocation
+                ? "candidate_arena_research_allocation"
+                : "system_code"
+        }
+      );
+    }
+    const selection = allocation.selected_directions.find(
+      (candidate) => candidate.direction_kind === direction.direction_kind
+    );
+    const mismatchFields = [
+      worker.research_direction_ref.id !== direction.research_direction_id
+        ? "research_worker.research_direction_ref"
+        : undefined,
+      allocation.allocation_digest !== commitment.research_allocation_digest
+        ? "research_allocation.allocation_digest"
+        : undefined,
+      allocation.tick_id !== commitment.candidate_arena_tick_id
+        ? "research_allocation.tick_id"
+        : undefined,
+      !selection ? "research_allocation.selected_directions" : undefined,
+      selection && selection.experiment_budget !==
+        commitment.development_policy.submission_limit
+        ? "research_allocation.experiment_budget"
+        : undefined,
+      sourceSystemCode.artifact_digest !== commitment.source_artifact_digest
+        ? "source_system_code.artifact_digest"
+        : undefined,
+      Date.parse(commitment.committed_at) < Date.parse(allocation.allocated_at)
+        ? "committed_at.before_allocation"
+        : undefined,
+      Date.parse(commitment.committed_at) < Date.parse(direction.created_at)
+        ? "committed_at.before_direction"
+        : undefined,
+      Date.parse(commitment.committed_at) < Date.parse(worker.created_at)
+        ? "committed_at.before_worker"
+        : undefined,
+      Date.parse(commitment.committed_at) < Date.parse(sourceSystemCode.created_at)
+        ? "committed_at.before_source_system_code"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (mismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_graph_mismatch",
+        "ResearchPreflightCommitment does not match persisted research inputs",
+        {
+          research_preflight_commitment_id:
+            commitment.research_preflight_commitment_id,
+          mismatch_fields: mismatchFields
+        }
+      );
+    }
   }
 
   async recordCandidateArenaTick(tick: CandidateArenaTickRecord): Promise<CandidateArenaTickRecord> {
@@ -3706,6 +4121,14 @@ export class LocalStore {
   async recordTradingEvaluationResult(
     result: TradingEvaluationResultRecord
   ): Promise<TradingEvaluationResultRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordTradingEvaluationResultUnlocked(result)
+    );
+  }
+
+  private async recordTradingEvaluationResultUnlocked(
+    result: TradingEvaluationResultRecord
+  ): Promise<TradingEvaluationResultRecord> {
     if (!isTradingEvaluationResultRecord(result)) {
       throw new LocalStoreError(
         "invalid_trading_evaluation_result_input",
@@ -3715,6 +4138,84 @@ export class LocalStore {
             (result as Partial<TradingEvaluationResultRecord> | undefined)?.trading_evaluation_result_id
         }
       );
+    }
+    if (result.research_preflight_commitment_ref) {
+      const [commitment, submittedSystemCode, experiment] = await Promise.all([
+        this.getResearchPreflightCommitment(
+          result.research_preflight_commitment_ref.id
+        ),
+        this.getSystemCode(result.submitted_system_code_ref!.id),
+        this.getExperimentRun(result.experiment_run_ref.id)
+      ]);
+      const mismatchFields = [
+        !commitment ? "research_preflight_commitment_ref" : undefined,
+        !submittedSystemCode ? "submitted_system_code_ref" : undefined,
+        !experiment ? "experiment_run_ref" : undefined,
+        commitment && commitment.commitment_digest !==
+          result.research_preflight_commitment_digest
+          ? "research_preflight_commitment_digest"
+          : undefined,
+        commitment && commitment.sealed_admission_policy.suite_digest !==
+          result.sealed_admission_suite_digest
+          ? "sealed_admission_suite_digest"
+          : undefined,
+        submittedSystemCode && submittedSystemCode.artifact_digest !==
+          result.submitted_artifact_digest
+          ? "submitted_artifact_digest"
+          : undefined,
+        experiment && experiment.system_code_ref.id !==
+          result.submitted_system_code_ref!.id
+          ? "experiment_run.system_code_ref"
+          : undefined,
+        experiment && experiment.trading_evaluation_task_ref.id !==
+          result.trading_evaluation_task_ref.id
+          ? "experiment_run.trading_evaluation_task_ref"
+          : undefined,
+        commitment && Date.parse(result.completed_at) <
+          Date.parse(commitment.committed_at)
+          ? "completed_at.before_commitment"
+          : undefined
+      ].filter((field): field is string => Boolean(field));
+      if (mismatchFields.length > 0) {
+        throw new LocalStoreError(
+          "research_preflight_terminal_graph_mismatch",
+          "sealed ResearchPreflight evaluation does not match its frozen graph",
+          {
+            trading_evaluation_result_id:
+              result.trading_evaluation_result_id,
+            mismatch_fields: mismatchFields
+          }
+        );
+      }
+      const existing = await this.readOptionalRecord<TradingEvaluationResultRecord>(
+        "trading-evaluation-results",
+        result.trading_evaluation_result_id
+      );
+      if (existing) {
+        if (sameJson(existing, result)) return existing;
+        throw new LocalStoreError(
+          "research_preflight_terminal_reuse",
+          "sealed ResearchPreflight terminal evaluation is append-only"
+        );
+      }
+      const priorTerminal = (await this.readCollection<TradingEvaluationResultRecord>(
+        "trading-evaluation-results"
+      )).find((candidate) =>
+        candidate.research_preflight_commitment_ref?.id ===
+          result.research_preflight_commitment_ref!.id
+      );
+      if (priorTerminal) {
+        throw new LocalStoreError(
+          "research_preflight_terminal_reuse",
+          "ResearchPreflight commitment already has a terminal evaluation",
+          {
+            research_preflight_commitment_id:
+              result.research_preflight_commitment_ref.id,
+            prior_trading_evaluation_result_id:
+              priorTerminal.trading_evaluation_result_id
+          }
+        );
+      }
     }
     await this.writeJson(
       this.itemPath("trading-evaluation-results", result.trading_evaluation_result_id),
@@ -14303,6 +14804,32 @@ function compareCandidateArenaResearchAllocations(
     );
 }
 
+function compareResearchDirections(
+  left: ResearchDirectionRecord,
+  right: ResearchDirectionRecord
+): number {
+  return right.created_at.localeCompare(left.created_at) ||
+    right.research_direction_id.localeCompare(left.research_direction_id);
+}
+
+function compareResearchWorkers(
+  left: ResearchWorkerRecord,
+  right: ResearchWorkerRecord
+): number {
+  return right.created_at.localeCompare(left.created_at) ||
+    right.research_worker_id.localeCompare(left.research_worker_id);
+}
+
+function compareResearchPreflightCommitments(
+  left: ResearchPreflightCommitmentRecord,
+  right: ResearchPreflightCommitmentRecord
+): number {
+  return right.committed_at.localeCompare(left.committed_at) ||
+    right.research_preflight_commitment_id.localeCompare(
+      left.research_preflight_commitment_id
+    );
+}
+
 function compareArtifactLineages(
   a: ArtifactLineageRecord,
   b: ArtifactLineageRecord
@@ -15005,6 +15532,77 @@ function isTradingRunLifecycleStatus(
   );
 }
 
+function isResearchDirectionRecord(value: unknown): value is ResearchDirectionRecord {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, [
+    "record_kind",
+    "version",
+    "research_direction_id",
+    "direction_kind",
+    "market_scope",
+    "prompt_seed",
+    "diversity_axis",
+    "created_at",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  return value.record_kind === "research_direction" &&
+    value.version === 1 &&
+    nonEmpty(value.research_direction_id) &&
+    isResearchDirectionKind(value.direction_kind) &&
+    value.market_scope === "external_trading_api_fixture" &&
+    nonEmpty(value.prompt_seed) &&
+    (value.diversity_axis === undefined || nonEmpty(value.diversity_axis)) &&
+    isIsoTimestamp(value.created_at) &&
+    value.authority_status === "research_seed_only";
+}
+
+function isResearchWorkerRecord(value: unknown): value is ResearchWorkerRecord {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, [
+    "record_kind",
+    "version",
+    "research_worker_id",
+    "display_name",
+    "model",
+    "provider_kind",
+    "research_direction_ref",
+    "sandbox_policy_ref",
+    "budget_policy_ref",
+    "created_at",
+    "status",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  return value.record_kind === "research_worker" &&
+    value.version === 1 &&
+    nonEmpty(value.research_worker_id) &&
+    nonEmpty(value.display_name) &&
+    (value.model === undefined || nonEmpty(value.model)) &&
+    (value.provider_kind === undefined || isProviderKind(value.provider_kind)) &&
+    isRef(value.research_direction_ref, "research_direction") &&
+    (value.sandbox_policy_ref === undefined || isRef(value.sandbox_policy_ref)) &&
+    (value.budget_policy_ref === undefined || isRef(value.budget_policy_ref)) &&
+    isIsoTimestamp(value.created_at) &&
+    (value.status === "active" || value.status === "failed" || value.status === "retired") &&
+    value.authority_status === "research_only";
+}
+
+function isResearchDirectionKind(value: unknown): boolean {
+  return value === "trend_following" ||
+    value === "mean_reversion" ||
+    value === "volatility_regime" ||
+    value === "funding_aware_risk" ||
+    value === "liquidation_aware_risk" ||
+    value === "execution_cost_robustness" ||
+    value === "other";
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
+  const allowedKeys = new Set(allowed);
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
 function isSystemCodeRecord(value: unknown): value is SystemCodeRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -15305,6 +15903,7 @@ function isTradingEvaluationResultRecord(value: unknown): value is TradingEvalua
       raw.quarantine_reason === undefined ||
       isTradingEvaluationQuarantineReason(raw.quarantine_reason)
     ) &&
+    tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(raw) &&
     nonEmpty(raw.completed_at) &&
     (raw.authority_status === "not_counted" || raw.authority_status === "counted")
   );

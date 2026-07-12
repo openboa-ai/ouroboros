@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** In progress; Tasks 1-3 complete, Task 4 next
+**Status:** In progress; Tasks 1-4 complete, Task 5 next
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -224,6 +224,7 @@ and both `@ouroboros/application` and `@ouroboros/runtime` typechecks passed.
 - Modify: `packages/application/src/candidate/arena.ts`
 - Modify: `packages/local-store/src/index.ts`
 - Create: `packages/local-store/test/research-preflight-commitment.test.ts`
+- Modify: `packages/local-store/test/paper-trading-handoff-conformance.test.ts`
 - Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 
 **Interfaces:**
@@ -231,13 +232,13 @@ and both `@ouroboros/application` and `@ouroboros/runtime` typechecks passed.
 - Moves ResearchWorker and source SystemCode persistence before agent effects.
 - Passes one exact evaluator-owned plan into the research loop.
 
-- [ ] **Step 1: Write failing LocalStore tests**
+- [x] **Step 1: Write failing LocalStore tests**
 
 Cover persist/get/list/restart/exact record replay, same-ID mutation, malformed digest, missing
 source worker/direction/allocation, allocation digest mismatch, budget mismatch, raw-seed leakage,
 suite-commitment mismatch, and adjacent commitment rotation.
 
-- [ ] **Step 2: Write failing pre-effect ordering tests**
+- [x] **Step 2: Write failing pre-effect ordering tests**
 
 Prove:
 
@@ -257,20 +258,27 @@ ResearchWorker and source SystemCode
 Agent failure, process throw, and infrastructure failure must still leave the pre-effect commitment
 inspectable without fabricating terminal strategy evidence.
 
-- [ ] **Step 3: Bind exact terminal graph**
+- [x] **Step 3: Bind exact terminal graph**
 
 LocalStore rejects wrong commitment, source, allocation, submitted SystemCode, suite, phase,
 sequence, or conformance. CandidateArena materializes only the complete exact graph.
 
-- [ ] **Step 4: Implement and verify**
+- [x] **Step 4: Implement and verify**
 
 ```bash
 npx vitest run packages/local-store/test/research-preflight-commitment.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts
 npm run typecheck --workspace @ouroboros/local-store
 npm run typecheck --workspace @ouroboros/application
-git add packages/application/src/ports/store.ts packages/application/src/candidate/arena.ts packages/local-store/src/index.ts packages/local-store/test/research-preflight-commitment.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts
+git add packages/application/src/ports/store.ts packages/application/src/candidate/arena.ts packages/local-store/src/index.ts packages/local-store/test/research-preflight-commitment.test.ts packages/local-store/test/paper-trading-handoff-conformance.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts
 git commit -m "feat: precommit sealed arena evaluation"
 ```
+
+**Evidence:** `4` focused files and `86` tests passed with loopback listener permission; the
+reference paper soak passed `3` tests; LocalStore, application, and runtime typechecks passed; and
+`git diff --check` passed. Coverage includes exact replay and restart, malformed/digest/ref/graph
+drift, raw-seed exclusion, rotation and terminal one-shot reuse, pre-effect ordering, process and
+infrastructure failure recovery, sealed source/submission/suite binding, conformance-bound
+admission, and materialization gating.
 
 ---
 

@@ -195,6 +195,36 @@ describe("CandidateArena paper evidence context", () => {
         summary: "ResearchWorker failed before artifact execution: diagnostic_worker_failed"
       })
     ]);
+    await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+    expect((await store.listTradingEvaluationResults()).every((evaluation) =>
+      evaluation.research_preflight_commitment_ref === undefined
+    )).toBe(true);
+  });
+
+  it("retains the pre-effect commitment when a ResearchWorker process throws", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new ThrowingResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed",
+        error: "research worker process terminated"
+      })
+    ]);
+    await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+    await expect(store.listTradingEvaluationResults()).resolves.toEqual([]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
   });
 
   it("quarantines a crashed candidate run before runnable candidate materialization", async () => {
@@ -418,10 +448,27 @@ describe("CandidateArena paper evidence context", () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const writeOrder: string[] = [];
+    const recordDirection = store.recordResearchDirection.bind(store);
+    store.recordResearchDirection = async (record) => {
+      writeOrder.push(`research_direction:${record.research_direction_id}`);
+      return recordDirection(record);
+    };
+    const recordWorker = store.recordResearchWorker.bind(store);
+    store.recordResearchWorker = async (record) => {
+      writeOrder.push(`research_worker:${record.research_worker_id}`);
+      return recordWorker(record);
+    };
     const recordSystemCode = store.recordSystemCode.bind(store);
     store.recordSystemCode = async (record) => {
-      writeOrder.push(`system_code:${record.system_code_id}`);
+      writeOrder.push(`${record.system_code_id.startsWith("system-code-arena-source-")
+        ? "source_system_code"
+        : "submitted_system_code"}:${record.system_code_id}`);
       return recordSystemCode(record);
+    };
+    const recordCommitment = store.recordResearchPreflightCommitment.bind(store);
+    store.recordResearchPreflightCommitment = async (record) => {
+      writeOrder.push(`preflight_commitment:${record.research_preflight_commitment_id}`);
+      return recordCommitment(record);
     };
     const recordExperimentRun = store.recordExperimentRun.bind(store);
     store.recordExperimentRun = async (record) => {
@@ -482,7 +529,10 @@ describe("CandidateArena paper evidence context", () => {
       store,
       directions: ["trend_following"],
       researchAgent: "codex",
-      agentFactory: () => new CapturingResearchAgent([]),
+      agentFactory: () => new CapturingResearchAgent([], async () => {
+        writeOrder.push("agent_effect");
+        await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+      }),
       artifactRunner: acceptedNegativeReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
     });
@@ -526,10 +576,38 @@ describe("CandidateArena paper evidence context", () => {
         summary: "Candidate remained executable but lost money after costs."
       })
     ]);
+    const [commitment] = await store.listResearchPreflightCommitments();
+    const [terminalEvaluation] = await store.listTradingEvaluationResults();
+    if (!commitment || !admission) {
+      throw new Error("sealed admission graph missing");
+    }
+    expect(commitment).toEqual(expect.objectContaining({
+      candidate_arena_tick_id: outcome.tick_id,
+      commitment_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)
+    }));
+    expect(JSON.stringify(commitment)).not.toContain("evaluator_seed");
+    expect(terminalEvaluation).toEqual(expect.objectContaining({
+      research_preflight_commitment_ref: {
+        record_kind: "research_preflight_commitment",
+        id: commitment.research_preflight_commitment_id
+      },
+      research_preflight_commitment_digest: commitment.commitment_digest,
+      submitted_system_code_ref: admission.system_code_ref,
+      submitted_artifact_digest: admission.submitted_artifact_digest,
+      sealed_admission_suite_digest: commitment.sealed_admission_policy.suite_digest,
+      evaluation_phase: "sealed_admission",
+      submission_sequence: 1
+    }));
     const orderKinds = writeOrder.map((item) => item.split(":")[0]);
-    expect(orderKinds.indexOf("experiment_run")).toBeLessThan(orderKinds.indexOf("paper_handoff"));
-    expect(orderKinds.indexOf("paper_handoff")).toBeLessThan(orderKinds.indexOf("evaluation"));
-    expect(orderKinds.indexOf("evaluation")).toBeLessThan(orderKinds.indexOf("finding"));
+    expect(orderKinds.indexOf("research_direction")).toBeLessThan(orderKinds.indexOf("research_worker"));
+    expect(orderKinds.indexOf("research_worker")).toBeLessThan(orderKinds.indexOf("source_system_code"));
+    expect(orderKinds.indexOf("source_system_code")).toBeLessThan(orderKinds.indexOf("preflight_commitment"));
+    expect(orderKinds.indexOf("preflight_commitment")).toBeLessThan(orderKinds.indexOf("agent_effect"));
+    expect(orderKinds.indexOf("agent_effect")).toBeLessThan(orderKinds.indexOf("submitted_system_code"));
+    expect(orderKinds.indexOf("submitted_system_code")).toBeLessThan(orderKinds.indexOf("experiment_run"));
+    expect(orderKinds.indexOf("experiment_run")).toBeLessThan(orderKinds.indexOf("evaluation"));
+    expect(orderKinds.indexOf("evaluation")).toBeLessThan(orderKinds.indexOf("paper_handoff"));
+    expect(orderKinds.indexOf("paper_handoff")).toBeLessThan(orderKinds.indexOf("finding"));
     expect(orderKinds.indexOf("finding")).toBeLessThan(orderKinds.indexOf("lineage"));
     expect(orderKinds.indexOf("lineage")).toBeLessThan(orderKinds.indexOf("admission"));
     expect(orderKinds.indexOf("admission")).toBeLessThan(orderKinds.indexOf("materialize"));
@@ -622,6 +700,10 @@ describe("CandidateArena paper evidence context", () => {
     await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([]);
     await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
     await expect(store.listResearchFindings()).resolves.toEqual([]);
+    await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+    expect((await store.listTradingEvaluationResults()).filter((evaluation) =>
+      evaluation.research_preflight_commitment_ref !== undefined
+    )).toEqual([]);
   });
 
   it("feeds latest paper trading evidence into the next researcher context even before replay leaderboard ranking", async () => {
@@ -2385,9 +2467,13 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
     permission_policy: "artifact_workspace_only"
   };
 
-  constructor(private readonly contexts: string[]) {}
+  constructor(
+    private readonly contexts: string[],
+    private readonly beforeImprove?: () => void | Promise<void>
+  ) {}
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    await this.beforeImprove?.();
     this.contexts.push(input.arena_context ?? "");
     const runPath = path.join(input.artifact_dir, "run.py");
     const source = await readFile(runPath, "utf8");
@@ -2475,6 +2561,19 @@ class FailedResearchAgent implements TradingResearchAgentAdapter {
       error: "diagnostic_worker_failed",
       changed_paths: []
     };
+  }
+}
+
+class ThrowingResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-throwing-researcher",
+    provider: "codex",
+    model: "throwing-researcher",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(): Promise<AgentEditResult> {
+    throw new Error("research worker process terminated");
   }
 }
 

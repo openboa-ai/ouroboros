@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -34,8 +34,11 @@ import type {
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
   Ref,
+  ResearchDirectionRecord,
   ResearchDirectionKind,
   ResearchFindingRecord,
+  ResearchPreflightCommitmentRecord,
+  ResearchWorkerRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingProfitLossReadModel
@@ -66,6 +69,10 @@ import {
 } from "../trading/research/artifact-closure";
 import { FixtureTradingResearchAgentAdapter } from "../trading/research/agent-adapters";
 import { runTradingResearchLoop } from "../trading/research/run-trading-research";
+import {
+  buildResearchPreflightPlan,
+  generateResearchPreflightEvaluatorSeed
+} from "../trading/research/preflight-plan";
 import type { ReplayTradingApiProviderFactory } from "../trading/research/replay-set-runner";
 import type {
   AgentEditInput,
@@ -587,25 +594,93 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
 }): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
+  const runRoot = path.join(input.store.root(), "candidate-arena-runs", sessionId);
+  const seedDir = path.join(runRoot, "seed");
   const artifactSourceDir = await sourceResearchArtifactDir({
     store: input.store,
     source: input.source,
     repoRoot
   });
-  const sourceManifest = await readTradingSystemManifest(artifactSourceDir);
+  await mkdir(runRoot, { recursive: true });
+  await rm(seedDir, { recursive: true, force: true });
+  await cp(artifactSourceDir, seedDir, { recursive: true });
+  const sourceManifest = await readTradingSystemManifest(seedDir);
   assertCandidateArenaResearchManifest(sourceManifest);
+  const sourceArtifact = await arenaEntrypointArtifact(seedDir, sourceManifest);
   const adapter = input.researchAgent === "fixture"
     ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
     : input.agentFactory(input.researchAgent);
+  const committedAt = candidateArenaNow(input.now);
+  const preflight = await withArenaStoreMutation(input.store, async () => {
+    const direction: ResearchDirectionRecord = {
+      record_kind: "research_direction",
+      version: 1,
+      research_direction_id: `research-direction-${safeId(sessionId)}`,
+      direction_kind: input.direction,
+      market_scope: "external_trading_api_fixture",
+      prompt_seed: `Explore ${directionLabel(input.direction)} without prescribing an implementation.`,
+      diversity_axis: input.direction,
+      created_at: committedAt,
+      authority_status: "research_seed_only"
+    };
+    await input.store.recordResearchDirection(direction);
+    const worker: ResearchWorkerRecord = {
+      record_kind: "research_worker",
+      version: 1,
+      research_worker_id: `research-worker-${safeId(sessionId)}`,
+      display_name: `${directionLabel(input.direction)} ResearchWorker`,
+      model: adapter.agent.model ?? adapter.agent.provider,
+      provider_kind: researchWorkerProviderKind(adapter.agent),
+      research_direction_ref: ref(
+        "research_direction",
+        direction.research_direction_id
+      ),
+      created_at: committedAt,
+      status: "active",
+      authority_status: "research_only"
+    };
+    await input.store.recordResearchWorker(worker);
+    const sourceSystemCode = await recordArenaSourceSystemCode({
+      store: input.store,
+      source: input.source,
+      artifact: sourceArtifact,
+      sessionId,
+      createdAt: committedAt
+    });
+    const plan = buildResearchPreflightPlan({
+      candidate_arena_tick_id: input.tickId,
+      research_direction_ref: ref(
+        "research_direction",
+        direction.research_direction_id
+      ),
+      research_worker_ref: ref("research_worker", worker.research_worker_id),
+      research_allocation_ref: ref(
+        "candidate_arena_research_allocation",
+        input.allocation.candidate_arena_research_allocation_id
+      ),
+      research_allocation_digest: input.allocation.allocation_digest,
+      source_system_code_ref: ref(
+        "system_code",
+        sourceSystemCode.system_code_id
+      ),
+      source_artifact_digest: sourceSystemCode.artifact_digest,
+      development_submission_limit: input.allocationSelection.experiment_budget,
+      committed_at: committedAt,
+      evaluator_seed: generateResearchPreflightEvaluatorSeed()
+    });
+    await input.store.recordResearchPreflightCommitment(plan.commitment);
+    return { direction, worker, sourceSystemCode, plan };
+  });
   const research = await runTradingResearchLoop({
     repo_root: repoRoot,
     artifact_source_dir: artifactSourceDir,
-    run_root: path.join(input.store.root(), "candidate-arena-runs", sessionId),
+    run_root: runRoot,
     session_id: sessionId,
     iterations: input.allocationSelection.experiment_budget,
     agent_adapter: adapter,
     artifact_runner: input.artifactRunner,
     replay_provider_factory: input.replayProviderFactory,
+    preflight_plan: preflight.plan,
     arena_context: await arenaContext(
       input.store,
       input.direction,
@@ -613,10 +688,6 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       input.allocationSelection
     )
   });
-  const sourceArtifact = await arenaEntrypointArtifact(
-    path.join(research.run_root, "seed"),
-    sourceManifest
-  );
   const entry = [...research.entries].reverse().find((candidate) =>
     candidate.decision === "keep"
   ) ?? research.entries.at(-1);
@@ -624,17 +695,17 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     throw new Error("candidate_arena_missing_research_entry");
   }
   const researchEfficiency = researchEfficiencySummary(research.entries);
-  const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
+  const sealedAdmission = research.sealed_admission;
+  assertArenaResearchPreflightResult({
+    commitment: preflight.plan.commitment,
+    returnedCommitment: research.research_preflight_commitment,
+    sealedAdmission
+  });
+  const artifactDir = research.submitted_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
   assertCandidateArenaResearchManifest(manifest);
   await assertSingleFileTradingArtifactClosure(artifactDir, manifest);
   return withArenaStoreMutation(input.store, async () => {
-    const sourceSystemCode = await recordArenaSourceSystemCode({
-      store: input.store,
-      source: input.source,
-      artifact: sourceArtifact,
-      sessionId
-    });
     const systemCode = await recordArenaSystemCode({
       store: input.store,
       artifactDir,
@@ -642,15 +713,25 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       manifest,
       agent: adapter.agent
     });
+    if (sealedAdmission && systemCode.artifact_digest !== sealedAdmission.artifact_digest) {
+      throw new Error("candidate_arena_sealed_artifact_digest_mismatch");
+    }
+    const terminalEntry = sealedAdmission
+      ? { ...entry, evaluation: sealedAdmission.evaluation }
+      : entry;
     const researchRecords = await recordArenaResearchRecords({
       store: input.store,
       source: input.source,
       direction: input.direction,
-      entry,
-      sourceSystemCode,
+      entry: terminalEntry,
+      sourceSystemCode: preflight.sourceSystemCode,
       systemCode,
       sourceArtifactDigest: sourceArtifact.artifactDigest,
-      sessionId
+      sessionId,
+      researchDirection: preflight.direction,
+      researchWorker: preflight.worker,
+      preflightCommitment: preflight.plan.commitment,
+      sealedAdmission
     });
     if (!researchRecords.admission.runnable_paper_handoff) {
       return {
@@ -664,6 +745,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       };
     }
     if (!researchRecords.conformance ||
+      !sealedAdmission ||
       researchRecords.conformance.status !== "passed" ||
       !researchRecords.conformance.runnable_paper_handoff ||
       researchRecords.admission.paper_trading_handoff_conformance_ref?.id !==
@@ -676,7 +758,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       source: input.source,
       sourceSystemCodeRef: input.source.system_code?.ref,
       systemCode,
-      evaluation: entry.evaluation,
+      evaluation: sealedAdmission.evaluation,
       direction: input.direction,
       agent: adapter.agent,
       sessionId
@@ -704,6 +786,35 @@ async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => 
   const current = previous.catch(() => undefined).then(task);
   arenaStoreMutationQueues.set(store, current.catch(() => undefined));
   return current;
+}
+
+function researchWorkerProviderKind(
+  agent: ManagedResearchAgent
+): NonNullable<ResearchWorkerRecord["provider_kind"]> {
+  if (agent.provider === "codex") return "codex_cli";
+  if (agent.provider === "claude_code") return "claude_code";
+  return "fixture_only";
+}
+
+function assertArenaResearchPreflightResult(input: {
+  commitment: ResearchPreflightCommitmentRecord;
+  returnedCommitment: ResearchPreflightCommitmentRecord;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
+}): void {
+  if (input.returnedCommitment.research_preflight_commitment_id !==
+      input.commitment.research_preflight_commitment_id ||
+    input.returnedCommitment.commitment_digest !== input.commitment.commitment_digest) {
+    throw new Error("candidate_arena_research_preflight_commitment_mismatch");
+  }
+  if (!input.sealedAdmission) return;
+  if (input.sealedAdmission.commitment_id !==
+      input.commitment.research_preflight_commitment_id ||
+    input.sealedAdmission.commitment_digest !== input.commitment.commitment_digest ||
+    input.sealedAdmission.suite_digest !==
+      input.commitment.sealed_admission_policy.suite_digest ||
+    input.sealedAdmission.submission_sequence !== 1) {
+    throw new Error("candidate_arena_sealed_admission_binding_mismatch");
+  }
 }
 
 class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResearchAgentAdapter {
@@ -1027,6 +1138,7 @@ async function recordArenaSourceSystemCode(input: {
   source: CandidateInspectReadModel;
   artifact: Awaited<ReturnType<typeof arenaEntrypointArtifact>>;
   sessionId: string;
+  createdAt: string;
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
   return input.store.recordSystemCode({
     record_kind: "system_code",
@@ -1052,7 +1164,7 @@ async function recordArenaSourceSystemCode(input: {
     },
     provenance_refs: input.source.system_code?.ref ? [input.source.system_code.ref] : [],
     status: "registered",
-    created_at: new Date().toISOString(),
+    created_at: input.createdAt,
     authority_status: "not_live"
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
 }
@@ -1156,6 +1268,10 @@ async function recordArenaResearchRecords(input: {
   systemCode: SystemCodeRecord;
   sourceArtifactDigest: string;
   sessionId: string;
+  researchDirection: ResearchDirectionRecord;
+  researchWorker: ResearchWorkerRecord;
+  preflightCommitment: ResearchPreflightCommitmentRecord;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
 }): Promise<{
   admission: CandidateAdmissionDecisionRecord;
   conformance?: PaperTradingHandoffConformanceRecord;
@@ -1163,7 +1279,10 @@ async function recordArenaResearchRecords(input: {
   result: TradingEvaluationResultRecord;
 }> {
   const suffix = safeId(input.sessionId);
-  const now = new Date().toISOString();
+  const now = new Date(Math.max(
+    Date.now(),
+    Date.parse(input.preflightCommitment.committed_at)
+  )).toISOString();
   const evaluation = input.entry.evaluation;
   const experimentStatus = input.entry.agent_status === "failed" || input.entry.decision === "crash"
     ? "failed" as const
@@ -1172,8 +1291,14 @@ async function recordArenaResearchRecords(input: {
     record_kind: "experiment_run",
     version: 1,
     experiment_run_id: `experiment-run-${suffix}`,
-    research_worker_ref: ref("research_worker", `research-worker-${safeId(input.direction)}`),
-    research_direction_ref: ref("research_direction", `research-direction-${safeId(input.direction)}`),
+    research_worker_ref: ref(
+      "research_worker",
+      input.researchWorker.research_worker_id
+    ),
+    research_direction_ref: ref(
+      "research_direction",
+      input.researchDirection.research_direction_id
+    ),
     system_code_ref: ref("system_code", input.systemCode.system_code_id),
     trading_evaluation_task_ref: ref("trading_evaluation_task", "candidate-arena-revenue-cost-v1"),
     trace_ref: ref("trace_placeholder", `trace-${suffix}`),
@@ -1191,9 +1316,6 @@ async function recordArenaResearchRecords(input: {
   });
   if (input.entry.evaluation.status === "accepted" && !conformance) {
     throw new Error("candidate_arena_missing_paper_handoff_conformance");
-  }
-  if (conformance) {
-    await input.store.recordPaperTradingHandoffConformance(conformance);
   }
 
   const metricRefs = evaluation.metrics.map((metric) =>
@@ -1222,6 +1344,25 @@ async function recordArenaResearchRecords(input: {
     },
     metric_refs: metricRefs,
     evaluator_trace_ref: ref("trace_placeholder", `trace-evaluator-${suffix}`),
+    ...(input.sealedAdmission
+      ? {
+          research_preflight_commitment_ref: ref(
+            "research_preflight_commitment",
+            input.preflightCommitment.research_preflight_commitment_id
+          ),
+          research_preflight_commitment_digest:
+            input.preflightCommitment.commitment_digest,
+          submitted_system_code_ref: ref(
+            "system_code",
+            input.systemCode.system_code_id
+          ),
+          submitted_artifact_digest: input.systemCode.artifact_digest,
+          sealed_admission_suite_digest:
+            input.preflightCommitment.sealed_admission_policy.suite_digest,
+          evaluation_phase: "sealed_admission" as const,
+          submission_sequence: 1 as const
+        }
+      : {}),
     ...(resultStatus === "accepted"
       ? {}
       : { disqualification_reason: arenaDisqualificationReason(input.entry) }),
@@ -1229,6 +1370,9 @@ async function recordArenaResearchRecords(input: {
     authority_status: "not_counted"
   };
   await input.store.recordTradingEvaluationResult(result);
+  if (conformance) {
+    await input.store.recordPaperTradingHandoffConformance(conformance);
+  }
 
   const admissionInput = {
     research_worker_outcome: deriveCandidateAdmissionResearchWorkerOutcome({

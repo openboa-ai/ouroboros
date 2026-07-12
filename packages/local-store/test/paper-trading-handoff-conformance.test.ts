@@ -4,12 +4,19 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  candidateArenaResearchAllocationDigestInput,
   decideCandidateAdmission,
   paperTradingHandoffConformanceDigestInput,
+  researchPreflightCommitmentDigestInput,
+  type CandidateArenaResearchAllocationRecord,
   type CandidateAdmissionDecisionRecord,
   type ExperimentRunRecord,
   type PaperTradingHandoffConformanceRecord,
+  type ResearchDirectionRecord,
   type ResearchFindingRecord,
+  type ResearchPreflightCommitmentRecord,
+  type ResearchWorkerRecord,
   type TradingEvaluationResultRecord,
   type SystemCodeRecord
 } from "@ouroboros/domain";
@@ -125,10 +132,31 @@ describe("LocalStore PaperTradingHandoffConformance", () => {
 
   it("requires admission conformance ref, digest, status, SystemCode, ExperimentRun, and task to match", async () => {
     const graph = await persistedGraph(store);
+    await expect(store.recordCandidateAdmissionDecision(graph.admission)).rejects.toMatchObject({
+      code: "candidate_admission_research_preflight_required"
+    });
     const conformance = conformanceFixture(graph.systemCode, graph.experiment);
     await store.recordPaperTradingHandoffConformance(conformance);
     const baseline = boundAdmission(graph.admission, conformance);
     await expect(store.recordCandidateAdmissionDecision(baseline)).resolves.toEqual(baseline);
+
+    const foreignSource = systemCodeFixture(
+      "paper-handoff-foreign-source-system-code",
+      digest("paper-handoff-foreign-source")
+    );
+    await store.recordSystemCode(foreignSource);
+    const forgedSource = {
+      ...structuredClone(baseline),
+      candidate_admission_decision_id: "candidate-admission-paper-handoff-forged-source",
+      source_system_code_ref: {
+        record_kind: "system_code" as const,
+        id: foreignSource.system_code_id
+      },
+      source_artifact_digest: foreignSource.artifact_digest
+    };
+    await expect(store.recordCandidateAdmissionDecision(forgedSource)).rejects.toMatchObject({
+      code: "candidate_admission_research_preflight_mismatch"
+    });
 
     const mutations: Array<{
       label: string;
@@ -172,20 +200,54 @@ describe("LocalStore PaperTradingHandoffConformance", () => {
 
 interface PersistedGraph {
   store: LocalStore;
+  sourceSystemCode: SystemCodeRecord;
   systemCode: SystemCodeRecord;
   experiment: ExperimentRunRecord;
+  commitment: ResearchPreflightCommitmentRecord;
   admission: CandidateAdmissionDecisionRecord;
 }
 
 async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
   const sourceSystemCode = systemCodeFixture(
     "paper-handoff-source-system-code",
-    "sha256:paper-handoff-source"
+    digest("paper-handoff-source")
   );
   const systemCode = systemCodeFixture(
     "paper-handoff-system-code",
-    "sha256:paper-handoff-submitted"
+    digest("paper-handoff-submitted")
   );
+  const allocation = allocationFixture();
+  const direction: ResearchDirectionRecord = {
+    record_kind: "research_direction",
+    version: 1,
+    research_direction_id: "research-direction-trend",
+    direction_kind: "trend_following",
+    market_scope: "external_trading_api_fixture",
+    prompt_seed: "Explore robust trend behavior without prescribing an implementation.",
+    created_at: "2026-07-12T09:00:00.000Z",
+    authority_status: "research_seed_only"
+  };
+  const worker: ResearchWorkerRecord = {
+    record_kind: "research_worker",
+    version: 1,
+    research_worker_id: "research-worker-trend",
+    display_name: "Trend ResearchWorker",
+    model: "fixture",
+    provider_kind: "fixture_only",
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: direction.research_direction_id
+    },
+    created_at: "2026-07-12T09:00:00.000Z",
+    status: "active",
+    authority_status: "research_only"
+  };
+  const commitment = commitmentFixture({
+    allocation,
+    direction,
+    worker,
+    sourceSystemCode
+  });
   const experiment: ExperimentRunRecord = {
     record_kind: "experiment_run",
     version: 1,
@@ -228,6 +290,19 @@ async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
       record_kind: "trace_placeholder",
       id: "paper-handoff-evaluator-trace"
     },
+    research_preflight_commitment_ref: {
+      record_kind: "research_preflight_commitment",
+      id: commitment.research_preflight_commitment_id
+    },
+    research_preflight_commitment_digest: commitment.commitment_digest,
+    submitted_system_code_ref: {
+      record_kind: "system_code",
+      id: systemCode.system_code_id
+    },
+    submitted_artifact_digest: systemCode.artifact_digest,
+    sealed_admission_suite_digest: commitment.sealed_admission_policy.suite_digest,
+    evaluation_phase: "sealed_admission",
+    submission_sequence: 1,
     completed_at: "2026-07-12T10:02:00.000Z",
     authority_status: "not_counted"
   };
@@ -275,13 +350,112 @@ async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
     ...decideCandidateAdmission(admissionInput),
     decided_at: "2026-07-12T10:02:02.000Z"
   };
+  await store.recordCandidateArenaResearchAllocation(allocation);
+  await store.recordResearchDirection(direction);
+  await store.recordResearchWorker(worker);
   await store.recordSystemCode(sourceSystemCode);
+  await store.recordResearchPreflightCommitment(commitment);
   await store.recordSystemCode(systemCode);
   await store.recordExperimentRun(experiment);
   await store.recordTradingEvaluationResult(evaluation);
   await store.recordResearchFinding(finding);
-  await store.recordCandidateAdmissionDecision(admission);
-  return { store, systemCode, experiment, admission };
+  return { store, sourceSystemCode, systemCode, experiment, commitment, admission };
+}
+
+function allocationFixture(): CandidateArenaResearchAllocationRecord {
+  const allocation: CandidateArenaResearchAllocationRecord = {
+    record_kind: "candidate_arena_research_allocation",
+    version: 1,
+    candidate_arena_research_allocation_id: "paper-handoff-allocation",
+    tick_id: "paper-handoff-tick",
+    allocation_mode: "explicit",
+    policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
+    source_tick_refs: [],
+    signal_snapshot: [],
+    selected_directions: [{
+      direction_kind: "trend_following",
+      selection_kind: "explicit",
+      priority: 1,
+      experiment_budget: 1,
+      signal_score: 0,
+      reasons: ["test_explicit_direction"]
+    }],
+    deferred_directions: [
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk",
+      "execution_cost_robustness"
+    ],
+    allocated_at: "2026-07-12T09:00:00.000Z",
+    allocation_digest: digest("pending"),
+    research_scheduling_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  allocation.allocation_digest = digest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
+  return allocation;
+}
+
+function commitmentFixture(input: {
+  allocation: CandidateArenaResearchAllocationRecord;
+  direction: ResearchDirectionRecord;
+  worker: ResearchWorkerRecord;
+  sourceSystemCode: SystemCodeRecord;
+}): ResearchPreflightCommitmentRecord {
+  const commitment: ResearchPreflightCommitmentRecord = {
+    record_kind: "research_preflight_commitment",
+    version: 1,
+    research_preflight_commitment_id: "paper-handoff-preflight",
+    candidate_arena_tick_id: input.allocation.tick_id,
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: input.direction.research_direction_id
+    },
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: input.worker.research_worker_id
+    },
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: input.allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: input.allocation.allocation_digest,
+    source_system_code_ref: {
+      record_kind: "system_code",
+      id: input.sourceSystemCode.system_code_id
+    },
+    source_artifact_digest: input.sourceSystemCode.artifact_digest,
+    development_policy: {
+      suite_version: "research_development_replay_v1",
+      suite_digest: digest("paper-handoff-development-suite"),
+      submission_limit: 1,
+      feedback_release: "aggregate_after_each_submission"
+    },
+    sealed_admission_policy: {
+      suite_version: "research_sealed_admission_v1",
+      generator_version: "research_scenario_generator_v1",
+      rotation_commitment_digest: digest("paper-handoff-rotation"),
+      suite_digest: digest("paper-handoff-sealed-suite"),
+      submission_limit: 1,
+      feedback_release: "terminal_after_freeze"
+    },
+    committed_at: "2026-07-12T09:30:00.000Z",
+    research_preflight_authority: true,
+    admission_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live",
+    commitment_digest: digest("pending")
+  };
+  commitment.commitment_digest = digest(
+    researchPreflightCommitmentDigestInput(commitment)
+  );
+  return commitment;
 }
 
 function conformanceFixture(
@@ -371,4 +545,8 @@ function conformanceDigest(record: PaperTradingHandoffConformanceRecord): string
   return "sha256:" + createHash("sha256")
     .update(paperTradingHandoffConformanceDigestInput(record))
     .digest("hex");
+}
+
+function digest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
