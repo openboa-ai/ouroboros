@@ -33,7 +33,8 @@ import type {
   TradingResearchLoopResult,
   TradingResearchMode,
   TradingResearchNotebook,
-  TradingResearchNotebookEntry
+  TradingResearchNotebookEntry,
+  TradingResearchPriorCheckpoint
 } from "./types";
 
 const ZERO_PROFIT_LOSS = {
@@ -51,12 +52,14 @@ export interface RunTradingResearchLoopInput {
   artifact_source_dir?: string;
   program_path?: string;
   run_root?: string;
+  notebook_path?: string;
   session_id?: string;
   agent_adapter?: TradingResearchAgentAdapter;
   artifact_runner?: TradingArtifactRunner;
   artifact_runner_kind?: TradingArtifactRunnerKind;
   replay_provider_factory?: ReplayTradingApiProviderFactory;
   arena_context?: string;
+  prior_checkpoint?: TradingResearchPriorCheckpoint;
   preflight_plan?: ResearchPreflightPlanHandle;
 }
 
@@ -77,7 +80,7 @@ export async function runTradingResearchLoop(
     timeout_ms: input.agent_timeout_ms
   });
   const artifactRunner = input.artifact_runner ?? artifactRunnerFor(input.artifact_runner_kind);
-  const notebookPath = path.join(runRoot, "notebook.json");
+  const notebookPath = input.notebook_path ?? path.join(runRoot, "notebook.json");
   const bestDir = path.join(runRoot, "best");
   const seedDir = path.join(runRoot, "seed");
 
@@ -105,6 +108,9 @@ export async function runTradingResearchLoop(
     mode,
     agent: adapter.agent,
     program_path: programPath,
+    ...(input.prior_checkpoint
+      ? { prior_checkpoint: sanitizePriorCheckpoint(input.prior_checkpoint) }
+      : {}),
     entries: []
   };
   await writeNotebook(notebookPath, notebook);
@@ -318,12 +324,95 @@ async function writeNotebook(pathname: string, notebook: TradingResearchNotebook
   const researchWorkerNotebook: TradingResearchNotebook = {
     ...notebook,
     agent: { ...notebook.agent },
+    ...(notebook.prior_checkpoint
+      ? { prior_checkpoint: sanitizePriorCheckpoint(notebook.prior_checkpoint) }
+      : {}),
     entries: notebook.entries.map((entry) => ({
       ...entry,
       evaluation: toResearchPreflightFeedback(entry.evaluation)
     }))
   };
   await writeFile(pathname, `${JSON.stringify(researchWorkerNotebook, null, 2)}\n`, "utf8");
+}
+
+function sanitizePriorCheckpoint(
+  input: TradingResearchPriorCheckpoint
+): TradingResearchPriorCheckpoint {
+  if (!input || typeof input !== "object" ||
+    typeof input.research_worker_checkpoint_id !== "string" ||
+    input.research_worker_checkpoint_id.length === 0 ||
+    (input.terminal_status !== "completed" && input.terminal_status !== "failed_closed") ||
+    (input.terminal_reason !== "admission_recorded" &&
+      input.terminal_reason !== "execution_failed" &&
+      input.terminal_reason !== "restart_recovery") ||
+    (input.terminal_status === "completed") !==
+      (input.terminal_reason === "admission_recorded") ||
+    (input.admission_status !== undefined &&
+      input.admission_status !== "admitted" &&
+      input.admission_status !== "duplicate" &&
+      input.admission_status !== "quarantined") ||
+    (input.admission_reason !== undefined &&
+      (typeof input.admission_reason !== "string" || input.admission_reason.length === 0)) ||
+    (input.admission_status === undefined) !== (input.admission_reason === undefined) ||
+    !input.notebook || input.notebook.protocol_version !== "research_worker_notebook_v1" ||
+    !Number.isInteger(input.notebook.total_entry_count) ||
+    input.notebook.total_entry_count < 0 ||
+    !Array.isArray(input.notebook.recent_entries) ||
+    input.notebook.recent_entries.length !==
+      Math.min(input.notebook.total_entry_count, 6)) {
+    throw new Error("research_worker_prior_checkpoint_invalid");
+  }
+  const firstSequence = input.notebook.total_entry_count -
+    input.notebook.recent_entries.length + 1;
+  const recentEntries = input.notebook.recent_entries.map((entry, index) => {
+    if (!entry || typeof entry !== "object" ||
+      entry.sequence !== firstSequence + index ||
+      typeof entry.candidate_arena_tick_id !== "string" ||
+      entry.candidate_arena_tick_id.length === 0 ||
+      !Number.isInteger(entry.iteration) || entry.iteration < 1 ||
+      (entry.decision !== "keep" && entry.decision !== "discard" &&
+        entry.decision !== "crash") ||
+      (entry.agent_status !== "edited" && entry.agent_status !== "no_change" &&
+        entry.agent_status !== "failed") ||
+      !Number.isFinite(entry.score) || typeof entry.summary !== "string" ||
+      entry.summary.length === 0 ||
+      (entry.evaluation_status !== "accepted" &&
+        entry.evaluation_status !== "disqualified") ||
+      (entry.risk_decision !== "valid_order_request" &&
+        entry.risk_decision !== "invalid_order_request" &&
+        entry.risk_decision !== "no_order_request") ||
+      !Number.isFinite(entry.net_revenue_usdt)) {
+      throw new Error("research_worker_prior_checkpoint_invalid");
+    }
+    return {
+      sequence: entry.sequence,
+      candidate_arena_tick_id: entry.candidate_arena_tick_id,
+      iteration: entry.iteration,
+      decision: entry.decision,
+      agent_status: entry.agent_status,
+      score: entry.score,
+      summary: entry.summary.slice(0, 500),
+      evaluation_status: entry.evaluation_status,
+      risk_decision: entry.risk_decision,
+      net_revenue_usdt: entry.net_revenue_usdt
+    };
+  });
+  return {
+    research_worker_checkpoint_id: input.research_worker_checkpoint_id,
+    terminal_status: input.terminal_status,
+    terminal_reason: input.terminal_reason,
+    ...(input.admission_status && input.admission_reason
+      ? {
+          admission_status: input.admission_status,
+          admission_reason: input.admission_reason
+        }
+      : {}),
+    notebook: {
+      protocol_version: "research_worker_notebook_v1",
+      total_entry_count: input.notebook.total_entry_count,
+      recent_entries: recentEntries
+    }
+  };
 }
 
 function timestampId(date: Date): string {

@@ -6,6 +6,9 @@ import type {
   PaperTradingMarketDataSourcePriority,
   PaperTradingComparisonTickContext,
   Ref,
+  ResearchWorkerCheckpointNotebook,
+  ResearchWorkerCheckpointTerminalReason,
+  ResearchWorkerCheckpointTerminalStatus,
   ResearchPreflightCommitmentRecord,
   TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
@@ -308,9 +311,19 @@ export interface TradingResearchNotebook {
   mode: TradingResearchMode;
   agent: ManagedResearchAgent;
   program_path: string;
+  prior_checkpoint?: TradingResearchPriorCheckpoint;
   best_score?: number;
   best_artifact_dir?: string;
   entries: TradingResearchNotebookEntry[];
+}
+
+export interface TradingResearchPriorCheckpoint {
+  research_worker_checkpoint_id: string;
+  terminal_status: ResearchWorkerCheckpointTerminalStatus;
+  terminal_reason: ResearchWorkerCheckpointTerminalReason;
+  admission_status?: "admitted" | "duplicate" | "quarantined";
+  admission_reason?: string;
+  notebook: ResearchWorkerCheckpointNotebook;
 }
 
 export interface TradingResearchLoopResult {

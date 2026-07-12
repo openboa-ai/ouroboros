@@ -23,7 +23,8 @@ import { PaperTradingHandoffConformanceInfrastructureError } from
 import type {
   AgentEditInput,
   ArtifactRunResult,
-  ReplayTradingScenario
+  ReplayTradingScenario,
+  TradingResearchPriorCheckpoint
 } from "@ouroboros/application/trading/research/types";
 import {
   buildResearchPreflightPlan,
@@ -65,6 +66,89 @@ afterEach(async () => {
 });
 
 describe("Trading research research loop MVP", () => {
+  it("starts a fresh tick notebook from bounded sanitized prior checkpoint history", async () => {
+    const notebookPath = path.join(
+      tmpDir,
+      "candidate-arena-workers",
+      "research-worker-trend-codex",
+      "notebooks",
+      "tick-2.json"
+    );
+    const capturedNotebooks: unknown[] = [];
+    const delegate = new NoopTradingResearchAgentAdapter();
+    const adapter = {
+      agent: delegate.agent,
+      async improveArtifact(input: AgentEditInput) {
+        capturedNotebooks.push(JSON.parse(await readFile(input.notebook_path, "utf8")));
+        return delegate.improveArtifact();
+      }
+    };
+    const prior = {
+      research_worker_checkpoint_id: "research-worker-checkpoint-tick-1",
+      terminal_status: "completed",
+      terminal_reason: "admission_recorded",
+      admission_status: "duplicate",
+      admission_reason: "behavior_duplicate",
+      notebook: {
+        protocol_version: "research_worker_notebook_v1",
+        total_entry_count: 1,
+        recent_entries: [{
+          sequence: 1,
+          candidate_arena_tick_id: "tick-1",
+          iteration: 1,
+          decision: "discard",
+          agent_status: "edited",
+          score: 0.4,
+          summary: `${"x".repeat(500)}forbidden-summary-tail`,
+          evaluation_status: "accepted",
+          risk_decision: "valid_order_request",
+          net_revenue_usdt: -0.25,
+          artifact_path: "/tmp/private-artifact.py",
+          provider_requests: ["provider-request-secret"]
+        }]
+      },
+      sealed_suite_digest: "secret-sealed-suite-digest",
+      command: ["codex", "secret-command"]
+    } as unknown as TradingResearchPriorCheckpoint;
+
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "worker-continuity-run"),
+      notebook_path: notebookPath,
+      session_id: "worker-continuity-run",
+      iterations: 1,
+      prior_checkpoint: prior,
+      agent_adapter: adapter,
+      artifact_runner: controlledPaperHandoffArtifactRunner(["passed"])
+    });
+
+    expect(result.notebook_path).toBe(notebookPath);
+    expect(result.entries).toHaveLength(1);
+    expect(capturedNotebooks).toEqual([expect.objectContaining({
+      prior_checkpoint: expect.objectContaining({
+        research_worker_checkpoint_id: "research-worker-checkpoint-tick-1",
+        terminal_status: "completed",
+        terminal_reason: "admission_recorded",
+        admission_status: "duplicate",
+        admission_reason: "behavior_duplicate",
+        notebook: expect.objectContaining({
+          total_entry_count: 1,
+          recent_entries: [expect.objectContaining({
+            sequence: 1,
+            summary: "x".repeat(500)
+          })]
+        })
+      }),
+      entries: []
+    })]);
+    const finalNotebook = await readNotebook(notebookPath);
+    expect(finalNotebook.prior_checkpoint?.notebook.total_entry_count).toBe(1);
+    expect(finalNotebook.entries).toHaveLength(1);
+    const surface = JSON.stringify(finalNotebook);
+    expect(surface).not.toMatch(
+      /forbidden-summary-tail|private-artifact|provider-request-secret|secret-sealed-suite-digest|secret-command/
+    );
+  });
+
   it("runs one artifact through replay provider, evaluator, keep, discard, and notebook output", async () => {
     const runRoot = path.join(tmpDir, "session");
     const result = await runTradingResearchLoop({
@@ -1617,7 +1701,35 @@ process.exit(17);
     const stdinPrompts: string[] = [];
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     await writeFile(programPath, "Improve the trading system artifact.\n", "utf8");
-    await writeFile(notebookPath, "{\"entries\":[]}\n", "utf8");
+    await writeFile(notebookPath, `${JSON.stringify({
+      prior_checkpoint: {
+        research_worker_checkpoint_id: "research-worker-checkpoint-safe",
+        terminal_status: "failed_closed",
+        terminal_reason: "restart_recovery",
+        notebook: {
+          protocol_version: "research_worker_notebook_v1",
+          total_entry_count: 1,
+          recent_entries: [{
+            sequence: 1,
+            candidate_arena_tick_id: "tick-safe",
+            iteration: 1,
+            decision: "crash",
+            agent_status: "failed",
+            score: 0,
+            summary: "Prior process failed closed; try a new bounded hypothesis.",
+            evaluation_status: "disqualified",
+            risk_decision: "no_order_request",
+            net_revenue_usdt: 0,
+            artifact_path: "/tmp/private-artifact.py",
+            provider_requests: ["provider-request-secret"]
+          }]
+        },
+        sealed_suite_digest: "secret-sealed-suite-digest",
+        command: ["codex", "secret-command"],
+        stdout: "stdout-secret"
+      },
+      entries: []
+    })}\n`, "utf8");
 
     const adapter = new CodexTradingResearchAgentAdapter({
       model: "gpt-5.4-test",
@@ -1660,7 +1772,14 @@ process.exit(17);
     const commandSurface = calls[0].join(" ");
     expect(commandSurface).not.toMatch(/proposal|materialization|lineage|orchestration/i);
     expect(stdinPrompts[0]).toContain("TradingApiProvider");
+    expect(stdinPrompts[0]).toContain("research-worker-checkpoint-safe");
+    expect(stdinPrompts[0]).toContain(
+      "Prior process failed closed; try a new bounded hypothesis."
+    );
     expect(stdinPrompts[0]).not.toMatch(/proposal|materialization|lineage|orchestration/i);
+    expect(stdinPrompts[0]).not.toMatch(
+      /private-artifact|provider-request-secret|secret-sealed-suite-digest|secret-command|stdout-secret/
+    );
     await expect(readFile(path.join(artifactDir, "run.py"), "utf8")).resolves.toContain(
       "RISK_FRACTION = 0.02"
     );

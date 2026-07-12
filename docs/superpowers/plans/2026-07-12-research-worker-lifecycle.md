@@ -55,7 +55,7 @@ domain matrix passed 2 files and 81 tests, and the `@ouroboros/domain` typecheck
   the checkpoint-enabled CandidateArena path.
 - [x] Implement record/get/list methods and strict graph validation.
 - [x] Run LocalStore and admission regression GREEN plus affected typechecks.
-- [ ] Commit `feat: persist research worker checkpoints`.
+- [x] Commit `feat: persist research worker checkpoints` (`5a1e153`).
 
 Evidence: the Store RED failed all 6 scenarios because checkpoint-enabled ResearchWorker fields
 were rejected. The final checkpoint matrix passed 6/6, the adjacent domain/admission/preflight/
@@ -70,14 +70,18 @@ typechecks passed.
 - Modify: `packages/application/src/trading/research/agent-adapters.ts`
 - Create or modify focused research-loop tests.
 
-- [ ] Write RED proving prior context is separate from current entries and excluded from current
+- [x] Write RED proving prior context is separate from current entries and excluded from current
   submission count.
-- [ ] Prove the persisted notebook excludes sealed data, paths, commands, stdout/stderr, provider
+- [x] Prove the persisted notebook excludes sealed data, paths, commands, stdout/stderr, provider
   requests, and oversized summary text.
-- [ ] Add configurable notebook path and compact `prior_checkpoint` context.
-- [ ] Update the agent prompt summarizer to include only bounded prior/current summaries.
-- [ ] Run focused application GREEN and typecheck.
+- [x] Add configurable notebook path and compact `prior_checkpoint` context.
+- [x] Update the agent prompt summarizer to include only bounded prior/current summaries.
+- [x] Run focused application GREEN and typecheck.
 - [ ] Commit `feat: continue sanitized research notebooks`.
+
+Evidence: both focused tests failed before configurable notebook and prior-context support existed.
+The final focused matrix passed 2/2, the complete trading research loop passed 39/39, and
+application and runtime typechecks passed.
 
 ### Task 4: Reuse Stable Workers And Close Every Tick
 

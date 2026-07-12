@@ -332,9 +332,67 @@ function summarizeNotebook(rawNotebook: string): string {
     const notebook = JSON.parse(rawNotebook) as {
       best_score?: number;
       entries?: Array<{ iteration: number; decision: string; score: number; summary: string }>;
+      prior_checkpoint?: {
+        research_worker_checkpoint_id?: string;
+        terminal_status?: string;
+        terminal_reason?: string;
+        admission_status?: string;
+        admission_reason?: string;
+        notebook?: {
+          total_entry_count?: number;
+          recent_entries?: Array<{
+            sequence: number;
+            candidate_arena_tick_id: string;
+            iteration: number;
+            decision: string;
+            agent_status: string;
+            score: number;
+            summary: string;
+            evaluation_status: string;
+            risk_decision: string;
+            net_revenue_usdt: number;
+          }>;
+        };
+      };
     };
     const entries = (notebook.entries ?? []).slice(-3);
     return JSON.stringify({
+      ...(notebook.prior_checkpoint
+        ? {
+            prior_checkpoint: {
+              research_worker_checkpoint_id:
+                notebook.prior_checkpoint.research_worker_checkpoint_id,
+              terminal_status: notebook.prior_checkpoint.terminal_status,
+              terminal_reason: notebook.prior_checkpoint.terminal_reason,
+              ...(notebook.prior_checkpoint.admission_status &&
+                notebook.prior_checkpoint.admission_reason
+                ? {
+                    admission_status: notebook.prior_checkpoint.admission_status,
+                    admission_reason: notebook.prior_checkpoint.admission_reason
+                  }
+                : {}),
+              notebook: {
+                total_entry_count:
+                  notebook.prior_checkpoint.notebook?.total_entry_count,
+                recent_entries:
+                  (notebook.prior_checkpoint.notebook?.recent_entries ?? [])
+                    .slice(-3)
+                    .map((entry) => ({
+                      sequence: entry.sequence,
+                      candidate_arena_tick_id: entry.candidate_arena_tick_id,
+                      iteration: entry.iteration,
+                      decision: entry.decision,
+                      agent_status: entry.agent_status,
+                      score: entry.score,
+                      summary: entry.summary,
+                      evaluation_status: entry.evaluation_status,
+                      risk_decision: entry.risk_decision,
+                      net_revenue_usdt: entry.net_revenue_usdt
+                    }))
+              }
+            }
+          }
+        : {}),
       best_score: notebook.best_score,
       recent_entries: entries.map((entry) => ({
         iteration: entry.iteration,
