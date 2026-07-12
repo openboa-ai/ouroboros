@@ -18,6 +18,12 @@ import {
   type ResearchControlCampaignCandidateClosure
 } from "@ouroboros/application/candidate/research-control-campaign";
 import {
+  ResearchControlCampaignOutcomeService,
+  type ResearchControlCampaignOutcomeArmEvidence,
+  type ResearchControlCampaignOutcomePaperClosure
+} from "@ouroboros/application/candidate/research-control-campaign-outcome";
+import type { OuroborosStorePort } from "@ouroboros/application/ports/store";
+import {
   resolveCandidateArenaSourceArtifactDir,
   runCandidateArenaTick,
   type CandidateArenaTickOutcome,
@@ -50,14 +56,19 @@ import {
   type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
-  type ResearchControlCampaignSource
+  type ResearchControlCampaignSource,
+  type ResearchControlCampaignOutcomeRecord,
+  type PaperTradingComparisonConfirmationCampaignRecord,
+  type PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  type PaperTradingComparisonResearchReleaseRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 
 const SNAPSHOT_EXCLUDED_COLLECTIONS = new Set([
   "research-control-campaigns",
   "research-control-campaign-arm-intents",
-  "research-control-campaign-reports"
+  "research-control-campaign-reports",
+  "research-control-campaign-outcomes"
 ]);
 const DEFAULT_MAXIMUM_REGULAR_FILE_COUNT = 10_000;
 const DEFAULT_MAXIMUM_TOTAL_BYTES = 1_000_000_000;
@@ -78,7 +89,12 @@ export type ResearchControlCampaignRuntimeErrorCode =
   | "research_control_campaign_source_artifact_mismatch"
   | "research_control_campaign_agent_identity_mismatch"
   | "research_control_campaign_arm_tick_failed"
-  | "research_control_campaign_arm_evidence_invalid";
+  | "research_control_campaign_arm_evidence_invalid"
+  | "research_control_campaign_outcome_source_not_found"
+  | "research_control_campaign_outcome_source_ambiguous"
+  | "research_control_campaign_outcome_evidence_incomplete"
+  | "research_control_campaign_outcome_evidence_ambiguous"
+  | "research_control_campaign_outcome_evidence_invalid";
 
 export class ResearchControlCampaignRuntimeError extends Error {
   constructor(
@@ -130,6 +146,38 @@ export interface RunResearchControlCampaignOutcome
   extends ResearchControlCampaignWorkspacePaths {
   campaign: ResearchControlCampaignRecord;
   report: ResearchControlCampaignReportRecord;
+}
+
+export interface ResearchControlCampaignOutcomeArmReader {
+  listPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  >;
+  getPaperTradingComparisonConfirmationCampaign(
+    campaignId: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord | undefined>;
+  getPaperTradingComparisonConfirmationCampaignOutcome(
+    outcomeId: string
+  ): Promise<
+    PaperTradingComparisonConfirmationCampaignOutcomeRecord | undefined
+  >;
+}
+
+export interface CollectResearchControlCampaignOutcomeInput {
+  store: OuroborosStorePort;
+  workspaceRoot: string;
+  campaignId: string;
+  now?: () => string;
+  openArmStore?: (
+    root: string,
+    armKind: ResearchControlCampaignArmKind
+  ) => ResearchControlCampaignOutcomeArmReader;
+}
+
+export interface CollectResearchControlCampaignOutcomeResult
+  extends ResearchControlCampaignWorkspacePaths {
+  campaign: ResearchControlCampaignRecord;
+  report: ResearchControlCampaignReportRecord;
+  outcome: ResearchControlCampaignOutcomeRecord;
 }
 
 interface SnapshotEntry {
@@ -474,6 +522,149 @@ export async function runResearchControlCampaign(
   });
   await coordinatorService.recordReport(report);
   return { ...paths, campaign, report };
+}
+
+export async function collectResearchControlCampaignOutcome(
+  input: CollectResearchControlCampaignOutcomeInput
+): Promise<CollectResearchControlCampaignOutcomeResult> {
+  const campaignId = canonicalIdentifier(input?.campaignId);
+  const campaign = await input.store.getResearchControlCampaign(campaignId);
+  if (!campaign) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_not_found",
+      "ResearchControlCampaign outcome source campaign was not found."
+    );
+  }
+  const reports = (await input.store.listResearchControlCampaignReports())
+    .filter((report: ResearchControlCampaignReportRecord) =>
+      report.campaign_ref.id === campaign.research_control_campaign_id
+    );
+  if (reports.length === 0) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_not_found",
+      "ResearchControlCampaign outcome source report was not found."
+    );
+  }
+  if (reports.length !== 1) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_ambiguous",
+      "ResearchControlCampaign outcome source report is ambiguous."
+    );
+  }
+  const report = reports[0]!;
+  const paths = researchControlCampaignWorkspacePaths({
+    workspaceRoot: input.workspaceRoot,
+    campaignId: campaign.research_control_campaign_id,
+    sourceRoot: input.store.root()
+  });
+  const outcomeService = new ResearchControlCampaignOutcomeService({
+    store: input.store,
+    now: input.now
+  });
+
+  try {
+    const replay = await outcomeService.replay({ campaign, report });
+    if (replay) return { ...paths, campaign, report, outcome: replay };
+
+    const openArmStore = input.openArmStore ?? ((root: string) =>
+      new LocalStore(root));
+    const arms: [
+      ResearchControlCampaignOutcomeArmEvidence,
+      ResearchControlCampaignOutcomeArmEvidence
+    ] = [
+      await collectArmOutcomeEvidence(
+        report.arms[0],
+        openArmStore(
+          paths.armRoots.adaptive_treatment,
+          "adaptive_treatment"
+        )
+      ),
+      await collectArmOutcomeEvidence(
+        report.arms[1],
+        openArmStore(paths.armRoots.static_control, "static_control")
+      )
+    ];
+    const outcome = await outcomeService.adjudicate({ campaign, report, arms });
+    return { ...paths, campaign, report, outcome };
+  } catch (error) {
+    if (error instanceof ResearchControlCampaignRuntimeError) throw error;
+    throw runtimeError(
+      "research_control_campaign_outcome_evidence_invalid",
+      "ResearchControlCampaign terminal outcome evidence is invalid.",
+      { reason: conciseError(error) }
+    );
+  }
+}
+
+async function collectArmOutcomeEvidence(
+  reportArm: ResearchControlCampaignReportRecord["arms"][number],
+  store: ResearchControlCampaignOutcomeArmReader
+): Promise<ResearchControlCampaignOutcomeArmEvidence> {
+  const releases = await store.listPaperTradingComparisonResearchReleases();
+  const paperClosures: ResearchControlCampaignOutcomePaperClosure[] = [];
+  for (const slot of reportArm.paper_candidate_slots) {
+    if (slot.status === "no_admitted_candidate") continue;
+    const matches = releases.filter((release) =>
+      release.candidate_ref.record_kind === slot.candidate_ref.record_kind &&
+      release.candidate_ref.id === slot.candidate_ref.id &&
+      release.candidate_version_ref.record_kind ===
+        slot.candidate_version_ref.record_kind &&
+      release.candidate_version_ref.id === slot.candidate_version_ref.id &&
+      release.system_code_ref.record_kind === slot.system_code_ref.record_kind &&
+      release.system_code_ref.id === slot.system_code_ref.id &&
+      release.system_code_artifact_digest === slot.system_code_artifact_digest
+    );
+    if (matches.length === 0) {
+      throw runtimeError(
+        "research_control_campaign_outcome_evidence_incomplete",
+        "ResearchControlCampaign reserved paper slot has no terminal release.",
+        { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
+      );
+    }
+    if (matches.length !== 1) {
+      throw runtimeError(
+        "research_control_campaign_outcome_evidence_ambiguous",
+        "ResearchControlCampaign reserved paper slot has multiple terminal releases.",
+        { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
+      );
+    }
+    const researchRelease = matches[0]!;
+    if (researchRelease.campaign_ref.record_kind !==
+        "paper_trading_comparison_confirmation_campaign" ||
+      researchRelease.campaign_outcome_ref.record_kind !==
+        "paper_trading_comparison_confirmation_campaign_outcome") {
+      throw runtimeError(
+        "research_control_campaign_outcome_evidence_invalid",
+        "ResearchControlCampaign terminal release references are malformed."
+      );
+    }
+    const [confirmationCampaign, confirmationOutcome] = await Promise.all([
+      store.getPaperTradingComparisonConfirmationCampaign(
+        researchRelease.campaign_ref.id
+      ),
+      store.getPaperTradingComparisonConfirmationCampaignOutcome(
+        researchRelease.campaign_outcome_ref.id
+      )
+    ]);
+    if (!confirmationCampaign || !confirmationOutcome) {
+      throw runtimeError(
+        "research_control_campaign_outcome_evidence_incomplete",
+        "ResearchControlCampaign terminal release closure is incomplete.",
+        { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
+      );
+    }
+    paperClosures.push({
+      sequence: slot.sequence,
+      tickRef: { ...slot.tick_ref },
+      confirmationCampaign,
+      confirmationOutcome,
+      researchRelease
+    });
+  }
+  return {
+    armKind: reportArm.arm_kind,
+    paperClosures
+  };
 }
 
 async function resolvePaperComparator(
@@ -925,6 +1116,17 @@ function canonicalPath(value: unknown): string {
     throw runtimeError(
       "research_control_campaign_snapshot_root_invalid",
       "ResearchControlCampaign path is invalid."
+    );
+  }
+  return value;
+}
+
+function canonicalIdentifier(value: unknown): string {
+  if (typeof value !== "string" || !value.trim() || value.trim() !== value ||
+    !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_not_found",
+      "ResearchControlCampaign outcome source ID is invalid."
     );
   }
   return value;

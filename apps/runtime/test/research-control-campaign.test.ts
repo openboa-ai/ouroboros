@@ -61,6 +61,17 @@ describe("ResearchControlCampaign snapshots", () => {
       "campaign\n",
       "utf8"
     );
+    await mkdir(path.join(root, "research-control-campaign-outcomes/items"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(
+        root,
+        "research-control-campaign-outcomes/items/outcome.json"
+      ),
+      "outcome\n",
+      "utf8"
+    );
     const second = await captureResearchControlCampaignSnapshot({
       root,
       maximumRegularFileCount: 10,
