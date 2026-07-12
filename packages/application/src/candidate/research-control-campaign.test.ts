@@ -40,6 +40,10 @@ describe("ResearchControlCampaign application", () => {
       maximum_total_development_submissions_per_tick: 5,
       paper_candidate_slot_count_per_arm: 2
     });
+    expect(campaign.paper_comparator).toEqual({
+      comparator_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    });
     expect(new Set(campaign.arms.flatMap((arm) => arm.tick_ids)).size).toBe(4);
     expect(campaign.campaign_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
@@ -319,6 +323,10 @@ function campaignInput(overrides: Record<string, unknown> = {}) {
       provider: "fixture" as const,
       model: "scripted-fixture",
       permission_policy: "fixture_only" as const
+    },
+    paperComparator: {
+      comparator_status: "unavailable" as const,
+      reason: "no_trading_promotion_at_commitment" as const
     },
     tickCountPerArm: 2,
     maximumBaselineRegularFileCount: 10_000,

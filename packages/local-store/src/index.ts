@@ -375,6 +375,8 @@ export type LocalStoreErrorCode =
   | "candidate_arena_research_allocation_tick_graph_mismatch"
   | "invalid_research_control_campaign_input"
   | "research_control_campaign_digest_mismatch"
+  | "research_control_campaign_comparator_reference_not_found"
+  | "research_control_campaign_comparator_reference_mismatch"
   | "research_control_campaign_conflict"
   | "research_control_campaign_reload_failed"
   | "invalid_research_control_campaign_arm_intent_input"
@@ -3538,6 +3540,37 @@ export class LocalStore {
         "research_control_campaign_digest_mismatch",
         "ResearchControlCampaign digest does not match its content"
       );
+    }
+    if (campaign.paper_comparator.comparator_status === "trading_review") {
+      const comparator = campaign.paper_comparator;
+      const promotion = await this.getTradingPromotion(
+        comparator.trading_promotion_ref.id
+      );
+      if (!promotion) {
+        throw new LocalStoreError(
+          "research_control_campaign_comparator_reference_not_found",
+          "ResearchControlCampaign Trading review comparator was not found"
+        );
+      }
+      const promotionDigest = comparisonExactRecordDigest(
+        paperTradingComparisonTradingPromotionDigestInput(promotion)
+      );
+      if (comparator.trading_promotion_ref.record_kind !== "trading_promotion" ||
+        comparator.trading_promotion_digest !== promotionDigest ||
+        comparator.candidate_ref.record_kind !== "trading_system_candidate" ||
+        comparator.candidate_ref.id !== promotion.candidate_ref.id ||
+        comparator.candidate_version_ref.record_kind !== "candidate_version" ||
+        comparator.candidate_version_ref.id !== promotion.candidate_version_ref.id ||
+        comparator.paper_trading_evaluation_ref.record_kind !==
+          "paper_trading_evaluation" ||
+        comparator.paper_trading_evaluation_ref.id !==
+          promotion.paper_trading_evaluation_ref.id ||
+        Date.parse(promotion.promoted_at) > Date.parse(campaign.committed_at)) {
+        throw new LocalStoreError(
+          "research_control_campaign_comparator_reference_mismatch",
+          "ResearchControlCampaign comparator does not match pre-effect Trading review"
+        );
+      }
     }
     const existing = await this.getResearchControlCampaign(
       campaign.research_control_campaign_id

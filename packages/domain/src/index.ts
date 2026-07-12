@@ -7095,6 +7095,20 @@ export interface ResearchControlCampaignAgentIdentity {
   identity_digest: string;
 }
 
+export type ResearchControlCampaignPaperComparator =
+  | {
+      comparator_status: "trading_review";
+      trading_promotion_ref: Ref;
+      trading_promotion_digest: string;
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      paper_trading_evaluation_ref: Ref;
+    }
+  | {
+      comparator_status: "unavailable";
+      reason: "no_trading_promotion_at_commitment";
+    };
+
 export interface ResearchControlCampaignArm {
   arm_kind: ResearchControlCampaignArmKind;
   allocation_mode: "adaptive_default" | "static_control";
@@ -7128,6 +7142,7 @@ export interface ResearchControlCampaignRecord extends BaseRecord {
   baseline: ResearchControlCampaignBaselineSnapshot;
   source: ResearchControlCampaignSource;
   research_agent: ResearchControlCampaignAgentIdentity;
+  paper_comparator: ResearchControlCampaignPaperComparator;
   allocation_policy: CandidateArenaResearchAllocationPolicy;
   allocation_policy_digest: string;
   arms: [ResearchControlCampaignArm, ResearchControlCampaignArm];
@@ -7277,6 +7292,7 @@ export function researchControlCampaignHasRuntimeShape(
     "baseline",
     "source",
     "research_agent",
+    "paper_comparator",
     "allocation_policy",
     "allocation_policy_digest",
     "arms",
@@ -7297,6 +7313,9 @@ export function researchControlCampaignHasRuntimeShape(
     !researchControlCampaignBaselineHasRuntimeShape(value.baseline) ||
     !researchControlCampaignSourceHasRuntimeShape(value.source) ||
     !researchControlCampaignAgentHasRuntimeShape(value.research_agent) ||
+    !researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) ||
     !candidateArenaResearchAllocationPolicyHasRuntimeShape(
       value.allocation_policy
     ) || !researchControlCampaignSha256Digest(value.allocation_policy_digest) ||
@@ -7498,6 +7517,34 @@ function researchControlCampaignAgentHasRuntimeShape(
   return value.provider === "fixture"
     ? value.permission_policy === "fixture_only"
     : value.permission_policy === "artifact_workspace_only";
+}
+
+function researchControlCampaignPaperComparatorHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperComparator {
+  if (!comparisonObject(value)) return false;
+  if (value.comparator_status === "unavailable") {
+    return comparisonHasExactKeys(value, [
+      "comparator_status",
+      "reason"
+    ]) && value.reason === "no_trading_promotion_at_commitment";
+  }
+  return value.comparator_status === "trading_review" &&
+    comparisonHasExactKeys(value, [
+      "comparator_status",
+      "trading_promotion_ref",
+      "trading_promotion_digest",
+      "candidate_ref",
+      "candidate_version_ref",
+      "paper_trading_evaluation_ref"
+    ]) && comparisonRef(value.trading_promotion_ref, "trading_promotion") &&
+    researchControlCampaignSha256Digest(value.trading_promotion_digest) &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(
+      value.paper_trading_evaluation_ref,
+      "paper_trading_evaluation"
+    );
 }
 
 function researchControlCampaignArmHasRuntimeShape(

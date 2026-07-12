@@ -1,17 +1,19 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   paperTradingComparisonPersistedRecordDigestInput,
+  paperTradingComparisonTradingPromotionDigestInput,
   researchControlCampaignArmIntentDigestInput,
   researchControlCampaignReportDigestInput,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
-  type ResearchPopulationDiversityReadModel
+  type ResearchPopulationDiversityReadModel,
+  type TradingPromotionRecord
 } from "@ouroboros/domain";
 import {
   decideResearchControlCampaign,
@@ -77,6 +79,82 @@ describe("LocalStore ResearchControlCampaign", () => {
     )).rejects.toMatchObject({
       code: "research_control_campaign_reload_failed"
     });
+  });
+
+  it("requires an exact persisted TradingPromotion comparator", async () => {
+    const promotion = tradingPromotionFixture();
+    const comparator = {
+      comparator_status: "trading_review" as const,
+      trading_promotion_ref: {
+        record_kind: "trading_promotion",
+        id: promotion.trading_promotion_id
+      },
+      trading_promotion_digest: canonicalDigest(
+        paperTradingComparisonTradingPromotionDigestInput(promotion)
+      ),
+      candidate_ref: { ...promotion.candidate_ref },
+      candidate_version_ref: { ...promotion.candidate_version_ref },
+      paper_trading_evaluation_ref: {
+        ...promotion.paper_trading_evaluation_ref
+      }
+    };
+    const campaign = campaignFixture({ paperComparator: comparator });
+
+    await expect(store.recordResearchControlCampaign(campaign))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_comparator_reference_not_found"
+      });
+
+    await mkdir(path.join(root, "trading-promotions/items"), { recursive: true });
+    await writeFile(
+      path.join(
+        root,
+        "trading-promotions/items",
+        `${promotion.trading_promotion_id}.json`
+      ),
+      `${JSON.stringify(promotion, null, 2)}\n`,
+      "utf8"
+    );
+    expect(await store.recordResearchControlCampaign(campaign)).toEqual(campaign);
+  });
+
+  it("rejects a post-hoc or mismatched Trading review comparator", async () => {
+    const promotion = tradingPromotionFixture();
+    await mkdir(path.join(root, "trading-promotions/items"), { recursive: true });
+    await writeFile(
+      path.join(
+        root,
+        "trading-promotions/items",
+        `${promotion.trading_promotion_id}.json`
+      ),
+      `${JSON.stringify(promotion, null, 2)}\n`,
+      "utf8"
+    );
+    const campaign = campaignFixture({
+      paperComparator: {
+        comparator_status: "trading_review",
+        trading_promotion_ref: {
+          record_kind: "trading_promotion",
+          id: promotion.trading_promotion_id
+        },
+        trading_promotion_digest: canonicalDigest(
+          paperTradingComparisonTradingPromotionDigestInput(promotion)
+        ),
+        candidate_ref: {
+          record_kind: "trading_system_candidate",
+          id: "different-candidate"
+        },
+        candidate_version_ref: { ...promotion.candidate_version_ref },
+        paper_trading_evaluation_ref: {
+          ...promotion.paper_trading_evaluation_ref
+        }
+      }
+    });
+
+    await expect(store.recordResearchControlCampaign(campaign))
+      .rejects.toMatchObject({
+        code: "research_control_campaign_comparator_reference_mismatch"
+      });
   });
 
   it("requires an exact campaign before appending an arm intent", async () => {
@@ -219,7 +297,10 @@ describe("LocalStore ResearchControlCampaign", () => {
   });
 });
 
-function campaignFixture(input: { baselineDigest?: string } = {}) {
+function campaignFixture(input: {
+  baselineDigest?: string;
+  paperComparator?: Parameters<typeof decideResearchControlCampaign>[0]["paperComparator"];
+} = {}) {
   return decideResearchControlCampaign({
     idempotencyKey: "allocation-ablation-store-001",
     baseline: {
@@ -250,9 +331,54 @@ function campaignFixture(input: { baselineDigest?: string } = {}) {
       model: "scripted-fixture",
       permission_policy: "fixture_only"
     },
+    paperComparator: input.paperComparator ?? {
+      comparator_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    },
     tickCountPerArm: 1,
     committedAt: "2026-07-12T10:00:00.000Z"
   });
+}
+
+function tradingPromotionFixture(): TradingPromotionRecord {
+  return {
+    record_kind: "trading_promotion",
+    version: 1,
+    trading_promotion_id: "trading-promotion-comparator-001",
+    status: "promoted_for_trading_review",
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: "champion-candidate"
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: "champion-version"
+    },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: "champion-paper-evaluation"
+    },
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: "champion-confirmation-campaign"
+      },
+      campaign_digest: digest("a"),
+      campaign_outcome_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: "champion-confirmation-outcome"
+      },
+      campaign_outcome_digest: digest("b"),
+      final_verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: "champion-final-verdict"
+      },
+      final_verdict_digest: digest("c")
+    },
+    promoted_at: "2026-07-12T09:00:00.000Z",
+    authority_status: "not_live"
+  };
 }
 
 function armIntentFixture(

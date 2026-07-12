@@ -18,6 +18,32 @@ describe("ResearchControlCampaign", () => {
     expect(researchControlCampaignHasRuntimeShape(campaignFixture())).toBe(true);
   });
 
+  it("accepts an exact pre-effect Trading review comparator", () => {
+    const campaign = campaignFixture();
+    campaign.paper_comparator = {
+      comparator_status: "trading_review",
+      trading_promotion_ref: {
+        record_kind: "trading_promotion",
+        id: "trading-promotion-001"
+      },
+      trading_promotion_digest: digest("8"),
+      candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: "champion-candidate"
+      },
+      candidate_version_ref: {
+        record_kind: "candidate_version",
+        id: "champion-version"
+      },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: "champion-paper-evaluation"
+      }
+    };
+
+    expect(researchControlCampaignHasRuntimeShape(campaign)).toBe(true);
+  });
+
   it("binds every causal campaign field into the digest input", () => {
     const baseline = campaignFixture();
     const digestInput = researchControlCampaignDigestInput(baseline);
@@ -25,6 +51,28 @@ describe("ResearchControlCampaign", () => {
       (value) => { value.baseline.snapshot_digest = digest("b"); },
       (value) => { value.source.system_code_artifact_digest = digest("c"); },
       (value) => { value.research_agent.model = "different-model"; },
+      (value) => {
+        value.paper_comparator = {
+          comparator_status: "trading_review",
+          trading_promotion_ref: {
+            record_kind: "trading_promotion",
+            id: "trading-promotion-001"
+          },
+          trading_promotion_digest: digest("8"),
+          candidate_ref: {
+            record_kind: "trading_system_candidate",
+            id: "champion-candidate"
+          },
+          candidate_version_ref: {
+            record_kind: "candidate_version",
+            id: "champion-version"
+          },
+          paper_trading_evaluation_ref: {
+            record_kind: "paper_trading_evaluation",
+            id: "champion-paper-evaluation"
+          }
+        };
+      },
       (value) => { value.arms[0]!.tick_ids[0] = "different-tick"; },
       (value) => { value.policy.tick_count_per_arm = 2; },
       (value) => { value.committed_at = "2026-07-12T12:00:00.000Z"; },
@@ -40,6 +88,38 @@ describe("ResearchControlCampaign", () => {
 
   it.each([
     ["extra winner field", (value: any) => { value.winner = "adaptive_treatment"; }],
+    ["missing comparator", (value: any) => { delete value.paper_comparator; }],
+    ["unknown comparator status", (value: any) => {
+      value.paper_comparator.comparator_status = "select_later";
+    }],
+    ["unavailable comparator with promotion", (value: any) => {
+      value.paper_comparator.trading_promotion_ref = {
+        record_kind: "trading_promotion",
+        id: "promotion-later"
+      };
+    }],
+    ["malformed Trading review comparator", (value: any) => {
+      value.paper_comparator = {
+        comparator_status: "trading_review",
+        trading_promotion_ref: {
+          record_kind: "trading_promotion",
+          id: "promotion-001"
+        },
+        trading_promotion_digest: "sha256:short",
+        candidate_ref: {
+          record_kind: "trading_system_candidate",
+          id: "champion"
+        },
+        candidate_version_ref: {
+          record_kind: "candidate_version",
+          id: "champion-version"
+        },
+        paper_trading_evaluation_ref: {
+          record_kind: "paper_trading_evaluation",
+          id: "champion-evaluation"
+        }
+      };
+    }],
     ["reversed arms", (value: any) => { value.arms.reverse(); }],
     ["unequal arm tick counts", (value: any) => { value.arms[1].tick_ids = []; }],
     ["duplicate cross-arm tick", (value: any) => {
@@ -272,6 +352,10 @@ function campaignFixture(): ResearchControlCampaignRecord {
       model: "scripted-fixture",
       permission_policy: "fixture_only",
       identity_digest: digest("c")
+    },
+    paper_comparator: {
+      comparator_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
     },
     allocation_policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     allocation_policy_digest: digest("d"),

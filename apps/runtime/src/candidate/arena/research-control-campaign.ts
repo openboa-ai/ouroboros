@@ -42,9 +42,12 @@ import type { TradingResearchRuntimeAgent } from
 import {
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingComparisonTradingPromotionHasRuntimeShape,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
   type ResearchControlCampaignBaselineSnapshot,
+  type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchControlCampaignSource
@@ -338,11 +341,13 @@ export async function runResearchControlCampaign(
       store: input.store,
       now: input.now
     });
+    const paperComparator = await resolvePaperComparator(input.store);
     campaign = await service.commit({
       idempotencyKey: input.idempotencyKey,
       baseline,
       source: source.source,
       researchAgent: input.researchAgentIdentity,
+      paperComparator,
       tickCountPerArm: input.tickCountPerArm,
       maximumBaselineRegularFileCount: maximumFileCount,
       maximumBaselineTotalBytes: maximumBytes
@@ -469,6 +474,39 @@ export async function runResearchControlCampaign(
   });
   await coordinatorService.recordReport(report);
   return { ...paths, campaign, report };
+}
+
+async function resolvePaperComparator(
+  store: LocalStore
+): Promise<ResearchControlCampaignPaperComparator> {
+  const promotion = await store.getLatestTradingPromotion();
+  if (!promotion) {
+    return {
+      comparator_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    };
+  }
+  if (!paperTradingComparisonTradingPromotionHasRuntimeShape(promotion)) {
+    throw runtimeError(
+      "research_control_campaign_source_candidate_invalid",
+      "ResearchControlCampaign Trading review comparator is malformed."
+    );
+  }
+  return {
+    comparator_status: "trading_review",
+    trading_promotion_ref: {
+      record_kind: "trading_promotion",
+      id: promotion.trading_promotion_id
+    },
+    trading_promotion_digest: canonicalDigest(
+      paperTradingComparisonTradingPromotionDigestInput(promotion)
+    ),
+    candidate_ref: { ...promotion.candidate_ref },
+    candidate_version_ref: { ...promotion.candidate_version_ref },
+    paper_trading_evaluation_ref: {
+      ...promotion.paper_trading_evaluation_ref
+    }
+  };
 }
 
 async function captureRegularFile(

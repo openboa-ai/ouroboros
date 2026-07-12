@@ -20,6 +20,7 @@ import {
   type ResearchControlCampaignArmReport,
   type ResearchControlCampaignBaselineSnapshot,
   type ResearchControlCampaignPaperCandidateSlot,
+  type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchControlCampaignSource,
@@ -37,6 +38,7 @@ export interface ResearchControlCampaignDecisionInput {
   baseline: ResearchControlCampaignBaselineSnapshot;
   source: ResearchControlCampaignSource;
   researchAgent: ManagedResearchAgent;
+  paperComparator: ResearchControlCampaignPaperComparator;
   tickCountPerArm: number;
   maximumBaselineRegularFileCount?: number;
   maximumBaselineTotalBytes?: number;
@@ -276,6 +278,7 @@ export function decideResearchControlCampaign(
       baseline: structuredClone(input.baseline),
       source: structuredClone(input.source),
       research_agent: researchAgent,
+      paper_comparator: structuredClone(input.paperComparator),
       allocation_policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
       allocation_policy_digest: canonicalDigest(
         CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY

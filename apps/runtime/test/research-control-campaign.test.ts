@@ -160,6 +160,10 @@ describe("ResearchControlCampaign runtime", () => {
       order_submission_authority: false,
       live_exchange_authority: false
     });
+    expect(outcome.campaign.paper_comparator).toEqual({
+      comparator_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    });
     expect(tickCalls).toHaveLength(2);
     expect(await sourceStore.listCandidateArenaTicks()).toEqual([]);
     expect(await sourceStore.listResearchControlCampaigns()).toEqual([
