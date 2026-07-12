@@ -60,6 +60,7 @@ persisted schema names. Any future public or persisted fields require a separate
 | Development `ResearchPreflight` | Aggregate development feedback only | Yes | No | No |
 | `ResearchBehaviorFingerprint` | No raw cross-candidate observations; generic duplicate Finding after close | Yes | No; may exclude an exact admitted duplicate | No |
 | `ResearchPopulationDiversity` | Aggregate counts and entropy only; no raw identity or evaluator evidence | Yes, as concentration context only | No | No |
+| `ResearchControlCampaign` research report | Arm diagnostics and precommitted candidate slots only; no winner or paper outcome | No, until a separate terminal paper release | No retroactive admission | No |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
@@ -101,6 +102,18 @@ Admission classifications join only through the exact commitment graph. Missing 
 are ignored, while a window commitment missing its ResearchDirection fails the derived read. The
 same bounded read model enters CandidateArena and next-worker context without raw IDs, digests,
 observations, scenarios, sealed outcomes, or paper evidence.
+
+`ResearchControlCampaign` freezes an adaptive allocation treatment and static equal-maximum-bound
+control before either arm effect. Its canonical store snapshot excludes only campaign evidence
+collections to avoid self-reference; candidate, Finding, Lineage, checkpoint, duplicate-baseline,
+and artifact state remain covered. The actual single-file research source is sealed and copied
+separately so compatibility SystemCode artifact identifiers cannot masquerade as the bytes used by
+both arms. Each arm has its own LocalStore, worker state, candidate artifacts, and exact tick IDs.
+The primary store retains only campaign, coordinator arm intents, and the terminal report, not arm
+ticks or candidates. The report may compare research diagnostics and reserve one deterministic
+candidate slot per tick, but it fixes `unadjudicated` and
+`not_available_from_research_phase`. Only future prospective comparison, qualification, verdict,
+confirmation, and release evidence may adjudicate those slots.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
 contiguous stable-worker link, current and cumulative development submission counts, zero remaining
@@ -465,6 +478,11 @@ The following current surfaces require implementation work before P0 can pass:
   closed cumulative budget history, and restart-safe orphan reconciliation. Provider-process and
   sandbox adoption, worker-chosen experiment sequencing, provider-dollar cost, and learned
   allocation remain open.
+- `ResearchControlCampaign` now composes an actual isolated adaptive/static run from one verified
+  store and source-artifact baseline. Campaign and arm intent precede effects; sequence-paired arms
+  wait for both settlements; restart reuses exact completed ticks and runs only missing ticks; and
+  a terminal research report freezes diagnostics plus future paper slots without a winner. Public
+  paper-slot scheduling, prospective outcome adjudication, and policy replacement remain open.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -479,8 +497,9 @@ The following current surfaces require implementation work before P0 can pass:
   exposes the same object to the next ResearchWorker. Rolling coverage and per-tick cross-sectional
   trajectories remain distinct, assigned labels and exact observed behavior remain orthogonal,
   cross-suite evidence is incomparable, and entropy changes no allocation, rank, admission,
-  qualification, or promotion policy. Directed/undirected,
-  memory/no-memory, adaptive/static, and agent/baseline causal controls remain open.
+  qualification, or promotion policy. Directed/undirected, memory/no-memory, and agent/baseline
+  controls remain open. Adaptive/static arm execution exists, but its prospective qualified outcome
+  is still open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 

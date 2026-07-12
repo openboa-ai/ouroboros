@@ -329,6 +329,14 @@ private access, or live authority. Operator surfaces may render them in Research
 next-generation context, but must not treat them as a blocker, rank, or action. There is no public
 allocation mutation command.
 
+`ResearchControlCampaign` is currently an internal runtime composition, not an
+`OuroborosCommand` or public HTTP route. It persists a campaign and coordinator arm intents in the
+primary store, executes exact ticks only in isolated arm stores, and returns a terminal
+research-phase report. That report has no winner and cannot trigger paper scheduling,
+qualification, Trading review, promotion, order submission, private access, or live authority.
+A future public command must first define idempotency, placement ownership, resource admission,
+paper-slot scheduling, and read-model exposure without leaking arm-local raw evidence.
+
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
 

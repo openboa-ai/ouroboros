@@ -98,6 +98,17 @@ equal-bound `2`, `2`, `1` ablation. This does not complete the Adaptive allocati
 provider-dollar cost, learned allocation, controlled discovery-yield results, and the remaining
 completion evidence are still open.
 
+Current partial implementation evidence now also covers the first controlled allocation execution
+boundary. `ResearchControlCampaign` commits one exact LocalStore baseline, source SystemCode record,
+actual single-file research artifact closure, managed-agent identity, equal maximum tick/worker/
+submission bounds, and exact adaptive/static tick IDs before effects. The runtime copies that
+baseline independently into two arm stores, executes matching sequences concurrently, reuses only
+exact completed ticks after restart, and leaves the primary Arena population untouched. Its report
+conserves arm outcomes and resource proxies, embeds campaign-only diversity, and reserves the first
+admitted candidate per tick. The primary outcome remains `unadjudicated`; these research diagnostics
+do not prove allocation lift. Public scheduling of reserved candidates into prospective qualified
+paper comparisons and campaign outcome adjudication remain open.
+
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized
 notebook for each tick. Every checkpoint-enabled commitment closes through one append-only
@@ -148,8 +159,8 @@ AI-agent leverage, Causal research memory, or Economic frontier improvement.
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
 clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
-worker-chosen research sequences, controlled directed/undirected, memory, allocation, and AI-agent
-ablations, production comparison scheduling, automatic promotion, champion runner handoff,
+worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
+and AI-agent ablations, production comparison scheduling, automatic promotion, champion runner handoff,
 private/live authority, and the other completion axes remain open.
 
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a

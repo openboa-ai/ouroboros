@@ -137,6 +137,12 @@ The next level of detail should improve the autonomous loop without widening aut
 - Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
   signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost, learned
   allocation, and durable provider-process/sandbox adoption remain future detail.
+- `ResearchControlCampaign` now freezes one exact LocalStore and research-artifact baseline, then
+  runs independent adaptive and static arm stores under exact tick sequences and equal maximum
+  bounds. Its terminal report contains only research diagnostics and deterministic prospective
+  paper candidate slots; `unadjudicated` is enforced, so no entropy, admission, or preflight result
+  can become a causal winner. Paper scheduling and qualified outcome adjudication remain future
+  detail.
 - Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
   conformance, and admission are now bound before materialization and generated-candidate paper
   start. Direction readback is compact, and efficiency separates development from sealed counts

@@ -67,6 +67,12 @@ each tick's worker cross-section. Assigned-direction entropy and exact same-suit
 stay separate; mixed protocol or development-suite cohorts are `incomparable_suites`. This bounded
 read model may guide researcher attention but never rank, admit, allocate, qualify, promote, submit
 orders, or grant private/live authority.
+`ResearchControlCampaign` is the causal boundary for testing an Arena policy. It commits one exact
+LocalStore baseline, actual research artifact closure, managed-agent identity, equal maximum bounds,
+and adaptive/static tick sequences before effects; runs each arm in an independent LocalStore; and
+persists only an unadjudicated research report with deterministic future paper candidate slots.
+Admission, duplicate, diversity, and efficiency differences are diagnostics, never a winner or
+economic result. Prospective paper comparison evidence must adjudicate the reserved slots later.
 Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted
@@ -234,6 +240,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `CandidateAdmissionDecision` | Research-only external gate that binds the complete new-format ResearchPreflight commitment/terminal/submitted-SystemCode graph and paper handoff conformance to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `ResearchPopulationDiversity` | Read-only latest-ten-tick coverage aggregate plus newest-first per-tick worker cross-sections that separate assigned ResearchDirection concentration from exact same-suite observed ResearchBehaviorFingerprint concentration; mixed cohorts are incomparable, and the read model has no scheduling, evaluation, admission, rank, qualification, promotion, order, private, or live authority. |
+| `ResearchControlCampaign` | Append-only pre-effect adaptive-versus-static CandidateArena ablation over one exact store and source-artifact baseline. Isolated arm intents and the research-phase report freeze bounds, ticks, diagnostics, and future paper candidate slots while the primary outcome remains unadjudicated and authority-closed. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |

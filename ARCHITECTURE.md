@@ -52,6 +52,13 @@ each exact tick cross-section. A protocol/suite transition can therefore close o
 comparison while valid within-tick entropy remains visible. The application builder returns bounded
 aggregate metrics only and has no mutation, scheduling, evaluation, or promotion authority.
 CandidateArena and the next-worker context share that object rather than raw fingerprint evidence.
+The runtime composition root also owns `ResearchControlCampaign`. It snapshots every regular
+LocalStore file except campaign evidence collections, separately seals the actual single-file
+research source, and clones that immutable baseline into independent adaptive and static LocalStore
+roots. Domain/application services own campaign, arm-intent, and research-report decisions;
+LocalStore validates append-only graphs; the runtime alone owns filesystem placement and paired
+execution. Arm ticks and candidates do not enter the primary Arena store. The report is diagnostic
+and unadjudicated until a later prospective paper scheduler resolves its reserved candidate slots.
 `ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
 not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
 commitment still runs isolated candidate bytes and closes through one append-only

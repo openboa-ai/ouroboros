@@ -1,6 +1,6 @@
 # ResearchControlCampaign Design
 
-**Status:** Approved for implementation under the standing CandidateArena Goal authority
+**Status:** Implemented and repository-wide verified
 
 ## Goal
 
@@ -209,3 +209,17 @@ unreleased paper evidence, or a different candidate version or SystemCode.
    rule.
 8. The report cannot express a winner or adjudicated primary outcome.
 9. Focused tests, workspace type checks, repository guards, and the full suite pass.
+
+## Verification Evidence
+
+- Domain runtime-shape contract: 58 tests passed.
+- Application decision, idempotency, diagnostics, reservation, and gate behavior: 22 tests passed.
+- LocalStore append/reload/conflict/corruption graph: 8 tests passed.
+- Runtime snapshot, isolation, terminal replay, and interrupted-arm recovery: 10 tests passed.
+- Combined new frontier: 98 tests passed.
+- Existing CandidateArena plus campaign runtime regression: 73 tests passed.
+- Every workspace typecheck passed, including the Operator Desktop Rust build.
+- Docs, architecture, naming, tracked-env, secret, and diff guards passed.
+- Full repository suite passed 298 of 298 suites and 2215 of 2215 tests with zero failed,
+  pending, or todo tests. The first sandboxed run was invalidated by loopback `listen EPERM`; the
+  approved local-port run passed completely.

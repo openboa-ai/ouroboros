@@ -77,6 +77,14 @@ next ResearchWorker without raw fingerprint, observation, scenario, suite-digest
 evidence. It is a search diagnostic with no rank, admission, allocation, qualification, promotion,
 order, private, or live authority.
 
+CandidateArena policy can now be exercised through the internal `ResearchControlCampaign` runtime
+composition. It seals one bounded LocalStore baseline plus the actual single-file research artifact,
+then clones independent `adaptive_default` and `static_control` stores and runs their exact tick
+sequences concurrently by sequence. The append-only report records admission, duplicate, failure,
+diversity, and efficiency diagnostics and reserves the first admitted candidate per tick for future
+paper evidence. It deliberately has `unadjudicated` primary outcome and no winner. There is not yet
+a public operator command, paper-slot scheduler, or campaign outcome adjudicator.
+
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
 artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
@@ -91,8 +99,8 @@ This isolation and diversity measurement reduce direct evaluator reuse and make 
 concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
 or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
-de-risking sequences, directed-versus-undirected and memory/baseline controls, controlled
-discovery-yield and long-duration restart soak evidence,
+de-risking sequences, directed-versus-undirected and memory/baseline controls, prospective
+adaptive-versus-static paper adjudication, controlled discovery-yield and long-duration restart soak evidence,
 production comparison scheduling, automatic promotion, champion runner handoff, private/live
 authority, P0, and the overall Goal remain open.
 

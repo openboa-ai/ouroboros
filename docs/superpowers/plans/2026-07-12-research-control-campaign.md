@@ -1,6 +1,6 @@
 # ResearchControlCampaign Implementation Plan
 
-**Status:** In progress
+**Status:** Complete
 
 **Goal:** Implement one pre-effect, equal-bound, isolated `adaptive_default` versus
 `static_control` CandidateArena campaign that produces only a research-phase report and exact future
@@ -134,3 +134,20 @@ npm test
 - Do not expand this frontier into paper scheduling, outcome adjudication, automatic allocation
   replacement, promotion, or live behavior.
 
+## Final Evidence
+
+- `packages/domain/src/research-control-campaign.test.ts`: 58 passed.
+- `packages/application/src/candidate/research-control-campaign.test.ts`: 22 passed.
+- `packages/local-store/test/research-control-campaign.test.ts`: 8 passed.
+- `apps/runtime/test/research-control-campaign.test.ts`: 10 passed.
+- Combined new frontier: 4 files and 98 tests passed.
+- Existing CandidateArena plus campaign runtime regression: 3 files and 73 tests passed.
+- All workspace typechecks passed, including the Operator Desktop Rust build.
+- Repository docs, architecture, naming, tracked-env, secret, and diff guards passed.
+- Full repository suite: 298 of 298 suites and 2215 of 2215 tests passed; zero failed, pending,
+  or todo. The sandboxed run failed only because loopback listeners received `EPERM`; the approved
+  local-port rerun passed.
+
+The campaign now creates valid isolated treatment/control research populations and freezes future
+paper candidate slots. Prospective paper scheduling and campaign outcome adjudication are the next
+frontier, not evidence supplied by this completed plan.

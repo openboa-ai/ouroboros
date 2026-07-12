@@ -33,6 +33,9 @@ frozen SystemCode to normalized effective orders on one exact protocol and suite
 `ResearchPopulationDiversity` is the read-only latest-ten-tick coverage aggregate plus a bounded
 newest-first series that separately measures each tick's assigned-direction and exact same-suite
 observed-behavior cross-section.
+`ResearchControlCampaign` is the pre-effect adaptive-versus-static policy experiment: one exact
+store and source-artifact baseline, isolated arm stores, fixed bounded ticks, diagnostic-only
+research report, and deterministic future paper candidate slots. It does not declare a winner.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.
