@@ -1487,6 +1487,171 @@ export interface ExperimentRunRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export type PaperTradingHandoffConformanceRunnerKind =
+  | "host_process"
+  | "docker_sandboxes_sbx";
+
+export type PaperTradingHandoffConformanceStatus = "passed" | "rejected";
+
+export type PaperTradingHandoffConformanceReason =
+  | "passed"
+  | "runner_crash"
+  | "execution_timed_out"
+  | "provider_protocol_incomplete"
+  | "provider_protocol_violation"
+  | "provider_request_limit_exceeded"
+  | "paper_decision_missing"
+  | "paper_decision_ambiguous"
+  | "paper_event_invalid"
+  | "runtime_heartbeat_missing"
+  | "runtime_stop_missing"
+  | "instance_identity_mismatch"
+  | "hidden_evaluator_field"
+  | "candidate_self_report"
+  | "private_or_live_authority";
+
+export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
+  record_kind: "paper_trading_handoff_conformance";
+  paper_trading_handoff_conformance_id: string;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  experiment_run_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  protocol_version: "paper_trading_event_protocol_v1";
+  runner_kind: PaperTradingHandoffConformanceRunnerKind;
+  status: PaperTradingHandoffConformanceStatus;
+  reason: PaperTradingHandoffConformanceReason;
+  provider_request_count: number;
+  decision_event_kind?: "order_request" | "hold" | "no_action";
+  heartbeat_count: number;
+  runtime_stopped: boolean;
+  started_at: string;
+  completed_at: string;
+  evidence_digest: string;
+  research_preflight_authority: true;
+  runnable_paper_handoff: boolean;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+const PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS = new Set<
+  PaperTradingHandoffConformanceReason
+>([
+  "runner_crash",
+  "execution_timed_out",
+  "provider_protocol_incomplete",
+  "provider_protocol_violation",
+  "provider_request_limit_exceeded",
+  "paper_decision_missing",
+  "paper_decision_ambiguous",
+  "paper_event_invalid",
+  "runtime_heartbeat_missing",
+  "runtime_stop_missing",
+  "instance_identity_mismatch",
+  "hidden_evaluator_field",
+  "candidate_self_report",
+  "private_or_live_authority"
+]);
+
+export function paperTradingHandoffConformanceDigestInput(
+  record: PaperTradingHandoffConformanceRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    paper_trading_handoff_conformance_id: _id,
+    evidence_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingHandoffConformanceHasRuntimeShape(
+  value: unknown
+): value is PaperTradingHandoffConformanceRecord {
+  if (!comparisonObject(value)) {
+    return false;
+  }
+  const requiredKeys = [
+    "record_kind",
+    "version",
+    "paper_trading_handoff_conformance_id",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "experiment_run_ref",
+    "trading_evaluation_task_ref",
+    "protocol_version",
+    "runner_kind",
+    "status",
+    "reason",
+    "provider_request_count",
+    "heartbeat_count",
+    "runtime_stopped",
+    "started_at",
+    "completed_at",
+    "evidence_digest",
+    "research_preflight_authority",
+    "runnable_paper_handoff",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ];
+  const expectedKeys = value.decision_event_kind === undefined
+    ? requiredKeys
+    : [...requiredKeys, "decision_event_kind"];
+  if (!comparisonHasExactKeys(value, expectedKeys)) {
+    return false;
+  }
+  if (
+    value.record_kind !== "paper_trading_handoff_conformance" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_handoff_conformance_id) ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.experiment_run_ref, "experiment_run") ||
+    !comparisonRef(value.trading_evaluation_task_ref, "trading_evaluation_task") ||
+    value.protocol_version !== "paper_trading_event_protocol_v1" ||
+    (value.runner_kind !== "host_process" &&
+      value.runner_kind !== "docker_sandboxes_sbx") ||
+    (value.status !== "passed" && value.status !== "rejected") ||
+    !comparisonString(value.reason) ||
+    !comparisonNonNegative(value.provider_request_count) ||
+    value.provider_request_count > 8 ||
+    (value.decision_event_kind !== undefined &&
+      value.decision_event_kind !== "order_request" &&
+      value.decision_event_kind !== "hold" &&
+      value.decision_event_kind !== "no_action") ||
+    !comparisonNonNegative(value.heartbeat_count) ||
+    typeof value.runtime_stopped !== "boolean" ||
+    !comparisonIso(value.started_at) ||
+    !comparisonIso(value.completed_at) ||
+    Date.parse(value.completed_at) < Date.parse(value.started_at) ||
+    !comparisonDigest(value.evidence_digest) ||
+    value.research_preflight_authority !== true ||
+    typeof value.runnable_paper_handoff !== "boolean" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  if (value.status === "passed") {
+    return value.reason === "passed" &&
+      value.provider_request_count >= 3 &&
+      value.decision_event_kind !== undefined &&
+      value.heartbeat_count > 0 &&
+      value.runtime_stopped === true &&
+      value.runnable_paper_handoff === true;
+  }
+  return PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS.has(
+    value.reason as PaperTradingHandoffConformanceReason
+  ) && value.runnable_paper_handoff === false;
+}
+
 export interface TradingEvaluationScoreSummary {
   total_score: number;
   oos_score: number;
@@ -7196,6 +7361,7 @@ export type FixtureRecord =
   | ExperimentRunRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
+  | PaperTradingHandoffConformanceRecord
   | CandidateAdmissionDecisionRecord
   | PaperTradingEvaluationCommitmentRecord
   | PaperTradingComparisonPreparationRecord

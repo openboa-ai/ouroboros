@@ -56,20 +56,20 @@ LocalStore JSON evidence, CandidateArena, PaperTradingSession command integratio
 - Extends new admission inputs/records with conformance status, ref, and digest while preserving
   historical read compatibility.
 
-- [ ] **Step 1: Write failing canonical record tests**
+- [x] **Step 1: Write failing canonical record tests**
 
 Create one passed and one rejected fixture. Assert exact protocol version, candidate-only evidence
 summary, finite bounded counts, canonical timestamps, digest shape, and closed authority. Assert any
 identity, protocol, status, reason, request count, event kind, heartbeat, stop, time, or authority
 mutation changes digest input.
 
-- [ ] **Step 2: Write failing malformed-shape tests**
+- [x] **Step 2: Write failing malformed-shape tests**
 
 Reject wrong refs, digest, runner kind, protocol version, negative or over-policy counts, invalid
 timestamps, passed-without-decision/heartbeat/stop, rejected-with-runnable handoff, passed-with-false
 handoff, promotion/order/live authority, and unknown reasons.
 
-- [ ] **Step 3: Write failing admission-policy tests**
+- [x] **Step 3: Write failing admission-policy tests**
 
 Prove:
 
@@ -80,7 +80,7 @@ Prove:
 4. historical records without conformance fields remain internally consistent;
 5. conformance cannot override worker, experiment, evaluation, or evidence rejection.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 npm test -- packages/domain/src/paper-trading-handoff-conformance.test.ts packages/domain/src/candidate-admission-policy.test.ts
@@ -88,13 +88,13 @@ npm test -- packages/domain/src/paper-trading-handoff-conformance.test.ts packag
 
 Expected: FAIL because the evidence and policy fields do not exist.
 
-- [ ] **Step 5: Implement the domain contract**
+- [x] **Step 5: Implement the domain contract**
 
 Add strict runtime shape and canonical digest helpers, add the record to persisted unions, and add
 the optional historical-compatible admission fields. Every new application write will populate
 them; undefined remains legacy read compatibility, not new start authority.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ```bash
 npm test -- packages/domain/src/paper-trading-handoff-conformance.test.ts packages/domain/src/candidate-admission-policy.test.ts

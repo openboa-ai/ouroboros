@@ -14,6 +14,8 @@ export type CandidateAdmissionEvidenceDisposition =
 
 export type CandidateAdmissionStatus = "admitted" | "duplicate" | "quarantined";
 
+export type CandidateAdmissionPaperHandoffConformanceStatus = "passed" | "rejected";
+
 export type CandidateAdmissionReason =
   | "evaluation_accepted"
   | "research_worker_failed"
@@ -22,13 +24,15 @@ export type CandidateAdmissionReason =
   | "evaluation_disqualified"
   | "evaluation_quarantined"
   | "evidence_already_counted"
-  | "evidence_quarantined";
+  | "evidence_quarantined"
+  | "paper_handoff_conformance_failed";
 
 export interface CandidateAdmissionPolicyInput {
   research_worker_outcome: CandidateAdmissionResearchWorkerOutcome;
   experiment_status: CandidateAdmissionExperimentStatus;
   evaluation_status: CandidateAdmissionEvaluationStatus;
   evidence_disposition: CandidateAdmissionEvidenceDisposition;
+  paper_handoff_conformance_status?: CandidateAdmissionPaperHandoffConformanceStatus;
 }
 
 export interface CandidateAdmissionArtifactComparisonInput {
@@ -62,6 +66,8 @@ export interface CandidateAdmissionDecisionRecord
   research_finding_ref: CandidateAdmissionRecordRef;
   source_artifact_digest: string;
   submitted_artifact_digest: string;
+  paper_trading_handoff_conformance_ref?: CandidateAdmissionRecordRef;
+  paper_trading_handoff_conformance_digest?: string;
   decided_at: string;
 }
 
@@ -100,6 +106,9 @@ export function decideCandidateAdmission(
   if (input.evidence_disposition === "quarantined_for_review") {
     return rejected("quarantined", "evidence_quarantined");
   }
+  if (input.paper_handoff_conformance_status === "rejected") {
+    return rejected("quarantined", "paper_handoff_conformance_failed");
+  }
   return {
     status: "admitted",
     reason: "evaluation_accepted",
@@ -112,13 +121,31 @@ export function isCandidateAdmissionDecisionConsistent(
   record: CandidateAdmissionDecisionRecord
 ): boolean {
   const expected = decideCandidateAdmission(record);
+  const conformanceFields = [
+    record.paper_handoff_conformance_status,
+    record.paper_trading_handoff_conformance_ref,
+    record.paper_trading_handoff_conformance_digest
+  ];
+  const conformanceFieldCount = conformanceFields.filter((value) => value !== undefined).length;
+  const conformanceLinkageIsConsistent = conformanceFieldCount === 0 || (
+    conformanceFieldCount === conformanceFields.length &&
+    (record.paper_handoff_conformance_status === "passed" ||
+      record.paper_handoff_conformance_status === "rejected") &&
+    record.paper_trading_handoff_conformance_ref?.record_kind ===
+      "paper_trading_handoff_conformance" &&
+    typeof record.paper_trading_handoff_conformance_ref.id === "string" &&
+    record.paper_trading_handoff_conformance_ref.id.length > 0 &&
+    typeof record.paper_trading_handoff_conformance_digest === "string" &&
+    record.paper_trading_handoff_conformance_digest.length > 0
+  );
   const artifactComparisonIsConsistent = record.research_worker_outcome === "failed" ||
     record.research_worker_outcome === deriveCandidateAdmissionResearchWorkerOutcome({
       research_worker_failed: false,
       source_artifact_digest: record.source_artifact_digest,
       submitted_artifact_digest: record.submitted_artifact_digest
     });
-  return artifactComparisonIsConsistent &&
+  return conformanceLinkageIsConsistent &&
+    artifactComparisonIsConsistent &&
     record.status === expected.status &&
     record.reason === expected.reason &&
     record.runnable_paper_handoff === expected.runnable_paper_handoff &&
