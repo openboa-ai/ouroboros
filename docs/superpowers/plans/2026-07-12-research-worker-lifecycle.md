@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development to implement this plan task-by-task.
 
-**Status:** Complete and verified; durable docs commit pending
+**Status:** Complete and verified
 
 **Goal:** Persist a stable logical ResearchWorker, sanitized notebook and closed budget history,
 and fail-closed restart recovery without replaying an old ResearchPreflight commitment.
@@ -125,7 +125,7 @@ matrix passed 7 files and 114 tests; application and runtime typechecks passed.
 - [x] Run `npm run check:repo-guards` and `git diff --check`.
 - [x] Run the full test suite and record exact suite/test counts.
 - [x] Mark design and plan complete only after current-head evidence passes.
-- [ ] Commit `docs: record durable research worker recovery`.
+- [x] Commit `docs: record durable research worker recovery` (`37ce975`).
 
 Evidence: all workspace typechecks passed. The first full-suite run found one test-only 429 under
 parallel contention; the isolated product-loop scenario passed, and bounded polling was reduced
