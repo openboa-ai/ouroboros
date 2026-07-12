@@ -2,9 +2,10 @@
 
 Status: P0 target contract with partial implementation evidence. This document defines the bounded
 frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
-commitment, admission, sealed comparison, confirmation, and causal ResearchRelease tests
-demonstrate only the explicitly listed partial conformance; they do not establish prospective
-champion superiority or P0 completion.
+commitment, admission, sealed comparison, confirmation, causal ResearchRelease, and explicit
+comparison-backed TradingPromotion tests demonstrate only the explicitly listed partial
+conformance; they do not establish production composition, automatic champion operation, or P0
+completion.
 
 ## Purpose
 
@@ -66,7 +67,7 @@ time is server-owned. The promotion and preparation must bind the same exact eva
 second chain for the same candidate, CandidateVersion, and SystemCode is not interchangeable.
 The persisted graph remains inert, binds one exact baseline commitment/evaluation chain per side
 `TradingRun`, and does not activate qualification, repair a post-pair graph, mutate pair-bound side
-evidence, or implement promotion behavior. One first shared tick and one separate
+evidence, or by itself implement promotion behavior. One first shared tick and one separate
 `PaperTradingComparisonActivation` authorization may now be appended while both sides remain inert.
 The authorization freezes paper-only start, cleanup, retry, request-budget, restart, and market-view
 policy; it is not proof of runtime start or evidence consumption. The internal symmetric runtime
@@ -96,8 +97,9 @@ direct-order, verdict, promotion, or live authority. Restart rematerializes comm
 stops unowned sessions, and never fabricates view, delivery, acknowledgement, decision, or economic
 evidence. Internal bounded cadence through the frozen maximum, minimum-window paired qualification,
 one single-window verdict, and a precommitted multi-window confirmation campaign are implemented.
-Post-campaign research release is implemented internally. Process resume, production composition,
-and promotion integration remain pending.
+Post-campaign ResearchRelease and explicit comparison-backed TradingPromotion are implemented.
+Process resume, production comparison scheduling, automatic promotion, champion runner handoff,
+and private/live authority remain pending.
 
 After a comparison settles, `PaperTradingComparisonVerdictService` first reruns paired
 qualification, reloads exact terminal evidence, and asks LocalStore to persist one append-only
@@ -121,9 +123,12 @@ tick. Each slot materializes only after the prior slot's verdict; negative or in
 cannot stop the campaign early, and missed unmaterialized slots become explicit expiry results.
 Only all improved reserved slots produce a sealed protocol-level `eligible` campaign outcome. Mixed,
 ineligible, or expired campaigns are `not_confirmed`. Exact outcome replay survives restart and
-clock advance, while active pair ownership is released only by the aggregate outcome. Campaign
-records and outcomes remain hidden from CandidateArena memory and public/operator surfaces and do
-not create TradingPromotion, private access, direct orders, or live authority.
+clock advance, while active pair ownership is released only by the aggregate outcome. Raw campaign
+records and outcomes remain hidden from CandidateArena memory and public/operator surfaces. An
+outcome cannot create TradingPromotion by itself; only the explicit `trading_candidate.promote`
+command may consume a terminal eligible all-improved campaign after exact current-champion
+revalidation. The transition exposes compact confirmation provenance in Trading review and grants
+no CandidateArena, runner, private, direct-order, or live authority.
 
 One terminal outcome becomes visible to later ResearchWorkers only through an append-only
 `PaperTradingComparisonResearchRelease`. The service deterministically classifies all-improved,
@@ -241,8 +246,9 @@ or sandbox restart. An internal graph reader and one-step driver reconstruct eac
 a process-local runner schedules non-overlapping steps until the frozen observation/time maximum.
 Normal stopping never depends on current score. Restart rematerializes committed bundles and stops
 unowned sessions rather than adopting provider identity. No app/controller/public command or
-process-resume path is composed for this runner. Qualification, adjudication, and research release
-remain separate internal boundaries; promotion integration is not composed.
+process-resume path is composed for this runner. Qualification, adjudication, ResearchRelease, and
+explicit TradingPromotion remain separate boundaries; the promotion command consumes sealed
+evidence without composing, starting, stopping, or adopting this runner.
 
 ## Evaluator Information Barrier
 
@@ -356,17 +362,22 @@ The following current surfaces require implementation work before P0 can pass:
   service persists one exact positive, negative, or ineligible single-window verdict and releases
   the terminated pair for another precommitted experiment. Internal campaign services then reserve
   deterministic future slots, enforce strict sequence/non-overlap/deadlines, count all terminal
-  results, and persist one restart-stable confirmed or not-confirmed outcome. These components are
-  not composed into a production command or runtime, cannot resume provider processes after
-  restart, and cannot release evidence, select a champion, or promote a candidate.
-- No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
-  current information barrier therefore remains intentionally one-way.
+  results, and persist one restart-stable confirmed or not-confirmed outcome. A separate internal
+  ResearchRelease can materialize causal Finding/Lineage memory, and the explicit operator command
+  can move an exactly confirmed challenger into Trading review. These components are still not
+  composed into a production comparison scheduler or automatic promotion loop, cannot resume
+  provider processes after restart, and do not hand off or replace champion runners.
+- ResearchRelease remains a separate internal operation with no production scheduler. Raw sealed
+  outcomes stay unavailable to ResearchWorkers unless that exact append-only release succeeds;
+  promotion does not imply research visibility and release does not imply promotion.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
   integrity, including per-observation delta/account continuity. Paired qualification and the
   single-window verdict require run-specific Ledger completeness. Single-window verdicts remain
-  `not_eligible`; a sealed all-improved campaign outcome may be protocol-level `eligible`, but new
-  promotion remains fully closed because no promotion integration consumes it. Every campaign is
-  committed before campaign-bound outcomes and counts every reserved terminal result.
+  `not_eligible`; only a sealed all-improved campaign outcome may be protocol-level `eligible`.
+  `trading_candidate.promote` now binds that exact campaign, outcome, final verdict, and final
+  qualified challenger evaluation after atomically revalidating the current champion. It changes
+  Trading review only and does not automate scheduling, runtime handoff, or authority. Every
+  campaign is committed before campaign-bound outcomes and counts every reserved terminal result.
   Candidate-level aggregate Ledger state is insufficient once one CandidateVersion owns multiple
   TradingRuns.
 - ResearchWorkers are tick-scoped invocations rather than durable long-lived workers with explicit
@@ -400,10 +411,13 @@ restart rematerializes bundles without decision replay. The read-only paired qua
 then proves the clean stop, shared prospective minimums, both canonical side qualifications, exact
 additional TradingRun identity, and complete Ledger ref-set equality without writing evidence. The
 external verdict path seals exact qualified improvement, qualified non-improvement, or ineligible
-closure, survives restart, and releases only the terminated experiment pair. This is repeated
-causal comparability plus one prospective-window decision, not production composition, statistical
-confirmation, champion replacement, post-adjudication Finding/Lineage release, promotion, or P0
-completion.
+closure, survives restart, and releases only the terminated experiment pair. The confirmation path
+then proves every precommitted reserved result, releases terminal evidence into causal
+Finding/Lineage only through ResearchRelease, and lets only an explicit operator command bind an
+eligible all-improved outcome to the exact current champion and final qualified challenger
+evaluation. This is restart-stable comparison-backed Trading review, not production composition,
+automatic promotion, champion runner replacement, adaptive allocation, private/live authority, or
+P0 completion.
 
 ## Implementation Frontier Order
 
@@ -412,7 +426,7 @@ completion.
    bounded symmetric runtime activation/recovery, atomic paired checkpoints through sequence 3,
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
    implemented and validated; read-only paired qualification and sealed single-window adjudication
-   are also implemented internally, while production composition and promotion integration remain.
+   are also implemented internally, while production comparison and runner composition remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -421,7 +435,7 @@ completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Implemented internally through campaign research release:** append-only activation,
+5. **Implemented internally through campaign research release and explicit promotion:** append-only activation,
    contiguous tick, and checkpoint intent/outcome evidence; symmetric start and view advance; hard
    provider-request caps; acknowledgement-required sequence-N preparation; recoverable atomic
    paired LocalStore bundles through sequence 3; one-step graph reconstruction; non-overlapping
@@ -432,12 +446,16 @@ completion.
    confirmed/not-confirmed aggregation; restart-stable exact replay; campaign-bound pair release;
    deterministic positive, non-reproduced, ineligible, and expired ResearchRelease classification;
    recoverable Finding/Lineage materialization; causal CandidateArena context and direction-order
-   ablation; and no public composition. **Next frontier:** consume eligible outcomes in a separately
-   reviewed TradingPromotion path. Production composition remains a later frontier.
+   ablation; exact campaign/outcome/final-verdict promotion binding; atomic current-champion
+   revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
+   `trading_candidate.promote` composition. **Next frontier:** persisted bounded adaptive
+   ResearchWorker allocation. Automatic promotion, production scheduling, and runner handoff remain
+   later frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
    while unreleased qualification evidence stays hidden; durable ResearchWorkers and adaptive
    budget/recovery ownership remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
-   verdict and multi-window confirmation campaign are proven internally, while production
-   composition, longer soak evidence, promotion integration, and full P0 evidence remain.
+   verdict, multi-window confirmation campaign, ResearchRelease, and explicit comparison-backed
+   TradingPromotion are proven, while production composition, longer soak evidence, adaptive
+   allocation, and full P0 evidence remain.

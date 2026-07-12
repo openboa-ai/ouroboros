@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Status:** Ready for implementation
+**Status:** Complete
 
 **Goal:** Make the explicit trading_candidate.promote command create one restart-stable, paper-only TradingPromotion only from an eligible confirmed comparison campaign bound to the exact current champion.
 
@@ -450,11 +450,11 @@ git commit -m "test: prove comparison-backed promotion lifecycle"
 - Modify: docs/superpowers/specs/2026-07-12-paper-trading-comparison-promotion-design.md
 - Modify: docs/superpowers/plans/2026-07-12-paper-trading-comparison-promotion.md
 
-- [ ] **Step 1: Update canonical truth**
+- [x] **Step 1: Update canonical truth**
 
 Record that TradingPromotion now requires a terminal eligible all-improved campaign; binds campaign, outcome, final verdict, and final challenger qualification; is revalidated atomically against the current champion; is created only by the explicit operator command; and changes Trading review only. Remove stale claims that campaign release or promotion integration is absent. Keep automatic promotion, production scheduling, runner handoff, adaptive allocation, private/live authority, P0 completion, and Goal completion explicitly open.
 
-- [ ] **Step 2: Mark design and plan implemented**
+- [x] **Step 2: Mark design and plan implemented**
 
 Set the design status to:
 
@@ -464,7 +464,7 @@ Implemented and verified as an explicit paper-only comparison-backed TradingProm
 
 Set this plan Status to Complete and check each completed step.
 
-- [ ] **Step 3: Run focused regression**
+- [x] **Step 3: Run focused regression**
 
 ~~~bash
 npm test -- packages/domain/src/paper-trading-comparison-promotion.test.ts packages/application/src/trading/paper/comparison-promotion-service.test.ts packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts apps/runtime/test/operator-paper-trading-board.test.ts
@@ -472,7 +472,7 @@ npm test -- packages/domain/src/paper-trading-comparison-promotion.test.ts packa
 
 Expected: PASS.
 
-- [ ] **Step 4: Run workspace and repository validation**
+- [x] **Step 4: Run workspace and repository validation**
 
 ~~~bash
 npm run typecheck
@@ -482,7 +482,7 @@ npm test
 
 Expected: all workspace typechecks, docs, architecture, naming, env, secret, diff, and all tests pass. Reproduce any failure in isolation, then rerun the full suite before claiming completion.
 
-- [ ] **Step 5: Commit durable truth**
+- [x] **Step 5: Commit durable truth**
 
 ~~~bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-paper-trading-comparison-promotion-design.md docs/superpowers/plans/2026-07-12-paper-trading-comparison-promotion.md
@@ -490,6 +490,14 @@ git commit -m "docs: record paper comparison promotion"
 ~~~
 
 ## Completion Evidence
+
+Verified on 2026-07-12 against the completed implementation branch:
+
+- focused six-file promotion regression: 6 files, 454 tests passed;
+- `npm run typecheck`: all workspaces passed;
+- `npm run check:repo-guards`: docs, architecture, naming, environment, secret, and diff guards
+  passed;
+- full `npm test`: 113 files, 1,731 tests passed.
 
 Keep this frontier only when current evidence proves:
 

@@ -1,6 +1,6 @@
 # Paper Trading Comparison Promotion Design
 
-**Status:** Approved for implementation
+**Status:** Implemented and verified as an explicit paper-only comparison-backed TradingPromotion frontier
 
 ## Goal
 

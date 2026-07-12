@@ -33,15 +33,18 @@ Current command groups:
   evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
   starts through `trading_run.start`.
 - `trading_candidate`: request that a paper-backed candidate enter Trading review.
-  `trading_candidate.promote` rejects research-feedback, uncommitted, collecting, resume-needed,
-  failed, invalidated, or quality-blocked evaluations with qualification reasons. A standalone
-  `qualified` window is also rejected with `paper_trading_comparison_required`; no promotion record
-  is created until external comparison evidence is promotion eligible. Single-window
-  `PaperTradingComparisonVerdict` records are deliberately `not_eligible`. An internal sealed
-  confirmation campaign can now produce protocol-level `eligible` only when every precommitted
-  prospective slot improves, but promotion remains unavailable until a separately reviewed command
-  integration consumes that outcome. This command does not bind
-  live authority, submit exchange orders, or bypass `PaperTradingQualification`.
+  `trading_candidate.promote` is the only product mutation that may create `TradingPromotion`. It
+  accepts only one terminal `eligible` confirmation campaign whose every precommitted prospective
+  slot is `challenger_improved`, binds the exact campaign, outcome, final verdict, and final
+  qualified challenger evaluation, and atomically revalidates bootstrap or replacement against the
+  current Trading review champion. Exact retry returns the same promotion; evidence for an older
+  champion is rejected with `paper_trading_comparison_stale`, and a corrupt graph is rejected with
+  `paper_trading_comparison_invalid`. Research-feedback, uncommitted, collecting, resume-needed,
+  failed, invalidated, quality-blocked, standalone-qualified, and single-window-verdict evidence
+  remains insufficient and receives the existing qualification or
+  `paper_trading_comparison_required` diagnostics. Success changes Trading review only: it does not
+  change CandidateArena selection, start or stop a runner, release research evidence, submit an
+  order, bind live authority, or bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
@@ -102,7 +105,12 @@ Current command groups:
   improved, non-improved, ineligible, or expired result. LocalStore enforces active-pair ownership,
   strict sequence, non-overlap, bounded first-tick delay, source-verdict exclusion, and exact replay.
   Only an all-improved outcome is protocol-level `eligible`; the outcome itself still does not
-  select a champion, become research-visible, or create TradingPromotion. A separate internal
+  select a champion, become research-visible, or create TradingPromotion. The explicit
+  `trading_candidate.promote` command may consume it through
+  `PaperTradingComparisonPromotionService`, which binds its exact final qualified challenger
+  evaluation. LocalStore independently validates the complete campaign, outcome, every slot
+  verdict, final verdict, qualification, and current-champion graph in the comparison evidence
+  transaction before persisting one append-only `TradingPromotion`. A separate internal
   `PaperTradingComparisonResearchReleaseService` may bind one terminal outcome to its challenger's
   exact admission Finding and original ArtifactLineage, then persist one append-only recoverable
   bundle whose embedded Finding and extended Lineage become later CandidateArena context.
@@ -111,8 +119,9 @@ Current command groups:
   releases, exposes compact `released_campaign_findings`, and may use their FindingCluster pressure
   to reorder ResearchDirections; it never falls back to raw campaign outcomes. Release creation
   remains uncomposed from apps, controllers, operator projections, and public
-  `OuroborosCommand`. Process resume, promotion integration, private access, and live authority
-  remain pending and outside this command contract.
+  `OuroborosCommand`. Process resume, automatic promotion, production comparison scheduling,
+  champion runner handoff, private access, and live authority remain pending and outside this
+  command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -152,9 +161,9 @@ CandidateArena status, research-preflight leaderboard, selected candidate, selec
 active status, interval, next observation time, latest market snapshot, latest public execution
 snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
 fill, latest classified paper failure, agent/provider status, latest ticks, latest candidates,
-latest command results, latest `TradingPromotion` state, `TradingReview` active target binding, and latest
-TradingSystem paper decision when one has been emitted, research-efficiency summaries for latest
-CandidateArena ticks, and authority flags.
+latest command results, latest `TradingPromotion` state and compact comparison-confirmation
+provenance, `TradingReview` active target binding, latest TradingSystem paper decision when one has
+been emitted, research-efficiency summaries for latest CandidateArena ticks, and authority flags.
 
 `ResearchEfficiency` is not a leaderboard or promotion metric. It summarizes provider request
 count, runner command count, scenario count, and elapsed milliseconds for a CandidateArena
@@ -274,6 +283,12 @@ candidate is the active Trading review target, which Arena candidate is currentl
 whether those ids match. `trading_review.review_packet` is the structured read-only evidence
 packet for that target: verdict, top blocker, subject, paper performance, evidence quality,
 runner health, Ledger continuity, lineage, provenance, risk, authority, and next action.
+TradingPromotion, TradingReview, and the packet evidence-quality section resolve only the
+`PaperTradingEvaluation` named by the promotion, never a newer candidate-latest evaluation. Their
+shared `comparison_confirmation` summary exposes the campaign, outcome, and final verdict IDs;
+required and improved window counts; frozen `net_revenue_usdt` lift rule; external evaluator
+authority; evaluation time; and `not_live` authority. Missing or corrupt bound evidence degrades to
+blocked/missing evidence instead of silently substituting another evaluation.
 Provenance includes market source, public execution source, freshness, WebSocket connection state,
 REST fallback state, stream marker, latest fill status, and order-book sync summary when public
 paper evidence provides it. Lineage includes `paper_board_learning`, a compact rank, score,
