@@ -1772,7 +1772,7 @@ async function waitForOperator(
     if (predicate(operator)) {
       return operator;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("operator did not satisfy expected state before timeout");
 }
