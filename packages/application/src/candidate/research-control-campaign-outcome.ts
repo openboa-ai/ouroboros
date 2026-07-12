@@ -207,6 +207,9 @@ export function adjudicateResearchControlCampaignOutcome(
       },
       report_digest: input.report.report_digest,
       paper_comparator: structuredClone(input.campaign.paper_comparator),
+      shared_evaluation_policy_status: policyDigests.length === 0
+        ? "not_applicable_no_reserved_candidates"
+        : "bound",
       shared_evaluation_policy_digest: sharedPolicyDigest,
       arms,
       observed_rate_difference: observedRateDifference,

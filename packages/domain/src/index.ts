@@ -7302,6 +7302,9 @@ export interface ResearchControlCampaignOutcomeRecord extends BaseRecord {
     ResearchControlCampaignPaperComparator,
     { comparator_status: "trading_review" }
   >;
+  shared_evaluation_policy_status:
+    | "bound"
+    | "not_applicable_no_reserved_candidates";
   shared_evaluation_policy_digest: string;
   arms: [
     ResearchControlCampaignOutcomeArm,
@@ -7567,6 +7570,7 @@ export function researchControlCampaignOutcomeHasRuntimeShape(
     "report_ref",
     "report_digest",
     "paper_comparator",
+    "shared_evaluation_policy_status",
     "shared_evaluation_policy_digest",
     "arms",
     "observed_rate_difference",
@@ -7595,6 +7599,10 @@ export function researchControlCampaignOutcomeHasRuntimeShape(
     !researchControlCampaignPaperComparatorHasRuntimeShape(
       value.paper_comparator
     ) || value.paper_comparator.comparator_status !== "trading_review" ||
+    ![
+      "bound",
+      "not_applicable_no_reserved_candidates"
+    ].includes(value.shared_evaluation_policy_status as string) ||
     !researchControlCampaignSha256Digest(
       value.shared_evaluation_policy_digest
     ) || !Array.isArray(value.arms) || value.arms.length !== 2 ||
@@ -7651,7 +7659,11 @@ export function researchControlCampaignOutcomeHasRuntimeShape(
       { terminal_status: ResearchControlCampaignOutcomeTerminalStatus }
     > => slot.terminal_status !== "no_admitted_candidate"
   );
-  return researchControlCampaignOutcomeRefsUnique(
+  const expectedPolicyStatus = paperSlots.length === 0
+    ? "not_applicable_no_reserved_candidates"
+    : "bound";
+  return outcome.shared_evaluation_policy_status === expectedPolicyStatus &&
+    researchControlCampaignOutcomeRefsUnique(
     slots.map((slot) => slot.tick_ref)
   ) && researchControlCampaignOutcomeRefsUnique(
     paperSlots.map((slot) => slot.candidate_ref)

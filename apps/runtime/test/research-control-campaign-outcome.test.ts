@@ -63,6 +63,9 @@ describe("ResearchControlCampaign outcome collector", () => {
       })
     ]);
     expect(result.outcome.observed_result).toBe("rates_equal");
+    expect(result.outcome.shared_evaluation_policy_status).toBe(
+      "not_applicable_no_reserved_candidates"
+    );
     expect(fixture.store.outcomeWrites).toBe(1);
     expect(armOpenCount).toBe(2);
   });

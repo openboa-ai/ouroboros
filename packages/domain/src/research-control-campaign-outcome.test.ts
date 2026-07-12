@@ -63,6 +63,32 @@ describe("ResearchControlCampaignOutcome", () => {
     expect(researchControlCampaignOutcomeHasRuntimeShape(outcome)).toBe(true);
   });
 
+  it("makes an all-no-candidate policy absence explicit", () => {
+    const outcome = outcomeFixture();
+    for (const arm of outcome.arms) {
+      arm.slot_results = [
+        noCandidateSlot(arm.arm_kind, 1),
+        noCandidateSlot(arm.arm_kind, 2)
+      ];
+      arm.metrics = {
+        slot_count: 2,
+        admitted_candidate_slot_count: 0,
+        no_admitted_candidate_count: 2,
+        qualified_discovery_count: 0,
+        not_reproduced_count: 0,
+        evidence_ineligible_count: 0,
+        paper_slot_expired_count: 0,
+        qualified_discovery_rate: 0
+      };
+    }
+    outcome.shared_evaluation_policy_status =
+      "not_applicable_no_reserved_candidates";
+    outcome.observed_rate_difference = 0;
+    outcome.observed_result = "rates_equal";
+
+    expect(researchControlCampaignOutcomeHasRuntimeShape(outcome)).toBe(true);
+  });
+
   it("binds every terminal slot and metric into the digest input", () => {
     const baseline = outcomeFixture();
     const baselineInput = researchControlCampaignOutcomeDigestInput(baseline);
@@ -91,6 +117,10 @@ describe("ResearchControlCampaignOutcome", () => {
     }],
     ["missing shared policy", (value: any) => {
       delete value.shared_evaluation_policy_digest;
+    }],
+    ["wrong shared policy status", (value: any) => {
+      value.shared_evaluation_policy_status =
+        "not_applicable_no_reserved_candidates";
     }],
     ["reversed arms", (value: any) => { value.arms.reverse(); }],
     ["unequal denominators", (value: any) => {
@@ -202,6 +232,7 @@ function outcomeFixture(): ResearchControlCampaignOutcomeRecord {
         id: "champion-evaluation"
       }
     },
+    shared_evaluation_policy_status: "bound",
     shared_evaluation_policy_digest: digest("4"),
     arms: [
       {
