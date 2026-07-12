@@ -170,37 +170,39 @@ git commit -m "feat: evaluate paper handoff protocol"
 **Files:**
 - Modify: `packages/application/src/trading/research/artifact-runner.ts`
 - Modify: `apps/runtime/test/trading-research-loop.test.ts`
+- Create: `apps/runtime/test/helpers/paper-handoff.ts`
+- Modify: runtime tests that provide a `TradingArtifactRunner` test double
 
 **Interfaces:**
 - Extends: `TradingArtifactRunner.probePaperHandoff(input)`.
 - Implements: `HostTradingArtifactRunner` and `DockerSandboxesSbxTradingArtifactRunner` parity.
 
-- [ ] **Step 1: Write failing host runner tests**
+- [x] **Step 1: Write failing host runner tests**
 
 Run the reference artifact through one paper tick. Assert candidate-only provider payload, target CLI
 arguments, decision/heartbeat/stop output, request evidence, five-second bound, output artifacts,
 minimal environment, and cleanup. Add a replay-pass/paper-fail artifact fixture.
 
-- [ ] **Step 2: Write failing SBX command-contract tests**
+- [x] **Step 2: Write failing SBX command-contract tests**
 
 Using the fake `sbx` harness, prove version/create/exec/stop/remove order, sandbox-local candidate-only
 provider scenario, target paper CLI arguments, request capture, command evidence, timeout handling,
 and cleanup on every terminal path.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npm test -- apps/runtime/test/trading-research-loop.test.ts
 ```
 
-- [ ] **Step 4: Implement runner parity**
+- [x] **Step 4: Implement runner parity**
 
 Share bounded probe input/result helpers. Host execution remains disabled unless explicitly opted
 in. SBX uses its sandbox-local provider sidecar, never a candidate-visible evaluator fixture file.
 Classify pre-candidate setup failures as infrastructure and attributable artifact failures as probe
 results.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 npm test -- packages/application/src/trading/research/paper-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts

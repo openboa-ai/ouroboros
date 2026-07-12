@@ -6,12 +6,15 @@ import { promisify } from "node:util";
 import type {
   ArtifactRunResult,
   ReplayTradingApiProviderSession,
+  TradingArtifactPaperHandoffProbeResult,
   TradingArtifactCommandEvidence,
   TradingArtifactRunnerKind,
   TradingProviderRequestLog,
   TradingSystemEvent,
   TradingSystemManifest
 } from "./types";
+import { PaperTradingHandoffConformanceInfrastructureError } from
+  "./paper-handoff-conformance";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,9 +26,17 @@ export interface TradingArtifactRunnerInput {
   timeout_ms?: number;
 }
 
+export interface TradingArtifactPaperHandoffProbeInput extends TradingArtifactRunnerInput {
+  instance_id: string;
+  start_at: string;
+}
+
 export interface TradingArtifactRunner {
   readonly kind: TradingArtifactRunnerKind;
   run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult>;
+  probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult>;
 }
 
 export interface HostTradingArtifactRunnerOptions {
@@ -91,6 +102,80 @@ export class HostTradingArtifactRunner implements TradingArtifactRunner {
         stderr: String(processError.stderr ?? ""),
         exit_code: typeof processError.code === "number" ? processError.code : undefined,
         events: await readEventsIfPresent(eventsPath),
+        provider_requests: input.provider.requests(),
+        error: processError.message
+      };
+    }
+  }
+
+  async probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult> {
+    assertHostTradingArtifactRunnerAllowed(this.options);
+    assertPaperHandoffProbeIdentity(input);
+    const paths = await preparePaperHandoffProbePaths(input.output_dir);
+    const [command, ...args] = input.manifest.entrypoint;
+    if (!command) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        "Trading artifact manifest entrypoint is empty"
+      );
+    }
+    const startedAt = new Date().toISOString();
+    const probeArgs = paperHandoffProbeArguments(input, paths);
+    try {
+      const result = await execFileAsync(command, [...args, ...probeArgs], {
+        cwd: input.artifact_dir,
+        timeout: paperHandoffProbeTimeout(input.timeout_ms),
+        maxBuffer: 5 * 1024 * 1024,
+        env: minimalProcessEnv({
+          TRADING_API_BASE_URL: input.provider.base_url
+        })
+      });
+      const completedAt = new Date().toISOString();
+      return {
+        status: "completed",
+        runner_kind: this.kind,
+        artifact_dir: input.artifact_dir,
+        entrypoint: [...input.manifest.entrypoint],
+        instance_id: input.instance_id,
+        started_at: startedAt,
+        completed_at: completedAt,
+        timed_out: false,
+        stdout: result.stdout.toString(),
+        stderr: result.stderr.toString(),
+        exit_code: 0,
+        output_lines: await probeOutputLines(paths.outputPath, result.stdout.toString()),
+        provider_requests: input.provider.requests()
+      };
+    } catch (error) {
+      const processError = error as NodeJS.ErrnoException & {
+        stdout?: Buffer | string;
+        stderr?: Buffer | string;
+        code?: number | string;
+        killed?: boolean;
+        signal?: string;
+      };
+      if (processError.code === "ENOENT") {
+        throw new PaperTradingHandoffConformanceInfrastructureError(
+          "runner_unavailable",
+          processError.message
+        );
+      }
+      const stdout = String(processError.stdout ?? "");
+      return {
+        status: "crashed",
+        runner_kind: this.kind,
+        artifact_dir: input.artifact_dir,
+        entrypoint: [...input.manifest.entrypoint],
+        instance_id: input.instance_id,
+        started_at: startedAt,
+        completed_at: new Date().toISOString(),
+        timed_out: Boolean(processError.killed) || processError.code === "ETIMEDOUT",
+        stdout,
+        stderr: String(processError.stderr ?? ""),
+        exit_code: typeof processError.code === "number" ? processError.code : undefined,
+        output_lines: await probeOutputLines(paths.outputPath, stdout),
         provider_requests: input.provider.requests(),
         error: processError.message
       };
@@ -253,6 +338,164 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     return runResult;
   }
 
+  async probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult> {
+    assertPaperHandoffProbeIdentity(input);
+    const sandboxWorkspace = await prepareSandboxWorkspace(input);
+    const paths = await preparePaperHandoffProbePaths(sandboxWorkspace.root);
+    const commandEvidence: TradingArtifactCommandEvidence[] = [];
+    const sandboxName = this.sandboxName(input);
+    const startedAt = new Date().toISOString();
+
+    const version = await this.runSbxCommand([this.sbxPath, "version"]);
+    commandEvidence.push(version);
+    if (version.exit_code !== 0 || !isDockerSandboxesSbxVersion(version.stdout)) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        version.error_message ?? (version.stderr || "docker_sandboxes_sbx_unavailable")
+      );
+    }
+    const create = await this.runSbxCommand([
+      this.sbxPath,
+      "create",
+      "--name",
+      sandboxName,
+      "shell",
+      sandboxWorkspace.root
+    ]);
+    commandEvidence.push(create);
+    if (create.exit_code !== 0) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "sandbox_create_failed",
+        create.error_message ?? (create.stderr || "docker_sandboxes_sbx_create_failed")
+      );
+    }
+
+    let execResult: TradingArtifactCommandEvidence | undefined;
+    let providerRequests: TradingProviderRequestLog[] = [];
+    let infrastructureFailure:
+      | PaperTradingHandoffConformanceInfrastructureError
+      | undefined;
+    try {
+      const [command, ...args] = input.manifest.entrypoint;
+      if (!command) {
+        infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+          "runner_unavailable",
+          "Trading artifact manifest entrypoint is empty"
+        );
+      } else {
+        const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
+        const providerBaseUrl = sidecar?.baseUrl ??
+          input.provider.sandbox_base_url ??
+          input.provider.base_url;
+        const artifactCommand = [command, ...args, ...paperHandoffProbeArguments(input, paths)];
+        execResult = await this.runSbxCommand(
+          sidecar
+            ? [
+                this.sbxPath,
+                "exec",
+                "-w",
+                sandboxWorkspace.artifact_dir,
+                sandboxName,
+                "python3",
+                sidecar.runnerScriptPath,
+                "--sidecar-script",
+                sidecar.scriptPath,
+                "--scenario",
+                sidecar.scenarioPath,
+                "--requests",
+                sidecar.requestsPath,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                String(sidecar.port),
+                "--provider-base-url",
+                providerBaseUrl,
+                "--paper-handoff",
+                "--",
+                ...artifactCommand
+              ]
+            : [
+                this.sbxPath,
+                "exec",
+                "-w",
+                sandboxWorkspace.artifact_dir,
+                sandboxName,
+                "env",
+                `TRADING_API_BASE_URL=${providerBaseUrl}`,
+                ...artifactCommand
+              ],
+          paperHandoffProbeTimeout(input.timeout_ms)
+        );
+        commandEvidence.push(execResult);
+        providerRequests = await this.providerRequests(
+          input.provider,
+          sidecar?.requestsPath
+        );
+        if (sidecar && execResult.exit_code === 70) {
+          infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+            "provider_start_failed",
+            execResult.stderr || "sandbox replay provider failed to start"
+          );
+        }
+      }
+    } catch (error) {
+      infrastructureFailure = error instanceof PaperTradingHandoffConformanceInfrastructureError
+        ? error
+        : new PaperTradingHandoffConformanceInfrastructureError(
+            "provider_start_failed",
+            error instanceof Error ? error.message : String(error)
+          );
+    } finally {
+      const stop = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
+      const remove = await this.runSbxCommand([
+        this.sbxPath,
+        "rm",
+        "--force",
+        sandboxName
+      ]);
+      commandEvidence.push(stop, remove);
+      if (!infrastructureFailure && (stop.exit_code !== 0 || remove.exit_code !== 0)) {
+        infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+          "probe_cleanup_failed",
+          stop.error_message ?? stop.stderr ?? remove.error_message ?? remove.stderr ??
+            "paper handoff sandbox cleanup failed"
+        );
+      }
+    }
+
+    if (infrastructureFailure) {
+      throw infrastructureFailure;
+    }
+    if (!execResult) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        "paper handoff probe command was not executed"
+      );
+    }
+    const outputLines = await probeOutputLines(paths.outputPath, execResult.stdout);
+    return {
+      status: execResult.exit_code === 0 ? "completed" : "crashed",
+      runner_kind: this.kind,
+      artifact_dir: input.artifact_dir,
+      entrypoint: [...input.manifest.entrypoint],
+      instance_id: input.instance_id,
+      started_at: startedAt,
+      completed_at: execResult.completed_at,
+      timed_out: execResult.timed_out === true,
+      stdout: execResult.stdout,
+      stderr: execResult.stderr,
+      exit_code: execResult.exit_code ?? undefined,
+      output_lines: outputLines,
+      provider_requests: providerRequests,
+      command_evidence: commandEvidence,
+      ...(execResult.exit_code === 0
+        ? {}
+        : { error: execResult.error_message ?? "docker_sandboxes_sbx_exec_failed" })
+    };
+  }
+
   private sandboxName(input: TradingArtifactRunnerInput): string {
     const prefix = this.options.sandboxNamePrefix ?? "ouro-s10-trading";
     const digest = createHash("sha256")
@@ -288,8 +531,11 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     return configured === "host_url" ? "host_url" : "sandbox_sidecar";
   }
 
-  private runSbxCommand(command: string[]): Promise<TradingArtifactCommandEvidence> {
-    return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  private runSbxCommand(
+    command: string[],
+    timeoutMs = this.commandTimeoutMs
+  ): Promise<TradingArtifactCommandEvidence> {
+    return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
   }
 
   private async prepareReplayProvider(
@@ -366,6 +612,92 @@ async function prepareEventsPath(outputDir: string): Promise<string> {
   const eventsPath = resolvePathInsideRoot(outputRoot, ["events.jsonl"], "events_path");
   await rm(eventsPath, { force: true });
   return eventsPath;
+}
+
+const PAPER_HANDOFF_PROBE_TIMEOUT_MS = 5_000;
+
+interface PaperHandoffProbePaths {
+  outputPath: string;
+  heartbeatPath: string;
+}
+
+async function preparePaperHandoffProbePaths(
+  outputDir: string
+): Promise<PaperHandoffProbePaths> {
+  const outputRoot = safeAbsoluteRoot(outputDir);
+  await mkdir(outputRoot, { recursive: true });
+  const outputPath = resolvePathInsideRoot(
+    outputRoot,
+    ["paper-handoff-output.jsonl"],
+    "paper_handoff_output"
+  );
+  const heartbeatPath = resolvePathInsideRoot(
+    outputRoot,
+    ["paper-handoff-heartbeat.jsonl"],
+    "paper_handoff_heartbeat"
+  );
+  await Promise.all([
+    rm(outputPath, { force: true }),
+    rm(heartbeatPath, { force: true })
+  ]);
+  return { outputPath, heartbeatPath };
+}
+
+function paperHandoffProbeArguments(
+  input: TradingArtifactPaperHandoffProbeInput,
+  paths: PaperHandoffProbePaths
+): string[] {
+  return [
+    "--instance-id",
+    input.instance_id,
+    "--ticks",
+    "1",
+    "--interval-ms",
+    "1",
+    "--start-at",
+    input.start_at,
+    "--paper-order-request",
+    "valid",
+    "--log-file",
+    paths.outputPath,
+    "--heartbeat-file",
+    paths.heartbeatPath
+  ];
+}
+
+function paperHandoffProbeTimeout(requested: number | undefined): number {
+  if (!Number.isFinite(requested) || (requested ?? 0) <= 0) {
+    return PAPER_HANDOFF_PROBE_TIMEOUT_MS;
+  }
+  return Math.min(Math.floor(requested!), PAPER_HANDOFF_PROBE_TIMEOUT_MS);
+}
+
+function assertPaperHandoffProbeIdentity(
+  input: TradingArtifactPaperHandoffProbeInput
+): void {
+  if (!input.instance_id.trim() ||
+    !Number.isFinite(Date.parse(input.start_at)) ||
+    new Date(Date.parse(input.start_at)).toISOString() !== input.start_at) {
+    throw new PaperTradingHandoffConformanceInfrastructureError(
+      "runner_unavailable",
+      "paper handoff probe identity is invalid"
+    );
+  }
+}
+
+async function probeOutputLines(outputPath: string, stdout: string): Promise<string[]> {
+  try {
+    return textLines(await readFile(outputPath, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return textLines(stdout);
+  }
+}
+
+function textLines(value: string): string[] {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 async function prepareSandboxWorkspace(
@@ -571,7 +903,8 @@ def parse_args():
     parser.add_argument("--host", required=True)
     parser.add_argument("--port", required=True)
     parser.add_argument("--provider-base-url", required=True)
-    parser.add_argument("--output-events", required=True)
+    parser.add_argument("--output-events")
+    parser.add_argument("--paper-handoff", action="store_true")
     parser.add_argument("artifact_command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.artifact_command and args.artifact_command[0] == "--":
@@ -612,8 +945,13 @@ def main():
             return 70
         env = os.environ.copy()
         env["TRADING_API_BASE_URL"] = args.provider_base_url
+        artifact_command = [*args.artifact_command]
+        if not args.paper_handoff:
+            if not args.output_events:
+                return 64
+            artifact_command.extend(["--output-events", args.output_events])
         artifact = subprocess.run(
-            [*args.artifact_command, "--output-events", args.output_events],
+            artifact_command,
             env=env,
             check=False,
         )

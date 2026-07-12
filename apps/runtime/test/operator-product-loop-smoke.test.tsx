@@ -28,6 +28,7 @@ import type {
   OuroborosCommandRequest
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 import { OperatorTuiScreen } from "@ouroboros/operator-tui";
 import { buildServer } from "../src/server";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -1793,6 +1794,9 @@ function fixedOrderLogSandboxAdapter(orderLine: string, holdLine: string): Sandb
 function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       await mkdir(input.output_dir, { recursive: true });
       const eventsPath = path.join(input.output_dir, "events.jsonl");
@@ -1845,6 +1849,9 @@ function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
   const replayRunner = networklessReplayArtifactRunner();
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       const runPath = path.join(input.artifact_dir, "run.py");
       const source = await readFile(runPath, "utf8");
@@ -1872,6 +1879,9 @@ function delayedPaperDirectArenaArtifactRunner(): TradingArtifactRunner & {
     kind: "host_process",
     started,
     release,
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       markStarted();
       if (!blocked) {

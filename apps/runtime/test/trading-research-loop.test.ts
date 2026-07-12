@@ -14,6 +14,8 @@ import {
   type TradingArtifactRunner
 } from "@ouroboros/application/trading/research/artifact-runner";
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
+import { evaluatePaperTradingHandoffProbe } from
+  "@ouroboros/application/trading/research/paper-handoff-conformance";
 import type {
   ArtifactRunResult,
   ReplayTradingScenario
@@ -23,6 +25,7 @@ import {
   startReplayTradingApiProvider,
   toReplayTradingCandidateInput
 } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 import {
   runTradingReplaySet,
 } from "@ouroboros/application/trading/research/replay-set-runner";
@@ -140,6 +143,100 @@ describe("Trading research research loop MVP", () => {
       score: 1,
       risk_decision: "valid_order_request"
     });
+  });
+
+  it("probes the target paper handoff protocol through the host runner", async () => {
+    const artifactDir = path.join(tmpDir, "paper-handoff-host-artifact");
+    const outputDir = path.join(tmpDir, "paper-handoff-host-output");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const probe = await new HostTradingArtifactRunner({ allowHostExecution: true })
+        .probePaperHandoff({
+          artifact_dir: artifactDir,
+          manifest: await readTradingSystemManifest(artifactDir),
+          provider,
+          output_dir: outputDir,
+          instance_id: "paper-handoff-host-system-code-001",
+          start_at: "2026-07-12T10:00:00.000Z"
+        });
+
+      expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+        status: "passed",
+        reason: "passed",
+        decision_event_kind: "order_request",
+        heartbeat_count: 1,
+        runtime_stopped: true
+      });
+      expect(probe).toMatchObject({
+        status: "completed",
+        runner_kind: "host_process",
+        instance_id: "paper-handoff-host-system-code-001",
+        timed_out: false,
+        exit_code: 0
+      });
+      expect(probe.provider_requests.map((request) => request.path)).toEqual([
+        "/market/snapshot",
+        "/account/state",
+        "/orders/validate"
+      ]);
+      expect(probe.output_lines.map((line) => JSON.parse(line).event)).toEqual([
+        "order_request",
+        "runtime_heartbeat",
+        "runtime_stopped"
+      ]);
+      expect(JSON.stringify(provider.candidate_input)).not.toMatch(
+        /expected_direction|target_risk_fraction|outcome|exit_price|fee_bps|slippage_bps|funding_bps/i
+      );
+      await expect(readdir(outputDir)).resolves.toEqual([
+        "paper-handoff-heartbeat.jsonl",
+        "paper-handoff-output.jsonl"
+      ]);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it("returns attributable rejection evidence when paper mode exits after replay compatibility", async () => {
+    const artifactDir = path.join(tmpDir, "paper-handoff-replay-only-artifact");
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(path.join(artifactDir, "manifest.json"), `${JSON.stringify({
+      id: "replay-only-artifact",
+      name: "Replay-only artifact",
+      entrypoint: [process.execPath, "run-artifact.mjs"],
+      editable_paths: ["run-artifact.mjs"],
+      api_contract: "trading_api_provider_v1"
+    }, null, 2)}\n`, "utf8");
+    await writeFile(path.join(artifactDir, "run-artifact.mjs"), `
+if (process.argv.includes("--output-events")) process.exit(0);
+console.error("paper mode unsupported");
+process.exit(17);
+`, "utf8");
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const probe = await new HostTradingArtifactRunner({ allowHostExecution: true })
+        .probePaperHandoff({
+          artifact_dir: artifactDir,
+          manifest: await readTradingSystemManifest(artifactDir),
+          provider,
+          output_dir: path.join(tmpDir, "paper-handoff-replay-only-output"),
+          instance_id: "paper-handoff-replay-only",
+          start_at: "2026-07-12T10:00:00.000Z"
+        });
+
+      expect(probe).toMatchObject({
+        status: "crashed",
+        exit_code: 17,
+        timed_out: false,
+        stderr: expect.stringContaining("paper mode unsupported")
+      });
+      expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+        status: "rejected",
+        reason: "runner_crash"
+      });
+    } finally {
+      await provider.close();
+    }
   });
 
   it("scores flat replay scenarios as hold decisions instead of long-only behavior", async () => {
@@ -796,6 +893,107 @@ describe("Trading research research loop MVP", () => {
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
+  it("probes paper handoff through sandbox-local candidate-only sbx input and cleans up", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-paper-handoff");
+    const commandLog = path.join(tmpDir, "sbx-paper-handoff.log");
+    const artifactDir = path.join(tmpDir, "sbx-paper-handoff-artifact");
+    const outputDir = path.join(tmpDir, "sbx-paper-handoff-output");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const probe = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-paper-handoff"
+      }).probePaperHandoff({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: outputDir,
+        instance_id: "paper-handoff-sbx-system-code-001",
+        start_at: "2026-07-12T10:00:00.000Z"
+      });
+
+      expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+        status: "passed",
+        reason: "passed",
+        decision_event_kind: "order_request"
+      });
+      const sidecarInput = JSON.parse(await readFile(path.join(
+        outputDir,
+        "sandbox-workspace",
+        "replay-provider-scenario.json"
+      ), "utf8"));
+      expect(Object.keys(sidecarInput).sort()).toEqual(["account", "market"]);
+      expect(JSON.stringify(sidecarInput)).not.toMatch(
+        /expected_direction|target_risk_fraction|outcome|exit_price|fee_bps|slippage_bps|funding_bps/i
+      );
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands).toEqual(expect.arrayContaining([
+        "version",
+        expect.stringMatching(/^create --name ouro-paper-handoff-/),
+        expect.stringContaining("--instance-id paper-handoff-sbx-system-code-001"),
+        expect.stringMatching(/^stop ouro-paper-handoff-/),
+        expect.stringMatching(/^rm --force ouro-paper-handoff-/)
+      ]));
+      const execution = commands.find((command) => command.startsWith("exec -w ")) ?? "";
+      expect(execution).toContain("--ticks 1");
+      expect(execution).toContain("--paper-order-request valid");
+      expect(execution).not.toContain("--output-events");
+      expect(probe.command_evidence).toHaveLength(5);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
+  });
+
+  it("bounds the sbx paper handoff process and cleans up after timeout", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-paper-handoff-timeout");
+    const commandLog = path.join(tmpDir, "sbx-paper-handoff-timeout.log");
+    const artifactDir = path.join(tmpDir, "sbx-paper-handoff-timeout-artifact");
+    await writeFile(fakeSbx, fakeSbxTimeoutScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const probe = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-paper-timeout",
+        commandTimeoutMs: 30_000
+      }).probePaperHandoff({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-paper-handoff-timeout-output"),
+        instance_id: "paper-handoff-sbx-timeout-001",
+        start_at: "2026-07-12T10:00:00.000Z",
+        timeout_ms: 25
+      });
+
+      expect(probe).toMatchObject({
+        status: "crashed",
+        timed_out: true
+      });
+      expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+        status: "rejected",
+        reason: "execution_timed_out"
+      });
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands).toEqual(expect.arrayContaining([
+        expect.stringMatching(/^stop ouro-paper-timeout-/),
+        expect.stringMatching(/^rm --force ouro-paper-timeout-/)
+      ]));
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
+  });
+
   it("mounts only candidate input in an opaque sbx workspace before evaluator cleanup", async () => {
     const fakeSbx = path.join(tmpDir, "sbx-direct");
     const commandLog = path.join(tmpDir, "sbx-direct-commands.log");
@@ -1106,6 +1304,9 @@ function replayRunForOrder(input: {
 function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       await mkdir(input.output_dir, { recursive: true });
       await writeFile(path.join(input.output_dir, "candidate-output"), "sealed\n", "utf8");
@@ -1264,6 +1465,28 @@ case "$1" in
     ;;
   *)
     echo "unexpected sbx command: $*" >&2
+    exit 64
+    ;;
+esac
+`;
+}
+
+function fakeSbxTimeoutScript(): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
+
+case "$1" in
+  version)
+    printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
+    ;;
+  create|stop|rm)
+    exit 0
+    ;;
+  exec)
+    sleep 1
+    ;;
+  *)
     exit 64
     ;;
 esac

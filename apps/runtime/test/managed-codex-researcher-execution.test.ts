@@ -13,6 +13,7 @@ import type {
 } from "@ouroboros/application/trading/research/types";
 import { LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
+import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 
 let tmpDir: string;
 
@@ -231,6 +232,9 @@ process.stdin.on("end", () => {
 function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;

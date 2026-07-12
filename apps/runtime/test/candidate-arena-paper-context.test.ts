@@ -35,6 +35,7 @@ import type {
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
+import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 
 let tmpDir: string;
 
@@ -2785,6 +2786,9 @@ async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
 function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
@@ -2831,6 +2835,9 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
 function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
@@ -2870,6 +2877,9 @@ function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
 function crashedReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       await mkdir(input.output_dir, { recursive: true });
       return {
@@ -2893,6 +2903,9 @@ function evaluatorProbingReplayArtifactRunner(): TradingArtifactRunner {
   const runner = networklessReplayArtifactRunner();
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       const run = await runner.run(input);
       return {
