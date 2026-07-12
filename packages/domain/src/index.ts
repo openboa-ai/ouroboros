@@ -1575,6 +1575,253 @@ export interface ResearchBehaviorFingerprintRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
+export type ResearchWorkerCheckpointTerminalStatus = "completed" | "failed_closed";
+
+export type ResearchWorkerCheckpointTerminalReason =
+  | "admission_recorded"
+  | "execution_failed"
+  | "restart_recovery";
+
+export interface ResearchWorkerCheckpointNotebookEntry {
+  sequence: number;
+  candidate_arena_tick_id: string;
+  iteration: number;
+  decision: "keep" | "discard" | "crash";
+  agent_status: "edited" | "no_change" | "failed";
+  score: number;
+  summary: string;
+  evaluation_status: "accepted" | "disqualified";
+  risk_decision: "valid_order_request" | "invalid_order_request" | "no_order_request";
+  net_revenue_usdt: number;
+}
+
+export interface ResearchWorkerCheckpointNotebook {
+  protocol_version: "research_worker_notebook_v1";
+  total_entry_count: number;
+  recent_entries: ResearchWorkerCheckpointNotebookEntry[];
+}
+
+export interface ResearchWorkerCheckpointRecord extends BaseRecord {
+  record_kind: "research_worker_checkpoint";
+  research_worker_checkpoint_id: string;
+  research_worker_ref: Ref;
+  research_direction_ref: Ref;
+  candidate_arena_tick_id: string;
+  research_preflight_commitment_ref: Ref;
+  research_preflight_commitment_digest: string;
+  workspace_key: string;
+  previous_checkpoint_ref?: Ref;
+  previous_checkpoint_digest?: string;
+  development_budget: {
+    submission_limit: number;
+    recorded_submission_count: number;
+    cumulative_committed_submission_limit: number;
+    cumulative_recorded_submission_count: number;
+    remaining_submission_authority: 0;
+  };
+  notebook: ResearchWorkerCheckpointNotebook;
+  terminal_status: ResearchWorkerCheckpointTerminalStatus;
+  terminal_reason: ResearchWorkerCheckpointTerminalReason;
+  candidate_admission_decision_ref?: Ref;
+  closed_at: string;
+  checkpoint_digest: string;
+  notebook_continuation_authority: true;
+  evaluation_authority: false;
+  admission_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export function researchWorkerCheckpointDigestInput(
+  record: ResearchWorkerCheckpointRecord
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput({
+    research_worker_checkpoint_id: record.research_worker_checkpoint_id,
+    research_worker_ref: record.research_worker_ref,
+    research_direction_ref: record.research_direction_ref,
+    candidate_arena_tick_id: record.candidate_arena_tick_id,
+    research_preflight_commitment_ref: record.research_preflight_commitment_ref,
+    research_preflight_commitment_digest: record.research_preflight_commitment_digest,
+    workspace_key: record.workspace_key,
+    ...(record.previous_checkpoint_ref
+      ? {
+          previous_checkpoint_ref: record.previous_checkpoint_ref,
+          previous_checkpoint_digest: record.previous_checkpoint_digest
+        }
+      : {}),
+    development_budget: record.development_budget,
+    notebook: record.notebook,
+    terminal_status: record.terminal_status,
+    terminal_reason: record.terminal_reason,
+    ...(record.candidate_admission_decision_ref
+      ? { candidate_admission_decision_ref: record.candidate_admission_decision_ref }
+      : {}),
+    closed_at: record.closed_at,
+    notebook_continuation_authority: record.notebook_continuation_authority,
+    evaluation_authority: record.evaluation_authority,
+    admission_authority: record.admission_authority,
+    promotion_authority: record.promotion_authority,
+    order_submission_authority: record.order_submission_authority,
+    live_exchange_authority: record.live_exchange_authority,
+    authority_status: record.authority_status
+  });
+}
+
+export function researchWorkerCheckpointHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerCheckpointRecord {
+  if (!comparisonObject(value)) return false;
+  const hasPreviousRef = Object.hasOwn(value, "previous_checkpoint_ref");
+  const hasPreviousDigest = Object.hasOwn(value, "previous_checkpoint_digest");
+  const hasAdmissionRef = Object.hasOwn(value, "candidate_admission_decision_ref");
+  if (hasPreviousRef !== hasPreviousDigest || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_worker_checkpoint_id",
+    "research_worker_ref",
+    "research_direction_ref",
+    "candidate_arena_tick_id",
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "workspace_key",
+    ...(hasPreviousRef ? ["previous_checkpoint_ref", "previous_checkpoint_digest"] : []),
+    "development_budget",
+    "notebook",
+    "terminal_status",
+    "terminal_reason",
+    ...(hasAdmissionRef ? ["candidate_admission_decision_ref"] : []),
+    "closed_at",
+    "checkpoint_digest",
+    "notebook_continuation_authority",
+    "evaluation_authority",
+    "admission_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  if (value.record_kind !== "research_worker_checkpoint" || value.version !== 1 ||
+    !comparisonString(value.research_worker_checkpoint_id) ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonString(value.candidate_arena_tick_id) ||
+    !comparisonRef(value.research_preflight_commitment_ref, "research_preflight_commitment") ||
+    !researchPreflightSha256Digest(value.research_preflight_commitment_digest) ||
+    !researchWorkerWorkspaceKey(value.workspace_key) ||
+    (hasPreviousRef && (
+      !comparisonRef(value.previous_checkpoint_ref, "research_worker_checkpoint") ||
+      !researchPreflightSha256Digest(value.previous_checkpoint_digest)
+    )) || !researchWorkerCheckpointBudgetHasRuntimeShape(value.development_budget) ||
+    !researchWorkerCheckpointNotebookHasRuntimeShape(value.notebook) ||
+    value.notebook.total_entry_count !==
+      value.development_budget.cumulative_recorded_submission_count ||
+    !researchWorkerCheckpointTerminalHasRuntimeShape(value, hasAdmissionRef) ||
+    !comparisonIso(value.closed_at) ||
+    !researchPreflightSha256Digest(value.checkpoint_digest) ||
+    value.notebook_continuation_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.admission_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerWorkspaceKey(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^candidate-arena-workers\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value);
+}
+
+function researchWorkerCheckpointBudgetHasRuntimeShape(value: unknown): value is
+  ResearchWorkerCheckpointRecord["development_budget"] {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "submission_limit",
+    "recorded_submission_count",
+    "cumulative_committed_submission_limit",
+    "cumulative_recorded_submission_count",
+    "remaining_submission_authority"
+  ]) || !comparisonPositive(value.submission_limit) ||
+    !comparisonNonNegative(value.recorded_submission_count) ||
+    value.recorded_submission_count > value.submission_limit ||
+    !comparisonPositive(value.cumulative_committed_submission_limit) ||
+    value.cumulative_committed_submission_limit < value.submission_limit ||
+    !comparisonNonNegative(value.cumulative_recorded_submission_count) ||
+    value.cumulative_recorded_submission_count < value.recorded_submission_count ||
+    value.cumulative_recorded_submission_count > value.cumulative_committed_submission_limit ||
+    value.remaining_submission_authority !== 0) {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerCheckpointNotebookHasRuntimeShape(value: unknown): value is
+  ResearchWorkerCheckpointNotebook {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_version",
+    "total_entry_count",
+    "recent_entries"
+  ]) || value.protocol_version !== "research_worker_notebook_v1" ||
+    !comparisonNonNegative(value.total_entry_count) ||
+    !Array.isArray(value.recent_entries) ||
+    value.recent_entries.length !== Math.min(value.total_entry_count, 6)) {
+    return false;
+  }
+  const firstSequence = value.total_entry_count - value.recent_entries.length + 1;
+  return value.recent_entries.every((entry, index) =>
+    researchWorkerCheckpointNotebookEntryHasRuntimeShape(entry) &&
+    entry.sequence === firstSequence + index
+  );
+}
+
+function researchWorkerCheckpointNotebookEntryHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerCheckpointNotebookEntry {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "sequence",
+    "candidate_arena_tick_id",
+    "iteration",
+    "decision",
+    "agent_status",
+    "score",
+    "summary",
+    "evaluation_status",
+    "risk_decision",
+    "net_revenue_usdt"
+  ]) && comparisonPositive(value.sequence) &&
+    comparisonString(value.candidate_arena_tick_id) &&
+    comparisonPositive(value.iteration) &&
+    (value.decision === "keep" || value.decision === "discard" || value.decision === "crash") &&
+    (value.agent_status === "edited" || value.agent_status === "no_change" ||
+      value.agent_status === "failed") &&
+    comparisonFinite(value.score) && comparisonString(value.summary) &&
+    value.summary.length <= 500 &&
+    (value.evaluation_status === "accepted" || value.evaluation_status === "disqualified") &&
+    (value.risk_decision === "valid_order_request" ||
+      value.risk_decision === "invalid_order_request" ||
+      value.risk_decision === "no_order_request") &&
+    comparisonFinite(value.net_revenue_usdt);
+}
+
+function researchWorkerCheckpointTerminalHasRuntimeShape(
+  value: Record<string, unknown>,
+  hasAdmissionRef: boolean
+): boolean {
+  if (value.terminal_status === "completed") {
+    return value.terminal_reason === "admission_recorded" && hasAdmissionRef &&
+      comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision");
+  }
+  return value.terminal_status === "failed_closed" &&
+    (value.terminal_reason === "execution_failed" || value.terminal_reason === "restart_recovery") &&
+    !hasAdmissionRef;
+}
+
 export function researchBehaviorFingerprintDigestInput(
   record: ResearchBehaviorFingerprintRecord
 ): string {
@@ -7714,6 +7961,7 @@ export type FixtureRecord =
   | ExperimentRunRecord
   | ResearchPreflightCommitmentRecord
   | ResearchBehaviorFingerprintRecord
+  | ResearchWorkerCheckpointRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
   | PaperTradingHandoffConformanceRecord

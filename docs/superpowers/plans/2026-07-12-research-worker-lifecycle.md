@@ -30,13 +30,16 @@ notebook summaries in the worker workspace and checkpoint graph.
 - Modify: `packages/domain/src/index.ts`
 - Modify: `docs/naming-taxonomy.md`
 
-- [ ] Write canonical digest and strict runtime-shape tests.
-- [ ] Cover status/reason/admission cardinality, bounded sanitized entries, budget arithmetic,
+- [x] Write canonical digest and strict runtime-shape tests.
+- [x] Cover status/reason/admission cardinality, bounded sanitized entries, budget arithmetic,
   authority closure, canonical timestamps, and previous-checkpoint pairing.
-- [ ] Run RED because the record and helpers do not exist.
-- [ ] Implement the minimal domain record, digest input, and runtime-shape helper.
-- [ ] Run focused domain GREEN and typecheck.
+- [x] Run RED because the record and helpers do not exist.
+- [x] Implement the minimal domain record, digest input, and runtime-shape helper.
+- [x] Run focused domain GREEN and typecheck.
 - [ ] Commit `feat: define research worker checkpoints`.
+
+Evidence: the RED run failed all 47 new tests because the checkpoint API was absent. The final
+domain matrix passed 2 files and 81 tests, and the `@ouroboros/domain` typecheck passed.
 
 ### Task 2: Persist The Checkpoint Chain
 
