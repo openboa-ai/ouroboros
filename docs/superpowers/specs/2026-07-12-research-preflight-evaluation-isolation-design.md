@@ -159,7 +159,7 @@ seed; process loss fails the direction closed rather than reconstructing or sile
 suite. Durable evaluator-owned recovery is a later frontier.
 
 The terminal `TradingEvaluationResultRecord` adds exact commitment ref/digest, submitted
-SystemCode ref/digest, `evaluation_phase: "sealed_admission"`, and
+SystemCode ref/digest, `sealed_admission_suite_digest`, `evaluation_phase: "sealed_admission"`, and
 `submission_sequence: 1`. New admitted decisions require that complete chain. Historical records
 remain readable but cannot satisfy the new sealed-admission graph.
 

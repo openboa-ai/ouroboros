@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** Ready for implementation
+**Status:** In progress; Task 1 complete, Task 2 next
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -62,30 +62,30 @@ scenario generation, Host and Docker Sandboxes `sbx` artifact runners, Candidate
 - Extends: `TradingEvaluationResultRecord` with optional historical-compatible sealed-admission
   commitment/SystemCode linkage and submission phase/sequence.
 
-- [ ] **Step 1: Write failing canonical commitment tests**
+- [x] **Step 1: Write failing canonical commitment tests**
 
 Assert exact source, worker, direction, allocation, development policy, rotating sealed policy,
 timestamps, closed authority, and deterministic digest. Assert mutation of every identity, policy,
 suite, seed-commitment, budget, time, or authority field changes digest input.
 
-- [ ] **Step 2: Write failing malformed-shape tests**
+- [x] **Step 2: Write failing malformed-shape tests**
 
 Reject missing/wrong refs, non-canonical timestamps, invalid digest or seed commitment, empty suite digest,
 development limit outside the allocation budget, sealed limit other than one, wrong release policy,
 unknown generator version, or any admission/promotion/order/live authority.
 
-- [ ] **Step 3: Write failing terminal-linkage tests**
+- [x] **Step 3: Write failing terminal-linkage tests**
 
 Prove linkage is all-or-none, sealed phase requires sequence one, commitment and submitted artifact
 digests are exact, and historical records remain readable without satisfying new admission.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 npx vitest run packages/domain/src/research-preflight-commitment.test.ts
 ```
 
-- [ ] **Step 5: Implement and verify**
+- [x] **Step 5: Implement and verify**
 
 ```bash
 npx vitest run packages/domain/src/research-preflight-commitment.test.ts packages/domain/src/paper-trading-handoff-conformance.test.ts packages/domain/src/candidate-admission-policy.test.ts
@@ -93,6 +93,9 @@ npm run typecheck --workspace @ouroboros/domain
 git add packages/domain/src/index.ts packages/domain/src/research-preflight-commitment.test.ts
 git commit -m "feat: define research preflight commitment"
 ```
+
+Evidence: the RED run failed all 46 new tests before implementation. The final domain regression
+passed 3 files and 85 tests, and `@ouroboros/domain` typecheck passed.
 
 ---
 

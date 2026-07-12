@@ -1508,6 +1508,142 @@ export interface ExperimentRunRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface ResearchPreflightCommitmentRecord extends BaseRecord {
+  record_kind: "research_preflight_commitment";
+  research_preflight_commitment_id: string;
+  candidate_arena_tick_id: string;
+  research_direction_ref: Ref;
+  research_worker_ref: Ref;
+  research_allocation_ref: Ref;
+  research_allocation_digest: string;
+  source_system_code_ref: Ref;
+  source_artifact_digest: string;
+  development_policy: {
+    suite_version: "research_development_replay_v1";
+    suite_digest: string;
+    submission_limit: number;
+    feedback_release: "aggregate_after_each_submission";
+  };
+  sealed_admission_policy: {
+    suite_version: "research_sealed_admission_v1";
+    generator_version: "research_scenario_generator_v1";
+    rotation_commitment_digest: string;
+    suite_digest: string;
+    submission_limit: 1;
+    feedback_release: "terminal_after_freeze";
+  };
+  committed_at: string;
+  research_preflight_authority: true;
+  admission_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+  commitment_digest: string;
+}
+
+export function researchPreflightCommitmentDigestInput(
+  record: ResearchPreflightCommitmentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_preflight_commitment_id: _id,
+    commitment_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchPreflightCommitmentHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_preflight_commitment_id",
+    "candidate_arena_tick_id",
+    "research_direction_ref",
+    "research_worker_ref",
+    "research_allocation_ref",
+    "research_allocation_digest",
+    "source_system_code_ref",
+    "source_artifact_digest",
+    "development_policy",
+    "sealed_admission_policy",
+    "committed_at",
+    "research_preflight_authority",
+    "admission_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status",
+    "commitment_digest"
+  ]) || value.record_kind !== "research_preflight_commitment" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_preflight_commitment_id) ||
+    !comparisonString(value.candidate_arena_tick_id) ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(
+      value.research_allocation_ref,
+      "candidate_arena_research_allocation"
+    ) || !researchPreflightSha256Digest(value.research_allocation_digest) ||
+    !comparisonRef(value.source_system_code_ref, "system_code") ||
+    !researchPreflightSha256Digest(value.source_artifact_digest) ||
+    !researchPreflightDevelopmentPolicyHasRuntimeShape(value.development_policy) ||
+    !researchPreflightSealedPolicyHasRuntimeShape(value.sealed_admission_policy) ||
+    !comparisonIso(value.committed_at) ||
+    value.research_preflight_authority !== true ||
+    value.admission_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live" ||
+    !researchPreflightSha256Digest(value.commitment_digest)) {
+    return false;
+  }
+  return value.development_policy.suite_digest !==
+    value.sealed_admission_policy.suite_digest;
+}
+
+function researchPreflightDevelopmentPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord["development_policy"] {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "suite_version",
+    "suite_digest",
+    "submission_limit",
+    "feedback_release"
+  ]) && value.suite_version === "research_development_replay_v1" &&
+    researchPreflightSha256Digest(value.suite_digest) &&
+    comparisonPositive(value.submission_limit) &&
+    value.submission_limit <= 2 &&
+    value.feedback_release === "aggregate_after_each_submission";
+}
+
+function researchPreflightSealedPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord["sealed_admission_policy"] {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "suite_version",
+    "generator_version",
+    "rotation_commitment_digest",
+    "suite_digest",
+    "submission_limit",
+    "feedback_release"
+  ]) && value.suite_version === "research_sealed_admission_v1" &&
+    value.generator_version === "research_scenario_generator_v1" &&
+    researchPreflightSha256Digest(value.rotation_commitment_digest) &&
+    researchPreflightSha256Digest(value.suite_digest) &&
+    value.submission_limit === 1 &&
+    value.feedback_release === "terminal_after_freeze";
+}
+
+function researchPreflightSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
 export type PaperTradingHandoffConformanceRunnerKind =
   | "host_process"
   | "docker_sandboxes_sbx";
@@ -1842,10 +1978,44 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
   score_summary: TradingEvaluationScoreSummary;
   metric_refs: Ref[];
   evaluator_trace_ref: Ref;
+  research_preflight_commitment_ref?: Ref;
+  research_preflight_commitment_digest?: string;
+  submitted_system_code_ref?: Ref;
+  submitted_artifact_digest?: string;
+  sealed_admission_suite_digest?: string;
+  evaluation_phase?: "sealed_admission";
+  submission_sequence?: 1;
   disqualification_reason?: TradingEvaluationDisqualificationReason;
   quarantine_reason?: TradingEvaluationQuarantineReason;
   completed_at: string;
   authority_status: "not_counted" | "counted";
+}
+
+export function tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(
+  value: unknown
+): value is TradingEvaluationResultRecord {
+  if (!comparisonObject(value)) return false;
+  const keys = [
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "submitted_system_code_ref",
+    "submitted_artifact_digest",
+    "sealed_admission_suite_digest",
+    "evaluation_phase",
+    "submission_sequence"
+  ] as const;
+  const presentCount = keys.filter((key) => Object.hasOwn(value, key)).length;
+  if (presentCount === 0) return true;
+  return presentCount === keys.length &&
+    comparisonRef(
+      value.research_preflight_commitment_ref,
+      "research_preflight_commitment"
+    ) && researchPreflightSha256Digest(value.research_preflight_commitment_digest) &&
+    comparisonRef(value.submitted_system_code_ref, "system_code") &&
+    researchPreflightSha256Digest(value.submitted_artifact_digest) &&
+    researchPreflightSha256Digest(value.sealed_admission_suite_digest) &&
+    value.evaluation_phase === "sealed_admission" &&
+    value.submission_sequence === 1;
 }
 
 export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";
@@ -7388,6 +7558,7 @@ export type FixtureRecord =
   | ResearchDirectionRecord
   | ResearchWorkerRecord
   | ExperimentRunRecord
+  | ResearchPreflightCommitmentRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
   | PaperTradingHandoffConformanceRecord
