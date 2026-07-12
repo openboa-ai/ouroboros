@@ -740,6 +740,60 @@ describe("CandidateArena paper evidence context", () => {
           exact_behavior_duplicate_count: 1
         }
       ],
+      tick_series: [
+        {
+          tick_id: "behavior-fingerprint-tick-2",
+          completed_at: expect.any(String),
+          assigned_directions: {
+            measurement_status: "insufficient_evidence",
+            sample_count: 1,
+            unique_count: 1,
+            entropy_bits: 0,
+            normalized_entropy: 0
+          },
+          observed_behaviors: {
+            measurement_status: "insufficient_evidence",
+            sample_count: 1,
+            unique_count: 1,
+            entropy_bits: 0,
+            normalized_entropy: 0,
+            cohort_count: 1,
+            admitted_submission_count: 0,
+            exact_behavior_duplicate_count: 1,
+            artifact_duplicate_count: 0,
+            unavailable_fingerprint_count: 0
+          },
+          evaluation_authority: false,
+          promotion_authority: false,
+          authority_status: "not_promotion_authority"
+        },
+        {
+          tick_id: "behavior-fingerprint-tick-1",
+          completed_at: expect.any(String),
+          assigned_directions: {
+            measurement_status: "insufficient_evidence",
+            sample_count: 1,
+            unique_count: 1,
+            entropy_bits: 0,
+            normalized_entropy: 0
+          },
+          observed_behaviors: {
+            measurement_status: "insufficient_evidence",
+            sample_count: 1,
+            unique_count: 1,
+            entropy_bits: 0,
+            normalized_entropy: 0,
+            cohort_count: 1,
+            admitted_submission_count: 1,
+            exact_behavior_duplicate_count: 0,
+            artifact_duplicate_count: 0,
+            unavailable_fingerprint_count: 0
+          },
+          evaluation_authority: false,
+          promotion_authority: false,
+          authority_status: "not_promotion_authority"
+        }
+      ],
       evaluation_authority: false,
       promotion_authority: false,
       authority_status: "not_promotion_authority"

@@ -551,6 +551,7 @@ function fixtureOperator(
           unavailable_fingerprint_count: 0
         },
         by_direction: [],
+        tick_series: [],
         evaluation_authority: false,
         promotion_authority: false,
         authority_status: "not_promotion_authority"
