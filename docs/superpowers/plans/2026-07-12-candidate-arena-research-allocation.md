@@ -259,7 +259,7 @@ git commit -m "feat: define arena research allocations"
 - Produces: `candidateArenaAdaptiveDirectionFocus` and `candidateArenaResearchEfficiencyBudgetFocus` for existing researcher context.
 - Produces: `CandidateArenaResearchAllocationDecisionError` with stable code `invalid_candidate_arena_research_allocation_decision_input`.
 
-- [ ] **Step 1: Write failing pure decision tests**
+- [x] **Step 1: Write failing pure decision tests**
 
 Use fixed clocks and immutable fixtures to prove:
 
@@ -293,7 +293,7 @@ Test these exact outcomes:
    input.
 10. The function does not mutate any input object.
 
-- [ ] **Step 2: Run the decision test and observe RED**
+- [x] **Step 2: Run the decision test and observe RED**
 
 ```bash
 npm test -- packages/application/src/candidate/research-allocation.test.ts
@@ -301,7 +301,7 @@ npm test -- packages/application/src/candidate/research-allocation.test.ts
 
 Expected: FAIL because the decision module does not exist.
 
-- [ ] **Step 3: Extract existing scheduling-signal helpers**
+- [x] **Step 3: Extract existing scheduling-signal helpers**
 
 Move these behaviors from `arena.ts` without changing their current output:
 
@@ -319,7 +319,7 @@ Move the failure-to-direction mapping, focus score, failure remediation text, la
 and ResearchEfficiency effort calculation with them. Keep `arenaContext` using these exports so
 allocation and prompt context cannot drift.
 
-- [ ] **Step 4: Implement the pure allocation decision**
+- [x] **Step 4: Implement the pure allocation decision**
 
 Define this input:
 
@@ -345,7 +345,7 @@ Construct ID `candidate-arena-research-allocation-${safeId(tickId)}`, canonical 
 signal snapshots, selected priorities, deferred directions, closed authority, and SHA-256 digest.
 Validate the constructed record with the domain runtime-shape function before return.
 
-- [ ] **Step 5: Run decision, context regression, and typecheck**
+- [x] **Step 5: Run decision, context regression, and typecheck**
 
 ```bash
 npm test -- packages/application/src/candidate/research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -354,7 +354,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: decision tests pass and existing context tests remain green before execution behavior changes.
 
-- [ ] **Step 6: Commit deterministic allocation**
+- [x] **Step 6: Commit deterministic allocation**
 
 ```bash
 git add packages/application/src/candidate/research-allocation.ts packages/application/src/candidate/research-allocation.test.ts packages/application/src/candidate/arena.ts packages/application/src/index.ts
