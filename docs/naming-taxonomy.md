@@ -18,6 +18,7 @@ that pack every axis into one identifier.
 | `ResearchBehaviorFingerprint` | Append-only development-only evidence that one frozen SystemCode emitted one sorted normalized effective decision per scenario on one exact protocol and development-suite digest. Equal fingerprints mean bounded observational duplication only, not semantic equivalence, profitability, qualification, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
+| `ResearchPopulationDiversity` | Read-only CandidateArena measurement that separately reports assigned ResearchDirection concentration and exact same-suite ResearchBehaviorFingerprint concentration over a bounded completed-tick window. It is a search diagnostic, not economic evidence, semantic strategy identity, allocation policy, or promotion authority. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Candidate-creation evaluation family: bounded adaptive development feedback plus one evaluator-owned rotating sealed admission over a development-selected frozen artifact. It is not prospective economic or promotion authority. |
@@ -131,6 +132,9 @@ standard term fits. Record that decision in repo docs and tests.
   failure kind for product action and raw reason for debugging.
 - Do not let `ResearchEfficiency` become a rank metric or promotion gate. It is a cost and latency
   comparison signal for improving CandidateArena autonomy.
+- Do not combine assigned-direction entropy with observed-behavior entropy, compare fingerprints
+  across protocol or development-suite cohorts, or use `ResearchPopulationDiversity` as rank,
+  admission, allocation, qualification, or promotion authority.
 - Do not treat `CandidateArenaResearchAllocation.focus_score`, selection `signal_score`, or
   experiment budget as reward, expected profit, candidate quality, or promotion evidence. They are
   deterministic research scheduling pressure; only allocations linked from completed ticks count

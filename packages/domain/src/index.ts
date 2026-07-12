@@ -151,6 +151,16 @@ export type ResearchDirectionKind =
   | "execution_cost_robustness"
   | "other";
 
+export const RESEARCH_DIRECTION_KINDS = [
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "liquidation_aware_risk",
+  "execution_cost_robustness",
+  "other"
+] as const satisfies readonly ResearchDirectionKind[];
+
 export type ResearchWorkerStatus = "active" | "failed" | "retired";
 
 export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
@@ -6372,6 +6382,219 @@ export interface CandidateArenaResearchEfficiencyPhaseReadModel {
   elapsed_ms: number;
 }
 
+export type ResearchDiversityMeasurementStatus =
+  | "insufficient_evidence"
+  | "measured"
+  | "incomparable_suites";
+
+export interface ResearchDiversityDistributionReadModel {
+  measurement_status: ResearchDiversityMeasurementStatus;
+  sample_count: number;
+  unique_count?: number;
+  entropy_bits?: number;
+  normalized_entropy?: number;
+}
+
+export interface ResearchPopulationDiversityObservedBehaviorReadModel
+  extends ResearchDiversityDistributionReadModel {
+  cohort_count: number;
+  admitted_submission_count: number;
+  exact_behavior_duplicate_count: number;
+  artifact_duplicate_count: number;
+  unavailable_fingerprint_count: number;
+}
+
+export interface ResearchPopulationDiversityDirectionReadModel {
+  direction_kind: ResearchDirectionKind;
+  attempt_count: number;
+  comparable_behavior_count: number;
+  unique_behavior_count: number;
+  admitted_submission_count: number;
+  exact_behavior_duplicate_count: number;
+}
+
+export interface ResearchPopulationDiversityReadModel {
+  protocol_version: "research_population_diversity_v1";
+  window_tick_count: number;
+  assigned_directions: ResearchDiversityDistributionReadModel;
+  observed_behaviors: ResearchPopulationDiversityObservedBehaviorReadModel;
+  by_direction: ResearchPopulationDiversityDirectionReadModel[];
+  evaluation_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
+export function researchPopulationDiversityHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_version",
+    "window_tick_count",
+    "assigned_directions",
+    "observed_behaviors",
+    "by_direction",
+    "evaluation_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || value.protocol_version !== "research_population_diversity_v1" ||
+    !comparisonNonNegative(value.window_tick_count) || value.window_tick_count > 10 ||
+    !researchDiversityComparableDistributionHasRuntimeShape(
+      value.assigned_directions,
+      RESEARCH_DIRECTION_KINDS.length
+    ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
+    !Array.isArray(value.by_direction) ||
+    !value.by_direction.every(researchPopulationDiversityDirectionHasRuntimeShape) ||
+    value.evaluation_authority !== false ||
+    value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+
+  const readModel = value as unknown as ResearchPopulationDiversityReadModel;
+  const directionIndexes = readModel.by_direction.map((row) =>
+    RESEARCH_DIRECTION_KINDS.indexOf(row.direction_kind)
+  );
+  if (directionIndexes.some((index, position) =>
+    index < 0 || (position > 0 && directionIndexes[position - 1]! >= index)
+  )) {
+    return false;
+  }
+
+  const attemptCount = readModel.by_direction.reduce(
+    (total, row) => total + row.attempt_count,
+    0
+  );
+  const behaviorCount = readModel.by_direction.reduce(
+    (total, row) => total + row.comparable_behavior_count,
+    0
+  );
+  const admittedCount = readModel.by_direction.reduce(
+    (total, row) => total + row.admitted_submission_count,
+    0
+  );
+  const duplicateCount = readModel.by_direction.reduce(
+    (total, row) => total + row.exact_behavior_duplicate_count,
+    0
+  );
+  return attemptCount === readModel.assigned_directions.sample_count &&
+    behaviorCount === readModel.observed_behaviors.sample_count &&
+    admittedCount === readModel.observed_behaviors.admitted_submission_count &&
+    duplicateCount === readModel.observed_behaviors.exact_behavior_duplicate_count &&
+    readModel.observed_behaviors.artifact_duplicate_count <= attemptCount &&
+    readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount;
+}
+
+function researchDiversityComparableDistributionHasRuntimeShape(
+  value: unknown,
+  maximumCategoryCount: number
+): value is ResearchDiversityDistributionReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "measurement_status",
+    "sample_count",
+    "unique_count",
+    "entropy_bits",
+    "normalized_entropy"
+  ]) || !comparisonNonNegative(value.sample_count) ||
+    !comparisonNonNegative(value.unique_count) ||
+    value.unique_count > Math.min(value.sample_count, maximumCategoryCount) ||
+    !researchDiversityMetric(value.entropy_bits) ||
+    !researchDiversityMetric(value.normalized_entropy) ||
+    value.normalized_entropy > 1) {
+    return false;
+  }
+  if (value.measurement_status === "insufficient_evidence") {
+    return value.sample_count < 2 && value.unique_count === value.sample_count &&
+      value.entropy_bits === 0 && value.normalized_entropy === 0;
+  }
+  if (value.measurement_status !== "measured" || value.sample_count < 2 ||
+    value.unique_count < 1) {
+    return false;
+  }
+  return value.entropy_bits <= Math.log2(value.unique_count) + 0.000001;
+}
+
+function researchDiversityObservedBehaviorHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityObservedBehaviorReadModel {
+  if (!comparisonObject(value)) return false;
+  const countKeys = [
+    "cohort_count",
+    "admitted_submission_count",
+    "exact_behavior_duplicate_count",
+    "artifact_duplicate_count",
+    "unavailable_fingerprint_count"
+  ];
+  if (!countKeys.every((key) => comparisonNonNegative(value[key]))) return false;
+
+  if (value.measurement_status === "incomparable_suites") {
+    return comparisonHasExactKeys(value, [
+      "measurement_status",
+      "sample_count",
+      ...countKeys
+    ]) && comparisonNonNegative(value.sample_count) &&
+      Number(value.cohort_count) > 1 &&
+      Number(value.cohort_count) <= value.sample_count;
+  }
+  if (!comparisonHasExactKeys(value, [
+    "measurement_status",
+    "sample_count",
+    "unique_count",
+    "entropy_bits",
+    "normalized_entropy",
+    ...countKeys
+  ]) || !researchDiversityComparableDistributionHasRuntimeShape({
+    measurement_status: value.measurement_status,
+    sample_count: value.sample_count,
+    unique_count: value.unique_count,
+    entropy_bits: value.entropy_bits,
+    normalized_entropy: value.normalized_entropy
+  }, Number.MAX_SAFE_INTEGER)) {
+    return false;
+  }
+  return value.sample_count === 0
+    ? value.cohort_count === 0
+    : value.cohort_count === 1;
+}
+
+function researchPopulationDiversityDirectionHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityDirectionReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "direction_kind",
+    "attempt_count",
+    "comparable_behavior_count",
+    "unique_behavior_count",
+    "admitted_submission_count",
+    "exact_behavior_duplicate_count"
+  ]) || !candidateArenaResearchDirection(value.direction_kind)) {
+    return false;
+  }
+  const counts = [
+    value.attempt_count,
+    value.comparable_behavior_count,
+    value.unique_behavior_count,
+    value.admitted_submission_count,
+    value.exact_behavior_duplicate_count
+  ];
+  if (!counts.every(comparisonNonNegative)) return false;
+  const row = value as unknown as ResearchPopulationDiversityDirectionReadModel;
+  if (row.attempt_count === 0 ||
+    row.comparable_behavior_count > row.attempt_count ||
+    row.unique_behavior_count > row.comparable_behavior_count ||
+    row.admitted_submission_count > row.attempt_count ||
+    row.exact_behavior_duplicate_count > row.attempt_count ||
+    row.admitted_submission_count + row.exact_behavior_duplicate_count >
+      row.attempt_count) {
+    return false;
+  }
+  return true;
+}
+
+function researchDiversityMetric(value: unknown): value is number {
+  return comparisonNonNegativeFinite(value) &&
+    Math.round(value * 1_000_000) / 1_000_000 === value;
+}
+
 export interface CandidateArenaResearchPreflightReadModel {
   commitment_id: string;
   development_submission_count: number;
@@ -6484,9 +6707,7 @@ const CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS = [
 ] as const satisfies readonly ResearchDirectionKind[];
 
 const CANDIDATE_ARENA_RESEARCH_DIRECTIONS = new Set<ResearchDirectionKind>([
-  ...CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS,
-  "liquidation_aware_risk",
-  "other"
+  ...RESEARCH_DIRECTION_KINDS
 ]);
 
 export function candidateArenaResearchAllocationDigestInput(
