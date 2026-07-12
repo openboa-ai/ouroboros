@@ -42,13 +42,19 @@ describe("ResearchPopulationDiversity", () => {
       measurement_status: "incomparable_suites",
       sample_count: 2,
       cohort_count: 2,
-      admitted_submission_count: 2,
+      admitted_submission_count: 1,
       exact_behavior_duplicate_count: 1,
       artifact_duplicate_count: 1,
       unavailable_fingerprint_count: 1
     };
+    for (const row of readModel.by_direction) {
+      delete row.unique_behavior_count;
+    }
 
     expect(researchPopulationDiversityHasRuntimeShape(readModel)).toBe(true);
+
+    readModel.by_direction[0]!.unique_behavior_count = 1;
+    expect(researchPopulationDiversityHasRuntimeShape(readModel)).toBe(false);
   });
 
   it.each([
@@ -142,6 +148,9 @@ describe("ResearchPopulationDiversity", () => {
     ["duplicate count mismatch", (value: any) => {
       value.observed_behaviors.exact_behavior_duplicate_count = 2;
     }],
+    ["classification total above attempts", (value: any) => {
+      value.observed_behaviors.artifact_duplicate_count = 2;
+    }],
     ["evaluation authority", (value: any) => { value.evaluation_authority = true; }],
     ["promotion authority", (value: any) => { value.promotion_authority = true; }],
     ["wrong authority status", (value: any) => {
@@ -174,7 +183,7 @@ function measuredFixture(): ResearchPopulationDiversityReadModel {
       entropy_bits: 1,
       normalized_entropy: 1,
       cohort_count: 1,
-      admitted_submission_count: 2,
+      admitted_submission_count: 1,
       exact_behavior_duplicate_count: 1,
       artifact_duplicate_count: 1,
       unavailable_fingerprint_count: 1
@@ -183,15 +192,15 @@ function measuredFixture(): ResearchPopulationDiversityReadModel {
       {
         direction_kind: "trend_following",
         attempt_count: 2,
-        comparable_behavior_count: 1,
+        observed_behavior_count: 1,
         unique_behavior_count: 1,
-        admitted_submission_count: 1,
+        admitted_submission_count: 0,
         exact_behavior_duplicate_count: 1
       },
       {
         direction_kind: "mean_reversion",
         attempt_count: 2,
-        comparable_behavior_count: 1,
+        observed_behavior_count: 1,
         unique_behavior_count: 1,
         admitted_submission_count: 1,
         exact_behavior_duplicate_count: 0

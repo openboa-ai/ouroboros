@@ -6407,8 +6407,8 @@ export interface ResearchPopulationDiversityObservedBehaviorReadModel
 export interface ResearchPopulationDiversityDirectionReadModel {
   direction_kind: ResearchDirectionKind;
   attempt_count: number;
-  comparable_behavior_count: number;
-  unique_behavior_count: number;
+  observed_behavior_count: number;
+  unique_behavior_count?: number;
   admitted_submission_count: number;
   exact_behavior_duplicate_count: number;
 }
@@ -6443,7 +6443,6 @@ export function researchPopulationDiversityHasRuntimeShape(
       RESEARCH_DIRECTION_KINDS.length
     ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
     !Array.isArray(value.by_direction) ||
-    !value.by_direction.every(researchPopulationDiversityDirectionHasRuntimeShape) ||
     value.evaluation_authority !== false ||
     value.promotion_authority !== false ||
     value.authority_status !== "not_promotion_authority") {
@@ -6451,6 +6450,13 @@ export function researchPopulationDiversityHasRuntimeShape(
   }
 
   const readModel = value as unknown as ResearchPopulationDiversityReadModel;
+  const behaviorIsComparable =
+    readModel.observed_behaviors.measurement_status !== "incomparable_suites";
+  if (!readModel.by_direction.every((row) =>
+    researchPopulationDiversityDirectionHasRuntimeShape(row, behaviorIsComparable)
+  )) {
+    return false;
+  }
   const directionIndexes = readModel.by_direction.map((row) =>
     RESEARCH_DIRECTION_KINDS.indexOf(row.direction_kind)
   );
@@ -6465,7 +6471,7 @@ export function researchPopulationDiversityHasRuntimeShape(
     0
   );
   const behaviorCount = readModel.by_direction.reduce(
-    (total, row) => total + row.comparable_behavior_count,
+    (total, row) => total + row.observed_behavior_count,
     0
   );
   const admittedCount = readModel.by_direction.reduce(
@@ -6481,7 +6487,10 @@ export function researchPopulationDiversityHasRuntimeShape(
     admittedCount === readModel.observed_behaviors.admitted_submission_count &&
     duplicateCount === readModel.observed_behaviors.exact_behavior_duplicate_count &&
     readModel.observed_behaviors.artifact_duplicate_count <= attemptCount &&
-    readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount;
+    readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount &&
+    admittedCount + duplicateCount +
+      readModel.observed_behaviors.artifact_duplicate_count +
+      readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount;
 }
 
 function researchDiversityComparableDistributionHasRuntimeShape(
@@ -6557,13 +6566,14 @@ function researchDiversityObservedBehaviorHasRuntimeShape(
 }
 
 function researchPopulationDiversityDirectionHasRuntimeShape(
-  value: unknown
+  value: unknown,
+  requireUniqueBehaviorCount: boolean
 ): value is ResearchPopulationDiversityDirectionReadModel {
   if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
     "direction_kind",
     "attempt_count",
-    "comparable_behavior_count",
-    "unique_behavior_count",
+    "observed_behavior_count",
+    ...(requireUniqueBehaviorCount ? ["unique_behavior_count"] : []),
     "admitted_submission_count",
     "exact_behavior_duplicate_count"
   ]) || !candidateArenaResearchDirection(value.direction_kind)) {
@@ -6571,16 +6581,17 @@ function researchPopulationDiversityDirectionHasRuntimeShape(
   }
   const counts = [
     value.attempt_count,
-    value.comparable_behavior_count,
-    value.unique_behavior_count,
+    value.observed_behavior_count,
+    ...(requireUniqueBehaviorCount ? [value.unique_behavior_count] : []),
     value.admitted_submission_count,
     value.exact_behavior_duplicate_count
   ];
   if (!counts.every(comparisonNonNegative)) return false;
   const row = value as unknown as ResearchPopulationDiversityDirectionReadModel;
   if (row.attempt_count === 0 ||
-    row.comparable_behavior_count > row.attempt_count ||
-    row.unique_behavior_count > row.comparable_behavior_count ||
+    row.observed_behavior_count > row.attempt_count ||
+    (requireUniqueBehaviorCount &&
+      row.unique_behavior_count! > row.observed_behavior_count) ||
     row.admitted_submission_count > row.attempt_count ||
     row.exact_behavior_duplicate_count > row.attempt_count ||
     row.admitted_submission_count + row.exact_behavior_duplicate_count >

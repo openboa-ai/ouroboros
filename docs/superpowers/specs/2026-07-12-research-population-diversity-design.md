@@ -142,8 +142,8 @@ interface ResearchPopulationDiversityReadModel {
   by_direction: Array<{
     direction_kind: ResearchDirectionKind;
     attempt_count: number;
-    comparable_behavior_count: number;
-    unique_behavior_count: number;
+    observed_behavior_count: number;
+    unique_behavior_count?: number;
     admitted_submission_count: number;
     exact_behavior_duplicate_count: number;
   }>;
@@ -156,6 +156,8 @@ interface ResearchPopulationDiversityReadModel {
 Only directions with at least one attempted or behavior/admission sample appear in `by_direction`,
 in canonical order. The read model exposes counts and aggregate entropy, never fingerprint IDs,
 digests, observations, scenario IDs, sealed results, or paper outcomes.
+When behavior cohorts are incomparable, direction rows also omit `unique_behavior_count`; a local
+unique claim would have the same cross-suite defect as a global one.
 
 ## CandidateArena And Worker Context
 
