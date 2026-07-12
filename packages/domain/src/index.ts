@@ -6413,12 +6413,23 @@ export interface ResearchPopulationDiversityDirectionReadModel {
   exact_behavior_duplicate_count: number;
 }
 
+export interface ResearchPopulationDiversityTickReadModel {
+  tick_id: string;
+  completed_at: string;
+  assigned_directions: ResearchDiversityDistributionReadModel;
+  observed_behaviors: ResearchPopulationDiversityObservedBehaviorReadModel;
+  evaluation_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
 export interface ResearchPopulationDiversityReadModel {
   protocol_version: "research_population_diversity_v1";
   window_tick_count: number;
   assigned_directions: ResearchDiversityDistributionReadModel;
   observed_behaviors: ResearchPopulationDiversityObservedBehaviorReadModel;
   by_direction: ResearchPopulationDiversityDirectionReadModel[];
+  tick_series: ResearchPopulationDiversityTickReadModel[];
   evaluation_authority: false;
   promotion_authority: false;
   authority_status: "not_promotion_authority";
@@ -6433,6 +6444,7 @@ export function researchPopulationDiversityHasRuntimeShape(
     "assigned_directions",
     "observed_behaviors",
     "by_direction",
+    "tick_series",
     "evaluation_authority",
     "promotion_authority",
     "authority_status"
@@ -6443,6 +6455,7 @@ export function researchPopulationDiversityHasRuntimeShape(
       RESEARCH_DIRECTION_KINDS.length
     ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
     !Array.isArray(value.by_direction) ||
+    !Array.isArray(value.tick_series) ||
     value.evaluation_authority !== false ||
     value.promotion_authority !== false ||
     value.authority_status !== "not_promotion_authority") {
@@ -6466,6 +6479,20 @@ export function researchPopulationDiversityHasRuntimeShape(
     return false;
   }
 
+  if (readModel.tick_series.length !== readModel.window_tick_count ||
+    !readModel.tick_series.every(researchPopulationDiversityTickHasRuntimeShape) ||
+    new Set(readModel.tick_series.map((tick) => tick.tick_id)).size !==
+      readModel.tick_series.length ||
+    readModel.tick_series.some((tick, index) => {
+      const previous = readModel.tick_series[index - 1];
+      return Boolean(previous) && (
+        previous.completed_at < tick.completed_at ||
+        (previous.completed_at === tick.completed_at && previous.tick_id < tick.tick_id)
+      );
+    })) {
+    return false;
+  }
+
   const attemptCount = readModel.by_direction.reduce(
     (total, row) => total + row.attempt_count,
     0
@@ -6482,6 +6509,30 @@ export function researchPopulationDiversityHasRuntimeShape(
     (total, row) => total + row.exact_behavior_duplicate_count,
     0
   );
+  const tickAttemptCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.assigned_directions.sample_count
+  );
+  const tickBehaviorCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.sample_count
+  );
+  const tickAdmittedCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.admitted_submission_count
+  );
+  const tickDuplicateCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.exact_behavior_duplicate_count
+  );
+  const tickArtifactDuplicateCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.artifact_duplicate_count
+  );
+  const tickUnavailableCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.unavailable_fingerprint_count
+  );
   return attemptCount === readModel.assigned_directions.sample_count &&
     behaviorCount === readModel.observed_behaviors.sample_count &&
     admittedCount === readModel.observed_behaviors.admitted_submission_count &&
@@ -6490,7 +6541,50 @@ export function researchPopulationDiversityHasRuntimeShape(
     readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount &&
     admittedCount + duplicateCount +
       readModel.observed_behaviors.artifact_duplicate_count +
-      readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount;
+      readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount &&
+    tickAttemptCount === attemptCount &&
+    tickBehaviorCount === behaviorCount &&
+    tickAdmittedCount === admittedCount &&
+    tickDuplicateCount === duplicateCount &&
+    tickArtifactDuplicateCount ===
+      readModel.observed_behaviors.artifact_duplicate_count &&
+    tickUnavailableCount === readModel.observed_behaviors.unavailable_fingerprint_count;
+}
+
+function researchPopulationDiversityTickHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityTickReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "tick_id",
+    "completed_at",
+    "assigned_directions",
+    "observed_behaviors",
+    "evaluation_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || !comparisonString(value.tick_id) || !comparisonIso(value.completed_at) ||
+    !researchDiversityComparableDistributionHasRuntimeShape(
+      value.assigned_directions,
+      RESEARCH_DIRECTION_KINDS.length
+    ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+  const tick = value as unknown as ResearchPopulationDiversityTickReadModel;
+  const attemptCount = tick.assigned_directions.sample_count;
+  const observed = tick.observed_behaviors;
+  return observed.sample_count <= attemptCount &&
+    observed.admitted_submission_count + observed.exact_behavior_duplicate_count +
+      observed.artifact_duplicate_count + observed.unavailable_fingerprint_count <=
+      attemptCount;
+}
+
+function sumResearchPopulationDiversityTicks(
+  ticks: ResearchPopulationDiversityTickReadModel[],
+  select: (tick: ResearchPopulationDiversityTickReadModel) => number
+): number {
+  return ticks.reduce((sum, tick) => sum + select(tick), 0);
 }
 
 function researchDiversityComparableDistributionHasRuntimeShape(
