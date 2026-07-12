@@ -377,7 +377,7 @@ git commit -m "feat: decide bounded arena allocation"
 - Requires each new `CandidateArenaTickRecord` to carry `research_allocation_ref` and `research_allocation_digest`.
 - Preserves exact replay and rejects same-ID mutation.
 
-- [ ] **Step 1: Write failing LocalStore allocation tests**
+- [x] **Step 1: Write failing LocalStore allocation tests**
 
 Create a dedicated temporary-root suite that proves:
 
@@ -393,7 +393,7 @@ await expect(store.listCandidateArenaResearchAllocations())
 Then prove restart readback, byte-identical replay, digest mismatch rejection, same-ID drift
 conflict, malformed mode/policy/authority rejection, and canonical descending allocation order.
 
-- [ ] **Step 2: Write failing tick-binding tests**
+- [x] **Step 2: Write failing tick-binding tests**
 
 Persist a canonical allocation, then require this exact tick binding:
 
@@ -409,7 +409,7 @@ Reject missing allocation, ref drift, digest drift, tick-ID mismatch, omitted se
 extra direction, and selected-order mismatch. Accept both created and failed direction results when
 their ordered direction kinds match the allocation.
 
-- [ ] **Step 3: Run LocalStore tests and observe RED**
+- [x] **Step 3: Run LocalStore tests and observe RED**
 
 ```bash
 npm test -- packages/local-store/test/candidate-arena-research-allocation.test.ts
@@ -417,7 +417,7 @@ npm test -- packages/local-store/test/candidate-arena-research-allocation.test.t
 
 Expected: FAIL because Store methods and tick binding do not exist.
 
-- [ ] **Step 4: Implement append-only LocalStore persistence**
+- [x] **Step 4: Implement append-only LocalStore persistence**
 
 Add these port methods:
 
@@ -441,12 +441,12 @@ Extend `recordCandidateArenaTick` to load and verify the allocation, tick ID, re
 ordered selected directions before writing the tick. Add stable LocalStore error codes for invalid
 input, digest mismatch, conflict, missing reference, and tick graph mismatch.
 
-- [ ] **Step 5: Migrate the one raw CandidateArena tick fixture**
+- [x] **Step 5: Migrate the one raw CandidateArena tick fixture**
 
 In `seedResearchEfficiencyTick`, persist a matching explicit allocation first and bind its ref and
 digest into the seeded tick. Do not add compatibility reads or optional writes for new ticks.
 
-- [ ] **Step 6: Run LocalStore, CandidateArena context, and package checks**
+- [x] **Step 6: Run LocalStore, CandidateArena context, and package checks**
 
 ```bash
 npm test -- packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts packages/local-store/test/local-store.test.ts
@@ -456,7 +456,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit persistence evidence**
+- [x] **Step 7: Commit persistence evidence**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts

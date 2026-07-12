@@ -6042,6 +6042,8 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_refs: Ref[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  research_allocation_ref?: Ref;
+  research_allocation_digest?: string;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }

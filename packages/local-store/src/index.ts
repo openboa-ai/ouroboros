@@ -39,6 +39,8 @@ import type {
 import {
   buildImprovementReadModel,
   buildLedgerReadModel,
+  candidateArenaResearchAllocationDigestInput,
+  candidateArenaResearchAllocationHasRuntimeShape,
   decidePaperTradingQualification,
   isCandidateAdmissionDecisionConsistent,
   paperTradingComparisonActivationDigestInput,
@@ -135,6 +137,7 @@ import type {
   CandidateIndexProjection,
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
+  CandidateArenaResearchAllocationRecord,
   CandidateArenaTickRecord,
   LedgerInput,
   LedgerSourceChainReadModel,
@@ -298,6 +301,12 @@ export type LocalStoreErrorCode =
   | "invalid_research_orchestration_run_input"
   | "invalid_experiment_run_input"
   | "invalid_trading_evaluation_result_input"
+  | "invalid_candidate_arena_research_allocation_input"
+  | "candidate_arena_research_allocation_digest_mismatch"
+  | "candidate_arena_research_allocation_conflict"
+  | "candidate_arena_research_allocation_reload_failed"
+  | "candidate_arena_research_allocation_reference_not_found"
+  | "candidate_arena_research_allocation_tick_graph_mismatch"
   | "invalid_candidate_arena_tick_input"
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
@@ -574,6 +583,7 @@ type Collection =
   | "research-orchestration-runs"
   | "experiment-runs"
   | "candidate-admission-decisions"
+  | "candidate-arena-research-allocations"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
 
@@ -2973,6 +2983,81 @@ export class LocalStore {
     );
   }
 
+  async recordCandidateArenaResearchAllocation(
+    allocation: CandidateArenaResearchAllocationRecord
+  ): Promise<CandidateArenaResearchAllocationRecord> {
+    if (!candidateArenaResearchAllocationHasRuntimeShape(allocation)) {
+      throw new LocalStoreError(
+        "invalid_candidate_arena_research_allocation_input",
+        "invalid CandidateArena research allocation input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      candidateArenaResearchAllocationDigestInput(allocation)
+    );
+    if (allocation.allocation_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "candidate_arena_research_allocation_digest_mismatch",
+        "CandidateArena research allocation digest does not match its content"
+      );
+    }
+    const existing = await this.getCandidateArenaResearchAllocation(
+      allocation.candidate_arena_research_allocation_id
+    );
+    if (existing) {
+      if (!sameJson(existing, allocation)) {
+        throw new LocalStoreError(
+          "candidate_arena_research_allocation_conflict",
+          "CandidateArena research allocation is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.writeJson(this.itemPath(
+      "candidate-arena-research-allocations",
+      allocation.candidate_arena_research_allocation_id
+    ), allocation);
+    return allocation;
+  }
+
+  async getCandidateArenaResearchAllocation(
+    allocationId: string
+  ): Promise<CandidateArenaResearchAllocationRecord | undefined> {
+    const allocation = await this.readOptionalRecord<unknown>(
+      "candidate-arena-research-allocations",
+      allocationId
+    );
+    if (allocation === undefined) return undefined;
+    return this.assertPersistedCandidateArenaResearchAllocation(allocation);
+  }
+
+  async listCandidateArenaResearchAllocations(): Promise<
+    CandidateArenaResearchAllocationRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "candidate-arena-research-allocations"
+    ))
+      .map((allocation) =>
+        this.assertPersistedCandidateArenaResearchAllocation(allocation)
+      )
+      .sort(compareCandidateArenaResearchAllocations);
+  }
+
+  private assertPersistedCandidateArenaResearchAllocation(
+    value: unknown
+  ): CandidateArenaResearchAllocationRecord {
+    if (!candidateArenaResearchAllocationHasRuntimeShape(value) ||
+      value.allocation_digest !== comparisonExactRecordDigest(
+        candidateArenaResearchAllocationDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "candidate_arena_research_allocation_reload_failed",
+        "persisted CandidateArena research allocation is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
   async recordCandidateArenaTick(tick: CandidateArenaTickRecord): Promise<CandidateArenaTickRecord> {
     if (!isCandidateArenaTickRecord(tick)) {
       throw new LocalStoreError(
@@ -2980,6 +3065,34 @@ export class LocalStore {
         "invalid Candidate Arena tick input",
         { candidate_arena_tick_id: (tick as Partial<CandidateArenaTickRecord> | undefined)?.candidate_arena_tick_id }
       );
+    }
+    if (tick.research_allocation_ref && tick.research_allocation_digest) {
+      const allocation = await this.getCandidateArenaResearchAllocation(
+        tick.research_allocation_ref.id
+      );
+      if (!allocation) {
+        throw new LocalStoreError(
+          "candidate_arena_research_allocation_reference_not_found",
+          "CandidateArena tick research allocation was not found"
+        );
+      }
+      const selectedDirections = allocation.selected_directions.map(
+        (selection) => selection.direction_kind
+      );
+      const resultDirections = tick.direction_results.map(
+        (result) => result.direction_kind
+      );
+      if (tick.research_allocation_ref.record_kind !==
+          "candidate_arena_research_allocation" ||
+        tick.research_allocation_digest !== allocation.allocation_digest ||
+        tick.tick_id !== allocation.tick_id ||
+        Date.parse(tick.started_at) < Date.parse(allocation.allocated_at) ||
+        !sameJson(resultDirections, selectedDirections)) {
+        throw new LocalStoreError(
+          "candidate_arena_research_allocation_tick_graph_mismatch",
+          "CandidateArena tick does not match its research allocation"
+        );
+      }
     }
     await this.writeJson(this.itemPath("candidate-arena-ticks", tick.candidate_arena_tick_id), tick);
     return tick;
@@ -13977,6 +14090,16 @@ function compareCandidateArenaTicks(a: CandidateArenaTickRecord, b: CandidateAre
   return b.candidate_arena_tick_id.localeCompare(a.candidate_arena_tick_id);
 }
 
+function compareCandidateArenaResearchAllocations(
+  left: CandidateArenaResearchAllocationRecord,
+  right: CandidateArenaResearchAllocationRecord
+): number {
+  return right.allocated_at.localeCompare(left.allocated_at) ||
+    right.candidate_arena_research_allocation_id.localeCompare(
+      left.candidate_arena_research_allocation_id
+    );
+}
+
 function compareArtifactLineages(
   a: ArtifactLineageRecord,
   b: ArtifactLineageRecord
@@ -14814,6 +14937,14 @@ function isCandidateArenaTickRecord(value: unknown): value is CandidateArenaTick
     raw.created_candidate_refs.every((item) => isRef(item, "trading_system_candidate")) &&
     Array.isArray(raw.direction_results) &&
     raw.direction_results.every(isCandidateArenaTickDirectionResult) &&
+    (
+      raw.research_allocation_ref === undefined &&
+        raw.research_allocation_digest === undefined ||
+      isRef(
+        raw.research_allocation_ref,
+        "candidate_arena_research_allocation"
+      ) && nonEmpty(raw.research_allocation_digest)
+    ) &&
     (
       raw.paper_trading_continuation === undefined ||
       isCandidateArenaTickPaperTradingContinuation(raw.paper_trading_continuation)

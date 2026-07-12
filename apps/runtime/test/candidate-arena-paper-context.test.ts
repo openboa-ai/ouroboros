@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCandidateArenaTick } from "@ouroboros/application/candidate/arena";
+import { decideCandidateArenaResearchAllocation } from
+  "@ouroboros/application/candidate/research-allocation";
 import { createPaperTradingEvaluationCommitment } from "@ouroboros/application/trading/paper/commitment";
 import { initialPaperTradingEngineState } from "@ouroboros/application/trading/paper/engine";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
@@ -2402,6 +2404,17 @@ async function seedPaperTradingCadenceEvidence(
 }
 
 async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
+  const allocation = decideCandidateArenaResearchAllocation({
+    tickId: "budget-aware-direction-tick-1",
+    allocatedAt: "2026-05-16T00:00:00.000Z",
+    allocationMode: "explicit",
+    explicitDirections: ["trend_following", "mean_reversion"],
+    findingClusters: [],
+    latestTicks: [],
+    priorAllocations: [],
+    completedTickIds: []
+  });
+  await store.recordCandidateArenaResearchAllocation(allocation);
   const tick: CandidateArenaTickRecord = {
     record_kind: "candidate_arena_tick",
     version: 1,
@@ -2447,6 +2460,11 @@ async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
         }
       }
     ],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
     authority_status: "not_live"
   };
   await store.recordCandidateArenaTick(tick);
