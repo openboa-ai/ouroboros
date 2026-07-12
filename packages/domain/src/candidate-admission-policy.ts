@@ -67,6 +67,8 @@ export interface CandidateAdmissionDecisionRecord
   record_kind: "candidate_admission_decision";
   version: 1;
   candidate_admission_decision_id: string;
+  research_preflight_commitment_ref?: CandidateAdmissionRecordRef;
+  research_preflight_commitment_digest?: string;
   source_system_code_ref: CandidateAdmissionRecordRef;
   system_code_ref: CandidateAdmissionRecordRef;
   experiment_run_ref: CandidateAdmissionRecordRef;

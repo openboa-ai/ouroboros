@@ -1467,9 +1467,12 @@ export interface ResearchWorkerRecord extends BaseRecord {
   display_name: string;
   model?: string;
   provider_kind?: ProviderKind;
+  agent_profile_id?: string;
   research_direction_ref: Ref;
   sandbox_policy_ref?: Ref;
   budget_policy_ref?: Ref;
+  workspace_key?: string;
+  lifecycle_protocol?: "research_worker_checkpoint_v1";
   created_at: string;
   status: ResearchWorkerStatus;
   authority_status: "research_only";

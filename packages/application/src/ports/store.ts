@@ -24,6 +24,7 @@ import type {
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
   ResearchWorkerRecord,
+  ResearchWorkerCheckpointRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingPromotionRecord,
@@ -171,6 +172,13 @@ export interface OuroborosStorePort {
     commitmentId: string
   ): Promise<ResearchPreflightCommitmentRecord | undefined>;
   listResearchPreflightCommitments(): Promise<ResearchPreflightCommitmentRecord[]>;
+  recordResearchWorkerCheckpoint(
+    checkpoint: ResearchWorkerCheckpointRecord
+  ): Promise<ResearchWorkerCheckpointRecord>;
+  getResearchWorkerCheckpoint(
+    checkpointId: string
+  ): Promise<ResearchWorkerCheckpointRecord | undefined>;
+  listResearchWorkerCheckpoints(): Promise<ResearchWorkerCheckpointRecord[]>;
   recordResearchBehaviorFingerprint(
     fingerprint: ResearchBehaviorFingerprintRecord
   ): Promise<ResearchBehaviorFingerprintRecord>;

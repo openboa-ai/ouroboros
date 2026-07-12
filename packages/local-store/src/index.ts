@@ -78,6 +78,8 @@ import {
   researchBehaviorFingerprintHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
+  researchWorkerCheckpointDigestInput,
+  researchWorkerCheckpointHasRuntimeShape,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonPreparationHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
@@ -129,6 +131,7 @@ import type {
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
   ResearchWorkerRecord,
+  ResearchWorkerCheckpointRecord,
   ArtifactRuntimeContractRecord,
   AgentSpecRecord,
   ImprovementProposalMaterializationAttemptRecord,
@@ -337,6 +340,17 @@ export type LocalStoreErrorCode =
   | "research_preflight_commitment_rotation_reuse"
   | "research_preflight_terminal_graph_mismatch"
   | "research_preflight_terminal_reuse"
+  | "invalid_research_worker_checkpoint_input"
+  | "research_worker_checkpoint_digest_mismatch"
+  | "research_worker_checkpoint_conflict"
+  | "research_worker_checkpoint_commitment_reuse"
+  | "research_worker_checkpoint_reload_failed"
+  | "research_worker_checkpoint_reference_not_found"
+  | "research_worker_checkpoint_lifecycle_required"
+  | "research_worker_checkpoint_previous_mismatch"
+  | "research_worker_checkpoint_budget_mismatch"
+  | "research_worker_checkpoint_notebook_mismatch"
+  | "research_worker_checkpoint_graph_mismatch"
   | "invalid_research_behavior_fingerprint_input"
   | "research_behavior_fingerprint_digest_mismatch"
   | "research_behavior_fingerprint_conflict"
@@ -629,6 +643,7 @@ type Collection =
   | "research-directions"
   | "research-workers"
   | "research-preflight-commitments"
+  | "research-worker-checkpoints"
   | "research-behavior-fingerprints"
   | "experiment-runs"
   | "paper-trading-handoff-conformances"
@@ -2850,6 +2865,7 @@ export class LocalStore {
       );
     }
     const [
+      preflightCommitment,
       sourceSystemCode,
       systemCode,
       experiment,
@@ -2859,6 +2875,11 @@ export class LocalStore {
       behaviorFingerprint,
       matchingBehaviorFingerprint
     ] = await Promise.all([
+      decision.research_preflight_commitment_ref
+        ? this.getResearchPreflightCommitment(
+            decision.research_preflight_commitment_ref.id
+          )
+        : Promise.resolve(undefined),
       this.readOptionalRecord<SystemCodeRecord>(
         "system-codes",
         decision.source_system_code_ref.id
@@ -2896,6 +2917,7 @@ export class LocalStore {
     const referencedRecords: Array<{
       ref: NonNullable<CandidateAdmissionDecisionRecord[
         | "source_system_code_ref"
+        | "research_preflight_commitment_ref"
         | "system_code_ref"
         | "experiment_run_ref"
         | "trading_evaluation_result_ref"
@@ -2906,6 +2928,12 @@ export class LocalStore {
       ]>;
       record: FixtureRecord | undefined;
     }> = [
+      ...(decision.research_preflight_commitment_ref
+        ? [{
+            ref: decision.research_preflight_commitment_ref,
+            record: preflightCommitment
+          }]
+        : []),
       {
         ref: decision.source_system_code_ref,
         record: sourceSystemCode
@@ -2969,6 +2997,30 @@ export class LocalStore {
       this.assertPersistedPaperTradingHandoffConformance(conformance);
     }
     const mismatchFields = [
+      preflightCommitment && preflightCommitment.commitment_digest !==
+        decision.research_preflight_commitment_digest
+        ? "research_preflight_commitment.commitment_digest"
+        : undefined,
+      preflightCommitment && preflightCommitment.source_system_code_ref.id !==
+        decision.source_system_code_ref.id
+        ? "research_preflight_commitment.source_system_code_ref"
+        : undefined,
+      preflightCommitment && preflightCommitment.source_artifact_digest !==
+        decision.source_artifact_digest
+        ? "research_preflight_commitment.source_artifact_digest"
+        : undefined,
+      preflightCommitment && preflightCommitment.research_worker_ref.id !==
+        experiment?.research_worker_ref.id
+        ? "research_preflight_commitment.research_worker_ref"
+        : undefined,
+      preflightCommitment && preflightCommitment.research_direction_ref.id !==
+        experiment?.research_direction_ref.id
+        ? "research_preflight_commitment.research_direction_ref"
+        : undefined,
+      preflightCommitment && Date.parse(preflightCommitment.committed_at) >
+        Date.parse(decision.decided_at)
+        ? "research_preflight_commitment.committed_at"
+        : undefined,
       sourceSystemCode.artifact_digest !== decision.source_artifact_digest
         ? "source_system_code.artifact_digest"
         : undefined,
@@ -3039,6 +3091,16 @@ export class LocalStore {
         behaviorFingerprint.research_preflight_commitment_ref.id !==
           evaluation.research_preflight_commitment_ref.id
         ? "research_behavior_fingerprint.research_preflight_commitment_ref"
+        : undefined,
+      behaviorFingerprint && preflightCommitment &&
+        behaviorFingerprint.research_preflight_commitment_ref.id !==
+          preflightCommitment.research_preflight_commitment_id
+        ? "research_behavior_fingerprint.admission_preflight_ref"
+        : undefined,
+      evaluation.research_preflight_commitment_ref && preflightCommitment &&
+        evaluation.research_preflight_commitment_ref.id !==
+          preflightCommitment.research_preflight_commitment_id
+        ? "trading_evaluation_result.admission_preflight_ref"
         : undefined,
       behaviorFingerprint &&
         Date.parse(behaviorFingerprint.created_at) > Date.parse(decision.decided_at)
@@ -3649,6 +3711,95 @@ export class LocalStore {
     return commitments.sort(compareResearchPreflightCommitments);
   }
 
+  async recordResearchWorkerCheckpoint(
+    checkpoint: ResearchWorkerCheckpointRecord
+  ): Promise<ResearchWorkerCheckpointRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchWorkerCheckpointUnlocked(checkpoint)
+    );
+  }
+
+  private async recordResearchWorkerCheckpointUnlocked(
+    checkpoint: ResearchWorkerCheckpointRecord
+  ): Promise<ResearchWorkerCheckpointRecord> {
+    if (!researchWorkerCheckpointHasRuntimeShape(checkpoint)) {
+      throw new LocalStoreError(
+        "invalid_research_worker_checkpoint_input",
+        "invalid ResearchWorkerCheckpoint input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      researchWorkerCheckpointDigestInput(checkpoint)
+    );
+    if (checkpoint.checkpoint_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_digest_mismatch",
+        "ResearchWorkerCheckpoint digest does not match canonical content"
+      );
+    }
+    const checkpoints = (await this.readCollection<unknown>(
+      "research-worker-checkpoints"
+    )).map((value) => this.assertPersistedResearchWorkerCheckpoint(value));
+    const existing = checkpoints.find((candidate) =>
+      candidate.research_worker_checkpoint_id ===
+        checkpoint.research_worker_checkpoint_id
+    );
+    if (existing) {
+      if (!sameJson(existing, checkpoint)) {
+        throw new LocalStoreError(
+          "research_worker_checkpoint_conflict",
+          "ResearchWorkerCheckpoint is append-only"
+        );
+      }
+      await this.assertResearchWorkerCheckpointGraph(existing, checkpoints);
+      return existing;
+    }
+    if (checkpoints.some((candidate) =>
+      candidate.research_preflight_commitment_ref.id ===
+        checkpoint.research_preflight_commitment_ref.id
+    )) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_commitment_reuse",
+        "one ResearchPreflightCommitment can have only one ResearchWorkerCheckpoint"
+      );
+    }
+    await this.assertResearchWorkerCheckpointGraph(checkpoint, checkpoints);
+    await this.writeJson(
+      this.itemPath(
+        "research-worker-checkpoints",
+        checkpoint.research_worker_checkpoint_id
+      ),
+      checkpoint
+    );
+    return checkpoint;
+  }
+
+  async getResearchWorkerCheckpoint(
+    checkpointId: string
+  ): Promise<ResearchWorkerCheckpointRecord | undefined> {
+    const value = await this.readOptionalRecord<unknown>(
+      "research-worker-checkpoints",
+      checkpointId
+    );
+    if (value === undefined) return undefined;
+    const checkpoint = this.assertPersistedResearchWorkerCheckpoint(value);
+    const checkpoints = (await this.readCollection<unknown>(
+      "research-worker-checkpoints"
+    )).map((candidate) => this.assertPersistedResearchWorkerCheckpoint(candidate));
+    await this.assertResearchWorkerCheckpointGraph(checkpoint, checkpoints);
+    return checkpoint;
+  }
+
+  async listResearchWorkerCheckpoints(): Promise<ResearchWorkerCheckpointRecord[]> {
+    const checkpoints = (await this.readCollection<unknown>(
+      "research-worker-checkpoints"
+    )).map((value) => this.assertPersistedResearchWorkerCheckpoint(value));
+    for (const checkpoint of checkpoints) {
+      await this.assertResearchWorkerCheckpointGraph(checkpoint, checkpoints);
+    }
+    return checkpoints.sort(compareResearchWorkerCheckpoints);
+  }
+
   async recordResearchBehaviorFingerprint(
     fingerprint: ResearchBehaviorFingerprintRecord
   ): Promise<ResearchBehaviorFingerprintRecord> {
@@ -4001,6 +4152,213 @@ export class LocalStore {
           research_preflight_commitment_id:
             commitment.research_preflight_commitment_id,
           mismatch_fields: mismatchFields
+        }
+      );
+    }
+  }
+
+  private assertPersistedResearchWorkerCheckpoint(
+    value: unknown
+  ): ResearchWorkerCheckpointRecord {
+    if (!researchWorkerCheckpointHasRuntimeShape(value) ||
+      value.checkpoint_digest !== comparisonExactRecordDigest(
+        researchWorkerCheckpointDigestInput(value)
+      )) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_reload_failed",
+        "persisted ResearchWorkerCheckpoint is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchWorkerCheckpointGraph(
+    checkpoint: ResearchWorkerCheckpointRecord,
+    persistedCheckpoints: ResearchWorkerCheckpointRecord[]
+  ): Promise<void> {
+    const [worker, direction, commitment, admission, commitments] = await Promise.all([
+      this.getResearchWorker(checkpoint.research_worker_ref.id),
+      this.getResearchDirection(checkpoint.research_direction_ref.id),
+      this.getResearchPreflightCommitment(
+        checkpoint.research_preflight_commitment_ref.id
+      ),
+      checkpoint.candidate_admission_decision_ref
+        ? this.getCandidateAdmissionDecision(
+            checkpoint.candidate_admission_decision_ref.id
+          )
+        : Promise.resolve(undefined),
+      this.listResearchPreflightCommitments()
+    ]);
+    if (!worker || !direction || !commitment ||
+      (checkpoint.candidate_admission_decision_ref && !admission)) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_reference_not_found",
+        "ResearchWorkerCheckpoint reference was not found",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id
+        }
+      );
+    }
+    if (worker.lifecycle_protocol !== "research_worker_checkpoint_v1" ||
+      !worker.agent_profile_id || !worker.workspace_key) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_lifecycle_required",
+        "ResearchWorker is not checkpoint-enabled",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id,
+          research_worker_id: worker.research_worker_id
+        }
+      );
+    }
+
+    const workerCommitments = commitments
+      .filter((candidate) =>
+        candidate.research_worker_ref.id === worker.research_worker_id
+      )
+      .sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_preflight_commitment_id.localeCompare(
+          right.research_preflight_commitment_id
+        )
+      );
+    const commitmentIndex = workerCommitments.findIndex((candidate) =>
+      candidate.research_preflight_commitment_id ===
+        commitment.research_preflight_commitment_id
+    );
+    const priorCommitment = commitmentIndex > 0
+      ? workerCommitments[commitmentIndex - 1]
+      : undefined;
+    const priorCheckpoint = priorCommitment
+      ? persistedCheckpoints.find((candidate) =>
+          candidate.research_worker_ref.id === worker.research_worker_id &&
+          candidate.research_preflight_commitment_ref.id ===
+            priorCommitment.research_preflight_commitment_id
+        )
+      : undefined;
+    const earlierCommitmentsClosed = commitmentIndex >= 0 &&
+      workerCommitments.slice(0, commitmentIndex).every((candidate) =>
+        persistedCheckpoints.some((persisted) =>
+          persisted.research_worker_ref.id === worker.research_worker_id &&
+          persisted.research_preflight_commitment_ref.id ===
+            candidate.research_preflight_commitment_id
+        )
+      );
+    const previousMatches = priorCheckpoint
+      ? checkpoint.previous_checkpoint_ref?.id ===
+          priorCheckpoint.research_worker_checkpoint_id &&
+        checkpoint.previous_checkpoint_digest === priorCheckpoint.checkpoint_digest
+      : checkpoint.previous_checkpoint_ref === undefined &&
+        checkpoint.previous_checkpoint_digest === undefined;
+    if (!earlierCommitmentsClosed || !previousMatches) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_previous_mismatch",
+        "ResearchWorkerCheckpoint does not continue the latest closed commitment",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id
+        }
+      );
+    }
+
+    const previousCommitted = priorCheckpoint
+      ?.development_budget.cumulative_committed_submission_limit ?? 0;
+    const previousRecorded = priorCheckpoint
+      ?.development_budget.cumulative_recorded_submission_count ?? 0;
+    if (checkpoint.development_budget.cumulative_committed_submission_limit !==
+        previousCommitted + checkpoint.development_budget.submission_limit ||
+      checkpoint.development_budget.cumulative_recorded_submission_count !==
+        previousRecorded + checkpoint.development_budget.recorded_submission_count) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_budget_mismatch",
+        "ResearchWorkerCheckpoint cumulative budget is not contiguous",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id
+        }
+      );
+    }
+
+    const firstRetainedSequence = checkpoint.notebook.total_entry_count -
+      checkpoint.notebook.recent_entries.length + 1;
+    const retainedPriorEntries = priorCheckpoint?.notebook.recent_entries.filter((entry) =>
+      entry.sequence >= firstRetainedSequence && entry.sequence <= previousRecorded
+    ) ?? [];
+    const checkpointPriorEntries = checkpoint.notebook.recent_entries.filter((entry) =>
+      entry.sequence <= previousRecorded
+    );
+    const currentEntries = checkpoint.notebook.recent_entries.filter((entry) =>
+      entry.sequence > previousRecorded
+    );
+    const notebookContinues = sameJson(retainedPriorEntries, checkpointPriorEntries) &&
+      currentEntries.length === checkpoint.development_budget.recorded_submission_count &&
+      currentEntries.every((entry, index) =>
+        entry.candidate_arena_tick_id === checkpoint.candidate_arena_tick_id &&
+        entry.iteration === index + 1
+      );
+    if (!notebookContinues) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_notebook_mismatch",
+        "ResearchWorkerCheckpoint notebook is not a sanitized contiguous tail",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id
+        }
+      );
+    }
+
+    const graphMismatchFields = [
+      worker.research_direction_ref.id !== direction.research_direction_id
+        ? "research_worker.research_direction_ref"
+        : undefined,
+      worker.workspace_key !== checkpoint.workspace_key
+        ? "research_worker.workspace_key"
+        : undefined,
+      commitment.commitment_digest !==
+        checkpoint.research_preflight_commitment_digest
+        ? "research_preflight_commitment.commitment_digest"
+        : undefined,
+      commitment.research_worker_ref.id !== worker.research_worker_id
+        ? "research_preflight_commitment.research_worker_ref"
+        : undefined,
+      commitment.research_direction_ref.id !== direction.research_direction_id
+        ? "research_preflight_commitment.research_direction_ref"
+        : undefined,
+      commitment.candidate_arena_tick_id !== checkpoint.candidate_arena_tick_id
+        ? "research_preflight_commitment.candidate_arena_tick_id"
+        : undefined,
+      commitment.development_policy.submission_limit !==
+        checkpoint.development_budget.submission_limit
+        ? "research_preflight_commitment.development_submission_limit"
+        : undefined,
+      Date.parse(checkpoint.closed_at) < Date.parse(commitment.committed_at)
+        ? "closed_at.before_commitment"
+        : undefined,
+      priorCheckpoint && Date.parse(checkpoint.closed_at) <
+        Date.parse(priorCheckpoint.closed_at)
+        ? "closed_at.before_previous_checkpoint"
+        : undefined,
+      admission && admission.research_preflight_commitment_ref?.id !==
+        commitment.research_preflight_commitment_id
+        ? "candidate_admission_decision.research_preflight_commitment_ref"
+        : undefined,
+      admission && admission.research_preflight_commitment_digest !==
+        commitment.commitment_digest
+        ? "candidate_admission_decision.research_preflight_commitment_digest"
+        : undefined,
+      admission && Date.parse(checkpoint.closed_at) < Date.parse(admission.decided_at)
+        ? "closed_at.before_admission"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (graphMismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "research_worker_checkpoint_graph_mismatch",
+        "ResearchWorkerCheckpoint does not match persisted lifecycle evidence",
+        {
+          research_worker_checkpoint_id:
+            checkpoint.research_worker_checkpoint_id,
+          mismatch_fields: graphMismatchFields
         }
       );
     }
@@ -15183,6 +15541,16 @@ function compareResearchPreflightCommitments(
     );
 }
 
+function compareResearchWorkerCheckpoints(
+  left: ResearchWorkerCheckpointRecord,
+  right: ResearchWorkerCheckpointRecord
+): number {
+  return right.closed_at.localeCompare(left.closed_at) ||
+    right.research_worker_checkpoint_id.localeCompare(
+      left.research_worker_checkpoint_id
+    );
+}
+
 function compareResearchBehaviorFingerprints(
   left: ResearchBehaviorFingerprintRecord,
   right: ResearchBehaviorFingerprintRecord
@@ -15928,24 +16296,41 @@ function isResearchWorkerRecord(value: unknown): value is ResearchWorkerRecord {
     "display_name",
     "model",
     "provider_kind",
+    "agent_profile_id",
     "research_direction_ref",
     "sandbox_policy_ref",
     "budget_policy_ref",
+    "workspace_key",
+    "lifecycle_protocol",
     "created_at",
     "status",
     "authority_status"
   ])) {
     return false;
   }
-  return value.record_kind === "research_worker" &&
+  const checkpointFields = [
+    value.agent_profile_id,
+    value.workspace_key,
+    value.lifecycle_protocol
+  ];
+  const hasCheckpointLifecycle = checkpointFields.every((field) => field !== undefined);
+  const hasPartialCheckpointLifecycle = checkpointFields.some((field) => field !== undefined) &&
+    !hasCheckpointLifecycle;
+  return !hasPartialCheckpointLifecycle &&
+    value.record_kind === "research_worker" &&
     value.version === 1 &&
     nonEmpty(value.research_worker_id) &&
     nonEmpty(value.display_name) &&
     (value.model === undefined || nonEmpty(value.model)) &&
     (value.provider_kind === undefined || isProviderKind(value.provider_kind)) &&
+    (value.agent_profile_id === undefined || nonEmpty(value.agent_profile_id)) &&
     isRef(value.research_direction_ref, "research_direction") &&
     (value.sandbox_policy_ref === undefined || isRef(value.sandbox_policy_ref)) &&
     (value.budget_policy_ref === undefined || isRef(value.budget_policy_ref)) &&
+    (value.workspace_key === undefined ||
+      value.workspace_key === `candidate-arena-workers/${value.research_worker_id}`) &&
+    (value.lifecycle_protocol === undefined ||
+      value.lifecycle_protocol === "research_worker_checkpoint_v1") &&
     isIsoTimestamp(value.created_at) &&
     (value.status === "active" || value.status === "failed" || value.status === "retired") &&
     value.authority_status === "research_only";
@@ -16006,10 +16391,17 @@ function isCandidateAdmissionDecisionRecord(
     return false;
   }
   const raw = value as Partial<CandidateAdmissionDecisionRecord>;
+  const hasPreflightRef = raw.research_preflight_commitment_ref !== undefined;
+  const hasPreflightDigest = raw.research_preflight_commitment_digest !== undefined;
   if (
     raw.record_kind !== "candidate_admission_decision" ||
     raw.version !== 1 ||
     !nonEmpty(raw.candidate_admission_decision_id) ||
+    hasPreflightRef !== hasPreflightDigest ||
+    (hasPreflightRef && (
+      !isRef(raw.research_preflight_commitment_ref, "research_preflight_commitment") ||
+      !isSha256Digest(raw.research_preflight_commitment_digest)
+    )) ||
     !isRef(raw.source_system_code_ref, "system_code") ||
     !isRef(raw.system_code_ref, "system_code") ||
     !isRef(raw.experiment_run_ref, "experiment_run") ||
@@ -17304,6 +17696,10 @@ function isIsoTimestamp(value: unknown): value is string {
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
 }
 
 function isProviderKind(value: unknown): value is ProviderKind {

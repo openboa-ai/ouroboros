@@ -36,7 +36,7 @@ notebook summaries in the worker workspace and checkpoint graph.
 - [x] Run RED because the record and helpers do not exist.
 - [x] Implement the minimal domain record, digest input, and runtime-shape helper.
 - [x] Run focused domain GREEN and typecheck.
-- [ ] Commit `feat: define research worker checkpoints`.
+- [x] Commit `feat: define research worker checkpoints` (`b40ab76`).
 
 Evidence: the RED run failed all 47 new tests because the checkpoint API was absent. The final
 domain matrix passed 2 files and 81 tests, and the `@ouroboros/domain` typecheck passed.
@@ -49,13 +49,18 @@ domain matrix passed 2 files and 81 tests, and the `@ouroboros/domain` typecheck
 - Modify: `packages/local-store/src/index.ts`
 - Create: `packages/local-store/test/research-worker-checkpoint.test.ts`
 
-- [ ] Write persistence RED for exact replay, one checkpoint per commitment, contiguous worker
+- [x] Write persistence RED for exact replay, one checkpoint per commitment, contiguous worker
   lineage, graph mismatch, budget arithmetic, commitment-bound admission, and restart reload.
-- [ ] Add historical-compatible commitment refs to CandidateAdmissionDecision and require them on
+- [x] Add historical-compatible commitment refs to CandidateAdmissionDecision and require them on
   the checkpoint-enabled CandidateArena path.
-- [ ] Implement record/get/list methods and strict graph validation.
-- [ ] Run LocalStore and admission regression GREEN plus affected typechecks.
+- [x] Implement record/get/list methods and strict graph validation.
+- [x] Run LocalStore and admission regression GREEN plus affected typechecks.
 - [ ] Commit `feat: persist research worker checkpoints`.
+
+Evidence: the Store RED failed all 6 scenarios because checkpoint-enabled ResearchWorker fields
+were rejected. The final checkpoint matrix passed 6/6, the adjacent domain/admission/preflight/
+behavior/handoff matrix passed 6 files and 91 tests, and domain, application, and LocalStore
+typechecks passed.
 
 ### Task 3: Build Sanitized Notebook Continuity
 
