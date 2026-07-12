@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCandidateArenaTick } from "@ouroboros/application/candidate/arena";
+import {
+  recoverIncompleteResearchWorkerCheckpoints,
+  runCandidateArenaTick
+} from "@ouroboros/application/candidate/arena";
 import {
   CandidateArenaResearchAllocationService,
   CandidateArenaResearchAllocationServiceError,
@@ -33,7 +36,8 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
-  Ref
+  Ref,
+  ResearchWorkerCheckpointRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -50,6 +54,182 @@ afterEach(async () => {
 });
 
 describe("CandidateArena paper evidence context", () => {
+  it("reuses one stable worker workspace and sanitized notebook across new tick commitments", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const captures: LifecycleResearchCapture[] = [];
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "worker-lifecycle-first",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent(captures),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    await runCandidateArenaTick({
+      store,
+      tickId: "worker-lifecycle-second",
+      now: () => "2026-07-12T11:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent(captures),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const directions = await store.listResearchDirections();
+    const workers = await store.listResearchWorkers();
+    const commitments = await store.listResearchPreflightCommitments();
+    const checkpoints = await store.listResearchWorkerCheckpoints();
+    expect(directions).toHaveLength(1);
+    expect(workers).toEqual([expect.objectContaining({
+      agent_profile_id: "managed-agent-lifecycle-researcher",
+      workspace_key: expect.stringMatching(
+        /^candidate-arena-workers\/research-worker-trend-following-/
+      ),
+      lifecycle_protocol: "research_worker_checkpoint_v1"
+    })]);
+    expect(commitments).toHaveLength(2);
+    expect(new Set(commitments.map((commitment) =>
+      commitment.research_worker_ref.id))).toEqual(new Set([
+      workers[0]!.research_worker_id
+    ]));
+    expect(new Set(commitments.map((commitment) =>
+      commitment.research_preflight_commitment_id)).size).toBe(2);
+    expect(checkpoints).toHaveLength(2);
+    const first = checkpoints.find((checkpoint) =>
+      checkpoint.candidate_arena_tick_id === "worker-lifecycle-first"
+    );
+    const second = checkpoints.find((checkpoint) =>
+      checkpoint.candidate_arena_tick_id === "worker-lifecycle-second"
+    );
+    expect(first).toMatchObject({
+      terminal_status: "completed",
+      terminal_reason: "admission_recorded",
+      development_budget: {
+        submission_limit: 1,
+        recorded_submission_count: 1,
+        cumulative_committed_submission_limit: 1,
+        cumulative_recorded_submission_count: 1,
+        remaining_submission_authority: 0
+      }
+    });
+    expect(second).toMatchObject({
+      previous_checkpoint_ref: {
+        record_kind: "research_worker_checkpoint",
+        id: first?.research_worker_checkpoint_id
+      },
+      previous_checkpoint_digest: first?.checkpoint_digest,
+      terminal_status: "completed",
+      terminal_reason: "admission_recorded",
+      development_budget: {
+        submission_limit: 1,
+        recorded_submission_count: 1,
+        cumulative_committed_submission_limit: 2,
+        cumulative_recorded_submission_count: 2,
+        remaining_submission_authority: 0
+      },
+      notebook: {
+        total_entry_count: 2
+      }
+    });
+    expect(captures).toHaveLength(2);
+    expect(path.dirname(path.dirname(captures[0]!.input.notebook_path))).toBe(
+      path.join(tmpDir, workers[0]!.workspace_key!)
+    );
+    expect(path.dirname(path.dirname(captures[1]!.input.notebook_path))).toBe(
+      path.join(tmpDir, workers[0]!.workspace_key!)
+    );
+    expect(captures[0]!.notebook.prior_checkpoint).toBeUndefined();
+    expect(captures[0]!.notebook.entries).toEqual([]);
+    expect(captures[1]!.notebook).toMatchObject({
+      prior_checkpoint: {
+        research_worker_checkpoint_id: first?.research_worker_checkpoint_id,
+        terminal_status: "completed",
+        terminal_reason: "admission_recorded",
+        notebook: { total_entry_count: 1 }
+      },
+      entries: []
+    });
+  });
+
+  it("rotates stable worker identity on model, profile, provider, or direction changes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const captures: LifecycleResearchCapture[] = [];
+    const runs: Array<{
+      tickId: string;
+      direction: "trend_following" | "mean_reversion";
+      identity: Partial<ManagedResearchAgent>;
+    }> = [
+      {
+        tickId: "worker-identity-base",
+        direction: "trend_following",
+        identity: { model: "model-v1" }
+      },
+      {
+        tickId: "worker-identity-model",
+        direction: "trend_following",
+        identity: { model: "model-v2" }
+      },
+      {
+        tickId: "worker-identity-profile",
+        direction: "trend_following",
+        identity: { id: "managed-agent-lifecycle-profile-2", model: "model-v2" }
+      },
+      {
+        tickId: "worker-identity-provider",
+        direction: "trend_following",
+        identity: {
+          id: "managed-agent-lifecycle-profile-2",
+          provider: "claude_code",
+          model: "model-v2"
+        }
+      },
+      {
+        tickId: "worker-identity-direction",
+        direction: "mean_reversion",
+        identity: {
+          id: "managed-agent-lifecycle-profile-2",
+          provider: "claude_code",
+          model: "model-v2"
+        }
+      }
+    ];
+    for (const [index, run] of runs.entries()) {
+      await runCandidateArenaTick({
+        store,
+        tickId: run.tickId,
+        now: () => `2026-07-12T${String(10 + index).padStart(2, "0")}:00:00.000Z`,
+        directions: [run.direction],
+        researchAgent: "codex",
+        agentFactory: () => new LifecycleResearchAgent(
+          captures,
+          "edit",
+          undefined,
+          run.identity
+        ),
+        artifactRunner: networklessReplayArtifactRunner(),
+        replayProviderFactory: networklessReplayTradingApiProvider
+      });
+    }
+
+    const workers = await store.listResearchWorkers();
+    const directions = await store.listResearchDirections();
+    const commitments = await store.listResearchPreflightCommitments();
+    expect(workers).toHaveLength(5);
+    expect(directions).toHaveLength(2);
+    expect(commitments).toHaveLength(5);
+    expect(new Set(commitments.map((commitment) =>
+      commitment.research_worker_ref.id)).size).toBe(5);
+    expect(captures).toHaveLength(5);
+    expect(captures.every((capture) =>
+      capture.notebook.prior_checkpoint === undefined)).toBe(true);
+  });
+
   it("records generated SystemCode paths as absolute when the store root is relative", async () => {
     const repoRoot = process.cwd();
     const previousCwd = process.cwd();
@@ -233,8 +413,113 @@ describe("CandidateArena paper evidence context", () => {
       })
     ]);
     await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+    await expect(store.listResearchWorkerCheckpoints()).resolves.toEqual([
+      expect.objectContaining({
+        terminal_status: "failed_closed",
+        terminal_reason: "execution_failed",
+        development_budget: expect.objectContaining({
+          recorded_submission_count: 0,
+          remaining_submission_authority: 0
+        })
+      })
+    ]);
     await expect(store.listTradingEvaluationResults()).resolves.toEqual([]);
     await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
+  });
+
+  it("closes an orphan commitment after restart before the next worker effect", async () => {
+    const interrupted = new CheckpointDisabledStore(tmpDir);
+    await interrupted.initialize();
+    await runCandidateArenaTick({
+      store: interrupted,
+      tickId: "worker-restart-orphan",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent([], "throw"),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    await expect(interrupted.listResearchPreflightCommitments()).resolves.toHaveLength(1);
+    await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    const captures: LifecycleResearchCapture[] = [];
+    await runCandidateArenaTick({
+      store: restarted,
+      tickId: "worker-restart-next",
+      now: () => "2026-07-12T11:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent(
+        captures,
+        "edit",
+        async () => {
+          const recovered = (await restarted.listResearchWorkerCheckpoints())
+            .find((checkpoint) =>
+              checkpoint.candidate_arena_tick_id === "worker-restart-orphan"
+            );
+          expect(recovered).toMatchObject({
+            terminal_status: "failed_closed",
+            terminal_reason: "restart_recovery"
+          });
+        }
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(captures).toHaveLength(1);
+    const checkpoints = await restarted.listResearchWorkerCheckpoints();
+    expect(checkpoints).toHaveLength(2);
+    expect(checkpoints.find((checkpoint) =>
+      checkpoint.candidate_arena_tick_id === "worker-restart-orphan"
+    )).toMatchObject({
+      terminal_status: "failed_closed",
+      terminal_reason: "restart_recovery"
+    });
+  });
+
+  it("reconstructs terminal admission closure without replaying materialization", async () => {
+    const interrupted = new CheckpointDisabledStore(tmpDir);
+    await interrupted.initialize();
+    await runCandidateArenaTick({
+      store: interrupted,
+      tickId: "worker-restart-admission",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    await expect(interrupted.listCandidateAdmissionDecisions()).resolves.toHaveLength(1);
+    await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    let materializationCount = 0;
+    const materializeCandidate = restarted.materializeCandidate.bind(restarted);
+    restarted.materializeCandidate = async (input) => {
+      materializationCount += 1;
+      return materializeCandidate(input);
+    };
+    const recovered = await recoverIncompleteResearchWorkerCheckpoints({
+      store: restarted,
+      recovered_at: "2026-07-12T11:00:00.000Z"
+    });
+
+    expect(materializationCount).toBe(0);
+    expect(recovered).toEqual([expect.objectContaining({
+      candidate_arena_tick_id: "worker-restart-admission",
+      terminal_status: "completed",
+      terminal_reason: "admission_recorded",
+      candidate_admission_decision_ref: expect.objectContaining({
+        record_kind: "candidate_admission_decision"
+      })
+    })]);
+    await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
   });
 
   it("quarantines a crashed candidate run before runnable candidate materialization", async () => {
@@ -749,11 +1034,17 @@ describe("CandidateArena paper evidence context", () => {
     expect(sourceSnapshot.artifact_path).toContain(path.join("seed", "run.py"));
     const candidate = await store.getCandidate(outcome.created_candidate_ids[0]!);
     expect(candidate?.full_cycle_lineage?.evidence?.evaluation_status).toBe("accepted");
+    const checkpoint = (await store.listResearchWorkerCheckpoints()).find((entry) =>
+      entry.candidate_arena_tick_id === outcome.tick_id
+    );
+    if (!checkpoint) {
+      throw new Error("candidate admission ResearchWorker checkpoint missing");
+    }
     const notebook = JSON.parse(await readFile(path.join(
       tmpDir,
-      "candidate-arena-runs",
-      `candidate-arena-${outcome.tick_id}-trend_following`,
-      "notebook.json"
+      checkpoint.workspace_key,
+      "notebooks",
+      `${outcome.tick_id}.json`
     ), "utf8")) as {
       entries: Array<{
         decision: string;
@@ -2750,6 +3041,64 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
       summary: "Captured arena context and versioned the candidate artifact.",
       changed_paths: ["run.py"]
     };
+  }
+}
+
+type LifecycleResearchCapture = {
+  input: AgentEditInput;
+  notebook: {
+    prior_checkpoint?: unknown;
+    entries: unknown[];
+  };
+};
+
+class LifecycleResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent;
+
+  constructor(
+    private readonly captures: LifecycleResearchCapture[],
+    private readonly mode: "edit" | "throw" = "edit",
+    private readonly beforeImprove?: () => void | Promise<void>,
+    identity: Partial<ManagedResearchAgent> = {}
+  ) {
+    this.agent = {
+      id: "managed-agent-lifecycle-researcher",
+      provider: "codex",
+      model: "lifecycle-researcher-v1",
+      permission_policy: "artifact_workspace_only",
+      ...identity
+    };
+  }
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    await this.beforeImprove?.();
+    const notebook = JSON.parse(await readFile(input.notebook_path, "utf8")) as
+      LifecycleResearchCapture["notebook"];
+    this.captures.push({ input: { ...input }, notebook });
+    if (this.mode === "throw") {
+      throw new Error("research worker process terminated");
+    }
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const riskAdjusted = source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0.02");
+    await writeFile(
+      runPath,
+      `${riskAdjusted}\n# Lifecycle notebook ${path.basename(input.notebook_path)}.\n`,
+      "utf8"
+    );
+    return {
+      status: "edited",
+      summary: "Continued one bounded hypothesis from sanitized worker history.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class CheckpointDisabledStore extends LocalStore {
+  override async recordResearchWorkerCheckpoint(
+    _checkpoint: ResearchWorkerCheckpointRecord
+  ): Promise<ResearchWorkerCheckpointRecord> {
+    throw new Error("simulated checkpoint persistence interruption");
   }
 }
 

@@ -77,7 +77,7 @@ typechecks passed.
 - [x] Add configurable notebook path and compact `prior_checkpoint` context.
 - [x] Update the agent prompt summarizer to include only bounded prior/current summaries.
 - [x] Run focused application GREEN and typecheck.
-- [ ] Commit `feat: continue sanitized research notebooks`.
+- [x] Commit `feat: continue sanitized research notebooks` (`628c6d4`).
 
 Evidence: both focused tests failed before configurable notebook and prior-context support existed.
 The final focused matrix passed 2/2, the complete trading research loop passed 39/39, and
@@ -90,17 +90,22 @@ application and runtime typechecks passed.
 - Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 - Modify related product-loop tests only where identity expectations change.
 
-- [ ] Write RED for stable direction/worker/workspace reuse across two ticks and identity rotation
+- [x] Write RED for stable direction/worker/workspace reuse across two ticks and identity rotation
   on provider/model/profile/direction change.
-- [ ] Write RED for completed, immediate failed-closed, orphan restart, and terminal-admission
+- [x] Write RED for completed, immediate failed-closed, orphan restart, and terminal-admission
   reconstruction paths.
-- [ ] Assert recovery occurs before the next agent effect and never calls the old agent, runner,
+- [x] Assert recovery occurs before the next agent effect and never calls the old agent, runner,
   provider, or materializer.
-- [ ] Resolve deterministic checkpoint-enabled workers, write notebooks under their stable
+- [x] Resolve deterministic checkpoint-enabled workers, write notebooks under their stable
   workspace, append checkpoints on every current path, and recover orphans before allocation.
-- [ ] Bind every new CandidateArena admission to its exact commitment.
-- [ ] Run CandidateArena, managed-provider, Operator product-loop, and restart regression GREEN.
+- [x] Bind every new CandidateArena admission to its exact commitment.
+- [x] Run CandidateArena, managed-provider, Operator product-loop, and restart regression GREEN.
 - [ ] Commit `feat: recover durable research workers`.
+
+Evidence: the four core RED scenarios failed on tick-scoped identities, absent terminal
+checkpoints, and absent recovery. The final CandidateArena file passed 41/41; the cross-layer
+CandidateArena, managed Codex, Operator loop, trading research, checkpoint, preflight, and behavior
+matrix passed 7 files and 114 tests; application and runtime typechecks passed.
 
 ### Task 5: Reconcile Durable Truth And Verify
 
