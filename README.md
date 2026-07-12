@@ -66,12 +66,16 @@ development suite, not semantic program equivalence or economic evidence, and se
 outcomes never enter the fingerprint.
 
 CandidateArena reconstructs `ResearchPopulationDiversity` over the same latest ten completed ticks
-shown in its read model. Assigned `ResearchDirection` entropy and exact observed-behavior entropy
-remain separate. Behavior is comparable only inside one exact fingerprint protocol and development
-suite; mixed cohorts report `incomparable_suites` and make no unique-count or entropy claim. The
-aggregate is also available to the next ResearchWorker without raw fingerprint, observation,
-scenario, suite-digest, sealed, or paper evidence. It is a search diagnostic with no rank,
-admission, allocation, qualification, promotion, order, private, or live authority.
+shown in its read model. The top-level distributions measure recent population coverage, while the
+newest-first `tick_series` independently measures each tick's worker cross-section so older
+diversity cannot hide current exact-behavior collapse. Assigned `ResearchDirection` entropy and
+exact observed-behavior entropy remain separate. Behavior is comparable only inside one exact
+fingerprint protocol and development suite; mixed cohorts report `incomparable_suites` and make no
+unique-count or entropy claim. A suite transition between ticks may close the window aggregate
+while preserving valid single-cohort tick measurements. The same bounded object is available to the
+next ResearchWorker without raw fingerprint, observation, scenario, suite-digest, sealed, or paper
+evidence. It is a search diagnostic with no rank, admission, allocation, qualification, promotion,
+order, private, or live authority.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate

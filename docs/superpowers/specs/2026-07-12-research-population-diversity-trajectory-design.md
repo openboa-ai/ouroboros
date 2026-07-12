@@ -1,6 +1,6 @@
 # ResearchPopulationDiversity Trajectory Design
 
-**Status:** Approved for implementation
+**Status:** Complete
 
 ## Goal
 
@@ -191,3 +191,31 @@ The frontier is complete when tests prove:
 - ordering, length, uniqueness, exact linkage, and strict authority are enforced;
 - CandidateArena and next-worker context expose the bounded series without raw evidence;
 - all workspace typechecks, repository guards, focused regressions, and the full suite pass.
+
+## Implemented Evidence
+
+`ResearchPopulationDiversityReadModel` now requires a newest-first `tick_series` whose length equals
+the bounded window count. Strict domain validation enforces exact keys, canonical time and order,
+unique tick IDs, per-tick cohort rules, closed authority, and conservation of assigned, observed,
+admission, duplicate, artifact-duplicate, and unavailable counts between the series and top-level
+aggregate.
+
+The pure builder creates window and tick accumulators during the same exact commitment-bound
+fingerprint/admission scan. Tests prove an earlier diverse tick remains distinct from a latest
+collapsed tick, rolling coverage is unchanged, cross-tick suite transitions preserve valid
+single-cohort tick entropy, intra-tick suite conflicts remain incomparable, and latest-ten ordering
+is deterministic. The real CandidateArena distinct-to-exact-duplicate sequence exposes the same
+series through Operator readback and next-worker context without raw fingerprint evidence.
+
+Focused evidence is 41 domain tests, 11 pure application tests, 232 cross-layer tests, and 16
+product-loop smoke tests. All workspace typechecks and repository guards pass. The full suite passes
+287/287 suites and 2117/2117 tests with zero failed, pending, or todo. The first two full-suite
+attempts exposed a pre-existing test-harness mismatch: polling could exceed the `/api/operator`
+rate limit, then a rate-safe interval could exceed the default 20-second test timeout under CPU
+contention. The final harness uses at most 60 polls at 500 ms and a 40-second timeout only for the
+long-running repeating-arena smoke.
+
+This closes cross-sectional observability, not causal attribution. Semantic method-family
+classification, confidence intervals, collapse thresholds, directed/undirected controls,
+memory/no-memory controls, adaptive/static discovery yield, agent/baseline leverage, and
+prospective economic improvement remain separate frontiers.

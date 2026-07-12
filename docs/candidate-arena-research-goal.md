@@ -135,12 +135,15 @@ Current partial implementation evidence also makes population concentration reco
 `ResearchPopulationDiversity` uses the same latest ten completed ticks as CandidateArena readback,
 reports assigned-direction Shannon entropy separately from exact observed-behavior entropy, and
 counts admitted submissions, exact behavior duplicates, artifact duplicates, and unavailable
-fingerprints separately. Behavior entropy and unique counts exist only for one exact fingerprint
-protocol/development-suite cohort; mixed cohorts are `incomparable_suites` globally and by
-direction. The next worker receives the bounded aggregate without raw fingerprint identity,
-observations, scenarios, sealed results, or paper outcomes. This is direct measurement evidence for
-concentration, not completion of Genuine population diversity, Adaptive allocation, AI-agent
-leverage, Causal research memory, or Economic frontier improvement.
+fingerprints separately. Top-level distributions measure recent coverage; newest-first
+`tick_series` entries independently preserve every tick's worker cross-section, so a diverse older
+population cannot hide latest exact-behavior collapse. Behavior entropy and unique counts exist
+only for one exact fingerprint protocol/development-suite cohort; mixed cohorts are
+`incomparable_suites`. A suite transition may make the window incomparable while each single-cohort
+tick remains measured. The next worker receives the bounded read model without raw fingerprint
+identity, observations, scenarios, sealed results, or paper outcomes. This is direct measurement
+evidence for concentration, not completion of Genuine population diversity, Adaptive allocation,
+AI-agent leverage, Causal research memory, or Economic frontier improvement.
 
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior

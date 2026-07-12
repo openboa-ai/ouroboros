@@ -62,9 +62,11 @@ exact behavioral duplicate; missing canonical observations fail closed, duplicat
 remain research memory, and sealed scores, paper outcomes, rationale text, and event noise never
 define the fingerprint.
 CandidateArena derives `ResearchPopulationDiversity` over the same latest ten completed ticks.
-Assigned-direction entropy and exact same-suite behavior entropy stay separate; mixed protocol or
-development-suite cohorts are `incomparable_suites`. This aggregate may guide researcher attention
-but never rank, admit, allocate, qualify, promote, submit orders, or grant private/live authority.
+Top-level distributions measure rolling coverage and newest-first `tick_series` entries measure
+each tick's worker cross-section. Assigned-direction entropy and exact same-suite behavior entropy
+stay separate; mixed protocol or development-suite cohorts are `incomparable_suites`. This bounded
+read model may guide researcher attention but never rank, admit, allocate, qualify, promote, submit
+orders, or grant private/live authority.
 Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted
@@ -231,7 +233,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchBehaviorFingerprint` | Append-only development-only record of normalized effective decisions for one exact protocol, suite digest, commitment, and frozen SystemCode; exact matching is bounded observational duplicate evidence, not semantic equivalence, score, qualification, promotion, order, private, or live authority. |
 | `CandidateAdmissionDecision` | Research-only external gate that binds the complete new-format ResearchPreflight commitment/terminal/submitted-SystemCode graph and paper handoff conformance to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
-| `ResearchPopulationDiversity` | Read-only latest-ten-tick measurement that separates assigned ResearchDirection concentration from exact same-suite observed ResearchBehaviorFingerprint concentration; mixed cohorts are incomparable, and the aggregate has no scheduling, evaluation, admission, rank, qualification, promotion, order, private, or live authority. |
+| `ResearchPopulationDiversity` | Read-only latest-ten-tick coverage aggregate plus newest-first per-tick worker cross-sections that separate assigned ResearchDirection concentration from exact same-suite observed ResearchBehaviorFingerprint concentration; mixed cohorts are incomparable, and the read model has no scheduling, evaluation, admission, rank, qualification, promotion, order, private, or live authority. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |

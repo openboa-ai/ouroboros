@@ -217,12 +217,16 @@ worker readback expose only the generic admission reason and Finding, not raw fi
 `CandidateArenaReadModel.research_population_diversity` is required and uses protocol
 `research_population_diversity_v1`. It reports the latest completed-tick count, separate assigned-
 direction and observed-behavior distributions, aggregate admission/duplicate/unavailable counts,
-canonical per-direction aggregate rows, and closed authority. Comparable distributions include
-sample count, unique count, Shannon entropy bits, and normalized entropy; fewer than two samples
-are `insufficient_evidence`. Observed behavior from more than one exact fingerprint protocol and
-development-suite cohort is `incomparable_suites` and omits global and per-direction unique or
-entropy fields. No raw fingerprint ID, digest, observation, scenario, sealed result, paper outcome,
-or allocation mutation is part of this read model.
+canonical per-direction aggregate rows, a required newest-first `tick_series`, and closed authority.
+The top-level fields measure rolling latest-ten-tick coverage. Every series entry carries tick ID,
+completion time, and independently computed assigned/observed distributions for that exact worker
+cross-section. Series length equals `window_tick_count`, IDs are unique, and ordering is completion
+time then tick ID descending. Comparable distributions include sample count, unique count, Shannon
+entropy bits, and normalized entropy; fewer than two samples are `insufficient_evidence`. Observed
+behavior from more than one exact fingerprint protocol and development-suite cohort is
+`incomparable_suites` and omits unique or entropy fields. A cross-tick suite transition may close
+the window while preserving measured tick entries. No raw fingerprint ID, digest, observation,
+scenario, sealed result, paper outcome, or allocation mutation is part of this read model.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the

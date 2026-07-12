@@ -30,9 +30,9 @@ satisfies the bounded target paper event protocol before admission and generated
 separate from one rotating, evaluator-owned sealed admission submission.
 `ResearchBehaviorFingerprint` is the development-only population identity record that binds one
 frozen SystemCode to normalized effective orders on one exact protocol and suite digest.
-`ResearchPopulationDiversity` is the read-only aggregate that separately measures assigned
-direction concentration and exact same-suite observed-behavior concentration over the latest ten
-completed ticks.
+`ResearchPopulationDiversity` is the read-only latest-ten-tick coverage aggregate plus a bounded
+newest-first series that separately measures each tick's assigned-direction and exact same-suite
+observed-behavior cross-section.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.
@@ -98,11 +98,13 @@ programs are semantically equivalent outside the bounded suite.
 
 Population concentration is now observable without becoming policy. CandidateArena derives
 Shannon entropy for assigned directions and, only when every sample shares one exact fingerprint
-protocol and development-suite cohort, for observed behavior keys. A mixed cohort is explicitly
-`incomparable_suites`; global and per-direction unique claims are omitted. The next worker receives
-only the aggregate counts and entropy, never raw identity or evaluator evidence. High entropy does
-not prove quality or independence, low entropy does not prove failure, and neither value changes
-allocation, rank, admission, paper qualification, or promotion.
+protocol and development-suite cohort, for observed behavior keys. Top-level distributions retain
+recent population coverage while `tick_series` makes current cross-sectional collapse and recovery
+visible. A mixed cohort is explicitly `incomparable_suites`; global and per-direction unique claims
+are omitted. Cross-tick suite transitions do not erase valid single-cohort tick measurements. The
+next worker receives only bounded counts and entropy, never raw identity or evaluator evidence.
+High entropy does not prove quality or independence, low entropy does not prove failure, and neither
+value changes allocation, rank, admission, paper qualification, or promotion.
 
 This is a bounded information-barrier improvement, not evidence that synthetic replay predicts
 future paper economics or that evaluator query caps eliminate reward hacking. Prospective paper

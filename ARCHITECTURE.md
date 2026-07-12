@@ -46,9 +46,12 @@ comparison consumes no sealed or paper result and claims no global semantic equi
 CandidateArena ticks plus exact commitment, direction, fingerprint, and admission records. It
 reports assigned-direction concentration separately from same-cohort exact behavior concentration.
 Multiple fingerprint protocol/development-suite cohorts fail closed as `incomparable_suites`; no
-cross-cohort unique or entropy value is synthesized. The application builder returns aggregate
-counts only and has no mutation, scheduling, evaluation, or promotion authority. CandidateArena
-and the next-worker context share that aggregate rather than raw fingerprint evidence.
+cross-cohort unique or entropy value is synthesized. The top-level distributions measure rolling
+population coverage; the required newest-first `tick_series` recomputes the same distributions for
+each exact tick cross-section. A protocol/suite transition can therefore close only the window
+comparison while valid within-tick entropy remains visible. The application builder returns bounded
+aggregate metrics only and has no mutation, scheduling, evaluation, or promotion authority.
+CandidateArena and the next-worker context share that object rather than raw fingerprint evidence.
 `ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
 not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
 commitment still runs isolated candidate bytes and closes through one append-only

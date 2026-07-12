@@ -146,10 +146,12 @@ The next level of detail should improve the autonomous loop without widening aut
   worker-chosen de-risking sequences, long-duration restart soak, and economic generalization remain
   future detail; a query cap is not treated as a reward-hacking proof.
 - CandidateArena and next-worker context now share `ResearchPopulationDiversity` over the latest
-  ten completed ticks. Assigned-direction and exact same-suite behavior entropy remain separate;
-  mixed cohorts expose counts as `incomparable_suites` without unique or entropy claims. This is
-  read-only concentration evidence, not an allocation reward, quality score, rank, gate, or causal
-  proof that directed research, memory, adaptive allocation, or an AI agent improved discovery.
+  ten completed ticks. Top-level distributions measure rolling coverage and `tick_series` preserves
+  each exact worker cross-section newest first. Assigned-direction and exact same-suite behavior
+  entropy remain separate; mixed cohorts expose counts as `incomparable_suites` without unique or
+  entropy claims. This is read-only concentration evidence, not an allocation reward, quality
+  score, rank, gate, or causal proof that directed research, memory, adaptive allocation, or an AI
+  agent improved discovery.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

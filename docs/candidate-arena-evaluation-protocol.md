@@ -91,11 +91,15 @@ the latest ten completed CandidateArena ticks. Every direction result counts as 
 only complete fingerprints with exact window commitment and direction linkage count as observed
 behavior. Shannon entropy is rounded to six places. Assigned normalization uses the maximum
 possible entropy for the smaller of sample count and seven canonical directions; behavior
-normalization uses the maximum for its sample count. Multiple fingerprint protocol/development-
-suite cohorts report `incomparable_suites` and omit global and per-direction unique/entropy claims.
+normalization uses the maximum for its sample count. Top-level distributions measure rolling
+coverage, while required newest-first `tick_series` entries independently measure each exact tick
+cross-section. Multiple fingerprint protocol/development-suite cohorts report
+`incomparable_suites` and omit global and per-direction unique/entropy claims. A suite transition
+between ticks can close the window aggregate while each internally single-cohort tick remains
+measured; a conflict inside one tick closes that tick too.
 Admission classifications join only through the exact commitment graph. Missing historical links
 are ignored, while a window commitment missing its ResearchDirection fails the derived read. The
-same aggregate enters CandidateArena and next-worker context without raw IDs, digests,
+same bounded read model enters CandidateArena and next-worker context without raw IDs, digests,
 observations, scenarios, sealed outcomes, or paper evidence.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
@@ -472,9 +476,10 @@ The following current surfaces require implementation work before P0 can pass:
   `behavior_duplicate` Finding/Lineage, and quarantine an otherwise admissible submission when the
   fingerprint is unavailable.
 - CandidateArena now derives `ResearchPopulationDiversity` over its latest ten completed ticks and
-  exposes the same aggregate to the next ResearchWorker. Assigned labels and exact observed
-  behavior remain orthogonal; cross-suite evidence is incomparable, and entropy changes no
-  allocation, rank, admission, qualification, or promotion policy. Directed/undirected,
+  exposes the same object to the next ResearchWorker. Rolling coverage and per-tick cross-sectional
+  trajectories remain distinct, assigned labels and exact observed behavior remain orthogonal,
+  cross-suite evidence is incomparable, and entropy changes no allocation, rank, admission,
+  qualification, or promotion policy. Directed/undirected,
   memory/no-memory, adaptive/static, and agent/baseline causal controls remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
