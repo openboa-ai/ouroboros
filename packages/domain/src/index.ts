@@ -7083,6 +7083,9 @@ export interface ResearchControlCampaignSource {
   candidate_version_ref: Ref;
   system_code_ref: Ref;
   system_code_artifact_digest: string;
+  system_code_record_digest: string;
+  research_artifact_protocol: "single_file_python_v1";
+  research_artifact_closure_digest: string;
 }
 
 export interface ResearchControlCampaignAgentIdentity {
@@ -7460,11 +7463,17 @@ function researchControlCampaignSourceHasRuntimeShape(
     "candidate_ref",
     "candidate_version_ref",
     "system_code_ref",
-    "system_code_artifact_digest"
+    "system_code_artifact_digest",
+    "system_code_record_digest",
+    "research_artifact_protocol",
+    "research_artifact_closure_digest"
   ]) && comparisonRef(value.candidate_ref, "trading_system_candidate") &&
     comparisonRef(value.candidate_version_ref, "candidate_version") &&
     comparisonRef(value.system_code_ref, "system_code") &&
-    researchControlCampaignSha256Digest(value.system_code_artifact_digest);
+    comparisonDigest(value.system_code_artifact_digest) &&
+    researchControlCampaignSha256Digest(value.system_code_record_digest) &&
+    value.research_artifact_protocol === "single_file_python_v1" &&
+    researchControlCampaignSha256Digest(value.research_artifact_closure_digest);
 }
 
 function researchControlCampaignAgentHasRuntimeShape(

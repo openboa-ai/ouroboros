@@ -85,7 +85,8 @@ The campaign record freezes:
 
 - one idempotency key and deterministic campaign ID;
 - the exact baseline snapshot digest, regular-file count, and total byte count;
-- the exact source TradingSystem candidate, CandidateVersion, SystemCode, and artifact digest;
+- the exact source TradingSystem candidate, CandidateVersion, SystemCode record digest, original
+  artifact identity, and actual single-file research artifact closure digest;
 - the managed research agent provider, model when present, and permission policy;
 - exactly two arms: `adaptive_treatment/adaptive_default` and
   `static_control/static_control`;
@@ -112,9 +113,12 @@ not portable evidence identity.
    preventing campaign self-reference. All candidate, artifact, Finding, Lineage, checkpoint, and
    duplicate-baseline state remains included.
 5. Persist the campaign commitment in the coordinator store.
-6. Copy the coordinator store to an immutable baseline root and verify the same digest.
-7. Copy that baseline to two empty arm roots and verify each digest before writing arm intent.
-8. Never copy one arm from the other.
+6. Resolve and seal the actual single-file CandidateArena research source, copy it to a separate
+   immutable source-artifact root, and verify its closure digest. This is distinct from legacy or
+   compatibility `SystemCode.artifact_digest` values.
+7. Copy the coordinator store to an immutable baseline root and verify the same digest.
+8. Copy that baseline to two empty arm roots and verify each digest before writing arm intent.
+9. Never copy one arm from the other.
 
 The campaign workspace must be outside the source root. Existing roots are reusable only when their
 persisted campaign/arm intent matches exactly; conflicting or unexplained content fails closed.
@@ -205,4 +209,3 @@ unreleased paper evidence, or a different candidate version or SystemCode.
    rule.
 8. The report cannot express a winner or adjudicated primary outcome.
 9. Focused tests, workspace type checks, repository guards, and the full suite pass.
-

@@ -60,8 +60,8 @@ describe("ResearchControlCampaign application", () => {
     ["snapshot above byte bound", (value: any) => {
       value.baseline.total_bytes = 1_000_000_001;
     }],
-    ["invalid source digest", (value: any) => {
-      value.source.system_code_artifact_digest = "sha256:short";
+    ["invalid source closure digest", (value: any) => {
+      value.source.research_artifact_closure_digest = "sha256:short";
     }],
     ["noncanonical time", (value: any) => {
       value.committedAt = "2026-07-12 10:00:00";
@@ -309,7 +309,10 @@ function campaignInput(overrides: Record<string, unknown> = {}) {
         id: "candidate-version-fixture"
       },
       system_code_ref: { record_kind: "system_code", id: "system-code-fixture" },
-      system_code_artifact_digest: digest("2")
+      system_code_artifact_digest: "sha256:fixture-system-code-v1",
+      system_code_record_digest: digest("2"),
+      research_artifact_protocol: "single_file_python_v1" as const,
+      research_artifact_closure_digest: digest("3")
     },
     researchAgent: {
       id: "fixture",

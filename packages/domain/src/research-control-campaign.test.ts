@@ -262,7 +262,10 @@ function campaignFixture(): ResearchControlCampaignRecord {
         id: "candidate-version-fixture"
       },
       system_code_ref: { record_kind: "system_code", id: "system-code-fixture" },
-      system_code_artifact_digest: digest("b")
+      system_code_artifact_digest: "sha256:fixture-system-code-v1",
+      system_code_record_digest: digest("b"),
+      research_artifact_protocol: "single_file_python_v1",
+      research_artifact_closure_digest: digest("7")
     },
     research_agent: {
       provider: "fixture",

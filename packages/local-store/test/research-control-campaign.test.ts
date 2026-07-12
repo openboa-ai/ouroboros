@@ -239,7 +239,10 @@ function campaignFixture(input: { baselineDigest?: string } = {}) {
         id: "candidate-version-fixture"
       },
       system_code_ref: { record_kind: "system_code", id: "system-code-fixture" },
-      system_code_artifact_digest: digest("2")
+      system_code_artifact_digest: "sha256:fixture-system-code-v1",
+      system_code_record_digest: digest("2"),
+      research_artifact_protocol: "single_file_python_v1",
+      research_artifact_closure_digest: digest("3")
     },
     researchAgent: {
       id: "fixture",

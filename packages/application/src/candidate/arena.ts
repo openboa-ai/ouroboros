@@ -174,6 +174,7 @@ export interface RunCandidateArenaTickInput {
   tickId?: string;
   now?: () => string;
   repoRoot?: string;
+  sourceArtifactDir?: string;
   researchAgent: TradingResearchRuntimeAgent;
   agentFactory: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
   artifactRunner?: TradingArtifactRunner;
@@ -652,11 +653,12 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
   const runRoot = path.join(input.store.root(), "candidate-arena-runs", sessionId);
   const seedDir = path.join(runRoot, "seed");
-  const artifactSourceDir = await sourceResearchArtifactDir({
-    store: input.store,
-    source: input.source,
-    repoRoot
-  });
+  const artifactSourceDir = input.sourceArtifactDir ??
+    await resolveCandidateArenaSourceArtifactDir({
+      store: input.store,
+      source: input.source,
+      repoRoot
+    });
   await mkdir(runRoot, { recursive: true });
   await rm(seedDir, { recursive: true, force: true });
   await cp(artifactSourceDir, seedDir, { recursive: true });
@@ -1183,7 +1185,7 @@ async function latestEvaluatedArenaLeader(
     })[0];
 }
 
-async function sourceResearchArtifactDir(input: {
+export async function resolveCandidateArenaSourceArtifactDir(input: {
   store: OuroborosStorePort;
   source: CandidateInspectReadModel;
   repoRoot: string;
