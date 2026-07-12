@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans and
 > superpowers:test-driven-development. The paper-handoff predecessor is complete and committed.
 
-**Status:** In progress; Task 1 complete, Task 2 next
+**Status:** In progress; Tasks 1-2 complete, Task 3 next
 
 **Goal:** Separate adaptive development replay from one-shot sealed CandidateArena admission so a
 ResearchWorker can learn from useful experiment feedback without repeatedly querying or selecting
@@ -115,31 +115,31 @@ passed 3 files and 85 tests, and `@ouroboros/domain` typecheck passed.
 - Keeps the raw sealed suite and 256-bit seed in evaluator-owned process/external-adapter state
   only; process loss fails closed.
 
-- [ ] **Step 1: Write failing deterministic and rotation tests**
+- [x] **Step 1: Write failing deterministic and rotation tests**
 
 With an injected evaluator seed, prove deterministic generation for one
 tick/direction/source/allocation input. Prove independently generated adjacent tick/direction plans
 have different seed commitments and suite digests, while the persisted commitment cannot reveal or
 reconstruct the raw seed.
 
-- [ ] **Step 2: Write failing balance and anti-shortcut tests**
+- [x] **Step 2: Write failing balance and anti-shortcut tests**
 
 Require long, short, flat, volatility, and cost-stress coverage; balanced directional frequency;
 canonical times and finite bounds; and no label encoding in ID, order, timestamp, price magnitude,
 difficulty, or provider response shape.
 
-- [ ] **Step 3: Write failing visibility tests**
+- [x] **Step 3: Write failing visibility tests**
 
 The public commitment view contains version, digest, bound, and release policy but no raw scenario,
 expected direction, target risk, outcome, cost labels, or per-scenario score.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 npx vitest run packages/application/src/trading/research/preflight-plan.test.ts
 ```
 
-- [ ] **Step 5: Implement and verify**
+- [x] **Step 5: Implement and verify**
 
 Use a pure deterministic generator. Do not use mutable global randomness or wall-clock time after
 the plan input is frozen.
@@ -150,6 +150,10 @@ npm run typecheck --workspace @ouroboros/application
 git add packages/application/src/index.ts packages/application/src/trading/research/types.ts packages/application/src/trading/research/preflight-plan.ts packages/application/src/trading/research/preflight-plan.test.ts packages/application/src/trading/research/replay-trading-api-provider.ts apps/runtime/test/trading-research-loop.test.ts
 git commit -m "feat: rotate sealed research preflight suites"
 ```
+
+Evidence: RED failed because the evaluator-owned plan module did not exist. The final plan plus
+research runtime regression passed 2 files and 42 tests; the focused generator suite passed 6 tests
+after locale-independent ordering, and `@ouroboros/application` typecheck passed.
 
 ---
 

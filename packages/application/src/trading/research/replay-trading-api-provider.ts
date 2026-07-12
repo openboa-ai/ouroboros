@@ -68,6 +68,10 @@ export const defaultReplayTradingScenarioSet: ReplayTradingScenario[] = [
   }
 ];
 
+export function researchDevelopmentReplayScenarios(): ReplayTradingScenario[] {
+  return structuredClone(defaultReplayTradingScenarioSet);
+}
+
 export interface ReplayTradingApiProviderOptions {
   listen_host?: string;
   base_host?: string;
