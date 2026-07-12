@@ -1542,6 +1542,137 @@ export interface ResearchPreflightCommitmentRecord extends BaseRecord {
   commitment_digest: string;
 }
 
+export interface ResearchBehaviorFingerprintDecision {
+  symbol: "BTCUSDT";
+  side: "buy" | "sell" | "hold";
+  quantity: number;
+  order_type: "market" | "limit" | "none";
+}
+
+export interface ResearchBehaviorFingerprintObservation {
+  scenario_id: string;
+  decision: ResearchBehaviorFingerprintDecision;
+}
+
+export interface ResearchBehaviorFingerprintRecord extends BaseRecord {
+  record_kind: "research_behavior_fingerprint";
+  research_behavior_fingerprint_id: string;
+  research_preflight_commitment_ref: Ref;
+  research_preflight_commitment_digest: string;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  protocol_version: "research_behavior_fingerprint_v1";
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  observations: ResearchBehaviorFingerprintObservation[];
+  observation_count: number;
+  fingerprint_digest: string;
+  created_at: string;
+  duplicate_detection_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export function researchBehaviorFingerprintDigestInput(
+  record: ResearchBehaviorFingerprintRecord
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput({
+    protocol_version: record.protocol_version,
+    development_suite_version: record.development_suite_version,
+    development_suite_digest: record.development_suite_digest,
+    observations: record.observations
+  });
+}
+
+export function researchBehaviorFingerprintHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_behavior_fingerprint_id",
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "protocol_version",
+    "development_suite_version",
+    "development_suite_digest",
+    "observations",
+    "observation_count",
+    "fingerprint_digest",
+    "created_at",
+    "duplicate_detection_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_behavior_fingerprint" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_behavior_fingerprint_id) ||
+    !comparisonRef(
+      value.research_preflight_commitment_ref,
+      "research_preflight_commitment"
+    ) || !researchPreflightSha256Digest(value.research_preflight_commitment_digest) ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !researchPreflightSha256Digest(value.system_code_artifact_digest) ||
+    value.protocol_version !== "research_behavior_fingerprint_v1" ||
+    value.development_suite_version !== "research_development_replay_v1" ||
+    !researchPreflightSha256Digest(value.development_suite_digest) ||
+    !Array.isArray(value.observations)) {
+    return false;
+  }
+  const observations = value.observations;
+  if (observations.length === 0 ||
+    !observations.every(researchBehaviorFingerprintObservationHasRuntimeShape) ||
+    !comparisonPositive(value.observation_count) ||
+    value.observation_count !== observations.length ||
+    !researchPreflightSha256Digest(value.fingerprint_digest) ||
+    !comparisonIso(value.created_at) ||
+    value.duplicate_detection_authority !== true ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return observations.every((observation, index) =>
+    index === 0 || observations[index - 1]!.scenario_id < observation.scenario_id
+  );
+}
+
+function researchBehaviorFingerprintObservationHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintObservation {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "scenario_id",
+    "decision"
+  ]) && comparisonString(value.scenario_id) &&
+    researchBehaviorFingerprintDecisionHasRuntimeShape(value.decision);
+}
+
+function researchBehaviorFingerprintDecisionHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintDecision {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "symbol",
+    "side",
+    "quantity",
+    "order_type"
+  ]) || value.symbol !== "BTCUSDT" ||
+    !["buy", "sell", "hold"].includes(value.side as string) ||
+    !comparisonNonNegativeFinite(value.quantity) ||
+    !["market", "limit", "none"].includes(value.order_type as string)) {
+    return false;
+  }
+  return value.side === "hold"
+    ? value.order_type === "none" && Object.is(value.quantity, 0)
+    : (value.order_type === "market" || value.order_type === "limit") &&
+      value.quantity > 0;
+}
+
 export function researchPreflightCommitmentDigestInput(
   record: ResearchPreflightCommitmentRecord
 ): string {
@@ -7582,6 +7713,7 @@ export type FixtureRecord =
   | ResearchWorkerRecord
   | ExperimentRunRecord
   | ResearchPreflightCommitmentRecord
+  | ResearchBehaviorFingerprintRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
   | PaperTradingHandoffConformanceRecord

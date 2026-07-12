@@ -47,20 +47,20 @@ evidence, CandidateArena, ResearchPreflight.
 - Produces: `researchBehaviorFingerprintDigestInput(record)`.
 - Produces: `researchBehaviorFingerprintHasRuntimeShape(value)`.
 
-- [ ] **Step 1: Write failing canonical digest tests**
+- [x] **Step 1: Write failing canonical digest tests**
 
 Construct two records with different SystemCode, commitment, timestamp, and record identity but the
 same protocol, suite, and observations. Assert equal digest input. Mutate symbol, side, exact
 quantity, order type, scenario ID, suite digest, suite version, and protocol version independently
 and assert different digest input.
 
-- [ ] **Step 2: Write failing runtime-shape tests**
+- [x] **Step 2: Write failing runtime-shape tests**
 
 Reject missing or extra properties, unsorted/duplicate/empty scenario observations, non-finite or negative
 quantity, invalid side/order pairs, wrong refs, count mismatch, non-canonical timestamp or digest,
 and any promotion/order/live authority.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run packages/domain/src/research-behavior-fingerprint.test.ts
@@ -68,12 +68,12 @@ npx vitest run packages/domain/src/research-behavior-fingerprint.test.ts
 
 Expected: FAIL because the record type and functions are absent.
 
-- [ ] **Step 4: Implement the minimal domain contract**
+- [x] **Step 4: Implement the minimal domain contract**
 
 Add the version-1 record and pure canonical helpers. Keep identity/linkage fields outside the
 behavior digest payload and export the record through the persisted-record union.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 ```bash
 npx vitest run packages/domain/src/research-behavior-fingerprint.test.ts packages/domain/src/research-preflight-commitment.test.ts
@@ -81,6 +81,9 @@ npm run typecheck --workspace @ouroboros/domain
 git add packages/domain/src/index.ts packages/domain/src/research-behavior-fingerprint.test.ts
 git commit -m "feat: define research behavior fingerprint"
 ```
+
+Evidence: the RED run failed all 34 new tests because the domain API was absent. The final domain
+matrix passed 2 files and 80 tests, and the `@ouroboros/domain` typecheck passed.
 
 ---
 
