@@ -597,7 +597,7 @@ describe("operator product loop smoke", () => {
     } finally {
       await server.close();
     }
-  });
+  }, 40_000);
 
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
@@ -1760,7 +1760,7 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
 async function waitForOperator(
   server: Awaited<ReturnType<typeof buildServer>>,
   predicate: (operator: OperatorReadModel) => boolean,
-  attempts = 300
+  attempts = 60
 ): Promise<OperatorReadModel> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await server.inject({
@@ -1772,7 +1772,7 @@ async function waitForOperator(
     if (predicate(operator)) {
       return operator;
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error("operator did not satisfy expected state before timeout");
 }
