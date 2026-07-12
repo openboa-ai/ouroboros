@@ -7066,6 +7066,638 @@ function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
     left.every((value, index) => value === right[index]);
 }
 
+export type ResearchControlCampaignArmKind =
+  | "adaptive_treatment"
+  | "static_control";
+
+export interface ResearchControlCampaignBaselineSnapshot {
+  protocol_version: "local_store_regular_files_v1";
+  snapshot_digest: string;
+  regular_file_count: number;
+  total_bytes: number;
+  exclusion_policy: "research_control_campaign_evidence_only";
+}
+
+export interface ResearchControlCampaignSource {
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+}
+
+export interface ResearchControlCampaignAgentIdentity {
+  provider: AgentProfileProviderKind;
+  model?: string;
+  permission_policy: "artifact_workspace_only" | "fixture_only";
+  identity_digest: string;
+}
+
+export interface ResearchControlCampaignArm {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  research_control_campaign_arm_intent_id: string;
+  tick_ids: string[];
+}
+
+export interface ResearchControlCampaignPolicy {
+  policy_version: "research_control_campaign_v1";
+  tick_count_per_arm: number;
+  worker_slot_count_per_tick: 3;
+  concurrency_limit_per_arm: 2;
+  maximum_total_development_submissions_per_tick: 5;
+  arm_execution_policy: "concurrent_per_sequence";
+  maximum_baseline_regular_file_count: number;
+  maximum_baseline_total_bytes: number;
+  paper_candidate_slot_count_per_arm: number;
+  paper_candidate_reservation_rule:
+    "first_admitted_per_tick_in_allocation_order";
+  primary_metric_kind:
+    "prospective_qualified_candidate_discovery_rate";
+  required_future_evidence: "confirmed_comparison_research_release";
+}
+
+export interface ResearchControlCampaignRecord extends BaseRecord {
+  record_kind: "research_control_campaign";
+  research_control_campaign_id: string;
+  idempotency_key: string;
+  hypothesis:
+    "adaptive_allocation_improves_prospective_qualified_discovery_yield";
+  baseline: ResearchControlCampaignBaselineSnapshot;
+  source: ResearchControlCampaignSource;
+  research_agent: ResearchControlCampaignAgentIdentity;
+  allocation_policy: CandidateArenaResearchAllocationPolicy;
+  allocation_policy_digest: string;
+  arms: [ResearchControlCampaignArm, ResearchControlCampaignArm];
+  policy: ResearchControlCampaignPolicy;
+  committed_at: string;
+  campaign_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlCampaignArmIntentRecord extends BaseRecord {
+  record_kind: "research_control_campaign_arm_intent";
+  research_control_campaign_arm_intent_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  baseline_snapshot_digest: string;
+  tick_ids: string[];
+  committed_at: string;
+  intent_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlCampaignDiagnostics {
+  attempt_count: number;
+  admitted_candidate_count: number;
+  duplicate_count: number;
+  quarantined_count: number;
+  failed_count: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+interface ResearchControlCampaignPaperCandidateSlotBase {
+  sequence: number;
+  tick_ref: Ref;
+}
+
+export type ResearchControlCampaignPaperCandidateSlot =
+  | (ResearchControlCampaignPaperCandidateSlotBase & {
+      status: "candidate_reserved";
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      system_code_ref: Ref;
+      system_code_artifact_digest: string;
+      admission_decision_ref: Ref;
+    })
+  | (ResearchControlCampaignPaperCandidateSlotBase & {
+      status: "no_admitted_candidate";
+    });
+
+export interface ResearchControlCampaignArmReport {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  arm_intent_ref: Ref;
+  arm_intent_digest: string;
+  tick_refs: Ref[];
+  allocation_refs: Ref[];
+  diagnostics: ResearchControlCampaignDiagnostics;
+  population_diversity: ResearchPopulationDiversityReadModel;
+  paper_candidate_slots: ResearchControlCampaignPaperCandidateSlot[];
+  final_store_snapshot_digest: string;
+  completed_at: string;
+  research_diagnostics_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
+export interface ResearchControlCampaignReportRecord extends BaseRecord {
+  record_kind: "research_control_campaign_report";
+  research_control_campaign_report_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  arms: [ResearchControlCampaignArmReport, ResearchControlCampaignArmReport];
+  primary_outcome_status: "unadjudicated";
+  causal_conclusion: "not_available_from_research_phase";
+  next_action: "schedule_prospective_paper_slots";
+  completed_at: string;
+  report_digest: string;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export function researchControlCampaignDigestInput(
+  record: ResearchControlCampaignRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_id: _id,
+    campaign_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignArmIntentDigestInput(
+  record: ResearchControlCampaignArmIntentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_arm_intent_id: _id,
+    intent_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignReportDigestInput(
+  record: ResearchControlCampaignReportRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_report_id: _id,
+    report_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_id",
+    "idempotency_key",
+    "hypothesis",
+    "baseline",
+    "source",
+    "research_agent",
+    "allocation_policy",
+    "allocation_policy_digest",
+    "arms",
+    "policy",
+    "committed_at",
+    "campaign_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign" || value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_id) ||
+    !comparisonString(value.idempotency_key) ||
+    value.hypothesis !==
+      "adaptive_allocation_improves_prospective_qualified_discovery_yield" ||
+    !researchControlCampaignBaselineHasRuntimeShape(value.baseline) ||
+    !researchControlCampaignSourceHasRuntimeShape(value.source) ||
+    !researchControlCampaignAgentHasRuntimeShape(value.research_agent) ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(
+      value.allocation_policy
+    ) || !researchControlCampaignSha256Digest(value.allocation_policy_digest) ||
+    !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    !researchControlCampaignPolicyHasRuntimeShape(value.policy) ||
+    !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+
+  const campaign = value as unknown as ResearchControlCampaignRecord;
+  if (!researchControlCampaignArmHasRuntimeShape(
+    campaign.arms[0],
+    "adaptive_treatment",
+    "adaptive_default",
+    campaign.policy.tick_count_per_arm
+  ) || !researchControlCampaignArmHasRuntimeShape(
+    campaign.arms[1],
+    "static_control",
+    "static_control",
+    campaign.policy.tick_count_per_arm
+  ) || campaign.baseline.regular_file_count >
+      campaign.policy.maximum_baseline_regular_file_count ||
+    campaign.baseline.total_bytes >
+      campaign.policy.maximum_baseline_total_bytes ||
+    campaign.policy.paper_candidate_slot_count_per_arm !==
+      campaign.policy.tick_count_per_arm) {
+    return false;
+  }
+  const tickIds = campaign.arms.flatMap((arm) => arm.tick_ids);
+  const intentIds = campaign.arms.map(
+    (arm) => arm.research_control_campaign_arm_intent_id
+  );
+  return candidateArenaAllocationStringsUnique(tickIds) &&
+    candidateArenaAllocationStringsUnique(intentIds);
+}
+
+export function researchControlCampaignArmIntentHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignArmIntentRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_arm_intent_id",
+    "campaign_ref",
+    "campaign_digest",
+    "arm_kind",
+    "allocation_mode",
+    "baseline_snapshot_digest",
+    "tick_ids",
+    "committed_at",
+    "intent_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_arm_intent" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_arm_intent_id) ||
+    !comparisonRef(value.campaign_ref, "research_control_campaign") ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !researchControlCampaignArmModeMatches(
+      value.arm_kind,
+      value.allocation_mode
+    ) || !researchControlCampaignSha256Digest(value.baseline_snapshot_digest) ||
+    !stringArray(value.tick_ids) || value.tick_ids.length < 1 ||
+    value.tick_ids.length > 5 || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.intent_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return true;
+}
+
+export function researchControlCampaignReportHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignReportRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_report_id",
+    "campaign_ref",
+    "campaign_digest",
+    "arms",
+    "primary_outcome_status",
+    "causal_conclusion",
+    "next_action",
+    "completed_at",
+    "report_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_report" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_report_id) ||
+    !comparisonRef(value.campaign_ref, "research_control_campaign") ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    value.primary_outcome_status !== "unadjudicated" ||
+    value.causal_conclusion !== "not_available_from_research_phase" ||
+    value.next_action !== "schedule_prospective_paper_slots" ||
+    !comparisonIso(value.completed_at) ||
+    !researchControlCampaignSha256Digest(value.report_digest) ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const report = value as unknown as ResearchControlCampaignReportRecord;
+  if (!researchControlCampaignArmReportHasRuntimeShape(
+    report.arms[0],
+    "adaptive_treatment",
+    "adaptive_default"
+  ) || !researchControlCampaignArmReportHasRuntimeShape(
+    report.arms[1],
+    "static_control",
+    "static_control"
+  ) || report.arms[0].tick_refs.length !== report.arms[1].tick_refs.length ||
+    report.arms.some((arm) =>
+      Date.parse(arm.completed_at) > Date.parse(report.completed_at)
+    )) {
+    return false;
+  }
+  const intentIds = report.arms.map((arm) => arm.arm_intent_ref.id);
+  const tickIds = report.arms.flatMap((arm) => arm.tick_refs.map((ref) => ref.id));
+  return candidateArenaAllocationStringsUnique(intentIds) &&
+    candidateArenaAllocationStringsUnique(tickIds);
+}
+
+function researchControlCampaignBaselineHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignBaselineSnapshot {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "protocol_version",
+    "snapshot_digest",
+    "regular_file_count",
+    "total_bytes",
+    "exclusion_policy"
+  ]) && value.protocol_version === "local_store_regular_files_v1" &&
+    researchControlCampaignSha256Digest(value.snapshot_digest) &&
+    comparisonPositive(value.regular_file_count) &&
+    comparisonPositive(value.total_bytes) &&
+    value.exclusion_policy === "research_control_campaign_evidence_only";
+}
+
+function researchControlCampaignSourceHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignSource {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest"
+  ]) && comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.system_code_ref, "system_code") &&
+    researchControlCampaignSha256Digest(value.system_code_artifact_digest);
+}
+
+function researchControlCampaignAgentHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignAgentIdentity {
+  if (!comparisonObject(value)) return false;
+  const keys = [
+    "provider",
+    ...(value.model !== undefined ? ["model"] : []),
+    "permission_policy",
+    "identity_digest"
+  ];
+  if (!comparisonHasExactKeys(value, keys) || ![
+    "codex",
+    "fixture",
+    "claude_code"
+  ].includes(value.provider as string) ||
+    (value.model !== undefined && !comparisonString(value.model)) ||
+    !researchControlCampaignSha256Digest(value.identity_digest)) {
+    return false;
+  }
+  return value.provider === "fixture"
+    ? value.permission_policy === "fixture_only"
+    : value.permission_policy === "artifact_workspace_only";
+}
+
+function researchControlCampaignArmHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control",
+  tickCount: number
+): value is ResearchControlCampaignArm {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "research_control_campaign_arm_intent_id",
+    "tick_ids"
+  ]) && value.arm_kind === armKind && value.allocation_mode === allocationMode &&
+    comparisonString(value.research_control_campaign_arm_intent_id) &&
+    stringArray(value.tick_ids) && value.tick_ids.length === tickCount;
+}
+
+function researchControlCampaignPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "tick_count_per_arm",
+    "worker_slot_count_per_tick",
+    "concurrency_limit_per_arm",
+    "maximum_total_development_submissions_per_tick",
+    "arm_execution_policy",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes",
+    "paper_candidate_slot_count_per_arm",
+    "paper_candidate_reservation_rule",
+    "primary_metric_kind",
+    "required_future_evidence"
+  ]) && value.policy_version === "research_control_campaign_v1" &&
+    comparisonPositive(value.tick_count_per_arm) && value.tick_count_per_arm <= 5 &&
+    value.worker_slot_count_per_tick === 3 &&
+    value.concurrency_limit_per_arm === 2 &&
+    value.maximum_total_development_submissions_per_tick === 5 &&
+    value.arm_execution_policy === "concurrent_per_sequence" &&
+    comparisonPositive(value.maximum_baseline_regular_file_count) &&
+    value.maximum_baseline_regular_file_count <= 100_000 &&
+    comparisonPositive(value.maximum_baseline_total_bytes) &&
+    value.maximum_baseline_total_bytes <= 1_000_000_000 &&
+    comparisonPositive(value.paper_candidate_slot_count_per_arm) &&
+    value.paper_candidate_reservation_rule ===
+      "first_admitted_per_tick_in_allocation_order" &&
+    value.primary_metric_kind ===
+      "prospective_qualified_candidate_discovery_rate" &&
+    value.required_future_evidence ===
+      "confirmed_comparison_research_release";
+}
+
+function researchControlCampaignArmModeMatches(
+  armKind: unknown,
+  allocationMode: unknown
+): boolean {
+  return armKind === "adaptive_treatment"
+    ? allocationMode === "adaptive_default"
+    : armKind === "static_control" && allocationMode === "static_control";
+}
+
+function researchControlCampaignDiagnosticsHasRuntimeShape(
+  value: unknown,
+  tickCount: number
+): value is ResearchControlCampaignDiagnostics {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "attempt_count",
+    "admitted_candidate_count",
+    "duplicate_count",
+    "quarantined_count",
+    "failed_count",
+    "provider_request_total",
+    "runner_command_total",
+    "scenario_count",
+    "elapsed_ms"
+  ]) || ![
+    value.attempt_count,
+    value.admitted_candidate_count,
+    value.duplicate_count,
+    value.quarantined_count,
+    value.failed_count,
+    value.provider_request_total,
+    value.runner_command_total,
+    value.scenario_count,
+    value.elapsed_ms
+  ].every(comparisonNonNegative)) {
+    return false;
+  }
+  const diagnostics = value as unknown as ResearchControlCampaignDiagnostics;
+  return diagnostics.attempt_count === tickCount * 3 &&
+    diagnostics.attempt_count === diagnostics.admitted_candidate_count +
+      diagnostics.duplicate_count + diagnostics.quarantined_count +
+      diagnostics.failed_count;
+}
+
+function researchControlCampaignPaperCandidateSlotHasRuntimeShape(
+  value: unknown,
+  sequence: number,
+  tickRef: Ref
+): value is ResearchControlCampaignPaperCandidateSlot {
+  if (!comparisonObject(value) || value.status === "no_admitted_candidate") {
+    return comparisonObject(value) && comparisonHasExactKeys(value, [
+      "sequence",
+      "tick_ref",
+      "status"
+    ]) && value.sequence === sequence &&
+      paperTradingComparisonRefsEqual(value.tick_ref, tickRef) &&
+      value.status === "no_admitted_candidate";
+  }
+  return comparisonHasExactKeys(value, [
+    "sequence",
+    "tick_ref",
+    "status",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "admission_decision_ref"
+  ]) && value.sequence === sequence &&
+    paperTradingComparisonRefsEqual(value.tick_ref, tickRef) &&
+    value.status === "candidate_reserved" &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.system_code_ref, "system_code") &&
+    researchControlCampaignSha256Digest(value.system_code_artifact_digest) &&
+    comparisonRef(value.admission_decision_ref, "candidate_admission_decision");
+}
+
+function researchControlCampaignArmReportHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control"
+): value is ResearchControlCampaignArmReport {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "arm_intent_ref",
+    "arm_intent_digest",
+    "tick_refs",
+    "allocation_refs",
+    "diagnostics",
+    "population_diversity",
+    "paper_candidate_slots",
+    "final_store_snapshot_digest",
+    "completed_at",
+    "research_diagnostics_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || value.arm_kind !== armKind || value.allocation_mode !== allocationMode ||
+    !comparisonRef(
+      value.arm_intent_ref,
+      "research_control_campaign_arm_intent"
+    ) || !researchControlCampaignSha256Digest(value.arm_intent_digest) ||
+    !Array.isArray(value.tick_refs) || value.tick_refs.length < 1 ||
+    value.tick_refs.length > 5 || value.tick_refs.some((candidate) =>
+      !comparisonRef(candidate, "candidate_arena_tick")
+    ) || !Array.isArray(value.allocation_refs) ||
+    value.allocation_refs.length !== value.tick_refs.length ||
+    value.allocation_refs.some((candidate) =>
+      !comparisonRef(candidate, "candidate_arena_research_allocation")
+    ) || !researchControlCampaignDiagnosticsHasRuntimeShape(
+      value.diagnostics,
+      value.tick_refs.length
+    ) || !researchPopulationDiversityHasRuntimeShape(value.population_diversity) ||
+    !Array.isArray(value.paper_candidate_slots) ||
+    value.paper_candidate_slots.length !== value.tick_refs.length ||
+    !researchControlCampaignSha256Digest(value.final_store_snapshot_digest) ||
+    !comparisonIso(value.completed_at) ||
+    value.research_diagnostics_authority !== false ||
+    value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+  const arm = value as unknown as ResearchControlCampaignArmReport;
+  if (!candidateArenaAllocationStringsUnique(arm.tick_refs.map((ref) => ref.id)) ||
+    !candidateArenaAllocationStringsUnique(
+      arm.allocation_refs.map((ref) => ref.id)
+    ) || !arm.paper_candidate_slots.every((slot, index) =>
+      researchControlCampaignPaperCandidateSlotHasRuntimeShape(
+        slot,
+        index + 1,
+        arm.tick_refs[index]!
+      )
+    ) || arm.population_diversity.window_tick_count !== arm.tick_refs.length ||
+    arm.population_diversity.assigned_directions.sample_count !==
+      arm.diagnostics.attempt_count ||
+    arm.population_diversity.observed_behaviors.admitted_submission_count !==
+      arm.diagnostics.admitted_candidate_count ||
+    arm.population_diversity.observed_behaviors.exact_behavior_duplicate_count +
+      arm.population_diversity.observed_behaviors.artifact_duplicate_count >
+        arm.diagnostics.duplicate_count ||
+    arm.population_diversity.observed_behaviors.unavailable_fingerprint_count >
+      arm.diagnostics.quarantined_count) {
+    return false;
+  }
+  const reserved = arm.paper_candidate_slots.filter((slot) =>
+    slot.status === "candidate_reserved"
+  );
+  return reserved.length <= arm.diagnostics.admitted_candidate_count &&
+    candidateArenaAllocationStringsUnique(reserved.map((slot) =>
+      slot.candidate_version_ref.id
+    ));
+}
+
+function researchControlCampaignSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
 export type CandidateArenaTickSourceKind =
   | "fixture_seed"
   | "evaluated_arena_leader"
