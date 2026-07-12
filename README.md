@@ -25,6 +25,8 @@ market data with fake account, fake execution, and fake Ledger, and are judged b
 ```text
 parallel TradingSystem candidates
 -> research-time replay/backtest preflight
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -35,6 +37,14 @@ parallel TradingSystem candidates
 `TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
 an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
 evaluated in paper before it earns authority.
+
+Replay success alone cannot claim runnable paper handoff. Every new admitted candidate must bind
+one external `PaperTradingHandoffConformance` for the exact sealed submitted `SystemCode`, and a
+generated candidate must revalidate that evidence before paper effects. For generated single-file
+Python candidates, the SystemCode digest covers the frozen manifest plus sole editable entrypoint;
+undeclared files, directories, symlinks, or manifest drift invalidate the closure. This gate proves bounded
+target-protocol compatibility only; it does not add economic score, qualification, promotion,
+order, private, or live authority.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after

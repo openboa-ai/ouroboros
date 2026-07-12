@@ -11,6 +11,8 @@ economic accounting, not self-sufficient proof of strategy quality.
 ```text
 parallel TradingSystem candidates
 -> research-time replay/backtest preflight
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -19,7 +21,9 @@ parallel TradingSystem candidates
 
 Name the boundary plainly: `ResearchPreflight` is replay, backtest, or simulation used while
 creating candidates; `PaperTradingEvaluation` is selected-candidate paper trading over live public
-market data, scored by accumulated `revenue - cost`.
+market data, scored by accumulated `revenue - cost`. `PaperTradingHandoffConformance` sits between
+them as external research-only proof that the exact submitted artifact satisfies the bounded target
+paper event protocol before admission and generated-candidate paper start.
 
 ## Doctrine Tree
 
@@ -41,6 +45,8 @@ market data, scored by accumulated `revenue - cost`.
    - Generate many candidates, not one best bot.
    - Use replay, backtest, and simulation as research-time tools for candidate creation, sanity
      checks, and preflight rejection.
+   - Require exact external paper handoff conformance before a new candidate can claim runnable
+     handoff; do not turn compatibility into economic or qualification evidence.
    - Rank by selected-candidate paper trading performance once a candidate enters the paper
      runtime. Preserve `Finding` records and lineage, then feed that memory into the next
      generation.
@@ -61,6 +67,11 @@ market data, scored by accumulated `revenue - cost`.
    - Researcher cannot grade.
    - Candidate cannot grade itself.
    - Replay/backtest is a research tool, not final evaluation authority.
+   - Replay success cannot self-certify the target paper runtime. Exact submitted-artifact
+     conformance is externally evaluated and revalidated before generated paper effects.
+   - Generated single-file Python SystemCode identity covers its frozen manifest and sole editable
+     entrypoint. Undeclared files, directories, symlinks, or manifest drift cannot remain outside
+     candidate freeze evidence.
    - Continuous paper trading is the evaluation authority for the product loop because living
      TradingSystems may use current market state, news, social data, tools, and internal agents that
      old static data cannot faithfully grade.

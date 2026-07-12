@@ -7,6 +7,8 @@ CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
 -> research-time replay/backtest preflight
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard, findings, and lineage
 -> selected continuous Paper Trading
 -> Gateway
@@ -14,10 +16,17 @@ CandidateArena
 ```
 
 Canonical naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
+Inside that compact product-facing sequence, the enforced evidence spine inserts
+`PaperTradingHandoffConformance` and `CandidateAdmissionDecision` between ResearchPreflight and
+selected Paper Trading.
 
 Researchers and LLM agents are candidate generators. Replay/backtest is a research tool, not final
-evaluation authority. Continuous paper trading is the evaluation authority for candidate ranking,
-and paper `Gateway`/`Ledger` evidence belongs only to selected Trading Runs, not to every candidate.
+evaluation authority. Exact external paper handoff conformance gates new admission and generated
+paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
+canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
+undeclared closure state. Continuous paper trading is the product evaluation
+authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs only to selected
+Trading Runs, not to every candidate.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
 
@@ -139,7 +148,9 @@ This file is a compact development map. The canonical architecture contract live
 
 Preserve these separations: Candidate Arena state vs selected Trading Run execution,
 TradingSystem identity vs ResearchPreflight evidence, research-time replay/backtest vs continuous
-paper trading evaluation, TradingRun control vs OrderRequest generation, paper observation
+paper trading evaluation, replay score vs exact PaperTradingHandoffConformance, handoff conformance
+vs economic/qualification authority, entrypoint bytes vs complete declared artifact closure,
+TradingRun control vs OrderRequest generation, paper observation
 checkpoint vs TradingSystem decision cadence, provider output as trace material rather than proof,
 and persistence with enough attribution to replay why state exists.
 Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the Sandbox

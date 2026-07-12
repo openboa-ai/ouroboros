@@ -4,7 +4,7 @@
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for implementation
+**Status:** Complete
 
 **Goal:** Make external target paper-protocol conformance a required, persisted condition of every
 new CandidateArena runnable handoff and revalidate it before generated-candidate paper effects.
@@ -349,10 +349,72 @@ git commit -m "feat: enforce paper conformance at start"
 
 ---
 
+### Task 6A: Seal The Generated SystemCode Artifact Closure
+
+**Files:**
+- Create: `packages/application/src/trading/research/artifact-closure.ts`
+- Create: `packages/application/src/trading/research/artifact-closure.test.ts`
+- Modify: `packages/application/src/trading/research/replay-set-runner.ts`
+- Modify: `packages/application/src/trading/research/run-trading-research.ts`
+- Modify: `packages/application/src/candidate/arena.ts`
+- Modify: `packages/application/src/trading/paper/commands.ts`
+- Modify: `packages/application/src/trading/paper/commands.test.ts`
+- Modify: `packages/domain/src/index.ts`
+- Modify: `packages/adapters/src/artifact/system-code-artifact-resolver.ts`
+- Modify: `packages/adapters/src/artifact/system-code-artifact-resolver.test.ts`
+- Modify: `apps/runtime/src/server.ts`
+- Modify: `apps/runtime/test/trading-research-loop.test.ts`
+
+**Interfaces:**
+- Defines the `single_file_python_v1` manifest-plus-entrypoint closure digest input.
+- Rejects undeclared files, directories, symlinks, editable paths, and manifest drift before
+  ResearchPreflight effects.
+- Detects and restores closure mutation after replay and paper handoff probing.
+- Recomputes the same closure digest before generated-candidate paper preparation.
+- Rejects current filesystem closure drift in the command gate before session commitment or runtime
+  effects.
+
+- [x] **Step 1: Write and observe focused RED tests**
+
+Prove an entrypoint-only digest accepts helper-file and manifest drift, then require candidate-
+attributable closure rejection and paper artifact resolver failure.
+
+- [x] **Step 2: Implement canonical closure sealing**
+
+Freeze `manifest.json` and the sole declared editable entrypoint, include both content digests in the
+SystemCode artifact digest, remove unexpected runtime-created entries, and restore modified or
+removed closure files.
+
+- [x] **Step 3: Bind CandidateArena and paper resolution**
+
+Freeze the source manifest before ResearchWorker effects, require the CandidateArena Python
+manifest shape, persist closure digests for source/submitted SystemCode and conformance, and make
+the generated artifact resolver reject closure drift before paper effects.
+
+- [x] **Step 4: Run sandbox-safe focused validation**
+
+Current evidence: 7 focused files and 88 tests plus three targeted runtime tests prove pre-effect
+closure rejection, source-manifest freeze, and post-probe closure restoration. The final
+listener-backed regression and full suite below cover the integrated runtime path.
+
+- [x] **Step 5: Run listener-backed integration and commit**
+
+```bash
+npx vitest run apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx packages/application/src/trading/research/artifact-closure.test.ts packages/adapters/src/artifact/system-code-artifact-resolver.test.ts
+git add packages/domain/src/index.ts packages/application/src/trading/research/artifact-closure.ts packages/application/src/trading/research/artifact-closure.test.ts packages/application/src/trading/research/replay-set-runner.ts packages/application/src/trading/research/run-trading-research.ts packages/application/src/candidate/arena.ts packages/application/src/trading/paper/commands.ts packages/application/src/trading/paper/commands.test.ts packages/adapters/src/artifact/system-code-artifact-resolver.ts packages/adapters/src/artifact/system-code-artifact-resolver.test.ts apps/runtime/src/server.ts apps/runtime/test/trading-research-loop.test.ts
+git commit -m "feat: seal arena artifact closure"
+```
+
+---
+
 ### Task 7: Update Durable Truth And Verify The Frontier
 
 **Files:**
+- Modify: `README.md`
+- Modify: `ARCHITECTURE.md`
 - Modify: `AGENTS.md`
+- Modify: `docs/project-direction.md`
+- Modify: `docs/ouroboros-doctrine.md`
 - Modify: `docs/candidate-arena-research-goal.md`
 - Modify: `docs/candidate-arena-evaluation-protocol.md`
 - Modify: `docs/api-command-contract.md`
@@ -362,7 +424,7 @@ git commit -m "feat: enforce paper conformance at start"
 - Modify: `docs/superpowers/specs/2026-07-12-paper-trading-handoff-conformance-design.md`
 - Modify: `docs/superpowers/plans/2026-07-12-paper-trading-handoff-conformance.md`
 
-- [ ] **Step 1: Correct canonical truth**
+- [x] **Step 1: Correct canonical truth**
 
 Record that sealed candidate payloads already exclude evaluator-only fields, every new runnable
 handoff now requires external target-protocol proof, generated-candidate start revalidates it, and
@@ -373,7 +435,7 @@ Keep repeated-score/window probing, behavior-level duplicate detection, long-liv
 recovery, production comparison scheduling, automatic promotion, runner handoff, private/live,
 P0, and Goal completion open.
 
-- [ ] **Step 2: Mark design and plan implemented**
+- [x] **Step 2: Mark design and plan implemented**
 
 Set design status to:
 
@@ -383,13 +445,17 @@ Implemented and verified as external paper handoff conformance
 
 Set this plan Status to Complete and check each completed step.
 
-- [ ] **Step 3: Run focused regression**
+- [x] **Step 3: Run focused regression**
+
+The final listener-backed regression passed 11 files and 181 tests, including canonical closure,
+artifact resolver, paper-start command, CandidateArena, runtime event protocol, and operator-loop
+coverage.
 
 ```bash
 npm test -- packages/domain/src/paper-trading-handoff-conformance.test.ts packages/domain/src/candidate-admission-policy.test.ts packages/application/src/trading/research/paper-handoff-conformance.test.ts packages/local-store/test/paper-trading-handoff-conformance.test.ts apps/runtime/test/trading-research-loop.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/paper-trading-event-protocol.test.ts apps/runtime/test/operator-product-loop-smoke.test.tsx
 ```
 
-- [ ] **Step 4: Run workspace and repository validation**
+- [x] **Step 4: Run workspace and repository validation**
 
 ```bash
 npm run typecheck
@@ -399,14 +465,25 @@ npm test
 
 Run listener tests outside the filesystem/network sandbox.
 
-- [ ] **Step 5: Commit durable truth**
+- [x] **Step 5: Commit durable truth**
 
 ```bash
-git add AGENTS.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/autonomy-model.md docs/naming-taxonomy.md docs/product-quality-design.md docs/superpowers/specs/2026-07-12-paper-trading-handoff-conformance-design.md docs/superpowers/plans/2026-07-12-paper-trading-handoff-conformance.md
+git add README.md ARCHITECTURE.md AGENTS.md docs/project-direction.md docs/ouroboros-doctrine.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/autonomy-model.md docs/naming-taxonomy.md docs/product-quality-design.md docs/superpowers/specs/2026-07-12-paper-trading-handoff-conformance-design.md docs/superpowers/plans/2026-07-12-paper-trading-handoff-conformance.md
 git commit -m "docs: record paper handoff conformance"
 ```
 
 ## Completion Evidence
+
+Final current-head evidence collected on 2026-07-12:
+
+- listener-backed conformance, artifact-closure, CandidateArena, paper runtime, and operator-loop
+  regression: 11 files and 181 tests passed;
+- reference paper soak and promoted replay compatibility regression: 2 files and 9 tests passed;
+- full repository suite: 121 files and 1,878 tests passed;
+- workspace typecheck passed across CLI, Desktop, TUI, Web, runtime, adapters, application, domain,
+  and LocalStore;
+- repository docs, architecture, naming, tracked-env, secret, and diff guards passed;
+- implementation is fixed in commit `35e7f2e` (`feat: seal arena artifact closure`).
 
 Keep this frontier only when current evidence proves:
 

@@ -28,7 +28,7 @@ authority that belongs to a higher layer.
 
 | Layer | Autonomous work | Authority boundary | Evidence |
 | --- | --- | --- | --- |
-| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across `ResearchDirection` lanes; run `ResearchPreflight`; record findings and lineage. | Researchers and providers generate candidates; they do not grade themselves and do not grant trading authority. | `CandidateArenaTick`, `SystemCode`, `Evaluation`, `Finding`, `Lineage`, research leaderboard. |
+| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across `ResearchDirection` lanes; run sealed `ResearchPreflight` and external target paper-protocol conformance; record admission, findings, and lineage. | Researchers and providers generate candidates; they do not grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `SystemCode`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Evaluation`, `Finding`, `Lineage`, research leaderboard. |
 | Selected paper evaluation | Run the selected `TradingSystem` as a managed paper session; inject `TRADING_API_BASE_URL`; observe emitted events on a schedule; update fake account, fills, score, and Ledger evidence. | `TradingSystem` owns decision cadence; Gateway validates and fake executes; paper observation never invents a trade decision from a refreshed snapshot. | `PaperTradingEvaluation`, observations, public market snapshots, public execution evidence, fake account state, Ledger chain. |
 | Paper qualification | Decide whether accumulated paper evidence is mature enough to trust. | Rank is not readiness. A high paper score can still be collecting evidence or blocked by quality. | `PaperTradingQualification` status, reasons, evidence window, runner state, market/fill quality. |
 | Trading review promotion | Move one qualified paper-backed candidate into Trading review. | Operator or explicit policy decides promotion. `TradingPromotion` remains `not_live`; it does not bind exchange authority. | `TradingPromotion`, `TradingReview`, selected candidate match/mismatch, paper board row, Ledger readback. |
@@ -44,6 +44,9 @@ For Ouroboros, "prototype" and "production" are product states, not UI polish le
 - Prototype or research work lives in `ResearchPreflight`: replay, backtest, fixtures, generated
   code, provider traces, and candidate self-reports. These are useful for search and rejection, but
   they are not final product proof.
+- `PaperTradingHandoffConformance` externally checks the exact submitted artifact against the
+  bounded target paper event protocol before admission and generated-candidate paper start. It is
+  runtime compatibility evidence, not economic or qualification evidence.
 - MLP-01 production evidence is selected continuous paper trading: live public Binance market data
   through `MarketDataPort`, fake account, fake execution, Gateway validation, and Ledger readback.
 - Shipping a TradingSystem means moving a qualified paper-backed candidate into Trading review. It
@@ -64,6 +67,7 @@ Ouroboros should treat tests and evals as the contract with autonomous work.
 | Architecture and naming checks | Keep layer dependencies, command names, and product vocabulary aligned with the doctrine. | `npm run check:architecture`, `npm run check:naming`. |
 | Secret and environment checks | Keep local/runtime configuration from leaking authority or credentials into repo truth. | `bash scripts/check-env-files.sh --tracked`, `bash scripts/check-secrets.sh`. |
 | `ResearchPreflight` | Score candidate behavior during creation without pretending it is final product authority. | Candidate replay/backtest/evaluation records and research leaderboard. |
+| `PaperTradingHandoffConformance` | Prove exact submitted-artifact compatibility with the bounded target paper event protocol before materialization. | External host/`sbx` probe, production event parser, persisted digest-bound conformance and admission evidence. |
 | `PaperTradingEvaluation` | Product evaluation authority for selected living systems. | `trading_run.start`, `trading_run.observe`, `trading_run.stop`, paper observations, paper board. |
 | `PaperTradingQualification` | Readiness gate separate from rank. | Qualification policy, board reasons, promotion command gate. |
 
@@ -97,6 +101,11 @@ blaming the model.
 - Provider output is trace and materialization input, not proof.
 - Candidate self-report is not proof.
 - `ResearchPreflight` is search evidence, not final product authority.
+- Replay success cannot claim runnable paper handoff. Exact passed
+  `PaperTradingHandoffConformance` must be externally recorded and revalidated before generated
+  paper effects.
+- Generated single-file Python SystemCode freeze covers the canonical manifest-plus-entrypoint
+  closure. Entrypoint-only hashing cannot authorize undeclared dependency state.
 - Selected continuous `PaperTradingEvaluation` is the MLP-01 product evidence surface.
 - `TradingSystem` owns decision cadence and emits bounded paper events.
 - Paper observation consumes emitted events or records no-order continuity; it does not synthesize
@@ -121,6 +130,10 @@ The next level of detail should improve the autonomous loop without widening aut
 - Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
   signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost and durable
   ResearchWorker workspace/process recovery remain future detail.
+- Exact submitted-artifact paper handoff conformance is now enforced before new admission,
+  materialization, and generated-candidate paper start. Repeated-score/window probing,
+  behavior-level duplicate detection, long-duration liveness, and durable worker recovery remain
+  future detail rather than being implied by this bounded proof.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

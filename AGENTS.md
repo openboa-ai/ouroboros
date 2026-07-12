@@ -29,7 +29,9 @@ loop:
 ```text
 problem
 -> parallel or iterative TradingSystem candidate generation
--> external Evaluation
+-> sealed ResearchPreflight
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -37,8 +39,13 @@ problem
 ```
 
 Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
-provider/risk validation, selected-candidate continuous paper `revenue - cost`, and Gateway/Ledger
-evidence decide what counts. Binance public market data enters through the Gateway-owned
+exact submitted-artifact paper handoff conformance, provider/risk validation, selected-candidate
+continuous paper `revenue - cost`, and Gateway/Ledger evidence decide what counts. Every new
+runnable handoff must bind one passed `PaperTradingHandoffConformance` for the exact admitted
+`SystemCode`. Generated single-file Python SystemCode identity is the canonical digest of its
+frozen manifest-plus-entrypoint closure, not the entrypoint alone; generated-candidate paper start
+revalidates that closure and conformance evidence before paper effects.
+Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted
 `OrderRequest`s, record no-order continuity when nothing new was emitted, and never make the
@@ -199,13 +206,14 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
-| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests and external evaluation to classify a submission as admitted, duplicate, or quarantined before candidate materialization; it grants no paper qualification or live authority. |
+| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
 | `CandidateVersion` | Frozen candidate identity and default runtime projection. Its `runtime_ref` is the compatibility/default continuous paper TradingRun pointer, not a one-run cardinality constraint. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
+| `PaperTradingHandoffConformance` | External research-only proof that one exact submitted SystemCode artifact closure satisfies the bounded target paper event protocol before admission, materialization, and generated-candidate paper start; it carries no economic, qualification, promotion, order, private, or live authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes a paper evaluation's evidence purpose and executable, runtime, policy, data, account, and authority identities before evidence exists. |
 | `PaperTradingComparisonCommitment` | Append-only champion/challenger qualification envelope that binds two frozen, distinct, inert paper sessions and one comparison policy before market outcomes exist. |

@@ -84,6 +84,8 @@ The repo already has the right spine:
 ```text
 CandidateArena
 -> ResearchPreflight
+-> PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and candidate materialization
 -> leaderboard, findings, lineage
 -> selected PaperTradingEvaluation
 -> PaperTradingQualification
@@ -120,15 +122,19 @@ The promotion decision protocol is:
 1. `CandidateArena` produces a population, not a winner by assertion.
 2. `ResearchPreflight` rejects weak candidates cheaply and records findings, but remains search
    evidence.
-3. One candidate is selected for continuous `PaperTradingEvaluation`.
-4. Paper observations consume the selected `TradingSystem`'s emitted decisions or record no-order
+3. `PaperTradingHandoffConformance` externally proves that the exact submitted artifact satisfies
+   the bounded target paper event protocol without granting economic or trading authority.
+4. `CandidateAdmissionDecision` binds exact passed preflight/conformance evidence before candidate
+   materialization; generated-candidate paper start revalidates the graph before effects.
+5. One candidate is selected for continuous `PaperTradingEvaluation`.
+6. Paper observations consume the selected `TradingSystem`'s emitted decisions or record no-order
    continuity; they do not force decisions from snapshots.
-5. `PaperTradingQualification` decides whether the evidence window is mature enough to trust.
-6. `TradingPromotion` can move only a qualified paper-backed candidate into Trading review.
-7. `TradingReviewPacket` explains the active review target from one shared read projection.
-8. The operator or an explicit future policy decides whether the review target deserves continued
+7. `PaperTradingQualification` decides whether the evidence window is mature enough to trust.
+8. `TradingPromotion` can move only a qualified paper-backed candidate into Trading review.
+9. `TradingReviewPacket` explains the active review target from one shared read projection.
+10. The operator or an explicit future policy decides whether the review target deserves continued
    promotion attention.
-9. Every result, including failure and loss, feeds back into Research as findings, lineage,
+11. Every result, including failure and loss, feeds back into Research as findings, lineage,
    learning summaries, and finding clusters under read-only authority.
 
 Shipping in MLP-01 means the candidate is reviewable in this protocol. It does not mean live
@@ -151,6 +157,7 @@ This protocol keeps prototype and production separate:
 | --- | --- | --- | --- |
 | `CandidateArena` | Generates parallel or iterative `TradingSystem` candidates and keeps research memory. | Correct product center. It gives autonomy its search engine. | Research directions should become more adaptive from paper-board failures, findings, lineage clusters, and research-efficiency signals. |
 | `ResearchPreflight` | Replay, backtest, and simulation during candidate creation. | Correct as cheap search and rejection evidence. | UI and researcher context must keep it below continuous paper evidence. |
+| `PaperTradingHandoffConformance` and admission | Externally probe the exact submitted manifest-plus-entrypoint artifact closure against the bounded target paper protocol, persist compact digest-bound evidence, and gate materialization/start. | Correct runtime-compatibility boundary. It prevents replay-only success, undeclared dependency state, or candidate self-report from claiming runnable handoff. | Keep raw probe evidence outside ResearchWorker feedback and keep conformance out of economic rank, qualification, promotion, order, private, and live authority. |
 | `PaperTradingEvaluation` | Selected-candidate continuous paper trading over live public market data with fake account and fake execution. | Correct product evaluation authority for MLP-01. | The operator needs a compact, ordered readout that explains evidence maturity, not only score. |
 | `PaperTradingQualification` | Separates rank from readiness with observation, elapsed-time, runner, failure-ratio, market, and fill-evidence gates. | Correct gate. It prevents profitable-but-thin evidence from looking ready. | Reasons need product-facing grouping, severity, and remediation guidance without weakening the gate. |
 | `TradingPromotion` | Records one qualified paper-backed candidate as the Trading review target with `not_live` authority. | Correct authority boundary. | Promotion should read like a review state, not like exchange enablement. |
@@ -1062,9 +1069,10 @@ read-model frontier should prove that it preserves this scan order before claimi
 
 ### Audit Outcomes
 
-The current product spine is sound: CandidateArena owns search, PaperTradingEvaluation owns MLP-01
-product evidence, PaperTradingQualification owns readiness, TradingReviewPacket owns operator
-judgment, and Gateway/Ledger own evidence boundaries.
+The current product spine is sound: CandidateArena owns search, sealed ResearchPreflight plus
+PaperTradingHandoffConformance and admission own candidate-to-paper compatibility,
+PaperTradingEvaluation owns MLP-01 product evidence, PaperTradingQualification owns readiness,
+TradingReviewPacket owns operator judgment, and Gateway/Ledger own evidence boundaries.
 
 The remaining design pressure is not to add more surface area. It is to make each existing surface
 more exact:

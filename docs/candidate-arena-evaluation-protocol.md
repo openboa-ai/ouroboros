@@ -2,10 +2,11 @@
 
 Status: P0 target contract with partial implementation evidence. This document defines the bounded
 frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
-commitment, admission, sealed comparison, confirmation, causal ResearchRelease, explicit
-comparison-backed TradingPromotion, and bounded adaptive ResearchWorker allocation tests
-demonstrate only the explicitly listed partial conformance; they do not establish production
-composition, automatic champion operation, or P0 completion.
+commitment, sealed ResearchPreflight, external paper handoff conformance, admission, sealed
+comparison, confirmation, causal ResearchRelease, explicit comparison-backed TradingPromotion,
+and bounded adaptive ResearchWorker allocation tests demonstrate only the explicitly listed
+partial conformance; they do not establish production composition, automatic champion operation,
+or P0 completion.
 
 ## Purpose
 
@@ -34,19 +35,32 @@ persisted schema names. Any future public or persisted fields require a separate
 7. Valid negative results remain research memory. Invalid results remain quarantined evidence and
    cannot become runnable paper candidates.
 8. Research and paper remain public-data and fake-execution only.
+9. Replay success alone cannot claim runnable paper handoff. The exact sealed submitted artifact
+   must pass an external bounded target paper-protocol probe before admission and materialization.
 
 ## Evidence Lifecycle
 
 | Evidence stage | Visible to ResearchWorker | May guide future research | May admit a candidate | May qualify a candidate |
 | --- | --- | --- | --- | --- |
 | Inspectable research experiment | Yes | Yes | No | No |
-| Sealed `ResearchPreflight` | Aggregate feedback only | Yes | Yes, subject to admission | No |
+| Sealed `ResearchPreflight` | Aggregate feedback only | Yes | No, until handoff conformance and admission | No |
+| `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
 | Prospective paper qualification window | No outcome feedback before close | Only after adjudication | Already admitted and frozen | Yes |
 | Closed `Finding` and `Lineage` | Yes | Yes | No retroactive upgrade | Preserves the completed decision only |
 
 Research feedback and qualification are different evidence purposes even when both use
 `PaperTradingEvaluation`. One physical observation or window cannot carry both purposes.
+
+`PaperTradingHandoffConformance` is a research-only compatibility gate between sealed preflight and
+admission. It runs the exact submitted bytes against the bounded production paper event protocol,
+persists only an external evidence summary, and contributes no economic score, qualification,
+comparison verdict, promotion, order, private, or live authority.
+
+For generated single-file Python candidates, exact submitted bytes means one canonical closure
+digest over the frozen manifest and sole editable entrypoint. Research rejects undeclared files,
+directories, symlinks, editable paths, and manifest drift before effects; paper artifact resolution
+recomputes the same closure before preparation.
 
 When a qualification window closes, its adjudicated result may become next-generation research
 memory. That release does not contaminate the decision already made from the closed window, but the
@@ -271,7 +285,7 @@ The evaluator and its durable logs live outside ResearchWorker and candidate san
 
 | Outcome | Required treatment |
 | --- | --- |
-| Valid and distinct preflight result | Materialize the candidate and record complete experiment, evaluation, finding, and lineage references. |
+| Valid and distinct preflight plus exact passed handoff conformance | Materialize the candidate and record complete experiment, conformance, evaluation, finding, admission, and lineage references. |
 | Valid negative economic result | Preserve it as research evidence and lineage; do not erase it or present it as a qualified winner. |
 | Duplicate hypothesis, artifact, or behavior | Record the duplicate finding and source lineage; do not allocate a distinct population slot merely because the identifier differs. |
 | Crash, malformed output, protocol violation, risk invalidation, provider bypass, hidden-data access, private/live attempt | Quarantine the evidence, create no runnable paper handoff, and preserve the exact failure reason. |
@@ -289,6 +303,7 @@ ResearchDirection
 -> inspectable experiments and notebook
 -> candidate submission
 -> sealed ResearchPreflight
+-> external PaperTradingHandoffConformance over the exact submitted artifact
 -> admit | negative evidence | duplicate | quarantine
 -> frozen candidate plus committed evaluation policy
 -> paper research-feedback window OR prospective paper qualification window
@@ -326,7 +341,8 @@ attempt remains available as a `Finding` for future workers.
 P0 passes only when all of the following are demonstrated from current code and tests:
 
 1. A failed, crashed, malformed, or disqualified ResearchWorker produces zero runnable paper
-   candidates and an exact quarantined finding.
+   candidates and an exact quarantined finding; replay success cannot bypass target paper-protocol
+   conformance.
 2. A valid loss-making result remains visible research memory without becoming qualification proof.
 3. Evidence purpose is immutable and a research-feedback window cannot be relabeled for
    qualification.
@@ -348,10 +364,6 @@ P0 passes only when all of the following are demonstrated from current code and 
 
 The following current surfaces require implementation work before P0 can pass:
 
-- `packages/application/src/trading/research/replay-trading-api-provider.ts` exposes evaluator-like
-  directional hints in its small replay scenario payload.
-- `packages/application/src/services/operator.ts` selects a created research candidate for paper
-  without a separate conformance proof for the target protocol.
 - The internal comparison coordinators can create and verify an inert prospective `qualification`
   pair, persist a contiguous Gateway-owned tick sequence, run both paper-only sides, record exact
   role-bound delivery and acknowledgement, and atomically commit paired observations through a
@@ -391,13 +403,26 @@ The following current surfaces require implementation work before P0 can pass:
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and behavior-level duplicate detection is incomplete.
 
+The sealed candidate-to-paper handoff is now partial conformance evidence rather than a current
+gap. Candidate-facing replay and paper-probe payloads omit evaluator direction, outcome, hidden
+risk, private, credential, direct-order, and live fields. Every replay-accepted iteration runs the
+exact sealed submitted bytes through bounded host or `sbx` target-protocol probing with the
+production paper event parser. LocalStore binds the resulting
+`PaperTradingHandoffConformanceRecord` to SystemCode, ExperimentRun, evaluation task, and admission;
+materialization requires `passed`, and generated-candidate paper start revalidates the exact graph
+before any paper effect. Rejection creates no candidate and remains causal research memory, while
+runner/provider setup failure remains infrastructure attribution. This proves bounded protocol
+compatibility only, not long-duration liveness, economic quality, qualification, comparison,
+promotion, production scheduling, private/live authority, or P0 completion.
+
 These are target gaps, not permission to widen one patch across every subsystem. Each implementation
 frontier must preserve the full protocol while remaining independently testable.
 
-The implemented admission and commitment frontiers are partial conformance evidence only. They
-demonstrate that failed,
-unchanged, crashed, disqualified, and quarantined submissions cannot materialize a runnable paper
-candidate; valid accepted negative results remain research memory; low-cost rejection is not
+The implemented admission, handoff-conformance, and commitment frontiers are partial conformance
+evidence only. They demonstrate that failed, unchanged, crashed, disqualified, and quarantined
+submissions cannot materialize a runnable paper candidate; exact sealed target-protocol proof is
+required before new admission and generated-candidate paper effects; valid accepted negative
+results remain research memory; low-cost rejection is not
 treated as favorable allocation evidence; admission outcomes are distinct from infrastructure
 failure; every reachable paper start is precommitted as research feedback; executable or policy
 drift invalidates before new evidence; research history cannot qualify or promote; and active
@@ -434,10 +459,13 @@ control, not long-lived worker recovery, calibrated reward learning, or economic
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
    implemented and validated; read-only paired qualification and sealed single-window adjudication
    are also implemented internally, while production comparison and runner composition remain.
-2. **Implemented:** a dedicated admission policy gates candidate materialization after
-   `ResearchPreflight`.
-3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
-   broader adversarial coverage remain.
+2. **Implemented:** a dedicated admission policy gates candidate materialization after sealed
+   `ResearchPreflight` and exact passed `PaperTradingHandoffConformance`; generated-candidate paper
+   start revalidates the same persisted graph before effects.
+3. **Partial:** sealed-preflight and paper-handoff anti-hacking fixtures remove direct evaluator
+   direction/outcome exposure and reject bounded protocol, provider, self-report, hidden-field,
+   private/live, and timeout violations. Repeated-score/window probing, broader evaluator side
+   channels, window cherry-picking, and behavior-level duplicate coverage remain.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

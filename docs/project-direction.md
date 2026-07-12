@@ -23,7 +23,9 @@ turns that direction into review-packet, UX, eval, and implementation-frontier d
 
 Two names keep the evaluation boundary stable: `ResearchPreflight` is replay, backtest, or
 simulation inside candidate creation; `PaperTradingEvaluation` is selected-candidate continuous
-paper trading over live public market data.
+paper trading over live public market data. Between them,
+`PaperTradingHandoffConformance` is external research-only proof that the exact submitted artifact
+satisfies the bounded target paper event protocol before admission and generated-candidate start.
 
 ## Source Of Truth
 
@@ -40,6 +42,8 @@ authority.
 ```text
 parallel TradingSystem candidates
 -> research-time replay/backtest preflight
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -51,6 +55,13 @@ Researchers and LLM agents generate candidates; they do not grant authority. Rep
 research tool, not final evaluation authority. It can help researchers create, compare, and reject
 ideas before a candidate enters paper, but it must not become the product leaderboard authority for
 living agent-based systems.
+
+Replay success alone does not establish runnable handoff. New admitted candidates bind exact
+passed `PaperTradingHandoffConformance`, and generated-candidate paper start revalidates it before
+effects. Generated single-file Python SystemCode identity includes its frozen manifest and sole
+editable entrypoint; undeclared closure state is invalid. Rejected protocol evidence stays in causal research memory, while infrastructure failure
+stays platform-attributed. Conformance has no economic, qualification, promotion, order, private,
+or live authority.
 
 Continuous paper trading is the evaluation authority. Selected candidates run against live public
 market data through the Gateway-owned `MarketDataPort`, fake account, fake executor, and Ledger.

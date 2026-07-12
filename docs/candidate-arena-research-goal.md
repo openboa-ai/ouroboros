@@ -80,7 +80,7 @@ progress, not completion.
 | Longitudinal autonomy | A bounded soak run continues research, evaluation, memory, and next-generation work without iteration-by-iteration human instructions, and resumes correctly after restart. |
 | Genuine population diversity | Distinct directions produce measurably different hypotheses, artifacts, or decision behavior; duplicates are detected and do not occupy distinct population slots. |
 | ResearchWorker autonomy | A worker has a persistent sandbox or workspace, notebook, budget, and multiple experiment opportunities, and can choose its own de-risking and iteration sequence. |
-| External evaluation and admission | Candidate output is evaluated outside its authority; crashed, malformed, boundary-bypassing, leaked, and otherwise invalid submissions cannot reach runnable paper handoff. |
+| External evaluation and admission | Candidate output is evaluated outside its authority; the exact submitted artifact must pass sealed ResearchPreflight and bounded target paper-protocol conformance, and crashed, malformed, boundary-bypassing, leaked, and otherwise invalid submissions cannot reach runnable paper handoff. |
 | Comparable prospective evidence | Candidate identity and evaluation policy are committed before a paper window; challengers see the same eligible market opportunity and cost assumptions as their comparator. |
 | Causal research memory | Positive, negative, invalid, and duplicate findings resolve through lineage and are consumed by later workers; a controlled ablation shows less repeated failure or better discovery yield than a no-memory condition. |
 | Adaptive allocation | Findings, regime evidence, failures, novelty, and cost change actual worker selection, concurrency, or budget while an exploration floor prevents entropy collapse. |
@@ -98,6 +98,21 @@ equal-bound `2`, `2`, `1` ablation. This does not complete the Adaptive allocati
 long-lived worker ownership, provider-dollar cost, controlled discovery-yield results, and the
 remaining completion evidence are still open.
 
+Current partial implementation evidence also covers the candidate-to-paper handoff boundary.
+Candidate-facing replay and paper-probe payloads exclude evaluator-only direction, outcome, hidden
+risk, private, credential, direct-order, and live fields. Every replay-accepted research iteration
+runs the exact sealed submitted artifact through a bounded external
+`PaperTradingHandoffConformance` probe using the production paper event parser. New admission and
+materialization require the exact passed record, and generated-candidate paper start revalidates
+that graph before commitment, provider, sandbox, runner, Ledger, or observation effects. Generated
+single-file Python identity is a canonical manifest-plus-entrypoint closure digest; undeclared
+files, directories, symlinks, editable paths, and manifest drift are rejected. Rejected
+conformance remains a causal Finding and infrastructure failure remains a direction failure. This
+does not complete external evaluation, P0, or the Goal: repeated-score and window probing,
+behavior-level duplicate detection, durable ResearchWorker recovery, production comparison
+scheduling, automatic promotion, champion runner handoff, private/live authority, and the other
+completion axes remain open.
+
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a
 versioned evaluation policy. They must be declared before a run rather than chosen after results are
 visible.
@@ -109,6 +124,8 @@ Any one of these conditions vetoes Goal completion:
 - Candidate or ResearchWorker can read hidden outcomes, future data, evaluator internals, or
   qualification results before their release boundary.
 - Candidate self-report, generated explanation, or provider optimism can count as evaluation proof.
+- Replay success or a manifest declaration can claim runnable paper handoff without exact external
+  target-protocol conformance for the submitted artifact.
 - A crashed, malformed, disqualified, duplicate, risk-invalid, provider-bypassing, private, or live
   submission can enter qualified paper evaluation.
 - The same adaptive feedback window is reused as independent qualification evidence.

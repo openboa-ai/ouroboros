@@ -13,11 +13,12 @@ that pack every axis into one identifier.
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
-| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests and external evaluation to classify a submission as admitted, duplicate, or quarantined before candidate materialization; it grants no paper qualification or live authority. |
+| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests, external evaluation, and paper handoff conformance when probed to classify a submission as admitted, duplicate, or quarantined before materialization; only exact passed conformance may produce an admitted runnable handoff, and the decision grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
+| `PaperTradingHandoffConformance` | External research-only proof that one exact submitted SystemCode artifact closure satisfies the bounded target paper event protocol before admission, materialization, and generated-candidate paper start; it carries no economic, qualification, promotion, order, private, or live authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
 | `PaperTradingComparisonCommitment` | Append-only champion/challenger qualification envelope that binds two frozen, distinct, inert paper sessions and one comparison policy before market outcomes exist. |
@@ -92,6 +93,12 @@ standard term fits. Record that decision in repo docs and tests.
   selection fields.
 - Do not call candidate output proof. ResearchPreflight is not final authority; selected continuous
   PaperTradingEvaluation and Ledger evidence are proof.
+- Do not infer paper readiness from replay success. Every new runnable handoff requires one exact
+  passed `PaperTradingHandoffConformance`, and generated-candidate paper start must revalidate its
+  admission linkage before paper effects.
+- Do not call entrypoint bytes a complete generated SystemCode identity when sibling manifest or
+  dependency state can alter execution. The current single-file Python contract hashes the frozen
+  manifest plus sole editable entrypoint and rejects every undeclared closure entry.
 - Do not imply TradingSystem is only code. It may include an internal agent runtime, but it must
   emit bounded validated OrderRequests when it chooses to trade.
 - Do not make paper observations force TradingSystem decisions. Observations are checkpoint/readback

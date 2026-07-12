@@ -1,6 +1,6 @@
 # Paper Trading Handoff Conformance Design
 
-**Status:** Approved for implementation
+**Status:** Implemented and verified as external paper handoff conformance
 
 ## Goal
 
@@ -81,6 +81,8 @@ Use `passed`, `rejected`, and `infrastructure_failed` for outcomes:
 
 The conformance gate must detect:
 
+- undeclared artifact files, directories, symlinks, editable paths, manifest drift, or dependency
+  closure changes outside the submitted single-file SystemCode contract;
 - replay-only behavior that crashes or exits incorrectly in paper mode;
 - missing or malformed `order_request`, `hold`, or `no_action` event;
 - missing runtime heartbeat or bounded `runtime_stopped` evidence;
@@ -99,6 +101,8 @@ artifact directory and manifest used by replay.
 
 The probe uses:
 
+- one sealed `single_file_python_v1` artifact closure containing only `manifest.json` and the
+  declared entrypoint; the canonical SystemCode artifact digest covers both files;
 - protocol version `paper_trading_event_protocol_v1`;
 - one fixed opaque probe instance ID and start time;
 - `--ticks 1`, bounded interval, and paper-only order request mode;
@@ -127,7 +131,7 @@ export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
   record_kind: "paper_trading_handoff_conformance";
   paper_trading_handoff_conformance_id: string;
   system_code_ref: Ref;
-  system_code_artifact_digest: string;
+  system_code_artifact_digest: string; // canonical manifest plus entrypoint closure digest
   experiment_run_ref: Ref;
   trading_evaluation_task_ref: Ref;
   protocol_version: "paper_trading_event_protocol_v1";
@@ -150,7 +154,10 @@ export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
 }
 ```
 
-The digest freezes identity, protocol, result, bounded evidence summary, timestamps, and authority.
+The SystemCode artifact digest freezes the canonical manifest plus entrypoint closure. Research
+rejects undeclared files, directories, symlinks, and editable-path drift before provider or runner
+effects, then detects and restores closure mutation after every replay/probe. The evidence digest
+freezes identity, protocol, result, bounded evidence summary, timestamps, and authority.
 The record never stores raw secrets, candidate-authored profit, hidden evaluator state, or live
 credentials. Bounded raw runner evidence remains under the CandidateArena research run directory
 and is not shown to the ResearchWorker.
@@ -187,6 +194,10 @@ the exact conformance ref, digest, and status.
 runner, or Ledger effects when a materialized generated candidate lacks one exact admitted,
 digest-valid, passed conformance record for its active SystemCode and ExperimentRun.
 
+The filesystem artifact resolver recomputes the same canonical closure digest and rejects any
+added, removed, symlinked, or manifest-drifted entry before paper preparation. Entrypoint bytes
+alone are insufficient for generated CandidateArena SystemCode identity.
+
 Fixture candidates without a materialization attempt retain their existing explicit fixture path.
 Conformance grants no start authority by itself: all existing candidate identity, evidence-purpose,
 artifact digest, provider identity, risk, Gateway, and paper-only checks still apply.
@@ -217,6 +228,8 @@ show the compact proof later, but no new UI control is required in this frontier
 ### CandidateArena and runtime
 
 - prove the probe runs on the same artifact digest before admission and materialization;
+- prove manifest-only drift, undeclared helper files/directories/symlinks, and runtime-created
+  closure state cannot survive evaluation or paper-start revalidation;
 - prove a replay-pass/paper-fail candidate creates no candidate and no paper start;
 - prove passed conformance binds admission, materialized candidate, and start revalidation;
 - prove tampered, missing, rejected, or cross-SystemCode conformance fails before paper effects;
@@ -231,12 +244,14 @@ This frontier is complete only when current code and tests prove:
 1. candidate-facing replay and conformance inputs contain no evaluator-only fields;
 2. replay success alone cannot set a new admission's runnable handoff;
 3. the exact submitted bytes pass the bounded production paper event parser before materialization;
-4. rejected conformance creates no candidate and preserves a causal Finding;
-5. infrastructure failure remains a direction failure, not strategy evidence;
-6. LocalStore binds conformance to SystemCode, ExperimentRun, evaluation task, and admission;
-7. generated-candidate paper start revalidates exact passed evidence before any paper effect;
-8. host and `sbx` paths satisfy the same contract and clean up;
-9. focused tests, workspace typechecks, repository guards, and the full suite pass.
+4. the exact submitted bytes mean one canonical manifest-plus-entrypoint closure, not only the
+   entrypoint file;
+5. rejected conformance creates no candidate and preserves a causal Finding;
+6. infrastructure failure remains a direction failure, not strategy evidence;
+7. LocalStore binds conformance to SystemCode, ExperimentRun, evaluation task, and admission;
+8. generated-candidate paper start revalidates exact passed evidence before any paper effect;
+9. host and `sbx` paths satisfy the same contract and clean up;
+10. focused tests, workspace typechecks, repository guards, and the full suite pass.
 
 ## Non-Goals
 

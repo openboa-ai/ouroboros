@@ -55,7 +55,14 @@ Current command groups:
   select an additional TradingRun, evidence purpose, or comparison ID. A `CandidateVersion.runtime_ref`
   identifies that default compatibility session; it does not limit the version to one internally
   owned paper run. Before provider, sandbox, market, Gateway, Ledger, or score
-  effects, the application resolves executable bytes, persists an append-only
+  effects, a materialized generated candidate must resolve one exact digest-valid, passed
+  `PaperTradingHandoffConformance` bound to its active SystemCode, ExperimentRun, evaluation task,
+  and admitted `CandidateAdmissionDecision`; missing, rejected, drifted, or cross-candidate
+  evidence fails closed before session preparation. For generated CandidateArena Python code, the
+  resolved artifact digest covers the exact manifest-plus-entrypoint closure and rejects undeclared
+  files, directories, symlinks, editable paths, or manifest drift. Fixture candidates without a materialization
+  attempt retain their explicit fixture path. The application then resolves executable bytes,
+  persists an append-only
   `PaperTradingEvaluationCommitment`, creates the linked evaluation, and verifies the frozen chain.
   Resume, recovery, scheduled observation, and manual observation reverify the original commitment
   instead of reconstructing it from current mutable state. A mismatch terminally invalidates the
@@ -164,7 +171,8 @@ fill, latest classified paper failure, agent/provider status, latest ticks, late
 latest command results, latest `TradingPromotion` state and compact comparison-confirmation
 provenance, `TradingReview` active target binding, latest TradingSystem paper decision when one has
 been emitted, research-efficiency summaries and compact `CandidateArenaResearchAllocation`
-projections for latest CandidateArena ticks, and authority flags.
+projections for latest CandidateArena ticks, compact handoff-conformance ID/status/reason for each
+direction result, and authority flags.
 
 `ResearchEfficiency` is not a leaderboard or promotion metric. It summarizes provider request
 count, runner command count, scenario count, and elapsed milliseconds for a CandidateArena
@@ -172,11 +180,15 @@ direction result with `not_promotion_authority`, so researchers can compare auto
 without weakening paper evidence or Trading review authority.
 
 `CandidateAdmissionDecision` is the research-only external gate between `ResearchPreflight` and
-candidate materialization. A CandidateArena direction result is `created` only when the persisted
-decision is `admitted` with `runnable_paper_handoff: true`. Unchanged output is `duplicate` and
+candidate materialization. Every new admitted decision binds the exact source/submitted SystemCode
+digests, external evaluation, and `PaperTradingHandoffConformance` ref/digest/status. Duplicate or
+pre-probe quarantine decisions may have no conformance linkage. A CandidateArena direction result
+is `created` only when the persisted decision is `admitted` with
+`runnable_paper_handoff: true` and exact passed conformance. Unchanged output is `duplicate` and
 invalid external evaluation is `quarantined`. Every completed admission outcome carries
 `admission_decision_id` and `admission_reason`; duplicate and quarantined results also carry a
-finding summary without a candidate id. Infrastructure exceptions remain `failed`. Changed versus
+finding summary without a candidate id. Direction readback exposes only compact conformance
+ID/status/reason, never raw probe output. Infrastructure exceptions remain `failed`. Changed versus
 unchanged is derived from the source and submitted SystemCode artifact
 digests, not the ResearchWorker's edit self-report. Only `not_counted` research evidence can be
 admitted; already counted evidence is quarantined instead of being repurposed as a runnable
@@ -187,7 +199,9 @@ change paper rank, grant promotion, or enable live authority.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the
-ExperimentRun, TradingEvaluationResult, and ResearchFinding form one consistent evidence chain.
+ExperimentRun, handoff conformance, TradingEvaluationResult, and ResearchFinding form one
+consistent evidence chain. Historical admissions without conformance linkage remain readable but
+cannot authorize generated-candidate paper start.
 
 The legacy `runAgentTradingCycle` and `runCandidateGeneration` direct-materialization helpers are
 retired and return `agent_trading_cycle_retired_use_candidate_arena` and
