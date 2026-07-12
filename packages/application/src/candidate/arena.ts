@@ -16,6 +16,9 @@ import type {
   CandidateArenaFindingClusterMarketRegime,
   CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
+  CandidateArenaResearchAllocationMode,
+  CandidateArenaResearchAllocationRecord,
+  CandidateArenaResearchAllocationSelection,
   CandidateArenaResearchEfficiencyReadModel,
   CandidateArenaResearcherReadModel,
   CandidateInspectReadModel,
@@ -48,9 +51,10 @@ import {
 import { safeId } from "../safe-id";
 import {
   DEFAULT_ARENA_DIRECTIONS,
+  CandidateArenaResearchAllocationService,
   candidateArenaAdaptiveDirectionFocus,
   candidateArenaResearchEfficiencyBudgetFocus,
-  candidateArenaResearchEfficiencyExpensiveDirections
+  toCandidateArenaResearchAllocationReadModel
 } from "./research-allocation";
 import { readTradingSystemManifest } from "../trading/research/artifact-runner";
 import type { TradingArtifactRunner } from "../trading/research/artifact-runner";
@@ -132,7 +136,12 @@ export interface RunCandidateArenaTickInput {
   sourceSystemId?: string;
   sourceCandidateVersionId?: string;
   directions?: ResearchDirectionKind[];
+  researchAllocationMode?: Exclude<
+    CandidateArenaResearchAllocationMode,
+    "explicit"
+  >;
   tickId?: string;
+  now?: () => string;
   repoRoot?: string;
   researchAgent: TradingResearchRuntimeAgent;
   agentFactory: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
@@ -314,27 +323,58 @@ export async function runCandidateArenaTick(
   runnerStatus: "running" | "stopped" = "stopped",
   tickCount = 0
 ): Promise<CandidateArenaTickOutcome> {
-  const sourceSelection = await sourceCandidate(input.store, input.sourceSystemId, input.sourceCandidateVersionId);
-  const directions = input.directions ?? await adaptiveDefaultArenaDirections(input.store);
   const tickId = input.tickId ?? `tick-${Date.now()}`;
-  const startedAt = new Date().toISOString();
+  const startedAt = candidateArenaNow(input.now);
+  if (input.directions && input.researchAllocationMode) {
+    throw new Error("candidate_arena_research_allocation_mode_conflict");
+  }
+  const sourceSelection = await sourceCandidate(
+    input.store,
+    input.sourceSystemId,
+    input.sourceCandidateVersionId
+  );
+  const priorArena = await buildCandidateArenaReadModel(
+    input.store,
+    "stopped",
+    tickCount
+  );
+  const allocationMode: CandidateArenaResearchAllocationMode = input.directions
+    ? "explicit"
+    : input.researchAllocationMode ?? "adaptive_default";
+  const allocation = await withArenaStoreMutation(input.store, () =>
+    new CandidateArenaResearchAllocationService({
+      store: input.store,
+      now: () => startedAt
+    }).allocate({
+      tickId,
+      allocationMode,
+      explicitDirections: input.directions,
+      findingClusters: priorArena.finding_clusters,
+      latestTicks: priorArena.latest_ticks
+    })
+  );
+  const selections = allocation.selected_directions;
   const createdCandidateIds: string[] = [];
   const directionResults: CandidateArenaTickDirectionResultReadModel[] = [];
 
-  const settledDirections = await Promise.allSettled(
-    directions.map(async (direction) => ({
-      direction,
+  const settledDirections = await settleArenaSelections(
+    selections,
+    allocation.policy.concurrency_limit,
+    async (selection) => ({
+      selection,
       outcome: await runArenaDirection({
         ...input,
         source: sourceSelection.candidate,
-        direction,
-        tickId
+        direction: selection.direction_kind,
+        tickId,
+        allocation,
+        allocationSelection: selection
       })
-    }))
+    })
   );
 
   for (let index = 0; index < settledDirections.length; index += 1) {
-    const direction = directions[index]!;
+    const direction = selections[index]!.direction_kind;
     const settled = settledDirections[index]!;
     if (settled.status === "fulfilled") {
       const directionOutcome = settled.value.outcome;
@@ -386,7 +426,8 @@ export async function runCandidateArenaTick(
     completedAt: new Date().toISOString(),
     sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
-    directionResults
+    directionResults,
+    allocation
   }));
 
   const arena = await buildCandidateArenaReadModel(input.store, runnerStatus, tickCount);
@@ -399,6 +440,29 @@ export async function runCandidateArenaTick(
   };
 }
 
+async function settleArenaSelections<T>(
+  selections: CandidateArenaResearchAllocationSelection[],
+  concurrencyLimit: number,
+  task: (selection: CandidateArenaResearchAllocationSelection) => Promise<T>
+): Promise<PromiseSettledResult<T>[]> {
+  const settled: PromiseSettledResult<T>[] = [];
+  for (let index = 0; index < selections.length; index += concurrencyLimit) {
+    settled.push(...await Promise.allSettled(
+      selections.slice(index, index + concurrencyLimit).map(task)
+    ));
+  }
+  return settled;
+}
+
+function candidateArenaNow(now: (() => string) | undefined): string {
+  const value = now?.() ?? new Date().toISOString();
+  if (!Number.isFinite(Date.parse(value)) ||
+    new Date(Date.parse(value)).toISOString() !== value) {
+    throw new Error("candidate_arena_invalid_clock");
+  }
+  return value;
+}
+
 export async function buildCandidateArenaReadModel(
   store: OuroborosStorePort,
   runnerStatus: "running" | "stopped",
@@ -408,9 +472,23 @@ export async function buildCandidateArenaReadModel(
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
   );
-  const latestTicks = (await store.listCandidateArenaTicks())
-    .slice(0, 10)
-    .map(toCandidateArenaTickReadModel);
+  const latestTickRecords = (await store.listCandidateArenaTicks()).slice(0, 10);
+  const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
+      "function"
+    ? await store.listCandidateArenaResearchAllocations()
+    : [];
+  const allocationsById = new Map(allocationRecords.map((allocation) => [
+    allocation.candidate_arena_research_allocation_id,
+    allocation
+  ]));
+  const latestTicks = latestTickRecords.map((tick) =>
+    toCandidateArenaTickReadModel(
+      tick,
+      tick.research_allocation_ref
+        ? allocationsById.get(tick.research_allocation_ref.id)
+        : undefined
+    )
+  );
   const entries = candidates
     .filter((candidate): candidate is CandidateInspectReadModel => Boolean(candidate?.full_cycle_lineage?.evidence?.profit_loss))
     .map((candidate) => ({
@@ -487,6 +565,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
   tickId: string;
+  allocation: CandidateArenaResearchAllocationRecord;
+  allocationSelection: CandidateArenaResearchAllocationSelection;
 }): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
@@ -504,21 +584,28 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     artifact_source_dir: artifactSourceDir,
     run_root: path.join(input.store.root(), "candidate-arena-runs", sessionId),
     session_id: sessionId,
-    iterations: 1,
+    iterations: input.allocationSelection.experiment_budget,
     agent_adapter: adapter,
     artifact_runner: input.artifactRunner,
     replay_provider_factory: input.replayProviderFactory,
-    arena_context: await arenaContext(input.store, input.direction)
+    arena_context: await arenaContext(
+      input.store,
+      input.direction,
+      input.allocation,
+      input.allocationSelection
+    )
   });
   const sourceArtifact = await arenaEntrypointArtifact(
     path.join(research.run_root, "seed"),
     sourceManifest.entrypoint
   );
-  const entry = research.entries.at(-1);
+  const entry = [...research.entries].reverse().find((candidate) =>
+    candidate.decision === "keep"
+  ) ?? research.entries.at(-1);
   if (!entry) {
     throw new Error("candidate_arena_missing_research_entry");
   }
-  const researchEfficiency = researchEfficiencySummary(entry);
+  const researchEfficiency = researchEfficiencySummary(research.entries);
   const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
   return withArenaStoreMutation(input.store, async () => {
@@ -1209,7 +1296,12 @@ function isAntiHackingEvaluation(entry: TradingResearchNotebookEntry): boolean {
     entry.evaluation.disqualification_reason === "runtime_self_report_only";
 }
 
-async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
+async function arenaContext(
+  store: OuroborosStorePort,
+  direction: ResearchDirectionKind,
+  allocation: CandidateArenaResearchAllocationRecord,
+  allocationSelection: CandidateArenaResearchAllocationSelection
+): Promise<string> {
   const researchReleases = await arenaPaperTradingComparisonResearchReleases(store);
   const arena = await buildCandidateArenaReadModel(
     store,
@@ -1222,6 +1314,12 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
   const findingClusters = arena.finding_clusters;
   return JSON.stringify({
     requested_direction: direction,
+    current_research_allocation:
+      toCandidateArenaResearchAllocationReadModel(allocation),
+    current_research_selection: {
+      ...allocationSelection,
+      reasons: [...allocationSelection.reasons]
+    },
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
     leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
       rank: entry.rank,
@@ -1532,34 +1630,6 @@ function arenaResearchDiagnosticReasons(
     return ["paper_evaluation_failed"];
   }
   return qualificationReasons.filter((reason) => reason !== "evidence_purpose_not_qualification");
-}
-
-async function adaptiveDefaultArenaDirections(store: OuroborosStorePort): Promise<ResearchDirectionKind[]> {
-  const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
-  const prioritizedDirections = candidateArenaAdaptiveDirectionFocus(arena.finding_clusters)
-    .map((entry) => entry.direction_kind);
-  const budgetFocusDirections = candidateArenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
-    .map((entry) => entry.direction_kind);
-  const expensiveDirections = candidateArenaResearchEfficiencyExpensiveDirections(
-    arena.latest_ticks
-  );
-  const prioritized = uniqueDirections([
-    ...prioritizedDirections,
-    ...budgetFocusDirections
-  ]);
-  return [
-    ...prioritized,
-    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
-      !prioritized.includes(direction) && !expensiveDirections.includes(direction)
-    ),
-    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
-      !prioritized.includes(direction) && expensiveDirections.includes(direction)
-    )
-  ];
-}
-
-function uniqueDirections(directions: ResearchDirectionKind[]): ResearchDirectionKind[] {
-  return directions.filter((direction, index) => directions.indexOf(direction) === index);
 }
 
 function arenaMarketRegime(
@@ -1936,8 +2006,12 @@ function arenaResearcher(
   };
 }
 
-function researchEfficiencySummary(entry: TradingResearchNotebookEntry): CandidateArenaResearchEfficiencyReadModel {
-  const scenarioResults = entry.evaluation.scenario_results ?? [];
+function researchEfficiencySummary(
+  entries: TradingResearchNotebookEntry[]
+): CandidateArenaResearchEfficiencyReadModel {
+  const scenarioResults = entries.flatMap(
+    (entry) => entry.evaluation.scenario_results ?? []
+  );
   return {
     provider_request_total: scenarioResults.reduce(
       (total, result) => total + result.provider_request_count,
@@ -1948,7 +2022,10 @@ function researchEfficiencySummary(entry: TradingResearchNotebookEntry): Candida
       0
     ),
     scenario_count: scenarioResults.length,
-    elapsed_ms: elapsedMs(entry.started_at, entry.completed_at),
+    elapsed_ms: entries.reduce(
+      (total, entry) => total + elapsedMs(entry.started_at, entry.completed_at),
+      0
+    ),
     authority_status: "not_promotion_authority"
   };
 }
@@ -1969,6 +2046,7 @@ function candidateArenaTickRecord(input: {
   sourceCandidate: CandidateArenaTickSourceReadModel;
   createdCandidateIds: string[];
   directionResults: CandidateArenaTickDirectionResultReadModel[];
+  allocation: CandidateArenaResearchAllocationRecord;
 }): CandidateArenaTickRecord {
   return {
     record_kind: "candidate_arena_tick",
@@ -1983,11 +2061,19 @@ function candidateArenaTickRecord(input: {
       ref("trading_system_candidate", candidateId)
     ),
     direction_results: input.directionResults,
+    research_allocation_ref: ref(
+      "candidate_arena_research_allocation",
+      input.allocation.candidate_arena_research_allocation_id
+    ),
+    research_allocation_digest: input.allocation.allocation_digest,
     authority_status: "not_live"
   };
 }
 
-function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): CandidateArenaTickReadModel {
+function toCandidateArenaTickReadModel(
+  tick: CandidateArenaTickRecord,
+  allocation?: CandidateArenaResearchAllocationRecord
+): CandidateArenaTickReadModel {
   return {
     tick_id: tick.tick_id,
     started_at: tick.started_at,
@@ -1996,6 +2082,12 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
     ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
     created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
     direction_results: tick.direction_results,
+    ...(allocation
+      ? {
+          research_allocation:
+            toCandidateArenaResearchAllocationReadModel(allocation)
+        }
+      : {}),
     ...(tick.paper_trading_continuation
       ? { paper_trading_continuation: tick.paper_trading_continuation }
       : {}),

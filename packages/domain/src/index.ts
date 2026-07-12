@@ -5699,6 +5699,21 @@ export interface CandidateArenaResearchAllocationRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
+export interface CandidateArenaResearchAllocationReadModel {
+  allocation_id: string;
+  tick_id: string;
+  allocation_mode: CandidateArenaResearchAllocationMode;
+  policy: CandidateArenaResearchAllocationPolicy;
+  selected_directions: CandidateArenaResearchAllocationSelection[];
+  deferred_directions: ResearchDirectionKind[];
+  allocated_at: string;
+  research_scheduling_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
 const CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS = [
   "trend_following",
   "mean_reversion",
@@ -6028,6 +6043,7 @@ export interface CandidateArenaTickReadModel {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  research_allocation?: CandidateArenaResearchAllocationReadModel;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }

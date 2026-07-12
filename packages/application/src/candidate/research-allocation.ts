@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
   type CandidateArenaFindingClusterReadModel,
   type CandidateArenaResearchAllocationMode,
+  type CandidateArenaResearchAllocationReadModel,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaResearchAllocationSelection,
   type CandidateArenaResearchAllocationSignal,
@@ -14,6 +16,7 @@ import {
   type PaperTradingFailureKind,
   type ResearchDirectionKind
 } from "@ouroboros/domain";
+import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
 
 export const DEFAULT_ARENA_DIRECTIONS: ResearchDirectionKind[] = [
@@ -57,6 +60,100 @@ export class CandidateArenaResearchAllocationDecisionError extends Error {
     super("CandidateArena research allocation decision input is invalid.");
     this.name = "CandidateArenaResearchAllocationDecisionError";
   }
+}
+
+export type CandidateArenaResearchAllocationServiceErrorCode =
+  | "candidate_arena_research_allocation_request_conflict"
+  | "candidate_arena_research_allocation_persistence_conflict";
+
+export class CandidateArenaResearchAllocationServiceError extends Error {
+  constructor(
+    readonly code: CandidateArenaResearchAllocationServiceErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = "CandidateArenaResearchAllocationServiceError";
+  }
+}
+
+export class CandidateArenaResearchAllocationService {
+  private readonly now: () => string;
+
+  constructor(private readonly options: {
+    store: OuroborosStorePort;
+    now?: () => string;
+  }) {
+    this.now = options.now ?? (() => new Date().toISOString());
+  }
+
+  async allocate(input: {
+    tickId: string;
+    allocationMode: CandidateArenaResearchAllocationMode;
+    explicitDirections?: ResearchDirectionKind[];
+    findingClusters: CandidateArenaFindingClusterReadModel[];
+    latestTicks: CandidateArenaTickReadModel[];
+  }): Promise<CandidateArenaResearchAllocationRecord> {
+    const tickId = canonicalId(input?.tickId);
+    const allocationId = `candidate-arena-research-allocation-${safeId(tickId)}`;
+    const existing = await this.options.store
+      .getCandidateArenaResearchAllocation(allocationId);
+    if (existing) {
+      if (!allocationRequestMatches(existing, input)) {
+        throw new CandidateArenaResearchAllocationServiceError(
+          "candidate_arena_research_allocation_request_conflict",
+          "CandidateArena research allocation request conflicts with frozen intent."
+        );
+      }
+      return existing;
+    }
+
+    const [priorAllocations, completedTicks] = await Promise.all([
+      this.options.store.listCandidateArenaResearchAllocations(),
+      this.options.store.listCandidateArenaTicks()
+    ]);
+    const allocation = decideCandidateArenaResearchAllocation({
+      tickId,
+      allocatedAt: this.now(),
+      allocationMode: input.allocationMode,
+      explicitDirections: input.explicitDirections,
+      findingClusters: input.findingClusters,
+      latestTicks: input.latestTicks,
+      priorAllocations,
+      completedTickIds: completedTicks.map((tick) => tick.tick_id)
+    });
+    const recorded = await this.options.store
+      .recordCandidateArenaResearchAllocation(allocation);
+    if (!candidateArenaResearchAllocationHasRuntimeShape(recorded) ||
+      !isDeepStrictEqual(recorded, allocation)) {
+      throw new CandidateArenaResearchAllocationServiceError(
+        "candidate_arena_research_allocation_persistence_conflict",
+        "Store did not preserve exact CandidateArena research allocation intent."
+      );
+    }
+    return recorded;
+  }
+}
+
+export function toCandidateArenaResearchAllocationReadModel(
+  allocation: CandidateArenaResearchAllocationRecord
+): CandidateArenaResearchAllocationReadModel {
+  return {
+    allocation_id: allocation.candidate_arena_research_allocation_id,
+    tick_id: allocation.tick_id,
+    allocation_mode: allocation.allocation_mode,
+    policy: { ...allocation.policy },
+    selected_directions: allocation.selected_directions.map((selection) => ({
+      ...selection,
+      reasons: [...selection.reasons]
+    })),
+    deferred_directions: [...allocation.deferred_directions],
+    allocated_at: allocation.allocated_at,
+    research_scheduling_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
 }
 
 export function decideCandidateArenaResearchAllocation(
@@ -521,6 +618,23 @@ function nextResearchFocusForFailureKind(kind: PaperTradingFailureKind): string 
   }
 }
 
+function allocationRequestMatches(
+  existing: CandidateArenaResearchAllocationRecord,
+  input: {
+    allocationMode: CandidateArenaResearchAllocationMode;
+    explicitDirections?: ResearchDirectionKind[];
+  }
+): boolean {
+  if (existing.allocation_mode !== input.allocationMode) return false;
+  if (input.allocationMode !== "explicit") {
+    return input.explicitDirections === undefined;
+  }
+  return Array.isArray(input.explicitDirections) && arraysEqual(
+    existing.selected_directions.map((selection) => selection.direction_kind),
+    input.explicitDirections
+  );
+}
+
 function canonicalExplicitDirections(
   value: unknown
 ): ResearchDirectionKind[] {
@@ -568,6 +682,11 @@ function stringArray(value: unknown): value is string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
 }
 
 function defaultDirectionIndex(direction: ResearchDirectionKind): number {

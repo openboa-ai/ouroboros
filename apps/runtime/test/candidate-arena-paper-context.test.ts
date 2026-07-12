@@ -334,12 +334,10 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(secondTick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
       "trend_following",
-      "mean_reversion",
       "volatility_regime",
-      "funding_aware_risk",
-      "execution_cost_robustness"
+      "funding_aware_risk"
     ]);
-    expect(capturedContexts).toHaveLength(5);
+    expect(capturedContexts).toHaveLength(3);
     const context = JSON.parse(capturedContexts[0]!) as {
       latest_research_efficiency: Array<{
         tick_id: string;
@@ -1576,9 +1574,7 @@ describe("CandidateArena paper evidence context", () => {
     expect(secondTick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
       "execution_cost_robustness",
       "trend_following",
-      "mean_reversion",
-      "volatility_regime",
-      "funding_aware_risk"
+      "mean_reversion"
     ]);
 
     const secondTickContexts = capturedContexts.slice(-5).map((rawContext) => JSON.parse(rawContext) as {
@@ -1592,6 +1588,32 @@ describe("CandidateArena paper evidence context", () => {
         authority_status: string;
       }>;
     });
+    expect(secondTickContexts.reduce<Record<string, number>>((counts, entry) => {
+      counts[entry.requested_direction] =
+        (counts[entry.requested_direction] ?? 0) + 1;
+      return counts;
+    }, {})).toEqual({
+      execution_cost_robustness: 2,
+      trend_following: 2,
+      mean_reversion: 1
+    });
+    expect(secondTick?.research_allocation?.selected_directions).toEqual([
+      expect.objectContaining({
+        direction_kind: "execution_cost_robustness",
+        selection_kind: "focus",
+        experiment_budget: 2
+      }),
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        selection_kind: "focus",
+        experiment_budget: 2
+      }),
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        selection_kind: "exploration",
+        experiment_budget: 1
+      })
+    ]);
     const context = secondTickContexts.find((entry) => entry.requested_direction === "execution_cost_robustness");
     if (!context) {
       throw new Error("execution cost robustness context missing");
@@ -1605,6 +1627,175 @@ describe("CandidateArena paper evidence context", () => {
       next_research_focus: "Restore public execution evidence before trusting fills or paper score.",
       authority_status: "not_promotion_authority"
     });
+  });
+
+  it("persists research allocation before effects and bounds default concurrency", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const probe: AllocationExecutionProbe = {
+      active: 0,
+      maximumActive: 0,
+      calls: [],
+      visibleAllocationIds: []
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "allocation-pre-effect-tick",
+      researchAgent: "codex",
+      agentFactory: () => new AllocationProbeResearchAgent(store, probe),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const tick = outcome.arena.latest_ticks.find((entry) =>
+      entry.tick_id === outcome.tick_id
+    ) as typeof outcome.arena.latest_ticks[number] & {
+      research_allocation?: {
+        allocation_id: string;
+        allocation_mode: string;
+        selected_directions: Array<{
+          direction_kind: string;
+          selection_kind: string;
+          experiment_budget: number;
+        }>;
+        policy: { concurrency_limit: number };
+      };
+    };
+    const allocations = await store.listCandidateArenaResearchAllocations();
+
+    expect(allocations).toHaveLength(1);
+    expect(probe.visibleAllocationIds).toEqual([
+      allocations[0]!.candidate_arena_research_allocation_id,
+      allocations[0]!.candidate_arena_research_allocation_id,
+      allocations[0]!.candidate_arena_research_allocation_id
+    ]);
+    expect(probe.maximumActive).toBe(2);
+    expect([...probe.calls].sort()).toEqual([
+      "mean_reversion:1",
+      "trend_following:1",
+      "volatility_regime:1"
+    ]);
+    expect(tick.direction_results.map((entry) => entry.direction_kind)).toEqual([
+      "trend_following",
+      "mean_reversion",
+      "volatility_regime"
+    ]);
+    expect(tick.research_allocation).toMatchObject({
+      allocation_id: allocations[0]!
+        .candidate_arena_research_allocation_id,
+      allocation_mode: "adaptive_default",
+      policy: { concurrency_limit: 2 },
+      selected_directions: [
+        {
+          direction_kind: "trend_following",
+          selection_kind: "exploration",
+          experiment_budget: 1
+        },
+        {
+          direction_kind: "mean_reversion",
+          selection_kind: "exploration",
+          experiment_budget: 1
+        },
+        {
+          direction_kind: "volatility_regime",
+          selection_kind: "exploration",
+          experiment_budget: 1
+        }
+      ]
+    });
+  });
+
+  it("applies static allocation budgets to iterations and aggregate efficiency", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const contexts: string[] = [];
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "static-allocation-budget-tick",
+      researchAllocationMode: "static_control",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(contexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    } as Parameters<typeof runCandidateArenaTick>[0]);
+    const tick = outcome.arena.latest_ticks.find((entry) =>
+      entry.tick_id === outcome.tick_id
+    ) as typeof outcome.arena.latest_ticks[number] & {
+      research_allocation?: { allocation_mode: string };
+    };
+    const callsByDirection = contexts.reduce<Record<string, number>>(
+      (counts, rawContext) => {
+        const direction = (JSON.parse(rawContext) as {
+          requested_direction: string;
+        }).requested_direction;
+        counts[direction] = (counts[direction] ?? 0) + 1;
+        return counts;
+      },
+      {}
+    );
+
+    expect(callsByDirection).toEqual({
+      trend_following: 2,
+      mean_reversion: 2,
+      volatility_regime: 1
+    });
+    expect(tick.research_allocation?.allocation_mode).toBe("static_control");
+    expect(tick.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        research_efficiency: expect.objectContaining({
+          provider_request_total: 12,
+          runner_command_total: 0,
+          scenario_count: 4
+        })
+      }),
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        research_efficiency: expect.objectContaining({
+          provider_request_total: 12,
+          runner_command_total: 0,
+          scenario_count: 4
+        })
+      }),
+      expect.objectContaining({
+        direction_kind: "volatility_regime",
+        research_efficiency: expect.objectContaining({
+          provider_request_total: 6,
+          runner_command_total: 0,
+          scenario_count: 2
+        })
+      })
+    ]);
+  });
+
+  it("retains failed selected workers under persisted allocation intent", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "failed-allocation-tick",
+      researchAgent: "codex",
+      agentFactory: () => new FailedResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const allocation = (await store.listCandidateArenaResearchAllocations())[0];
+    const tick = outcome.arena.latest_ticks.find((entry) =>
+      entry.tick_id === outcome.tick_id
+    ) as typeof outcome.arena.latest_ticks[number] & {
+      research_allocation?: { allocation_id: string };
+    };
+
+    expect(allocation?.selected_directions).toHaveLength(3);
+    expect(tick.direction_results).toHaveLength(3);
+    expect(tick.direction_results.every((entry) =>
+      entry.status === "quarantined" || entry.status === "failed"
+    )).toBe(true);
+    expect(tick.research_allocation?.allocation_id).toBe(
+      allocation?.candidate_arena_research_allocation_id
+    );
   });
 
   it("uses only released campaign findings for context and direction ablation", async () => {
@@ -1628,12 +1819,12 @@ describe("CandidateArena paper evidence context", () => {
     expect(unreleased.arena.latest_ticks.find((tick) =>
       tick.tick_id === unreleased.tick_id)?.direction_results[0]?.direction_kind
     ).toBe("trend_following");
-    const unreleasedContexts = capturedContexts.slice(0, 5).map((value) =>
+    const unreleasedContexts = capturedContexts.slice(0, 3).map((value) =>
       JSON.parse(value) as {
         released_campaign_findings?: unknown[];
         finding_clusters: Array<{ candidate_ids: string[] }>;
       });
-    expect(unreleasedContexts).toHaveLength(5);
+    expect(unreleasedContexts).toHaveLength(3);
     expect(unreleasedContexts.every((context) =>
       context.released_campaign_findings?.length === 0)).toBe(true);
     expect(unreleasedContexts.flatMap((context) =>
@@ -1653,7 +1844,7 @@ describe("CandidateArena paper evidence context", () => {
       tick.tick_id === released.tick_id);
     expect(releasedTick?.direction_results[0]?.direction_kind).toBe("mean_reversion");
 
-    const releasedContexts = capturedContexts.slice(-5).map((value) =>
+    const releasedContexts = capturedContexts.slice(-4).map((value) =>
       JSON.parse(value) as {
         requested_direction: string;
         released_campaign_findings: Array<Record<string, unknown>>;
@@ -1793,9 +1984,7 @@ describe("CandidateArena paper evidence context", () => {
     expect(tick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
       "mean_reversion",
       "volatility_regime",
-      "funding_aware_risk",
-      "execution_cost_robustness",
-      "trend_following"
+      "funding_aware_risk"
     ]);
 
     const budgetContexts = capturedContexts.map((rawContext) => JSON.parse(rawContext) as {
@@ -1967,6 +2156,61 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
       summary: "Captured arena context and versioned the candidate artifact.",
       changed_paths: ["run.py"]
     };
+  }
+}
+
+type AllocationExecutionProbe = {
+  active: number;
+  maximumActive: number;
+  calls: string[];
+  visibleAllocationIds: Array<string | undefined>;
+};
+
+class AllocationProbeResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-allocation-probe",
+    provider: "codex",
+    model: "allocation-probe",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  constructor(
+    private readonly store: LocalStore,
+    private readonly probe: AllocationExecutionProbe
+  ) {}
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const context = JSON.parse(input.arena_context ?? "{}") as {
+      requested_direction?: string;
+    };
+    const direction = context.requested_direction ?? "missing";
+    this.probe.active += 1;
+    this.probe.maximumActive = Math.max(
+      this.probe.maximumActive,
+      this.probe.active
+    );
+    this.probe.calls.push(`${direction}:${input.iteration}`);
+    this.probe.visibleAllocationIds.push(
+      (await this.store.listCandidateArenaResearchAllocations())[0]
+        ?.candidate_arena_research_allocation_id
+    );
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const runPath = path.join(input.artifact_dir, "run.py");
+      const source = await readFile(runPath, "utf8");
+      await writeFile(
+        runPath,
+        `${source}\n# Allocation probe ${direction} ${input.iteration}.\n`,
+        "utf8"
+      );
+      return {
+        status: "edited",
+        summary: `Allocation probe edited ${direction}.`,
+        changed_paths: ["run.py"]
+      };
+    } finally {
+      this.probe.active -= 1;
+    }
   }
 }
 

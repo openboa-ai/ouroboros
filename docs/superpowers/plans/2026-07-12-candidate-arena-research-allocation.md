@@ -479,7 +479,7 @@ git commit -m "feat: persist arena research allocations"
 - Adds compact `research_allocation` to `CandidateArenaTickReadModel`.
 - Maps each selected `experiment_budget` to `runTradingResearchLoop.iterations`.
 
-- [ ] **Step 1: Write failing pre-effect and execution-control tests**
+- [x] **Step 1: Write failing pre-effect and execution-control tests**
 
 Add integration harnesses proving:
 
@@ -493,7 +493,7 @@ Add integration harnesses proving:
 7. a failed selected worker still produces one failed direction result and leaves allocation
    readback intact.
 
-- [ ] **Step 2: Run the integration tests and observe RED**
+- [x] **Step 2: Run the integration tests and observe RED**
 
 ```bash
 npm test -- apps/runtime/test/candidate-arena-paper-context.test.ts -t "research allocation|bounded concurrency|experiment budget"
@@ -501,7 +501,7 @@ npm test -- apps/runtime/test/candidate-arena-paper-context.test.ts -t "research
 
 Expected: FAIL because CandidateArena still runs all directions once and persists no pre-effect allocation.
 
-- [ ] **Step 3: Implement allocation service and exact replay**
+- [x] **Step 3: Implement allocation service and exact replay**
 
 Add:
 
@@ -527,7 +527,7 @@ mode and explicit direction list and is returned byte-identically. New evidence 
 allocations and completed ticks, calls the pure decision, persists it, and requires a byte-identical
 Store response.
 
-- [ ] **Step 4: Compose allocation before worker effects**
+- [x] **Step 4: Compose allocation before worker effects**
 
 In `runCandidateArenaTick`, resolve tick ID and fixed `startedAt`, build prior research context, and
 call the allocation service before `runArenaDirection`. Explicit `directions` imply `explicit` mode;
@@ -538,7 +538,7 @@ Replace unbounded `Promise.allSettled` with ordered batches of at most
 `allocation.policy.concurrency_limit`. Pass the complete allocation and selected entry to each
 direction run.
 
-- [ ] **Step 5: Apply experiment budgets and best-entry semantics**
+- [x] **Step 5: Apply experiment budgets and best-entry semantics**
 
 Call:
 
@@ -557,14 +557,14 @@ runTradingResearchLoop({
 Select the most recent notebook entry whose decision is `keep`; use the final entry only when no
 iteration was kept. Aggregate ResearchEfficiency over every entry rather than only the final entry.
 
-- [ ] **Step 6: Bind and project the allocation**
+- [x] **Step 6: Bind and project the allocation**
 
 Add allocation ref/digest to the tick builder. Load allocations while building latest tick read
 models and expose allocation ID, mode, policy bounds, selections, deferred directions, allocated
 time, and closed authority. Add the same compact object plus the current selection to researcher
 context.
 
-- [ ] **Step 7: Run focused integration and typechecks**
+- [x] **Step 7: Run focused integration and typechecks**
 
 ```bash
 npm test -- packages/application/src/candidate/research-allocation.test.ts packages/local-store/test/candidate-arena-research-allocation.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts
@@ -574,7 +574,7 @@ npm run typecheck --workspace @ouroboros/runtime
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit executable allocation**
+- [x] **Step 8: Commit executable allocation**
 
 ```bash
 git add packages/application/src/candidate/research-allocation.ts packages/application/src/candidate/arena.ts packages/domain/src/index.ts apps/runtime/test/candidate-arena-paper-context.test.ts
