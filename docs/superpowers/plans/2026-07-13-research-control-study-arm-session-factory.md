@@ -38,7 +38,7 @@ LocalStore.
   accepts `{ root, armKind, store }` and resolves to a real
   `ResearchControlCampaignPaperRuntimeArmSessions`.
 
-- [ ] **Step 1: Write the failing Store-routing tests**
+- [x] **Step 1: Write the failing Store-routing tests**
 
 Create a test with two `RoutedStore` instances that override `getCandidateForTradingRun` to record
 the requested run ID and return `undefined`. Create the factory with context-recording sandbox and
@@ -70,7 +70,7 @@ expect(controlStore.requestedRuns).toEqual(["control-run"]);
 Add a second test that supplies a mismatched `root` and asserts rejection with
 `research_control_study_arm_session_store_root_mismatch` before either dependency builder runs.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -82,7 +82,7 @@ Expected: FAIL because
 `research-control-study-arm-session-factory.ts` and
 `createResearchControlStudyArmSessionFactory` do not exist.
 
-- [ ] **Step 3: Implement the minimal factory**
+- [x] **Step 3: Implement the minimal factory**
 
 Create the production module with this public shape:
 
@@ -140,7 +140,7 @@ return new PaperTradingSessionService({
 Use one exported error class/code for the direct root mismatch. Do not catch dependency or session
 errors; `runResearchControlCampaignToOutcome` already wraps them at the arm-composition boundary.
 
-- [ ] **Step 4: Run focused tests and typecheck**
+- [x] **Step 4: Run focused tests and typecheck**
 
 Run:
 
@@ -151,7 +151,7 @@ npm run typecheck -w @ouroboros/runtime
 
 Expected: both files pass and runtime TypeScript reports no errors.
 
-- [ ] **Step 5: Run repository guards**
+- [x] **Step 5: Run repository guards**
 
 Run:
 
@@ -162,7 +162,7 @@ git diff --check
 
 Expected: all guards pass with no whitespace errors.
 
-- [ ] **Step 6: Record evidence and commit**
+- [x] **Step 6: Record evidence and commit**
 
 Mark the steps complete and append exact test counts. Stage only the plan, factory, and focused test,
 then commit:
@@ -177,4 +177,7 @@ git commit -m "feat: compose arm-local paper sessions"
 
 ## Verification Evidence
 
-Evidence is recorded after RED/GREEN implementation.
+- RED: the focused test failed because the arm-session factory module did not exist.
+- GREEN: the factory and existing study-runtime tests passed 2 files and 15 tests.
+- `@ouroboros/runtime` TypeScript validation passed.
+- Repository docs, architecture, naming, tracked-env, secret, and diff guards passed.
