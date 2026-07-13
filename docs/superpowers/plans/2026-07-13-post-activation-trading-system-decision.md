@@ -155,7 +155,7 @@ git commit -m "fix: bind comparison decisions to delivered ticks"
   `delivery_digest`.
 - Produces: one sequence-2+ order or hold event in the sandbox log before the exact ack request.
 
-- [ ] **Step 1: Extend the cadence test to prove ordering and deduplication**
+- [x] **Step 1: Extend the cadence test to prove ordering and deduplication**
 
 Capture stdout and request-hook order. Require the sequence-2 event to contain:
 
@@ -171,7 +171,7 @@ Record `acknowledge` hook snapshots of parsed stdout/log state and assert the se
 already present when context 2 is acknowledged. Assert sequence 1 adds no decision and repeated
 context 1 adds no duplicate event or ack.
 
-- [ ] **Step 2: Run the fixture test and verify RED**
+- [x] **Step 2: Run the fixture test and verify RED**
 
 Run:
 
@@ -181,7 +181,7 @@ npx vitest run apps/runtime/test/clock-artifact.test.ts
 
 Expected: context 2 is acknowledged without a sequence-2 decision.
 
-- [ ] **Step 3: Implement sequence-aware fixture decisions**
+- [x] **Step 3: Implement sequence-aware fixture decisions**
 
 Refactor the Python helper so it returns validated context metadata without acknowledging. For a
 new context with `tick_sequence >= 2`, read account state, build and validate the same bounded paper
@@ -189,7 +189,7 @@ intent, attach delivery fields and a sequence-padded event ID, append the event,
 `POST /comparison/tick/ack`. For sequence 1, acknowledge without emitting a second startup
 decision. Update `last_delivery_id` only after ack response validation.
 
-- [ ] **Step 4: Verify and commit Task 2**
+- [x] **Step 4: Verify and commit Task 2**
 
 Run:
 

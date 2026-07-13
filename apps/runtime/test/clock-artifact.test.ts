@@ -200,6 +200,8 @@ describe("Python clock system code fixture", () => {
     const contexts = [comparisonContext(1), comparisonContext(2)];
     const deliveries = [undefined, contexts[0], contexts[0], contexts[1]];
     const acknowledged: unknown[] = [];
+    const acknowledgementLogSnapshots: unknown[][] = [];
+    const logFile = path.join(tmpDir, "clock-comparison-cadence.log");
     let deliveryIndex = 0;
     const provider = await startPaperTradingApiProvider(
       createGatewayRuntimeBinding({ marketData: fakeGatewayMarketDataPort() }),
@@ -208,6 +210,10 @@ describe("Python clock system code fixture", () => {
           deliver: async () => deliveries[deliveryIndex++],
           acknowledge: async ({ context }) => {
             acknowledged.push(context);
+            const log = await readFile(logFile, "utf8").catch(() => "");
+            acknowledgementLogSnapshots.push(log.trim()
+              ? log.trim().split("\n").map((line) => JSON.parse(line))
+              : []);
             const sequence = (context as { tick_sequence: number }).tick_sequence;
             return {
               acknowledgement_ref: {
@@ -231,7 +237,9 @@ describe("Python clock system code fixture", () => {
           "--ticks",
           "4",
           "--interval-ms",
-          "1"
+          "1",
+          "--log-file",
+          logFile
         ],
         {
           env: {
@@ -242,6 +250,30 @@ describe("Python clock system code fixture", () => {
       );
 
       expect(acknowledged).toEqual(contexts);
+      const lines = (await readFile(logFile, "utf8")).trim().split("\n")
+        .map((line) => JSON.parse(line));
+      const decisions = lines.filter((line) =>
+        line.event === "order_request" || line.event === "hold");
+      expect(decisions).toMatchObject([
+        {
+          event_id: "clock-comparison-cadence:order-request:0001"
+        },
+        {
+          event_id: "clock-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        }
+      ]);
+      expect(acknowledgementLogSnapshots[0]).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event_id: "clock-comparison-cadence:order-request:0002" })
+      ]));
+      expect(acknowledgementLogSnapshots[1]).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event_id: "clock-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        })
+      ]));
       expect(provider.requests().map(({ method, path }) => `${method} ${path}`))
         .toEqual([
           "GET /market/snapshot",
@@ -251,6 +283,8 @@ describe("Python clock system code fixture", () => {
           "POST /comparison/tick/ack",
           "GET /market/snapshot",
           "GET /market/snapshot",
+          "GET /account/state",
+          "POST /orders/validate",
           "POST /comparison/tick/ack"
         ]);
     } finally {
