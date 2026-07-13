@@ -78,6 +78,10 @@ import {
   type AgentProfileExecFile
 } from "@ouroboros/application/agent/profiles";
 import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import {
+  ResearchAllocationPolicyDecisionCoordinator,
+  type ResearchAllocationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-allocation-policy-decision";
 import { createOperatorController } from "@ouroboros/application/controllers/operator";
 import {
   isTradingResearchRuntimeAgent,
@@ -162,6 +166,8 @@ export interface BuildServerOptions {
   researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
   researchControlStudyCommitmentCoordinator?:
     ResearchControlStudyCommitmentCoordinatorLifecycle;
+  researchAllocationPolicyDecisionCoordinator?:
+    ResearchAllocationPolicyDecisionCoordinatorLifecycle;
   runResearchControlStudiesOnStart?: boolean;
   onResearchControlStudySchedulerCreated?: (
     scheduler: ResearchControlStudySchedulerLifecycle
@@ -211,6 +217,18 @@ export function createResearchControlStudyServerCommitmentCoordinator(
     store: input.store,
     researchAgentIdentity: input.researchAgentIdentity,
     ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function createResearchAllocationPolicyDecisionServerCoordinator(
+  input: {
+    store: LocalStore;
+    now?: () => string;
+  }
+): ResearchAllocationPolicyDecisionCoordinator {
+  return new ResearchAllocationPolicyDecisionCoordinator({
+    store: input.store,
     ...(input.now ? { now: input.now } : {})
   });
 }
@@ -424,6 +442,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           ).agent,
           repoRoot: process.cwd()
         }),
+      policyDecisionCoordinator:
+        options.researchAllocationPolicyDecisionCoordinator ??
+        createResearchAllocationPolicyDecisionServerCoordinator({ store }),
       leaseSessionFactory:
         createResearchControlStudyServerLeaseSessionFactory({
           store,

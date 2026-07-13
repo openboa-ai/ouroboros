@@ -261,6 +261,38 @@ describe("ResearchControlStudy server runtime", () => {
       }
     });
   });
+
+  it("passes automatic policy decisions into the server scheduler cycle", async () => {
+    let decisionCount = 0;
+    const scheduler = createResearchControlStudyServerScheduler({
+      store: new LocalStore("/tmp/ouroboros-policy-decision-scheduler-store"),
+      marketData: {} as GatewayMarketDataPort,
+      agentFactory: () => agentAdapter(persistedAgent()),
+      createArmSessions: async () => ({}) as never,
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      schedulerSleep: () => new Promise(() => undefined)
+    });
+
+    scheduler.start();
+    while (decisionCount === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await scheduler.stop();
+
+    expect(decisionCount).toBe(1);
+    expect(scheduler.status()).toMatchObject({
+      status: "stopped",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+  });
 });
 
 function persistedStudy(): ResearchControlStudyRecord {

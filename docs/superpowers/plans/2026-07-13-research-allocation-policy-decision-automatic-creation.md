@@ -211,13 +211,13 @@ git commit -m "feat: decide study policy after catch-up"
 - Consumes: initialized LocalStore and optional injected decision coordinator.
 - Produces: default automatic decision creation plus deterministic opt-out behavior.
 
-- [ ] **Step 1: Write failing server composition tests**
+- [x] **Step 1: Write failing server composition tests**
 
 Cover pass-through in `createResearchControlStudyServerScheduler`, default empty-store
 `lastPolicyDecision: up_to_date`, explicit injected coordinator invocation, disabled startup with
 zero calls, and injected scheduler bypass.
 
-- [ ] **Step 2: Run server tests and verify RED**
+- [x] **Step 2: Run server tests and verify RED**
 
 ```bash
 npx vitest run apps/runtime/test/research-control-study-server-runtime.test.ts apps/runtime/test/server.test.ts
@@ -225,13 +225,13 @@ npx vitest run apps/runtime/test/research-control-study-server-runtime.test.ts a
 
 Expected: runtime and buildServer do not pass or create the coordinator.
 
-- [ ] **Step 3: Compose one coordinator per default server**
+- [x] **Step 3: Compose one coordinator per default server**
 
 Add a BuildServer option for explicit coordinator injection. Create the default application
 coordinator from LocalStore, pass it through the server scheduler factory, and leave direct injected
 scheduler and disabled startup behavior unchanged.
 
-- [ ] **Step 4: Verify focused server and decision loop regression**
+- [x] **Step 4: Verify focused server and decision loop regression**
 
 ```bash
 npx vitest run packages/application/src/candidate/research-allocation-policy-decision.test.ts packages/application/src/candidate/research-allocation.test.ts apps/runtime/test/research-control-study-scheduler.test.ts apps/runtime/test/research-control-study-server-runtime.test.ts apps/runtime/test/server.test.ts packages/local-store/test/research-control-study.test.ts
@@ -240,7 +240,7 @@ npm run typecheck --workspace @ouroboros/local-store
 npm run typecheck --workspace @ouroboros/runtime
 ```
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-study-server-runtime.ts apps/runtime/test/research-control-study-server-runtime.test.ts apps/runtime/src/server.ts apps/runtime/test/server.test.ts

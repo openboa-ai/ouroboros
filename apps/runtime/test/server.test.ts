@@ -107,11 +107,18 @@ describe("runtime canonical operator API", () => {
   it("starts and observes the study scheduler by default, then stops it first", async () => {
     const lifecycleEvents: string[] = [];
     const scheduler = new RecordingStudyScheduler(lifecycleEvents);
+    let policyDecisionCount = 0;
     let observed: ResearchControlStudySchedulerLifecycle | undefined;
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
       researchControlStudyScheduler: scheduler,
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          policyDecisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
       onResearchControlStudySchedulerCreated(value) {
         observed = value;
       },
@@ -125,6 +132,7 @@ describe("runtime canonical operator API", () => {
     });
 
     expect(scheduler.startCount).toBe(1);
+    expect(policyDecisionCount).toBe(0);
     expect(observed).toBe(scheduler);
     await server.close();
 
@@ -183,8 +191,65 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
-  it("does not commit a study when scheduler startup is disabled", async () => {
+  it("runs injected automatic policy decisions through the default scheduler", async () => {
+    let decisionCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      decisionCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("creates the default automatic policy decision coordinator", async () => {
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastPolicyDecision !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("does not commit or decide when scheduler startup is disabled", async () => {
     let commitmentCount = 0;
+    let decisionCount = 0;
     const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
       researchControlStudyCommitmentCoordinator: {
@@ -195,11 +260,18 @@ describe("runtime canonical operator API", () => {
             reason: "no_trading_promotion"
           } as const;
         }
+      },
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
       }
     });
 
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(commitmentCount).toBe(0);
+    expect(decisionCount).toBe(0);
     await server.close();
   });
 
