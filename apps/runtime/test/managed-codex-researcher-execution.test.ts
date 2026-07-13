@@ -166,16 +166,54 @@ describe("managed Codex researcher execution", () => {
           code_home?: string;
           home?: string;
           stdin: string;
+          tool_base_url?: string;
+          tool_socket_path?: string;
         });
       expect(invocations.length).toBeGreaterThan(1);
       expect(invocations.every((call) => call.args[0] === "exec")).toBe(true);
+      expect(invocations.every((call) => call.args.includes("--ignore-user-config"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("--strict-config"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("--ephemeral"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("approval_policy=\"never\""))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("web_search=\"disabled\""))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("features.apps=false"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("features.plugins=false"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("features.browser_use=false"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("features.computer_use=false"))).toBe(true);
+      expect(invocations.every((call) => call.args.includes("features.multi_agent=false"))).toBe(true);
+      expect(invocations.every((call) =>
+        call.args.includes("default_permissions=\"ouroboros-research-worker\"")
+      )).toBe(true);
+      expect(invocations.every((call) => call.args.some((arg) =>
+        arg.startsWith("permissions.ouroboros-research-worker=") && (
+          process.platform === "win32"
+            ? arg.includes("\"127.0.0.1\"=\"allow\"")
+            : arg.includes(`unix_sockets={${JSON.stringify(call.tool_socket_path)}=\"allow\"}`)
+        )
+      ))).toBe(true);
+      expect(invocations.every((call) => call.args.some((arg) =>
+        arg.startsWith("features.network_proxy=") &&
+        arg.includes("allow_upstream_proxy=false")
+      ))).toBe(true);
+      expect(invocations.every((call) => !call.args.includes("--sandbox"))).toBe(true);
+      if (process.platform !== "win32") {
+        expect(invocations.every((call) => path.isAbsolute(call.tool_socket_path ?? ""))).toBe(true);
+        expect(invocations.every((call) => call.tool_base_url === undefined)).toBe(true);
+        expect(invocations.every((call) => call.args.some((arg) =>
+          arg.startsWith("features.network_proxy=") &&
+          arg.includes("domains={}") &&
+          arg.includes("allow_local_binding=false")
+        ))).toBe(true);
+      }
       expect(invocations.every((call) =>
         call.code_home === path.join(tmpDir, "agent-profiles", "codex", "codex-home")
       )).toBe(true);
       expect(invocations.every((call) =>
         call.home === path.join(tmpDir, "agent-profiles", "codex", "home")
       )).toBe(true);
-      expect(invocations[0]?.stdin).toContain("Candidate Arena context");
+      expect(invocations[0]?.stdin).toContain("CandidateArena context");
+      expect(invocations[0]?.stdin).toContain("choose your own research sequence");
+      expect(invocations[0]?.stdin).toContain("OUROBOROS_RESEARCH_TOOL_CLIENT");
       expect(invocations[0]?.stdin).not.toContain("exit_price");
 
       const leader = tickBody.operator.candidate_arena.leaderboard[0];
@@ -206,6 +244,7 @@ function fakeCodexScript(logPath: string): string {
   return `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 let stdin = "";
 process.stdin.setEncoding("utf8");
@@ -218,6 +257,8 @@ process.stdin.on("end", () => {
     cwd: process.cwd(),
     code_home: process.env.CODEX_HOME,
     home: process.env.HOME,
+    tool_base_url: process.env.OUROBOROS_RESEARCH_TOOL_BASE_URL,
+    tool_socket_path: process.env.OUROBOROS_RESEARCH_TOOL_SOCKET_PATH,
     stdin
   }) + "\\n");
   const runPath = path.join(process.cwd(), "run.py");
@@ -230,6 +271,26 @@ process.stdin.on("end", () => {
       : direction === "execution_cost_robustness" ? "0.01"
       : "0.02";
     fs.writeFileSync(runPath, source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = " + risk));
+    const client = process.env.OUROBOROS_RESEARCH_TOOL_CLIENT;
+    const submit = spawnSync(process.execPath, [client, "submit", JSON.stringify({
+      idempotency_key: "managed-codex-submit-" + direction,
+      research_note: "Submit the managed Codex direction candidate."
+    })], { env: process.env, encoding: "utf8" });
+    if (submit.status !== 0) {
+      process.stderr.write(submit.stderr || "managed Codex submit failed\\n");
+      process.exitCode = submit.status || 1;
+      return;
+    }
+    const submission = JSON.parse(submit.stdout);
+    const select = spawnSync(process.execPath, [client, "select", JSON.stringify({
+      idempotency_key: "managed-codex-select-" + direction,
+      submission_sequence: submission.submission_sequence,
+      reason: "Explicitly select the managed Codex immutable direction snapshot."
+    })], { env: process.env, encoding: "utf8" });
+    if (select.status !== 0) {
+      process.stderr.write(select.stderr || "managed Codex select failed\\n");
+      process.exitCode = select.status || 1;
+    }
   }
 });
 `;

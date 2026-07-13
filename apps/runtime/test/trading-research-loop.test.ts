@@ -1,6 +1,8 @@
+import { execFile as execFileCallback } from "node:child_process";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CodexTradingResearchAgentAdapter,
@@ -51,6 +53,8 @@ import {
   startPaperTradingApiProvider
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
+
+const execFileAsync = promisify(execFileCallback);
 
 let tmpDir: string;
 
@@ -1972,8 +1976,47 @@ process.exit(17);
     expect(calls[0]).toEqual(
       expect.arrayContaining([
         "exec",
+        "--ignore-user-config",
+        "--strict-config",
+        "--ephemeral",
+        "-c",
+        "approval_policy=\"never\"",
+        "-c",
+        "web_search=\"disabled\"",
+        "-c",
+        "features.apps=false",
+        "-c",
+        "features.plugins=false",
+        "-c",
+        "features.remote_plugin=false",
+        "-c",
+        "features.multi_agent=false",
+        "-c",
+        "features.browser_use=false",
+        "-c",
+        "features.browser_use_external=false",
+        "-c",
+        "features.computer_use=false",
+        "-c",
+        "features.in_app_browser=false",
+        "-c",
+        "features.image_generation=false",
+        "-c",
+        "features.chronicle=false",
+        "-c",
+        "features.workspace_dependencies=false",
+        "-c",
+        "features.hooks=false",
+        "-c",
+        "features.goals=false",
         "-c",
         "model_reasoning_effort=\"low\"",
+        "-c",
+        "shell_environment_policy.inherit=\"all\"",
+        "-c",
+        "shell_environment_policy.ignore_default_excludes=true",
+        "-c",
+        "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]",
         "--cd",
         artifactDir,
         "--model",
@@ -1984,6 +2027,7 @@ process.exit(17);
         "-"
       ])
     );
+    expect(calls[0]).not.toContain("default_permissions=\"ouroboros-research-worker\"");
     const commandSurface = calls[0].join(" ");
     expect(commandSurface).not.toMatch(/proposal|materialization|lineage|orchestration/i);
     expect(stdinPrompts[0]).toContain("TradingApiProvider");
@@ -1998,6 +2042,208 @@ process.exit(17);
     await expect(readFile(path.join(artifactDir, "run.py"), "utf8")).resolves.toContain(
       "RISK_FRACTION = 0.02"
     );
+  });
+
+  it("runs one Codex process that makes multiple bounded tool calls and explicitly selects", async () => {
+    const runRoot = path.join(tmpDir, "codex-autonomous-session");
+    const programPath = path.join(tmpDir, "codex-autonomous-program.md");
+    const calls: string[][] = [];
+    const prompts: string[] = [];
+    const toolResponses: string[] = [];
+    let clientPath = "";
+    let toolSocketPath = "";
+    await writeFile(programPath, "Explore one bounded direction without a fixed workflow.\n", "utf8");
+    const adapter = new CodexTradingResearchAgentAdapter({
+      model: "gpt-5.4-autonomous-test",
+      execFile: async (_file, args, options) => {
+        calls.push(args);
+        prompts.push(options?.stdin ?? "");
+        const env = options?.env ?? {};
+        clientPath = env.OUROBOROS_RESEARCH_TOOL_CLIENT ?? "";
+        toolSocketPath = env.OUROBOROS_RESEARCH_TOOL_SOCKET_PATH ?? "";
+        expect(path.isAbsolute(clientPath)).toBe(true);
+        expect(clientPath.startsWith(options?.cwd ?? "")).toBe(false);
+        if (process.platform !== "win32") {
+          expect(path.isAbsolute(toolSocketPath)).toBe(true);
+          expect(env.OUROBOROS_RESEARCH_TOOL_BASE_URL).toBeUndefined();
+        }
+
+        const invoke = async (command: string, payload?: unknown) => {
+          const invocation = [clientPath, command];
+          if (payload !== undefined) invocation.push(JSON.stringify(payload));
+          const response = await execFileAsync(process.execPath, invocation, { env });
+          toolResponses.push(response.stdout);
+          return JSON.parse(response.stdout) as {
+            submission_sequence?: number;
+          };
+        };
+        await invoke("status");
+        const runPath = path.join(options!.cwd!, "run.py");
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.01",
+            "RISK_FRACTION = 0.02"
+          ),
+          "utf8"
+        );
+        await invoke("submit", {
+          idempotency_key: "codex-submit-one",
+          research_note: "Evaluate the bounded risk hypothesis."
+        });
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.02",
+            "RISK_FRACTION = 0.10"
+          ),
+          "utf8"
+        );
+        const second = await invoke("submit", {
+          idempotency_key: "codex-submit-two",
+          research_note: "Evaluate a deliberately different risk hypothesis."
+        });
+        await invoke("select", {
+          idempotency_key: "codex-select-two",
+          submission_sequence: second.submission_sequence,
+          reason: "Select the second immutable snapshot explicitly."
+        });
+        return { stdout: "session complete\n", stderr: "" };
+      }
+    });
+
+    const result = await runTradingResearchLoop({
+      run_root: runRoot,
+      program_path: programPath,
+      session_id: "codex-autonomous-session",
+      iterations: 2,
+      agent_adapter: adapter,
+      arena_context: JSON.stringify({
+        requested_direction: "trend_following",
+        finding_clusters: [{
+          direction_kind: "trend_following",
+          next_research_focus: "released-finding-safe",
+          authority_status: "not_promotion_authority"
+        }],
+        selected_paper_evidence: [{
+          paper_score: "raw-paper-secret",
+          latest_paper_account: "raw-account-secret",
+          latest_fill: "raw-fill-secret"
+        }],
+        paper_trading_board: [{ latest_market_snapshot: "raw-market-secret" }],
+        latest_tick_failures: [{
+          error: "/private/raw-path",
+          command: "raw-command-secret"
+        }]
+      }),
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual(expect.arrayContaining([
+      "--ignore-user-config",
+      "--strict-config",
+      "--ephemeral",
+      "approval_policy=\"never\"",
+      "web_search=\"disabled\"",
+      "features.apps=false",
+      "features.plugins=false",
+      "features.remote_plugin=false",
+      "features.multi_agent=false",
+      "features.browser_use=false",
+      "features.browser_use_external=false",
+      "features.computer_use=false",
+      "features.in_app_browser=false",
+      "features.image_generation=false",
+      "features.chronicle=false",
+      "features.workspace_dependencies=false",
+      "features.hooks=false",
+      "features.goals=false",
+      "default_permissions=\"ouroboros-research-worker\"",
+      "shell_environment_policy.ignore_default_excludes=true",
+      "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]"
+    ]));
+    expect(calls[0]).not.toContain("--sandbox");
+    const permissionConfig = calls[0].find((arg) =>
+      arg.startsWith("permissions.ouroboros-research-worker=")
+    );
+    const networkProxyConfig = calls[0].find((arg) =>
+      arg.startsWith("features.network_proxy=")
+    );
+    if (process.platform === "win32") {
+      expect(permissionConfig).toContain("domains={\"127.0.0.1\"=\"allow\"}");
+      expect(networkProxyConfig).toContain("domains={\"127.0.0.1\"=\"allow\"}");
+    } else {
+      const socketRule = `${JSON.stringify(toolSocketPath)}=\"allow\"`;
+      expect(permissionConfig).toContain(`domains={},unix_sockets={${socketRule}}`);
+      expect(networkProxyConfig).toContain(`domains={},unix_sockets={${socketRule}}`);
+      expect(permissionConfig).toContain("allow_local_binding=false");
+      expect(networkProxyConfig).toContain("allow_local_binding=false");
+      expect(calls[0].join(" ")).not.toContain("127.0.0.1");
+    }
+    expect(calls[0].join(" ")).not.toMatch(/example\.com|0\.0\.0\.0/);
+    expect(result).toMatchObject({
+      session_status: "selected",
+      selected_development_submission: 2
+    });
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries.map((entry) => entry.selected_for_sealed_submission)).toEqual([
+      false,
+      true
+    ]);
+    expect(result.sealed_admission?.evaluation.status).toBe("disqualified");
+    expect(prompts[0]).toContain("OUROBOROS_RESEARCH_TOOL_CLIENT");
+    expect(prompts[0]).toContain("choose your own research sequence");
+    expect(prompts[0]).toContain("released-finding-safe");
+    expect(prompts[0]).not.toMatch(
+      /scenario_id|expected_direction|sealed_suite|provider_requests|command_evidence|private exchange|raw-paper-secret|raw-account-secret|raw-fill-secret|raw-market-secret|raw-path|raw-command-secret|not_promotion_authority/i
+    );
+    expect(toolResponses.join("\n")).not.toMatch(
+      /scenario_results|scenario_id|expected_direction|paper_handoff|provider_requests|command_evidence/i
+    );
+    await expect(readFile(clientPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("closes a normal Codex exit without a terminal action and never infers a selection", async () => {
+    const runRoot = path.join(tmpDir, "codex-exit-without-selection");
+    const programPath = path.join(tmpDir, "codex-exit-without-selection-program.md");
+    await writeFile(programPath, "Explore one bounded direction.\n", "utf8");
+    const adapter = new CodexTradingResearchAgentAdapter({
+      execFile: async (_file, _args, options) => {
+        const env = options?.env ?? {};
+        const clientPath = env.OUROBOROS_RESEARCH_TOOL_CLIENT;
+        if (!clientPath) throw new Error("missing_research_tool_client");
+        await execFileAsync(process.execPath, [
+          clientPath,
+          "submit",
+          JSON.stringify({
+            idempotency_key: "codex-unselected-submit",
+            research_note: "Retain this aggregate result without selecting it."
+          })
+        ], { env });
+        return { stdout: "provider exited normally\n", stderr: "" };
+      }
+    });
+
+    const result = await runTradingResearchLoop({
+      run_root: runRoot,
+      program_path: programPath,
+      session_id: "codex-exit-without-selection",
+      iterations: 1,
+      agent_adapter: adapter,
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
+    });
+
+    expect(result.session_status).toBe("finished_without_submission");
+    expect(result.selected_development_submission).toBeUndefined();
+    expect(result.submitted_artifact_dir).toBeUndefined();
+    expect(result.sealed_admission).toBeUndefined();
+    expect(result.entries).toEqual([
+      expect.objectContaining({
+        iteration: 1,
+        selected_for_sealed_submission: false
+      })
+    ]);
   });
 
   it("reports no_change when Codex exits without modifying editable artifact files", async () => {

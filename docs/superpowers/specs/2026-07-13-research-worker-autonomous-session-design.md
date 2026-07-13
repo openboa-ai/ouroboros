@@ -216,13 +216,19 @@ versioned frontier.
 The default Codex adapter runs one `codex exec` process for the whole session. It no longer tells
 Codex to make exactly one edit.
 
-The adapter exposes `ResearchWorkerToolPort` through a session-local loopback server:
+The adapter exposes `ResearchWorkerToolPort` through a session-local server:
 
-- bind only `127.0.0.1` on an ephemeral port;
+- on POSIX, listen on one randomly located Unix socket and grant the managed process network access
+  to that exact socket only;
+- on Windows, fall back to `127.0.0.1` on an ephemeral port because Node named-pipe permissions and
+  Codex socket allowlisting do not provide the same exact-path contract there;
 - use a random per-session bearer token and constant-time token comparison;
 - accept only exact JSON routes, methods, fields, and bounded body sizes;
 - generate a small Node tool client outside the candidate artifact and pass only its absolute path,
-  base URL, and token in the managed provider environment;
+  exact endpoint, and token in the managed provider environment;
+- run Codex with strict ephemeral configuration, an explicit research-worker permission profile,
+  a minimal shell environment, and unrelated app, plugin, browser, computer, multi-agent, hook,
+  goal, image, and web-search capabilities disabled;
 - close the server and remove the client/output artifacts before returning;
 - never place evaluator data, store paths, credentials, private exchange data, or operator API
   authority in the server or provider environment.
@@ -230,7 +236,9 @@ The adapter exposes `ResearchWorkerToolPort` through a session-local loopback se
 The prompt gives the broad direction, released context, sanitized notebook, budget, timeout, and
 tool usage. It tells the worker to choose its own research sequence, use local checks when useful,
 submit only through the tool, and explicitly select or finish. It does not prescribe a fixed
-propose/plan/edit/test workflow.
+propose/plan/edit/test workflow. If the provider exits normally without either terminal action, the
+host closes the still-open session as `finished_without_submission`; it never infers a selection
+from a development score or mutable workspace state.
 
 The tool server is provider-session infrastructure, not a public HTTP route, Ouroboros command, MCP
 surface, or candidate TradingApiProvider endpoint.
