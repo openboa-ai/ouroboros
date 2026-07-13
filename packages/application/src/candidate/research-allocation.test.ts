@@ -22,7 +22,8 @@ import {
   CandidateArenaResearchAllocationService,
   DEFAULT_ARENA_DIRECTIONS,
   decideCandidateArenaResearchAllocation,
-  resolveCandidateArenaResearchAllocationPolicy
+  resolveCandidateArenaResearchAllocationPolicy,
+  selectEffectiveResearchGeneralizationPolicyDecision
 } from "./research-allocation";
 
 describe("decideCandidateArenaResearchAllocation", () => {
@@ -333,6 +334,65 @@ describe("decideCandidateArenaResearchAllocation", () => {
     });
 
     expect({ findingClusters, latestTicks, priorAllocations }).toEqual(snapshot);
+  });
+
+  it("selects the applicable broad approval independently of latest history", () => {
+    const approved = generalizationPolicyDecisionFixture(
+      "approved",
+      "2026-07-12T08:00:00.000Z"
+    );
+    const newerNegative = generalizationPolicyDecisionFixture(
+      "newer-negative",
+      "2026-07-12T10:00:00.000Z"
+    );
+    newerNegative.decision_status = "not_approved";
+    newerNegative.decision_reason = "generalization_outcome_not_eligible";
+    newerNegative.effective_default_mode = null;
+    resealGeneralizationPolicyDecision(newerNegative);
+
+    expect(selectEffectiveResearchGeneralizationPolicyDecision([
+      newerNegative,
+      approved
+    ])).toEqual(approved);
+  });
+
+  it("filters invalid broad decisions and resolves equal-time order", () => {
+    const alpha = generalizationPolicyDecisionFixture(
+      "alpha",
+      "2026-07-12T09:00:00.000Z"
+    );
+    const zeta = generalizationPolicyDecisionFixture(
+      "zeta",
+      "2026-07-12T09:00:00.000Z"
+    );
+    const wrongPolicy = generalizationPolicyDecisionFixture(
+      "wrong-policy",
+      "2026-07-12T10:00:00.000Z"
+    );
+    wrongPolicy.target_allocation_policy_digest = `sha256:${"e".repeat(64)}`;
+    resealGeneralizationPolicyDecision(wrongPolicy);
+
+    expect(selectEffectiveResearchGeneralizationPolicyDecision([
+      alpha,
+      wrongPolicy,
+      { record_kind: "research_generalization_policy_decision" } as
+        ResearchGeneralizationPolicyDecisionRecord,
+      zeta
+    ])).toEqual(zeta);
+  });
+
+  it("returns no effective broad decision when every outcome is not approved", () => {
+    const negative = generalizationPolicyDecisionFixture(
+      "negative",
+      "2026-07-12T09:00:00.000Z"
+    );
+    negative.decision_status = "not_approved";
+    negative.decision_reason = "generalization_outcome_not_eligible";
+    negative.effective_default_mode = null;
+    resealGeneralizationPolicyDecision(negative);
+
+    expect(selectEffectiveResearchGeneralizationPolicyDecision([negative]))
+      .toBeUndefined();
   });
 
   it.each([

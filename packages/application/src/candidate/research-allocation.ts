@@ -160,6 +160,26 @@ export interface ResolvedCandidateArenaResearchAllocationPolicy {
   allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
 }
 
+export function selectEffectiveResearchGeneralizationPolicyDecision(
+  decisions: readonly ResearchGeneralizationPolicyDecisionRecord[]
+): ResearchGeneralizationPolicyDecisionRecord | undefined {
+  const currentPolicyDigest = currentResearchAllocationPolicyDigest();
+  return decisions.filter(
+    (decision): decision is ResearchGeneralizationPolicyDecisionRecord =>
+      researchGeneralizationPolicyDecisionHasRuntimeShape(decision) &&
+      decision.policy_decision_digest === canonicalDigest(
+        researchGeneralizationPolicyDecisionDigestInput(decision)
+      ) && decision.decision_status === "approved" &&
+      decision.effective_default_mode === "adaptive_default" &&
+      decision.target_allocation_policy_digest === currentPolicyDigest
+  ).sort((left, right) =>
+    left.decided_at.localeCompare(right.decided_at) ||
+    left.research_generalization_policy_decision_id.localeCompare(
+      right.research_generalization_policy_decision_id
+    )
+  ).at(-1);
+}
+
 export async function resolveCandidateArenaResearchAllocationPolicy(
   input: ResolveCandidateArenaResearchAllocationPolicyInput
 ): Promise<ResolvedCandidateArenaResearchAllocationPolicy> {
@@ -176,30 +196,14 @@ export async function resolveCandidateArenaResearchAllocationPolicy(
     };
   }
 
-  const currentPolicyDigest = canonicalDigest(
-    paperTradingComparisonPersistedRecordDigestInput(
-      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
-    )
-  );
   const [generalizationDecisions, decisions] = await Promise.all([
     input.store.listResearchGeneralizationPolicyDecisions(),
     input.store.listResearchAllocationPolicyDecisions()
   ]);
-  const applicableGeneralization = generalizationDecisions.filter(
-    (decision): decision is ResearchGeneralizationPolicyDecisionRecord =>
-      researchGeneralizationPolicyDecisionHasRuntimeShape(decision) &&
-      decision.policy_decision_digest === canonicalDigest(
-        researchGeneralizationPolicyDecisionDigestInput(decision)
-      ) && decision.decision_status === "approved" &&
-      decision.effective_default_mode === "adaptive_default" &&
-      decision.target_allocation_policy_digest === currentPolicyDigest
-  ).sort((left, right) =>
-    left.decided_at.localeCompare(right.decided_at) ||
-    left.research_generalization_policy_decision_id.localeCompare(
-      right.research_generalization_policy_decision_id
-    )
-  );
-  const selectedGeneralization = applicableGeneralization.at(-1);
+  const selectedGeneralization =
+    selectEffectiveResearchGeneralizationPolicyDecision(
+      generalizationDecisions
+    );
   if (selectedGeneralization) {
     return {
       allocationMode: "adaptive_default",
@@ -220,6 +224,7 @@ export async function resolveCandidateArenaResearchAllocationPolicy(
       }
     };
   }
+  const currentPolicyDigest = currentResearchAllocationPolicyDigest();
   const applicable = decisions.filter((decision): decision is
     ResearchAllocationPolicyDecisionRecord =>
     researchAllocationPolicyDecisionHasRuntimeShape(decision) &&
@@ -254,6 +259,14 @@ export async function resolveCandidateArenaResearchAllocationPolicy(
       study_outcome_digest: selected.study_outcome_digest
     }
   };
+}
+
+function currentResearchAllocationPolicyDigest(): string {
+  return canonicalDigest(
+    paperTradingComparisonPersistedRecordDigestInput(
+      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+    )
+  );
 }
 
 export function toCandidateArenaResearchAllocationReadModel(
