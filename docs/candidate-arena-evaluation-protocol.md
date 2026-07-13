@@ -142,6 +142,14 @@ control. Uncontrolled ticks resolve explicit caller intent first, then the lates
 approval, then the repository adaptive fallback. The chosen basis enters the pre-effect allocation
 digest and read model, and LocalStore independently rejects forged, stale, or time-inverted decision
 provenance.
+After successful default scheduler catch-up,
+`ResearchAllocationPolicyDecisionCoordinator` validates exact existing decisions and ensures the
+oldest terminal outcome missing one, at most one per cycle. Selection is independent of inference
+status: supported evidence may become `approved`, while unsupported and underpowered evidence is
+persisted as `not_approved`. Equal adjudication and decision milliseconds advance by exactly one;
+clock regression fails. Same-root publication is create-only and a race loser accepts only a winner
+re-derived exactly with the winner's timestamp. The operational result is not evaluation, Finding,
+Lineage, rank, promotion, order, private, or live evidence.
 The internal study executor derives the next action from that exact evidence graph. It runs or
 resumes only the earliest incomplete campaign, requires its terminal paper outcome before the next
 replication, and invokes study adjudication only after full closure. The sequential runner can drain
@@ -160,9 +168,11 @@ The internal `ResearchControlStudyProcessSupervisor` discovers incomplete studie
 study/outcome lists, orders them by commitment time and ID, opens one injected study runtime, and
 rescans only after exact persisted completion. It does not skip a failed earlier study or create a
 policy decision. `ResearchControlStudyScheduler` now runs that one-shot owner immediately under the
-default runtime server, invokes commitment before discovery, waits on an interruptible bounded poll
-after catch-up, and considers later reviewed sources. Runtime opening reuses the exact persisted
-condition and fails before effects on agent identity drift. Before runtime opening,
+default runtime server, invokes commitment before discovery, invokes bounded policy-decision
+reconciliation after successful catch-up, then waits on an interruptible bounded poll and considers
+later reviewed sources. It does not decide after contention, failure, stop, or invalid supervisor
+state. Runtime opening reuses the exact persisted condition and fails before effects on agent
+identity drift. Before runtime opening,
 `ResearchControlStudyExecutionLease` atomically elects one
 same-host server for one shared LocalStore root. The active owner renews and asserts its exact token
 before every executor advance. Alive or liveness-unknown owners remain held after expiry; takeover
@@ -509,8 +519,9 @@ The following current surfaces require implementation work before P0 can pass:
   ResearchRelease can materialize causal Finding/Lineage memory, and the explicit operator command
   can move an exactly confirmed challenger into Trading review. The default server now creates one
   deterministic latest-promotion study when the bounded queue is empty and runs it with same-host
-  shared-LocalStore execution leasing. There is still no multi-host fencing, automatic policy
-  decision or promotion loop, provider-process adoption after restart, or champion runner handoff.
+  shared-LocalStore execution leasing, then reconciles one oldest missing policy decision after
+  successful catch-up. There is still no multi-host fencing, automatic promotion loop,
+  provider-process adoption after restart, or champion runner handoff.
 - ResearchRelease has a server-owned execution path only inside an already committed study. Raw
   sealed outcomes stay unavailable to ResearchWorkers unless that exact append-only release
   succeeds; standalone release and promotion remain explicit, promotion does not imply research
@@ -564,10 +575,10 @@ The following current surfaces require implementation work before P0 can pass:
   qualified non-tied causal-protocol execution for the deterministic fixture, not real-market
   superiority, cross-regime generalization, or a learned policy. The default server now owns
   bounded polling, deterministic latest-promotion study commitment, exact persisted-condition
-  runtime reconstruction, and same-host cross-process execution leasing. Distinct-regime and
-  forward-time study selection, multi-host fencing, learned policy parameters, and automatic
-  policy-decision creation remain open. The separate one-sided exact adaptive policy decision and
-  future-allocation provenance path are implemented.
+  runtime reconstruction, same-host cross-process execution leasing, and symmetric oldest-first
+  automatic policy-decision reconciliation. Distinct-regime and forward-time study selection,
+  multi-host fencing, and learned policy parameters remain open. The separate one-sided exact
+  adaptive policy decision and future-allocation provenance path are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -592,9 +603,10 @@ The following current surfaces require implementation work before P0 can pass:
   effect-free restart. Its six adaptive positives and six static negatives support the bounded
   `adaptive_effect_supported` fixture conclusion without mutating policy or promotion state.
   The default server now commits, starts, and drains this study path, polls for later reviewed
-  sources, and excludes competing same-host processes through renewable leases. Real-market and
-  distinct-regime replication, multi-host fencing, production learned allocation, and
-  external-validity claims remain open.
+  sources, excludes competing same-host processes through renewable leases, and automatically
+  records one oldest missing approved or not-approved research policy decision after catch-up.
+  Real-market and distinct-regime replication, multi-host fencing, production learned allocation,
+  and external-validity claims remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
@@ -685,23 +697,26 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    campaign/outcome/final-verdict promotion binding; atomic current-champion
    revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
    `trading_candidate.promote` composition. The default server deterministically commits one
-   latest-promotion study at a time and executes it under same-host renewable leasing; multi-host
-   fencing, automatic policy decisions, automatic promotion, and runner handoff remain later
-   frontiers.
+   latest-promotion study at a time, executes it under same-host renewable leasing, and reconciles
+   its terminal policy decision without selecting only favorable outcomes; multi-host fencing,
+   automatic promotion, and runner handoff remain later frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
    changes actual three-of-five selection, concurrency, and experiment budgets before effects;
    completed allocation history preserves exploration and static control supplies an equal-bound
    ablation. A separate exact-digest policy decision can now supply evidence-backed provenance to
    an uncontrolled adaptive tick without overriding explicit modes or treating non-significance as
-   static superiority. Stable ResearchWorker workspace identity, bounded sanitized notebook continuity,
-   append-only budget closure, and fail-closed restart reconciliation are implemented. Durable
+   static superiority. The default scheduler now creates one oldest missing decision after
+   successful catch-up and records unsupported or underpowered results as not approved. Stable
+   ResearchWorker workspace identity, bounded sanitized notebook continuity, append-only budget
+   closure, and fail-closed restart reconciliation are implemented. Durable
    provider-process/sandbox adoption, worker-chosen sequencing, provider-dollar cost, learned
    allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
    TradingPromotion, arm-local runtime composition, and exact six-replication qualified non-tied
-   fixture-study closure are proven. Default automatic commitment, server scheduling, and same-host
-   multi-process ownership are implemented; real-market cross-regime replication, multi-host
-   fencing, deployed soak evidence, durable worker process adoption, and full P0 evidence remain.
+   fixture-study closure are proven. Default automatic commitment, server scheduling, same-host
+   multi-process ownership, and post-catch-up automatic research policy decisions are implemented;
+   real-market cross-regime replication, multi-host fencing, deployed soak evidence, durable worker
+   process adoption, and full P0 evidence remain.

@@ -1,7 +1,6 @@
 # ResearchAllocationPolicyDecision Design
 
-**Status:** Implemented and locally verified under the standing CandidateArena Goal authority;
-listener-capable full-suite verification remains environment-blocked
+**Status:** Implemented and verified, including automatic creation extension
 
 ## Goal
 
@@ -165,8 +164,9 @@ basis from repository default to evidence-backed policy decision, not the algori
   promotion.
 - It cannot submit an `OrderRequest`, access private exchange state, credentials, or live execution.
 - TradingSystems and ResearchWorkers cannot create, choose, or self-score the decision.
-- Study execution does not automatically invoke policy decision creation; it remains a separate
-  service action.
+- Study adjudication still does not mutate policy or create a decision. After successful scheduler
+  catch-up, a separate fixed application coordinator invokes this service for every terminal outcome
+  symmetrically, one oldest missing decision per cycle.
 
 ## Testing
 
@@ -183,10 +183,9 @@ basis from repository default to evidence-backed policy decision, not the algori
 ## Non-Goals
 
 - Static-superiority, equivalence, or non-inferiority decisions.
-- Automatic decision creation at study completion.
 - Policy parameter tuning or a learned bandit.
 - Distinct-regime generalization.
-- Public operator commands or default process discovery.
+- Public operator commands or UI.
 - Candidate promotion, private exchange data, or live execution.
 
 ## Acceptance

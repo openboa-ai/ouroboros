@@ -129,10 +129,16 @@ one-tick-per-arm study. It preserves the campaign's numeric, market-data, and pa
 normalizes only the comparison mode to `champion_challenge`. No promotion or one already-pending
 study defers; malformed or drifted evidence stops the scheduler before effects. Same-root races use
 create-only publication and accept only the exact deterministic winner. The scheduler then runs the
-supervisor immediately, waits on an interruptible bounded poll after catch-up, and can commit and
-discover a later reviewed source without an operator command. Each opened runtime reconstructs
-source, agent identity, campaign bounds, and the bound paper protocol from the exact persisted study
-condition. Shutdown stops this scheduler before CandidateArena and paper-session dependencies.
+supervisor immediately. After successful catch-up, and before its interruptible bounded wait,
+`ResearchAllocationPolicyDecisionCoordinator` validates existing decisions and ensures the oldest
+terminal outcome missing one. It processes at most one per cycle and records supported,
+unsupported, and underpowered evidence symmetrically as `approved` or `not_approved`; a
+non-significant result never selects static control. Decision publication is create-only across
+same-root contenders, and an automatic approval is available to the next uncontrolled Arena tick as
+exact provenance. The scheduler can then consider a later reviewed source without an operator
+command. Each opened runtime reconstructs source, agent identity, campaign bounds, and the bound
+paper protocol from the exact persisted study condition. Shutdown stops this scheduler before
+CandidateArena and paper-session dependencies.
 Before opening a pending study, each server
 now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
 LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
@@ -140,8 +146,9 @@ and records released or expired ownership history. A live or liveness-unknown ow
 takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
 runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
 fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
-only; policy-decision creation, distinct-regime and forward-time study selection, automatic
-TradingPromotion, and champion handoff remain separate and outside this path.
+only; automatic policy decisions own future uncontrolled research allocation only. Distinct-regime
+and forward-time study selection, learned policy, automatic TradingPromotion, and champion handoff
+remain separate and outside this path.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate

@@ -51,7 +51,10 @@ the exact study and outcome, approves only eligible `adaptive_effect_supported` 
 studied allocation-policy digest, and otherwise records `not_approved` with no effective mode.
 Non-significance never selects static control. Future uncontrolled allocations cite the latest
 applicable approval or the repository adaptive fallback; explicit directions and adaptive/static
-modes retain precedence, and every allocation seals its exact basis before effects.
+modes retain precedence, and every allocation seals its exact basis before effects. After successful
+study scheduler catch-up, an internal coordinator validates existing decisions and ensures the
+oldest terminal outcome missing one, at most one per cycle. It reconciles supported, unsupported,
+and underpowered outcomes symmetrically and publishes through same-root create-only semantics.
 The internal paper executor commits a deterministic schedule, seals candidate-bearing source starts
 with shared public snapshots, advances one persisted action at a time, and converts every source,
 deadline, or confirmation terminal path into an exact slot outcome before adjudication. The
@@ -74,14 +77,15 @@ the campaign's numeric, market-data, and paper policy, and normalizes only compa
 `champion_challenge`. A missing promotion or one incomplete study defers; corruption or drift halts
 before effects, and create-only LocalStore publication gives same-root contenders one exact winner.
 `ResearchControlStudyScheduler` starts that process path by default in `buildServer`, performs
-bounded interruptible polling for later reviewed sources, reconstructs every campaign from the exact
-persisted condition, and stops before shared runtime dependencies. One renewable
+the bounded policy-decision reconciliation before waiting, polls for later reviewed sources,
+reconstructs every campaign from the exact persisted condition, and stops before shared runtime
+dependencies. One renewable
 `ResearchControlStudyExecutionLease` now prevents same-host servers sharing a LocalStore root from
 opening the same pending study. Every executor advance asserts exact ownership; alive or unknown
 owners wait, and only an expired owner with a confirmed-absent same-host PID may be replaced. Lease
 history is operational coordination, never study evidence or policy authority. Multi-host fencing,
-real-market replicated outcome evidence, distinct-regime inference, learned policy parameters, and
-automatic policy-decision creation remain open.
+real-market replicated outcome evidence, distinct-regime and forward-time inference, and learned
+policy parameters remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

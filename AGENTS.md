@@ -116,15 +116,20 @@ renewable `ResearchControlStudyExecutionLease` excludes other same-host servers 
 LocalStore root, guards every executor advance, and releases on terminal paths. Alive or unknown
 owners wait; takeover requires expiry and confirmed absence of the same-host PID. Lease records
 carry runtime-coordination authority only and are never research or policy evidence. Multi-host
-fencing, public commands, and automatic policy decisions remain outside.
+fencing and public commands remain outside.
 `ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
 an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
 digest; non-supported or underpowered evidence never selects static control. Uncontrolled Arena
 ticks prefer the latest applicable approval, then the repository adaptive default, while explicit
 directions and explicit adaptive/static modes always win. Every allocation seals that basis, and
-LocalStore independently validates decision-backed provenance before worker effects. Study
-completion does not create this decision automatically, and the decision grants no evaluation,
-promotion, order, private, or live authority.
+LocalStore independently validates decision-backed provenance before worker effects. After each
+successful default scheduler catch-up, `ResearchAllocationPolicyDecisionCoordinator` validates
+existing decisions and ensures the oldest missing terminal outcome, at most one per cycle. It
+records supported, unsupported, and underpowered outcomes symmetrically, advances an equal
+adjudication millisecond by one, rejects clock regression, and resolves same-root races through
+create-only publication plus exact winner re-derivation. This remains a separate fixed application
+decision, not outcome self-authorization, and grants no evaluation, promotion, order, private, or
+live authority.
 Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted

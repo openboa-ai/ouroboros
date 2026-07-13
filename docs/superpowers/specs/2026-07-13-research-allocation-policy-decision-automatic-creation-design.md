@@ -1,6 +1,6 @@
 # ResearchAllocationPolicyDecision Automatic Creation Design
 
-**Status:** Approved for implementation under the standing autonomous Goal mandate
+**Status:** Implemented and verified
 
 ## Goal
 
@@ -219,6 +219,16 @@ Run focused tests, the complete Vitest suite, all workspace type checks, and rep
 6. Missing evidence, corruption, drift, orphan records, and clock regression fail before policy use.
 7. Automatic creation grants research-policy selection authority only.
 8. Focused races, full tests, type checks, and repository guards pass.
+
+## Implementation Evidence
+
+- `54cdbca` made decision publication create-only and reconciled exact concurrent winners.
+- `fc8bf6b` added symmetric oldest-first terminal-outcome decision reconciliation.
+- `72b8973` invoked one decision only after successful scheduler catch-up.
+- `ea01ace` composed automatic decisions into the default runtime server and preserved opt-outs.
+- Focused Store/Application/scheduler/server regression passed with 6 files and 127 tests.
+- Full Vitest passed with 178 files and 2,858 tests.
+- All workspace type checks and `npm run check:repo-guards` passed.
 
 ## Remaining Boundary
 

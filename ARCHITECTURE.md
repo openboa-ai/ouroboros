@@ -117,8 +117,13 @@ policy digest; every other valid outcome is not approved and cannot select stati
 an uncontrolled Arena tick, the allocation resolver chooses explicit caller intent first, then the
 latest approved decision for the current policy digest, then the repository adaptive default.
 `CandidateArenaResearchAllocation` seals the chosen basis before effects, and LocalStore reloads
-and verifies decision/outcome digests and time order. This grants research-policy selection only;
-promotion and champion runtime handoff remain outside the boundary.
+and verifies decision/outcome digests and time order. After a successful scheduler catch-up, the
+application `ResearchAllocationPolicyDecisionCoordinator` validates exact existing decisions and
+ensures only the oldest missing terminal outcome. All inference statuses are reconciled
+symmetrically, one per cycle. Equal completion milliseconds advance by one, regressed clocks fail,
+and LocalStore create-only publication plus service re-derivation accepts only an exact same-root
+winner. This grants research-policy selection only; promotion and champion runtime handoff remain
+outside the boundary.
 `ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
 not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
 commitment still runs isolated candidate bytes and closes through one append-only

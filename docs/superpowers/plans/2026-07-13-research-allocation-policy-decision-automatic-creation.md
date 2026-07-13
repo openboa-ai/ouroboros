@@ -266,7 +266,7 @@ git commit -m "feat: automate research policy decisions"
 - Consumes: verified Tasks 1-4.
 - Produces: canonical current truth, exact validation evidence, and next frontier selection.
 
-- [ ] **Step 1: Update canonical docs with proven behavior**
+- [x] **Step 1: Update canonical docs with proven behavior**
 
 Record symmetric all-outcome reconciliation, one decision per successful cycle, strict
 post-adjudication ordering, same-root create-only publication, next-tick approved provenance,
@@ -274,7 +274,7 @@ not-approved negative evidence, and research-only authority. Remove automatic de
 from current-gap lists. Keep distinct-regime/forward-time scheduling, learned policy, automatic
 promotion, handoff, multi-host ownership, soak, and P0 open.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 ```bash
 npx vitest run
@@ -282,7 +282,7 @@ npm run typecheck
 npm run check:repo-guards
 ```
 
-- [ ] **Step 3: Record exact evidence and self-review**
+- [x] **Step 3: Record exact evidence and self-review**
 
 Update both design statuses, check every plan box, record commit hashes and exact test counts, and
 confirm the worktree contains only the existing untracked `.superpowers/` path.
@@ -291,9 +291,27 @@ Select the next bounded frontier from current evidence. Prefer forward-time/dist
 scheduling or automatic promotion readiness only after preserving the separate TradingPromotion
 authority boundary.
 
-- [ ] **Step 4: Commit durable truth**
+- [x] **Step 4: Commit durable truth**
 
 ```bash
 git add AGENTS.md README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/superpowers/specs/2026-07-12-research-allocation-policy-decision-design.md docs/superpowers/specs/2026-07-13-research-allocation-policy-decision-automatic-creation-design.md docs/superpowers/plans/2026-07-13-research-allocation-policy-decision-automatic-creation.md
 git commit -m "docs: record automatic policy decisions"
 ```
+
+## Execution Evidence
+
+- Design and plan: `daa7709` (`docs: design automatic research policy decisions`)
+- Task 1: `54cdbca` (`fix: reconcile policy decision races`)
+- Task 2: `fc8bf6b` (`feat: ensure terminal study policy decisions`)
+- Task 3: `72b8973` (`feat: decide study policy after catch-up`)
+- Task 4: `ea01ace` (`feat: automate research policy decisions`)
+- Focused regression: 6 files, 127 tests passed.
+- Full regression: 178 files, 2,858 tests passed.
+- Type safety: `npm run typecheck` passed for every workspace.
+- Repository policy: `npm run check:repo-guards` passed, including docs, architecture, naming,
+  tracked environment, secret, and diff checks.
+- Worktree review: only the nine intended durable-truth documents and the pre-existing untracked
+  `.superpowers/` path remained before this documentation commit.
+
+The next bounded frontier should address forward-time and distinct-regime study scheduling before
+claiming external validity. Automatic TradingPromotion remains a separate authority boundary.

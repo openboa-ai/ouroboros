@@ -124,7 +124,11 @@ adjudication without a duplicate progress record. A separate append-only
 `ResearchAllocationPolicyDecision` now approves only the exact studied adaptive policy after an
 eligible supported outcome; unsupported and underpowered outcomes remain not approved and never
 select static control. Uncontrolled ticks prefer the latest applicable exact approval, then the
-repository adaptive fallback, while explicit directions and modes always win. Default process
+repository adaptive fallback, while explicit directions and modes always win. After successful
+study catch-up, an internal coordinator validates existing decisions and ensures the oldest terminal
+outcome missing one, at most one per cycle. It processes every inference status symmetrically,
+publishes one exact same-root winner, and makes an automatic approval available to the next
+uncontrolled tick without granting promotion or trading authority. Default process
 discovery uses a single-process, one-shot supervisor that drains incomplete studies oldest first and
 rescans exact evidence. Before each default server discovery cycle, an internal commitment
 coordinator reloads the latest exact TradingPromotion and sealed confirmation campaign and ensures
@@ -132,8 +136,8 @@ one deterministic six-replication, one-tick-per-arm study. It preserves numeric,
 paper policy, binds comparison to `champion_challenge`, bounds the incomplete queue at one, and uses
 create-only publication for one exact same-root winner. Missing prerequisites defer; corruption or
 drift fails before effects. The process-local scheduler then starts the supervisor, waits on a
-bounded interruptible poll after catch-up, and reconstructs each runtime from the persisted study
-condition.
+bounded interruptible poll after post-catch-up decision reconciliation, and reconstructs each
+runtime from the persisted study condition.
 Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
 same-host servers using the same LocalStore root. Exact ownership is checked before each executor
 advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
@@ -143,7 +147,7 @@ Each copied arm can be opened as an exact LocalStore with its own paper-session 
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather
 than adopts unowned attempts. Multi-host fencing, real-market and distinct-regime replication,
-automatic decision creation, forward-time study selection, and learned policy parameters remain open.
+forward-time study selection, and learned policy parameters remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized
