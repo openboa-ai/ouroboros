@@ -99,6 +99,10 @@ already allowed aggregate fields:
 - latest duplicate or quarantine admission summaries;
 - the sanitized prior `ResearchWorkerCheckpoint`, when one exists.
 
+When that checkpoint carries an admission reference, its worker-facing status and reason are derived
+only from the exact persisted `CandidateAdmissionDecision` bound to the same preflight commitment.
+A caller-supplied or stale admission verdict is not part of the safe memory source.
+
 It contains no raw evaluator scenario, sealed score, paper qualification, market snapshot, account,
 fill, command, provider request, stdout/stderr, filesystem path, credential, private, or live field.
 

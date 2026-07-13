@@ -1522,6 +1522,37 @@ export interface ExperimentRunRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export type ResearchWorkerMemoryMode =
+  | "released_memory"
+  | "memory_masked";
+
+export interface ResearchWorkerMemoryControlAssignment {
+  study_ref: Ref;
+  study_digest: string;
+  pair_index: number;
+  arm_kind:
+    | "released_memory_treatment"
+    | "memory_masked_control";
+}
+
+export type ResearchWorkerMemoryPriorCheckpoint =
+  | {
+      disposition: "included" | "masked";
+      checkpoint_ref: Ref;
+      checkpoint_digest: string;
+    }
+  | { disposition: "none_available" };
+
+export interface ResearchWorkerMemoryPolicy {
+  protocol_version: "research_worker_memory_v1";
+  memory_mode: ResearchWorkerMemoryMode;
+  memory_source_digest: string;
+  available_memory_item_count: number;
+  arena_context_digest: string;
+  prior_checkpoint: ResearchWorkerMemoryPriorCheckpoint;
+  control_assignment?: ResearchWorkerMemoryControlAssignment;
+}
+
 export interface ResearchPreflightCommitmentRecord extends BaseRecord {
   record_kind: "research_preflight_commitment";
   research_preflight_commitment_id: string;
@@ -1532,6 +1563,7 @@ export interface ResearchPreflightCommitmentRecord extends BaseRecord {
   research_allocation_digest: string;
   source_system_code_ref: Ref;
   source_artifact_digest: string;
+  memory_policy?: ResearchWorkerMemoryPolicy;
   development_policy: {
     suite_version: "research_development_replay_v1";
     suite_digest: string;
@@ -1953,7 +1985,9 @@ export function researchPreflightCommitmentDigestInput(
 export function researchPreflightCommitmentHasRuntimeShape(
   value: unknown
 ): value is ResearchPreflightCommitmentRecord {
-  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+  if (!comparisonObject(value)) return false;
+  const hasMemoryPolicy = Object.hasOwn(value, "memory_policy");
+  if (!comparisonHasExactKeys(value, [
     "record_kind",
     "version",
     "research_preflight_commitment_id",
@@ -1964,6 +1998,7 @@ export function researchPreflightCommitmentHasRuntimeShape(
     "research_allocation_digest",
     "source_system_code_ref",
     "source_artifact_digest",
+    ...(hasMemoryPolicy ? ["memory_policy"] : []),
     "development_policy",
     "sealed_admission_policy",
     "committed_at",
@@ -1986,6 +2021,9 @@ export function researchPreflightCommitmentHasRuntimeShape(
     ) || !researchPreflightSha256Digest(value.research_allocation_digest) ||
     !comparisonRef(value.source_system_code_ref, "system_code") ||
     !researchPreflightSha256Digest(value.source_artifact_digest) ||
+    (hasMemoryPolicy && !researchWorkerMemoryPolicyHasRuntimeShape(
+      value.memory_policy
+    )) ||
     !researchPreflightDevelopmentPolicyHasRuntimeShape(value.development_policy) ||
     !researchPreflightSealedPolicyHasRuntimeShape(value.sealed_admission_policy) ||
     !comparisonIso(value.committed_at) ||
@@ -2000,6 +2038,78 @@ export function researchPreflightCommitmentHasRuntimeShape(
   }
   return value.development_policy.suite_digest !==
     value.sealed_admission_policy.suite_digest;
+}
+
+export function researchWorkerMemoryPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerMemoryPolicy {
+  if (!comparisonObject(value)) return false;
+  const hasAssignment = Object.hasOwn(value, "control_assignment");
+  if (!comparisonHasExactKeys(value, [
+    "protocol_version",
+    "memory_mode",
+    "memory_source_digest",
+    "available_memory_item_count",
+    "arena_context_digest",
+    "prior_checkpoint",
+    ...(hasAssignment ? ["control_assignment"] : [])
+  ]) || value.protocol_version !== "research_worker_memory_v1" ||
+    (value.memory_mode !== "released_memory" &&
+      value.memory_mode !== "memory_masked") ||
+    !researchPreflightSha256Digest(value.memory_source_digest) ||
+    !comparisonNonNegative(value.available_memory_item_count) ||
+    !Number.isInteger(value.available_memory_item_count) ||
+    !researchPreflightSha256Digest(value.arena_context_digest) ||
+    !researchWorkerMemoryPriorCheckpointHasRuntimeShape(
+      value.prior_checkpoint,
+      value.memory_mode
+    ) || (hasAssignment && !researchWorkerMemoryControlAssignmentHasRuntimeShape(
+      value.control_assignment,
+      value.memory_mode
+    ))) {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerMemoryPriorCheckpointHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchWorkerMemoryPriorCheckpoint {
+  if (!comparisonObject(value) || typeof value.disposition !== "string") {
+    return false;
+  }
+  if (value.disposition === "none_available") {
+    return comparisonHasExactKeys(value, ["disposition"]);
+  }
+  return (memoryMode === "released_memory"
+      ? value.disposition === "included"
+      : value.disposition === "masked") && comparisonHasExactKeys(value, [
+    "disposition",
+    "checkpoint_ref",
+    "checkpoint_digest"
+  ]) && comparisonRef(value.checkpoint_ref, "research_worker_checkpoint") &&
+    researchPreflightSha256Digest(value.checkpoint_digest);
+}
+
+function researchWorkerMemoryControlAssignmentHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchWorkerMemoryControlAssignment {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "study_ref",
+    "study_digest",
+    "pair_index",
+    "arm_kind"
+  ]) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchPreflightSha256Digest(value.study_digest) ||
+    !comparisonPositive(value.pair_index) ||
+    !Number.isInteger(value.pair_index) || value.pair_index > 30) {
+    return false;
+  }
+  return memoryMode === "released_memory"
+    ? value.arm_kind === "released_memory_treatment"
+    : value.arm_kind === "memory_masked_control";
 }
 
 function researchPreflightDevelopmentPolicyHasRuntimeShape(

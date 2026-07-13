@@ -52,6 +52,8 @@ import {
   createGatewayRuntimeBinding,
   startPaperTradingApiProvider
 } from "@ouroboros/application/trading/gateway/runtime-binding";
+import { sanitizeResearchWorkerArenaContext } from
+  "@ouroboros/application/candidate/research-worker-memory";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFileCallback);
@@ -2249,30 +2251,34 @@ process.exit(17);
       }
     });
 
+    const arenaContext = sanitizeResearchWorkerArenaContext(JSON.stringify({
+      requested_direction: "trend_following",
+      finding_clusters: [{
+        direction_kind: "trend_following",
+        next_research_focus: "released-finding-safe",
+        authority_status: "not_promotion_authority"
+      }],
+      research_memory_policy: { memory_mode: "released_memory" },
+      selected_paper_evidence: [{
+        paper_score: "raw-paper-secret",
+        latest_paper_account: "raw-account-secret",
+        latest_fill: "raw-fill-secret"
+      }],
+      paper_trading_board: [{ latest_market_snapshot: "raw-market-secret" }],
+      latest_tick_failures: [{
+        error: "/private/raw-path",
+        command: "raw-command-secret"
+      }]
+    }));
+    if (!arenaContext) throw new Error("expected_sanitized_arena_context");
+
     const result = await runTradingResearchLoop({
       run_root: runRoot,
       program_path: programPath,
       session_id: "codex-autonomous-session",
       iterations: 2,
       agent_adapter: adapter,
-      arena_context: JSON.stringify({
-        requested_direction: "trend_following",
-        finding_clusters: [{
-          direction_kind: "trend_following",
-          next_research_focus: "released-finding-safe",
-          authority_status: "not_promotion_authority"
-        }],
-        selected_paper_evidence: [{
-          paper_score: "raw-paper-secret",
-          latest_paper_account: "raw-account-secret",
-          latest_fill: "raw-fill-secret"
-        }],
-        paper_trading_board: [{ latest_market_snapshot: "raw-market-secret" }],
-        latest_tick_failures: [{
-          error: "/private/raw-path",
-          command: "raw-command-secret"
-        }]
-      }),
+      arena_context: arenaContext,
       artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
     });
 
@@ -2332,6 +2338,8 @@ process.exit(17);
     expect(prompts[0]).toContain("OUROBOROS_RESEARCH_TOOL_CLIENT");
     expect(prompts[0]).toContain("choose your own research sequence");
     expect(prompts[0]).toContain("released-finding-safe");
+    expect(prompts[0]).toContain(`CandidateArena context:\n${arenaContext}`);
+    expect(prompts[0]).toContain('"memory_mode":"released_memory"');
     expect(prompts[0]).not.toMatch(
       /scenario_id|expected_direction|sealed_suite|provider_requests|command_evidence|private exchange|raw-paper-secret|raw-account-secret|raw-fill-secret|raw-market-secret|raw-path|raw-command-secret|not_promotion_authority/i
     );

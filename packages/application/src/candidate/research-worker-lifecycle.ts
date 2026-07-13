@@ -28,6 +28,7 @@ export interface ResearchWorkerLifecycleResolution {
   workspace_path: string;
   notebook_path: string;
   previous_checkpoint?: ResearchWorkerCheckpointRecord;
+  previous_admission?: CandidateAdmissionDecisionRecord;
   prior_checkpoint?: TradingResearchPriorCheckpoint;
 }
 
@@ -120,8 +121,17 @@ export async function resolveResearchWorkerLifecycle(input: {
     input.store,
     worker.research_worker_id
   );
+  const previousAdmission = previousCheckpoint?.candidate_admission_decision_ref
+    ? await input.store.getCandidateAdmissionDecision(
+        previousCheckpoint.candidate_admission_decision_ref.id
+      )
+    : undefined;
+  if (previousCheckpoint?.candidate_admission_decision_ref &&
+    !previousAdmission) {
+    throw new Error("research_worker_prior_admission_not_found");
+  }
   const priorCheckpoint = previousCheckpoint
-    ? await toTradingResearchPriorCheckpoint(input.store, previousCheckpoint)
+    ? toTradingResearchPriorCheckpoint(previousCheckpoint, previousAdmission)
     : undefined;
   return {
     direction,
@@ -129,6 +139,7 @@ export async function resolveResearchWorkerLifecycle(input: {
     workspace_path: workspacePath,
     notebook_path: notebookPath,
     ...(previousCheckpoint ? { previous_checkpoint: previousCheckpoint } : {}),
+    ...(previousAdmission ? { previous_admission: previousAdmission } : {}),
     ...(priorCheckpoint ? { prior_checkpoint: priorCheckpoint } : {})
   };
 }
@@ -338,19 +349,10 @@ export function researchWorkerNotebookPath(
   );
 }
 
-async function toTradingResearchPriorCheckpoint(
-  store: OuroborosStorePort,
-  checkpoint: ResearchWorkerCheckpointRecord
-): Promise<TradingResearchPriorCheckpoint> {
-  let admission: CandidateAdmissionDecisionRecord | undefined;
-  if (checkpoint.candidate_admission_decision_ref) {
-    admission = await store.getCandidateAdmissionDecision(
-      checkpoint.candidate_admission_decision_ref.id
-    );
-    if (!admission) {
-      throw new Error("research_worker_prior_admission_not_found");
-    }
-  }
+function toTradingResearchPriorCheckpoint(
+  checkpoint: ResearchWorkerCheckpointRecord,
+  admission: CandidateAdmissionDecisionRecord | undefined
+): TradingResearchPriorCheckpoint {
   return {
     research_worker_checkpoint_id: checkpoint.research_worker_checkpoint_id,
     terminal_status: checkpoint.terminal_status,

@@ -168,6 +168,84 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
+  it("binds and enforces a memory-masked worker projection before the provider effect", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const captures: LifecycleResearchCapture[] = [];
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "worker-memory-source",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent(captures),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    await runCandidateArenaTick({
+      store,
+      tickId: "worker-memory-masked",
+      now: () => "2026-07-12T11:00:00.000Z",
+      directions: ["trend_following"],
+      researchMemoryMode: "memory_masked",
+      researchAgent: "codex",
+      agentFactory: () => new LifecycleResearchAgent(captures),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(captures).toHaveLength(2);
+    expect(captures[1]!.notebook.prior_checkpoint).toBeUndefined();
+    const maskedContext = JSON.parse(
+      captures[1]!.input.arena_context ?? "{}"
+    ) as Record<string, unknown>;
+    expect(Object.keys(maskedContext).sort()).toEqual([
+      "current_research_allocation",
+      "current_research_selection",
+      "requested_direction",
+      "research_memory_policy",
+      "task"
+    ]);
+    expect(maskedContext.research_memory_policy).toEqual({
+      memory_mode: "memory_masked"
+    });
+    for (const key of [
+      "research_population_diversity",
+      "leaderboard",
+      "negative_findings",
+      "latest_findings",
+      "latest_research_efficiency",
+      "released_campaign_findings",
+      "adaptive_direction_focus",
+      "finding_clusters",
+      "latest_candidate_admission_rejections"
+    ]) {
+      expect(maskedContext).not.toHaveProperty(key);
+    }
+
+    const commitment = (await store.listResearchPreflightCommitments())
+      .find((entry) => entry.candidate_arena_tick_id ===
+        "worker-memory-masked");
+    expect(commitment?.memory_policy).toMatchObject({
+      protocol_version: "research_worker_memory_v1",
+      memory_mode: "memory_masked",
+      available_memory_item_count: expect.any(Number),
+      prior_checkpoint: {
+        disposition: "masked",
+        checkpoint_ref: {
+          record_kind: "research_worker_checkpoint"
+        }
+      }
+    });
+    expect(commitment!.memory_policy!.available_memory_item_count).toBeGreaterThan(0);
+    expect(commitment?.memory_policy?.arena_context_digest).toBe(
+      `sha256:${createHash("sha256").update(
+        captures[1]!.input.arena_context ?? ""
+      ).digest("hex")}`
+    );
+  });
+
   it("rotates stable worker identity on model, profile, provider, or direction changes", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1219,8 +1297,19 @@ describe("CandidateArena paper evidence context", () => {
         finding?: string;
       }>;
     };
+    const expectedWorkerPopulationDiversity = {
+      ...expectedPopulationDiversity,
+      tick_series: expectedPopulationDiversity.tick_series.map((entry) => ({
+        ...entry
+      }))
+    };
+    delete (expectedWorkerPopulationDiversity as { authority_status?: unknown })
+      .authority_status;
+    for (const tick of expectedWorkerPopulationDiversity.tick_series) {
+      delete (tick as { authority_status?: unknown }).authority_status;
+    }
     expect(nextContext.research_population_diversity).toEqual(
-      expectedPopulationDiversity
+      expectedWorkerPopulationDiversity
     );
     expect(nextContext.latest_candidate_admission_rejections).toEqual(
       expect.arrayContaining([
@@ -2540,7 +2629,6 @@ describe("CandidateArena paper evidence context", () => {
         candidate_ids: string[];
         latest_finding?: string;
         next_research_focus: string;
-        authority_status: string;
       }>;
       [key: string]: unknown;
     };
@@ -2555,18 +2643,21 @@ describe("CandidateArena paper evidence context", () => {
         candidate_count: 1,
         candidate_ids: [createdCandidate.candidate_id],
         latest_finding: "Candidate produced non-negative net revenue after costs.",
-        next_research_focus: "Inspect the latest paper failure and fix the runtime or protocol issue before review.",
-        authority_status: "not_promotion_authority"
+        next_research_focus: "Inspect the latest paper failure and fix the runtime or protocol issue before review."
       }
     ]);
+    expect(context.finding_clusters[0]).not.toHaveProperty("authority_status");
     expect(context).not.toHaveProperty("selected_paper_evidence");
     expect(JSON.stringify(context)).not.toContain(
       "malformed TradingSystem paper event protocol: invalid order_request"
     );
     expect(JSON.stringify(context)).not.toMatch(/failed_observations|latest_paper_failure/);
-    expect((second.arena as {
-      finding_clusters?: typeof context.finding_clusters;
-    }).finding_clusters).toEqual(context.finding_clusters);
+    expect(second.arena.finding_clusters).toEqual([
+      expect.objectContaining({
+        ...context.finding_clusters[0],
+        authority_status: "not_promotion_authority"
+      })
+    ]);
   });
 
   it("prioritizes default research directions from paper failure pressure without promotion authority", async () => {
@@ -2617,7 +2708,6 @@ describe("CandidateArena paper evidence context", () => {
         focus_score: number;
         focus_reason: string;
         next_research_focus: string;
-        authority_status: string;
       }>;
     });
     expect(secondTickContexts.reduce<Record<string, number>>((counts, entry) => {
@@ -2656,9 +2746,11 @@ describe("CandidateArena paper evidence context", () => {
       source_direction_kind: "trend_following",
       focus_score: 37,
       focus_reason: "public_execution_evidence_gap:observation_quality:paper_evaluation_failed",
-      next_research_focus: "Restore public execution evidence before trusting fills or paper score.",
-      authority_status: "not_promotion_authority"
+      next_research_focus: "Restore public execution evidence before trusting fills or paper score."
     });
+    expect(context.adaptive_direction_focus[0]).not.toHaveProperty(
+      "authority_status"
+    );
   });
 
   it("persists research allocation before effects and bounds default concurrency", async () => {
@@ -3030,7 +3122,6 @@ describe("CandidateArena paper evidence context", () => {
           candidate_ids: string[];
           latest_finding?: string;
           next_research_focus: string;
-          authority_status: string;
         }>;
         adaptive_direction_focus: Array<{
           direction_kind: string;
@@ -3048,8 +3139,7 @@ describe("CandidateArena paper evidence context", () => {
       finding_kind: "negative_result",
       summary: release.finding.summary,
       next_research_focus: release.next_research_focus,
-      released_at: release.released_at,
-      authority_status: "not_promotion_authority"
+      released_at: release.released_at
     }]);
     const projected = context.released_campaign_findings[0]!;
     expect(projected).not.toHaveProperty("slot_results");
@@ -3063,8 +3153,7 @@ describe("CandidateArena paper evidence context", () => {
       candidate_count: 1,
       candidate_ids: [FIXTURE_CANDIDATE_ID],
       latest_finding: release.finding.summary,
-      next_research_focus: release.next_research_focus,
-      authority_status: "not_promotion_authority"
+      next_research_focus: release.next_research_focus
     }]));
     expect(context.adaptive_direction_focus).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -3137,42 +3226,38 @@ describe("CandidateArena paper evidence context", () => {
       latest_research_efficiency: Array<{
         tick_id: string;
         direction_kind: string;
-        provider_request_total: number;
         runner_command_total: number;
-        scenario_count: number;
         development: {
           submission_count: number;
-          provider_request_total: number;
-          scenario_count: number;
+          runner_command_total: number;
+          elapsed_ms: number;
         };
-        sealed_admission: {
-          submission_count: number;
-          provider_request_total: number;
-          scenario_count: number;
-        };
-        authority_status: string;
       }>;
     };
     expect(context.latest_research_efficiency).toEqual([
       expect.objectContaining({
         tick_id: "efficiency-tick-1",
         direction_kind: "trend_following",
-        provider_request_total: 6,
         runner_command_total: 0,
-        scenario_count: 2,
         development: expect.objectContaining({
           submission_count: 1,
-          provider_request_total: 6,
-          scenario_count: 2
-        }),
-        sealed_admission: expect.objectContaining({
-          submission_count: 1,
-          provider_request_total: 21,
-          scenario_count: 6
-        }),
-        authority_status: "not_promotion_authority"
+          runner_command_total: 0,
+          elapsed_ms: expect.any(Number)
+        })
       })
     ]);
+    expect(context.latest_research_efficiency[0]).not.toHaveProperty(
+      "provider_request_total"
+    );
+    expect(context.latest_research_efficiency[0]).not.toHaveProperty(
+      "scenario_count"
+    );
+    expect(context.latest_research_efficiency[0]).not.toHaveProperty(
+      "sealed_admission"
+    );
+    expect(context.latest_research_efficiency[0]).not.toHaveProperty(
+      "authority_status"
+    );
     const workerContextSurface = JSON.stringify(context);
     expect(workerContextSurface).not.toMatch(
       /research_preflight|commitment_id|sealed_terminal_status|sealed_admission_suite_digest|rotation_commitment_digest|scenario_id|scenario_results|evaluator_trace|events_path|runner_command_evidence/i
@@ -3208,7 +3293,6 @@ describe("CandidateArena paper evidence context", () => {
         focus_score: number;
         focus_reason: string;
         next_research_focus: string;
-        authority_status: string;
       }>;
     });
     const meanReversionContext = budgetContexts.find((entry) => entry.requested_direction === "mean_reversion");
@@ -3219,9 +3303,11 @@ describe("CandidateArena paper evidence context", () => {
       direction_kind: "mean_reversion",
       focus_score: 21,
       focus_reason: "research_efficiency_budget:low_cost_latency",
-      next_research_focus: "Favor lower-cost ResearchDirection lanes while expensive lanes cool down.",
-      authority_status: "not_promotion_authority"
+      next_research_focus: "Favor lower-cost ResearchDirection lanes while expensive lanes cool down."
     });
+    expect(meanReversionContext.adaptive_direction_focus[0]).not.toHaveProperty(
+      "authority_status"
+    );
   });
 });
 

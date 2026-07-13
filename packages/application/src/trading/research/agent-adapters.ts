@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { sanitizeResearchWorkerArenaContext } from
+  "../../candidate/research-worker-memory";
 import {
   createResearchWorkerToolClient,
   startResearchWorkerToolServer,
@@ -31,21 +33,6 @@ type ExecFileRunner = (
 ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
 
 const CODEX_RESEARCH_PERMISSION_PROFILE = "ouroboros-research-worker";
-const RESEARCH_WORKER_ARENA_CONTEXT_KEYS = new Set([
-  "requested_direction",
-  "current_research_allocation",
-  "current_research_selection",
-  "research_population_diversity",
-  "task",
-  "leaderboard",
-  "negative_findings",
-  "latest_findings",
-  "latest_research_efficiency",
-  "released_campaign_findings",
-  "adaptive_direction_focus",
-  "finding_clusters",
-  "latest_candidate_admission_rejections"
-]);
 const CODEX_RESEARCH_SHELL_ENVIRONMENT_CONFIG =
   "shell_environment_policy.include_only=[" +
   "\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\"," +
@@ -340,60 +327,6 @@ function codexResearchNetworkConfig(
       `extends=\":workspace\",network={enabled=true,mode=\"limited\",${common}}}`,
     proxy: `features.network_proxy={enabled=true,${common}}`
   };
-}
-
-function sanitizeResearchWorkerArenaContext(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return undefined;
-  }
-  const projection: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!RESEARCH_WORKER_ARENA_CONTEXT_KEYS.has(key)) continue;
-    projection[key] = sanitizeResearchWorkerContextValue(value);
-  }
-  return JSON.stringify(projection);
-}
-
-function sanitizeResearchWorkerContextValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeResearchWorkerContextValue);
-  }
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => !blockedResearchWorkerContextKey(key))
-      .map(([key, nested]) => [key, sanitizeResearchWorkerContextValue(nested)])
-  );
-}
-
-function blockedResearchWorkerContextKey(key: string): boolean {
-  const normalized = key.toLowerCase();
-  return normalized.includes("paper") ||
-    normalized.includes("sealed") ||
-    normalized.includes("scenario") ||
-    normalized.includes("provider_request") ||
-    normalized.includes("market_snapshot") ||
-    normalized.includes("execution_snapshot") ||
-    normalized.includes("open_order") ||
-    normalized.includes("account") ||
-    normalized === "fill" ||
-    normalized.endsWith("_fill") ||
-    normalized === "command" ||
-    normalized.endsWith("_command") ||
-    normalized === "stdout" ||
-    normalized === "stderr" ||
-    normalized === "authority_status" ||
-    normalized.endsWith("_path") ||
-    normalized.includes("private");
 }
 
 export interface FixtureTradingResearchAgentOptions {

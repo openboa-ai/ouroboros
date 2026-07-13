@@ -70,6 +70,40 @@ describe("ResearchPreflight evaluator-owned plan", () => {
     expect(serialized).not.toContain("exit_price");
   });
 
+  it("binds an exact memory policy without changing legacy commitment readability", () => {
+    const releasedPolicy = {
+      protocol_version: "research_worker_memory_v1" as const,
+      memory_mode: "released_memory" as const,
+      memory_source_digest: digest("memory-source"),
+      available_memory_item_count: 3,
+      arena_context_digest: digest("released-context"),
+      prior_checkpoint: { disposition: "none_available" as const }
+    };
+    const released = buildResearchPreflightPlan({
+      ...planInput(seed(23)),
+      memory_policy: releasedPolicy
+    });
+    const masked = buildResearchPreflightPlan({
+      ...planInput(seed(23)),
+      memory_policy: {
+        ...releasedPolicy,
+        memory_mode: "memory_masked",
+        arena_context_digest: digest("masked-context")
+      }
+    });
+    const legacy = buildResearchPreflightPlan(planInput(seed(23)));
+
+    expect(released.commitment.memory_policy).toEqual(releasedPolicy);
+    expect(masked.commitment.memory_policy?.memory_mode).toBe("memory_masked");
+    expect(released.commitment.commitment_digest).not.toBe(
+      masked.commitment.commitment_digest
+    );
+    expect(legacy.commitment).not.toHaveProperty("memory_policy");
+    expect(released.commitment.sealed_admission_policy.suite_digest).toBe(
+      legacy.commitment.sealed_admission_policy.suite_digest
+    );
+  });
+
   it("generates balanced hidden regimes without obvious metadata shortcuts", () => {
     const plan = buildResearchPreflightPlan(planInput(seed(31)));
     const suite = plan.claimSealedAdmissionSuite();

@@ -16,6 +16,7 @@ import {
   type ResearchFindingRecord,
   type ResearchPreflightCommitmentRecord,
   type ResearchWorkerCheckpointRecord,
+  type ResearchWorkerMemoryPolicy,
   type ResearchWorkerRecord,
   type SystemCodeRecord,
   type TradingEvaluationResultRecord
@@ -77,6 +78,166 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
       cumulative_committed_submission_limit: 2,
       cumulative_recorded_submission_count: 1,
       remaining_submission_authority: 0
+    });
+  });
+
+  it("requires a preflight memory policy to bind the exact prior checkpoint graph", async () => {
+    const graph = await persistWorkerGraph(store);
+    const firstCommitment = await persistCommitment(store, graph, "memory-first", 10, 1);
+    const first = failedCheckpoint(graph, firstCommitment, {
+      closedAt: "2026-07-12T10:10:00.000Z",
+      reason: "execution_failed"
+    });
+    await store.recordResearchWorkerCheckpoint(first);
+    const valid = await persistCommitment(
+      store,
+      graph,
+      "memory-valid",
+      11,
+      1,
+      memoryPolicy(first, "included")
+    );
+    expect(valid.memory_policy?.prior_checkpoint).toEqual({
+      disposition: "included",
+      checkpoint_ref: {
+        record_kind: "research_worker_checkpoint",
+        id: first.research_worker_checkpoint_id
+      },
+      checkpoint_digest: first.checkpoint_digest
+    });
+    const validCheckpoint = failedCheckpoint(graph, valid, {
+      closedAt: "2026-07-12T11:10:00.000Z",
+      reason: "execution_failed",
+      previous: first,
+      cumulativeCommitted: 2
+    });
+    await store.recordResearchWorkerCheckpoint(validCheckpoint);
+
+    await expect(persistCommitment(
+      store,
+      graph,
+      "memory-stale-reference",
+      12,
+      1,
+      memoryPolicy(first, "included")
+    )).rejects.toMatchObject({
+      code: "research_preflight_commitment_memory_checkpoint_mismatch",
+      details: {
+        mismatch_fields: expect.arrayContaining([
+          "memory_policy.prior_checkpoint_not_immediate"
+        ])
+      }
+    });
+
+    const missing = withCommitmentDigest({
+      ...structuredClone(valid),
+      research_preflight_commitment_id: "research-preflight-memory-missing",
+      memory_policy: {
+        ...structuredClone(valid.memory_policy!),
+        prior_checkpoint: {
+          disposition: "included",
+          checkpoint_ref: {
+            record_kind: "research_worker_checkpoint",
+            id: "missing-checkpoint"
+          },
+          checkpoint_digest: first.checkpoint_digest
+        }
+      },
+      sealed_admission_policy: {
+        ...valid.sealed_admission_policy,
+        rotation_commitment_digest: digest("rotation-memory-missing"),
+        suite_digest: digest("sealed-suite-memory-missing")
+      }
+    });
+    await expect(store.recordResearchPreflightCommitment(missing)).rejects.toMatchObject({
+      code: "research_preflight_commitment_memory_checkpoint_not_found"
+    });
+
+    const digestDrift = withCommitmentDigest({
+      ...structuredClone(valid),
+      research_preflight_commitment_id: "research-preflight-memory-drift",
+      memory_policy: {
+        ...structuredClone(valid.memory_policy!),
+        prior_checkpoint: {
+          disposition: "included",
+          checkpoint_ref: {
+            record_kind: "research_worker_checkpoint",
+            id: first.research_worker_checkpoint_id
+          },
+          checkpoint_digest: digest("other-checkpoint")
+        }
+      },
+      sealed_admission_policy: {
+        ...valid.sealed_admission_policy,
+        rotation_commitment_digest: digest("rotation-memory-drift"),
+        suite_digest: digest("sealed-suite-memory-drift")
+      }
+    });
+    await expect(store.recordResearchPreflightCommitment(digestDrift)).rejects.toMatchObject({
+      code: "research_preflight_commitment_memory_checkpoint_mismatch"
+    });
+
+    await expect(persistCommitment(
+      store,
+      graph,
+      "memory-before-close",
+      11,
+      1,
+      memoryPolicy(validCheckpoint, "included"),
+      5
+    )).rejects.toMatchObject({
+      code: "research_preflight_commitment_memory_checkpoint_mismatch",
+      details: {
+        mismatch_fields: expect.arrayContaining([
+          "memory_policy.prior_checkpoint_closed_after_commitment"
+        ])
+      }
+    });
+
+    const foreignWorker: ResearchWorkerRecord = {
+      ...graph.worker,
+      research_worker_id: "research-worker-execution-cost-codex",
+      research_direction_ref: {
+        record_kind: "research_direction",
+        id: graph.alternateDirection.research_direction_id
+      },
+      workspace_key:
+        "candidate-arena-workers/research-worker-execution-cost-codex"
+    };
+    await store.recordResearchWorker(foreignWorker);
+    const foreignGraph = {
+      ...graph,
+      direction: graph.alternateDirection,
+      worker: foreignWorker
+    };
+    const foreignCommitment = await persistCommitment(
+      store,
+      foreignGraph,
+      "memory-foreign-checkpoint",
+      12,
+      1
+    );
+    const foreignCheckpoint = failedCheckpoint(foreignGraph, foreignCommitment, {
+      closedAt: "2026-07-12T12:10:00.000Z",
+      reason: "execution_failed"
+    });
+    await store.recordResearchWorkerCheckpoint(foreignCheckpoint);
+    await expect(persistCommitment(
+      store,
+      graph,
+      "memory-foreign-reference",
+      13,
+      1,
+      memoryPolicy(foreignCheckpoint, "included")
+    )).rejects.toMatchObject({
+      code: "research_preflight_commitment_memory_checkpoint_mismatch",
+      details: {
+        mismatch_fields: expect.arrayContaining([
+          "memory_policy.prior_checkpoint_worker",
+          "memory_policy.prior_checkpoint_direction",
+          "memory_policy.prior_checkpoint_not_immediate"
+        ])
+      }
     });
   });
 
@@ -336,7 +497,9 @@ async function persistCommitment(
   graph: WorkerGraph,
   suffix: string,
   hour: number,
-  submissionLimit: number
+  submissionLimit: number,
+  memoryPolicyInput?: ResearchWorkerMemoryPolicy,
+  committedMinute = 1
 ): Promise<ResearchPreflightCommitmentRecord> {
   const at = (minute: number) =>
     `2026-07-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
@@ -356,6 +519,9 @@ async function persistCommitment(
     research_allocation_digest: allocation.allocation_digest,
     source_system_code_ref: { record_kind: "system_code", id: graph.source.system_code_id },
     source_artifact_digest: graph.source.artifact_digest,
+    ...(memoryPolicyInput
+      ? { memory_policy: structuredClone(memoryPolicyInput) }
+      : {}),
     development_policy: {
       suite_version: "research_development_replay_v1",
       suite_digest: digest("development-suite"),
@@ -370,7 +536,7 @@ async function persistCommitment(
       submission_limit: 1,
       feedback_release: "terminal_after_freeze"
     },
-    committed_at: at(1),
+    committed_at: at(committedMinute),
     research_preflight_authority: true,
     admission_authority: false,
     promotion_authority: false,
@@ -382,6 +548,29 @@ async function persistCommitment(
   commitment.commitment_digest = exactDigest(researchPreflightCommitmentDigestInput(commitment));
   await store.recordResearchPreflightCommitment(commitment);
   return commitment;
+}
+
+function memoryPolicy(
+  checkpoint: ResearchWorkerCheckpointRecord,
+  disposition: "included" | "masked"
+): ResearchWorkerMemoryPolicy {
+  return {
+    protocol_version: "research_worker_memory_v1",
+    memory_mode: disposition === "included"
+      ? "released_memory"
+      : "memory_masked",
+    memory_source_digest: digest("memory-source"),
+    available_memory_item_count: 1,
+    arena_context_digest: digest(`arena-context-${disposition}`),
+    prior_checkpoint: {
+      disposition,
+      checkpoint_ref: {
+        record_kind: "research_worker_checkpoint",
+        id: checkpoint.research_worker_checkpoint_id
+      },
+      checkpoint_digest: checkpoint.checkpoint_digest
+    }
+  };
 }
 
 function allocationFixture(
@@ -712,6 +901,13 @@ function systemCodeFixture(id: string, artifactDigest: string, createdAt: string
 
 function withCheckpointDigest<T extends ResearchWorkerCheckpointRecord>(record: T): T {
   record.checkpoint_digest = exactDigest(researchWorkerCheckpointDigestInput(record));
+  return record;
+}
+
+function withCommitmentDigest<T extends ResearchPreflightCommitmentRecord>(record: T): T {
+  record.commitment_digest = exactDigest(
+    researchPreflightCommitmentDigestInput(record)
+  );
   return record;
 }
 

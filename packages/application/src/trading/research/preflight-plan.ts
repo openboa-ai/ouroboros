@@ -3,8 +3,10 @@ import {
   paperTradingComparisonPersistedRecordDigestInput,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
+  researchWorkerMemoryPolicyHasRuntimeShape,
   type Ref,
-  type ResearchPreflightCommitmentRecord
+  type ResearchPreflightCommitmentRecord,
+  type ResearchWorkerMemoryPolicy
 } from "@ouroboros/domain";
 import { researchDevelopmentReplayScenarios } from "./replay-trading-api-provider";
 import type { ReplayTradingScenario } from "./types";
@@ -17,6 +19,7 @@ export interface BuildResearchPreflightPlanInput {
   research_allocation_digest: string;
   source_system_code_ref: Ref;
   source_artifact_digest: string;
+  memory_policy?: ResearchWorkerMemoryPolicy;
   development_submission_limit: number;
   committed_at: string;
   evaluator_seed: Uint8Array;
@@ -87,7 +90,10 @@ export function buildResearchPreflightPlan(
   const commitmentIdentity = sha256(Buffer.from(paperTradingComparisonPersistedRecordDigestInput({
     context,
     rotation_commitment_digest: rotationCommitmentDigest,
-    sealed_suite_digest: sealedAdmissionSuite.suite_digest
+    sealed_suite_digest: sealedAdmissionSuite.suite_digest,
+    ...(input.memory_policy
+      ? { memory_policy: input.memory_policy }
+      : {})
   })));
   const commitment: ResearchPreflightCommitmentRecord = {
     record_kind: "research_preflight_commitment",
@@ -100,6 +106,9 @@ export function buildResearchPreflightPlan(
     research_allocation_digest: input.research_allocation_digest,
     source_system_code_ref: { ...input.source_system_code_ref },
     source_artifact_digest: input.source_artifact_digest,
+    ...(input.memory_policy
+      ? { memory_policy: structuredClone(input.memory_policy) }
+      : {}),
     development_policy: {
       suite_version: "research_development_replay_v1",
       suite_digest: developmentSuite.suite_digest,
@@ -245,6 +254,8 @@ function assertBuildInput(input: BuildResearchPreflightPlanInput): void {
     !sha256Digest(input.research_allocation_digest) ||
     !refKind(input.source_system_code_ref, "system_code") ||
     !sha256Digest(input.source_artifact_digest) ||
+    (input.memory_policy !== undefined &&
+      !researchWorkerMemoryPolicyHasRuntimeShape(input.memory_policy)) ||
     !Number.isInteger(input.development_submission_limit) ||
     input.development_submission_limit < 1 ||
     input.development_submission_limit > 2 ||

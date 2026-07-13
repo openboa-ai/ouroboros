@@ -394,6 +394,8 @@ export type LocalStoreErrorCode =
   | "research_preflight_commitment_conflict"
   | "research_preflight_commitment_reload_failed"
   | "research_preflight_commitment_reference_not_found"
+  | "research_preflight_commitment_memory_checkpoint_not_found"
+  | "research_preflight_commitment_memory_checkpoint_mismatch"
   | "research_preflight_commitment_graph_mismatch"
   | "research_preflight_commitment_rotation_reuse"
   | "research_preflight_terminal_graph_mismatch"
@@ -7155,6 +7157,56 @@ export class LocalStore {
         }
       );
     }
+    const memoryPrior = commitment.memory_policy?.prior_checkpoint;
+    const memoryCheckpointValue = memoryPrior &&
+        memoryPrior.disposition !== "none_available"
+      ? await this.readOptionalRecord<unknown>(
+          "research-worker-checkpoints",
+          memoryPrior.checkpoint_ref.id
+        )
+      : undefined;
+    const memoryCheckpoint = memoryCheckpointValue === undefined
+      ? undefined
+      : this.assertPersistedResearchWorkerCheckpoint(memoryCheckpointValue);
+    if (memoryPrior && memoryPrior.disposition !== "none_available" &&
+      !memoryCheckpoint) {
+      throw new LocalStoreError(
+        "research_preflight_commitment_memory_checkpoint_not_found",
+        "ResearchPreflightCommitment memory checkpoint was not found",
+        {
+          research_preflight_commitment_id:
+            commitment.research_preflight_commitment_id,
+          research_worker_checkpoint_id: memoryPrior.checkpoint_ref.id
+        }
+      );
+    }
+    const workerCommitments = memoryPrior
+      ? [
+          ...(await this.readCollection<unknown>(
+            "research-preflight-commitments"
+          )).map((value) =>
+            this.assertPersistedResearchPreflightCommitment(value)
+          ).filter((candidate) =>
+            candidate.research_preflight_commitment_id !==
+              commitment.research_preflight_commitment_id &&
+            candidate.research_worker_ref.id ===
+              commitment.research_worker_ref.id
+          ),
+          commitment
+        ].sort((left, right) =>
+          left.committed_at.localeCompare(right.committed_at) ||
+          left.research_preflight_commitment_id.localeCompare(
+            right.research_preflight_commitment_id
+          )
+        )
+      : [];
+    const currentWorkerCommitmentIndex = workerCommitments.findIndex(
+      (candidate) => candidate.research_preflight_commitment_id ===
+        commitment.research_preflight_commitment_id
+    );
+    const expectedPriorCommitment = currentWorkerCommitmentIndex > 0
+      ? workerCommitments[currentWorkerCommitmentIndex - 1]
+      : undefined;
     const selection = allocation.selected_directions.find(
       (candidate) => candidate.direction_kind === direction.direction_kind
     );
@@ -7187,9 +7239,46 @@ export class LocalStore {
         : undefined,
       Date.parse(commitment.committed_at) < Date.parse(sourceSystemCode.created_at)
         ? "committed_at.before_source_system_code"
+        : undefined,
+      memoryPrior && memoryPrior.disposition !== "none_available" &&
+        memoryCheckpoint?.checkpoint_digest !== memoryPrior.checkpoint_digest
+        ? "memory_policy.prior_checkpoint_digest"
+        : undefined,
+      memoryCheckpoint?.research_worker_ref.id !== undefined &&
+        memoryCheckpoint.research_worker_ref.id !== worker.research_worker_id
+        ? "memory_policy.prior_checkpoint_worker"
+        : undefined,
+      memoryCheckpoint?.research_direction_ref.id !== undefined &&
+        memoryCheckpoint.research_direction_ref.id !==
+          direction.research_direction_id
+        ? "memory_policy.prior_checkpoint_direction"
+        : undefined,
+      memoryCheckpoint !== undefined && Date.parse(memoryCheckpoint.closed_at) >
+        Date.parse(commitment.committed_at)
+        ? "memory_policy.prior_checkpoint_closed_after_commitment"
+        : undefined,
+      memoryPrior && (memoryPrior.disposition === "none_available"
+        ? expectedPriorCommitment !== undefined
+        : expectedPriorCommitment === undefined ||
+          memoryCheckpoint?.research_preflight_commitment_ref.id !==
+            expectedPriorCommitment.research_preflight_commitment_id)
+        ? "memory_policy.prior_checkpoint_not_immediate"
         : undefined
     ].filter((field): field is string => Boolean(field));
     if (mismatchFields.length > 0) {
+      if (mismatchFields.some((field) => field.startsWith(
+        "memory_policy.prior_checkpoint"
+      ))) {
+        throw new LocalStoreError(
+          "research_preflight_commitment_memory_checkpoint_mismatch",
+          "ResearchPreflightCommitment memory checkpoint does not match its worker graph",
+          {
+            research_preflight_commitment_id:
+              commitment.research_preflight_commitment_id,
+            mismatch_fields: mismatchFields
+          }
+        );
+      }
       throw new LocalStoreError(
         "research_preflight_commitment_graph_mismatch",
         "ResearchPreflightCommitment does not match persisted research inputs",

@@ -40,6 +40,8 @@ import type {
   ResearchDirectionKind,
   ResearchFindingRecord,
   ResearchPreflightCommitmentRecord,
+  ResearchWorkerMemoryControlAssignment,
+  ResearchWorkerMemoryMode,
   ResearchWorkerCheckpointTerminalReason,
   ResearchWorkerRecord,
   SystemCodeRecord,
@@ -66,6 +68,8 @@ import {
   toCandidateArenaResearchAllocationReadModel
 } from "./research-allocation";
 import { buildResearchPopulationDiversity } from "./research-population-diversity";
+import { buildResearchWorkerMemoryProjection } from
+  "./research-worker-memory";
 import {
   buildResearchGeneralizationReadModel,
   ResearchGeneralizationReadModelError
@@ -183,6 +187,8 @@ export interface RunCandidateArenaTickInput {
     CandidateArenaResearchAllocationMode,
     "explicit"
   >;
+  researchMemoryMode?: ResearchWorkerMemoryMode;
+  researchMemoryControlAssignment?: ResearchWorkerMemoryControlAssignment;
   tickId?: string;
   now?: () => string;
   repoRoot?: string;
@@ -751,7 +757,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   const adapter = input.researchAgent === "fixture"
     ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
     : input.agentFactory(input.researchAgent);
-  const committedAt = candidateArenaNow(input.now);
+  const requestedCommittedAt = candidateArenaNow(input.now);
+  const memoryMode = input.researchMemoryMode ?? "released_memory";
   const preflight = await withArenaStoreMutation(input.store, async () => {
     const lifecycle = await resolveResearchWorkerLifecycle({
       store: input.store,
@@ -759,14 +766,42 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       agent: adapter.agent,
       provider_kind: researchWorkerProviderKind(adapter.agent),
       candidate_arena_tick_id: input.tickId,
-      created_at: committedAt
+      created_at: requestedCommittedAt
     });
+    const committedAt = new Date(Math.max(
+      Date.parse(requestedCommittedAt),
+      Date.parse(lifecycle.previous_checkpoint?.closed_at ??
+        requestedCommittedAt)
+    )).toISOString();
     const sourceSystemCode = await recordArenaSourceSystemCode({
       store: input.store,
       source: input.source,
       artifact: sourceArtifact,
       sessionId,
-      createdAt: committedAt
+      createdAt: requestedCommittedAt
+    });
+    const context = await arenaContext(
+      input.store,
+      input.direction,
+      input.allocation,
+      input.allocationSelection
+    );
+    const memoryProjection = buildResearchWorkerMemoryProjection({
+      mode: memoryMode,
+      currentContext: context.currentContext,
+      memoryContext: context.memoryContext,
+      ...(lifecycle.previous_checkpoint && lifecycle.prior_checkpoint
+        ? {
+            priorCheckpointRecord: lifecycle.previous_checkpoint,
+            priorCheckpoint: lifecycle.prior_checkpoint,
+            ...(lifecycle.previous_admission
+              ? { priorAdmissionDecision: lifecycle.previous_admission }
+              : {})
+          }
+        : {}),
+      ...(input.researchMemoryControlAssignment
+        ? { controlAssignment: input.researchMemoryControlAssignment }
+        : {})
     });
     const plan = buildResearchPreflightPlan({
       candidate_arena_tick_id: input.tickId,
@@ -788,12 +823,13 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         sourceSystemCode.system_code_id
       ),
       source_artifact_digest: sourceSystemCode.artifact_digest,
+      memory_policy: memoryProjection.policy,
       development_submission_limit: input.allocationSelection.experiment_budget,
       committed_at: committedAt,
       evaluator_seed: generateResearchPreflightEvaluatorSeed()
     });
     await input.store.recordResearchPreflightCommitment(plan.commitment);
-    return { ...lifecycle, sourceSystemCode, plan };
+    return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
   });
   const closeCheckpoint = (terminalReason: Exclude<
     ResearchWorkerCheckpointTerminalReason,
@@ -820,13 +856,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       artifact_runner: input.artifactRunner,
       replay_provider_factory: input.replayProviderFactory,
       preflight_plan: preflight.plan,
-      prior_checkpoint: preflight.prior_checkpoint,
-      arena_context: await arenaContext(
-        input.store,
-        input.direction,
-        input.allocation,
-        input.allocationSelection
-      )
+      prior_checkpoint: preflight.memoryProjection.priorCheckpoint,
+      arena_context: preflight.memoryProjection.arenaContext
     });
     const sealedAdmission = research.sealed_admission;
     const researchEfficiency = researchEfficiencySummary(
@@ -1985,7 +2016,10 @@ async function arenaContext(
   direction: ResearchDirectionKind,
   allocation: CandidateArenaResearchAllocationRecord,
   allocationSelection: CandidateArenaResearchAllocationSelection
-): Promise<string> {
+): Promise<{
+  currentContext: Record<string, unknown>;
+  memoryContext: Record<string, unknown>;
+}> {
   const researchReleases = await arenaPaperTradingComparisonResearchReleases(store);
   const arena = await buildCandidateArenaReadModel(
     store,
@@ -1994,74 +2028,88 @@ async function arenaContext(
     researchReleases
   );
   const findingClusters = arena.finding_clusters;
-  return JSON.stringify({
-    requested_direction: direction,
-    current_research_allocation:
-      toCandidateArenaResearchAllocationReadModel(allocation),
-    current_research_selection: {
-      ...allocationSelection,
-      reasons: [...allocationSelection.reasons]
+  const allocationReadModel = toCandidateArenaResearchAllocationReadModel(
+    allocation
+  );
+  return {
+    currentContext: {
+      requested_direction: direction,
+      current_research_allocation: {
+        allocation_id: allocationReadModel.allocation_id,
+        tick_id: allocationReadModel.tick_id,
+        allocation_mode: allocationReadModel.allocation_mode,
+        policy: { ...allocationReadModel.policy }
+      },
+      current_research_selection: {
+        direction_kind: allocationSelection.direction_kind,
+        selection_kind: allocationSelection.selection_kind,
+        priority: allocationSelection.priority,
+        experiment_budget: allocationSelection.experiment_budget
+      },
+      task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs."
     },
-    research_population_diversity: arena.research_population_diversity,
-    task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
-    leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
-      rank: entry.rank,
-      candidate_id: entry.candidate_id,
-      direction_kind: entry.direction_kind,
-      net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-      net_return_pct: entry.profit_loss.net_return_pct
-    })),
-    negative_findings: arena.leaderboard
-      .filter((entry) => entry.profit_loss.net_revenue_usdt < 0)
-      .slice(0, 5)
-      .map((entry) => ({
+    memoryContext: {
+      research_population_diversity: arena.research_population_diversity,
+      leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
+        rank: entry.rank,
         candidate_id: entry.candidate_id,
         direction_kind: entry.direction_kind,
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-        finding: entry.latest_finding
+        net_return_pct: entry.profit_loss.net_return_pct
       })),
-    latest_findings: arena.leaderboard
-      .slice(0, 8)
-      .map((entry) => ({
-        candidate_id: entry.candidate_id,
-        direction_kind: entry.direction_kind,
-        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-        finding: entry.latest_finding
-      })),
-    latest_research_efficiency: arena.latest_ticks
-      .flatMap((tick) => tick.direction_results
-        .filter((result) => result.research_efficiency)
-        .map((result) => ({
-          tick_id: tick.tick_id,
-          direction_kind: result.direction_kind,
-          status: result.status,
-          candidate_id: result.candidate_id,
-          admission_decision_id: result.admission_decision_id,
-          admission_reason: result.admission_reason,
-          net_revenue_usdt: result.net_revenue_usdt,
-          ...result.research_efficiency
-        })))
-      .slice(0, 8),
-    released_campaign_findings:
-      arenaReleasedCampaignFindings(researchReleases),
-    adaptive_direction_focus: [
-      ...candidateArenaAdaptiveDirectionFocus(findingClusters),
-      ...candidateArenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
-    ],
-    finding_clusters: findingClusters,
-    latest_candidate_admission_rejections: arena.latest_ticks
-      .flatMap((tick) => tick.direction_results
-        .filter((result) => result.status === "duplicate" || result.status === "quarantined")
-        .map((result) => ({
-          tick_id: tick.tick_id,
-          direction_kind: result.direction_kind,
-          status: result.status,
-          admission_decision_id: result.admission_decision_id,
-          admission_reason: result.admission_reason,
-          finding: result.finding
-        })))
-      .slice(0, 8)
-  });
+      negative_findings: arena.leaderboard
+        .filter((entry) => entry.profit_loss.net_revenue_usdt < 0)
+        .slice(0, 5)
+        .map((entry) => ({
+          candidate_id: entry.candidate_id,
+          direction_kind: entry.direction_kind,
+          net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+          finding: entry.latest_finding
+        })),
+      latest_findings: arena.leaderboard
+        .slice(0, 8)
+        .map((entry) => ({
+          candidate_id: entry.candidate_id,
+          direction_kind: entry.direction_kind,
+          net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+          finding: entry.latest_finding
+        })),
+      latest_research_efficiency: arena.latest_ticks
+        .flatMap((tick) => tick.direction_results
+          .filter((result) => result.research_efficiency)
+          .map((result) => ({
+            tick_id: tick.tick_id,
+            direction_kind: result.direction_kind,
+            status: result.status,
+            candidate_id: result.candidate_id,
+            admission_decision_id: result.admission_decision_id,
+            admission_reason: result.admission_reason,
+            net_revenue_usdt: result.net_revenue_usdt,
+            ...result.research_efficiency
+          })))
+        .slice(0, 8),
+      released_campaign_findings:
+        arenaReleasedCampaignFindings(researchReleases),
+      adaptive_direction_focus: [
+        ...candidateArenaAdaptiveDirectionFocus(findingClusters),
+        ...candidateArenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
+      ],
+      finding_clusters: findingClusters,
+      latest_candidate_admission_rejections: arena.latest_ticks
+        .flatMap((tick) => tick.direction_results
+          .filter((result) => result.status === "duplicate" ||
+            result.status === "quarantined")
+          .map((result) => ({
+            tick_id: tick.tick_id,
+            direction_kind: result.direction_kind,
+            status: result.status,
+            admission_decision_id: result.admission_decision_id,
+            admission_reason: result.admission_reason,
+            finding: result.finding
+          })))
+        .slice(0, 8)
+    }
+  };
 }
 
 async function arenaPaperTradingComparisonResearchReleases(

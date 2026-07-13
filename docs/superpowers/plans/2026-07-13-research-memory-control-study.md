@@ -48,7 +48,7 @@ ResearchWorkerCheckpoint, LocalStore, Vitest, existing exact sign-test implement
 - Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 - Modify: `apps/runtime/test/trading-research-loop.test.ts`
 - Modify: `packages/local-store/src/index.ts`
-- Create: `packages/local-store/test/research-worker-memory-policy.test.ts`
+- Modify: `packages/local-store/test/research-worker-checkpoint.test.ts`
 
 **Interfaces:**
 
@@ -86,6 +86,7 @@ export function buildResearchWorkerMemoryProjection(input: {
   memoryContext: Record<string, unknown>;
   priorCheckpointRecord?: ResearchWorkerCheckpointRecord;
   priorCheckpoint?: TradingResearchPriorCheckpoint;
+  priorAdmissionDecision?: CandidateAdmissionDecisionRecord;
 }): {
   arenaContext: string;
   priorCheckpoint?: TradingResearchPriorCheckpoint;
@@ -101,14 +102,14 @@ export function buildResearchWorkerMemoryProjection(input: {
   `RunCandidateArenaTickInput`. The mode defaults to `released_memory`; only the paired runtime uses
   the assignment.
 
-- [ ] **Step 1: Write RED projection tests**
+- [x] **Step 1: Write RED projection tests**
 
   Prove the released projection contains all current and safe memory fields plus the supplied prior
   checkpoint, while the masked projection contains only current fields and
   `research_memory_policy: { memory_mode: "memory_masked" }`. Assert both policies bind the same
   non-zero memory source digest/count, opposite dispositions, and different exact context digests.
 
-- [ ] **Step 2: Run the projection test and capture RED**
+- [x] **Step 2: Run the projection test and capture RED**
 
   Run:
 
@@ -118,49 +119,50 @@ export function buildResearchWorkerMemoryProjection(input: {
 
   Expected: FAIL because `buildResearchWorkerMemoryProjection` and domain types do not exist.
 
-- [ ] **Step 3: Implement the pure projection and domain runtime shape**
+- [x] **Step 3: Implement the pure projection and domain runtime shape**
 
   Canonicalize with `paperTradingComparisonPersistedRecordDigestInput`. Count each non-empty
   top-level memory object as one item and every top-level array element as one item, plus one for an
   available prior checkpoint. Reject zero available items only in study validation, not ordinary
   CandidateArena operation.
 
-- [ ] **Step 4: Write RED preflight and LocalStore graph tests**
+- [x] **Step 4: Write RED preflight and LocalStore graph tests**
 
   Prove the commitment digest changes with policy content, old commitments without a policy remain
   readable, new CandidateArena commitments always have one, and an included/masked checkpoint ref
   must resolve to the exact digest, worker, direction, and a close time no later than commitment.
   At this task boundary validate assignment shape/digest only; Task 4 adds the study graph check.
 
-- [ ] **Step 5: Wire CandidateArena before worker effects**
+- [x] **Step 5: Wire CandidateArena before worker effects**
 
   Split the current `arenaContext` object into `currentContext` and `memoryContext` inside
   `arena.ts`. Resolve lifecycle and safe memory projection before building/persisting preflight;
   pass the projected context and only the projected prior checkpoint into `runTradingResearchLoop`.
 
-- [ ] **Step 6: Harden the provider projection**
+- [x] **Step 6: Harden the provider projection**
 
   Allow only `research_memory_policy` in addition to the existing safe keys. Export or exercise the
   sanitizer so tests prove the exact provider JSON hashes to `arena_context_digest` and a masked
   prompt contains no leaderboard, Finding, cluster, rejection, diversity, efficiency, released
   campaign, or prior-checkpoint content.
 
-- [ ] **Step 7: Run focused GREEN and typechecks**
+- [x] **Step 7: Run focused GREEN and typechecks**
 
   ```bash
-  npx vitest run packages/application/src/candidate/research-worker-memory.test.ts packages/application/src/trading/research/preflight-plan.test.ts packages/local-store/test/research-worker-memory-policy.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts
+  npx vitest run packages/application/src/candidate/research-worker-memory.test.ts packages/application/src/trading/research/preflight-plan.test.ts packages/local-store/test/research-worker-checkpoint.test.ts packages/local-store/test/research-preflight-commitment.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts
   npm run typecheck --workspace @ouroboros/domain
   npm run typecheck --workspace @ouroboros/application
   npm run typecheck --workspace @ouroboros/local-store
+  npm run typecheck --workspace @ouroboros/runtime
   git diff --check
   ```
 
   Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
   ```bash
-  git add packages/domain/src/index.ts packages/application/src/candidate/research-worker-memory.ts packages/application/src/candidate/research-worker-memory.test.ts packages/application/src/trading/research/preflight-plan.ts packages/application/src/trading/research/preflight-plan.test.ts packages/application/src/candidate/arena.ts packages/application/src/trading/research/agent-adapters.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts packages/local-store/src/index.ts packages/local-store/test/research-worker-memory-policy.test.ts
+  git add packages/domain/src/index.ts packages/application/src/candidate/research-worker-memory.ts packages/application/src/candidate/research-worker-memory.test.ts packages/application/src/trading/research/preflight-plan.ts packages/application/src/trading/research/preflight-plan.test.ts packages/application/src/candidate/arena.ts packages/application/src/trading/research/agent-adapters.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/trading-research-loop.test.ts packages/local-store/src/index.ts packages/local-store/test/research-worker-checkpoint.test.ts docs/superpowers/plans/2026-07-13-research-memory-control-study.md
   git commit -m "feat: bind research worker memory policy"
   ```
 
