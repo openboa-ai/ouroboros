@@ -7,7 +7,7 @@ import {
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   researchControlStudyHasRuntimeShape,
   type PaperTradingComparisonConfirmationCampaignRecord,
-  type ResearchControlCampaignAgentIdentity,
+  type ResearchExperimentAgentIdentity,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignPolicy,
   type ResearchGeneralizationMarketCondition,
@@ -95,7 +95,7 @@ interface ResearchControlStudyCommitmentIntent {
   promotionDigest: string;
   campaign: PaperTradingComparisonConfirmationCampaignRecord;
   agent: ManagedResearchAgent;
-  agentIdentity: ResearchControlCampaignAgentIdentity;
+  agentIdentity: ResearchExperimentAgentIdentity;
   paperEvaluationProtocolInput:
     ResearchControlCampaignPaperEvaluationProtocolInput;
   paperEvaluationProtocol: Extract<
@@ -580,7 +580,7 @@ function sealProtocol(
 
 function exactAgentIdentity(
   agent: ManagedResearchAgent
-): ResearchControlCampaignAgentIdentity {
+): ResearchExperimentAgentIdentity {
   if (!agent || !canonicalString(agent.id) || ![
     "codex",
     "claude_code",

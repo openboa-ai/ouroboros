@@ -7276,15 +7276,17 @@ export type ResearchControlCampaignArmKind =
   | "adaptive_treatment"
   | "static_control";
 
-export interface ResearchControlCampaignBaselineSnapshot {
+export interface ResearchExperimentBaselineSnapshot {
   protocol_version: "local_store_regular_files_v1";
   snapshot_digest: string;
   regular_file_count: number;
   total_bytes: number;
-  exclusion_policy: "research_control_campaign_evidence_only";
+  exclusion_policy:
+    | "research_control_campaign_evidence_only"
+    | "research_experiment_evidence_only";
 }
 
-export interface ResearchControlCampaignSource {
+export interface ResearchExperimentSource {
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   system_code_ref: Ref;
@@ -7294,7 +7296,7 @@ export interface ResearchControlCampaignSource {
   research_artifact_closure_digest: string;
 }
 
-export interface ResearchControlCampaignAgentIdentity {
+export interface ResearchExperimentAgentIdentity {
   provider: AgentProfileProviderKind;
   model?: string;
   permission_policy: "artifact_workspace_only" | "fixture_only";
@@ -7370,9 +7372,9 @@ export interface ResearchControlCampaignRecord extends BaseRecord {
   idempotency_key: string;
   hypothesis:
     "adaptive_allocation_improves_prospective_qualified_discovery_yield";
-  baseline: ResearchControlCampaignBaselineSnapshot;
-  source: ResearchControlCampaignSource;
-  research_agent: ResearchControlCampaignAgentIdentity;
+  baseline: ResearchExperimentBaselineSnapshot;
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
   paper_comparator: ResearchControlCampaignPaperComparator;
   paper_evaluation_protocol: ResearchControlCampaignPaperEvaluationProtocol;
   allocation_policy: CandidateArenaResearchAllocationPolicy;
@@ -7732,8 +7734,8 @@ export interface ResearchControlCampaignOutcomeRecord extends BaseRecord {
 }
 
 export interface ResearchControlStudyCondition {
-  source: ResearchControlCampaignSource;
-  research_agent: ResearchControlCampaignAgentIdentity;
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
   paper_comparator: Extract<
     ResearchControlCampaignPaperComparator,
     { comparator_status: "trading_review" }
@@ -7867,7 +7869,7 @@ export interface ResearchGeneralizationProtocolRecord extends BaseRecord {
     "adaptive_allocation_effect_generalizes_across_baselines_and_market_conditions";
   target_allocation_policy: CandidateArenaResearchAllocationPolicy;
   target_allocation_policy_digest: string;
-  research_agent: ResearchControlCampaignAgentIdentity;
+  research_agent: ResearchExperimentAgentIdentity;
   paper_evaluation_protocol: Extract<
     ResearchControlCampaignPaperEvaluationProtocol,
     { protocol_status: "bound" }
@@ -8612,7 +8614,7 @@ export function researchGeneralizationProtocolHasRuntimeShape(
       value.target_allocation_policy
     ) || !researchControlCampaignSha256Digest(
       value.target_allocation_policy_digest
-    ) || !researchControlCampaignAgentHasRuntimeShape(value.research_agent) ||
+    ) || !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
     !researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
       value.paper_evaluation_protocol
     ) || value.paper_evaluation_protocol.protocol_status !== "bound" ||
@@ -9689,8 +9691,8 @@ function researchControlStudyConditionHasRuntimeShape(
     "allocation_policy_digest",
     "campaign_policy",
     "condition_digest"
-  ]) && researchControlCampaignSourceHasRuntimeShape(value.source) &&
-    researchControlCampaignAgentHasRuntimeShape(value.research_agent) &&
+  ]) && researchExperimentSourceHasRuntimeShape(value.source) &&
+    researchExperimentAgentHasRuntimeShape(value.research_agent) &&
     researchControlCampaignPaperComparatorHasRuntimeShape(
       value.paper_comparator
     ) && value.paper_comparator.comparator_status === "trading_review" &&
@@ -9820,9 +9822,11 @@ export function researchControlCampaignHasRuntimeShape(
     !comparisonString(value.idempotency_key) ||
     value.hypothesis !==
       "adaptive_allocation_improves_prospective_qualified_discovery_yield" ||
-    !researchControlCampaignBaselineHasRuntimeShape(value.baseline) ||
-    !researchControlCampaignSourceHasRuntimeShape(value.source) ||
-    !researchControlCampaignAgentHasRuntimeShape(value.research_agent) ||
+    !researchExperimentBaselineHasRuntimeShape(value.baseline) ||
+    value.baseline.exclusion_policy !==
+      "research_control_campaign_evidence_only" ||
+    !researchExperimentSourceHasRuntimeShape(value.source) ||
+    !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
     !researchControlCampaignPaperComparatorHasRuntimeShape(
       value.paper_comparator
     ) ||
@@ -10480,9 +10484,9 @@ function researchControlCampaignOutcomeRefsUnique(
   );
 }
 
-function researchControlCampaignBaselineHasRuntimeShape(
+function researchExperimentBaselineHasRuntimeShape(
   value: unknown
-): value is ResearchControlCampaignBaselineSnapshot {
+): value is ResearchExperimentBaselineSnapshot {
   return comparisonObject(value) && comparisonHasExactKeys(value, [
     "protocol_version",
     "snapshot_digest",
@@ -10493,12 +10497,13 @@ function researchControlCampaignBaselineHasRuntimeShape(
     researchControlCampaignSha256Digest(value.snapshot_digest) &&
     comparisonPositive(value.regular_file_count) &&
     comparisonPositive(value.total_bytes) &&
-    value.exclusion_policy === "research_control_campaign_evidence_only";
+    (value.exclusion_policy === "research_control_campaign_evidence_only" ||
+      value.exclusion_policy === "research_experiment_evidence_only");
 }
 
-function researchControlCampaignSourceHasRuntimeShape(
+function researchExperimentSourceHasRuntimeShape(
   value: unknown
-): value is ResearchControlCampaignSource {
+): value is ResearchExperimentSource {
   return comparisonObject(value) && comparisonHasExactKeys(value, [
     "candidate_ref",
     "candidate_version_ref",
@@ -10516,9 +10521,9 @@ function researchControlCampaignSourceHasRuntimeShape(
     researchControlCampaignSha256Digest(value.research_artifact_closure_digest);
 }
 
-function researchControlCampaignAgentHasRuntimeShape(
+function researchExperimentAgentHasRuntimeShape(
   value: unknown
-): value is ResearchControlCampaignAgentIdentity {
+): value is ResearchExperimentAgentIdentity {
   if (!comparisonObject(value)) return false;
   const keys = [
     "provider",

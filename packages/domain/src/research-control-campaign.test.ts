@@ -200,6 +200,9 @@ describe("ResearchControlCampaign", () => {
     ["malformed snapshot digest", (value: any) => {
       value.baseline.snapshot_digest = "sha256:short";
     }],
+    ["generic experiment exclusion policy", (value: any) => {
+      value.baseline.exclusion_policy = "research_experiment_evidence_only";
+    }],
     ["empty baseline", (value: any) => { value.baseline.regular_file_count = 0; }],
     ["agent identity drift", (value: any) => {
       value.research_agent.identity_digest = "sha256:short";

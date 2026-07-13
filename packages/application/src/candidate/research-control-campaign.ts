@@ -15,17 +15,17 @@ import {
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaTickDirectionResultReadModel,
   type CandidateArenaTickRecord,
-  type ResearchControlCampaignAgentIdentity,
+  type ResearchExperimentAgentIdentity,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
   type ResearchControlCampaignArmReport,
-  type ResearchControlCampaignBaselineSnapshot,
+  type ResearchExperimentBaselineSnapshot,
   type ResearchControlCampaignPaperCandidateSlot,
   type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
-  type ResearchControlCampaignSource,
+  type ResearchExperimentSource,
   type ResearchPopulationDiversityReadModel
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
@@ -37,8 +37,8 @@ const DEFAULT_MAXIMUM_BASELINE_TOTAL_BYTES = 1_000_000_000;
 
 export interface ResearchControlCampaignDecisionInput {
   idempotencyKey: string;
-  baseline: ResearchControlCampaignBaselineSnapshot;
-  source: ResearchControlCampaignSource;
+  baseline: ResearchExperimentBaselineSnapshot;
+  source: ResearchExperimentSource;
   researchAgent: ManagedResearchAgent;
   paperComparator: ResearchControlCampaignPaperComparator;
   paperEvaluationProtocol: ResearchControlCampaignPaperEvaluationProtocolInput;
@@ -662,7 +662,7 @@ function campaignArm(
 
 function campaignAgentIdentity(
   agent: ManagedResearchAgent
-): ResearchControlCampaignAgentIdentity {
+): ResearchExperimentAgentIdentity {
   if (!agent || !canonicalStringOrUndefined(agent.id) || ![
     "codex",
     "claude_code",

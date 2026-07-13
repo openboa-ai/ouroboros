@@ -1,14 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
-import {
-  cp,
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  rename,
-  rm,
-  stat
-} from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -28,19 +19,14 @@ import {
 } from "@ouroboros/application/candidate/research-control-campaign-paper-schedule";
 import type { OuroborosStorePort } from "@ouroboros/application/ports/store";
 import {
-  resolveCandidateArenaSourceArtifactDir,
   runCandidateArenaTick,
   type CandidateArenaTickOutcome,
   type RunCandidateArenaTickInput
 } from "@ouroboros/application/candidate/arena";
 import { buildResearchPopulationDiversity } from
   "@ouroboros/application/candidate/research-population-diversity";
-import {
-  readTradingSystemManifest,
-  type TradingArtifactRunner
-} from "@ouroboros/application/trading/research/artifact-runner";
-import { sealSingleFileTradingArtifactClosure } from
-  "@ouroboros/application/trading/research/artifact-closure";
+import type { TradingArtifactRunner } from
+  "@ouroboros/application/trading/research/artifact-runner";
 import type { ReplayTradingApiProviderFactory } from
   "@ouroboros/application/trading/research/replay-set-runner";
 import type {
@@ -52,18 +38,17 @@ import type { TradingResearchRuntimeAgent } from
 import {
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
-  paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingComparisonTradingPromotionHasRuntimeShape,
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
-  type ResearchControlCampaignBaselineSnapshot,
+  type ResearchExperimentBaselineSnapshot,
   type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
-  type ResearchControlCampaignSource,
+  type ResearchExperimentSource,
   type ResearchControlCampaignOutcomeRecord,
   type ResearchControlCampaignPaperScheduleRecord,
   type ResearchControlCampaignPaperSlotOutcomeRecord
@@ -73,18 +58,17 @@ import type {
   ResearchControlCampaignPaperExecutor,
   ResearchControlCampaignPaperExecutorStep
 } from "./research-control-campaign-paper-executor";
-
-const SNAPSHOT_EXCLUDED_COLLECTIONS = new Set([
-  "research-control-campaigns",
-  "research-control-campaign-arm-intents",
-  "research-control-campaign-reports",
-  "research-control-campaign-paper-schedules",
-  "research-control-campaign-paper-start-batches",
-  "research-control-campaign-paper-slot-outcomes",
-  "research-control-campaign-outcomes",
-  "research-control-studies",
-  "research-control-study-outcomes"
-]);
+import {
+  ResearchExperimentBaselineError,
+  captureResearchExperimentBaseline,
+  ensureResearchExperimentStoreCopy,
+  verifyResearchExperimentBaseline
+} from "./research-experiment-baseline";
+import {
+  ResearchExperimentSourceError,
+  ensureResearchExperimentSourceArtifact,
+  resolveResearchExperimentSource
+} from "./research-experiment-source";
 const DEFAULT_MAXIMUM_REGULAR_FILE_COUNT = 10_000;
 const DEFAULT_MAXIMUM_TOTAL_BYTES = 1_000_000_000;
 
@@ -122,6 +106,40 @@ export class ResearchControlCampaignRuntimeError extends Error {
     this.name = "ResearchControlCampaignRuntimeError";
   }
 }
+
+const CAMPAIGN_BASELINE_ERROR_CODES: Record<
+  ResearchExperimentBaselineError["code"],
+  ResearchControlCampaignRuntimeErrorCode
+> = {
+  research_experiment_baseline_root_invalid:
+    "research_control_campaign_snapshot_root_invalid",
+  research_experiment_baseline_empty:
+    "research_control_campaign_snapshot_empty",
+  research_experiment_baseline_temporary_file:
+    "research_control_campaign_snapshot_temporary_file",
+  research_experiment_baseline_unsupported_entry:
+    "research_control_campaign_snapshot_unsupported_entry",
+  research_experiment_baseline_file_bound_exceeded:
+    "research_control_campaign_snapshot_file_bound_exceeded",
+  research_experiment_baseline_byte_bound_exceeded:
+    "research_control_campaign_snapshot_byte_bound_exceeded",
+  research_experiment_baseline_unstable:
+    "research_control_campaign_snapshot_unstable",
+  research_experiment_baseline_digest_mismatch:
+    "research_control_campaign_snapshot_digest_mismatch"
+};
+
+const CAMPAIGN_SOURCE_ERROR_CODES: Record<
+  ResearchExperimentSourceError["code"],
+  ResearchControlCampaignRuntimeErrorCode
+> = {
+  research_experiment_source_candidate_invalid:
+    "research_control_campaign_source_candidate_invalid",
+  research_experiment_source_artifact_invalid:
+    "research_control_campaign_source_artifact_invalid",
+  research_experiment_source_artifact_mismatch:
+    "research_control_campaign_source_artifact_mismatch"
+};
 
 export interface CaptureResearchControlCampaignSnapshotInput {
   root: string;
@@ -210,12 +228,6 @@ export interface CollectResearchControlCampaignOutcomeResult
   outcome: ResearchControlCampaignOutcomeRecord;
 }
 
-interface SnapshotEntry {
-  relative_path: string;
-  byte_count: number;
-  content_digest: string;
-}
-
 interface ArmRuntime {
   armKind: ResearchControlCampaignArmKind;
   intent: ResearchControlCampaignArmIntentRecord;
@@ -225,121 +237,35 @@ interface ArmRuntime {
 
 export async function captureResearchControlCampaignSnapshot(
   input: CaptureResearchControlCampaignSnapshotInput
-): Promise<ResearchControlCampaignBaselineSnapshot> {
-  const root = path.resolve(canonicalPath(input.root));
-  const maximumFileCount = positiveBound(
-    input.maximumRegularFileCount,
-    100_000,
-    "research_control_campaign_snapshot_file_bound_exceeded"
-  );
-  const maximumBytes = positiveBound(
-    input.maximumTotalBytes,
-    1_000_000_000,
-    "research_control_campaign_snapshot_byte_bound_exceeded"
-  );
-  const rootStat = await stat(root).catch(() => undefined);
-  if (!rootStat?.isDirectory()) {
-    throw runtimeError(
-      "research_control_campaign_snapshot_root_invalid",
-      "ResearchControlCampaign snapshot root must be a directory."
-    );
+): Promise<ResearchExperimentBaselineSnapshot> {
+  try {
+    return await captureResearchExperimentBaseline({
+      ...input,
+      exclusionPolicy: "research_control_campaign_evidence_only"
+    });
+  } catch (error) {
+    throw mapCampaignBaselineError(error);
   }
-
-  const entries: SnapshotEntry[] = [];
-  let totalBytes = 0;
-  const walk = async (directory: string, relativeDirectory: string) => {
-    const children = await readdir(directory, { withFileTypes: true });
-    children.sort((left, right) => left.name.localeCompare(right.name));
-    for (const child of children) {
-      if (!relativeDirectory && child.isDirectory() &&
-        SNAPSHOT_EXCLUDED_COLLECTIONS.has(child.name)) {
-        continue;
-      }
-      const relativePath = relativeDirectory
-        ? path.posix.join(relativeDirectory, child.name)
-        : child.name;
-      const absolutePath = path.join(directory, child.name);
-      const entryStat = await lstat(absolutePath, { bigint: true });
-      if (entryStat.isSymbolicLink()) {
-        throw runtimeError(
-          "research_control_campaign_snapshot_unsupported_entry",
-          "ResearchControlCampaign snapshot rejects symbolic links.",
-          { relative_path: relativePath }
-        );
-      }
-      if (entryStat.isDirectory()) {
-        await walk(absolutePath, relativePath);
-        continue;
-      }
-      if (!entryStat.isFile()) {
-        throw runtimeError(
-          "research_control_campaign_snapshot_unsupported_entry",
-          "ResearchControlCampaign snapshot accepts regular files only.",
-          { relative_path: relativePath }
-        );
-      }
-      if (child.name.endsWith(".tmp") || child.name.includes(".tmp-")) {
-        throw runtimeError(
-          "research_control_campaign_snapshot_temporary_file",
-          "ResearchControlCampaign snapshot rejects temporary files.",
-          { relative_path: relativePath }
-        );
-      }
-      if (entries.length + 1 > maximumFileCount) {
-        throw runtimeError(
-          "research_control_campaign_snapshot_file_bound_exceeded",
-          "ResearchControlCampaign snapshot file bound was exceeded."
-        );
-      }
-      const captured = await captureRegularFile(absolutePath, relativePath);
-      totalBytes += captured.byte_count;
-      if (totalBytes > maximumBytes) {
-        throw runtimeError(
-          "research_control_campaign_snapshot_byte_bound_exceeded",
-          "ResearchControlCampaign snapshot byte bound was exceeded."
-        );
-      }
-      entries.push(captured);
-    }
-  };
-  await walk(root, "");
-  if (entries.length === 0) {
-    throw runtimeError(
-      "research_control_campaign_snapshot_empty",
-      "ResearchControlCampaign snapshot cannot be empty."
-    );
-  }
-  entries.sort((left, right) =>
-    left.relative_path.localeCompare(right.relative_path)
-  );
-  return {
-    protocol_version: "local_store_regular_files_v1",
-    snapshot_digest: canonicalDigest({
-      protocol_version: "local_store_regular_files_v1",
-      entries
-    }),
-    regular_file_count: entries.length,
-    total_bytes: totalBytes,
-    exclusion_policy: "research_control_campaign_evidence_only"
-  };
 }
 
 export async function verifyResearchControlCampaignSnapshot(input: {
   root: string;
-  expected: ResearchControlCampaignBaselineSnapshot;
+  expected: ResearchExperimentBaselineSnapshot;
   maximumRegularFileCount: number;
   maximumTotalBytes: number;
 }): Promise<void> {
-  const actual = await captureResearchControlCampaignSnapshot(input);
-  if (!isDeepStrictEqual(actual, input.expected)) {
+  if (input.expected.exclusion_policy !==
+    "research_control_campaign_evidence_only") {
     throw runtimeError(
       "research_control_campaign_snapshot_digest_mismatch",
       "ResearchControlCampaign snapshot does not match frozen baseline.",
-      {
-        expected_digest: input.expected.snapshot_digest,
-        actual_digest: actual.snapshot_digest
-      }
+      { expected_digest: input.expected.snapshot_digest }
     );
+  }
+  try {
+    await verifyResearchExperimentBaseline(input);
+  } catch (error) {
+    throw mapCampaignBaselineError(error);
   }
 }
 
@@ -915,88 +841,17 @@ function paperEvaluationProtocolMatchesCampaign(
   return isDeepStrictEqual(expected, persisted);
 }
 
-async function captureRegularFile(
-  filePath: string,
-  relativePath: string
-): Promise<SnapshotEntry> {
-  const handle = await open(filePath, "r");
-  try {
-    const before = await handle.stat({ bigint: true });
-    if (!before.isFile()) {
-      throw runtimeError(
-        "research_control_campaign_snapshot_unsupported_entry",
-        "ResearchControlCampaign snapshot entry changed type during capture.",
-        { relative_path: relativePath }
-      );
-    }
-    const content = await handle.readFile();
-    const after = await handle.stat({ bigint: true });
-    if (before.size !== after.size || before.mtimeNs !== after.mtimeNs ||
-      before.ctimeNs !== after.ctimeNs || BigInt(content.byteLength) !== after.size) {
-      throw runtimeError(
-        "research_control_campaign_snapshot_unstable",
-        "ResearchControlCampaign snapshot file changed during capture.",
-        { relative_path: relativePath }
-      );
-    }
-    return {
-      relative_path: relativePath.split(path.sep).join(path.posix.sep),
-      byte_count: content.byteLength,
-      content_digest: `sha256:${createHash("sha256").update(content).digest("hex")}`
-    };
-  } finally {
-    await handle.close();
-  }
-}
-
 async function ensureVerifiedStoreCopy(input: {
   sourceRoot: string;
   destinationRoot: string;
-  expected: ResearchControlCampaignBaselineSnapshot;
+  expected: ResearchExperimentBaselineSnapshot;
   maximumRegularFileCount: number;
   maximumTotalBytes: number;
 }): Promise<void> {
-  if (await pathExists(input.destinationRoot)) {
-    await verifyResearchControlCampaignSnapshot({
-      root: input.destinationRoot,
-      expected: input.expected,
-      maximumRegularFileCount: input.maximumRegularFileCount,
-      maximumTotalBytes: input.maximumTotalBytes
-    });
-    return;
-  }
-  await verifyResearchControlCampaignSnapshot({
-    root: input.sourceRoot,
-    expected: input.expected,
-    maximumRegularFileCount: input.maximumRegularFileCount,
-    maximumTotalBytes: input.maximumTotalBytes
-  });
-  const temporaryRoot = temporarySibling(input.destinationRoot);
-  await mkdir(path.dirname(input.destinationRoot), { recursive: true });
-  await rm(temporaryRoot, { recursive: true, force: true });
   try {
-    await cp(input.sourceRoot, temporaryRoot, {
-      recursive: true,
-      force: false,
-      errorOnExist: true,
-      preserveTimestamps: true
-    });
-    await verifyResearchControlCampaignSnapshot({
-      root: temporaryRoot,
-      expected: input.expected,
-      maximumRegularFileCount: input.maximumRegularFileCount,
-      maximumTotalBytes: input.maximumTotalBytes
-    });
-    await verifyResearchControlCampaignSnapshot({
-      root: input.sourceRoot,
-      expected: input.expected,
-      maximumRegularFileCount: input.maximumRegularFileCount,
-      maximumTotalBytes: input.maximumTotalBytes
-    });
-    await rename(temporaryRoot, input.destinationRoot);
+    await ensureResearchExperimentStoreCopy(input);
   } catch (error) {
-    await rm(temporaryRoot, { recursive: true, force: true });
-    throw error;
+    throw mapCampaignBaselineError(error);
   }
 }
 
@@ -1005,39 +860,10 @@ async function ensureVerifiedSourceArtifact(input: {
   destinationRoot: string;
   expectedClosureDigest: string;
 }): Promise<void> {
-  if (await pathExists(input.destinationRoot)) {
-    await verifySourceArtifactClosure(
-      input.destinationRoot,
-      input.expectedClosureDigest
-    );
-    return;
-  }
-  await verifySourceArtifactClosure(
-    input.sourceArtifactDirectory,
-    input.expectedClosureDigest
-  );
-  const temporaryRoot = temporarySibling(input.destinationRoot);
-  await mkdir(path.dirname(input.destinationRoot), { recursive: true });
-  await rm(temporaryRoot, { recursive: true, force: true });
   try {
-    await cp(input.sourceArtifactDirectory, temporaryRoot, {
-      recursive: true,
-      force: false,
-      errorOnExist: true,
-      preserveTimestamps: true
-    });
-    await verifySourceArtifactClosure(
-      temporaryRoot,
-      input.expectedClosureDigest
-    );
-    await verifySourceArtifactClosure(
-      input.sourceArtifactDirectory,
-      input.expectedClosureDigest
-    );
-    await rename(temporaryRoot, input.destinationRoot);
+    await ensureResearchExperimentSourceArtifact(input);
   } catch (error) {
-    await rm(temporaryRoot, { recursive: true, force: true });
-    throw error;
+    throw mapCampaignSourceError(error);
   }
 }
 
@@ -1205,80 +1031,11 @@ async function resolveCampaignSource(input: {
   store: LocalStore;
   candidateId: string;
   repoRoot: string;
-}): Promise<{ source: ResearchControlCampaignSource; artifactDirectory: string }> {
-  const candidate = await input.store.getCandidate(input.candidateId);
-  const systemCodeRef = candidate?.system_code?.ref;
-  const systemCode = systemCodeRef
-    ? await input.store.getSystemCode(systemCodeRef.id)
-    : undefined;
-  if (!candidate || !systemCode || systemCode.artifact_kind !== "python_file") {
-    throw runtimeError(
-      "research_control_campaign_source_candidate_invalid",
-      "ResearchControlCampaign source candidate must bind Python SystemCode."
-    );
-  }
-  const artifactDirectory = await resolveCandidateArenaSourceArtifactDir({
-    store: input.store,
-    source: candidate,
-    repoRoot: input.repoRoot
-  });
-  const closureDigest = await sourceArtifactClosureDigest(artifactDirectory);
-  return {
-    source: {
-      candidate_ref: {
-        record_kind: "trading_system_candidate",
-        id: candidate.candidate_id
-      },
-      candidate_version_ref: {
-        record_kind: "candidate_version",
-        id: candidate.candidate_version.candidate_version_id
-      },
-      system_code_ref: {
-        record_kind: "system_code",
-        id: systemCode.system_code_id
-      },
-      system_code_artifact_digest: systemCode.artifact_digest,
-      system_code_record_digest: canonicalDigest(
-        paperTradingComparisonSystemCodeRecordDigestInput(systemCode)
-      ),
-      research_artifact_protocol: "single_file_python_v1",
-      research_artifact_closure_digest: closureDigest
-    },
-    artifactDirectory
-  };
-}
-
-async function verifySourceArtifactClosure(
-  artifactDirectory: string,
-  expectedClosureDigest: string
-): Promise<void> {
-  const actual = await sourceArtifactClosureDigest(artifactDirectory);
-  if (actual !== expectedClosureDigest) {
-    throw runtimeError(
-      "research_control_campaign_source_artifact_mismatch",
-      "ResearchControlCampaign source artifact closure changed.",
-      { expected_digest: expectedClosureDigest, actual_digest: actual }
-    );
-  }
-}
-
-async function sourceArtifactClosureDigest(
-  artifactDirectory: string
-): Promise<string> {
+}): Promise<{ source: ResearchExperimentSource; artifactDirectory: string }> {
   try {
-    const manifest = await readTradingSystemManifest(artifactDirectory);
-    const sealed = await sealSingleFileTradingArtifactClosure(
-      artifactDirectory,
-      manifest
-    );
-    return sealed.closure_digest;
+    return await resolveResearchExperimentSource(input);
   } catch (error) {
-    if (error instanceof ResearchControlCampaignRuntimeError) throw error;
-    throw runtimeError(
-      "research_control_campaign_source_artifact_invalid",
-      "ResearchControlCampaign source artifact is not a sealed single-file system.",
-      { reason: conciseError(error) }
-    );
+    throw mapCampaignSourceError(error);
   }
 }
 
@@ -1310,20 +1067,6 @@ function campaignAgentMatches(
     campaign.research_agent.model === compact.model &&
     campaign.research_agent.permission_policy === compact.permission_policy &&
     campaign.research_agent.identity_digest === canonicalDigest(compact);
-}
-
-function positiveBound(
-  value: unknown,
-  hardMaximum: number,
-  code:
-    | "research_control_campaign_snapshot_file_bound_exceeded"
-    | "research_control_campaign_snapshot_byte_bound_exceeded"
-): number {
-  if (!Number.isInteger(value) || Number(value) < 1 ||
-    Number(value) > hardMaximum) {
-    throw runtimeError(code, "ResearchControlCampaign snapshot bound is invalid.");
-  }
-  return Number(value);
 }
 
 function canonicalPath(value: unknown): string {
@@ -1367,10 +1110,6 @@ function pathContains(parent: string, child: string): boolean {
     relative !== ".." && !path.isAbsolute(relative));
 }
 
-function temporarySibling(destination: string): string {
-  return `${destination}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-}
-
 async function pathExists(candidate: string): Promise<boolean> {
   return Boolean(await stat(candidate).catch(() => undefined));
 }
@@ -1389,6 +1128,35 @@ function timeAtOrAfter(...times: string[]): string {
 
 function conciseError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function mapCampaignBaselineError(error: unknown): Error {
+  if (error instanceof ResearchControlCampaignRuntimeError) return error;
+  if (!(error instanceof ResearchExperimentBaselineError)) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  return runtimeError(
+    CAMPAIGN_BASELINE_ERROR_CODES[error.code],
+    error.message
+      .replaceAll("ResearchExperiment baseline", "ResearchControlCampaign snapshot")
+      .replace("its frozen snapshot", "frozen baseline"),
+    error.details
+  );
+}
+
+function mapCampaignSourceError(error: unknown): Error {
+  if (error instanceof ResearchControlCampaignRuntimeError) return error;
+  if (!(error instanceof ResearchExperimentSourceError)) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  return runtimeError(
+    CAMPAIGN_SOURCE_ERROR_CODES[error.code],
+    error.message.replaceAll(
+      "ResearchExperiment source",
+      "ResearchControlCampaign source"
+    ),
+    error.details
+  );
 }
 
 function runtimeError(

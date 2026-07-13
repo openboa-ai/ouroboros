@@ -7,7 +7,7 @@ import {
   researchGeneralizationProtocolDigestInput,
   researchGeneralizationProtocolHasRuntimeShape,
   type CandidateArenaResearchAllocationPolicy,
-  type ResearchControlCampaignAgentIdentity,
+  type ResearchExperimentAgentIdentity,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignPolicy,
   type ResearchGeneralizationMarketConditionBlock,
@@ -24,7 +24,7 @@ import { RESEARCH_GENERALIZATION_MARKET_CLASSIFIER_POLICY } from
   "./research-generalization-market-condition";
 
 export type ResearchGeneralizationProtocolResearchAgentInput = Omit<
-  ResearchControlCampaignAgentIdentity,
+  ResearchExperimentAgentIdentity,
   "identity_digest"
 >;
 
@@ -266,7 +266,7 @@ function protocolStudySlot(input: {
 
 function canonicalResearchAgent(
   value: ResearchGeneralizationProtocolResearchAgentInput
-): ResearchControlCampaignAgentIdentity {
+): ResearchExperimentAgentIdentity {
   if (!value || !["codex", "claude_code", "fixture"].includes(
     String(value.provider)
   ) || (value.provider === "fixture"

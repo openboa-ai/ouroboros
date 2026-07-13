@@ -39,6 +39,7 @@ ResearchWorkerCheckpoint, LocalStore, Vitest, existing exact sign-test implement
 **Files:**
 
 - Modify: `packages/domain/src/index.ts`
+- Modify: `packages/domain/src/research-control-campaign.test.ts`
 - Create: `packages/application/src/candidate/research-worker-memory.ts`
 - Create: `packages/application/src/candidate/research-worker-memory.test.ts`
 - Modify: `packages/application/src/trading/research/preflight-plan.ts`
@@ -205,13 +206,13 @@ resolveResearchExperimentSource(input): Promise<{
 }>
 ```
 
-- [ ] **Step 1: Write RED baseline tests**
+- [x] **Step 1: Write RED baseline tests**
 
   Prove deterministic sorted regular-file capture, file/byte limits, symlink/temp rejection, atomic
   copy, exact verification, source closure validation, and exclusion of allocation-control and
   memory-control evidence collections.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
   ```bash
   npx vitest run apps/runtime/test/research-experiment-baseline.test.ts
@@ -219,24 +220,25 @@ resolveResearchExperimentSource(input): Promise<{
 
   Expected: FAIL because the generic helpers do not exist.
 
-- [ ] **Step 3: Extract the existing implementation without changing campaign behavior**
+- [x] **Step 3: Extract the existing implementation without changing campaign behavior**
 
   Move bounded file traversal, verification, temporary-copy, and source-resolution code out of
   `research-control-campaign.ts`. Keep campaign public wrapper behavior only where tests require it;
   production campaign code calls the generic functions.
 
-- [ ] **Step 4: Run campaign regressions and typechecks**
+- [x] **Step 4: Run campaign regressions and typechecks**
 
   ```bash
-  npx vitest run apps/runtime/test/research-experiment-baseline.test.ts apps/runtime/test/research-control-campaign.test.ts apps/runtime/test/research-control-campaign-outcome.test.ts
+  npx vitest run packages/domain/src/research-control-campaign.test.ts packages/application/src/candidate/research-control-campaign.test.ts apps/runtime/test/research-experiment-baseline.test.ts apps/runtime/test/research-control-campaign.test.ts apps/runtime/test/research-control-campaign-outcome.test.ts apps/runtime/test/research-control-study-runtime.test.ts
   npm run typecheck --workspace @ouroboros/domain
+  npm run typecheck --workspace @ouroboros/application
   npm run typecheck --workspace @ouroboros/runtime
   git diff --check
   ```
 
   Expected: all pass and no persisted campaign fixture rewrite.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add packages/domain/src/index.ts apps/runtime/src/candidate/arena/research-experiment-baseline.ts apps/runtime/test/research-experiment-baseline.test.ts apps/runtime/src/candidate/arena/research-experiment-source.ts apps/runtime/src/candidate/arena/research-control-campaign.ts apps/runtime/src/candidate/arena/research-control-study-commitment-coordinator.ts apps/runtime/test/research-control-campaign.test.ts packages/application/src/candidate/research-control-campaign.ts packages/application/src/candidate/research-generalization-protocol.ts

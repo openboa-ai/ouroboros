@@ -120,6 +120,22 @@ describe("ResearchControlCampaign snapshots", () => {
       exclusion_policy: "research_control_campaign_evidence_only"
     });
 
+    await mkdir(path.join(root, "research-memory-control-studies/items"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(root, "research-memory-control-studies/items/study.json"),
+      "memory study\n",
+      "utf8"
+    );
+    const withMemoryEvidence = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    });
+    expect(withMemoryEvidence.snapshot_digest).not.toBe(first.snapshot_digest);
+    expect(withMemoryEvidence.regular_file_count).toBe(3);
+
     await writeFile(path.join(root, "ordinary-state.json"), "state\n", "utf8");
     const changed = await captureResearchControlCampaignSnapshot({
       root,
@@ -127,7 +143,7 @@ describe("ResearchControlCampaign snapshots", () => {
       maximumTotalBytes: 1_000
     });
     expect(changed.snapshot_digest).not.toBe(first.snapshot_digest);
-    expect(changed.regular_file_count).toBe(3);
+    expect(changed.regular_file_count).toBe(4);
   });
 
   it.each([
