@@ -15,6 +15,7 @@ export * from "./candidate/research-generalization-market-condition";
 export * from "./candidate/research-generalization-protocol";
 export * from "./candidate/research-generalization-outcome";
 export * from "./candidate/research-generalization-outcome-coordinator";
+export * from "./candidate/research-generalization-read-model";
 export * from "./candidate/evaluation";
 export * from "./candidate/materialization";
 export * from "./controllers/operator";

@@ -11107,6 +11107,71 @@ export interface CandidateArenaTickPaperTradingContinuationReadModel {
   authority_status: "not_live";
 }
 
+export type ResearchGeneralizationReadModelStatus =
+  | "not_started"
+  | "collecting"
+  | "awaiting_outcome"
+  | "closed";
+
+export type ResearchGeneralizationActiveProtocolNextAction =
+  | "collect_precommitted_studies"
+  | "complete_assigned_studies"
+  | "await_outcome_reconciliation";
+
+export interface ResearchGeneralizationConditionBlockProgressReadModel {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  planned_study_count: number;
+  assigned_study_count: number;
+  terminal_study_count: number;
+}
+
+export interface ResearchGeneralizationActiveProtocolReadModel {
+  research_generalization_protocol_id: string;
+  committed_at: string;
+  collection_deadline_at: string;
+  status: "collecting" | "awaiting_outcome";
+  planned_study_count: number;
+  assigned_study_count: number;
+  terminal_study_count: number;
+  condition_blocks: ResearchGeneralizationConditionBlockProgressReadModel[];
+  next_action: ResearchGeneralizationActiveProtocolNextAction;
+  authority_status: "research_only";
+}
+
+export interface ResearchGeneralizationLatestOutcomeReadModel {
+  research_generalization_outcome_id: string;
+  research_generalization_protocol_id: string;
+  inference_status: ResearchGeneralizationOutcomeRecord["inference_status"];
+  adjudicated_at: string;
+  planned_study_count: number;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  distinct_baseline_count: number;
+  equal_weight_mean_rate_difference: number | null;
+  exact_sign_test_p_value: number;
+  harmful_condition_blocks: ResearchGeneralizationMarketConditionBlock[];
+  policy_decision_eligibility:
+    ResearchGeneralizationOutcomeRecord["policy_decision_eligibility"];
+  next_action: ResearchGeneralizationOutcomeRecord["next_action"];
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchGeneralizationReadModel {
+  status: ResearchGeneralizationReadModelStatus;
+  protocol_count: number;
+  outcome_count: number;
+  active_protocol: ResearchGeneralizationActiveProtocolReadModel | null;
+  latest_outcome: ResearchGeneralizationLatestOutcomeReadModel | null;
+  authority_status: "not_promotion_authority";
+}
+
 export interface CandidateArenaReadModel {
   arena_kind: "candidate_arena";
   runner_status: "running" | "stopped";
