@@ -8020,6 +8020,41 @@ export interface ResearchAllocationPolicyDecisionRecord extends BaseRecord {
   authority_status: "research_policy_only";
 }
 
+export interface ResearchGeneralizationPolicyDecisionPolicy {
+  policy_version: "generalization_supported_adaptive_v1";
+  target_allocation_mode: "adaptive_default";
+  required_inference_status: "generalization_supported";
+  required_causal_scope:
+    "pre_effect_market_condition_blocked_cross_baseline_study_effects";
+  required_policy_decision_eligibility:
+    "eligible_for_separate_generalization_policy_decision";
+  application_scope: "future_uncontrolled_candidate_arena_ticks";
+}
+
+export interface ResearchGeneralizationPolicyDecisionRecord extends BaseRecord {
+  record_kind: "research_generalization_policy_decision";
+  research_generalization_policy_decision_id: string;
+  protocol_ref: Ref;
+  protocol_digest: string;
+  generalization_outcome_ref: Ref;
+  generalization_outcome_digest: string;
+  target_allocation_policy_digest: string;
+  decision_policy: ResearchGeneralizationPolicyDecisionPolicy;
+  decision_status: "approved" | "not_approved";
+  decision_reason:
+    | "supported_cross_condition_adaptive_effect"
+    | "generalization_outcome_not_eligible";
+  effective_default_mode: "adaptive_default" | null;
+  decided_at: string;
+  policy_decision_digest: string;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
 export function researchControlCampaignDigestInput(
   record: ResearchControlCampaignRecord
 ): string {
@@ -8374,6 +8409,19 @@ export function researchAllocationPolicyDecisionDigestInput(
     record_kind: _recordKind,
     version: _version,
     research_allocation_policy_decision_id: _id,
+    policy_decision_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationPolicyDecisionDigestInput(
+  record: ResearchGeneralizationPolicyDecisionRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_policy_decision_id: _id,
     policy_decision_digest: _digest,
     ...payload
   } = record;
@@ -9159,6 +9207,83 @@ function researchAllocationPolicyDecisionPolicyHasRuntimeShape(
       "same_baseline_stochastic_replication_only" &&
     value.required_policy_decision_eligibility ===
       "eligible_for_separate_policy_decision" &&
+    value.application_scope === "future_uncontrolled_candidate_arena_ticks";
+}
+
+export function researchGeneralizationPolicyDecisionHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPolicyDecisionRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_policy_decision_id",
+    "protocol_ref",
+    "protocol_digest",
+    "generalization_outcome_ref",
+    "generalization_outcome_digest",
+    "target_allocation_policy_digest",
+    "decision_policy",
+    "decision_status",
+    "decision_reason",
+    "effective_default_mode",
+    "decided_at",
+    "policy_decision_digest",
+    "research_policy_selection_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_policy_decision" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_policy_decision_id) ||
+    !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !comparisonRef(
+      value.generalization_outcome_ref,
+      "research_generalization_outcome"
+    ) || !researchControlCampaignSha256Digest(
+      value.generalization_outcome_digest
+    ) || !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !researchGeneralizationPolicyDecisionPolicyHasRuntimeShape(
+      value.decision_policy
+    ) || !comparisonIso(value.decided_at) ||
+    !researchControlCampaignSha256Digest(value.policy_decision_digest) ||
+    value.research_policy_selection_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_policy_only") {
+    return false;
+  }
+  return value.decision_status === "approved"
+    ? value.decision_reason ===
+        "supported_cross_condition_adaptive_effect" &&
+      value.effective_default_mode === "adaptive_default"
+    : value.decision_status === "not_approved" &&
+      value.decision_reason === "generalization_outcome_not_eligible" &&
+      value.effective_default_mode === null;
+}
+
+function researchGeneralizationPolicyDecisionPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPolicyDecisionPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "target_allocation_mode",
+    "required_inference_status",
+    "required_causal_scope",
+    "required_policy_decision_eligibility",
+    "application_scope"
+  ]) && value.policy_version === "generalization_supported_adaptive_v1" &&
+    value.target_allocation_mode === "adaptive_default" &&
+    value.required_inference_status === "generalization_supported" &&
+    value.required_causal_scope ===
+      "pre_effect_market_condition_blocked_cross_baseline_study_effects" &&
+    value.required_policy_decision_eligibility ===
+      "eligible_for_separate_generalization_policy_decision" &&
     value.application_scope === "future_uncontrolled_candidate_arena_ticks";
 }
 
