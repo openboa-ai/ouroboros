@@ -31,6 +31,7 @@ import {
   buildServer,
   createResearchControlStudyServerCommitmentCoordinator,
   createResearchControlStudyServerLeaseSessionFactory,
+  createResearchGeneralizationPolicyDecisionServerCoordinator,
   paperTradingApiProviderNetworkOptions
 } from "../src/server";
 import type {
@@ -222,6 +223,40 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
+  it("runs injected broad policy decisions through the default scheduler", async () => {
+    let decisionCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchGeneralizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return {
+            status: "up_to_date" as const,
+            generalizationOutcomeCount: 0
+          };
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      decisionCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationPolicyDecision: {
+        status: "up_to_date",
+        generalizationOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
   it("runs injected generalization outcomes through the default scheduler", async () => {
     let outcomeCount = 0;
     let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
@@ -309,9 +344,43 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
+  it("creates the default automatic broad policy decision coordinator", async () => {
+    const store = new LocalStore(tmpDir);
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const coordinator = createResearchGeneralizationPolicyDecisionServerCoordinator({
+      store
+    });
+    await expect(coordinator.ensureNextDecision()).resolves.toEqual({
+      status: "up_to_date",
+      generalizationOutcomeCount: 0
+    });
+    const server = await buildServer({
+      store,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastGeneralizationPolicyDecision !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationPolicyDecision: {
+        status: "up_to_date",
+        generalizationOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
   it("does not commit or decide when scheduler startup is disabled", async () => {
     let commitmentCount = 0;
     let decisionCount = 0;
+    let generalizationDecisionCount = 0;
     let outcomeCount = 0;
     const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
@@ -334,6 +403,15 @@ describe("runtime canonical operator API", () => {
           };
         }
       },
+      researchGeneralizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          generalizationDecisionCount += 1;
+          return {
+            status: "up_to_date" as const,
+            generalizationOutcomeCount: 0
+          };
+        }
+      },
       researchAllocationPolicyDecisionCoordinator: {
         async ensureNextDecision() {
           decisionCount += 1;
@@ -345,6 +423,7 @@ describe("runtime canonical operator API", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(commitmentCount).toBe(0);
     expect(outcomeCount).toBe(0);
+    expect(generalizationDecisionCount).toBe(0);
     expect(decisionCount).toBe(0);
     await server.close();
   });

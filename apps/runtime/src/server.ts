@@ -86,6 +86,10 @@ import {
   ResearchGeneralizationOutcomeCoordinator,
   type ResearchGeneralizationOutcomeCoordinatorLifecycle
 } from "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
+import {
+  ResearchGeneralizationPolicyDecisionCoordinator,
+  type ResearchGeneralizationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-generalization-policy-decision";
 import { createOperatorController } from "@ouroboros/application/controllers/operator";
 import {
   isTradingResearchRuntimeAgent,
@@ -172,6 +176,8 @@ export interface BuildServerOptions {
     ResearchControlStudyCommitmentCoordinatorLifecycle;
   researchGeneralizationOutcomeCoordinator?:
     ResearchGeneralizationOutcomeCoordinatorLifecycle;
+  researchGeneralizationPolicyDecisionCoordinator?:
+    ResearchGeneralizationPolicyDecisionCoordinatorLifecycle;
   researchAllocationPolicyDecisionCoordinator?:
     ResearchAllocationPolicyDecisionCoordinatorLifecycle;
   runResearchControlStudiesOnStart?: boolean;
@@ -248,6 +254,18 @@ export function createResearchGeneralizationOutcomeServerCoordinator(
   }
 ): ResearchGeneralizationOutcomeCoordinator {
   return new ResearchGeneralizationOutcomeCoordinator({
+    store: input.store,
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function createResearchGeneralizationPolicyDecisionServerCoordinator(
+  input: {
+    store: LocalStore;
+    now?: () => string;
+  }
+): ResearchGeneralizationPolicyDecisionCoordinator {
+  return new ResearchGeneralizationPolicyDecisionCoordinator({
     store: input.store,
     ...(input.now ? { now: input.now } : {})
   });
@@ -466,6 +484,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       generalizationOutcomeCoordinator:
         options.researchGeneralizationOutcomeCoordinator ??
         createResearchGeneralizationOutcomeServerCoordinator({ store }),
+      generalizationPolicyDecisionCoordinator:
+        options.researchGeneralizationPolicyDecisionCoordinator ??
+        createResearchGeneralizationPolicyDecisionServerCoordinator({ store }),
       policyDecisionCoordinator:
         options.researchAllocationPolicyDecisionCoordinator ??
         createResearchAllocationPolicyDecisionServerCoordinator({ store }),

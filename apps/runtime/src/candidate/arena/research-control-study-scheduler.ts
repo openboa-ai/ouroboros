@@ -7,6 +7,10 @@ import type {
   ResearchGeneralizationOutcomeCoordinatorLifecycle
 } from "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
 import type {
+  ResearchGeneralizationPolicyDecisionCoordinationResult,
+  ResearchGeneralizationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-generalization-policy-decision";
+import type {
   ResearchControlStudyProcessStatus,
   ResearchControlStudyProcessSupervisor
 } from "./research-control-study-process-supervisor";
@@ -38,6 +42,8 @@ export type ResearchControlStudySchedulerStatus = (
 ) & {
   lastCommitment?: ResearchControlStudyCommitmentResult;
   lastGeneralizationOutcome?: ResearchGeneralizationOutcomeCoordinationResult;
+  lastGeneralizationPolicyDecision?:
+    ResearchGeneralizationPolicyDecisionCoordinationResult;
   lastPolicyDecision?: ResearchAllocationPolicyDecisionCoordinationResult;
 };
 
@@ -83,6 +89,8 @@ implements ResearchControlStudySchedulerLifecycle {
   private lastCommitment?: ResearchControlStudyCommitmentResult;
   private lastGeneralizationOutcome?:
     ResearchGeneralizationOutcomeCoordinationResult;
+  private lastGeneralizationPolicyDecision?:
+    ResearchGeneralizationPolicyDecisionCoordinationResult;
   private lastPolicyDecision?:
     ResearchAllocationPolicyDecisionCoordinationResult;
   private runPromise?: Promise<void>;
@@ -94,6 +102,8 @@ implements ResearchControlStudySchedulerLifecycle {
     commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
     generalizationOutcomeCoordinator?:
       ResearchGeneralizationOutcomeCoordinatorLifecycle;
+    generalizationPolicyDecisionCoordinator?:
+      ResearchGeneralizationPolicyDecisionCoordinatorLifecycle;
     policyDecisionCoordinator?:
       ResearchAllocationPolicyDecisionCoordinatorLifecycle;
     pollIntervalMs?: number;
@@ -142,6 +152,13 @@ implements ResearchControlStudySchedulerLifecycle {
         ? {
             lastGeneralizationOutcome: structuredClone(
               this.lastGeneralizationOutcome
+            )
+          }
+        : {}),
+      ...(this.lastGeneralizationPolicyDecision
+        ? {
+            lastGeneralizationPolicyDecision: structuredClone(
+              this.lastGeneralizationPolicyDecision
             )
           }
         : {}),
@@ -232,6 +249,13 @@ implements ResearchControlStudySchedulerLifecycle {
           this.lastGeneralizationOutcome = structuredClone(
             await this.options.generalizationOutcomeCoordinator
               .ensureNextOutcome()
+          );
+        }
+        if (supervisorStatus.status === "caught_up" &&
+          this.options.generalizationPolicyDecisionCoordinator) {
+          this.lastGeneralizationPolicyDecision = structuredClone(
+            await this.options.generalizationPolicyDecisionCoordinator
+              .ensureNextDecision()
           );
         }
         if (supervisorStatus.status === "caught_up" &&

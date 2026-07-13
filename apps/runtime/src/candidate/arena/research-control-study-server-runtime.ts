@@ -4,6 +4,8 @@ import type { ResearchAllocationPolicyDecisionCoordinatorLifecycle } from
   "@ouroboros/application/candidate/research-allocation-policy-decision";
 import type { ResearchGeneralizationOutcomeCoordinatorLifecycle } from
   "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
+import type { ResearchGeneralizationPolicyDecisionCoordinatorLifecycle } from
+  "@ouroboros/application/candidate/research-generalization-policy-decision";
 import type { GatewayMarketDataPort } from
   "@ouroboros/application/ports/market-data";
 import type { TradingArtifactRunner } from
@@ -73,6 +75,8 @@ export interface CreateResearchControlStudyServerSchedulerInput
   commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
   generalizationOutcomeCoordinator?:
     ResearchGeneralizationOutcomeCoordinatorLifecycle;
+  generalizationPolicyDecisionCoordinator?:
+    ResearchGeneralizationPolicyDecisionCoordinatorLifecycle;
   policyDecisionCoordinator?:
     ResearchAllocationPolicyDecisionCoordinatorLifecycle;
 }
@@ -171,6 +175,12 @@ export function createResearchControlStudyServerScheduler(
       ? {
           generalizationOutcomeCoordinator:
             input.generalizationOutcomeCoordinator
+        }
+      : {}),
+    ...(input.generalizationPolicyDecisionCoordinator
+      ? {
+          generalizationPolicyDecisionCoordinator:
+            input.generalizationPolicyDecisionCoordinator
         }
       : {}),
     ...(input.policyDecisionCoordinator

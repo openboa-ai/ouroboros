@@ -294,6 +294,43 @@ describe("ResearchControlStudy server runtime", () => {
     });
   });
 
+  it("passes automatic generalization policy decisions into the scheduler cycle", async () => {
+    let decisionCount = 0;
+    const scheduler = createResearchControlStudyServerScheduler({
+      store: new LocalStore(
+        "/tmp/ouroboros-generalization-policy-decision-scheduler-store"
+      ),
+      marketData: {} as GatewayMarketDataPort,
+      agentFactory: () => agentAdapter(persistedAgent()),
+      createArmSessions: async () => ({}) as never,
+      generalizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return {
+            status: "up_to_date" as const,
+            generalizationOutcomeCount: 0
+          };
+        }
+      },
+      schedulerSleep: () => new Promise(() => undefined)
+    });
+
+    scheduler.start();
+    for (let index = 0; index < 20 && decisionCount === 0; index += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await scheduler.stop();
+
+    expect(decisionCount).toBe(1);
+    expect(scheduler.status()).toMatchObject({
+      status: "stopped",
+      lastGeneralizationPolicyDecision: {
+        status: "up_to_date",
+        generalizationOutcomeCount: 0
+      }
+    });
+  });
+
   it("passes automatic generalization outcomes into the scheduler cycle", async () => {
     let outcomeCount = 0;
     const scheduler = createResearchControlStudyServerScheduler({
