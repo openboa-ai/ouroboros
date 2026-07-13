@@ -10,14 +10,24 @@ import type {
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
 import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import type { ResearchControlStudyExecutionLeasePort } from
+  "@ouroboros/application/ports/research-control-study-execution-lease";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
-import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
-import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
+import {
+  decideResearchControlStudyExecutionLease,
+  OUROBOROS_COMMAND_KINDS
+} from "@ouroboros/domain";
+import {
+  buildServer,
+  createResearchControlStudyServerLeaseSessionFactory,
+  paperTradingApiProviderNetworkOptions
+} from "../src/server";
 import type {
   ResearchControlStudySchedulerLifecycle,
   ResearchControlStudySchedulerStatus
 } from "../src/candidate/arena/research-control-study-scheduler";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
+import { researchControlStudyFixture } from "./helpers/research-control-study";
 
 let tmpDir: string;
 
@@ -121,6 +131,111 @@ describe("runtime canonical operator API", () => {
     expect(scheduler.startCount).toBe(0);
     await server.close();
     expect(scheduler.stopCount).toBe(1);
+  });
+
+  it("creates one default lease owner across server factories sharing a root", async () => {
+    const study = researchControlStudyFixture({ suffix: "server-default-lease" });
+    const firstFactory = createResearchControlStudyServerLeaseSessionFactory({
+      store: new LocalStore(tmpDir)
+    });
+    const secondFactory = createResearchControlStudyServerLeaseSessionFactory({
+      store: new LocalStore(tmpDir)
+    });
+
+    const claims = await Promise.all([
+      firstFactory.acquire(study),
+      secondFactory.acquire(study)
+    ]);
+    const acquired = claims.find((claim) => claim.status === "acquired");
+    const held = claims.find((claim) => claim.status === "held");
+
+    expect(acquired?.status).toBe("acquired");
+    expect(held).toMatchObject({ status: "held", reason: "owner_alive" });
+    if (acquired?.status !== "acquired" || held?.status !== "held") {
+      throw new Error("expected one acquired and one held server lease claim");
+    }
+    const acquiredLease = acquired.session.status().lease;
+    expect(acquiredLease.owner).toMatchObject({
+      host_id: os.hostname(),
+      process_id: process.pid
+    });
+    expect(acquiredLease.owner.server_instance_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+    expect(held.lease.owner.server_instance_id).toBe(
+      acquiredLease.owner.server_instance_id
+    );
+    expect(acquiredLease.lease_duration_ms).toBe(30_000);
+    expect(Date.parse(acquiredLease.expires_at) -
+      Date.parse(acquiredLease.acquired_at)).toBe(30_000);
+
+    await acquired.session.stopAndRelease();
+  });
+
+  it("wires injected study lease ownership and policy into the default scheduler", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const study = researchControlStudyFixture({ suffix: "server-injected-lease" });
+    await store.recordResearchControlStudy(study);
+    const owner = {
+      server_instance_id: "server-injected-owner",
+      host_id: "server-injected-host",
+      process_id: 4242
+    } as const;
+    let acquireInput:
+      Parameters<ResearchControlStudyExecutionLeasePort["acquire"]>[0] |
+      undefined;
+    const leasePort: ResearchControlStudyExecutionLeasePort = {
+      async acquire(input) {
+        acquireInput = structuredClone(input);
+        return {
+          status: "held",
+          reason: "owner_alive",
+          lease: decideResearchControlStudyExecutionLease({
+            study: input.study,
+            owner: input.owner,
+            leaseToken: "server-injected-held-token",
+            leaseDurationMs: input.leaseDurationMs,
+            acquiredAt: "2026-07-13T00:00:00.000Z"
+          })
+        };
+      },
+      async renew() {
+        throw new Error("unexpected renew");
+      },
+      async assertOwned() {
+        throw new Error("unexpected ownership assertion");
+      },
+      async release() {
+        throw new Error("unexpected release");
+      }
+    };
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyExecutionLeasePort: leasePort,
+      researchControlStudyExecutionLeaseOwner: owner,
+      researchControlStudyExecutionLeaseDurationMs: 120,
+      researchControlStudyExecutionLeaseRenewalIntervalMs: 40,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() => acquireInput !== undefined);
+    expect(acquireInput).toEqual({
+      study,
+      owner,
+      leaseDurationMs: 120
+    });
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      completedStudyCount: 0
+    });
+
+    await server.close();
   });
 
   it("serves health, operator state, resource reads, and no removed public routes", async () => {
@@ -2062,6 +2177,17 @@ function restoreEnv(key: string, value: string | undefined): void {
     delete process.env[key];
   } else {
     process.env[key] = value;
+  }
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("wait_for_timeout");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
 }
 

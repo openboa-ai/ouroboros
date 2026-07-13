@@ -1,4 +1,5 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { hostname } from "node:os";
 import path from "node:path";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -10,13 +11,21 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
+  ResearchControlStudyExecutionLeaseOwner,
   RunControlAuditInput,
   SandboxAdapterKind,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
+import type { ResearchControlStudyExecutionLeasePort } from
+  "@ouroboros/application/ports/research-control-study-execution-lease";
 import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
-import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
+import {
+  FileSystemResearchControlStudyExecutionLeaseStore,
+  FIXTURE_SYSTEM_CODE_ID,
+  LocalStore,
+  LocalStoreError
+} from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
 import type { EvaluationProviderAdapter } from "@ouroboros/application/ports/provider";
@@ -92,6 +101,10 @@ import { createResearchControlStudyArmSessionFactory } from
   "./candidate/arena/research-control-study-arm-session-factory";
 import { createResearchControlStudyServerScheduler } from
   "./candidate/arena/research-control-study-server-runtime";
+import {
+  createResearchControlStudyExecutionLeaseSessionFactory,
+  type ResearchControlStudyExecutionLeaseSessionFactory
+} from "./candidate/arena/research-control-study-execution-lease-session";
 import type { ResearchControlStudySchedulerLifecycle } from
   "./candidate/arena/research-control-study-scheduler";
 import { registerCoreControllerRoutes } from "./controllers/core";
@@ -136,12 +149,46 @@ export interface BuildServerOptions {
   researchControlStudyArmSessionFactory?: ReturnType<
     typeof createResearchControlStudyArmSessionFactory
   >;
+  researchControlStudyExecutionLeasePort?:
+    ResearchControlStudyExecutionLeasePort;
+  researchControlStudyExecutionLeaseOwner?:
+    ResearchControlStudyExecutionLeaseOwner;
+  researchControlStudyExecutionLeaseDurationMs?: number;
+  researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
   runResearchControlStudiesOnStart?: boolean;
   onResearchControlStudySchedulerCreated?: (
     scheduler: ResearchControlStudySchedulerLifecycle
   ) => void;
   operatorApiToken?: string | false;
   operatorCorsOrigins?: readonly string[];
+}
+
+export function createResearchControlStudyServerLeaseSessionFactory(
+  input: {
+    store: LocalStore;
+    port?: ResearchControlStudyExecutionLeasePort;
+    owner?: ResearchControlStudyExecutionLeaseOwner;
+    leaseDurationMs?: number;
+    renewalIntervalMs?: number;
+  }
+): ResearchControlStudyExecutionLeaseSessionFactory {
+  return createResearchControlStudyExecutionLeaseSessionFactory({
+    port: input.port ??
+      new FileSystemResearchControlStudyExecutionLeaseStore(
+        input.store.root()
+      ),
+    owner: input.owner ?? {
+      server_instance_id: randomUUID(),
+      host_id: hostname(),
+      process_id: process.pid
+    },
+    ...(input.leaseDurationMs === undefined
+      ? {}
+      : { leaseDurationMs: input.leaseDurationMs }),
+    ...(input.renewalIntervalMs === undefined
+      ? {}
+      : { renewalIntervalMs: input.renewalIntervalMs })
+  });
 }
 
 interface CreateEvaluationRunBody {
@@ -344,6 +391,31 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     options.researchControlStudyScheduler ??
     createResearchControlStudyServerScheduler({
       store,
+      leaseSessionFactory:
+        createResearchControlStudyServerLeaseSessionFactory({
+          store,
+          ...(options.researchControlStudyExecutionLeasePort
+            ? { port: options.researchControlStudyExecutionLeasePort }
+            : {}),
+          ...(options.researchControlStudyExecutionLeaseOwner
+            ? { owner: options.researchControlStudyExecutionLeaseOwner }
+            : {}),
+          ...(options.researchControlStudyExecutionLeaseDurationMs ===
+              undefined
+            ? {}
+            : {
+                leaseDurationMs:
+                  options.researchControlStudyExecutionLeaseDurationMs
+              }),
+          ...(options
+            .researchControlStudyExecutionLeaseRenewalIntervalMs ===
+              undefined
+            ? {}
+            : {
+                renewalIntervalMs: options
+                  .researchControlStudyExecutionLeaseRenewalIntervalMs
+              })
+        }),
       marketData: gatewayMarketDataPort,
       agentFactory: tradingResearchAgentFactory,
       createArmSessions: researchControlStudyArmSessionFactory,
