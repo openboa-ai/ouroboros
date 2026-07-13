@@ -6,6 +6,10 @@ import {
   ResearchControlCampaignService,
   type ResearchControlCampaignPaperEvaluationProtocolInput
 } from "@ouroboros/application/candidate/research-control-campaign";
+import { decideResearchGeneralizationProtocol } from
+  "@ouroboros/application/candidate/research-generalization-protocol";
+import { decideResearchGeneralizationMarketCondition } from
+  "@ouroboros/application/candidate/research-generalization-market-condition";
 import { researchControlStudyConditionFromCampaign } from
   "@ouroboros/application/candidate/research-control-study";
 import { FixtureTradingResearchAgentAdapter } from
@@ -18,6 +22,8 @@ import type {
   ResearchControlCampaignReportRecord,
   TradingPromotionRecord
 } from "@ouroboros/domain";
+import { CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY } from
+  "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import {
   captureResearchControlCampaignSnapshot,
@@ -110,6 +116,69 @@ describe("ResearchControlStudy runtime commitment", () => {
       trading_promotion_ref: {
         id: promotion.trading_promotion_id
       }
+    });
+  });
+
+  it("carries an exact generalization assignment through baseline materialization", async () => {
+    const store = new TradingReviewStudyStore(path.join(root, "assigned"));
+    await store.initialize();
+    const agent = new FixtureTradingResearchAgentAdapter().agent;
+    const protocol = decideResearchGeneralizationProtocol({
+      idempotencyKey: "runtime-generalization",
+      targetAllocationPolicy: CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+      researchAgent: agent,
+      paperEvaluationProtocol: boundPaperEvaluationProtocol(),
+      campaignPolicy: generalizationCampaignPolicy(),
+      committedAt: "2026-07-12T08:00:00.000Z"
+    });
+    await store.recordResearchGeneralizationProtocol(protocol);
+    const slot = protocol.study_slots[0]!;
+    const prepared = await prepareResearchControlCampaignCommitRequest({
+      store,
+      idempotencyKey: slot.replication_idempotency_keys[0]!,
+      sourceCandidateId: FIXTURE_CANDIDATE_ID,
+      researchAgentIdentity: agent,
+      paperEvaluationProtocol: boundPaperEvaluationProtocol(),
+      tickCountPerArm: 1,
+      maximumBaselineRegularFileCount: 10_000,
+      maximumBaselineTotalBytes: 1_000_000_000
+    });
+    const marketCondition = generalizationMarketCondition();
+
+    const study = await commitResearchControlStudyRuntime({
+      store,
+      studyIdempotencyKey: slot.study_idempotency_key,
+      replicationIdempotencyKeys: slot.replication_idempotency_keys,
+      sourceCandidateId: FIXTURE_CANDIDATE_ID,
+      researchAgentIdentity: agent,
+      paperEvaluationProtocol: boundPaperEvaluationProtocol(),
+      tickCountPerArm: 1,
+      maximumBaselineRegularFileCount: 10_000,
+      maximumBaselineTotalBytes: 1_000_000_000,
+      generalizationAssignment: {
+        protocol_ref: {
+          record_kind: "research_generalization_protocol",
+          id: protocol.research_generalization_protocol_id
+        },
+        protocol_digest: protocol.protocol_digest,
+        slot_index: slot.slot_index,
+        condition_block: slot.condition_block,
+        condition_block_study_index: slot.condition_block_study_index,
+        market_condition: marketCondition,
+        source_system_code_artifact_digest:
+          prepared.request.source.system_code_artifact_digest
+      },
+      now: () => "2026-07-12T09:00:00.000Z"
+    });
+
+    expect(study.generalization_assignment).toMatchObject({
+      protocol_digest: protocol.protocol_digest,
+      slot_index: 1,
+      condition_block: "long",
+      market_condition: marketCondition,
+      source_system_code_artifact_digest:
+        prepared.request.source.system_code_artifact_digest,
+      assigned_at: "2026-07-12T09:00:00.000Z"
     });
   });
 
@@ -555,6 +624,53 @@ function boundPaperEvaluationProtocol():
       confirmation_precommit_deadline_ms: 600_000
     }
   };
+}
+
+function generalizationCampaignPolicy() {
+  return {
+    policy_version: "research_control_campaign_v1" as const,
+    tick_count_per_arm: 1,
+    worker_slot_count_per_tick: 3 as const,
+    concurrency_limit_per_arm: 2 as const,
+    maximum_total_development_submissions_per_tick: 5 as const,
+    arm_execution_policy: "concurrent_per_sequence" as const,
+    maximum_baseline_regular_file_count: 10_000,
+    maximum_baseline_total_bytes: 1_000_000_000,
+    paper_candidate_slot_count_per_arm: 1,
+    paper_candidate_reservation_rule:
+      "first_admitted_per_tick_in_allocation_order" as const,
+    primary_metric_kind:
+      "prospective_qualified_candidate_discovery_rate" as const,
+    required_future_evidence:
+      "confirmed_comparison_research_release" as const
+  };
+}
+
+function generalizationMarketCondition() {
+  const start = Date.parse("2026-07-12T08:00:00.000Z");
+  return decideResearchGeneralizationMarketCondition({
+    publicKlineWindow: {
+      symbol: "BTCUSDT",
+      interval: "1m",
+      sample_count: 30,
+      observed_at: "2026-07-12T08:30:30.000Z",
+      closed_window_end_at: "2026-07-12T08:29:59.999Z",
+      source: {
+        provider_kind: "binance_production_public_market_data",
+        source_kind: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        endpoint: "/fapi/v1/klines",
+        authority_status: "read_only"
+      },
+      klines: Array.from({ length: 30 }, (_, index) => ({
+        open_time: new Date(start + index * 60_000).toISOString(),
+        close_time: new Date(start + (index + 1) * 60_000 - 1).toISOString(),
+        close_price: String(60_000 + index)
+      })),
+      authority_status: "read_only"
+    },
+    classifiedAt: "2026-07-12T08:30:31.000Z"
+  });
 }
 
 function digest(character: string): string {

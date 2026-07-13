@@ -11,6 +11,8 @@ import {
 } from "@ouroboros/application/candidate/research-generalization-protocol";
 import { decideResearchControlStudy } from
   "@ouroboros/application/candidate/research-control-study";
+import { decideResearchGeneralizationMarketCondition } from
+  "@ouroboros/application/candidate/research-generalization-market-condition";
 import { LocalStore } from "../src/index";
 
 describe("LocalStore ResearchGeneralizationProtocol", () => {
@@ -140,6 +142,75 @@ describe("LocalStore ResearchGeneralizationProtocol", () => {
         code: "research_generalization_protocol_study_already_exists"
       });
   });
+
+  it("persists and reloads an exact protocol-bound study", async () => {
+    const protocol = protocolFixture();
+    const study = assignedStudy(protocol, 0, {
+      committedAt: "2026-07-14T00:00:00.000Z"
+    });
+    await store.recordResearchGeneralizationProtocol(protocol);
+
+    await expect(store.recordResearchControlStudy(study)).resolves.toEqual(study);
+    await expect(store.getResearchControlStudy(
+      study.research_control_study_id
+    )).resolves.toEqual(study);
+    await expect(store.listResearchControlStudies()).resolves.toContainEqual(study);
+  });
+
+  it("rejects an assigned study without its exact protocol", async () => {
+    const study = assignedStudy(protocolFixture(), 0, {
+      committedAt: "2026-07-14T00:00:00.000Z"
+    });
+
+    await expect(store.recordResearchControlStudy(study))
+      .rejects.toMatchObject({
+        code: "research_control_study_generalization_protocol_not_found"
+      });
+  });
+
+  it("rejects assigned-study digest and protocol drift", async () => {
+    const protocol = protocolFixture();
+    await store.recordResearchGeneralizationProtocol(protocol);
+    const digestDrift = assignedStudy(protocol, 0, {
+      committedAt: "2026-07-14T00:00:00.000Z"
+    });
+    digestDrift.generalization_assignment!.assignment_digest = digest("9");
+    const protocolDrift = assignedStudy(protocol, 0, {
+      committedAt: "2026-07-14T00:00:00.000Z",
+      protocolDigest: digest("8")
+    });
+
+    await expect(store.recordResearchControlStudy(digestDrift))
+      .rejects.toMatchObject({
+        code: "research_control_study_generalization_assignment_digest_mismatch"
+      });
+    await expect(store.recordResearchControlStudy(protocolDrift))
+      .rejects.toMatchObject({
+        code: "research_control_study_generalization_protocol_mismatch"
+      });
+  });
+
+  it("rejects rapid study reuse and same-block source reuse", async () => {
+    const protocol = protocolFixture();
+    await store.recordResearchGeneralizationProtocol(protocol);
+    await store.recordResearchControlStudy(assignedStudy(protocol, 0, {
+      committedAt: "2026-07-14T00:00:00.000Z",
+      sourceArtifactDigest: digest("2")
+    }));
+
+    await expect(store.recordResearchControlStudy(assignedStudy(protocol, 1, {
+      committedAt: "2026-07-14T01:00:00.000Z",
+      sourceArtifactDigest: digest("7")
+    }))).rejects.toMatchObject({
+      code: "research_control_study_generalization_spacing_not_elapsed"
+    });
+    await expect(store.recordResearchControlStudy(assignedStudy(protocol, 1, {
+      committedAt: "2026-07-15T00:00:00.000Z",
+      sourceArtifactDigest: digest("2")
+    }))).rejects.toMatchObject({
+      code: "research_control_study_generalization_source_reused"
+    });
+  });
 });
 
 function protocolFixture(
@@ -231,6 +302,10 @@ function digest(character: string): string {
 }
 
 function sourceFixture() {
+  return sourceFixtureWithArtifact(digest("2"));
+}
+
+function sourceFixtureWithArtifact(systemCodeArtifactDigest: string) {
   return {
     candidate_ref: {
       record_kind: "trading_system_candidate",
@@ -244,11 +319,88 @@ function sourceFixture() {
       record_kind: "system_code",
       id: "system-code-fixture"
     },
-    system_code_artifact_digest: digest("2"),
+    system_code_artifact_digest: systemCodeArtifactDigest,
     system_code_record_digest: digest("3"),
     research_artifact_protocol: "single_file_python_v1" as const,
     research_artifact_closure_digest: digest("4")
   };
+}
+
+function assignedStudy(
+  protocol: ResearchGeneralizationProtocolRecord,
+  slotIndex: number,
+  options: {
+    committedAt: string;
+    sourceArtifactDigest?: string;
+    protocolDigest?: string;
+  }
+) {
+  const slot = protocol.study_slots[slotIndex]!;
+  const source = sourceFixtureWithArtifact(
+    options.sourceArtifactDigest ?? digest(String(slotIndex + 2))
+  );
+  return decideResearchControlStudy({
+    idempotencyKey: slot.study_idempotency_key,
+    baselineSnapshotDigest: digest(String(slotIndex + 1)),
+    condition: {
+      source,
+      research_agent: structuredClone(protocol.research_agent),
+      paper_comparator: comparatorFixture(),
+      paper_evaluation_protocol: structuredClone(
+        protocol.paper_evaluation_protocol
+      ),
+      allocation_policy: structuredClone(protocol.target_allocation_policy),
+      allocation_policy_digest: protocol.target_allocation_policy_digest,
+      campaign_policy: structuredClone(protocol.campaign_policy)
+    },
+    replicationIdempotencyKeys: slot.replication_idempotency_keys,
+    generalizationAssignment: {
+      protocol_ref: {
+        record_kind: "research_generalization_protocol",
+        id: protocol.research_generalization_protocol_id
+      },
+      protocol_digest: options.protocolDigest ?? protocol.protocol_digest,
+      slot_index: slot.slot_index,
+      condition_block: slot.condition_block,
+      condition_block_study_index: slot.condition_block_study_index,
+      market_condition: marketCondition(slot.condition_block),
+      source_system_code_artifact_digest:
+        source.system_code_artifact_digest
+    },
+    committedAt: options.committedAt
+  });
+}
+
+function marketCondition(block: "long" | "short" | "flat") {
+  const start = Date.parse("2026-07-13T23:00:00.000Z");
+  const closes = block === "long"
+    ? Array.from({ length: 30 }, (_, index) => 60_000 + index)
+    : block === "short"
+      ? Array.from({ length: 30 }, (_, index) => 60_030 - index)
+      : Array.from({ length: 30 }, () => 60_000);
+  return decideResearchGeneralizationMarketCondition({
+    publicKlineWindow: {
+      symbol: "BTCUSDT",
+      interval: "1m",
+      sample_count: 30,
+      observed_at: "2026-07-13T23:30:30.000Z",
+      closed_window_end_at: "2026-07-13T23:29:59.999Z",
+      source: {
+        provider_kind: "binance_production_public_market_data",
+        source_kind: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        endpoint: "/fapi/v1/klines",
+        authority_status: "read_only"
+      },
+      klines: closes.map((close, index) => ({
+        open_time: new Date(start + index * 60_000).toISOString(),
+        close_time: new Date(start + (index + 1) * 60_000 - 1).toISOString(),
+        close_price: String(close)
+      })),
+      authority_status: "read_only"
+    },
+    classifiedAt: "2026-07-13T23:30:31.000Z"
+  });
 }
 
 function comparatorFixture() {

@@ -12,6 +12,10 @@ import {
   ResearchControlStudyService,
   ResearchControlStudyServiceError
 } from "./research-control-study";
+import { decideResearchGeneralizationProtocol } from
+  "./research-generalization-protocol";
+import { decideResearchGeneralizationMarketCondition } from
+  "./research-generalization-market-condition";
 
 describe("ResearchControlStudy application", () => {
   it("precommits deterministic campaign identities and one exact condition", () => {
@@ -49,6 +53,108 @@ describe("ResearchControlStudy application", () => {
     expect(researchControlStudyConditionFromCampaign(second)).toEqual(
       researchControlStudyConditionFromCampaign(first)
     );
+  });
+
+  it("seals one exact optional generalization protocol assignment", () => {
+    const campaign = campaignFixture();
+    const condition = researchControlStudyConditionFromCampaign(campaign);
+    const protocol = generalizationProtocol(campaign);
+    const slot = protocol.study_slots[0]!;
+    const marketCondition = generalizationMarketCondition();
+    const { condition_digest: _digest, ...conditionInput } = condition;
+    const study = decideResearchControlStudy({
+      idempotencyKey: slot.study_idempotency_key,
+      baselineSnapshotDigest: campaign.baseline.snapshot_digest,
+      condition: conditionInput,
+      replicationIdempotencyKeys: slot.replication_idempotency_keys,
+      generalizationAssignment: {
+        protocol_ref: {
+          record_kind: "research_generalization_protocol",
+          id: protocol.research_generalization_protocol_id
+        },
+        protocol_digest: protocol.protocol_digest,
+        slot_index: slot.slot_index,
+        condition_block: slot.condition_block,
+        condition_block_study_index: slot.condition_block_study_index,
+        market_condition: marketCondition,
+        source_system_code_artifact_digest:
+          campaign.source.system_code_artifact_digest
+      },
+      committedAt: "2026-07-12T09:00:00.000Z"
+    });
+
+    expect(study.research_control_study_id).toBe(slot.study_ref.id);
+    expect(study.generalization_assignment).toMatchObject({
+      protocol_ref: {
+        record_kind: "research_generalization_protocol",
+        id: protocol.research_generalization_protocol_id
+      },
+      protocol_digest: protocol.protocol_digest,
+      slot_index: 1,
+      condition_block: "long",
+      condition_block_study_index: 1,
+      market_condition: marketCondition,
+      source_system_code_artifact_digest:
+        campaign.source.system_code_artifact_digest,
+      assigned_at: "2026-07-12T09:00:00.000Z"
+    });
+    expect(study.generalization_assignment?.assignment_digest)
+      .toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("keeps historical same-baseline studies unassigned", () => {
+    const campaign = campaignFixture();
+    const condition = researchControlStudyConditionFromCampaign(campaign);
+    const { condition_digest: _digest, ...conditionInput } = condition;
+
+    expect(decideResearchControlStudy({
+      idempotencyKey: "historical-gate-one",
+      baselineSnapshotDigest: campaign.baseline.snapshot_digest,
+      condition: conditionInput,
+      replicationIdempotencyKeys: replicationKeys(),
+      committedAt: "2026-07-12T09:00:00.000Z"
+    })).not.toHaveProperty("generalization_assignment");
+  });
+
+  it.each([
+    ["condition block drift", (assignment: any) => {
+      assignment.condition_block = "short";
+    }],
+    ["source artifact drift", (assignment: any) => {
+      assignment.source_system_code_artifact_digest = digest("9");
+    }],
+    ["classification after assignment", (assignment: any) => {
+      assignment.market_condition.classified_at = "2026-07-12T09:00:01.000Z";
+    }]
+  ])("rejects generalization assignment %s", (_label, mutate) => {
+    const campaign = campaignFixture();
+    const condition = researchControlStudyConditionFromCampaign(campaign);
+    const protocol = generalizationProtocol(campaign);
+    const slot = protocol.study_slots[0]!;
+    const { condition_digest: _digest, ...conditionInput } = condition;
+    const assignment = {
+      protocol_ref: {
+        record_kind: "research_generalization_protocol" as const,
+        id: protocol.research_generalization_protocol_id
+      },
+      protocol_digest: protocol.protocol_digest,
+      slot_index: slot.slot_index,
+      condition_block: slot.condition_block,
+      condition_block_study_index: slot.condition_block_study_index,
+      market_condition: generalizationMarketCondition(),
+      source_system_code_artifact_digest:
+        campaign.source.system_code_artifact_digest
+    };
+    mutate(assignment);
+
+    expect(() => decideResearchControlStudy({
+      idempotencyKey: slot.study_idempotency_key,
+      baselineSnapshotDigest: campaign.baseline.snapshot_digest,
+      condition: conditionInput,
+      replicationIdempotencyKeys: slot.replication_idempotency_keys,
+      generalizationAssignment: assignment as never,
+      committedAt: "2026-07-12T09:00:00.000Z"
+    })).toThrow(ResearchControlStudyDecisionError);
   });
 
   it.each([
@@ -257,6 +363,51 @@ function replicationKeys(): string[] {
 
 function digest(character: string): string {
   return `sha256:${character.repeat(64)}`;
+}
+
+function generalizationProtocol(campaign: ReturnType<typeof campaignFixture>) {
+  const { identity_digest: _identityDigest, ...researchAgent } =
+    campaign.research_agent;
+  if (campaign.paper_evaluation_protocol.protocol_status !== "bound") {
+    throw new Error("expected bound protocol");
+  }
+  const { protocol_digest: _protocolDigest, ...paperEvaluationProtocol } =
+    campaign.paper_evaluation_protocol;
+  return decideResearchGeneralizationProtocol({
+    idempotencyKey: "generalization-protocol",
+    targetAllocationPolicy: campaign.allocation_policy,
+    researchAgent,
+    paperEvaluationProtocol,
+    campaignPolicy: campaign.policy,
+    committedAt: "2026-07-12T08:00:00.000Z"
+  });
+}
+
+function generalizationMarketCondition() {
+  const start = Date.parse("2026-07-12T08:00:00.000Z");
+  return decideResearchGeneralizationMarketCondition({
+    publicKlineWindow: {
+      symbol: "BTCUSDT",
+      interval: "1m",
+      sample_count: 30,
+      observed_at: "2026-07-12T08:30:30.000Z",
+      closed_window_end_at: "2026-07-12T08:29:59.999Z",
+      source: {
+        provider_kind: "binance_production_public_market_data",
+        source_kind: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        endpoint: "/fapi/v1/klines",
+        authority_status: "read_only"
+      },
+      klines: Array.from({ length: 30 }, (_, index) => ({
+        open_time: new Date(start + index * 60_000).toISOString(),
+        close_time: new Date(start + (index + 1) * 60_000 - 1).toISOString(),
+        close_price: String(60_000 + index)
+      })),
+      authority_status: "read_only"
+    },
+    classifiedAt: "2026-07-12T08:30:31.000Z"
+  });
 }
 
 function port(store: StudyStore): OuroborosStorePort {

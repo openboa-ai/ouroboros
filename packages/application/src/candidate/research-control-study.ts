@@ -7,9 +7,15 @@ import {
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   researchControlStudyConditionDigestInput,
   researchControlStudyDigestInput,
+  researchControlStudyGeneralizationAssignmentDigestInput,
   researchControlStudyHasRuntimeShape,
+  researchGeneralizationMarketClassifierPolicyDigestInput,
+  researchGeneralizationMarketConditionDigestInput,
+  researchGeneralizationMarketConditionHasRuntimeShape,
+  researchGeneralizationPublicKlineWindowDigestInput,
   type ResearchControlCampaignRecord,
   type ResearchControlStudyCondition,
+  type ResearchControlStudyGeneralizationAssignment,
   type ResearchControlStudyRecord
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
@@ -26,8 +32,14 @@ export interface DecideResearchControlStudyInput {
   baselineSnapshotDigest: string;
   condition: ResearchControlStudyConditionInput;
   replicationIdempotencyKeys: string[];
+  generalizationAssignment?: ResearchControlStudyGeneralizationAssignmentInput;
   committedAt: string;
 }
+
+export type ResearchControlStudyGeneralizationAssignmentInput = Omit<
+  ResearchControlStudyGeneralizationAssignment,
+  "assigned_at" | "assignment_digest"
+>;
 
 export type ResearchControlStudyCommitRequest = Omit<
   DecideResearchControlStudyInput,
@@ -120,6 +132,13 @@ export function decideResearchControlStudy(
     condition.condition_digest = canonicalDigest(
       researchControlStudyConditionDigestInput(condition)
     );
+    const generalizationAssignment = input.generalizationAssignment
+      ? sealGeneralizationAssignment(
+          input.generalizationAssignment,
+          condition,
+          committedAt
+        )
+      : undefined;
     const record: ResearchControlStudyRecord = {
       record_kind: "research_control_study",
       version: 1,
@@ -139,6 +158,9 @@ export function decideResearchControlStudy(
         },
         expected_baseline_snapshot_digest: baselineSnapshotDigest
       })),
+      ...(generalizationAssignment
+        ? { generalization_assignment: generalizationAssignment }
+        : {}),
       analysis_policy: {
         policy_version: "paired_exact_sign_test_v1",
         primary_estimand:
@@ -214,6 +236,46 @@ export function researchControlStudyId(idempotencyKey: string): string {
   return `research-control-study-${safeId(canonical, { maxLength: 48 })}-${
     digestHex(canonical).slice(0, 12)
   }`;
+}
+
+function sealGeneralizationAssignment(
+  input: ResearchControlStudyGeneralizationAssignmentInput,
+  condition: ResearchControlStudyCondition,
+  assignedAt: string
+): ResearchControlStudyGeneralizationAssignment {
+  if (!input || !researchGeneralizationMarketConditionHasRuntimeShape(
+    input.market_condition
+  ) || input.market_condition.classification_digest !== canonicalDigest(
+    researchGeneralizationMarketConditionDigestInput(input.market_condition)
+  ) || input.market_condition.public_kline_window.window_digest !==
+    canonicalDigest(researchGeneralizationPublicKlineWindowDigestInput(
+      input.market_condition.public_kline_window
+    )) || input.market_condition.classifier_policy.classifier_digest !==
+    canonicalDigest(researchGeneralizationMarketClassifierPolicyDigestInput(
+      input.market_condition.classifier_policy
+    )) || input.condition_block !== input.market_condition.condition_block ||
+    input.source_system_code_artifact_digest !==
+      condition.source.system_code_artifact_digest ||
+    Date.parse(input.market_condition.classified_at) > Date.parse(assignedAt)) {
+    throw invalidDecision();
+  }
+  const assignment: ResearchControlStudyGeneralizationAssignment = {
+    protocol_ref: structuredClone(input.protocol_ref),
+    protocol_digest: canonicalDigestString(input.protocol_digest),
+    slot_index: input.slot_index,
+    condition_block: input.condition_block,
+    condition_block_study_index: input.condition_block_study_index,
+    market_condition: structuredClone(input.market_condition),
+    source_system_code_artifact_digest: canonicalString(
+      input.source_system_code_artifact_digest
+    ),
+    assigned_at: assignedAt,
+    assignment_digest: pendingDigest()
+  };
+  assignment.assignment_digest = canonicalDigest(
+    researchControlStudyGeneralizationAssignmentDigestInput(assignment)
+  );
+  return assignment;
 }
 
 function canonicalReplicationKeys(value: unknown): string[] {

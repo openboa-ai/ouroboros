@@ -6,7 +6,8 @@ import type { GatewayMarketDataPort } from
   "@ouroboros/application/ports/market-data";
 import {
   ResearchControlStudyService,
-  researchControlStudyConditionFromCampaign
+  researchControlStudyConditionFromCampaign,
+  type ResearchControlStudyGeneralizationAssignmentInput
 } from "@ouroboros/application/candidate/research-control-study";
 import type { ManagedResearchAgent } from
   "@ouroboros/application/trading/research/types";
@@ -68,6 +69,8 @@ export interface CommitResearchControlStudyRuntimeInput {
   maximumBaselineTotalBytes?: number;
   paperEvaluationProtocol?:
     PrepareResearchControlCampaignCommitRequestInput["paperEvaluationProtocol"];
+  generalizationAssignment?:
+    ResearchControlStudyGeneralizationAssignmentInput;
   now?: () => string;
   repoRoot?: string;
 }
@@ -191,7 +194,14 @@ export async function commitResearchControlStudyRuntime(
       idempotencyKey: input.studyIdempotencyKey,
       baselineSnapshotDigest: prepared.request.baseline.snapshot_digest,
       condition: conditionInput,
-      replicationIdempotencyKeys: input.replicationIdempotencyKeys
+      replicationIdempotencyKeys: input.replicationIdempotencyKeys,
+      ...(input.generalizationAssignment
+        ? {
+            generalizationAssignment: structuredClone(
+              input.generalizationAssignment
+            )
+          }
+        : {})
     });
   } catch (error) {
     if (hasErrorCode(

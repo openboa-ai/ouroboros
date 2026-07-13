@@ -7766,6 +7766,18 @@ export interface ResearchControlStudyAnalysisPolicy {
   minimum_mean_rate_difference: 0;
 }
 
+export interface ResearchControlStudyGeneralizationAssignment {
+  protocol_ref: Ref;
+  protocol_digest: string;
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  market_condition: ResearchGeneralizationMarketCondition;
+  source_system_code_artifact_digest: string;
+  assigned_at: string;
+  assignment_digest: string;
+}
+
 export interface ResearchControlStudyRecord extends BaseRecord {
   record_kind: "research_control_study";
   research_control_study_id: string;
@@ -7776,6 +7788,7 @@ export interface ResearchControlStudyRecord extends BaseRecord {
   baseline_snapshot_digest: string;
   condition: ResearchControlStudyCondition;
   replications: ResearchControlStudyReplication[];
+  generalization_assignment?: ResearchControlStudyGeneralizationAssignment;
   analysis_policy: ResearchControlStudyAnalysisPolicy;
   committed_at: string;
   study_digest: string;
@@ -8044,6 +8057,13 @@ export function researchGeneralizationProtocolDigestInput(
     protocol_digest: _digest,
     ...payload
   } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlStudyGeneralizationAssignmentDigestInput(
+  assignment: ResearchControlStudyGeneralizationAssignment
+): string {
+  const { assignment_digest: _digest, ...payload } = assignment;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
@@ -8337,10 +8357,75 @@ export function researchGeneralizationProtocolHasRuntimeShape(
   );
 }
 
+export function researchGeneralizationMarketConditionHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationMarketCondition {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "classifier_policy",
+    "public_kline_window",
+    "fast_mean",
+    "slow_mean",
+    "directional_gap_ratio",
+    "condition_block",
+    "classified_at",
+    "classification_digest",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || !researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+    value.classifier_policy
+  ) || !researchGeneralizationPublicKlineWindowHasRuntimeShape(
+    value.public_kline_window
+  ) || !comparisonPositiveFinite(value.fast_mean) ||
+    !comparisonPositiveFinite(value.slow_mean) ||
+    !comparisonFinite(value.directional_gap_ratio) ||
+    !["long", "short", "flat"].includes(String(value.condition_block)) ||
+    !comparisonIso(value.classified_at) ||
+    !researchControlCampaignSha256Digest(value.classification_digest) ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "public_evidence_only") {
+    return false;
+  }
+  const condition = value as unknown as ResearchGeneralizationMarketCondition;
+  if (Date.parse(condition.classified_at) <
+      Date.parse(condition.public_kline_window.observed_at)) {
+    return false;
+  }
+  const closes = condition.public_kline_window.klines.map((kline) =>
+    Number(kline.close_price)
+  );
+  const fastMean = researchGeneralizationRoundFeature(
+    closes.slice(-5).reduce((sum, close) => sum + close, 0) / 5
+  );
+  const slowMean = researchGeneralizationRoundFeature(
+    closes.reduce((sum, close) => sum + close, 0) / 30
+  );
+  const gap = researchGeneralizationRoundFeature(
+    (fastMean - slowMean) / slowMean
+  );
+  const expectedBlock: ResearchGeneralizationMarketConditionBlock =
+    gap > 0.00005 ? "long" : gap < -0.00005 ? "short" : "flat";
+  return condition.fast_mean === fastMean && condition.slow_mean === slowMean &&
+    condition.directional_gap_ratio === gap &&
+    condition.condition_block === expectedBlock;
+}
+
 export function researchControlStudyHasRuntimeShape(
   value: unknown
 ): value is ResearchControlStudyRecord {
-  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+  if (!comparisonObject(value)) return false;
+  const hasGeneralizationAssignment = Object.prototype.hasOwnProperty.call(
+    value,
+    "generalization_assignment"
+  );
+  if (!comparisonHasExactKeys(value, [
     "record_kind",
     "version",
     "research_control_study_id",
@@ -8350,6 +8435,7 @@ export function researchControlStudyHasRuntimeShape(
     "baseline_snapshot_digest",
     "condition",
     "replications",
+    ...(hasGeneralizationAssignment ? ["generalization_assignment"] : []),
     "analysis_policy",
     "committed_at",
     "study_digest",
@@ -8382,6 +8468,14 @@ export function researchControlStudyHasRuntimeShape(
     return false;
   }
   const study = value as unknown as ResearchControlStudyRecord;
+  if (hasGeneralizationAssignment &&
+    (!researchControlStudyGeneralizationAssignmentHasRuntimeShape(
+      study.generalization_assignment
+    ) || study.generalization_assignment.assigned_at !== study.committed_at ||
+      study.generalization_assignment.source_system_code_artifact_digest !==
+        study.condition.source.system_code_artifact_digest)) {
+    return false;
+  }
   if (!study.replications.every((replication, index) =>
     researchControlStudyReplicationHasRuntimeShape(
       replication,
@@ -8679,6 +8773,113 @@ function researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
       "last_fully_closed_minute_before_observation" &&
     value.missing_data_rule === "no_condition_block" &&
     researchControlCampaignSha256Digest(value.classifier_digest);
+}
+
+function researchGeneralizationPublicKlineWindowHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPublicKlineWindow {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "symbol",
+    "interval",
+    "sample_count",
+    "observed_at",
+    "closed_window_end_at",
+    "source",
+    "klines",
+    "authority_status",
+    "window_digest"
+  ]) || value.symbol !== "BTCUSDT" || value.interval !== "1m" ||
+    value.sample_count !== 30 || !comparisonIso(value.observed_at) ||
+    !comparisonIso(value.closed_window_end_at) ||
+    !researchGeneralizationPublicMarketSourceHasRuntimeShape(value.source) ||
+    !Array.isArray(value.klines) || value.klines.length !== 30 ||
+    value.authority_status !== "read_only" ||
+    !researchControlCampaignSha256Digest(value.window_digest)) {
+    return false;
+  }
+  const window = value as unknown as ResearchGeneralizationPublicKlineWindow;
+  const observedEpoch = Date.parse(window.observed_at);
+  const expectedEnd = Math.floor(observedEpoch / 60_000) * 60_000 - 1;
+  if (Date.parse(window.closed_window_end_at) !== expectedEnd) return false;
+  const firstOpen = expectedEnd + 1 - 30 * 60_000;
+  return window.klines.every((kline, index) =>
+    comparisonObject(kline) && comparisonHasExactKeys(kline, [
+      "open_time",
+      "close_time",
+      "close_price"
+    ]) && comparisonIso(kline.open_time) && comparisonIso(kline.close_time) &&
+    typeof kline.close_price === "string" &&
+    /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(kline.close_price) &&
+    Number.isFinite(Number(kline.close_price)) &&
+    Number(kline.close_price) > 0 &&
+    Date.parse(kline.open_time) === firstOpen + index * 60_000 &&
+    Date.parse(kline.close_time) === firstOpen + index * 60_000 + 59_999
+  );
+}
+
+function researchGeneralizationPublicMarketSourceHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPublicMarketSource {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "provider_kind",
+    "source_kind",
+    "rest_base_url",
+    "endpoint",
+    "authority_status"
+  ]) && value.provider_kind === "binance_production_public_market_data" &&
+    value.source_kind === "binance_production_public_rest" &&
+    comparisonString(value.rest_base_url) &&
+    value.endpoint === "/fapi/v1/klines" &&
+    value.authority_status === "read_only";
+}
+
+function researchControlStudyGeneralizationAssignmentHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyGeneralizationAssignment {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_ref",
+    "protocol_digest",
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "market_condition",
+    "source_system_code_artifact_digest",
+    "assigned_at",
+    "assignment_digest"
+  ]) || !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !comparisonPositive(value.slot_index) || value.slot_index > 6 ||
+    !["long", "short", "flat"].includes(String(value.condition_block)) ||
+    !comparisonPositive(value.condition_block_study_index) ||
+    value.condition_block_study_index > 2 ||
+    !researchGeneralizationMarketConditionHasRuntimeShape(
+      value.market_condition
+    ) || !comparisonString(value.source_system_code_artifact_digest) ||
+    !comparisonIso(value.assigned_at) ||
+    !researchControlCampaignSha256Digest(value.assignment_digest)) {
+    return false;
+  }
+  const assignment = value as unknown as
+    ResearchControlStudyGeneralizationAssignment;
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  const expectedBlock = expectedBlocks[Math.floor(
+    (assignment.slot_index - 1) / 2
+  )];
+  return assignment.condition_block === expectedBlock &&
+    assignment.condition_block_study_index ===
+      ((assignment.slot_index - 1) % 2) + 1 &&
+    assignment.market_condition.condition_block ===
+      assignment.condition_block &&
+    Date.parse(assignment.market_condition.classified_at) <=
+      Date.parse(assignment.assigned_at);
+}
+
+function researchGeneralizationRoundFeature(value: number): number {
+  return Math.round(value * 1_000_000_000_000) / 1_000_000_000_000;
 }
 
 function researchGeneralizationProtocolConditionBlocksHaveRuntimeShape(
