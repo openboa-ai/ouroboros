@@ -672,9 +672,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    recoverable Finding/Lineage materialization; causal CandidateArena context; exact
    campaign/outcome/final-verdict promotion binding; atomic current-champion
    revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
-   `trading_candidate.promote` composition. Committed studies have process-local server scheduling;
-   automatic commitment, cross-process scheduling, automatic promotion, and runner handoff remain
-   later frontiers.
+   `trading_candidate.promote` composition. Committed studies have same-host leased server
+   scheduling; automatic commitment, multi-host fencing, automatic promotion, and runner handoff
+   remain later frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
    changes actual three-of-five selection, concurrency, and experiment budgets before effects;
