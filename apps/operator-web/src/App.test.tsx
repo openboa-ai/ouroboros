@@ -4469,6 +4469,42 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("surfaces active and latest research generalization evidence without controls", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+        operator={operatorReadModelFixture({
+          candidate_arena: {
+            ...fixtureCandidateArena,
+            research_generalization: fixtureResearchGeneralizationReadModel()
+          }
+        })}
+      />
+    );
+
+    const section = extractResearchGeneralizationSection(html);
+    expect(section).toContain("Research generalization");
+    expect(section).toContain("collecting");
+    expect(section).toContain("2 / 6 assigned");
+    expect(section).toContain("1 / 6 terminal");
+    expect(section).toContain("2026-10-11T00:00:00.000Z");
+    expect(section).toContain("long");
+    expect(section).toContain("short");
+    expect(section).toContain("flat");
+    expect(section).toContain("collect_precommitted_studies");
+    expect(section).toContain("generalization_not_supported");
+    expect(section).toContain("-0.1");
+    expect(section).toContain("0.21875");
+    expect(section).toContain("retain_negative_generalization_evidence");
+    expect(section).toContain("not_promotion_authority");
+    expect(section).not.toContain("public_kline_window");
+    expect(section).not.toContain("protocol_digest");
+    expect(section).not.toContain("study_ref");
+    expect(section).not.toContain("<button");
+  });
+
   it("surfaces finding clusters in Research without creating promotion authority", () => {
     const candidate = arenaSelectedCandidate();
     const html = renderToStaticMarkup(
@@ -4531,6 +4567,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Cluster boundary");
     expect(html).toContain("no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion");
     expect(html).toContain("not_promotion_authority");
+    expect(html).toContain("No research generalization protocol");
+    expect(html.indexOf('aria-label="Research generalization"')).toBeLessThan(
+      html.indexOf('aria-label="Finding clusters"')
+    );
     const findingClustersSection = extractFindingClustersSection(html);
     expect(findingClustersSection).toContain('data-operator-ui="evidence-stack"');
     expect(findingClustersSection).toContain('data-operator-ui="evidence-block"');
@@ -6394,6 +6434,18 @@ function extractResearchSignalsSection(html: string): string {
   return html.slice(start, end);
 }
 
+function extractResearchGeneralizationSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Research generalization");
+  const end = firstPositiveIndex([
+    html.indexOf('aria-label="Finding clusters"', start),
+    html.indexOf('aria-label="Research signals"', start)
+  ]);
+  if (start < 0 || end < 0) {
+    throw new Error("research generalization section not found");
+  }
+  return html.slice(start, end);
+}
+
 function extractFindingClustersSection(html: string): string {
   const start = startOfOpeningTagForAriaLabel(html, "Finding clusters");
   const end = html.indexOf('aria-label="Research signals"', start);
@@ -7074,6 +7126,70 @@ function operatorReadModelFixture(overrides: Partial<OperatorReadModel> = {}): O
     live_disabled: true,
     authority_status: "not_live",
     ...overrides
+  };
+}
+
+function fixtureResearchGeneralizationReadModel():
+  OperatorReadModel["candidate_arena"]["research_generalization"] {
+  return {
+    status: "collecting",
+    protocol_count: 2,
+    outcome_count: 1,
+    active_protocol: {
+      research_generalization_protocol_id: "research-generalization-protocol-active",
+      committed_at: "2026-07-13T00:00:00.000Z",
+      collection_deadline_at: "2026-10-11T00:00:00.000Z",
+      status: "collecting",
+      planned_study_count: 6,
+      assigned_study_count: 2,
+      terminal_study_count: 1,
+      condition_blocks: [
+        {
+          condition_block: "long",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 1
+        },
+        {
+          condition_block: "short",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 0
+        },
+        {
+          condition_block: "flat",
+          planned_study_count: 2,
+          assigned_study_count: 0,
+          terminal_study_count: 0
+        }
+      ],
+      next_action: "collect_precommitted_studies",
+      authority_status: "research_only"
+    },
+    latest_outcome: {
+      research_generalization_outcome_id: "research-generalization-outcome-latest",
+      research_generalization_protocol_id: "research-generalization-protocol-closed",
+      inference_status: "generalization_not_supported",
+      adjudicated_at: "2026-07-12T00:00:00.000Z",
+      planned_study_count: 6,
+      completed_study_count: 6,
+      non_tied_study_count: 5,
+      tied_study_count: 1,
+      missing_study_count: 0,
+      ineligible_study_count: 0,
+      distinct_baseline_count: 4,
+      equal_weight_mean_rate_difference: -0.1,
+      exact_sign_test_p_value: 0.21875,
+      harmful_condition_blocks: ["flat"],
+      policy_decision_eligibility: "not_eligible",
+      next_action: "retain_negative_generalization_evidence",
+      policy_replacement_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    },
+    authority_status: "not_promotion_authority"
   };
 }
 

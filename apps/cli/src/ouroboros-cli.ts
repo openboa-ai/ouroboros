@@ -4,7 +4,8 @@ import type {
   AgentProfileReadModel,
   OperatorReadModel,
   OuroborosCommandReadModel,
-  OuroborosCommandRequest
+  OuroborosCommandRequest,
+  ResearchGeneralizationReadModel
 } from "@ouroboros/domain";
 import { commandRemediation } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
@@ -407,6 +408,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
   return [
     "Ouroboros status",
     `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
+    formatResearchGeneralizationSummary(arena.research_generalization),
     latestTick
       ? `Latest tick: ${formatCandidateArenaTickSummary(latestTick)}`
       : undefined,
@@ -488,6 +490,32 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Latest command remediation: ${formatCommandRemediation(lastCommandRemediation)}`
       : undefined
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatResearchGeneralizationSummary(
+  generalization: ResearchGeneralizationReadModel
+): string {
+  const prefix = [
+    `Research generalization: ${generalization.status}`,
+    `protocols ${generalization.protocol_count}`,
+    `outcomes ${generalization.outcome_count}`
+  ];
+  if (generalization.active_protocol) {
+    prefix.push(
+      `assigned ${generalization.active_protocol.assigned_study_count}/${generalization.active_protocol.planned_study_count}`,
+      `terminal ${generalization.active_protocol.terminal_study_count}/${generalization.active_protocol.planned_study_count}`
+    );
+  }
+  if (generalization.latest_outcome) {
+    prefix.push(`inference ${generalization.latest_outcome.inference_status}`);
+  }
+  if (generalization.active_protocol) {
+    prefix.push(`next ${generalization.active_protocol.next_action}`);
+  } else if (generalization.latest_outcome) {
+    prefix.push(`next ${generalization.latest_outcome.next_action}`);
+  }
+  prefix.push(generalization.authority_status);
+  return prefix.join(" / ");
 }
 
 function formatCommandRemediation(

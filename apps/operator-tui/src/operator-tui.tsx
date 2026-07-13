@@ -3,7 +3,8 @@ import { Box, render, Text, useApp, useInput } from "ink";
 import type {
   OperatorReadModel,
   OuroborosCommandKind,
-  OuroborosCommandRequest
+  OuroborosCommandRequest,
+  ResearchGeneralizationReadModel
 } from "@ouroboros/domain";
 import { commandRemediation } from "@ouroboros/domain";
 
@@ -169,6 +170,11 @@ export function OperatorTuiScreen(props: {
       <Box flexDirection="column">
         <Text>{`Arena: ${props.operator.candidate_arena.runner_status} / ticks ${props.operator.candidate_arena.tick_count}`}</Text>
         <Text>
+          {formatResearchGeneralizationSummary(
+            props.operator.candidate_arena.research_generalization
+          )}
+        </Text>
+        <Text>
           {`Researcher provider: ${props.operator.researcher_provider.selected_provider} / available ${props.operator.researcher_provider.available_providers.join(", ")}`}
         </Text>
         <Text>
@@ -324,6 +330,32 @@ export function OperatorTuiScreen(props: {
       {props.message && <Text color="green">{props.message}</Text>}
     </Box>
   );
+}
+
+function formatResearchGeneralizationSummary(
+  generalization: ResearchGeneralizationReadModel
+): string {
+  const parts = [
+    `Research generalization: ${generalization.status}`,
+    `protocols ${generalization.protocol_count}`,
+    `outcomes ${generalization.outcome_count}`
+  ];
+  if (generalization.active_protocol) {
+    parts.push(
+      `assigned ${generalization.active_protocol.assigned_study_count}/${generalization.active_protocol.planned_study_count}`,
+      `terminal ${generalization.active_protocol.terminal_study_count}/${generalization.active_protocol.planned_study_count}`
+    );
+  }
+  if (generalization.latest_outcome) {
+    parts.push(`inference ${generalization.latest_outcome.inference_status}`);
+  }
+  if (generalization.active_protocol) {
+    parts.push(`next ${generalization.active_protocol.next_action}`);
+  } else if (generalization.latest_outcome) {
+    parts.push(`next ${generalization.latest_outcome.next_action}`);
+  }
+  parts.push(generalization.authority_status);
+  return parts.join(" / ");
 }
 
 function formatTradingReviewRunner(

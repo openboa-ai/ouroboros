@@ -104,6 +104,21 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Keys: r refresh");
   });
 
+  it("renders active research generalization progress without granting authority", () => {
+    const operator = fixtureOperator();
+    operator.candidate_arena.research_generalization = fixtureCollectingResearchGeneralization();
+    const output = renderToString(
+      <OperatorTuiScreen
+        operator={operator}
+        cursor={0}
+      />
+    );
+
+    expect(output.replace(/\s+/g, " ")).toContain(
+      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / next collect_precommitted_studies / not_promotion_authority"
+    );
+  });
+
   it("points failed promotion commands back to visible blocker surfaces", () => {
     const operator = fixtureOperator();
     operator.latest_commands = [{
@@ -837,6 +852,76 @@ function fixtureOperator(): OperatorReadModel {
       }
     ],
     live_disabled: true,
+    authority_status: "not_live"
+  };
+}
+
+function fixtureCollectingResearchGeneralization():
+  OperatorReadModel["candidate_arena"]["research_generalization"] {
+  return {
+    status: "collecting",
+    protocol_count: 2,
+    outcome_count: 1,
+    active_protocol: {
+      research_generalization_protocol_id: "research-generalization-protocol-1",
+      committed_at: "2026-07-13T00:00:00.000Z",
+      collection_deadline_at: "2026-10-11T00:00:00.000Z",
+      status: "collecting",
+      planned_study_count: 6,
+      assigned_study_count: 2,
+      terminal_study_count: 1,
+      condition_blocks: [
+        {
+          condition_block: "long",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 1
+        },
+        {
+          condition_block: "short",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 0
+        },
+        {
+          condition_block: "flat",
+          planned_study_count: 2,
+          assigned_study_count: 0,
+          terminal_study_count: 0
+        }
+      ],
+      next_action: "collect_precommitted_studies",
+      authority_status: "research_only"
+    },
+    latest_outcome: fixtureLatestResearchGeneralizationOutcome(),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function fixtureLatestResearchGeneralizationOutcome(): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["latest_outcome"]
+> {
+  return {
+    research_generalization_outcome_id: "research-generalization-outcome-latest",
+    research_generalization_protocol_id: "research-generalization-protocol-closed",
+    inference_status: "generalization_not_supported",
+    adjudicated_at: "2026-07-12T00:00:00.000Z",
+    planned_study_count: 6,
+    completed_study_count: 6,
+    non_tied_study_count: 5,
+    tied_study_count: 1,
+    missing_study_count: 0,
+    ineligible_study_count: 0,
+    distinct_baseline_count: 4,
+    equal_weight_mean_rate_difference: -0.1,
+    exact_sign_test_p_value: 0.21875,
+    harmful_condition_blocks: ["flat"],
+    policy_decision_eligibility: "not_eligible",
+    next_action: "retain_negative_generalization_evidence",
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
     authority_status: "not_live"
   };
 }
