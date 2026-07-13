@@ -509,6 +509,12 @@ function formatResearchGeneralizationSummary(
   if (generalization.latest_outcome) {
     prefix.push(`inference ${generalization.latest_outcome.inference_status}`);
   }
+  if (generalization.latest_policy_decision) {
+    prefix.push(
+      `decision ${generalization.latest_policy_decision.decision_status}`,
+      `effective ${generalization.latest_policy_decision.effective_default_mode ?? "none"}`
+    );
+  }
   if (generalization.active_protocol) {
     prefix.push(`next ${generalization.active_protocol.next_action}`);
   } else if (generalization.latest_outcome) {

@@ -37,6 +37,16 @@ export interface ResearchGeneralizationSectionModel {
     nextAction: string;
     authority: string;
   } | null;
+  latestDecision: {
+    decisionId: string;
+    protocolId: string;
+    outcomeId: string;
+    status: string;
+    reason: string;
+    effectiveMode: string;
+    decidedAt: string;
+    authority: string;
+  } | null;
 }
 
 export function ResearchGeneralizationSection({
@@ -44,14 +54,14 @@ export function ResearchGeneralizationSection({
 }: {
   model: ResearchGeneralizationSectionModel;
 }) {
-  const { active, latest } = model;
+  const { active, latest, latestDecision } = model;
 
   return (
     <OperatorPanel aria-label="Research generalization">
       <OperatorSectionHeader
         eyebrow="Prospective protocol"
         title="Research generalization"
-        description="Precommitted study progress and adjudicated out-of-sample evidence."
+        description="Precommitted study progress, adjudicated out-of-sample evidence, and research-policy decisions."
         actions={(
           <OperatorStatusBadge
             value={model.authorityStatus}
@@ -59,7 +69,7 @@ export function ResearchGeneralizationSection({
           />
         )}
       />
-      {!active && !latest ? (
+      {!active && !latest && !latestDecision ? (
         <OperatorEmptyState
           title="No research generalization protocol"
           description="No prospective protocol has been committed."
@@ -136,6 +146,46 @@ export function ResearchGeneralizationSection({
                 <OperatorField
                   label="Outcome authority"
                   value={latest.authority}
+                />
+              </OperatorFieldGrid>
+            </>
+          )}
+
+          {latestDecision && (
+            <>
+              <OperatorDetailText>Latest policy decision</OperatorDetailText>
+              <OperatorFieldGrid density="dense">
+                <OperatorField
+                  label="Decision"
+                  value={latestDecision.decisionId}
+                />
+                <OperatorField
+                  label="Source protocol"
+                  value={latestDecision.protocolId}
+                />
+                <OperatorField
+                  label="Source outcome"
+                  value={latestDecision.outcomeId}
+                />
+                <OperatorField
+                  label="Decision status"
+                  value={latestDecision.status}
+                />
+                <OperatorField
+                  label="Decision reason"
+                  value={latestDecision.reason}
+                />
+                <OperatorField
+                  label="Effective default mode"
+                  value={latestDecision.effectiveMode}
+                />
+                <OperatorField
+                  label="Decided"
+                  value={latestDecision.decidedAt}
+                />
+                <OperatorField
+                  label="Decision authority"
+                  value={latestDecision.authority}
                 />
               </OperatorFieldGrid>
             </>

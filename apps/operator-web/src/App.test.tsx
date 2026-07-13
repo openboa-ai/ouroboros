@@ -4498,7 +4498,22 @@ describe("CandidateDetail", () => {
     expect(section).toContain("-0.1");
     expect(section).toContain("0.21875");
     expect(section).toContain("retain_negative_generalization_evidence");
+    expect(section).toContain("Latest policy decision");
+    expect(section).toContain("research-generalization-policy-decision-latest");
+    expect(section).toContain("not_approved");
+    expect(section).toContain("generalization_outcome_not_eligible");
+    expect(section).toContain("none");
+    expect(section).toContain("2026-07-12T00:00:01.000Z");
+    expect(section).toContain("research policy selection true");
+    expect(section).toContain("evaluation false");
+    expect(section).toContain("promotion false");
+    expect(section).toContain("order submission false");
+    expect(section).toContain("live exchange false");
+    expect(section).toContain("research_policy_only");
     expect(section).toContain("not_promotion_authority");
+    expect(section.indexOf("Latest outcome")).toBeLessThan(
+      section.indexOf("Latest policy decision")
+    );
     expect(section).not.toContain("public_kline_window");
     expect(section).not.toContain("protocol_digest");
     expect(section).not.toContain("study_ref");
@@ -7190,7 +7205,22 @@ function fixtureResearchGeneralizationReadModel():
       live_exchange_authority: false,
       authority_status: "not_live"
     },
-    latest_policy_decision: null,
+    latest_policy_decision: {
+      research_generalization_policy_decision_id:
+        "research-generalization-policy-decision-latest",
+      research_generalization_protocol_id: "research-generalization-protocol-closed",
+      research_generalization_outcome_id: "research-generalization-outcome-latest",
+      decision_status: "not_approved",
+      decision_reason: "generalization_outcome_not_eligible",
+      effective_default_mode: null,
+      decided_at: "2026-07-12T00:00:01.000Z",
+      research_policy_selection_authority: true,
+      evaluation_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "research_policy_only"
+    },
     authority_status: "not_promotion_authority"
   };
 }

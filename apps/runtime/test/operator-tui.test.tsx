@@ -115,7 +115,7 @@ describe("Operator TUI action console", () => {
     );
 
     expect(output.replace(/\s+/g, " ")).toContain(
-      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / next collect_precommitted_studies / not_promotion_authority"
+      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / decision not_approved / effective none / next collect_precommitted_studies / not_promotion_authority"
     );
   });
 
@@ -895,7 +895,7 @@ function fixtureCollectingResearchGeneralization():
       authority_status: "research_only"
     },
     latest_outcome: fixtureLatestResearchGeneralizationOutcome(),
-    latest_policy_decision: null,
+    latest_policy_decision: fixtureLatestResearchGeneralizationPolicyDecision(),
     authority_status: "not_promotion_authority"
   };
 }
@@ -925,5 +925,26 @@ function fixtureLatestResearchGeneralizationOutcome(): NonNullable<
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "not_live"
+  };
+}
+
+function fixtureLatestResearchGeneralizationPolicyDecision(): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["latest_policy_decision"]
+> {
+  return {
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-latest",
+    research_generalization_protocol_id: "research-generalization-protocol-closed",
+    research_generalization_outcome_id: "research-generalization-outcome-latest",
+    decision_status: "not_approved",
+    decision_reason: "generalization_outcome_not_eligible",
+    effective_default_mode: null,
+    decided_at: "2026-07-12T00:00:01.000Z",
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
   };
 }

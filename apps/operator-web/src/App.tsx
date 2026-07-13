@@ -4076,6 +4076,7 @@ function buildResearchGeneralizationSectionModel(
 ): ResearchGeneralizationSectionModel {
   const active = generalization.active_protocol;
   const latest = generalization.latest_outcome;
+  const latestDecision = generalization.latest_policy_decision;
   return {
     status: generalization.status,
     protocolCount: String(generalization.protocol_count),
@@ -4122,6 +4123,24 @@ function buildResearchGeneralizationSectionModel(
             + `promotion ${latest.promotion_authority}; `
             + `order submission ${latest.order_submission_authority}; `
             + `live exchange ${latest.live_exchange_authority}; ${latest.authority_status}`
+        }
+      : null,
+    latestDecision: latestDecision
+      ? {
+          decisionId: latestDecision.research_generalization_policy_decision_id,
+          protocolId: latestDecision.research_generalization_protocol_id,
+          outcomeId: latestDecision.research_generalization_outcome_id,
+          status: latestDecision.decision_status,
+          reason: latestDecision.decision_reason,
+          effectiveMode: latestDecision.effective_default_mode ?? "none",
+          decidedAt: latestDecision.decided_at,
+          authority:
+            `research policy selection ${latestDecision.research_policy_selection_authority}; `
+            + `evaluation ${latestDecision.evaluation_authority}; `
+            + `promotion ${latestDecision.promotion_authority}; `
+            + `order submission ${latestDecision.order_submission_authority}; `
+            + `live exchange ${latestDecision.live_exchange_authority}; `
+            + latestDecision.authority_status
         }
       : null
   };
