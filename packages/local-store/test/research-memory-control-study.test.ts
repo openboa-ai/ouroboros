@@ -12,6 +12,7 @@ import {
   researchMemoryControlStudyOutcomeDigestInput,
   researchPreflightCommitmentDigestInput,
   researchBehaviorFingerprintDigestInput,
+  researchWorkerCheckpointDigestInput,
   type CandidateAdmissionDecisionRecord,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaTickDirectionResultReadModel,
@@ -23,6 +24,7 @@ import {
   type ResearchMemoryControlStudyOutcomeRecord,
   type ResearchMemoryControlStudyRecord,
   type ResearchPreflightCommitmentRecord,
+  type ResearchWorkerCheckpointRecord,
   type ResearchWorkerRecord,
   type SystemCodeRecord
 } from "@ouroboros/domain";
@@ -820,7 +822,7 @@ describe("LocalStore ResearchMemoryControlStudy graph", () => {
     }, "research_preflight_commitment_graph_mismatch"],
     ["source artifact", (record: ResearchPreflightCommitmentRecord) => {
       record.source_artifact_digest = digest("forged-source");
-    }, "research_preflight_commitment_graph_mismatch"]
+    }, "research_preflight_memory_control_study_mismatch"]
   ] as const)("rejects assigned preflight %s drift", async (
     _label,
     mutate,
@@ -975,6 +977,11 @@ function armSourceGraphFixture(
   const fingerprint = observation === "distinct"
     ? fingerprintSourceFixture(preflight, admission)
     : undefined;
+  const checkpoint = checkpointSourceFixture(
+    preflight,
+    support.worker,
+    admission
+  );
   const tick = tickSourceFixture(
     pairIndex,
     pair.direction_kind,
@@ -988,6 +995,7 @@ function armSourceGraphFixture(
     terminalStatus: "completed",
     tick,
     preflight,
+    checkpoint,
     researchWorker: support.worker,
     allocation: support.allocation,
     admission,
@@ -1057,6 +1065,75 @@ function admissionSourceFixture(
     decided_at: "2026-07-13T05:00:45.000Z",
     authority_status: "not_live"
   };
+}
+
+function checkpointSourceFixture(
+  preflight: ResearchPreflightCommitmentRecord,
+  worker: ResearchWorkerRecord,
+  admission: CandidateAdmissionDecisionRecord
+): ResearchWorkerCheckpointRecord {
+  const record: ResearchWorkerCheckpointRecord = {
+    record_kind: "research_worker_checkpoint",
+    version: 1,
+    research_worker_checkpoint_id:
+      `${preflight.research_preflight_commitment_id}-checkpoint`,
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: worker.research_worker_id
+    },
+    research_direction_ref: { ...preflight.research_direction_ref },
+    candidate_arena_tick_id: preflight.candidate_arena_tick_id,
+    research_preflight_commitment_ref: {
+      record_kind: "research_preflight_commitment",
+      id: preflight.research_preflight_commitment_id
+    },
+    research_preflight_commitment_digest: preflight.commitment_digest,
+    workspace_key: worker.workspace_key!,
+    development_budget: {
+      submission_limit: 1,
+      recorded_submission_count: 1,
+      cumulative_committed_submission_limit: 1,
+      cumulative_recorded_submission_count: 1,
+      remaining_submission_authority: 0
+    },
+    notebook: {
+      protocol_version: "research_worker_notebook_v1",
+      total_entry_count: 1,
+      recent_entries: [{
+        sequence: 1,
+        candidate_arena_tick_id: preflight.candidate_arena_tick_id,
+        iteration: 1,
+        decision: "keep",
+        agent_status: admission.research_worker_outcome === "unchanged"
+          ? "no_change"
+          : "edited",
+        score: 1,
+        summary: "Bounded LocalStore memory-control checkpoint fixture.",
+        evaluation_status: "accepted",
+        risk_decision: "no_order_request",
+        net_revenue_usdt: 0
+      }]
+    },
+    terminal_status: "completed",
+    terminal_reason: "admission_recorded",
+    candidate_admission_decision_ref: {
+      record_kind: "candidate_admission_decision",
+      id: admission.candidate_admission_decision_id
+    },
+    closed_at: admission.decided_at,
+    checkpoint_digest: digest("pending-checkpoint"),
+    notebook_continuation_authority: true,
+    evaluation_authority: false,
+    admission_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  record.checkpoint_digest = exactDigest(
+    researchWorkerCheckpointDigestInput(record)
+  );
+  return record;
 }
 
 function fingerprintSourceFixture(
@@ -1195,7 +1272,7 @@ function supportFixture(
   const worker: ResearchWorkerRecord = {
     record_kind: "research_worker",
     version: 1,
-    research_worker_id: `worker-${pair.direction_kind}`,
+    research_worker_id: `worker-${pair.direction_kind.replaceAll("_", "-")}`,
     display_name: `${pair.direction_kind} memory worker`,
     model: study.research_agent.model!,
     provider_kind: "fixture_only",
@@ -1204,7 +1281,9 @@ function supportFixture(
       record_kind: "research_direction",
       id: direction.research_direction_id
     },
-    workspace_key: `candidate-arena-workers/worker-${pair.direction_kind}`,
+    workspace_key: `candidate-arena-workers/worker-${
+      pair.direction_kind.replaceAll("_", "-")
+    }`,
     lifecycle_protocol: "research_worker_checkpoint_v1",
     created_at: "2026-07-13T05:00:10.000Z",
     status: "active",
@@ -1301,7 +1380,7 @@ function preflightFixture(
       record_kind: "system_code",
       id: support.source.system_code_id
     },
-    source_artifact_digest: support.source.artifact_digest,
+    source_artifact_digest: study.source.research_artifact_closure_digest,
     memory_policy: {
       protocol_version: "research_worker_memory_v1",
       memory_mode: plan.memory_mode,

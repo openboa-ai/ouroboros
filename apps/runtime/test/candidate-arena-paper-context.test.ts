@@ -1060,13 +1060,15 @@ describe("CandidateArena paper evidence context", () => {
         finding: "ResearchWorker reported no candidate change; duplicate population entry rejected."
       })
     ]);
-    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
-      expect.objectContaining({
-        status: "duplicate",
-        reason: "no_candidate_change",
-        runnable_paper_handoff: false
-      })
-    ]);
+    const [admission] = await store.listCandidateAdmissionDecisions();
+    expect(admission).toEqual(expect.objectContaining({
+      status: "duplicate",
+      reason: "no_candidate_change",
+      runnable_paper_handoff: false
+    }));
+    expect(admission).not.toHaveProperty("behavior_comparison_status");
+    expect(admission).not.toHaveProperty("research_behavior_fingerprint_ref");
+    await expect(store.listResearchBehaviorFingerprints()).resolves.toEqual([]);
     await expect(store.listResearchFindings()).resolves.toEqual([
       expect.objectContaining({
         finding_kind: "duplicate_result"

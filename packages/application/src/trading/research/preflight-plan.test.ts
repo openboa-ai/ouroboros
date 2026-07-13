@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildResearchPreflightPlan,
+  createResearchPreflightEvaluationOpportunity,
   generateResearchPreflightEvaluatorSeed
 } from "./preflight-plan";
 import { toReplayTradingCandidateInput } from "./replay-trading-api-provider";
@@ -102,6 +103,70 @@ describe("ResearchPreflight evaluator-owned plan", () => {
     expect(released.commitment.sealed_admission_policy.suite_digest).toBe(
       legacy.commitment.sealed_admission_policy.suite_digest
     );
+  });
+
+  it("reuses one exact evaluator opportunity across different arm plans", () => {
+    const opportunity = createResearchPreflightEvaluationOpportunity({
+      evaluator_seed: seed(29),
+      opportunity_context: "memory-control-study-001",
+      observed_at: "2026-07-12T10:00:00.000Z"
+    });
+    const released = buildResearchPreflightPlan({
+      ...planInput(seed(1)),
+      evaluation_opportunity: opportunity
+    });
+    const masked = buildResearchPreflightPlan({
+      ...planInput(seed(2), { candidate_arena_tick_id: "tick-8" }),
+      evaluation_opportunity: opportunity
+    });
+
+    expect(released.evaluatorDevelopmentSuite()).toEqual(
+      masked.evaluatorDevelopmentSuite()
+    );
+    expect(released.claimSealedAdmissionSuite()).toEqual(
+      masked.claimSealedAdmissionSuite()
+    );
+    expect(released.commitment.development_policy).toEqual(
+      masked.commitment.development_policy
+    );
+    expect(released.commitment.sealed_admission_policy).toEqual(
+      masked.commitment.sealed_admission_policy
+    );
+    expect(released.commitment.research_preflight_commitment_id).not.toBe(
+      masked.commitment.research_preflight_commitment_id
+    );
+  });
+
+  it("keeps shared opportunity suites immutable and rejects a forged suite", () => {
+    const opportunity = createResearchPreflightEvaluationOpportunity({
+      evaluator_seed: seed(37),
+      opportunity_context: "memory-control-study-immutable",
+      observed_at: "2026-07-12T10:00:00.000Z"
+    });
+    const mutableCopy = opportunity.sealedAdmissionSuite();
+    mutableCopy.scenarios[0]!.market.price = 1;
+    const plan = buildResearchPreflightPlan({
+      ...planInput(seed(3)),
+      evaluation_opportunity: opportunity
+    });
+    expect(plan.claimSealedAdmissionSuite().scenarios[0]!.market.price)
+      .not.toBe(1);
+
+    const forged = {
+      descriptor: () => opportunity.descriptor(),
+      developmentSuite: () => opportunity.developmentSuite(),
+      sealedAdmissionSuite: () => ({
+        ...opportunity.sealedAdmissionSuite(),
+        scenarios: []
+      }),
+      rotationCommitmentDigest: () => opportunity.rotationCommitmentDigest()
+    };
+    expect(() => buildResearchPreflightPlan({
+      ...planInput(seed(4)),
+      evaluation_opportunity: forged as unknown as ReturnType<
+        typeof createResearchPreflightEvaluationOpportunity
+      >
+    })).toThrow("research_preflight_plan_input_invalid:evaluation_opportunity");
   });
 
   it("generates balanced hidden regimes without obvious metadata shortcuts", () => {

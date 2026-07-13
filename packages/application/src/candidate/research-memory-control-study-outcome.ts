@@ -15,6 +15,8 @@ import {
   researchMemoryControlStudyOutcomeHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
+  researchWorkerCheckpointDigestInput,
+  researchWorkerCheckpointHasRuntimeShape,
   type CandidateAdmissionDecisionRecord,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaResearchEfficiencyReadModel,
@@ -37,6 +39,7 @@ import {
   type ResearchMemoryControlTickEvidence,
   type ResearchMemoryControlWorkerEvidence,
   type ResearchPreflightCommitmentRecord,
+  type ResearchWorkerCheckpointRecord,
   type ResearchWorkerRecord
 } from "@ouroboros/domain";
 import { exactTwoSidedSignTestPValue } from
@@ -47,6 +50,7 @@ export interface ResearchMemoryControlArmEvidenceInput {
   terminalStatus: ResearchMemoryControlArmTerminalStatus;
   tick?: CandidateArenaTickRecord;
   preflight?: ResearchPreflightCommitmentRecord;
+  checkpoint?: ResearchWorkerCheckpointRecord;
   researchWorker?: ResearchWorkerRecord;
   allocation?: CandidateArenaResearchAllocationRecord;
   resourceSummary?: ResearchMemoryControlResourceSummary;
@@ -352,6 +356,14 @@ function buildArmResult(input: {
     input.evidence.preflight,
     input.evidence.tick
   );
+  const checkpointMatches = checkpointEvidenceMatches({
+    checkpoint: input.evidence.checkpoint,
+    preflight: input.evidence.preflight,
+    researchWorker: input.evidence.researchWorker,
+    admission: input.evidence.admission,
+    plannedTickId: plan.tick_id,
+    directionRefId: input.pairPlan.research_direction_ref.id
+  });
   assertEvidenceTimes(input.evidence, input.terminalAt);
   const tickEvidence = compactTickEvidence(input.evidence.tick, result);
   const preflightEvidence = compactPreflightEvidence(input.evidence.preflight);
@@ -381,9 +393,20 @@ function buildArmResult(input: {
   };
   const terminalReason = terminalIneligibilityReason(input.evidence);
   if (terminalReason) {
-    if (!preflightEvidence || !workerEvidence || !allocationEvidence ||
-      !resourceSummary || !opportunityProtocolMatches ||
-      !tickPreflightMatches ||
+    const boundEffectEvidence = Boolean(
+      preflightEvidence && workerEvidence && allocationEvidence &&
+      opportunityProtocolMatches && tickPreflightMatches && checkpointMatches
+    );
+    const beforeAnyEffect = terminalBeforeAnyEffect(
+      input.evidence,
+      tickEvidence,
+      preflightEvidence,
+      workerEvidence,
+      allocationEvidence,
+      admissionEvidence,
+      resourceSummary
+    );
+    if ((!boundEffectEvidence && !beforeAnyEffect) || !resourceSummary ||
       (terminalReason === "no_submission" && !tickEvidence)) {
       return ineligibleArm(base, "malformed_evidence_graph");
     }
@@ -392,7 +415,7 @@ function buildArmResult(input: {
   if (!input.evidence.tick || !result || !input.evidence.preflight ||
     !input.evidence.admission || !workerEvidence || !allocationEvidence ||
     !admissionEvidence || !resourceSummary || !opportunityProtocolMatches ||
-    !tickPreflightMatches) {
+    !tickPreflightMatches || !checkpointMatches) {
     return ineligibleArm(base, "malformed_evidence_graph");
   }
   if (!completedEvidenceMatches(
@@ -435,6 +458,63 @@ function buildArmResult(input: {
   return ineligibleArm(base, "malformed_evidence_graph");
 }
 
+function checkpointEvidenceMatches(input: {
+  checkpoint: ResearchWorkerCheckpointRecord | undefined;
+  preflight: ResearchPreflightCommitmentRecord | undefined;
+  researchWorker: ResearchWorkerRecord | undefined;
+  admission: CandidateAdmissionDecisionRecord | undefined;
+  plannedTickId: string;
+  directionRefId: string;
+}): boolean {
+  const checkpoint = input.checkpoint;
+  const preflight = input.preflight;
+  const worker = input.researchWorker;
+  if (!checkpoint || !preflight || !worker ||
+    !researchWorkerCheckpointHasRuntimeShape(checkpoint) ||
+    canonicalDigest(researchWorkerCheckpointDigestInput(checkpoint)) !==
+      checkpoint.checkpoint_digest || checkpoint.candidate_arena_tick_id !==
+      input.plannedTickId || checkpoint.research_preflight_commitment_ref.id !==
+      preflight.research_preflight_commitment_id ||
+    checkpoint.research_preflight_commitment_digest !==
+      preflight.commitment_digest || checkpoint.research_worker_ref.id !==
+      worker.research_worker_id || checkpoint.research_direction_ref.id !==
+      input.directionRefId || checkpoint.workspace_key !== worker.workspace_key) {
+    return false;
+  }
+  const admissionRef = checkpoint.candidate_admission_decision_ref;
+  return input.admission
+    ? checkpoint.terminal_status === "completed" &&
+      checkpoint.terminal_reason === "admission_recorded" &&
+      admissionRef?.id === input.admission.candidate_admission_decision_id
+    : admissionRef === undefined && (
+      (checkpoint.terminal_status === "completed" &&
+        checkpoint.terminal_reason === "finished_without_submission") ||
+      (checkpoint.terminal_status === "failed_closed" && [
+        "execution_failed",
+        "restart_recovery"
+      ].includes(checkpoint.terminal_reason))
+    );
+}
+
+function terminalBeforeAnyEffect(
+  evidence: ResearchMemoryControlArmEvidenceInput,
+  tick: ResearchMemoryControlTickEvidence | null,
+  preflight: ResearchMemoryControlPreflightEvidence | null,
+  worker: ResearchMemoryControlWorkerEvidence | null,
+  allocation: ResearchMemoryControlAllocationEvidence | null,
+  admission: ResearchMemoryControlAdmissionEvidence | null,
+  resource: ResearchMemoryControlResourceSummary | null
+): boolean {
+  return (evidence.terminalStatus === "platform_failed" ||
+      evidence.terminalStatus === "interrupted") &&
+    tick === null && preflight === null && worker === null &&
+    allocation === null && admission === null && !evidence.checkpoint &&
+    !evidence.fingerprint &&
+    resource !== null && resource.provider_request_total === 0 &&
+    resource.runner_command_total === 0 && resource.scenario_count === 0 &&
+    resource.elapsed_ms === 0;
+}
+
 function exactDirectionResult(
   tick: CandidateArenaTickRecord | undefined,
   plannedTickId: string,
@@ -472,7 +552,7 @@ function assertPreflightSubstitution(
       pairPlan.research_direction_ref.id ||
     preflight.source_system_code_ref.id !== study.source.system_code_ref.id ||
     preflight.source_artifact_digest !==
-      study.source.system_code_artifact_digest ||
+      study.source.research_artifact_closure_digest ||
     preflight.development_policy.submission_limit !==
       study.policy.development_submission_limit_per_worker ||
     preflight.memory_policy?.memory_mode !== (armKind ===
@@ -805,6 +885,7 @@ function assertEvidenceTimes(
     evidence.tick?.started_at,
     evidence.tick?.completed_at,
     evidence.preflight?.committed_at,
+    evidence.checkpoint?.closed_at,
     evidence.researchWorker?.created_at,
     evidence.allocation?.allocated_at,
     evidence.admission?.decided_at,
@@ -988,7 +1069,11 @@ function armOpportunityEvidenceMatchesStudy(
   const evidence = arm.preflight_evidence;
   const protocol = study.opportunity_protocol;
   if (!evidence) {
-    return arm.ineligibility_reason === "malformed_evidence_graph";
+    return arm.ineligibility_reason === "malformed_evidence_graph" ||
+      (arm.terminal_status === "interrupted" &&
+        arm.ineligibility_reason === "interrupted_or_unpaired_run") ||
+      (arm.terminal_status === "platform_failed" &&
+        arm.ineligibility_reason === "worker_or_platform_failure");
   }
   const matches = evidence.development_suite_version ===
     protocol.development_suite_version && evidence.development_suite_digest ===

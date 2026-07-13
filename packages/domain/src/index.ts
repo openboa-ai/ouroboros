@@ -9760,14 +9760,15 @@ function researchMemoryControlIneligibleArmMatchesReason(
     case "worker_or_platform_failure":
       return (arm.terminal_status === "worker_failed" ||
         arm.terminal_status === "platform_failed") &&
-        arm.failure_kind !== null && arm.preflight_evidence !== null &&
-        arm.worker_evidence !== null && arm.allocation_evidence !== null &&
-        arm.resource_summary !== null;
+        arm.failure_kind !== null && arm.resource_summary !== null &&
+        (researchMemoryControlBoundTerminalEvidencePresent(arm) ||
+          (arm.terminal_status === "platform_failed" &&
+            researchMemoryControlNoEffectTerminalEvidence(arm)));
     case "interrupted_or_unpaired_run":
       return arm.terminal_status === "interrupted" &&
-        arm.failure_kind !== null && arm.preflight_evidence !== null &&
-        arm.worker_evidence !== null && arm.allocation_evidence !== null &&
-        arm.resource_summary !== null;
+        arm.failure_kind !== null && arm.resource_summary !== null &&
+        (researchMemoryControlBoundTerminalEvidencePresent(arm) ||
+          researchMemoryControlNoEffectTerminalEvidence(arm));
     case "behavior_fingerprint_unavailable":
       return arm.terminal_status === "completed" &&
         researchMemoryControlCompletedEvidencePresent(arm) &&
@@ -9780,6 +9781,25 @@ function researchMemoryControlIneligibleArmMatchesReason(
     default:
       return false;
   }
+}
+
+function researchMemoryControlBoundTerminalEvidencePresent(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  return arm.preflight_evidence !== null && arm.worker_evidence !== null &&
+    arm.allocation_evidence !== null;
+}
+
+function researchMemoryControlNoEffectTerminalEvidence(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  const resource = arm.resource_summary;
+  return arm.tick_evidence === null && arm.preflight_evidence === null &&
+    arm.worker_evidence === null && arm.allocation_evidence === null &&
+    arm.admission_evidence === null && resource !== null &&
+    resource.provider_request_total === 0 &&
+    resource.runner_command_total === 0 && resource.scenario_count === 0 &&
+    resource.elapsed_ms === 0;
 }
 
 function researchMemoryControlInitialStartSkew(

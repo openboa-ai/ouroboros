@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   paperTradingComparisonPersistedRecordDigestInput,
   researchPreflightCommitmentDigestInput,
@@ -23,11 +24,70 @@ export interface BuildResearchPreflightPlanInput {
   development_submission_limit: number;
   committed_at: string;
   evaluator_seed: Uint8Array;
+  evaluation_opportunity?: ResearchPreflightEvaluationOpportunityHandle;
 }
 
 export interface ResearchPreflightEvaluationSuite {
   suite_digest: string;
   scenarios: ReplayTradingScenario[];
+}
+
+export interface ResearchPreflightEvaluationOpportunityDescriptor {
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  sealed_suite_version: "research_sealed_admission_v1";
+  sealed_generator_version: "research_scenario_generator_v1";
+  sealed_rotation_commitment_digest: string;
+  sealed_suite_digest: string;
+}
+
+export class ResearchPreflightEvaluationOpportunityHandle {
+  #developmentSuite: ResearchPreflightEvaluationSuite;
+  #sealedAdmissionSuite: ResearchPreflightEvaluationSuite;
+  #rotationCommitmentDigest: string;
+
+  private constructor(input: {
+    developmentSuite: ResearchPreflightEvaluationSuite;
+    sealedAdmissionSuite: ResearchPreflightEvaluationSuite;
+    rotationCommitmentDigest: string;
+  }) {
+    this.#developmentSuite = deepFreeze(structuredClone(input.developmentSuite));
+    this.#sealedAdmissionSuite = deepFreeze(
+      structuredClone(input.sealedAdmissionSuite)
+    );
+    this.#rotationCommitmentDigest = input.rotationCommitmentDigest;
+  }
+
+  static create(input: {
+    developmentSuite: ResearchPreflightEvaluationSuite;
+    sealedAdmissionSuite: ResearchPreflightEvaluationSuite;
+    rotationCommitmentDigest: string;
+  }): ResearchPreflightEvaluationOpportunityHandle {
+    return new ResearchPreflightEvaluationOpportunityHandle(input);
+  }
+
+  descriptor(): ResearchPreflightEvaluationOpportunityDescriptor {
+    return {
+      development_suite_version: "research_development_replay_v1",
+      development_suite_digest: this.#developmentSuite.suite_digest,
+      sealed_suite_version: "research_sealed_admission_v1",
+      sealed_generator_version: "research_scenario_generator_v1",
+      sealed_rotation_commitment_digest: this.#rotationCommitmentDigest,
+      sealed_suite_digest: this.#sealedAdmissionSuite.suite_digest
+    };
+  }
+
+  developmentSuite(): ResearchPreflightEvaluationSuite {
+    return structuredClone(this.#developmentSuite);
+  }
+
+  sealedAdmissionSuite(): ResearchPreflightEvaluationSuite {
+    return structuredClone(this.#sealedAdmissionSuite);
+  }
+
+  rotationCommitmentDigest(): string {
+    return this.#rotationCommitmentDigest;
+  }
 }
 
 export class ResearchPreflightPlanHandle {
@@ -71,22 +131,52 @@ export function generateResearchPreflightEvaluatorSeed(): Uint8Array {
   return randomBytes(32);
 }
 
+export function createResearchPreflightEvaluationOpportunity(input: {
+  evaluator_seed: Uint8Array;
+  opportunity_context: string;
+  observed_at: string;
+}): ResearchPreflightEvaluationOpportunityHandle {
+  if (!(input?.evaluator_seed instanceof Uint8Array) ||
+    input.evaluator_seed.byteLength !== 32 ||
+    !nonEmpty(input.opportunity_context) || !canonicalIso(input.observed_at)) {
+    throw new Error("research_preflight_evaluation_opportunity_input_invalid");
+  }
+  const evaluatorSeed = Buffer.from(input.evaluator_seed);
+  const developmentSuite = evaluationSuite(
+    researchDevelopmentReplayScenarios()
+  );
+  const sealedAdmissionSuite = evaluationSuite(sealedAdmissionScenarios(
+    evaluatorSeed,
+    input.opportunity_context,
+    input.observed_at
+  ));
+  const rotationCommitmentDigest = sha256(Buffer.concat([
+    Buffer.from("ouroboros:research-preflight-rotation:v1\0"),
+    Buffer.from(input.opportunity_context),
+    Buffer.from("\0"),
+    evaluatorSeed
+  ]));
+  return ResearchPreflightEvaluationOpportunityHandle.create({
+    developmentSuite,
+    sealedAdmissionSuite,
+    rotationCommitmentDigest
+  });
+}
+
 export function buildResearchPreflightPlan(
   input: BuildResearchPreflightPlanInput
 ): ResearchPreflightPlanHandle {
   assertBuildInput(input);
-  const evaluatorSeed = Buffer.from(input.evaluator_seed);
   const context = planContext(input);
-  const developmentScenarios = researchDevelopmentReplayScenarios();
-  const sealedScenarios = sealedAdmissionScenarios(evaluatorSeed, context, input.committed_at);
-  const developmentSuite = evaluationSuite(developmentScenarios);
-  const sealedAdmissionSuite = evaluationSuite(sealedScenarios);
-  const rotationCommitmentDigest = sha256(Buffer.concat([
-    Buffer.from("ouroboros:research-preflight-rotation:v1\0"),
-    Buffer.from(context),
-    Buffer.from("\0"),
-    evaluatorSeed
-  ]));
+  const opportunity = input.evaluation_opportunity ??
+    createResearchPreflightEvaluationOpportunity({
+      evaluator_seed: input.evaluator_seed,
+      opportunity_context: context,
+      observed_at: input.committed_at
+    });
+  const developmentSuite = opportunity.developmentSuite();
+  const sealedAdmissionSuite = opportunity.sealedAdmissionSuite();
+  const rotationCommitmentDigest = opportunity.rotationCommitmentDigest();
   const commitmentIdentity = sha256(Buffer.from(paperTradingComparisonPersistedRecordDigestInput({
     context,
     rotation_commitment_digest: rotationCommitmentDigest,
@@ -246,23 +336,87 @@ function fraction(seed: Buffer, context: string, label: string): number {
 }
 
 function assertBuildInput(input: BuildResearchPreflightPlanInput): void {
-  if (!input || typeof input !== "object" ||
-    !nonEmpty(input.candidate_arena_tick_id) ||
-    !refKind(input.research_direction_ref, "research_direction") ||
-    !refKind(input.research_worker_ref, "research_worker") ||
-    !refKind(input.research_allocation_ref, "candidate_arena_research_allocation") ||
-    !sha256Digest(input.research_allocation_digest) ||
-    !refKind(input.source_system_code_ref, "system_code") ||
-    !sha256Digest(input.source_artifact_digest) ||
-    (input.memory_policy !== undefined &&
-      !researchWorkerMemoryPolicyHasRuntimeShape(input.memory_policy)) ||
-    !Number.isInteger(input.development_submission_limit) ||
-    input.development_submission_limit < 1 ||
-    input.development_submission_limit > 2 ||
-    !canonicalIso(input.committed_at) ||
-    !(input.evaluator_seed instanceof Uint8Array) ||
-    input.evaluator_seed.byteLength !== 32) {
-    throw new Error("research_preflight_plan_input_invalid");
+  const invalidFields = !input || typeof input !== "object"
+    ? ["input"]
+    : [
+        !nonEmpty(input.candidate_arena_tick_id)
+          ? "candidate_arena_tick_id"
+          : undefined,
+        !refKind(input.research_direction_ref, "research_direction")
+          ? "research_direction_ref"
+          : undefined,
+        !refKind(input.research_worker_ref, "research_worker")
+          ? "research_worker_ref"
+          : undefined,
+        !refKind(
+          input.research_allocation_ref,
+          "candidate_arena_research_allocation"
+        ) ? "research_allocation_ref" : undefined,
+        !sha256Digest(input.research_allocation_digest)
+          ? "research_allocation_digest"
+          : undefined,
+        !refKind(input.source_system_code_ref, "system_code")
+          ? "source_system_code_ref"
+          : undefined,
+        !sha256Digest(input.source_artifact_digest)
+          ? "source_artifact_digest"
+          : undefined,
+        input.memory_policy !== undefined &&
+          !researchWorkerMemoryPolicyHasRuntimeShape(input.memory_policy)
+          ? "memory_policy"
+          : undefined,
+        input.evaluation_opportunity !== undefined &&
+          !researchPreflightEvaluationOpportunityIsValid(
+            input.evaluation_opportunity
+          ) ? "evaluation_opportunity" : undefined,
+        !Number.isInteger(input.development_submission_limit) ||
+          input.development_submission_limit < 1 ||
+          input.development_submission_limit > 2
+          ? "development_submission_limit"
+          : undefined,
+        !canonicalIso(input.committed_at) ? "committed_at" : undefined,
+        !(input.evaluator_seed instanceof Uint8Array) ||
+          input.evaluator_seed.byteLength !== 32
+          ? "evaluator_seed"
+          : undefined
+      ].filter((field): field is string => Boolean(field));
+  if (invalidFields.length > 0) {
+    throw new Error(
+      `research_preflight_plan_input_invalid:${invalidFields.join(",")}`
+    );
+  }
+}
+
+function researchPreflightEvaluationOpportunityIsValid(
+  value: ResearchPreflightEvaluationOpportunityHandle
+): boolean {
+  try {
+    if (!value || typeof value.descriptor !== "function" ||
+      typeof value.developmentSuite !== "function" ||
+      typeof value.sealedAdmissionSuite !== "function" ||
+      typeof value.rotationCommitmentDigest !== "function") {
+      return false;
+    }
+    const descriptor = value.descriptor();
+    const development = value.developmentSuite();
+    const sealed = value.sealedAdmissionSuite();
+    const canonicalDevelopment = evaluationSuite(
+      researchDevelopmentReplayScenarios()
+    );
+    return descriptor.development_suite_version ===
+        "research_development_replay_v1" &&
+      descriptor.sealed_suite_version === "research_sealed_admission_v1" &&
+      descriptor.sealed_generator_version ===
+        "research_scenario_generator_v1" &&
+      descriptor.development_suite_digest === development.suite_digest &&
+      descriptor.sealed_suite_digest === sealed.suite_digest &&
+      descriptor.sealed_rotation_commitment_digest ===
+        value.rotationCommitmentDigest() &&
+      isDeepStrictEqual(development, canonicalDevelopment) &&
+      evaluationSuite(sealed.scenarios).suite_digest === sealed.suite_digest &&
+      sha256Digest(descriptor.sealed_rotation_commitment_digest);
+  } catch {
+    return false;
   }
 }
 

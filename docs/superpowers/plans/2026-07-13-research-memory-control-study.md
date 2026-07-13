@@ -405,21 +405,21 @@ researchMemoryControlStudyWorkspacePaths(input): {
 }
 ```
 
-- [ ] **Step 1: Write RED runtime tests with an injected memory-sensitive session adapter**
+- [x] **Step 1: Write RED runtime tests with an injected memory-sensitive session adapter**
 
   Run six planned pairs from one fixture baseline. The treatment adapter must inspect released
   memory and produce distinct behavior; the masked adapter must repeat baseline behavior. Assert
   fresh stores, identical source/direction/budget/agent inputs, concurrent initial pair starts,
   exact preflight policies, six `+1` outcomes, `0.03125`, and no coordinator population mutation.
 
-- [ ] **Step 2: Write RED restart and failure tests**
+- [x] **Step 2: Write RED restart and failure tests**
 
   Cover exact replay with zero new provider calls, both-complete outcome reconstruction, one-sided
   completion becoming interrupted/ineligible without missing-side rerun, orphan preflight recovery,
   provider failure, baseline mutation, pair-root collision, and later-pair continuation after one
   failed pair.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
   ```bash
   npx vitest run apps/runtime/test/research-memory-control-study.test.ts
@@ -427,27 +427,27 @@ researchMemoryControlStudyWorkspacePaths(input): {
 
   Expected: FAIL because runtime composition does not exist.
 
-- [ ] **Step 4: Implement preparation and workspace isolation**
+- [x] **Step 4: Implement preparation and workspace isolation**
 
   Capture baseline and source before study publication, commit the study before pair effects, create
   one verified baseline root and two fresh verified copies per pair, replicate the exact study into
   each arm store before allocation, and copy the sealed source artifact once outside arm stores.
   Reject overlapping source/workspace paths.
 
-- [ ] **Step 5: Implement bounded execution and evidence collection**
+- [x] **Step 5: Implement bounded execution and evidence collection**
 
   Execute pairs sequentially and initial sides with `Promise.allSettled`. Call
   `runCandidateArenaTick` with one explicit direction and the exact mode. Derive pair evidence from
   exact tick, allocation, preflight, checkpoint, admission, and fingerprint records. Record terminal
   ineligible evidence rather than replacing or retrying a pair.
 
-- [ ] **Step 6: Implement evidence-derived restart**
+- [x] **Step 6: Implement evidence-derived restart**
 
   Before any provider call, inspect planned tick allocation/preflight/tick evidence in both arm
   stores. Recover orphan checkpoints through `recoverIncompleteResearchWorkerCheckpoints`; never
   adopt processes or rerun one side. Reconstruct only when both complete exact ticks already exist.
 
-- [ ] **Step 7: Run focused GREEN and runtime typecheck**
+- [x] **Step 7: Run focused GREEN and runtime typecheck**
 
   ```bash
   npx vitest run apps/runtime/test/research-memory-control-study.test.ts apps/runtime/test/candidate-arena-paper-context.test.ts apps/runtime/test/research-control-campaign.test.ts
@@ -455,12 +455,21 @@ researchMemoryControlStudyWorkspacePaths(input): {
   git diff --check
   ```
 
+  Evidence on 2026-07-13: the three focused runtime files passed with 72 tests and one opt-in
+  real-provider test skipped; the application, LocalStore, and runtime typechecks also passed.
+
 - [ ] **Step 8: Run one bounded real Codex integration probe**
 
   Use one non-inferential pair against a temporary copied fixture store with the installed Codex
   CLI. Verify opposite memory policies, exact provider cleanup, terminal pair evidence, and no raw
   evaluator/provider output in persisted records. Record it as integration evidence only, not
   memory-effect evidence.
+
+  Disposition on 2026-07-13: the installed Codex CLI probe was attempted but execution security
+  rejected exporting the private artifact workspace and research context to an external service.
+  The deterministic local Codex-adapter subprocess probe passed, including both local tool-server
+  cleanup checks and raw stdout/stderr non-persistence. No real-provider evidence is claimed; this
+  step requires explicit risk-informed authorization before another external attempt.
 
 - [ ] **Step 9: Commit**
 

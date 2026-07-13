@@ -89,7 +89,8 @@ import { FixtureTradingResearchAgentAdapter } from "../trading/research/agent-ad
 import { runTradingResearchLoop } from "../trading/research/run-trading-research";
 import {
   buildResearchPreflightPlan,
-  generateResearchPreflightEvaluatorSeed
+  generateResearchPreflightEvaluatorSeed,
+  type ResearchPreflightEvaluationOpportunityHandle
 } from "../trading/research/preflight-plan";
 import {
   deriveResearchBehaviorFingerprint,
@@ -189,6 +190,8 @@ export interface RunCandidateArenaTickInput {
   >;
   researchMemoryMode?: ResearchWorkerMemoryMode;
   researchMemoryControlAssignment?: ResearchWorkerMemoryControlAssignment;
+  researchPreflightEvaluationOpportunity?:
+    ResearchPreflightEvaluationOpportunityHandle;
   tickId?: string;
   now?: () => string;
   repoRoot?: string;
@@ -773,13 +776,18 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       Date.parse(lifecycle.previous_checkpoint?.closed_at ??
         requestedCommittedAt)
     )).toISOString();
-    const sourceSystemCode = await recordArenaSourceSystemCode({
-      store: input.store,
-      source: input.source,
-      artifact: sourceArtifact,
-      sessionId,
-      createdAt: requestedCommittedAt
-    });
+    const sourceSystemCode = input.researchMemoryControlAssignment
+      ? await exactArenaSourceSystemCode({
+          store: input.store,
+          source: input.source
+        })
+      : await recordArenaSourceSystemCode({
+          store: input.store,
+          source: input.source,
+          artifact: sourceArtifact,
+          sessionId,
+          createdAt: requestedCommittedAt
+        });
     const context = await arenaContext(
       input.store,
       input.direction,
@@ -822,11 +830,19 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         "system_code",
         sourceSystemCode.system_code_id
       ),
-      source_artifact_digest: sourceSystemCode.artifact_digest,
+      source_artifact_digest: input.researchMemoryControlAssignment
+        ? sourceArtifact.artifactDigest
+        : sourceSystemCode.artifact_digest,
       memory_policy: memoryProjection.policy,
       development_submission_limit: input.allocationSelection.experiment_budget,
       committed_at: committedAt,
-      evaluator_seed: generateResearchPreflightEvaluatorSeed()
+      evaluator_seed: generateResearchPreflightEvaluatorSeed(),
+      ...(input.researchPreflightEvaluationOpportunity
+        ? {
+            evaluation_opportunity:
+              input.researchPreflightEvaluationOpportunity
+          }
+        : {})
     });
     await input.store.recordResearchPreflightCommitment(plan.commitment);
     return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
@@ -1461,6 +1477,21 @@ async function recordArenaSourceSystemCode(input: {
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
 }
 
+async function exactArenaSourceSystemCode(input: {
+  store: OuroborosStorePort;
+  source: CandidateInspectReadModel;
+}): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
+  const sourceSystemCodeId = input.source.system_code?.ref?.id;
+  const sourceSystemCode = sourceSystemCodeId
+    ? await input.store.getSystemCode(sourceSystemCodeId)
+    : undefined;
+  if (!sourceSystemCode || sourceSystemCode.artifact_kind !== "python_file" ||
+    sourceSystemCode.system_code_id !== sourceSystemCodeId) {
+    throw new Error("candidate_arena_preflight_source_system_code_mismatch");
+  }
+  return sourceSystemCode;
+}
+
 async function arenaEntrypointArtifact(
   artifactDir: string,
   manifest: TradingSystemManifest
@@ -1576,13 +1607,21 @@ async function recordArenaResearchRecords(input: {
     Date.now(),
     Date.parse(input.preflightCommitment.committed_at)
   )).toISOString();
-  const behaviorComparison = await arenaResearchBehaviorComparison({
-    store: input.store,
-    developmentEntry: input.developmentEntry,
-    preflightCommitment: input.preflightCommitment,
-    systemCode: input.systemCode,
-    createdAt: now
+  const researchWorkerOutcome = deriveCandidateAdmissionResearchWorkerOutcome({
+    research_worker_failed: input.entry.agent_status === "failed",
+    source_artifact_digest: input.sourceArtifactDigest,
+    submitted_artifact_digest: input.systemCode.artifact_digest
   });
+  const behaviorComparison: ArenaResearchBehaviorComparison =
+    researchWorkerOutcome === "changed"
+      ? await arenaResearchBehaviorComparison({
+          store: input.store,
+          developmentEntry: input.developmentEntry,
+          preflightCommitment: input.preflightCommitment,
+          systemCode: input.systemCode,
+          createdAt: now
+        })
+      : {};
   const evaluation = input.entry.evaluation;
   const experimentStatus = input.entry.agent_status === "failed" || input.entry.decision === "crash"
     ? "failed" as const
@@ -1677,18 +1716,16 @@ async function recordArenaResearchRecords(input: {
   }
 
   const admissionInput = {
-    research_worker_outcome: deriveCandidateAdmissionResearchWorkerOutcome({
-      research_worker_failed: input.entry.agent_status === "failed",
-      source_artifact_digest: input.sourceArtifactDigest,
-      submitted_artifact_digest: input.systemCode.artifact_digest
-    }),
+    research_worker_outcome: researchWorkerOutcome,
     experiment_status: experimentStatus,
     evaluation_status: result.result_status,
     evidence_disposition: result.evidence_disposition,
     ...(conformance
       ? { paper_handoff_conformance_status: conformance.status }
       : {}),
-    behavior_comparison_status: behaviorComparison.status
+    ...(behaviorComparison.status
+      ? { behavior_comparison_status: behaviorComparison.status }
+      : {})
   } as const;
   const decision = decideCandidateAdmission(admissionInput);
   const findingContent = arenaFindingForAdmission(input.entry, decision);
@@ -1804,6 +1841,11 @@ async function recordArenaResearchRecords(input: {
 }
 
 type ArenaResearchBehaviorComparison =
+  | {
+      status?: undefined;
+      fingerprint?: undefined;
+      matchingFingerprint?: undefined;
+    }
   | {
       status: "distinct";
       fingerprint: ResearchBehaviorFingerprintRecord;

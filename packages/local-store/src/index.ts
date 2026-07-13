@@ -3275,7 +3275,8 @@ export class LocalStore {
         Date.parse(decision.decided_at)
         ? "research_preflight_commitment.committed_at"
         : undefined,
-      sourceSystemCode.artifact_digest !== decision.source_artifact_digest
+      sourceSystemCode.artifact_digest !== decision.source_artifact_digest &&
+          preflightCommitment?.memory_policy?.control_assignment === undefined
         ? "source_system_code.artifact_digest"
         : undefined,
       systemCode.artifact_digest !== decision.submitted_artifact_digest
@@ -8037,7 +8038,8 @@ export class LocalStore {
         commitment.development_policy.submission_limit
         ? "research_allocation.experiment_budget"
         : undefined,
-      sourceSystemCode.artifact_digest !== commitment.source_artifact_digest
+      sourceSystemCode.artifact_digest !== commitment.source_artifact_digest &&
+          commitment.memory_policy?.control_assignment === undefined
         ? "source_system_code.artifact_digest"
         : undefined,
       Date.parse(commitment.committed_at) < Date.parse(allocation.allocated_at)
@@ -8186,6 +8188,10 @@ export class LocalStore {
           sourceSystemCode.artifact_digest !==
             study.source.system_code_artifact_digest
         ? "source_system_code"
+        : undefined,
+      commitment.source_artifact_digest !==
+          study.source.research_artifact_closure_digest
+        ? "source_artifact_closure"
         : undefined,
       commitment.development_policy.suite_version !==
           study.opportunity_protocol.development_suite_version ||
@@ -22497,7 +22503,8 @@ function researchMemoryControlPairMatchesStudy(
     const worker = arm.worker_evidence;
     const allocation = arm.allocation_evidence;
     const preflight = arm.preflight_evidence;
-    if (!malformed && (!worker || !allocation || !preflight ||
+    const beforeAnyEffect = researchMemoryControlArmFailedBeforeAnyEffect(arm);
+    if (!malformed && !beforeAnyEffect && (!worker || !allocation || !preflight ||
       worker.agent_profile_id !== study.research_agent_profile_id ||
       worker.provider_kind !== expectedProviderKind ||
       worker.model !== study.research_agent.model ||
@@ -22507,7 +22514,7 @@ function researchMemoryControlPairMatchesStudy(
       allocation.experiment_budget !== 1)) {
       return false;
     }
-    if (!preflight) return malformed;
+    if (!preflight) return malformed || beforeAnyEffect;
     const assignment = preflight.memory_policy.control_assignment;
     const opportunityMatches = preflight.development_suite_version ===
         study.opportunity_protocol.development_suite_version &&
@@ -22529,6 +22536,23 @@ function researchMemoryControlPairMatchesStudy(
       preflight.memory_policy.memory_mode === armPlan.memory_mode;
     return malformed || (opportunityMatches && assignmentMatches);
   });
+}
+
+function researchMemoryControlArmFailedBeforeAnyEffect(
+  arm: ResearchMemoryControlPairOutcomeRecord["released_memory"]
+): boolean {
+  const terminalReasonMatches =
+    (arm.terminal_status === "interrupted" &&
+      arm.ineligibility_reason === "interrupted_or_unpaired_run") ||
+    (arm.terminal_status === "platform_failed" &&
+      arm.ineligibility_reason === "worker_or_platform_failure");
+  const resource = arm.resource_summary;
+  return terminalReasonMatches && arm.tick_evidence === null &&
+    arm.preflight_evidence === null && arm.worker_evidence === null &&
+    arm.allocation_evidence === null && arm.admission_evidence === null &&
+    resource !== null && resource.provider_request_total === 0 &&
+    resource.runner_command_total === 0 && resource.scenario_count === 0 &&
+    resource.elapsed_ms === 0;
 }
 
 function researchGeneralizationOutcomeIdForProtocol(

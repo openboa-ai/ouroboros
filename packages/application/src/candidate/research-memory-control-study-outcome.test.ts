@@ -7,6 +7,7 @@ import {
   researchMemoryControlPairOutcomeHasRuntimeShape,
   researchMemoryControlStudyOutcomeHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
+  researchWorkerCheckpointDigestInput,
   type CandidateAdmissionDecisionRecord,
   type CandidateArenaTickDirectionResultReadModel,
   type CandidateArenaTickRecord,
@@ -17,6 +18,7 @@ import {
   type ResearchMemoryControlPairOutcomeRecord,
   type ResearchMemoryControlStudyRecord,
   type ResearchPreflightCommitmentRecord,
+  type ResearchWorkerCheckpointRecord,
   type ResearchWorkerRecord
 } from "@ouroboros/domain";
 import {
@@ -369,6 +371,85 @@ describe("ResearchMemoryControlPairOutcome decision", () => {
     });
   });
 
+  it("retains interruption before any arm effect with an explicit zero summary", () => {
+    const study = studyFixture();
+    const outcome = decideResearchMemoryControlPairOutcome({
+      study,
+      pairIndex: 1,
+      releasedMemory: {
+        armKind: "released_memory_treatment",
+        terminalStatus: "interrupted",
+        failureKind: "restart_interrupted",
+        resourceSummary: {
+          provider_request_total: 0,
+          runner_command_total: 0,
+          scenario_count: 0,
+          elapsed_ms: 0
+        }
+      },
+      memoryMasked: armEvidence(
+        study,
+        1,
+        "memory_masked_control",
+        "unchanged"
+      ),
+      terminalAt: "2026-07-13T05:01:00.000Z"
+    });
+
+    expect(outcome.ineligibility_reason).toBe("interrupted_or_unpaired_run");
+    expect(outcome.released_memory).toMatchObject({
+      terminal_status: "interrupted",
+      preflight_evidence: null,
+      worker_evidence: null,
+      allocation_evidence: null,
+      resource_summary: {
+        provider_request_total: 0,
+        runner_command_total: 0,
+        scenario_count: 0,
+        elapsed_ms: 0
+      }
+    });
+  });
+
+  it("retains provider failure before any arm effect with an explicit zero summary", () => {
+    const study = studyFixture();
+    const outcome = decideResearchMemoryControlPairOutcome({
+      study,
+      pairIndex: 1,
+      releasedMemory: {
+        armKind: "released_memory_treatment",
+        terminalStatus: "platform_failed",
+        failureKind: "provider_failed",
+        resourceSummary: {
+          provider_request_total: 0,
+          runner_command_total: 0,
+          scenario_count: 0,
+          elapsed_ms: 0
+        }
+      },
+      memoryMasked: armEvidence(
+        study,
+        1,
+        "memory_masked_control",
+        "unchanged"
+      ),
+      terminalAt: "2026-07-13T05:01:00.000Z"
+    });
+
+    expect(outcome.ineligibility_reason).toBe("worker_or_platform_failure");
+    expect(outcome.released_memory).toMatchObject({
+      terminal_status: "platform_failed",
+      failure_kind: "provider_failed",
+      preflight_evidence: null,
+      resource_summary: {
+        provider_request_total: 0,
+        runner_command_total: 0,
+        scenario_count: 0,
+        elapsed_ms: 0
+      }
+    });
+  });
+
   it("makes interruption without bounded resource evidence malformed", () => {
     const study = studyFixture();
     const interrupted = armEvidence(
@@ -393,6 +474,31 @@ describe("ResearchMemoryControlPairOutcome decision", () => {
 
     expect(outcome.ineligibility_reason).toBe("malformed_evidence_graph");
     expect(outcome.released_memory.resource_summary).toBeNull();
+  });
+
+  it("makes completed arm evidence without its exact checkpoint malformed", () => {
+    const study = studyFixture();
+    const released = armEvidence(
+      study,
+      1,
+      "released_memory_treatment",
+      "distinct"
+    );
+    delete released.checkpoint;
+    const outcome = decideResearchMemoryControlPairOutcome({
+      study,
+      pairIndex: 1,
+      releasedMemory: released,
+      memoryMasked: armEvidence(
+        study,
+        1,
+        "memory_masked_control",
+        "unchanged"
+      ),
+      terminalAt: "2026-07-13T05:01:00.000Z"
+    });
+
+    expect(outcome.ineligibility_reason).toBe("malformed_evidence_graph");
   });
 
   it("makes stale fingerprint content ineligible", () => {
@@ -633,6 +739,12 @@ function armEvidence(
       preflight,
       allocation,
       researchWorker,
+      checkpoint: checkpointFixture(
+        preflight,
+        researchWorker,
+        undefined,
+        observation
+      ),
       resourceSummary: {
         provider_request_total: 0,
         runner_command_total: 0,
@@ -658,6 +770,12 @@ function armEvidence(
   const fingerprint = admission?.research_behavior_fingerprint_ref
     ? fingerprintFixture(preflight, admission)
     : undefined;
+  const checkpoint = checkpointFixture(
+    preflight,
+    researchWorker,
+    admission,
+    observation
+  );
   const tick = tickFixture(
     pairIndex,
     pair.direction_kind,
@@ -679,6 +797,7 @@ function armEvidence(
     tick,
     allocation,
     researchWorker,
+    checkpoint,
     ...(observation === "malformed" ? {} : { preflight }),
     ...(admission ? { admission } : {}),
     ...(fingerprint ? { fingerprint } : {}),
@@ -707,13 +826,97 @@ function researchWorkerFixture(
     agent_profile_id: study.research_agent_profile_id,
     research_direction_ref: { ...pair.research_direction_ref },
     workspace_key: `candidate-arena-workers/research-worker-${
-      pair.direction_kind
+      pair.direction_kind.replaceAll("_", "-")
     }`,
     lifecycle_protocol: "research_worker_checkpoint_v1",
     created_at: "2026-07-13T05:00:10.000Z",
     status: "active",
     authority_status: "research_only"
   };
+}
+
+function checkpointFixture(
+  preflight: ResearchPreflightCommitmentRecord,
+  worker: ResearchWorkerRecord,
+  admission: CandidateAdmissionDecisionRecord | undefined,
+  observation: ObservationKind
+): ResearchWorkerCheckpointRecord {
+  const recordedSubmissionCount = admission ? 1 : 0;
+  const failed = observation === "worker_failed" ||
+    observation === "interrupted";
+  const record: ResearchWorkerCheckpointRecord = {
+    record_kind: "research_worker_checkpoint",
+    version: 1,
+    research_worker_checkpoint_id:
+      `checkpoint-${preflight.research_preflight_commitment_id}`,
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: worker.research_worker_id
+    },
+    research_direction_ref: { ...preflight.research_direction_ref },
+    candidate_arena_tick_id: preflight.candidate_arena_tick_id,
+    research_preflight_commitment_ref: {
+      record_kind: "research_preflight_commitment",
+      id: preflight.research_preflight_commitment_id
+    },
+    research_preflight_commitment_digest: preflight.commitment_digest,
+    workspace_key: worker.workspace_key!,
+    development_budget: {
+      submission_limit: preflight.development_policy.submission_limit,
+      recorded_submission_count: recordedSubmissionCount,
+      cumulative_committed_submission_limit:
+        preflight.development_policy.submission_limit,
+      cumulative_recorded_submission_count: recordedSubmissionCount,
+      remaining_submission_authority: 0
+    },
+    notebook: {
+      protocol_version: "research_worker_notebook_v1",
+      total_entry_count: recordedSubmissionCount,
+      recent_entries: admission ? [{
+        sequence: 1,
+        candidate_arena_tick_id: preflight.candidate_arena_tick_id,
+        iteration: 1,
+        decision: "keep",
+        agent_status: admission.research_worker_outcome === "unchanged"
+          ? "no_change"
+          : "edited",
+        score: 1,
+        summary: "Bounded ResearchMemoryControlStudy checkpoint fixture.",
+        evaluation_status: "accepted",
+        risk_decision: "no_order_request",
+        net_revenue_usdt: 0
+      }] : []
+    },
+    terminal_status: failed ? "failed_closed" : "completed",
+    terminal_reason: observation === "interrupted"
+      ? "restart_recovery"
+      : observation === "worker_failed"
+      ? "execution_failed"
+      : observation === "no_submission"
+      ? "finished_without_submission"
+      : "admission_recorded",
+    ...(admission
+      ? {
+          candidate_admission_decision_ref: {
+            record_kind: "candidate_admission_decision",
+            id: admission.candidate_admission_decision_id
+          }
+        }
+      : {}),
+    closed_at: admission?.decided_at ?? "2026-07-13T05:00:55.000Z",
+    checkpoint_digest: digest("0"),
+    notebook_continuation_authority: true,
+    evaluation_authority: false,
+    admission_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  record.checkpoint_digest = sha256(
+    researchWorkerCheckpointDigestInput(record)
+  );
+  return record;
 }
 
 function allocationFixture(
@@ -797,7 +1000,7 @@ function preflightFixture(
     },
     research_allocation_digest: allocation.allocation_digest,
     source_system_code_ref: { ...study.source.system_code_ref },
-    source_artifact_digest: study.source.system_code_artifact_digest,
+    source_artifact_digest: study.source.research_artifact_closure_digest,
     memory_policy: {
       protocol_version: "research_worker_memory_v1",
       memory_mode: plan.memory_mode,
