@@ -104,7 +104,7 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
         sandbox_host: "127.0.0.1"
       },
       intervalMs: 25,
-      sandboxIntervalMs: 5,
+      sandboxIntervalMs: 1_000,
       observationDrainTimeoutMs: 10_000
     });
     const workspaceRoot = path.join(root, "workspace");
@@ -179,7 +179,7 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
     }
     expect(outcomes.flatMap((outcome) => outcome.arms.flatMap((arm) =>
       arm.slot_results.map((slot) => slot.terminal_status)
-    ))).toEqual(Array.from({ length: 12 }, () => "evidence_ineligible"));
+    ))).toEqual(Array.from({ length: 12 }, () => "source_not_improved"));
     const qualificationEvidence = [];
     for (const outcome of outcomes) {
       const paths = researchControlCampaignWorkspacePaths({
@@ -213,7 +213,7 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
       }
     }
     expect(qualificationEvidence).toEqual(Array.from({ length: 12 }, () => ({
-      pair: ["comparison_minimum_elapsed_not_met"],
+      pair: [],
       champion: [],
       challenger: []
     })));
@@ -279,9 +279,9 @@ function boundProtocol(
       comparison_mode: "champion_challenge",
       symbol: "BTCUSDT",
       interval_ms: 25,
-      minimum_observation_count: 1,
+      minimum_observation_count: 2,
       minimum_elapsed_ms: 25,
-      maximum_observation_count: 1,
+      maximum_observation_count: 2,
       maximum_elapsed_ms: 600_000,
       maximum_start_skew_ms: 5_000,
       maximum_provider_request_count_per_side: 100,

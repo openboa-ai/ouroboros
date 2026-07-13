@@ -640,7 +640,7 @@ npx vitest run \
 
 Expected: all files pass with no child process or provider leaks.
 
-- [ ] **Step 5: Commit the qualified study evidence**
+- [x] **Step 5: Commit the qualified study evidence**
 
 ```bash
 git add \
