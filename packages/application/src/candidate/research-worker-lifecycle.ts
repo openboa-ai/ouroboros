@@ -11,6 +11,7 @@ import {
   type ResearchPreflightCommitmentRecord,
   type ResearchWorkerCheckpointNotebookEntry,
   type ResearchWorkerCheckpointRecord,
+  type ResearchWorkerCheckpointTerminalReason,
   type ResearchWorkerRecord
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
@@ -138,7 +139,10 @@ export async function closeResearchWorkerCheckpoint(input: {
   direction: ResearchDirectionRecord;
   worker: ResearchWorkerRecord;
   notebook_path: string;
-  failed_reason: "execution_failed" | "restart_recovery";
+  terminal_reason: Exclude<
+    ResearchWorkerCheckpointTerminalReason,
+    "admission_recorded"
+  >;
   closed_at: string;
 }): Promise<ResearchWorkerCheckpointRecord> {
   assertIso(input.closed_at, "research_worker_checkpoint_invalid_close_time");
@@ -235,8 +239,10 @@ export async function closeResearchWorkerCheckpoint(input: {
       remaining_submission_authority: 0
     },
     notebook,
-    terminal_status: admission ? "completed" : "failed_closed",
-    terminal_reason: admission ? "admission_recorded" : input.failed_reason,
+    terminal_status: admission || input.terminal_reason === "finished_without_submission"
+      ? "completed"
+      : "failed_closed",
+    terminal_reason: admission ? "admission_recorded" : input.terminal_reason,
     ...(admission
       ? {
           candidate_admission_decision_ref: {
@@ -310,7 +316,7 @@ export async function recoverIncompleteResearchWorkerCheckpoints(input: {
         worker,
         commitment.candidate_arena_tick_id
       ),
-      failed_reason: "restart_recovery",
+      terminal_reason: "restart_recovery",
       closed_at: input.recovered_at
     }));
   }

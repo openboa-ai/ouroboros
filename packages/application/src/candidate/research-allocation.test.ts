@@ -130,13 +130,14 @@ describe("decideCandidateArenaResearchAllocation", () => {
     ]));
   });
 
-  it("applies stable recent duplicate, quarantine, and failure adjustments", () => {
+  it("applies stable recent duplicate, quarantine, no-submission, and failure adjustments", () => {
     const allocation = decide({
       tickId: "tick-2",
       latestTicks: [tickWithResults([
         directionResult("trend_following", "duplicate"),
         directionResult("mean_reversion", "quarantined"),
-        directionResult("volatility_regime", "failed")
+        directionResult("volatility_regime", "failed"),
+        directionResult("funding_aware_risk", "no_submission")
       ])]
     });
     const scores = Object.fromEntries(allocation.signal_snapshot.map((signal) => [
@@ -147,7 +148,8 @@ describe("decideCandidateArenaResearchAllocation", () => {
     expect(scores).toMatchObject({
       trend_following: -15,
       mean_reversion: -30,
-      volatility_regime: -10
+      volatility_regime: -10,
+      funding_aware_risk: -5
     });
   });
 

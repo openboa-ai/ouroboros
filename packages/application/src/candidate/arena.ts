@@ -40,6 +40,7 @@ import type {
   ResearchDirectionKind,
   ResearchFindingRecord,
   ResearchPreflightCommitmentRecord,
+  ResearchWorkerCheckpointTerminalReason,
   ResearchWorkerRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
@@ -163,6 +164,12 @@ type ArenaDirectionRunOutcome =
       admission: CandidateAdmissionDecisionRecord;
       finding: ResearchFindingRecord;
       conformance?: PaperTradingHandoffConformanceRecord;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
+    }
+  | {
+      status: "no_submission";
+      finding: string;
       research_efficiency: CandidateArenaResearchEfficiencyReadModel;
       research_preflight: CandidateArenaResearchPreflightReadModel;
     };
@@ -444,6 +451,15 @@ export async function runCandidateArenaTick(
             created.full_cycle_lineage?.evidence?.evaluation_status
           ),
           net_revenue_usdt: profitLoss.net_revenue_usdt,
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
+        });
+      } else if (directionOutcome.status === "no_submission") {
+        directionResults.push({
+          direction_kind: direction,
+          status: directionOutcome.status,
+          agent_provider: input.researchAgent,
+          finding: directionOutcome.finding,
           research_efficiency: directionOutcome.research_efficiency,
           research_preflight: directionOutcome.research_preflight
         });
@@ -779,14 +795,17 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     await input.store.recordResearchPreflightCommitment(plan.commitment);
     return { ...lifecycle, sourceSystemCode, plan };
   });
-  const closeCheckpoint = (failedReason: "execution_failed" | "restart_recovery") =>
+  const closeCheckpoint = (terminalReason: Exclude<
+    ResearchWorkerCheckpointTerminalReason,
+    "admission_recorded"
+  >) =>
     closeResearchWorkerCheckpoint({
       store: input.store,
       commitment: preflight.plan.commitment,
       direction: preflight.direction,
       worker: preflight.worker,
       notebook_path: preflight.notebook_path,
-      failed_reason: failedReason,
+      terminal_reason: terminalReason,
       closed_at: new Date().toISOString()
     });
   try {
@@ -809,12 +828,6 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         input.allocationSelection
       )
     });
-    const entry = [...research.entries].reverse().find((candidate) =>
-      candidate.decision === "keep"
-    ) ?? research.entries.at(-1);
-    if (!entry) {
-      throw new Error("candidate_arena_missing_research_entry");
-    }
     const sealedAdmission = research.sealed_admission;
     const researchEfficiency = researchEfficiencySummary(
       research.entries,
@@ -830,6 +843,38 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       returnedCommitment: research.research_preflight_commitment,
       sealedAdmission
     });
+    const autonomousSession = research.session_status !== undefined;
+    if (autonomousSession && research.session_status !== "selected") {
+      if (research.selected_development_submission !== undefined ||
+        research.submitted_artifact_dir !== undefined ||
+        research.submitted_artifact_digest !== undefined ||
+        sealedAdmission !== undefined) {
+        throw new Error("candidate_arena_unselected_submission_evidence_invalid");
+      }
+      await withArenaStoreMutation(input.store, () =>
+        closeCheckpoint("finished_without_submission")
+      );
+      return {
+        status: "no_submission",
+        finding: "ResearchWorker finished without selecting a development submission.",
+        research_efficiency: researchEfficiency,
+        research_preflight: researchPreflight
+      };
+    }
+    const selectedSequence = research.selected_development_submission;
+    const entry = autonomousSession
+      ? selectedSequence === undefined
+        ? undefined
+        : research.entries.find((candidate) => candidate.iteration === selectedSequence)
+      : [...research.entries].reverse().find((candidate) => candidate.decision === "keep") ??
+        research.entries.at(-1);
+    if (!entry || (autonomousSession && (
+      !research.submitted_artifact_dir ||
+      !research.submitted_artifact_digest ||
+      !sealedAdmission
+    ))) {
+      throw new Error("candidate_arena_selected_submission_evidence_missing");
+    }
     const artifactDir = research.submitted_artifact_dir ?? entry.artifact_dir;
     const manifest = await readTradingSystemManifest(artifactDir);
     assertCandidateArenaResearchManifest(manifest);
@@ -893,7 +938,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
           preflight.sourceSystemCode.system_code_id
         ),
         systemCode,
-        evaluation: entry.evaluation,
+        evaluation: terminalEntry.evaluation,
         direction: input.direction,
         agent: adapter.agent,
         sessionId
@@ -1946,8 +1991,6 @@ async function arenaContext(
     0,
     researchReleases
   );
-  const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
-  const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
   const findingClusters = arena.finding_clusters;
   return JSON.stringify({
     requested_direction: direction,
@@ -1997,67 +2040,6 @@ async function arenaContext(
           ...result.research_efficiency
         })))
       .slice(0, 8),
-    selected_paper_evidence: paperEvidenceCandidates
-      .filter(({ paperEvaluation }) => paperEvaluation)
-      .map(({ entry, candidate, paperEvaluation, paperObservations }) => {
-        const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
-        const paperBoardEntry = paperTradingBoard.find((boardEntry) => boardEntry.candidate_id === candidateId);
-        const latestPaperFailureReason = paperObservations.at(-1)?.failure_reason ??
-          paperEvaluation?.latest_failure_reason;
-        const researchDiagnosticReasons = arenaResearchDiagnosticReasons(
-          paperEvaluation,
-          paperBoardEntry?.qualification_reasons ?? []
-        );
-        return {
-          candidate_id: candidateId,
-          direction_kind: entry?.direction_kind ??
-            candidate?.full_cycle_lineage?.evidence?.direction_kind ??
-            "paper_evidence",
-          net_revenue_usdt: entry?.profit_loss.net_revenue_usdt ??
-            paperEvaluation?.latest_score.net_revenue_usdt ??
-            0,
-          paper_trading_status: paperEvaluation?.status,
-          paper_observation_count: paperEvaluation?.observation_count ?? 0,
-          paper_loop_latency: paperLoopLatencySummary(paperEvaluation, paperObservations),
-          paper_score: paperEvaluation?.latest_score,
-          lineage: arenaPaperEvidenceLineage(candidate, entry),
-          paper_board_learning: paperBoardEntry && paperEvaluation
-            ? paperTradingLearningSummary({
-                rank: paperBoardEntry.rank,
-                profitLoss: paperEvaluation.latest_score,
-                observationCount: paperEvaluation.observation_count,
-                qualificationStatus: paperBoardEntry.qualification_status,
-                qualificationReasons: researchDiagnosticReasons,
-                latestFailure: classifyPaperTradingFailure(
-                  paperObservations.at(-1)?.failure_reason ?? paperEvaluation.latest_failure_reason
-                )
-              })
-            : undefined,
-          latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
-          latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
-            paperEvaluation?.latest_public_execution_snapshot,
-          latest_paper_decision: paperObservations.at(-1)?.decision,
-          latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
-            paperEvaluation?.paper_account_snapshot,
-          latest_open_orders: paperObservations.at(-1)?.open_orders ??
-            paperEvaluation?.open_orders,
-          latest_fill: paperObservations.at(-1)?.latest_fill ??
-            paperEvaluation?.latest_fill,
-          latest_paper_failure: latestPaperFailureReason,
-          latest_paper_failure_classification: classifyPaperTradingFailure(latestPaperFailureReason),
-          failed_observations: paperObservations
-            .filter((observation) => observation.status === "failed")
-            .slice(-3)
-            .map((observation) => ({
-              sequence: observation.sequence,
-              observed_at: observation.observed_at,
-              failure_reason: observation.failure_reason,
-              failure: classifyPaperTradingFailure(observation.failure_reason)
-            })),
-          authority_status: "not_live"
-        };
-    }),
-    paper_trading_board: paperTradingBoard,
     released_campaign_findings:
       arenaReleasedCampaignFindings(researchReleases),
     adaptive_direction_focus: [
@@ -2075,15 +2057,6 @@ async function arenaContext(
           admission_decision_id: result.admission_decision_id,
           admission_reason: result.admission_reason,
           finding: result.finding
-        })))
-      .slice(0, 8),
-    latest_tick_failures: arena.latest_ticks
-      .flatMap((tick) => tick.direction_results
-        .filter((result) => result.status === "failed")
-        .map((result) => ({
-          tick_id: tick.tick_id,
-          direction_kind: result.direction_kind,
-          error: result.error
         })))
       .slice(0, 8)
   });

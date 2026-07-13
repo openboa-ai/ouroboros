@@ -105,18 +105,22 @@ Vitest, LocalStore-backed CandidateArena integration.
 **Files:**
 
 - Modify: `packages/application/src/candidate/arena.ts`
+- Modify: `packages/application/src/candidate/research-allocation.ts`
+- Modify: `packages/application/src/candidate/research-worker-lifecycle.ts`
+- Modify: `packages/domain/src/index.ts`
+- Modify: `packages/local-store/src/index.ts`
 - Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 - Modify: `apps/runtime/test/server.test.ts`
 - Modify: lifecycle fixtures as required
 
-- [ ] Write RED tests for explicit selected snapshot lineage, no-submission negative closure,
+- [x] Write RED tests for explicit selected snapshot lineage, no-submission negative closure,
   mid-session failure after one completed submission, restart fail-closure, and no provider-process
   adoption.
-- [ ] Wire default server/CandidateArena factories to session-capable Codex and fixture adapters.
-- [ ] Preserve allocation concurrency, admission, behavior fingerprint, Finding/Lineage, and
+- [x] Wire default server/CandidateArena factories to session-capable Codex and fixture adapters.
+- [x] Preserve allocation concurrency, admission, behavior fingerprint, Finding/Lineage, and
   checkpoint graph semantics.
-- [ ] Run CandidateArena, server, LocalStore-adjacent lifecycle tests and workspace typecheck.
-- [ ] Commit as `feat: integrate autonomous research workers`.
+- [x] Run CandidateArena, server, LocalStore-adjacent lifecycle tests and workspace typecheck.
+- [x] Commit as `feat: integrate autonomous research workers`.
 
 ### Task 6: Adversarial Review And Durable Truth
 

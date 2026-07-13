@@ -50,6 +50,15 @@ describe("ResearchWorkerCheckpoint", () => {
     expect(researchWorkerCheckpointHasRuntimeShape(failed)).toBe(true);
   });
 
+  it("accepts a completed no-submission closure without an admission reference", () => {
+    const noSubmission = checkpointFixture();
+    noSubmission.terminal_status = "completed";
+    noSubmission.terminal_reason = "finished_without_submission";
+    delete noSubmission.candidate_admission_decision_ref;
+
+    expect(researchWorkerCheckpointHasRuntimeShape(noSubmission)).toBe(true);
+  });
+
   it("accepts an empty first checkpoint after pre-entry process loss", () => {
     const failed = checkpointFixture();
     delete failed.previous_checkpoint_ref;

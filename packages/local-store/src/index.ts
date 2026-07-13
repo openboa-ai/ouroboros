@@ -20078,6 +20078,7 @@ function isCandidateArenaDirectionResultStatus(value: unknown): boolean {
   return value === "created" ||
     value === "duplicate" ||
     value === "quarantined" ||
+    value === "no_submission" ||
     value === "failed";
 }
 
@@ -20164,7 +20165,12 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
         ? nonEmpty(raw.candidate_id)
         : raw.status === "failed"
           ? nonEmpty(raw.error)
-          : nonEmpty(raw.finding) &&
+          : raw.status === "no_submission"
+            ? nonEmpty(raw.finding) &&
+              raw.candidate_id === undefined &&
+              raw.admission_decision_id === undefined &&
+              raw.admission_reason === undefined
+            : nonEmpty(raw.finding) &&
             nonEmpty(raw.admission_decision_id) &&
             isCandidateAdmissionReason(raw.admission_reason)
     )

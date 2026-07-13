@@ -646,6 +646,7 @@ function recentOutcomeAdjustment(
   switch (status) {
     case "duplicate": return -15;
     case "quarantined": return -30;
+    case "no_submission": return -5;
     case "failed": return -10;
     case "created":
     case undefined:

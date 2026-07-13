@@ -28,6 +28,9 @@ import type {
   ManagedResearchAgent,
   ReplayTradingApiProviderSession,
   ReplayTradingCandidateInput,
+  ResearchWorkerSessionAdapter,
+  ResearchWorkerSessionInput,
+  ResearchWorkerSessionResult,
   TradingProviderRequestLog,
   TradingResearchAgentAdapter,
   TradingSystemEvent
@@ -359,6 +362,167 @@ describe("CandidateArena paper evidence context", () => {
     );
   });
 
+  it("binds selected snapshot bytes, sealed Evaluation, and candidate lineage to the explicit sequence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const agent = new AutonomousSessionResearchAgent("select-second");
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "explicit-selected-snapshot-lineage",
+      researchAllocationMode: "static_control",
+      researchAgent: "codex",
+      agentFactory: () => agent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(agent.runSessionCount).toBe(3);
+    expect(
+      outcome.created_candidate_count,
+      JSON.stringify(outcome.arena.latest_ticks[0]?.direction_results)
+    ).toBe(1);
+    const trendResult = outcome.arena.latest_ticks[0]?.direction_results.find((result) =>
+      result.direction_kind === "trend_following"
+    );
+    const candidate = trendResult?.candidate_id
+      ? await store.getCandidate(trendResult.candidate_id)
+      : undefined;
+    const systemCodeId = candidate?.system_code?.ref?.id;
+    const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
+    if (!systemCode || systemCode.artifact_kind !== "python_file") {
+      throw new Error("selected session SystemCode missing");
+    }
+    expect(await readFile(systemCode.artifact_path, "utf8")).toContain(
+      "RISK_FRACTION = 0.005"
+    );
+    const [terminalEvaluation] = (await store.listTradingEvaluationResults())
+      .filter((entry) => entry.evaluation_phase === "sealed_admission");
+    expect(terminalEvaluation).toMatchObject({
+      submitted_system_code_ref: { id: systemCode.system_code_id },
+      submitted_artifact_digest: systemCode.artifact_digest
+    });
+    expect(candidate?.full_cycle_lineage?.evidence?.evaluation_score).toBe(
+      terminalEvaluation?.score_summary.total_score
+    );
+    const trendDirection = (await store.listResearchDirections()).find((entry) =>
+      entry.direction_kind === "trend_following"
+    );
+    const trendWorker = (await store.listResearchWorkers()).find((entry) =>
+      entry.research_direction_ref.id === trendDirection?.research_direction_id
+    );
+    const checkpoint = (await store.listResearchWorkerCheckpoints()).find((entry) =>
+      entry.research_worker_ref.id === trendWorker?.research_worker_id
+    );
+    if (!checkpoint) {
+      throw new Error("selected trend ResearchWorker checkpoint missing");
+    }
+    const notebook = JSON.parse(await readFile(path.join(
+      tmpDir,
+      checkpoint.workspace_key,
+      "notebooks",
+      `${outcome.tick_id}.json`
+    ), "utf8")) as {
+      selected_development_submission?: number;
+      entries: Array<{ iteration: number; selected_for_sealed_submission?: boolean }>;
+    };
+    expect(notebook.selected_development_submission).toBe(2);
+    expect(notebook.entries.map((entry) => ({
+      iteration: entry.iteration,
+      selected: entry.selected_for_sealed_submission
+    }))).toEqual([
+      { iteration: 1, selected: false },
+      { iteration: 2, selected: true }
+    ]);
+  });
+
+  it("closes an explicit no-selection outcome without SystemCode submission or admission", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const agent = new AutonomousSessionResearchAgent("finish-unselected");
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "explicit-finish-without-selection",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => agent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(agent.runSessionCount).toBe(1);
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "no_submission",
+        finding: "ResearchWorker finished without selecting a development submission.",
+        research_preflight: expect.objectContaining({
+          development_submission_count: 1,
+          sealed_terminal_status: "not_run",
+          reason: "no_development_winner"
+        })
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
+    await expect(store.listTradingEvaluationResults()).resolves.toEqual([]);
+    await expect(store.listResearchFindings()).resolves.toEqual([]);
+    const checkpoints = await store.listResearchWorkerCheckpoints();
+    expect(checkpoints).toEqual([
+      expect.objectContaining({
+        terminal_status: "completed",
+        terminal_reason: "finished_without_submission",
+        development_budget: expect.objectContaining({
+          recorded_submission_count: 1,
+          remaining_submission_authority: 0
+        })
+      })
+    ]);
+    expect(checkpoints[0]?.candidate_admission_decision_ref).toBeUndefined();
+  });
+
+  it("retains completed development evidence when an autonomous session fails later", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const agent = new AutonomousSessionResearchAgent("throw-after-first");
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "autonomous-session-mid-failure",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => agent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(agent.runSessionCount).toBe(1);
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        error: "research worker failed after one completed submission",
+        research_preflight: expect.objectContaining({
+          development_submission_count: 1,
+          sealed_terminal_status: "not_run",
+          reason: "execution_failed"
+        })
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([]);
+    await expect(store.listResearchWorkerCheckpoints()).resolves.toEqual([
+      expect.objectContaining({
+        terminal_status: "failed_closed",
+        terminal_reason: "execution_failed",
+        development_budget: expect.objectContaining({
+          recorded_submission_count: 1,
+          remaining_submission_authority: 0
+        })
+      })
+    ]);
+  });
+
   it("rejects arena SystemCode entrypoints that escape the artifact directory", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -567,6 +731,71 @@ describe("CandidateArena paper evidence context", () => {
     )).toMatchObject({
       terminal_status: "failed_closed",
       terminal_reason: "restart_recovery"
+    });
+  });
+
+  it("starts a fresh autonomous session after restart without adopting the interrupted provider", async () => {
+    const interrupted = new CheckpointDisabledStore(tmpDir);
+    await interrupted.initialize();
+    const interruptedAgent = new AutonomousSessionResearchAgent("throw-after-first");
+    await runCandidateArenaTick({
+      store: interrupted,
+      tickId: "autonomous-restart-interrupted",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => interruptedAgent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    expect(interruptedAgent.runSessionCount).toBe(1);
+    await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    const freshAgent = new AutonomousSessionResearchAgent(
+      "finish-unselected",
+      async () => {
+        const recovered = (await restarted.listResearchWorkerCheckpoints()).find((checkpoint) =>
+          checkpoint.candidate_arena_tick_id === "autonomous-restart-interrupted"
+        );
+        expect(recovered).toMatchObject({
+          terminal_status: "failed_closed",
+          terminal_reason: "restart_recovery",
+          development_budget: expect.objectContaining({
+            recorded_submission_count: 1,
+            remaining_submission_authority: 0
+          })
+        });
+      }
+    );
+    const next = await runCandidateArenaTick({
+      store: restarted,
+      tickId: "autonomous-restart-fresh",
+      now: () => "2026-07-12T11:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => freshAgent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(interruptedAgent.runSessionCount).toBe(1);
+    expect(freshAgent.runSessionCount).toBe(1);
+    expect(next.created_candidate_count).toBe(0);
+    expect(next.arena.latest_ticks.find((tick) => tick.tick_id === next.tick_id)
+      ?.direction_results[0]).toMatchObject({
+      status: "no_submission",
+      finding: "ResearchWorker finished without selecting a development submission."
+    });
+    expect((await restarted.listResearchWorkerCheckpoints()).find((checkpoint) =>
+      checkpoint.candidate_arena_tick_id === "autonomous-restart-fresh"
+    )).toMatchObject({
+      terminal_status: "completed",
+      terminal_reason: "finished_without_submission",
+      previous_checkpoint_ref: expect.objectContaining({
+        record_kind: "research_worker_checkpoint"
+      })
     });
   });
 
@@ -1246,20 +1475,6 @@ describe("CandidateArena paper evidence context", () => {
     if (!checkpoint) {
       throw new Error("candidate admission ResearchWorker checkpoint missing");
     }
-    const notebook = JSON.parse(await readFile(path.join(
-      tmpDir,
-      checkpoint.workspace_key,
-      "notebooks",
-      `${outcome.tick_id}.json`
-    ), "utf8")) as {
-      entries: Array<{
-        decision: string;
-        evaluation: { profit_loss: unknown };
-      }>;
-    };
-    expect(candidate?.full_cycle_lineage?.evidence?.profit_loss).toEqual(
-      notebook.entries.find((entry) => entry.decision === "keep")?.evaluation.profit_loss
-    );
     const netRevenue = candidate?.full_cycle_lineage?.evidence?.profit_loss?.net_revenue_usdt;
     if (netRevenue === undefined) {
       throw new Error("admitted negative candidate missing profit and loss evidence");
@@ -1293,6 +1508,9 @@ describe("CandidateArena paper evidence context", () => {
       evaluation_phase: "sealed_admission",
       submission_sequence: 1
     }));
+    expect(candidate?.full_cycle_lineage?.evidence?.evaluation_score).toBe(
+      terminalEvaluation?.score_summary.total_score
+    );
     const orderKinds = writeOrder.map((item) => item.split(":")[0]);
     expect(orderKinds.indexOf("research_direction")).toBeLessThan(orderKinds.indexOf("research_worker"));
     expect(orderKinds.indexOf("research_worker")).toBeLessThan(orderKinds.indexOf("source_system_code"));
@@ -1412,7 +1630,7 @@ describe("CandidateArena paper evidence context", () => {
     )).toEqual([]);
   });
 
-  it("feeds latest paper trading evidence into the next researcher context even before replay leaderboard ranking", async () => {
+  it("feeds paper-backed FindingClusters without raw paper observations or account state", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const source = await store.getCandidate(FIXTURE_CANDIDATE_ID);
@@ -1433,53 +1651,6 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(capturedContexts).toHaveLength(1);
     const context = JSON.parse(capturedContexts[0]!) as {
-      selected_paper_evidence: Array<{
-        candidate_id: string;
-        paper_trading_status?: string;
-        paper_observation_count: number;
-        paper_score?: { net_revenue_usdt: number };
-        latest_market_snapshot?: { price: number; source_kind: string };
-        latest_paper_decision?: {
-          decision_kind: string;
-          source_kind: string;
-          reason: string;
-          observed_at: string;
-          authority_status: string;
-        };
-        latest_fill?: { source_trade_id?: string };
-        authority_status: string;
-      }>;
-      paper_trading_board: Array<{
-        rank: number;
-        candidate_id: string;
-        paper_runner_status: string;
-        net_revenue_usdt: number;
-        observation_count: number;
-        qualification_status: string;
-        qualification_reasons: string[];
-        blocker_groups: Array<{
-          group_kind: string;
-          severity: string;
-          blockers: string[];
-          next_action: string;
-        }>;
-        trend: {
-          direction: string;
-          net_revenue_delta_usdt: number;
-          net_return_delta_pct: number;
-          observation_count_delta: number;
-          authority_status: string;
-        };
-        blocker_density: {
-          blocker_count: number;
-          blocker_density: number;
-          failed_observation_ratio: number;
-          top_blocker?: string;
-          authority_status: string;
-        };
-        promotion_gate_status?: string;
-        authority_status: string;
-      }>;
       finding_clusters: Array<{
         direction_kind: string;
         top_blocker?: string;
@@ -1492,75 +1663,14 @@ describe("CandidateArena paper evidence context", () => {
         focus_score: number;
         next_research_focus: string;
       }>;
+      [key: string]: unknown;
     };
-    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        candidate_id: FIXTURE_CANDIDATE_ID,
-        paper_trading_status: "running",
-        paper_observation_count: 7,
-        paper_score: expect.objectContaining({
-          net_revenue_usdt: 12.34
-        }),
-        latest_market_snapshot: expect.objectContaining({
-          price: 65_123,
-          source_kind: "binance_production_public_hybrid"
-        }),
-        latest_paper_decision: {
-          decision_kind: "hold",
-          source_kind: "trading_system_decision",
-          reason: "paper context seed preserved selected candidate evidence",
-          observed_at: "2026-05-16T00:07:00.000Z",
-          authority_status: "trace_only"
-        },
-        latest_fill: expect.objectContaining({
-          source_trade_id: "paper-context-trade-0007"
-        }),
-        authority_status: "not_live"
-      })
-    ]));
-    const releasedEvidence = context.selected_paper_evidence.find((entry) =>
-      entry.candidate_id === FIXTURE_CANDIDATE_ID
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(context).not.toHaveProperty("paper_trading_board");
+    expect(context).not.toHaveProperty("latest_tick_failures");
+    expect(JSON.stringify(context)).not.toMatch(
+      /latest_market_snapshot|latest_public_execution_snapshot|latest_paper_account|latest_open_orders|latest_fill|paper-context-trade-0007|paper context seed preserved selected candidate evidence/
     );
-    expect(releasedEvidence).not.toHaveProperty("ledger_chain_complete");
-    expect(releasedEvidence).not.toHaveProperty("latest_order_request_id");
-    expect(releasedEvidence).not.toHaveProperty("latest_gateway_outcome");
-    expect(releasedEvidence).not.toHaveProperty("latest_execution_status");
-    expect(context.paper_trading_board).toEqual([
-      expect.objectContaining({
-        rank: 1,
-        candidate_id: FIXTURE_CANDIDATE_ID,
-        paper_runner_status: "unknown_at_tick_context",
-        net_revenue_usdt: 12.34,
-        observation_count: 7,
-        qualification_status: "not_qualification_evidence",
-        qualification_reasons: ["evidence_purpose_not_qualification"],
-        blocker_groups: [
-          expect.objectContaining({
-            group_kind: "evidence_authority",
-            severity: "blocked",
-            blockers: ["evidence_purpose_not_qualification"],
-            next_action:
-              "Run a prospective qualification comparison; research-feedback evidence remains research-only."
-          })
-        ],
-        trend: {
-          direction: "improving",
-          net_revenue_delta_usdt: 10.577143,
-          net_return_delta_pct: 0.105771,
-          observation_count_delta: 6,
-          authority_status: "not_promotion_authority"
-        },
-        blocker_density: {
-          blocker_count: 1,
-          blocker_density: 0.142857,
-          failed_observation_ratio: 0,
-          top_blocker: "evidence_purpose_not_qualification",
-          authority_status: "not_promotion_authority"
-        },
-        authority_status: "not_live"
-      })
-    ]);
-    expect(context.paper_trading_board[0]).not.toHaveProperty("promotion_gate_status");
     expect(context.finding_clusters).toEqual([
       expect.objectContaining({
         direction_kind: "other",
@@ -1685,25 +1795,22 @@ describe("CandidateArena paper evidence context", () => {
     });
 
     const context = JSON.parse(capturedContexts.at(-1)!) as {
-      selected_paper_evidence: Array<{ candidate_id: string }>;
-      paper_trading_board: Array<{ candidate_id: string }>;
       finding_clusters: Array<{ candidate_ids: string[] }>;
       adaptive_direction_focus: unknown[];
+      released_campaign_findings?: unknown[];
+      [key: string]: unknown;
     };
-    expect(context.selected_paper_evidence.map((entry) => entry.candidate_id))
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(context).not.toHaveProperty("paper_trading_board");
+    expect(context.finding_clusters.flatMap((entry) => entry.candidate_ids))
       .toContain(researchCandidate.candidate_id);
-    expect(context.selected_paper_evidence.map((entry) => entry.candidate_id))
-      .not.toContain(qualificationCandidate.candidate_id);
-    expect(context.paper_trading_board.map((entry) => entry.candidate_id))
-      .not.toContain(qualificationCandidate.candidate_id);
     expect(context.finding_clusters.flatMap((entry) => entry.candidate_ids))
       .not.toContain(qualificationCandidate.candidate_id);
 
     const paperResearchProjection = JSON.stringify({
-      selected_paper_evidence: context.selected_paper_evidence,
-      paper_trading_board: context.paper_trading_board,
       finding_clusters: context.finding_clusters,
-      adaptive_direction_focus: context.adaptive_direction_focus
+      adaptive_direction_focus: context.adaptive_direction_focus,
+      released_campaign_findings: context.released_campaign_findings
     });
     expect(paperResearchProjection).not.toContain(qualificationCandidate.candidate_id);
     expect(paperResearchProjection).not.toContain(qualificationEvaluationId);
@@ -1754,21 +1861,18 @@ describe("CandidateArena paper evidence context", () => {
     });
 
     const context = JSON.parse(capturedContexts.at(-1)!) as {
-      selected_paper_evidence: Array<{ candidate_id: string }>;
-      paper_trading_board: Array<{ candidate_id: string }>;
       finding_clusters: Array<{ candidate_ids: string[] }>;
       adaptive_direction_focus: unknown[];
+      released_campaign_findings?: unknown[];
+      [key: string]: unknown;
     };
     const paperResearchProjection = JSON.stringify({
-      selected_paper_evidence: context.selected_paper_evidence,
-      paper_trading_board: context.paper_trading_board,
       finding_clusters: context.finding_clusters,
-      adaptive_direction_focus: context.adaptive_direction_focus
+      adaptive_direction_focus: context.adaptive_direction_focus,
+      released_campaign_findings: context.released_campaign_findings
     });
-    expect(context.selected_paper_evidence.map((entry) => entry.candidate_id))
-      .not.toContain(candidate.candidate_id);
-    expect(context.paper_trading_board.map((entry) => entry.candidate_id))
-      .not.toContain(candidate.candidate_id);
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(context).not.toHaveProperty("paper_trading_board");
     expect(context.finding_clusters.flatMap((entry) => entry.candidate_ids))
       .not.toContain(candidate.candidate_id);
     expect(paperResearchProjection).not.toContain(invalidationFailure);
@@ -1827,25 +1931,26 @@ describe("CandidateArena paper evidence context", () => {
     });
 
     const context = JSON.parse(capturedContexts[0]!) as {
-      selected_paper_evidence: unknown[];
-      paper_trading_board: unknown[];
       finding_clusters: unknown[];
       adaptive_direction_focus: unknown[];
+      released_campaign_findings?: unknown[];
+      [key: string]: unknown;
     };
     const paperResearchProjection = JSON.stringify({
-      selected_paper_evidence: context.selected_paper_evidence,
-      paper_trading_board: context.paper_trading_board,
       finding_clusters: context.finding_clusters,
-      adaptive_direction_focus: context.adaptive_direction_focus
+      adaptive_direction_focus: context.adaptive_direction_focus,
+      released_campaign_findings: context.released_campaign_findings
     });
     const tick = outcome.arena.latest_ticks.find((entry) => entry.tick_id === outcome.tick_id);
     expect(tick?.source_candidate?.source_kind).not.toBe("paper_trading_evaluation_leader");
     expect(tick?.source_candidate?.net_revenue_usdt).not.toBe(tamperedNetRevenue);
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(context).not.toHaveProperty("paper_trading_board");
     expect(paperResearchProjection).not.toContain(String(tamperedNetRevenue));
     expect(paperResearchProjection).not.toContain("research-feedback-account-mismatch");
   });
 
-  it("feeds paper observation cadence into the next researcher context without promotion authority", async () => {
+  it("keeps paper observation cadence telemetry outside the ResearchWorker context", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const source = await store.getCandidate(FIXTURE_CANDIDATE_ID);
@@ -1865,34 +1970,12 @@ describe("CandidateArena paper evidence context", () => {
     });
 
     expect(capturedContexts).toHaveLength(1);
-    const context = JSON.parse(capturedContexts[0]!) as {
-      selected_paper_evidence: Array<{
-        candidate_id: string;
-        paper_loop_latency?: {
-          expected_interval_ms: number;
-          latest_observation_interval_ms?: number;
-          latest_interval_lag_ms?: number;
-          max_interval_lag_ms?: number;
-          observed_interval_count: number;
-          cadence_status: string;
-          authority_status: string;
-        };
-      }>;
-    };
-    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        candidate_id: FIXTURE_CANDIDATE_ID,
-        paper_loop_latency: {
-          expected_interval_ms: 60_000,
-          latest_observation_interval_ms: 100_000,
-          latest_interval_lag_ms: 40_000,
-          max_interval_lag_ms: 40_000,
-          observed_interval_count: 2,
-          cadence_status: "lagging",
-          authority_status: "not_promotion_authority"
-        }
-      })
-    ]));
+    const context = JSON.parse(capturedContexts[0]!) as Record<string, unknown>;
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(context).not.toHaveProperty("paper_trading_board");
+    expect(JSON.stringify(context)).not.toMatch(
+      /paper_loop_latency|latest_observation_interval_ms|latest_interval_lag_ms|max_interval_lag_ms/
+    );
   });
 
   it("feeds paper candidate lineage and findings into the next researcher context", async () => {
@@ -1927,50 +2010,27 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(capturedContexts).toHaveLength(2);
     const context = JSON.parse(capturedContexts[1]!) as {
-      selected_paper_evidence: Array<{
-        candidate_id: string;
-        lineage?: {
-          lineage_status: string;
-          direction_kind?: string;
-          parent_candidate_id?: string;
-          latest_finding?: string;
-          evaluation_status?: string;
-          authority_status: string;
-        };
-        paper_board_learning?: {
-          rank: number;
-          net_revenue_usdt: number;
-          observation_count: number;
-          qualification_status: string;
-          summary: string;
-          next_research_focus: string;
-          authority_status: string;
-        };
+      finding_clusters: Array<{
+        direction_kind: string;
+        candidate_ids: string[];
+        latest_finding?: string;
+        next_research_focus: string;
       }>;
+      [key: string]: unknown;
     };
-    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
+    expect(context.finding_clusters).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        candidate_id: createdCandidate.candidate_id,
-        lineage: expect.objectContaining({
-          lineage_status: "available",
-          direction_kind: "trend_following",
-          parent_candidate_id: FIXTURE_CANDIDATE_ID,
-          latest_finding: "Candidate produced non-negative net revenue after costs.",
-          evaluation_status: "accepted",
-          authority_status: "lineage_only"
-        }),
-        paper_board_learning: expect.objectContaining({
-          rank: 1,
-          net_revenue_usdt: 12.34,
-          observation_count: 7,
-          qualification_status: "not_qualification_evidence",
-          summary: "Paper board rank #1: 12.34 net_revenue_usdt, 0.1234 net_return_pct, 7 observations, not_qualification_evidence.",
-          next_research_focus:
-            "Preserve the profitable lineage and generate controlled variants under paper evidence.",
-          authority_status: "lineage_only"
-        })
+        direction_kind: "trend_following",
+        candidate_ids: [createdCandidate.candidate_id],
+        latest_finding: "Candidate produced non-negative net revenue after costs.",
+        next_research_focus:
+          "Preserve the profitable lineage and generate controlled variants under paper evidence."
       })
     ]));
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(JSON.stringify(context)).not.toMatch(
+      /parent_candidate_id|paper_board_learning|paper_score|paper_account/
+    );
   });
 
   it("uses the latest evaluated arena leader as the next generation source by default", async () => {
@@ -2426,28 +2486,6 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(capturedContexts).toHaveLength(2);
     const context = JSON.parse(capturedContexts[1]!) as {
-      selected_paper_evidence: Array<{
-        candidate_id: string;
-        latest_paper_failure?: string;
-        latest_paper_failure_classification?: {
-          failure_kind: string;
-          reason: string;
-          summary: string;
-          next_action: string;
-          authority_status: string;
-        };
-        failed_observations: Array<{
-          sequence: number;
-          failure_reason?: string;
-          failure?: {
-            failure_kind: string;
-            reason: string;
-            summary: string;
-            next_action: string;
-            authority_status: string;
-          };
-        }>;
-      }>;
       finding_clusters: Array<{
         direction_kind: string;
         top_blocker?: string;
@@ -2460,6 +2498,7 @@ describe("CandidateArena paper evidence context", () => {
         next_research_focus: string;
         authority_status: string;
       }>;
+      [key: string]: unknown;
     };
 
     expect(context.finding_clusters).toEqual([
@@ -2476,32 +2515,11 @@ describe("CandidateArena paper evidence context", () => {
         authority_status: "not_promotion_authority"
       }
     ]);
-    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        candidate_id: createdCandidate.candidate_id,
-        latest_paper_failure: "malformed TradingSystem paper event protocol: invalid order_request",
-        latest_paper_failure_classification: {
-          failure_kind: "trading_system_protocol_error",
-          reason: "malformed TradingSystem paper event protocol: invalid order_request",
-          summary: "TradingSystem emitted an invalid paper event or protocol shape.",
-          next_action: "Fix the TradingSystem paper event protocol before retrying observation.",
-          authority_status: "not_live"
-        },
-        failed_observations: [
-          expect.objectContaining({
-            sequence: 7,
-            failure_reason: "malformed TradingSystem paper event protocol: invalid order_request",
-            failure: {
-              failure_kind: "trading_system_protocol_error",
-              reason: "malformed TradingSystem paper event protocol: invalid order_request",
-              summary: "TradingSystem emitted an invalid paper event or protocol shape.",
-              next_action: "Fix the TradingSystem paper event protocol before retrying observation.",
-              authority_status: "not_live"
-            }
-          })
-        ]
-      })
-    ]));
+    expect(context).not.toHaveProperty("selected_paper_evidence");
+    expect(JSON.stringify(context)).not.toContain(
+      "malformed TradingSystem paper event protocol: invalid order_request"
+    );
+    expect(JSON.stringify(context)).not.toMatch(/failed_observations|latest_paper_failure/);
     expect((second.arena as {
       finding_clusters?: typeof context.finding_clusters;
     }).finding_clusters).toEqual(context.finding_clusters);
@@ -3406,6 +3424,93 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
       changed_paths: ["run.py"]
     };
   }
+}
+
+class AutonomousSessionResearchAgent
+implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-autonomous-session-test",
+    provider: "codex",
+    model: "autonomous-session-test",
+    permission_policy: "artifact_workspace_only"
+  };
+  runSessionCount = 0;
+
+  constructor(
+    private readonly mode: "select-second" | "finish-unselected" | "throw-after-first",
+    private readonly beforeSession?: () => void | Promise<void>
+  ) {}
+
+  async improveArtifact(): Promise<AgentEditResult> {
+    throw new Error("autonomous_session_legacy_edit_path_used");
+  }
+
+  async runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult> {
+    this.runSessionCount += 1;
+    await this.beforeSession?.();
+    const requestedDirection = (JSON.parse(input.arena_context ?? "{}") as {
+      requested_direction?: string;
+    }).requested_direction;
+    await setAutonomousSessionRisk(input.artifact_dir, "0.02");
+    await input.tools.submitDevelopment({
+      idempotency_key: `${this.mode}-submission-one`,
+      research_note: "Evaluate the first autonomous session snapshot."
+    });
+    if (this.mode === "throw-after-first") {
+      throw new Error("research worker failed after one completed submission");
+    }
+    if (this.mode === "finish-unselected") {
+      const finished = await input.tools.finishWithoutSubmission({
+        idempotency_key: "finish-without-selected-submission",
+        reason: "No completed development snapshot should enter sealed admission."
+      });
+      return {
+        status: finished.session_status,
+        summary: finished.reason,
+        provider_command_count: 1
+      };
+    }
+    if (requestedDirection !== "trend_following") {
+      const finished = await input.tools.finishWithoutSubmission({
+        idempotency_key: `finish-non-target-${requestedDirection ?? "unknown"}`,
+        reason: "This control direction is outside the selected-snapshot assertion."
+      });
+      return {
+        status: finished.session_status,
+        summary: finished.reason,
+        provider_command_count: 1
+      };
+    }
+    await setAutonomousSessionRisk(input.artifact_dir, "0.005");
+    const second = await input.tools.submitDevelopment({
+      idempotency_key: "select-second-submission-two",
+      research_note: "Evaluate a lower-risk snapshot and select it deliberately."
+    });
+    const selected = await input.tools.selectDevelopment({
+      idempotency_key: "select-second-explicit-selection",
+      submission_sequence: second.submission_sequence,
+      reason: "Select the lower-risk immutable snapshot despite its development rank."
+    });
+    return {
+      status: selected.session_status,
+      summary: selected.reason,
+      selected_submission_sequence: selected.submission_sequence,
+      provider_command_count: 2
+    };
+  }
+}
+
+async function setAutonomousSessionRisk(
+  artifactDir: string,
+  riskFraction: string
+): Promise<void> {
+  const runPath = path.join(artifactDir, "run.py");
+  const source = await readFile(runPath, "utf8");
+  await writeFile(
+    runPath,
+    source.replace(/RISK_FRACTION = [0-9.]+/, `RISK_FRACTION = ${riskFraction}`),
+    "utf8"
+  );
 }
 
 type LifecycleResearchCapture = {

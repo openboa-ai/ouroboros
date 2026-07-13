@@ -169,6 +169,7 @@ export type CandidateArenaDirectionResultStatus =
   | "created"
   | "duplicate"
   | "quarantined"
+  | "no_submission"
   | "failed";
 
 export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
@@ -1592,6 +1593,7 @@ export type ResearchWorkerCheckpointTerminalStatus = "completed" | "failed_close
 
 export type ResearchWorkerCheckpointTerminalReason =
   | "admission_recorded"
+  | "finished_without_submission"
   | "execution_failed"
   | "restart_recovery";
 
@@ -1827,8 +1829,10 @@ function researchWorkerCheckpointTerminalHasRuntimeShape(
   hasAdmissionRef: boolean
 ): boolean {
   if (value.terminal_status === "completed") {
-    return value.terminal_reason === "admission_recorded" && hasAdmissionRef &&
-      comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision");
+    return value.terminal_reason === "admission_recorded"
+      ? hasAdmissionRef &&
+        comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision")
+      : value.terminal_reason === "finished_without_submission" && !hasAdmissionRef;
   }
   return value.terminal_status === "failed_closed" &&
     (value.terminal_reason === "execution_failed" || value.terminal_reason === "restart_recovery") &&
