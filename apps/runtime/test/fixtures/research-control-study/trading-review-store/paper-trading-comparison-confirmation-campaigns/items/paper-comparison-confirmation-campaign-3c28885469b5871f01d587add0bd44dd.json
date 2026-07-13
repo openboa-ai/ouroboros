@@ -6,12 +6,12 @@
     "record_kind": "paper_trading_comparison_verdict",
     "id": "paper-comparison-verdict-7183e0491fb695a792c6f65d482620bc"
   },
-  "source_verdict_digest": "sha256:d4bd28bfe2e8d3780c95970f8a26e6a2d47ca474d90b4d5230986955fa41b0ea",
+  "source_verdict_digest": "sha256:ba0d0811f2acff1911c3c165c60cdb6e1245681d81696a5ab8cc8f1d8c0b6189",
   "source_comparison_ref": {
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-132d03edbe3dfafd"
   },
-  "source_comparison_digest": "sha256:5036419c541b47bc316ff4a7b308c6d9448f89b529987c59c0e8c71847a0e716",
+  "source_comparison_digest": "sha256:a207a52229385dedeb0a31479cecffa27b7ed4dec03cd286dd3290d15f8a4eb6",
   "champion": {
     "role": "champion",
     "candidate_ref": {
@@ -50,7 +50,7 @@
       "record_kind": "system_code",
       "id": "system-code-confirmation-challenger"
     },
-    "system_code_record_digest": "sha256:4b06c8b3c5a5f10de257d74921cb1beb8b282bb68ced1d408fc0a8360811e962",
+    "system_code_record_digest": "sha256:fcb5ef7751aa63728357fd0c42a0ae8baaacfe67ed6a843d69445720af0db216",
     "system_code_artifact_digest": "sha256:confirmation-challenger",
     "candidate_admission_decision_ref": {
       "record_kind": "candidate_admission_decision",
@@ -117,7 +117,7 @@
     }
   ],
   "committed_at": "2026-07-10T00:04:34.000Z",
-  "campaign_digest": "sha256:ccf5ff9c57864846f68510b91affbe36b33550e1ef2a50fed13ad03a9bccdfbf",
+  "campaign_digest": "sha256:a075811ee713b4f69c88adbe19b8599c824de87758d24da23bc9abc2c116c597",
   "evaluation_authority": "external_to_trading_systems",
   "promotion_eligibility": "not_eligible",
   "release_status": "sealed",

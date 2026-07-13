@@ -6,27 +6,27 @@
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-80506ef355a15a27"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:0f13e33cd599cb4b46b22f7ab14e47558155c23e8af9b000ed6aa4096d5d777c",
+  "paper_trading_comparison_commitment_digest": "sha256:cf1227c6440b39244901e02ef6049abb93206d3dd101e4c10c33142104c6fba8",
   "paper_trading_comparison_activation_ref": {
     "record_kind": "paper_trading_comparison_activation",
     "id": "paper-trading-comparison-activation-80ad3a7f4d9cc37d"
   },
-  "paper_trading_comparison_activation_digest": "sha256:b12cbebc064a1fd5d6cb94b9c6d6b63f7fad7cf74114fc50d780ebe417d5be8d",
+  "paper_trading_comparison_activation_digest": "sha256:a135aad475047cf1e148e0e874552738567f60b01c276ffc3d613b87ceeb90ef",
   "paper_trading_comparison_activation_attempt_ref": {
     "record_kind": "paper_trading_comparison_activation_attempt",
     "id": "paper-comparison-activation-attempt-52db8bc8859855b8b806c7ca74c92123"
   },
-  "paper_trading_comparison_activation_attempt_digest": "sha256:f19f97164de29ca3616da962dbd0fb7cf3b235dde3ad72acbe8e87950d1979ce",
+  "paper_trading_comparison_activation_attempt_digest": "sha256:76ae5225e9f466d69c59401fa5b20143cd2d1163f5d80841020b136153d9ae85",
   "final_activation_outcome_ref": {
     "record_kind": "paper_trading_comparison_activation_outcome",
     "id": "paper-comparison-activation-outcome-188e7661d25c4a4c8b5d2d4428170913"
   },
-  "final_activation_outcome_digest": "sha256:8c32c05d2a768be915eef3e29e3c3cede508625352336a072ffc3c72929a5d6b",
+  "final_activation_outcome_digest": "sha256:9c01832291714910098c7dd3bb80b9a0475f4dfdfdb011d88a6d94819b96f96f",
   "latest_tick_ref": {
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-2de037a7f5ad38f0"
   },
-  "latest_tick_digest": "sha256:86ee4b68459a17373137189a5f140924e116263c116750cf4b1470b8c9482732",
+  "latest_tick_digest": "sha256:926d9ffe9349b1783dfb90e581f13ba858973577026fe44087b5d5e0a2c1d8d2",
   "checkpoint_outcome_refs": [
     {
       "record_kind": "paper_trading_comparison_checkpoint_outcome",
@@ -38,8 +38,8 @@
     }
   ],
   "checkpoint_outcome_digests": [
-    "sha256:e59f3ce7d1cffe6d0d65315c190415f769927994cff71fcf6d14473f562ca407",
-    "sha256:b0ffa14c8d9068b5d91f1cfd3858531c6f5be8d19a1811b8ce4b1ab5b7553931"
+    "sha256:3ca04964221c76d5495d6c2d437cedb37ab48c3dd7c536adcfa85f4e07fe2dd9",
+    "sha256:8c65c086bfaf1e2cde12f22b40115ad2dfba74591f8be779cab64aaf12662620"
   ],
   "pair_qualification": {
     "comparison_id": "paper-trading-comparison-80506ef355a15a27",
@@ -102,7 +102,7 @@
       "id": "paper-trading-evaluation-trading-run-paper-session-5e87124cece6e828-19df61e3131cc0a3"
     },
     "paper_trading_evaluation_record_digest": "sha256:b819a5471612e202dcc1c48efbd4ecbf246d6850e68af93b6a6a6f83c144996e",
-    "paper_trading_observation_chain_digest": "sha256:c7a7fe4091ed613bef2498ddff777971341397d199ba1ae6e903725f0efb3efa",
+    "paper_trading_observation_chain_digest": "sha256:621e53386250399f09e62d5f45445c37f70a196386db39ccd6d53d9577b8234a",
     "net_revenue_usdt": 0,
     "cost_usdt": 0
   },
@@ -129,13 +129,13 @@
       "record_kind": "paper_trading_evaluation_commitment",
       "id": "paper-trading-evaluation-commitment-trading-run-paper-session-b6b17eb3274ae27f-6faf40d13a511fba"
     },
-    "paper_trading_evaluation_commitment_record_digest": "sha256:3bab0e8e9245e5ef404e3c89a415327229d570e6113892f31438006ed0987bd8",
+    "paper_trading_evaluation_commitment_record_digest": "sha256:124341529e76664430ecc9fdc16fec8a0c6af200912597d9b7df5f2e7202aa1a",
     "paper_trading_evaluation_ref": {
       "record_kind": "paper_trading_evaluation",
       "id": "paper-trading-evaluation-trading-run-paper-session-b6b17eb3274ae27f-6faf40d13a511fba"
     },
     "paper_trading_evaluation_record_digest": "sha256:2678537085afc235512d1f15443700731714efa92d7319f09d3e2efb4cae8df7",
-    "paper_trading_observation_chain_digest": "sha256:47ed1f8814d6349c580bfd3ad53ccd297fa4673c9eed8e8949e716f1b9363321",
+    "paper_trading_observation_chain_digest": "sha256:5440d4d719947794eaa4dba53091cb0e0be3b07fba6037ffd50f571270d80494",
     "net_revenue_usdt": 0.052,
     "cost_usdt": 0.048
   },
@@ -156,7 +156,7 @@
   "release_status": "sealed",
   "next_action": "precommit_confirmation_campaign",
   "evaluated_at": "2026-07-10T00:05:42.000Z",
-  "verdict_digest": "sha256:0fdfab19846d8defce1a638e094af3e6635c5b470813836dce373544a781b0b9",
+  "verdict_digest": "sha256:6e23f1bcfbdaa13c70fb80bd7cbf1bb649758d37bd1b60b94522f0061b561beb",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

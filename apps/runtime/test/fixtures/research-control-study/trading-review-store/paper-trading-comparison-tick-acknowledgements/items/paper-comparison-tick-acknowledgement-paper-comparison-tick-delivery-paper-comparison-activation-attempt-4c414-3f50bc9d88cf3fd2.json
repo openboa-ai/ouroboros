@@ -6,12 +6,12 @@
     "record_kind": "paper_trading_comparison_tick_delivery",
     "id": "paper-comparison-tick-delivery-paper-comparison-activation-attempt-4c4146b08ff7a687ae93513025b833b6-cha-e2bf66b90ca29cbd"
   },
-  "delivery_digest": "sha256:0ee29e4b33846a06dbd9cc1d4ffdb5c0a721e1e36170c2de303ac1a93a134377",
+  "delivery_digest": "sha256:89d04260c0429e978acf57aecfcfe75bf72111ae8f041dabbc34208c67220d0b",
   "paper_trading_comparison_activation_attempt_ref": {
     "record_kind": "paper_trading_comparison_activation_attempt",
     "id": "paper-comparison-activation-attempt-4c4146b08ff7a687ae93513025b833b6"
   },
-  "paper_trading_comparison_activation_attempt_digest": "sha256:63823ac58aa997ba73c6fb62f91f1ad63275975f41ce2695d952fd5091d7563f",
+  "paper_trading_comparison_activation_attempt_digest": "sha256:5fc91bc161249522a0b011716196bf1a6c1a9cbae0589343853b21021bbf2a5c",
   "role": "champion",
   "trading_run_ref": {
     "record_kind": "trading_run",
@@ -21,12 +21,12 @@
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-a5f250cd3016cdf1"
   },
-  "tick_digest": "sha256:a273923fc11af19fd36b434246c40c4cf54ada1f9759c4dc1231ef78db58a6d1",
+  "tick_digest": "sha256:025bce6951ad57a4677e6fe68de6935180857598cb95e3fdb7fda7037b70a656",
   "tick_sequence": 2,
   "provider_request_count_at_acknowledgement": 5,
   "endpoint": "POST /comparison/tick/ack",
   "acknowledged_at": "2026-07-10T00:02:13.002Z",
-  "acknowledgement_digest": "sha256:c174156d65e16c32fb5e5aa8b134b4b941158bfda048a2752004da463fc50828",
+  "acknowledgement_digest": "sha256:08bf3eb920fa6f93301fe0f23aab135bbc0851156d2fccc3a4c5a328c649a839",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

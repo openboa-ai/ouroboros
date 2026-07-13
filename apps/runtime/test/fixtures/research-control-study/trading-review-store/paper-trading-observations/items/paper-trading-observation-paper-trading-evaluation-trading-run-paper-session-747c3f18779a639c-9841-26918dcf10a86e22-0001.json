@@ -14,12 +14,12 @@
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-470cd6771318c052"
   },
-  "paper_trading_comparison_tick_digest": "sha256:c8ad4b4d6375e4eaa43ed994fa732e08f4a3f0d2fabf65ac902a4785964ec5e7",
+  "paper_trading_comparison_tick_digest": "sha256:d0585e662aa3027355bc3f826e207b18ece677d897fe20e03f2479f7aa7cec39",
   "paper_trading_comparison_checkpoint_attempt_ref": {
     "record_kind": "paper_trading_comparison_checkpoint_attempt",
     "id": "paper-comparison-checkpoint-attempt-e0f854f69491e50cf012"
   },
-  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:a39f073871f37be4f12da49a7cbde9c199ca06168809345387a2a8a2fe32bbdc",
+  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:1851f21ef9c611d7b6b4225e12ee61d63e543d9aba224ad51281d8337722e85b",
   "candidate_ref": {
     "record_kind": "trading_system_candidate",
     "id": "candidate-a651f33d54cbfec8"

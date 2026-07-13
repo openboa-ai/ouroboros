@@ -6,12 +6,12 @@
     "record_kind": "paper_trading_comparison_activation_attempt",
     "id": "paper-comparison-activation-attempt-a12fbe1c5ca4d2c84d4bb4f3ed64bc1f"
   },
-  "paper_trading_comparison_activation_attempt_digest": "sha256:0cc61e189cf0bb3861990df1127d133938d7b526d3961cdec41e134e36004f85",
+  "paper_trading_comparison_activation_attempt_digest": "sha256:e08d55e05431eff59807120b5962de65b6d599ae8ad9f590078f2d511a30ca9d",
   "paper_trading_comparison_activation_ref": {
     "record_kind": "paper_trading_comparison_activation",
     "id": "paper-trading-comparison-activation-f8b5e4e7c353efa7"
   },
-  "paper_trading_comparison_activation_digest": "sha256:01852316ae60199fd2758e7922b563c4403071ff16ad03407be247cf8b9e1d10",
+  "paper_trading_comparison_activation_digest": "sha256:fc04c066aaf6d3f45d66513b3b92c79321c1e55063f4cb1efa614b6a652940ad",
   "outcome_sequence": 1,
   "outcome_status": "both_running",
   "outcome_reason": "started_within_policy",
@@ -25,7 +25,7 @@
   },
   "next_action": "capture_first_paired_checkpoint",
   "completed_at": "2026-07-10T00:05:46.000Z",
-  "outcome_digest": "sha256:d4c371945e5b0e13538444f2323cf180be8cfc71992af645cbe068fb7fdb2027",
+  "outcome_digest": "sha256:1967c5024fb3ad991036f0e18914a9603d05e5d82604fcfda084ed09de403d09",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

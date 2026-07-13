@@ -6,17 +6,17 @@
     "record_kind": "paper_trading_comparison_activation",
     "id": "paper-trading-comparison-activation-e6c0d0195bf36247"
   },
-  "paper_trading_comparison_activation_digest": "sha256:795889cc4653382a85d7d53648366797565aafdace100823be76927ab7378980",
+  "paper_trading_comparison_activation_digest": "sha256:e7809808820199e6bb5a2a9af207e9c4ee782cf37f3ecced815c1e52e918a1f0",
   "paper_trading_comparison_commitment_ref": {
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-132d03edbe3dfafd"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:5036419c541b47bc316ff4a7b308c6d9448f89b529987c59c0e8c71847a0e716",
+  "paper_trading_comparison_commitment_digest": "sha256:a207a52229385dedeb0a31479cecffa27b7ed4dec03cd286dd3290d15f8a4eb6",
   "first_tick_ref": {
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-cd8a10910eede611"
   },
-  "first_tick_digest": "sha256:0148fcd706ce4d9bfa0d7f65146136d2204d91fd9d387b62e018cf408f45cf7d",
+  "first_tick_digest": "sha256:f89c4e1d76ca269449a9789b8fc387018a04d17b5bc2a202a1096c59f498fed6",
   "champion": {
     "role": "champion",
     "trading_run_ref": {
@@ -65,7 +65,7 @@
   "attempt_status": "starting",
   "attempted_at": "2026-07-10T00:03:29.000Z",
   "start_deadline_at": "2026-07-10T00:04:29.000Z",
-  "attempt_digest": "sha256:decabd35730dd8c1deeb7da3931ef5a68dc4691cb96df580dee3b6371ab7c536",
+  "attempt_digest": "sha256:7efe460dfb59ced57835c3d3ac1947fb56d9f867d6ff746309556798b5a2f967",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

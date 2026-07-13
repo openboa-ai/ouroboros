@@ -6,27 +6,27 @@
     "record_kind": "paper_trading_comparison_activation",
     "id": "paper-trading-comparison-activation-e6c0d0195bf36247"
   },
-  "paper_trading_comparison_activation_digest": "sha256:795889cc4653382a85d7d53648366797565aafdace100823be76927ab7378980",
+  "paper_trading_comparison_activation_digest": "sha256:e7809808820199e6bb5a2a9af207e9c4ee782cf37f3ecced815c1e52e918a1f0",
   "paper_trading_comparison_activation_attempt_ref": {
     "record_kind": "paper_trading_comparison_activation_attempt",
     "id": "paper-comparison-activation-attempt-816e4eb6873e6b532010984584a08a4b"
   },
-  "paper_trading_comparison_activation_attempt_digest": "sha256:decabd35730dd8c1deeb7da3931ef5a68dc4691cb96df580dee3b6371ab7c536",
+  "paper_trading_comparison_activation_attempt_digest": "sha256:7efe460dfb59ced57835c3d3ac1947fb56d9f867d6ff746309556798b5a2f967",
   "activation_outcome_ref": {
     "record_kind": "paper_trading_comparison_activation_outcome",
     "id": "paper-comparison-activation-outcome-72d73cb5ffab305bc47adc55f22115f6"
   },
-  "activation_outcome_digest": "sha256:28892fbaa77f7d89eb4e98c40257fe45f3856ba257cdb34262bb2647f3eb89e5",
+  "activation_outcome_digest": "sha256:6dcf053f0e117fdf451051da3972bb0b1f2b23fd1a260734937d4a4bd0a3a277",
   "paper_trading_comparison_commitment_ref": {
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-132d03edbe3dfafd"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:5036419c541b47bc316ff4a7b308c6d9448f89b529987c59c0e8c71847a0e716",
+  "paper_trading_comparison_commitment_digest": "sha256:a207a52229385dedeb0a31479cecffa27b7ed4dec03cd286dd3290d15f8a4eb6",
   "tick_ref": {
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-cd8a10910eede611"
   },
-  "tick_digest": "sha256:0148fcd706ce4d9bfa0d7f65146136d2204d91fd9d387b62e018cf408f45cf7d",
+  "tick_digest": "sha256:f89c4e1d76ca269449a9789b8fc387018a04d17b5bc2a202a1096c59f498fed6",
   "checkpoint_sequence": 1,
   "champion": {
     "role": "champion",
@@ -59,7 +59,7 @@
   "attempted_at": "2026-07-10T00:03:30.000Z",
   "checkpoint_deadline_at": "2026-07-10T00:04:30.000Z",
   "attempt_status": "preparing",
-  "attempt_digest": "sha256:f54208c8789ca6da1d34197fadfe803b7255e85c75440f3f8d2ca77ecb18adbf",
+  "attempt_digest": "sha256:e490332ec4cb7338a008a867b1935be6fd288fb9098a6903e184151392526fa2",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

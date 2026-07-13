@@ -6,12 +6,12 @@
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-1fe6e02ac9321fc3"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:77a7d7e34c28480b4f8313f0070424130cbe5779e04dbab493acffef2f16de45",
+  "paper_trading_comparison_commitment_digest": "sha256:288c0aac0ba10e480288a837521d6957d980bd696e2a966b65684a1f47c0fca7",
   "first_tick_ref": {
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-b4ec3a5dfa1bac80"
   },
-  "first_tick_digest": "sha256:bf24656f219e4771835b83a35b2c68cae6af4051c2db37746d4d573a15b3129d",
+  "first_tick_digest": "sha256:682734a8ad8ebe0ba109d62cefd81c3373f5c54149d8308805d65de3fe2607ee",
   "champion": {
     "role": "champion",
     "trading_run_ref": {
@@ -58,7 +58,7 @@
   "activation_scope": "qualification_pair",
   "activation_status": "authorized",
   "authorized_at": "2026-07-10T00:00:02.000Z",
-  "activation_digest": "sha256:33f012993ac5240fecc4ebf50d244e26eecb5bddf427dc288c0d74315de721eb",
+  "activation_digest": "sha256:951483d94455857306e931244b6336b379e8b0daac02925ccbafddb394e134fa",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "private_exchange_access": "forbidden",

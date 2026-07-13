@@ -6,7 +6,7 @@
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-9b72e837932bebe4"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:0662028701fb1d3115277aa9a7413407ed725dad60389e1d9f4d3cd2deed7ed0",
+  "paper_trading_comparison_commitment_digest": "sha256:4a99005283686470bbf801f1fed61f2550ce01a2162181c9bec2ffc5117491da",
   "sequence": 1,
   "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
   "market_snapshot": {
@@ -39,6 +39,6 @@
     "authority_status": "read_only"
   },
   "observed_at": "2026-07-10T00:02:18.000Z",
-  "tick_digest": "sha256:c8ad4b4d6375e4eaa43ed994fa732e08f4a3f0d2fabf65ac902a4785964ec5e7",
+  "tick_digest": "sha256:d0585e662aa3027355bc3f826e207b18ece677d897fe20e03f2479f7aa7cec39",
   "authority_status": "not_live"
 }

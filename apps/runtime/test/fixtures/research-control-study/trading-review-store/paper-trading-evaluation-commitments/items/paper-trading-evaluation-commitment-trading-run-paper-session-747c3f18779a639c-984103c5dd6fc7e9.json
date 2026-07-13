@@ -35,7 +35,7 @@
   },
   "capability_policy_ref": {
     "record_kind": "capability_policy",
-    "id": "candidate-arena-paper-system-code"
+    "id": "capability-policy-clock-fixture-v1"
   },
   "secret_policy_ref": {
     "record_kind": "secret_policy",
@@ -87,6 +87,6 @@
     "authority_status": "not_live"
   },
   "committed_at": "2026-07-10T00:02:17.000Z",
-  "commitment_digest": "sha256:c9747f9caed8500257070d88a3510e98cd019b118b11635b2c01aef16cbb5ba7",
+  "commitment_digest": "sha256:97c3bcbea269591167567d11a20f8c1af88d5225d582d0bc1eee03fea2fea200",
   "authority_status": "not_live"
 }

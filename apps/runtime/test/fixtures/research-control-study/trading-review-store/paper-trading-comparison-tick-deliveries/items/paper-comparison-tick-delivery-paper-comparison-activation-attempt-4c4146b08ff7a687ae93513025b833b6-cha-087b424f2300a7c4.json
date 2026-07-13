@@ -6,12 +6,12 @@
     "record_kind": "paper_trading_comparison_activation",
     "id": "paper-trading-comparison-activation-6498de5e1c17be63"
   },
-  "paper_trading_comparison_activation_digest": "sha256:85b6b6912f5fef4bb8be28273cce87771d80d8e4f642b88fe616034f4c8ac18d",
+  "paper_trading_comparison_activation_digest": "sha256:2b51e2827dd369bd60b4b641acb7c6e73df6fe68eb7b4e600ba62adc6512d668",
   "paper_trading_comparison_activation_attempt_ref": {
     "record_kind": "paper_trading_comparison_activation_attempt",
     "id": "paper-comparison-activation-attempt-4c4146b08ff7a687ae93513025b833b6"
   },
-  "paper_trading_comparison_activation_attempt_digest": "sha256:63823ac58aa997ba73c6fb62f91f1ad63275975f41ce2695d952fd5091d7563f",
+  "paper_trading_comparison_activation_attempt_digest": "sha256:5fc91bc161249522a0b011716196bf1a6c1a9cbae0589343853b21021bbf2a5c",
   "role": "challenger",
   "trading_run_ref": {
     "record_kind": "trading_run",
@@ -21,12 +21,12 @@
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-a5f250cd3016cdf1"
   },
-  "tick_digest": "sha256:a273923fc11af19fd36b434246c40c4cf54ada1f9759c4dc1231ef78db58a6d1",
+  "tick_digest": "sha256:025bce6951ad57a4677e6fe68de6935180857598cb95e3fdb7fda7037b70a656",
   "tick_sequence": 2,
   "provider_request_count_at_delivery": 4,
   "endpoint": "GET /market/snapshot",
   "delivered_at": "2026-07-10T00:02:13.001Z",
-  "delivery_digest": "sha256:b3f6d43cce66c5a353f04400a5f73b8cbf89048d355d932aa87501e3556f4190",
+  "delivery_digest": "sha256:75d6b0fac507007378fcf9a786e892720259c1d7b6be109e6cbe7618a1714f77",
   "live_exchange_authority": false,
   "order_submission_authority": false,
   "authority_status": "not_live"

@@ -41,7 +41,7 @@
       "record_kind": "system_code",
       "id": "system-code-confirmation-challenger"
     },
-    "system_code_record_digest": "sha256:4b06c8b3c5a5f10de257d74921cb1beb8b282bb68ced1d408fc0a8360811e962",
+    "system_code_record_digest": "sha256:fcb5ef7751aa63728357fd0c42a0ae8baaacfe67ed6a843d69445720af0db216",
     "system_code_artifact_digest": "sha256:confirmation-challenger",
     "candidate_admission_decision_ref": {
       "record_kind": "candidate_admission_decision",
@@ -85,6 +85,6 @@
     "persistent_state_boundary_version": "paper-engine-checkpoint-v1"
   },
   "committed_at": "2026-07-10T00:02:17.000Z",
-  "preparation_digest": "sha256:31d7c0f550ac45999c360c7caddf719e9e0d5c8952a72b47f9a106eb39239658",
+  "preparation_digest": "sha256:6e4bb953698d0fd14546798a3f016dc7f575fdda013f6d24e25446b6d17ceab4",
   "authority_status": "not_live"
 }

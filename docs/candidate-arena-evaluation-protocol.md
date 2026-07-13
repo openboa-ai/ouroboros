@@ -532,10 +532,13 @@ The following current surfaces require implementation work before P0 can pass:
   discovery now drains incomplete studies deterministically through one explicitly owned process.
   Each arm can now be composed from its exact LocalStore plus an arm-local paper-session service;
   the real comparison services advance confirmation one persisted transition at a time and preserve
-  exact wake times through the campaign runner. Server auto-start, cross-process leasing, actual
-  replicated study evidence, distinct-regime inference, learned policy parameters, and automatic
-  policy-decision creation remain open. The separate one-sided exact adaptive policy decision and
-  future-allocation provenance path are implemented.
+  exact wake times through the campaign runner. One listener-capable six-replication fixture study
+  now closes all 12 candidate slots and restarts without effects through real loopback providers and
+  deterministic sandbox processes. Every pair is correctly ineligible on minimum elapsed time, so
+  this proves protocol execution but not qualified discovery. Server auto-start, cross-process
+  leasing, qualified replicated study evidence, distinct-regime inference, learned policy
+  parameters, and automatic policy-decision creation remain open. The separate one-sided exact
+  adaptive policy decision and future-allocation provenance path are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -555,9 +558,11 @@ The following current surfaces require implementation work before P0 can pass:
   terminal outcome contract exist internally, and the replicated same-baseline inference contract
   plus its sequential executor are implemented. The separate exact-digest adaptive policy decision
   and explicit/repository/decision allocation provenance are also implemented. An internal
-  single-owner process can now discover and drain committed studies. Actual prospective study
-  evidence, server auto-start, cross-process ownership, distinct-regime inference, and learned
-  allocation remain open.
+  single-owner process can now discover and drain committed studies. A six-replication real-arm
+  fixture study proves exact denominator closure, 24/24 provider and sandbox cleanup, and effect-free
+  restart; all slots remain pair-ineligible because one first tick cannot satisfy positive elapsed
+  qualification. Qualified prospective study evidence, server auto-start, cross-process ownership,
+  distinct-regime inference, and learned allocation remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
@@ -612,8 +617,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    bounded symmetric runtime activation/recovery, atomic paired checkpoints through sequence 3,
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
    implemented and validated; read-only paired qualification and sealed single-window adjudication
-   are also implemented internally. Arm-local comparison/session composition and the bounded
-   campaign runner are implemented; deployed scheduling and prospective study evidence remain.
+   are also implemented internally. Arm-local comparison/session composition, the bounded campaign
+   runner, and one exact six-replication protocol study are implemented; a post-activation decision
+   cadence, qualified study evidence, and deployed scheduling remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
@@ -656,6 +662,6 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
-   TradingPromotion, and arm-local runtime composition are proven, while deployed scheduling,
-   prospective replicated-study evidence, longer soak evidence, durable worker process adoption,
-   and full P0 evidence remain.
+   TradingPromotion, arm-local runtime composition, and exact six-replication ineligible-study
+   closure are proven, while qualified replicated-study evidence, deployed scheduling, longer soak
+   evidence, durable worker process adoption, and full P0 evidence remain.

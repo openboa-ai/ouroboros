@@ -6,7 +6,7 @@
     "record_kind": "paper_trading_comparison_confirmation_campaign",
     "id": "paper-comparison-confirmation-campaign-4c3ff731c138ba7aa1212a8e4c283382"
   },
-  "campaign_digest": "sha256:5107e99307b292319c63e3926353aab862ada6580f49df06f77aaff5d62bd4d4",
+  "campaign_digest": "sha256:958c05a31538a1b49fbb0154735ed982eb050c729a4632392a578a908ccb370c",
   "slot_results": [
     {
       "slot_index": 1,
@@ -19,7 +19,7 @@
         "record_kind": "paper_trading_comparison_verdict",
         "id": "paper-comparison-verdict-d7b1e69c3cbf72b20ccc4fd01bdceb98"
       },
-      "verdict_digest": "sha256:9e414da25c15e455b6fbfe2c220115073ec3e32bc926ef034a514deecf447adb",
+      "verdict_digest": "sha256:3e0d7dc76c21d57d176b7846a6ce0d44e5ddd14ea73560d31c9ebddf5a212f19",
       "window_started_at": "2026-07-10T00:01:10.000Z",
       "window_ended_at": "2026-07-10T00:02:12.000Z"
     },
@@ -34,7 +34,7 @@
         "record_kind": "paper_trading_comparison_verdict",
         "id": "paper-comparison-verdict-01e43b42278b3746563e8b8fa7446136"
       },
-      "verdict_digest": "sha256:31b86c5e70c1a4db07a912ad0f8d982f9a0b61057ebb364d971141f0759070ef",
+      "verdict_digest": "sha256:fa88ceade034d762e392ec961f36b14267b77fc0aa1b421a7b0f14a0ac88ce8e",
       "window_started_at": "2026-07-10T00:02:18.000Z",
       "window_ended_at": "2026-07-10T00:03:20.000Z"
     }
@@ -49,7 +49,7 @@
   "decision_rule": "all_reserved_windows_must_improve",
   "release_status": "sealed",
   "evaluated_at": "2026-07-10T00:03:25.000Z",
-  "outcome_digest": "sha256:dc9b9a6912607e7c4e82d040f5520ecd004dd2952ff1914a8423b7491ff5852a",
+  "outcome_digest": "sha256:72b12b743e9d689920e3746349979a66757e906bdab850b4ca2671c82d729b74",
   "evaluation_authority": "external_to_trading_systems",
   "live_exchange_authority": false,
   "order_submission_authority": false,

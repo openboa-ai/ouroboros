@@ -59,7 +59,7 @@
       "record_kind": "system_code",
       "id": "system-code-confirmation-challenger"
     },
-    "system_code_record_digest": "sha256:4b06c8b3c5a5f10de257d74921cb1beb8b282bb68ced1d408fc0a8360811e962",
+    "system_code_record_digest": "sha256:fcb5ef7751aa63728357fd0c42a0ae8baaacfe67ed6a843d69445720af0db216",
     "system_code_artifact_digest": "sha256:confirmation-challenger",
     "candidate_admission_decision_ref": {
       "record_kind": "candidate_admission_decision",
@@ -74,8 +74,8 @@
       "record_kind": "paper_trading_evaluation_commitment",
       "id": "paper-trading-evaluation-commitment-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
     },
-    "paper_trading_evaluation_commitment_digest": "sha256:6fb3b86b284fea5856f96b74e3e244b519a52616ad3a7c83a382991ffacb42d4",
-    "paper_trading_evaluation_commitment_record_digest": "sha256:4686c46fd703df5c48e88dd21e5ad80cb804fbd1101f57baa58603d4d768f8a9",
+    "paper_trading_evaluation_commitment_digest": "sha256:e437c91df192f1832f7bc5d7ce79bd727fc4f1ef95f5d2a83592f711ab5c5528",
+    "paper_trading_evaluation_commitment_record_digest": "sha256:ff8bcd3ce96f2e4f7802fd075650ab9835b0c6368a362d468404dfac46eecca2",
     "paper_trading_evaluation_ref": {
       "record_kind": "paper_trading_evaluation",
       "id": "paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
@@ -118,6 +118,6 @@
     "persistent_state_boundary_version": "paper-engine-checkpoint-v1"
   },
   "committed_at": "2026-07-10T00:05:43.000Z",
-  "commitment_digest": "sha256:5e4d1dc080e470abd2b786f06b99c1e5dfa4d6ae6ed4d6888d301ec2fb10e755",
+  "commitment_digest": "sha256:254121c9a241592fa6b0478b70ddd8ddb28a1348992780e0b65ee42e2c2533fd",
   "authority_status": "not_live"
 }

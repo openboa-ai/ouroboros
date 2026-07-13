@@ -70,7 +70,9 @@ OUROBOROS_GENERATE_STUDY_TRADING_REVIEW_FIXTURE=1 \
 ```
 
 Expected: the real integration passes and writes the fixture. Remove the temporary copy block and
-imports with `apply_patch`; `git diff` for the source integration must be empty.
+imports with `apply_patch`. The retained source-test diff is limited to correcting the persisted
+clock fixture's capability policy from generated-code closure to the canonical clock-fixture
+policy proven by the real artifact resolver.
 
 - [x] **Step 3: Add fixture provenance documentation**
 
@@ -131,7 +133,7 @@ and observation chain through Store APIs. Run the focused fixture test and expec
   `FileSystemCodeArtifactResolver`, and `startPaperTradingApiProvider`.
 - Produces: one retained integration test and exact protocol evidence counts.
 
-- [ ] **Step 1: Build the controlled public-market and clock helper**
+- [x] **Step 1: Build the controlled public-market and clock helper**
 
 Create a helper that returns a read-only `GatewayMarketDataPort` with BTCUSDT snapshots. For each
 requested `observedAt`, return market and public-execution timestamps one and two milliseconds
@@ -151,7 +153,7 @@ export function prospectiveClock(startAt: string) {
 }
 ```
 
-- [ ] **Step 2: Build tracked provider and sandbox decorators**
+- [x] **Step 2: Build tracked provider and sandbox decorators**
 
 Wrap `startPaperTradingApiProvider` to increment starts before creation and closes exactly once.
 Wrap each arm's `DeterministicSandboxAdapter` to count start and stop calls while delegating all
@@ -167,7 +169,7 @@ methods. Expose a tracker with provider and sandbox start/stop counts. The adapt
 Allow only `candidate-arena-paper-system-code` and the fixture capability policy needed by the
 persisted comparator.
 
-- [ ] **Step 3: Write the pre-effect and terminal integration assertions**
+- [x] **Step 3: Write the pre-effect and terminal integration assertions**
 
 Copy the validated fixture, initialize the source Store, derive the exact market-data configuration
 digest, and commit six replication keys. Before starting the runner assert zero research-control
@@ -190,7 +192,7 @@ Assert six campaigns, reports, schedules, campaign outcomes, and replication res
 order; at least one candidate-bearing slot in each arm; provider and sandbox starts greater than
 zero; starts equal closes/stops; and no new TradingPromotion or ResearchAllocationPolicyDecision.
 
-- [ ] **Step 4: Run the integration test and verify RED**
+- [x] **Step 4: Run the integration test and verify RED**
 
 Run:
 
@@ -203,13 +205,22 @@ Expected: the first run may fail at the earliest uncomposed product boundary. Re
 error before changing production code. A timeout, leaked child, or fixture import error is not a
 valid RED and must be corrected in the test harness first.
 
-- [ ] **Step 5: Apply only the minimum proven product fix and rerun GREEN**
+- [x] **Step 5: Apply only the minimum proven fix and rerun GREEN**
 
-If the stable failure is in current product orchestration, add a focused regression assertion to the
-nearest existing test before the fix, patch only that owning module, and rerun the focused regression
-plus prospective integration. Do not weaken Store validation or paper authority checks.
+The first valid runtime RED was
+`PaperTradingSessionError:generated_system_code_artifact_closure_invalid` on both arms. The
+persisted comparator pointed to `fixtures/trading-systems/clock.py` while claiming the
+`candidate-arena-paper-system-code` generated-closure policy. Correct the source integration
+fixture to `capability-policy-clock-fixture-v1`, regenerate its transitive Store graph, and assert
+the policy through ordinary LocalStore readback. No production resolver or Store guard is weakened.
 
-- [ ] **Step 6: Verify restart replay**
+The next two REDs were invalid test policy bounds: the confirmation precommit deadline differed
+from `maximum_elapsed_ms`, then a 30-second comparison window could not contain the checkpoint
+coordinator's frozen 60-second side-preparation deadline. The retained protocol keeps a 25 ms
+decision interval but uses the existing 600-second outer bound. These were harness corrections,
+not product fixes.
+
+- [x] **Step 6: Verify restart replay**
 
 Open a new `LocalStore` on the completed source root, load the exact study and outcome, create a new
 runtime, start the same study ID, and assert effect-free completion with identical outcome and
@@ -226,13 +237,13 @@ unchanged provider/sandbox counters.
 - Consumes: actual fixture integration outcome and exact verification counts.
 - Produces: durable, bias-resistant evidence classification and the next frontier decision.
 
-- [ ] **Step 1: Record the exact observed classification**
+- [x] **Step 1: Record the exact observed classification**
 
 Record replication count, adaptive/static positive counts, ties, sign-test status and p-value,
 provider/sandbox lifecycle counts, terminal slot kinds, and restart result. State explicitly that
 fixture protocol evidence cannot approve allocation policy.
 
-- [ ] **Step 2: Run focused and full verification**
+- [x] **Step 2: Run focused and full verification**
 
 Run:
 
@@ -249,7 +260,15 @@ npm test -- --reporter=dot
 Expected: all focused tests, workspace typechecks, repository guards, and the full listener-capable
 suite pass.
 
-- [ ] **Step 3: Commit the bounded evidence frontier**
+Observed: the focused prospective integration passed in 42.23 seconds. The first unconstrained
+full-suite run saturated process resources while the study opened 24 real sandboxes and 24 real
+loopback providers, causing this test and the existing operator product-loop smoke test to fail;
+both files passed when run together. Bounding Vitest to four file workers preserved parallelism
+and made the repository default deterministic. The option-equivalent full run passed 172 files and
+2,711 tests in 112.05 seconds, and the default `npm test -- --reporter=dot` run then passed the same
+172 files and 2,711 tests in 114.55 seconds.
+
+- [x] **Step 3: Commit the bounded evidence frontier**
 
 Stage only the fixture, retained tests/helpers, any test-proven production fix, and evidence docs.
 Verify `.superpowers/` is unstaged, then commit with:
@@ -260,4 +279,20 @@ git commit -m "test: prove prospective research study protocol"
 
 ## Verification Evidence
 
-Evidence is recorded after the real-arm study reaches a terminal result.
+The retained listener-capable integration produced this exact protocol classification:
+
+- 6 planned and 6 completed replications; 6 campaigns, reports, schedules, and outcomes;
+- 12 candidate-bearing slots, all terminal as `evidence_ineligible`;
+- every individual champion and challenger paper evaluation qualified, while every pair carried
+  only `comparison_minimum_elapsed_not_met` because a one-observation window's first tick precedes
+  activation;
+- adaptive positive 0, static positive 0, ties 6, non-ties 0, mean difference 0, exact sign-test
+  p-value 1, and `insufficient_non_tied_replications`;
+- provider starts/closes 24/24 and sandbox starts/stops 24/24;
+- unchanged TradingPromotion and ResearchAllocationPolicyDecision state;
+- identical restart outcome with zero additional provider or sandbox effects.
+
+This is deterministic protocol and lifecycle evidence only. It cannot approve an allocation
+policy, claim qualified candidate discovery, establish market generalization, or support economic
+or live authority. The next frontier must produce a second post-activation decision tick and at
+least one qualified terminal comparison before condition-generalization work is credible.

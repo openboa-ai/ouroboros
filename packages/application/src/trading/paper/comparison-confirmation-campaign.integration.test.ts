@@ -1120,7 +1120,7 @@ function challengerSystemCode(): SystemCodeRecord {
     },
     capability_policy_ref: {
       record_kind: "capability_policy",
-      id: "candidate-arena-paper-system-code"
+      id: "capability-policy-clock-fixture-v1"
     },
     provenance_refs: [{ record_kind: "research_finding", id: "confirmation-seed" }],
     status: "registered",

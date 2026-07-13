@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["apps/**/*.test.ts", "apps/**/*.test.tsx", "packages/**/*.test.ts"],
+    maxWorkers: 4,
     testTimeout: 20_000,
     coverage: {
       provider: "v8"

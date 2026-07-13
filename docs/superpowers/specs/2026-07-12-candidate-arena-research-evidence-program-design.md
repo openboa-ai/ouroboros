@@ -1,8 +1,8 @@
 # CandidateArena Research Evidence Program Design
 
-**Status:** Design complete; the listener-capable mechanics suite passes, and implementation of the
-next evidence level is gated on one prospective `ResearchControlStudy` through the real arm/session
-composition
+**Status:** The listener-capable six-replication protocol run closes and restarts exactly through
+real arm/session composition. All 12 fixture slots were pair-ineligible on minimum elapsed time, so
+qualified discovery and the Gate 1 adaptive-effect claim remain unsupported.
 
 ## Goal
 
@@ -58,9 +58,15 @@ The current `ResearchControlStudy` remains the first causal gate. Before impleme
 6. retain all failure and cost evidence;
 7. reproduce the complete graph after process restart.
 
-A listener-capable full-suite run now proves the current provider/session lifecycle mechanics can
-execute in the required environment. It is not a prospective study outcome. Failure to complete
-this gate blocks later schema and policy implementation but does not erase the tested mechanics.
+A listener-capable six-replication fixture study now proves the current provider/session lifecycle
+mechanics can execute in the required environment: all campaign denominators close, 24 providers
+and 24 sandboxes stop symmetrically, and restart adds no effects. Every one-observation pair was
+`evidence_ineligible` because its shared first tick precedes activation and therefore cannot meet a
+positive pair elapsed minimum. Individual sides qualified, but the study had six ties, zero
+non-ties, p-value 1, and `insufficient_non_tied_replications`. This is prospective protocol evidence,
+not qualified-discovery, market, economic, or causal-effect evidence. Gate 1 therefore requires a
+multi-decision cadence that can produce eligible terminal comparisons before any allocation-policy
+or condition-generalization claim.
 
 ## Gate 2: Baseline And Market-Condition Generalization
 
@@ -198,14 +204,17 @@ it leaves the broader adaptive claim unsupported.
 
 ## Implementation Order
 
-1. Collect one listener-capable prospective `ResearchControlStudy` through the current real arm
-   factory and process supervisor.
-2. Audit the resulting operational failure distribution and denominator closure.
-3. Freeze a coarse public market-condition classifier and stratified analysis policy.
-4. Implement a separate multi-study generalization record only after review of steps 1 to 3.
-5. Run direction assignment, memory, and researcher-baseline factorials as separate bounded
+1. **Complete:** collect and restart one listener-capable six-replication protocol study through the
+   current real arm factory; classify all denominators and lifecycle effects.
+2. Implement and prove a post-activation decision cadence that reaches at least one qualified
+   terminal comparison without synthesizing a Gateway decision.
+3. Repeat the precommitted same-baseline study only after step 2 can produce eligible denominators.
+4. Freeze a coarse public market-condition classifier and stratified analysis policy only after a
+   credible Gate 1 outcome exists.
+5. Implement a separate multi-study generalization record after review of steps 1 to 4.
+6. Run direction assignment, memory, and researcher-baseline factorials as separate bounded
    protocols.
-6. Consider broader allocation-policy approval only after generalization evidence; keep
+7. Consider broader allocation-policy approval only after generalization evidence; keep
    TradingPromotion and live authority separate.
 
 ## Non-Goals

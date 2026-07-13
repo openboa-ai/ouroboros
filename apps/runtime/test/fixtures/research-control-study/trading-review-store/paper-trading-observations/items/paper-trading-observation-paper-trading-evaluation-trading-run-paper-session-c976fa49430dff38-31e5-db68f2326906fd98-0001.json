@@ -14,12 +14,12 @@
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-cd8a10910eede611"
   },
-  "paper_trading_comparison_tick_digest": "sha256:0148fcd706ce4d9bfa0d7f65146136d2204d91fd9d387b62e018cf408f45cf7d",
+  "paper_trading_comparison_tick_digest": "sha256:f89c4e1d76ca269449a9789b8fc387018a04d17b5bc2a202a1096c59f498fed6",
   "paper_trading_comparison_checkpoint_attempt_ref": {
     "record_kind": "paper_trading_comparison_checkpoint_attempt",
     "id": "paper-comparison-checkpoint-attempt-35b07d55ae0fb544afcb"
   },
-  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:f54208c8789ca6da1d34197fadfe803b7255e85c75440f3f8d2ca77ecb18adbf",
+  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:e490332ec4cb7338a008a867b1935be6fd288fb9098a6903e184151392526fa2",
   "candidate_ref": {
     "record_kind": "trading_system_candidate",
     "id": "fixture-candidate-sealed-replay-001"

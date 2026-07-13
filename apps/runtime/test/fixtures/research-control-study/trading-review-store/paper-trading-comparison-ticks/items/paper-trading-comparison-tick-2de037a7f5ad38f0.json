@@ -6,13 +6,13 @@
     "record_kind": "paper_trading_comparison_commitment",
     "id": "paper-trading-comparison-80506ef355a15a27"
   },
-  "paper_trading_comparison_commitment_digest": "sha256:0f13e33cd599cb4b46b22f7ab14e47558155c23e8af9b000ed6aa4096d5d777c",
+  "paper_trading_comparison_commitment_digest": "sha256:cf1227c6440b39244901e02ef6049abb93206d3dd101e4c10c33142104c6fba8",
   "sequence": 2,
   "previous_tick_ref": {
     "record_kind": "paper_trading_comparison_tick",
     "id": "paper-trading-comparison-tick-6cea95bfefe5c459"
   },
-  "previous_tick_digest": "sha256:dcc8d7031503ed98055d7af2692be6df4a71b0972225c0ab3bae691e8e2c45fc",
+  "previous_tick_digest": "sha256:68a567cc7d7157b3e2db2a863e65fd315df8d5632c437521b411acce9fae3119",
   "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
   "market_snapshot": {
     "symbol": "BTCUSDT",
@@ -52,6 +52,6 @@
     "authority_status": "read_only"
   },
   "observed_at": "2026-07-10T00:05:38.000Z",
-  "tick_digest": "sha256:86ee4b68459a17373137189a5f140924e116263c116750cf4b1470b8c9482732",
+  "tick_digest": "sha256:926d9ffe9349b1783dfb90e581f13ba858973577026fe44087b5d5e0a2c1d8d2",
   "authority_status": "not_live"
 }

@@ -87,6 +87,9 @@ describe("ResearchControlStudy TradingReview fixture", () => {
     expect(systemCode?.artifact_digest).toBe(
       campaign!.challenger.system_code_artifact_digest
     );
+    expect(systemCode?.capability_policy_ref.id).toBe(
+      "capability-policy-clock-fixture-v1"
+    );
     expect(admission?.system_code_ref).toEqual(campaign!.challenger.system_code_ref);
     expect(commitment?.candidate_ref).toEqual(promotion!.candidate_ref);
     expect(commitment?.authority_status).toBe("not_live");
