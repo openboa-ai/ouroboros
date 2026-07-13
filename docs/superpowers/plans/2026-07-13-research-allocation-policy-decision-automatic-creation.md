@@ -168,13 +168,13 @@ git commit -m "feat: ensure terminal study policy decisions"
 - Consumes: optional `ResearchAllocationPolicyDecisionCoordinatorLifecycle`.
 - Produces: post-catch-up invocation and optional bounded `lastPolicyDecision` status.
 
-- [ ] **Step 1: Write failing scheduler-order and boundary tests**
+- [x] **Step 1: Write failing scheduler-order and boundary tests**
 
 Prove the event order is commitment, supervisor catch-up, policy decision, wait. Prove no decision
 call on contention, failure, stop, or invalid supervisor state. A decision failure must produce a
 terminal scheduler status after preserving the completed-study counters.
 
-- [ ] **Step 2: Run scheduler tests and verify RED**
+- [x] **Step 2: Run scheduler tests and verify RED**
 
 ```bash
 npx vitest run apps/runtime/test/research-control-study-scheduler.test.ts
@@ -182,13 +182,13 @@ npx vitest run apps/runtime/test/research-control-study-scheduler.test.ts
 
 Expected: constructor does not accept or invoke the coordinator.
 
-- [ ] **Step 3: Add post-catch-up reconciliation**
+- [x] **Step 3: Add post-catch-up reconciliation**
 
 Invoke `ensureNextDecision` only after terminal status validation and only for `caught_up`. Preserve
 the exact old status shape when no coordinator is configured. Clone and expose the latest result as
 `lastPolicyDecision` when configured.
 
-- [ ] **Step 4: Verify and commit Task 3**
+- [x] **Step 4: Verify and commit Task 3**
 
 ```bash
 npx vitest run apps/runtime/test/research-control-study-scheduler.test.ts

@@ -1,4 +1,8 @@
 import type {
+  ResearchAllocationPolicyDecisionCoordinationResult,
+  ResearchAllocationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-allocation-policy-decision";
+import type {
   ResearchControlStudyProcessStatus,
   ResearchControlStudyProcessSupervisor
 } from "./research-control-study-process-supervisor";
@@ -29,6 +33,7 @@ export type ResearchControlStudySchedulerStatus = (
     }
 ) & {
   lastCommitment?: ResearchControlStudyCommitmentResult;
+  lastPolicyDecision?: ResearchAllocationPolicyDecisionCoordinationResult;
 };
 
 export interface ResearchControlStudySchedulerLifecycle {
@@ -71,6 +76,8 @@ implements ResearchControlStudySchedulerLifecycle {
   private cycleCount = 0;
   private completedStudyCount = 0;
   private lastCommitment?: ResearchControlStudyCommitmentResult;
+  private lastPolicyDecision?:
+    ResearchAllocationPolicyDecisionCoordinationResult;
   private runPromise?: Promise<void>;
   private stopRequested = false;
   private stopSignal = deferredSignal();
@@ -78,6 +85,8 @@ implements ResearchControlStudySchedulerLifecycle {
   constructor(private readonly options: {
     supervisor: SupervisorLifecycle;
     commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
+    policyDecisionCoordinator?:
+      ResearchAllocationPolicyDecisionCoordinatorLifecycle;
     pollIntervalMs?: number;
     now?: () => string;
     sleep?: (milliseconds: number) => Promise<void>;
@@ -115,9 +124,15 @@ implements ResearchControlStudySchedulerLifecycle {
 
   status(): ResearchControlStudySchedulerStatus {
     const status = structuredClone(this.currentStatus);
-    return this.lastCommitment
-      ? { ...status, lastCommitment: structuredClone(this.lastCommitment) }
-      : status;
+    return {
+      ...status,
+      ...(this.lastCommitment
+        ? { lastCommitment: structuredClone(this.lastCommitment) }
+        : {}),
+      ...(this.lastPolicyDecision
+        ? { lastPolicyDecision: structuredClone(this.lastPolicyDecision) }
+        : {})
+    };
   }
 
   async drain(): Promise<void> {
@@ -195,6 +210,12 @@ implements ResearchControlStudySchedulerLifecycle {
         if (this.stopRequested) {
           this.markStopped();
           return;
+        }
+        if (supervisorStatus.status === "caught_up" &&
+          this.options.policyDecisionCoordinator) {
+          this.lastPolicyDecision = structuredClone(
+            await this.options.policyDecisionCoordinator.ensureNextDecision()
+          );
         }
 
         const nextPollAt = this.nextPollAt();

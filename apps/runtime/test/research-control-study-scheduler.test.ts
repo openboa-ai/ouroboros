@@ -113,6 +113,121 @@ describe("ResearchControlStudyScheduler", () => {
     await scheduler.stop();
   });
 
+  it("ensures one policy decision after catch-up and before bounded wait", async () => {
+    const events: string[] = [];
+    const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
+    const scheduler = new ResearchControlStudyScheduler({
+      commitmentCoordinator: {
+        async ensureCommittedStudy() {
+          events.push("commitment");
+          return {
+            status: "existing" as const,
+            studyId: "research-control-study-complete"
+          };
+        }
+      },
+      supervisor: new OrderedCatchUpSupervisor(events),
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          events.push("policy-decision");
+          return {
+            status: "ensured" as const,
+            decisionId: "research-allocation-policy-decision-001",
+            studyOutcomeId: "research-control-study-outcome-001",
+            decisionStatus: "approved" as const
+          };
+        }
+      },
+      pollIntervalMs: 10_000,
+      now: clock.now,
+      sleep: clock.sleep
+    });
+
+    scheduler.start();
+    await clock.waiting();
+
+    expect(events).toEqual([
+      "commitment",
+      "supervisor-start",
+      "supervisor-caught-up",
+      "policy-decision"
+    ]);
+    expect(scheduler.status()).toMatchObject({
+      status: "waiting",
+      cycleCount: 1,
+      lastPolicyDecision: {
+        status: "ensured",
+        decisionId: "research-allocation-policy-decision-001",
+        studyOutcomeId: "research-control-study-outcome-001",
+        decisionStatus: "approved"
+      }
+    });
+
+    await scheduler.stop();
+  });
+
+  it("does not decide policy while the oldest study is contended", async () => {
+    const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
+    let decisionCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor: new ScriptedSupervisor([{
+        status: "contended",
+        completedStudyCount: 0,
+        studyId: "study-contended",
+        reason: "owner_alive",
+        leaseExpiresAt: "2026-07-13T00:00:30.000Z"
+      }]),
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      now: clock.now,
+      sleep: clock.sleep
+    });
+
+    scheduler.start();
+    await clock.waiting();
+
+    expect(decisionCount).toBe(0);
+    expect(scheduler.status()).not.toHaveProperty("lastPolicyDecision");
+    await scheduler.stop();
+  });
+
+  it("fails after catch-up when automatic policy decision fails", async () => {
+    const error = Object.assign(new Error("injected policy decision failure"), {
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor: new ScriptedSupervisor([{
+        status: "caught_up",
+        completedStudyCount: 2
+      }]),
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          throw error;
+        }
+      },
+      sleep: async () => {
+        throw Object.assign(new Error("unexpected bounded wait"), {
+          code: "unexpected_bounded_wait"
+        });
+      }
+    });
+
+    scheduler.start();
+    await scheduler.drain();
+
+    expect(scheduler.status()).toEqual({
+      status: "failed",
+      cycleCount: 1,
+      completedStudyCount: 2,
+      errorCode: "research_allocation_policy_decision_coordination_failed",
+      errorMessage: "injected policy decision failure"
+    });
+  });
+
   it("fails before discovery when automatic commitment fails", async () => {
     const supervisor = new ScriptedSupervisor([
       { status: "caught_up", completedStudyCount: 0 }
@@ -218,7 +333,16 @@ describe("ResearchControlStudyScheduler", () => {
 
   it("delegates stop while a supervisor cycle is active", async () => {
     const supervisor = new GatedSupervisor();
-    const scheduler = new ResearchControlStudyScheduler({ supervisor });
+    let decisionCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor,
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      }
+    });
 
     scheduler.start();
     await supervisor.started;
@@ -226,6 +350,7 @@ describe("ResearchControlStudyScheduler", () => {
     await stopping;
 
     expect(supervisor.stopCount).toBe(1);
+    expect(decisionCount).toBe(0);
     expect(scheduler.status()).toEqual({
       status: "stopped",
       cycleCount: 0,
@@ -241,12 +366,22 @@ describe("ResearchControlStudyScheduler", () => {
       errorCode: "research_control_study_executor_action_failed",
       errorMessage: "injected failure"
     }]);
-    const scheduler = new ResearchControlStudyScheduler({ supervisor });
+    let decisionCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor,
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      }
+    });
 
     scheduler.start();
     await scheduler.drain();
 
     expect(supervisor.startCount).toBe(1);
+    expect(decisionCount).toBe(0);
     expect(scheduler.status()).toEqual({
       status: "failed",
       cycleCount: 1,
@@ -265,7 +400,16 @@ describe("ResearchControlStudyScheduler", () => {
       status: "discovering",
       completedStudyCount: 0
     }]);
-    const scheduler = new ResearchControlStudyScheduler({ supervisor });
+    let decisionCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor,
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      }
+    });
 
     scheduler.start();
     await scheduler.drain();
@@ -275,6 +419,7 @@ describe("ResearchControlStudyScheduler", () => {
       cycleCount: 1,
       errorCode: "research_control_study_scheduler_supervisor_invalid"
     });
+    expect(decisionCount).toBe(0);
   });
 
   it.each([0, -1, 1.5, Number.POSITIVE_INFINITY])(
@@ -356,6 +501,31 @@ class OrderedSupervisor {
 
   status(): ResearchControlStudyProcessStatus {
     return { status: "caught_up", completedStudyCount: 0 };
+  }
+}
+
+class OrderedCatchUpSupervisor {
+  private currentStatus: ResearchControlStudyProcessStatus = { status: "idle" };
+
+  constructor(private readonly events: string[]) {}
+
+  start(): "started" {
+    this.events.push("supervisor-start");
+    this.currentStatus = { status: "discovering", completedStudyCount: 0 };
+    return "started";
+  }
+
+  async drain(): Promise<void> {
+    this.events.push("supervisor-caught-up");
+    this.currentStatus = { status: "caught_up", completedStudyCount: 1 };
+  }
+
+  async stop(): Promise<void> {
+    this.currentStatus = { status: "stopped", completedStudyCount: 1 };
+  }
+
+  status(): ResearchControlStudyProcessStatus {
+    return structuredClone(this.currentStatus);
   }
 }
 
