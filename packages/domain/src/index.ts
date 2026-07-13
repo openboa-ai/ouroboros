@@ -7884,6 +7884,108 @@ export interface ResearchControlStudyOutcomeRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export type ResearchGeneralizationOutcomeSlotStatus =
+  | "completed"
+  | "missing_study"
+  | "missing_outcome"
+  | "ineligible";
+
+export type ResearchGeneralizationOutcomeSlotReason =
+  | "eligible_terminal_study"
+  | "planned_study_not_committed"
+  | "study_outcome_not_terminal"
+  | "protocol_assignment_mismatch"
+  | "protocol_condition_mismatch"
+  | "study_commitment_outside_protocol_window"
+  | "study_spacing_not_elapsed"
+  | "source_baseline_reused_within_condition_block";
+
+export interface ResearchGeneralizationOutcomeSlotResult {
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  planned_study_ref: Ref;
+  slot_status: ResearchGeneralizationOutcomeSlotStatus;
+  status_reason: ResearchGeneralizationOutcomeSlotReason;
+  study_ref: Ref | null;
+  study_digest: string | null;
+  study_outcome_ref: Ref | null;
+  study_outcome_digest: string | null;
+  baseline_snapshot_digest: string | null;
+  source_system_code_artifact_digest: string | null;
+  observed_rate_difference: number | null;
+  study_effect_status:
+    | "adaptive_positive"
+    | "static_positive"
+    | "tied"
+    | null;
+}
+
+export interface ResearchGeneralizationOutcomeBlockResult {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  planned_study_count: 2;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  adaptive_positive_count: number;
+  static_positive_count: number;
+  distinct_baseline_count: number;
+  mean_rate_difference: number | null;
+  block_status:
+    | "complete_positive"
+    | "complete_non_positive"
+    | "incomplete";
+}
+
+export interface ResearchGeneralizationOutcomeRecord extends BaseRecord {
+  record_kind: "research_generalization_outcome";
+  research_generalization_outcome_id: string;
+  protocol_ref: Ref;
+  protocol_digest: string;
+  target_allocation_policy_digest: string;
+  slot_results: ResearchGeneralizationOutcomeSlotResult[];
+  block_results: [
+    ResearchGeneralizationOutcomeBlockResult,
+    ResearchGeneralizationOutcomeBlockResult,
+    ResearchGeneralizationOutcomeBlockResult
+  ];
+  planned_study_count: 6;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  adaptive_positive_count: number;
+  static_positive_count: number;
+  distinct_baseline_count: number;
+  equal_weight_mean_rate_difference: number | null;
+  exact_sign_test_p_value: number;
+  harmful_condition_blocks: ResearchGeneralizationMarketConditionBlock[];
+  inference_status:
+    | "generalization_supported"
+    | "generalization_not_supported"
+    | "insufficient_generalization_evidence";
+  causal_scope:
+    "pre_effect_market_condition_blocked_cross_baseline_study_effects";
+  policy_decision_eligibility:
+    | "eligible_for_separate_generalization_policy_decision"
+    | "not_eligible";
+  next_action:
+    | "review_broad_research_allocation_policy"
+    | "retain_negative_generalization_evidence"
+    | "complete_or_redesign_generalization_protocol";
+  adjudicated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
 export interface ResearchAllocationPolicyDecisionPolicy {
   policy_version: "adaptive_supported_effect_v1";
   target_allocation_mode: "adaptive_default";
@@ -8247,6 +8349,19 @@ export function researchControlStudyOutcomeDigestInput(
     version: _version,
     research_control_study_outcome_id: _id,
     study_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationOutcomeDigestInput(
+  record: ResearchGeneralizationOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_outcome_id: _id,
+    outcome_digest: _digest,
     ...payload
   } = record;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
@@ -8673,6 +8788,303 @@ export function researchControlStudyOutcomeHasRuntimeShape(
     outcome.inference_status === inference &&
     outcome.policy_decision_eligibility === eligibility &&
     outcome.next_action === nextAction;
+}
+
+export function researchGeneralizationOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_outcome_id",
+    "protocol_ref",
+    "protocol_digest",
+    "target_allocation_policy_digest",
+    "slot_results",
+    "block_results",
+    "planned_study_count",
+    "completed_study_count",
+    "non_tied_study_count",
+    "tied_study_count",
+    "missing_study_count",
+    "ineligible_study_count",
+    "adaptive_positive_count",
+    "static_positive_count",
+    "distinct_baseline_count",
+    "equal_weight_mean_rate_difference",
+    "exact_sign_test_p_value",
+    "harmful_condition_blocks",
+    "inference_status",
+    "causal_scope",
+    "policy_decision_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_outcome_id) ||
+    !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !Array.isArray(value.slot_results) ||
+    value.slot_results.length !== 6 || !Array.isArray(value.block_results) ||
+    value.block_results.length !== 3 || value.planned_study_count !== 6 ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.outcome_digest) ||
+    value.causal_scope !==
+      "pre_effect_market_condition_blocked_cross_baseline_study_effects" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchGeneralizationOutcomeRecord;
+  if (!outcome.slot_results.every((slot, index) =>
+    researchGeneralizationOutcomeSlotHasRuntimeShape(slot, index + 1)
+  ) || !outcome.block_results.every((block, index) =>
+    researchGeneralizationOutcomeBlockHasRuntimeShape(block, index)
+  )) {
+    return false;
+  }
+  const completed = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "completed"
+  );
+  const missing = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "missing_study" ||
+    slot.slot_status === "missing_outcome"
+  );
+  const ineligible = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "ineligible"
+  );
+  const effects = completed.map((slot) => slot.observed_rate_difference!);
+  const adaptivePositive = effects.filter((effect) => effect > 0).length;
+  const staticPositive = effects.filter((effect) => effect < 0).length;
+  const tied = effects.length - adaptivePositive - staticPositive;
+  const nonTied = adaptivePositive + staticPositive;
+  const distinctBaselines = new Set(completed.map((slot) =>
+    slot.baseline_snapshot_digest!
+  )).size;
+  if (outcome.completed_study_count !== completed.length ||
+    outcome.non_tied_study_count !== nonTied ||
+    outcome.tied_study_count !== tied ||
+    outcome.missing_study_count !== missing.length ||
+    outcome.ineligible_study_count !== ineligible.length ||
+    outcome.adaptive_positive_count !== adaptivePositive ||
+    outcome.static_positive_count !== staticPositive ||
+    outcome.distinct_baseline_count !== distinctBaselines ||
+    outcome.exact_sign_test_p_value !== researchControlStudyExactSignPValue(
+      adaptivePositive,
+      staticPositive
+    )) {
+    return false;
+  }
+  const expectedBlocks = ["long", "short", "flat"] as const;
+  for (let index = 0; index < expectedBlocks.length; index += 1) {
+    const slots = outcome.slot_results.filter((slot) =>
+      slot.condition_block === expectedBlocks[index]
+    );
+    if (!researchGeneralizationOutcomeBlockMatches(
+      outcome.block_results[index]!,
+      slots
+    )) {
+      return false;
+    }
+  }
+  const completeBlockMeans = outcome.block_results.map((block) =>
+    block.mean_rate_difference
+  );
+  const equalWeightMean = completeBlockMeans.every((mean) => mean !== null)
+    ? comparisonRound6(
+        completeBlockMeans.reduce((sum, mean) => sum + Number(mean), 0) / 3
+      )
+    : null;
+  const harmfulBlocks = outcome.block_results.filter((block) =>
+    block.mean_rate_difference !== null && block.mean_rate_difference <= 0
+  ).map((block) => block.condition_block);
+  const sufficient = completed.length === 6 && missing.length === 0 &&
+    ineligible.length === 0 && nonTied === 6 && distinctBaselines >= 3 &&
+    equalWeightMean !== null;
+  const supported = sufficient &&
+    outcome.exact_sign_test_p_value <= 0.05 && equalWeightMean > 0 &&
+    harmfulBlocks.length === 0;
+  const inference = !sufficient
+    ? "insufficient_generalization_evidence" as const
+    : supported
+      ? "generalization_supported" as const
+      : "generalization_not_supported" as const;
+  const eligibility = supported
+    ? "eligible_for_separate_generalization_policy_decision" as const
+    : "not_eligible" as const;
+  const nextAction = inference === "generalization_supported"
+    ? "review_broad_research_allocation_policy" as const
+    : inference === "generalization_not_supported"
+      ? "retain_negative_generalization_evidence" as const
+      : "complete_or_redesign_generalization_protocol" as const;
+  return outcome.equal_weight_mean_rate_difference === equalWeightMean &&
+    outcome.harmful_condition_blocks.length === harmfulBlocks.length &&
+    outcome.harmful_condition_blocks.every((block, index) =>
+      block === harmfulBlocks[index]
+    ) && outcome.inference_status === inference &&
+    outcome.policy_decision_eligibility === eligibility &&
+    outcome.next_action === nextAction;
+}
+
+function researchGeneralizationOutcomeSlotHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is ResearchGeneralizationOutcomeSlotResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "planned_study_ref",
+    "slot_status",
+    "status_reason",
+    "study_ref",
+    "study_digest",
+    "study_outcome_ref",
+    "study_outcome_digest",
+    "baseline_snapshot_digest",
+    "source_system_code_artifact_digest",
+    "observed_rate_difference",
+    "study_effect_status"
+  ]) || value.slot_index !== slotIndex ||
+    !comparisonRef(value.planned_study_ref, "research_control_study")) {
+    return false;
+  }
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long", "short", "flat"
+  ];
+  if (value.condition_block !== expectedBlocks[Math.floor((slotIndex - 1) / 2)] ||
+    value.condition_block_study_index !== ((slotIndex - 1) % 2) + 1) {
+    return false;
+  }
+  const slot = value as unknown as ResearchGeneralizationOutcomeSlotResult;
+  const hasStudy = comparisonRef(slot.study_ref, "research_control_study") &&
+    researchControlCampaignSha256Digest(slot.study_digest) &&
+    researchControlCampaignSha256Digest(slot.baseline_snapshot_digest) &&
+    comparisonString(slot.source_system_code_artifact_digest);
+  const hasOutcome = comparisonRef(
+    slot.study_outcome_ref,
+    "research_control_study_outcome"
+  ) && researchControlCampaignSha256Digest(slot.study_outcome_digest) &&
+    comparisonFinite(slot.observed_rate_difference) && [
+      "adaptive_positive", "static_positive", "tied"
+    ].includes(String(slot.study_effect_status));
+  if (slot.slot_status === "missing_study") {
+    return slot.status_reason === "planned_study_not_committed" &&
+      slot.study_ref === null && slot.study_digest === null &&
+      slot.study_outcome_ref === null && slot.study_outcome_digest === null &&
+      slot.baseline_snapshot_digest === null &&
+      slot.source_system_code_artifact_digest === null &&
+      slot.observed_rate_difference === null &&
+      slot.study_effect_status === null;
+  }
+  if (slot.slot_status === "missing_outcome") {
+    return slot.status_reason === "study_outcome_not_terminal" && hasStudy &&
+      slot.study_ref!.id === slot.planned_study_ref.id &&
+      slot.study_outcome_ref === null && slot.study_outcome_digest === null &&
+      slot.observed_rate_difference === null &&
+      slot.study_effect_status === null;
+  }
+  if (!hasStudy || !hasOutcome || slot.study_ref!.id !==
+      slot.planned_study_ref.id || slot.study_effect_status !==
+      (slot.observed_rate_difference! > 0
+        ? "adaptive_positive"
+        : slot.observed_rate_difference! < 0
+          ? "static_positive"
+          : "tied")) {
+    return false;
+  }
+  if (slot.slot_status === "completed") {
+    return slot.status_reason === "eligible_terminal_study";
+  }
+  return slot.slot_status === "ineligible" && [
+    "protocol_assignment_mismatch",
+    "protocol_condition_mismatch",
+    "study_commitment_outside_protocol_window",
+    "study_spacing_not_elapsed",
+    "source_baseline_reused_within_condition_block"
+  ].includes(slot.status_reason);
+}
+
+function researchGeneralizationOutcomeBlockHasRuntimeShape(
+  value: unknown,
+  blockIndex: number
+): value is ResearchGeneralizationOutcomeBlockResult {
+  const blocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long", "short", "flat"
+  ];
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "condition_block",
+    "planned_study_count",
+    "completed_study_count",
+    "non_tied_study_count",
+    "tied_study_count",
+    "missing_study_count",
+    "ineligible_study_count",
+    "adaptive_positive_count",
+    "static_positive_count",
+    "distinct_baseline_count",
+    "mean_rate_difference",
+    "block_status"
+  ]) && value.condition_block === blocks[blockIndex] &&
+    value.planned_study_count === 2 && [
+      "completed_study_count",
+      "non_tied_study_count",
+      "tied_study_count",
+      "missing_study_count",
+      "ineligible_study_count",
+      "adaptive_positive_count",
+      "static_positive_count",
+      "distinct_baseline_count"
+    ].every((key) => comparisonNonNegative(value[key])) &&
+    (value.mean_rate_difference === null ||
+      comparisonFinite(value.mean_rate_difference)) && [
+      "complete_positive", "complete_non_positive", "incomplete"
+    ].includes(String(value.block_status));
+}
+
+function researchGeneralizationOutcomeBlockMatches(
+  block: ResearchGeneralizationOutcomeBlockResult,
+  slots: ResearchGeneralizationOutcomeSlotResult[]
+): boolean {
+  const completed = slots.filter((slot) => slot.slot_status === "completed");
+  const effects = completed.map((slot) => slot.observed_rate_difference!);
+  const adaptivePositive = effects.filter((effect) => effect > 0).length;
+  const staticPositive = effects.filter((effect) => effect < 0).length;
+  const tied = effects.length - adaptivePositive - staticPositive;
+  const mean = completed.length === 2
+    ? comparisonRound6(effects.reduce((sum, effect) => sum + effect, 0) / 2)
+    : null;
+  const status = mean === null
+    ? "incomplete"
+    : mean > 0
+      ? "complete_positive"
+      : "complete_non_positive";
+  return slots.length === 2 && block.completed_study_count === completed.length &&
+    block.non_tied_study_count === adaptivePositive + staticPositive &&
+    block.tied_study_count === tied && block.missing_study_count ===
+      slots.filter((slot) => slot.slot_status === "missing_study" ||
+        slot.slot_status === "missing_outcome").length &&
+    block.ineligible_study_count === slots.filter((slot) =>
+      slot.slot_status === "ineligible"
+    ).length && block.adaptive_positive_count === adaptivePositive &&
+    block.static_positive_count === staticPositive &&
+    block.distinct_baseline_count === new Set(completed.map((slot) =>
+      slot.baseline_snapshot_digest!
+    )).size && block.mean_rate_difference === mean &&
+    block.block_status === status;
 }
 
 export function researchAllocationPolicyDecisionHasRuntimeShape(

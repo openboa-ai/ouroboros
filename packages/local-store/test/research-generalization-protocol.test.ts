@@ -1,9 +1,15 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  researchControlStudyDigestInput,
+  researchControlStudyOutcomeDigestInput,
+  researchGeneralizationOutcomeDigestInput,
+  type ResearchControlStudyOutcomeRecord,
+  type ResearchControlStudyRecord,
   type ResearchGeneralizationProtocolRecord
 } from "@ouroboros/domain";
 import {
@@ -13,6 +19,13 @@ import { decideResearchControlStudy } from
   "@ouroboros/application/candidate/research-control-study";
 import { decideResearchGeneralizationMarketCondition } from
   "@ouroboros/application/candidate/research-generalization-market-condition";
+import {
+  decideResearchGeneralizationOutcome
+} from "@ouroboros/application/candidate/research-generalization-outcome";
+import {
+  exactTwoSidedSignTestPValue,
+  researchControlStudyOutcomeId
+} from "@ouroboros/application/candidate/research-control-study-outcome";
 import { LocalStore } from "../src/index";
 
 describe("LocalStore ResearchGeneralizationProtocol", () => {
@@ -211,7 +224,250 @@ describe("LocalStore ResearchGeneralizationProtocol", () => {
       code: "research_control_study_generalization_source_reused"
     });
   });
+
+  it("appends, reloads, lists, and replays an exact generalization outcome", async () => {
+    const graph = terminalGeneralizationGraph();
+    await persistGeneralizationSourceGraph(store, graph);
+    const outcome = decideResearchGeneralizationOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-20T00:00:00.000Z"
+    });
+
+    await expect(store.recordResearchGeneralizationOutcome(outcome))
+      .resolves.toEqual(outcome);
+    await expect(store.getResearchGeneralizationOutcome(
+      outcome.research_generalization_outcome_id
+    )).resolves.toEqual(outcome);
+    await expect(store.listResearchGeneralizationOutcomes())
+      .resolves.toEqual([outcome]);
+    await expect(store.recordResearchGeneralizationOutcome(outcome))
+      .resolves.toEqual(outcome);
+  });
+
+  it("converges exact generalization outcome publication across stores", async () => {
+    const sharedRoot = path.join(root, "outcome-exact-race");
+    const left = new LocalStore(sharedRoot);
+    const right = new LocalStore(sharedRoot);
+    await left.initialize();
+    await right.initialize();
+    const graph = terminalGeneralizationGraph();
+    await persistGeneralizationSourceGraph(left, graph);
+    const outcome = decideResearchGeneralizationOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-20T00:00:00.000Z"
+    });
+
+    await expect(Promise.all([
+      left.recordResearchGeneralizationOutcome(outcome),
+      right.recordResearchGeneralizationOutcome(structuredClone(outcome))
+    ])).resolves.toEqual([outcome, outcome]);
+    await expect(left.listResearchGeneralizationOutcomes())
+      .resolves.toEqual([outcome]);
+  });
+
+  it("publishes one winner for conflicting outcome bytes", async () => {
+    const sharedRoot = path.join(root, "outcome-conflict-race");
+    const left = new LocalStore(sharedRoot);
+    const right = new LocalStore(sharedRoot);
+    await left.initialize();
+    await right.initialize();
+    const graph = terminalGeneralizationGraph();
+    await persistGeneralizationSourceGraph(left, graph);
+    const first = decideResearchGeneralizationOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-20T00:00:00.000Z"
+    });
+    const second = decideResearchGeneralizationOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-20T00:00:01.000Z"
+    });
+
+    const settled = await Promise.allSettled([
+      left.recordResearchGeneralizationOutcome(first),
+      right.recordResearchGeneralizationOutcome(second)
+    ]);
+
+    expect(settled.filter((result) => result.status === "fulfilled"))
+      .toHaveLength(1);
+    expect(settled.filter((result) => result.status === "rejected"))
+      .toEqual([expect.objectContaining({
+        reason: expect.objectContaining({
+          code: "research_generalization_outcome_conflict"
+        })
+      })]);
+    const persisted = await left.listResearchGeneralizationOutcomes();
+    expect(persisted).toHaveLength(1);
+    expect([first, second]).toContainEqual(persisted[0]);
+  });
+
+  it("rejects outcome digest drift, missing graph, and corrupt reload", async () => {
+    const graph = terminalGeneralizationGraph();
+    await persistGeneralizationSourceGraph(store, graph);
+    const outcome = decideResearchGeneralizationOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-20T00:00:00.000Z"
+    });
+    const drifted = structuredClone(outcome);
+    drifted.completed_study_count = 5;
+
+    await expect(store.recordResearchGeneralizationOutcome(drifted))
+      .rejects.toMatchObject({
+        code: "invalid_research_generalization_outcome_input"
+      });
+
+    const missing = structuredClone(outcome);
+    missing.slot_results[0]!.study_outcome_ref!.id = "absent-outcome";
+    missing.outcome_digest = exactDigest(
+      researchGeneralizationOutcomeDigestInput(missing)
+    );
+    await expect(store.recordResearchGeneralizationOutcome(missing))
+      .rejects.toMatchObject({
+        code: "research_generalization_outcome_reference_not_found"
+      });
+
+    const corruptRoot = path.join(
+      root,
+      "research-generalization-outcomes",
+      "items"
+    );
+    await mkdir(corruptRoot, { recursive: true });
+    await writeFile(path.join(corruptRoot, "corrupt.json"), JSON.stringify({
+      record_kind: "research_generalization_outcome",
+      research_generalization_outcome_id: "corrupt"
+    }));
+    await expect(store.listResearchGeneralizationOutcomes())
+      .rejects.toMatchObject({
+        code: "research_generalization_outcome_reload_failed"
+      });
+  });
 });
+
+async function persistGeneralizationSourceGraph(
+  store: LocalStore,
+  graph: ReturnType<typeof terminalGeneralizationGraph>
+): Promise<void> {
+  await store.recordResearchGeneralizationProtocol(graph.protocol);
+  const studyRoot = path.join(store.root(), "research-control-studies", "items");
+  const outcomeRoot = path.join(
+    store.root(),
+    "research-control-study-outcomes",
+    "items"
+  );
+  await mkdir(studyRoot, { recursive: true });
+  await mkdir(outcomeRoot, { recursive: true });
+  await Promise.all([
+    ...graph.studies.map((study) => writeFile(
+      path.join(studyRoot, `${study.research_control_study_id}.json`),
+      JSON.stringify(study, null, 2)
+    )),
+    ...graph.studyOutcomes.map((outcome) => writeFile(
+      path.join(
+        outcomeRoot,
+        `${outcome.research_control_study_outcome_id}.json`
+      ),
+      JSON.stringify(outcome, null, 2)
+    ))
+  ]);
+}
+
+function terminalGeneralizationGraph() {
+  const protocol = protocolFixture(
+    "generalization-outcome-protocol",
+    "2026-07-13T00:00:00.000Z"
+  );
+  const baselineCharacters = ["1", "2", "3", "1", "2", "3"];
+  const studies = protocol.study_slots.map((_, index) =>
+    assignedStudy(protocol, index, {
+      committedAt: new Date(
+        Date.parse(protocol.committed_at) + (index + 1) * 86_400_000
+      ).toISOString(),
+      sourceArtifactDigest: digest(String.fromCharCode(97 + index))
+    })
+  );
+  for (let index = 0; index < studies.length; index += 1) {
+    const study = studies[index]!;
+    study.baseline_snapshot_digest = digest(baselineCharacters[index]!);
+    for (const replication of study.replications) {
+      replication.expected_baseline_snapshot_digest =
+        study.baseline_snapshot_digest;
+    }
+    study.study_digest = exactDigest(researchControlStudyDigestInput(study));
+  }
+  return {
+    protocol,
+    studies,
+    studyOutcomes: studies.map((study) => studyOutcome(study, 1))
+  };
+}
+
+function studyOutcome(
+  study: ResearchControlStudyRecord,
+  effect: number
+): ResearchControlStudyOutcomeRecord {
+  const adaptivePositive = effect > 0 ? 6 : 0;
+  const staticPositive = effect < 0 ? 6 : 0;
+  const tied = effect === 0 ? 6 : 0;
+  const nonTied = adaptivePositive + staticPositive;
+  const pValue = exactTwoSidedSignTestPValue(
+    adaptivePositive,
+    staticPositive
+  );
+  const supported = adaptivePositive === 6 && pValue <= 0.05;
+  const outcome: ResearchControlStudyOutcomeRecord = {
+    record_kind: "research_control_study_outcome",
+    version: 1,
+    research_control_study_outcome_id: researchControlStudyOutcomeId(study),
+    study_ref: {
+      record_kind: "research_control_study",
+      id: study.research_control_study_id
+    },
+    study_digest: study.study_digest,
+    replication_results: study.replications.map((replication) => ({
+      replication_index: replication.replication_index,
+      campaign_ref: { ...replication.campaign_ref },
+      campaign_digest: digest("a"),
+      campaign_outcome_ref: {
+        record_kind: "research_control_campaign_outcome",
+        id: `${replication.campaign_ref.id}-outcome`
+      },
+      campaign_outcome_digest: digest("b"),
+      observed_rate_difference: effect
+    })),
+    planned_replication_count: 6,
+    completed_replication_count: 6,
+    adaptive_positive_count: adaptivePositive,
+    static_positive_count: staticPositive,
+    tied_count: tied,
+    non_tied_count: nonTied,
+    mean_rate_difference: effect,
+    exact_sign_test_p_value: pValue,
+    inference_status: nonTied < 6
+      ? "insufficient_non_tied_replications"
+      : supported
+        ? "adaptive_effect_supported"
+        : "adaptive_effect_not_supported",
+    causal_scope: "same_baseline_stochastic_replication_only",
+    policy_decision_eligibility: supported
+      ? "eligible_for_separate_policy_decision"
+      : "not_eligible",
+    next_action: supported
+      ? "review_research_allocation_policy"
+      : "accumulate_or_redesign_precommitted_study",
+    adjudicated_at: new Date(Date.parse(study.committed_at) + 3_600_000)
+      .toISOString(),
+    study_outcome_digest: digest("0"),
+    evaluation_authority: "external_to_trading_systems",
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  outcome.study_outcome_digest = exactDigest(
+    researchControlStudyOutcomeDigestInput(outcome)
+  );
+  return outcome;
+}
 
 function protocolFixture(
   idempotencyKey = "generalization-protocol",
@@ -299,6 +555,10 @@ function campaignPolicy() {
 
 function digest(character: string): string {
   return `sha256:${character.repeat(64)}`;
+}
+
+function exactDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function sourceFixture() {

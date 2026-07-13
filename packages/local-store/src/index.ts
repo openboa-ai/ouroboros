@@ -110,6 +110,8 @@ import {
   researchControlStudyHasRuntimeShape,
   researchControlStudyOutcomeDigestInput,
   researchControlStudyOutcomeHasRuntimeShape,
+  researchGeneralizationOutcomeDigestInput,
+  researchGeneralizationOutcomeHasRuntimeShape,
   researchGeneralizationMarketClassifierPolicyDigestInput,
   researchGeneralizationMarketConditionDigestInput,
   researchGeneralizationProtocolDigestInput,
@@ -179,6 +181,7 @@ import type {
   ResearchControlStudyCondition,
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord,
+  ResearchGeneralizationOutcomeRecord,
   ResearchGeneralizationProtocolRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
@@ -503,6 +506,13 @@ export type LocalStoreErrorCode =
   | "research_control_study_outcome_reference_mismatch"
   | "research_control_study_outcome_conflict"
   | "research_control_study_outcome_reload_failed"
+  | "invalid_research_generalization_outcome_input"
+  | "research_generalization_outcome_digest_mismatch"
+  | "research_generalization_outcome_identity_mismatch"
+  | "research_generalization_outcome_reference_not_found"
+  | "research_generalization_outcome_reference_mismatch"
+  | "research_generalization_outcome_conflict"
+  | "research_generalization_outcome_reload_failed"
   | "invalid_research_allocation_policy_decision_input"
   | "research_allocation_policy_decision_digest_mismatch"
   | "research_allocation_policy_decision_identity_mismatch"
@@ -805,6 +815,7 @@ type Collection =
   | "research-control-studies"
   | "research-control-study-outcomes"
   | "research-generalization-protocols"
+  | "research-generalization-outcomes"
   | "research-allocation-policy-decisions"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
@@ -4279,6 +4290,330 @@ export class LocalStore {
       );
     }
     return value;
+  }
+
+  async recordResearchGeneralizationOutcome(
+    outcome: ResearchGeneralizationOutcomeRecord
+  ): Promise<ResearchGeneralizationOutcomeRecord> {
+    if (!researchGeneralizationOutcomeHasRuntimeShape(outcome)) {
+      throw new LocalStoreError(
+        "invalid_research_generalization_outcome_input",
+        "invalid ResearchGeneralizationOutcome input"
+      );
+    }
+    if (outcome.outcome_digest !== comparisonExactRecordDigest(
+      researchGeneralizationOutcomeDigestInput(outcome)
+    )) {
+      throw new LocalStoreError(
+        "research_generalization_outcome_digest_mismatch",
+        "ResearchGeneralizationOutcome digest does not match its content"
+      );
+    }
+    if (outcome.research_generalization_outcome_id !==
+      researchGeneralizationOutcomeIdForProtocol(outcome.protocol_ref.id)) {
+      throw new LocalStoreError(
+        "research_generalization_outcome_identity_mismatch",
+        "ResearchGeneralizationOutcome identity is not deterministic"
+      );
+    }
+    await this.assertResearchGeneralizationOutcomeGraph(outcome);
+    const existing = await this.getResearchGeneralizationOutcome(
+      outcome.research_generalization_outcome_id
+    );
+    if (existing) {
+      if (!sameJson(existing, outcome)) {
+        throw new LocalStoreError(
+          "research_generalization_outcome_conflict",
+          "ResearchGeneralizationOutcome is append-only"
+        );
+      }
+      return existing;
+    }
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-generalization-outcomes",
+      outcome.research_generalization_outcome_id
+    ), outcome);
+    if (publication === "exists") {
+      const winner = await this.getResearchGeneralizationOutcome(
+        outcome.research_generalization_outcome_id
+      );
+      if (!winner || !sameJson(winner, outcome)) {
+        throw new LocalStoreError(
+          "research_generalization_outcome_conflict",
+          "ResearchGeneralizationOutcome is append-only"
+        );
+      }
+      return winner;
+    }
+    return outcome;
+  }
+
+  async getResearchGeneralizationOutcome(
+    outcomeId: string
+  ): Promise<ResearchGeneralizationOutcomeRecord | undefined> {
+    const value = await this.readOptionalRecord<unknown>(
+      "research-generalization-outcomes",
+      outcomeId
+    );
+    if (value === undefined) return undefined;
+    const outcome = this.assertPersistedResearchGeneralizationOutcome(value);
+    await this.assertResearchGeneralizationOutcomeGraph(outcome, true);
+    return outcome;
+  }
+
+  async listResearchGeneralizationOutcomes(): Promise<
+    ResearchGeneralizationOutcomeRecord[]
+  > {
+    const outcomes = (await this.readCollection<unknown>(
+      "research-generalization-outcomes"
+    )).map((value) =>
+      this.assertPersistedResearchGeneralizationOutcome(value)
+    );
+    await Promise.all(outcomes.map((outcome) =>
+      this.assertResearchGeneralizationOutcomeGraph(outcome, true)
+    ));
+    return outcomes.sort((left, right) =>
+      left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+      left.research_generalization_outcome_id.localeCompare(
+        right.research_generalization_outcome_id
+      )
+    );
+  }
+
+  private assertPersistedResearchGeneralizationOutcome(
+    value: unknown
+  ): ResearchGeneralizationOutcomeRecord {
+    if (!researchGeneralizationOutcomeHasRuntimeShape(value) ||
+      value.outcome_digest !== comparisonExactRecordDigest(
+        researchGeneralizationOutcomeDigestInput(value)
+      ) || value.research_generalization_outcome_id !==
+        researchGeneralizationOutcomeIdForProtocol(value.protocol_ref.id)) {
+      throw new LocalStoreError(
+        "research_generalization_outcome_reload_failed",
+        "persisted ResearchGeneralizationOutcome is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchGeneralizationOutcomeGraph(
+    outcome: ResearchGeneralizationOutcomeRecord,
+    reloading = false
+  ): Promise<void> {
+    const fail = (
+      code: Extract<LocalStoreErrorCode,
+        | "research_generalization_outcome_reference_not_found"
+        | "research_generalization_outcome_reference_mismatch"
+      >,
+      message: string
+    ): never => {
+      throw new LocalStoreError(
+        reloading ? "research_generalization_outcome_reload_failed" : code,
+        message
+      );
+    };
+    const protocol = await this.getResearchGeneralizationProtocol(
+      outcome.protocol_ref.id
+    );
+    if (!protocol) {
+      return fail(
+        "research_generalization_outcome_reference_not_found",
+        "ResearchGeneralizationOutcome protocol was not found"
+      );
+    }
+    if (outcome.protocol_digest !== protocol.protocol_digest ||
+      outcome.target_allocation_policy_digest !==
+        protocol.target_allocation_policy_digest ||
+      Date.parse(outcome.adjudicated_at) < Date.parse(protocol.committed_at)) {
+      fail(
+        "research_generalization_outcome_reference_mismatch",
+        "ResearchGeneralizationOutcome protocol differs from its source"
+      );
+    }
+    const usedSources = new Map<string, Set<string>>([
+      ["long", new Set()],
+      ["short", new Set()],
+      ["flat", new Set()]
+    ]);
+    const plannedStudies = await Promise.all(protocol.study_slots.map((slot) =>
+      this.getResearchControlStudy(slot.study_ref.id)
+    ));
+    const spacingViolations = researchGeneralizationStudySpacingViolations(
+      protocol,
+      plannedStudies.filter((study): study is ResearchControlStudyRecord =>
+        Boolean(study)
+      )
+    );
+    for (let index = 0; index < protocol.study_slots.length; index += 1) {
+      const planned = protocol.study_slots[index]!;
+      const result = outcome.slot_results[index]!;
+      if (result.slot_index !== planned.slot_index ||
+        result.condition_block !== planned.condition_block ||
+        result.condition_block_study_index !==
+          planned.condition_block_study_index ||
+        !sameJson(result.planned_study_ref, planned.study_ref)) {
+        fail(
+          "research_generalization_outcome_reference_mismatch",
+          "ResearchGeneralizationOutcome slot differs from its protocol"
+        );
+      }
+      const study = plannedStudies[index];
+      if (!study) {
+        if (result.slot_status !== "missing_study") {
+          fail(
+            "research_generalization_outcome_reference_not_found",
+            "ResearchGeneralizationOutcome planned study was not found"
+          );
+        }
+        continue;
+      }
+      if (!result.study_ref || result.study_ref.id !==
+          study.research_control_study_id || result.study_digest !==
+          study.study_digest || result.baseline_snapshot_digest !==
+          study.baseline_snapshot_digest ||
+        result.source_system_code_artifact_digest !==
+          study.condition.source.system_code_artifact_digest) {
+        fail(
+          "research_generalization_outcome_reference_mismatch",
+          "ResearchGeneralizationOutcome study differs from its source"
+        );
+      }
+      const expectedOutcomeId = researchControlStudyOutcomeIdForStudy(
+        study.research_control_study_id
+      );
+      if (result.study_outcome_ref && result.study_outcome_ref.id !==
+          expectedOutcomeId) {
+        const referenced = await this.getResearchControlStudyOutcome(
+          result.study_outcome_ref.id
+        );
+        if (!referenced) {
+          fail(
+            "research_generalization_outcome_reference_not_found",
+            "ResearchGeneralizationOutcome study outcome was not found"
+          );
+        }
+        fail(
+          "research_generalization_outcome_reference_mismatch",
+          "ResearchGeneralizationOutcome study outcome identity differs"
+        );
+      }
+      const studyOutcome = await this.getResearchControlStudyOutcome(
+        expectedOutcomeId
+      );
+      if (!studyOutcome) {
+        if (result.slot_status !== "missing_outcome") {
+          fail(
+            "research_generalization_outcome_reference_not_found",
+            "ResearchGeneralizationOutcome terminal study outcome was not found"
+          );
+        }
+        continue;
+      }
+      if (!result.study_outcome_ref || result.study_outcome_ref.id !==
+          studyOutcome.research_control_study_outcome_id ||
+        result.study_outcome_digest !== studyOutcome.study_outcome_digest ||
+        studyOutcome.study_digest !== study.study_digest ||
+        result.observed_rate_difference !==
+          studyOutcome.mean_rate_difference ||
+        Date.parse(studyOutcome.adjudicated_at) >
+          Date.parse(outcome.adjudicated_at)) {
+        fail(
+          "research_generalization_outcome_reference_mismatch",
+          "ResearchGeneralizationOutcome terminal evidence differs"
+        );
+      }
+      let reason:
+        | "protocol_assignment_mismatch"
+        | "protocol_condition_mismatch"
+        | "study_commitment_outside_protocol_window"
+        | "study_spacing_not_elapsed"
+        | "source_baseline_reused_within_condition_block"
+        | undefined = this.researchGeneralizationStudyIneligibilityReason(
+          protocol,
+          planned,
+          study,
+          spacingViolations.has(study.research_control_study_id)
+      );
+      const blockSources = usedSources.get(planned.condition_block)!;
+      if (!reason) {
+        const sourceDigest = study.generalization_assignment!
+          .source_system_code_artifact_digest;
+        if (blockSources.has(sourceDigest)) {
+          reason = "source_baseline_reused_within_condition_block";
+        } else {
+          blockSources.add(sourceDigest);
+        }
+      }
+      const expectedStatus = reason ? "ineligible" : "completed";
+      const expectedReason = reason ?? "eligible_terminal_study";
+      if (result.slot_status !== expectedStatus ||
+        result.status_reason !== expectedReason) {
+        fail(
+          "research_generalization_outcome_reference_mismatch",
+          "ResearchGeneralizationOutcome eligibility differs from its graph"
+        );
+      }
+    }
+    if (outcome.missing_study_count > 0 &&
+      Date.parse(outcome.adjudicated_at) <
+        Date.parse(protocol.timing_policy.collection_deadline_at)) {
+      fail(
+        "research_generalization_outcome_reference_mismatch",
+        "ResearchGeneralizationOutcome closed before its collection deadline"
+      );
+    }
+  }
+
+  private researchGeneralizationStudyIneligibilityReason(
+    protocol: ResearchGeneralizationProtocolRecord,
+    slot: ResearchGeneralizationProtocolRecord["study_slots"][number],
+    study: ResearchControlStudyRecord,
+    spacingViolated: boolean
+  ):
+    | "protocol_assignment_mismatch"
+    | "protocol_condition_mismatch"
+    | "study_commitment_outside_protocol_window"
+    | "study_spacing_not_elapsed"
+    | undefined {
+    const assignment = study.generalization_assignment;
+    if (!assignment || assignment.protocol_ref.id !==
+        protocol.research_generalization_protocol_id ||
+      assignment.protocol_digest !== protocol.protocol_digest ||
+      assignment.slot_index !== slot.slot_index ||
+      assignment.condition_block !== slot.condition_block ||
+      assignment.condition_block_study_index !==
+        slot.condition_block_study_index) {
+      return "protocol_assignment_mismatch";
+    }
+    if (Date.parse(study.committed_at) <= Date.parse(protocol.committed_at) ||
+      Date.parse(study.committed_at) >
+        Date.parse(protocol.timing_policy.collection_deadline_at)) {
+      return "study_commitment_outside_protocol_window";
+    }
+    if (spacingViolated) return "study_spacing_not_elapsed";
+    if (study.idempotency_key !== slot.study_idempotency_key ||
+      !sameJson(study.replications.map((replication) =>
+        replication.campaign_idempotency_key
+      ), slot.replication_idempotency_keys) || !sameJson(
+        study.condition.research_agent,
+        protocol.research_agent
+      ) || !sameJson(
+        study.condition.paper_evaluation_protocol,
+        protocol.paper_evaluation_protocol
+      ) || !sameJson(study.condition.campaign_policy, protocol.campaign_policy) ||
+      !sameJson(
+        study.condition.allocation_policy,
+        protocol.target_allocation_policy
+      ) || study.condition.allocation_policy_digest !==
+        protocol.target_allocation_policy_digest || !sameJson(
+          assignment.market_condition.classifier_policy,
+          protocol.market_classifier_policy
+        ) || assignment.market_condition.condition_block !==
+          slot.condition_block || assignment.source_system_code_artifact_digest !==
+          study.condition.source.system_code_artifact_digest) {
+      return "protocol_condition_mismatch";
+    }
+    return undefined;
   }
 
   async recordResearchAllocationPolicyDecision(
@@ -20536,6 +20871,36 @@ function researchControlStudyOutcomeIdForStudy(studyId: string): string {
   return `research-control-study-outcome-${
     createHash("sha256").update(canonical).digest("hex").slice(0, 20)
   }`;
+}
+
+function researchGeneralizationOutcomeIdForProtocol(
+  protocolId: string
+): string {
+  const canonical = exactStudyKey(protocolId);
+  return `research-generalization-outcome-${
+    createHash("sha256").update(canonical).digest("hex").slice(0, 20)
+  }`;
+}
+
+function researchGeneralizationStudySpacingViolations(
+  protocol: ResearchGeneralizationProtocolRecord,
+  studies: ResearchControlStudyRecord[]
+): Set<string> {
+  const violations = new Set<string>();
+  const ordered = [...studies].sort((left, right) =>
+    left.committed_at.localeCompare(right.committed_at) ||
+    left.research_control_study_id.localeCompare(
+      right.research_control_study_id
+    )
+  );
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (Date.parse(ordered[index]!.committed_at) -
+      Date.parse(ordered[index - 1]!.committed_at) <
+        protocol.timing_policy.minimum_study_commitment_interval_ms) {
+      violations.add(ordered[index]!.research_control_study_id);
+    }
+  }
+  return violations;
 }
 
 function researchAllocationPolicyDecisionIdForOutcome(
