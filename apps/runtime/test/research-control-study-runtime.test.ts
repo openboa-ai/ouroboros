@@ -95,6 +95,38 @@ describe("ResearchControlStudy runtime commitment", () => {
     );
   });
 
+  it("pins commitment to one exact TradingPromotion", async () => {
+    const store = new TradingReviewStudyStore(path.join(root, "pinned"));
+    await store.initialize();
+    const promotion = await store.getLatestTradingPromotion();
+
+    const study = await commitResearchControlStudyRuntime({
+      ...studyCommitInput(store, studyReplicationKeys()),
+      expectedTradingPromotionId: promotion.trading_promotion_id
+    });
+
+    expect(study.condition.paper_comparator).toMatchObject({
+      comparator_status: "trading_review",
+      trading_promotion_ref: {
+        id: promotion.trading_promotion_id
+      }
+    });
+  });
+
+  it("rejects TradingPromotion drift before study publication", async () => {
+    const store = new TradingReviewStudyStore(path.join(root, "drifted"));
+    await store.initialize();
+
+    await expect(commitResearchControlStudyRuntime({
+      ...studyCommitInput(store, studyReplicationKeys()),
+      expectedTradingPromotionId: "different-trading-promotion"
+    })).rejects.toMatchObject({
+      code: "research_control_study_runtime_condition_invalid"
+    });
+    await expect(store.listResearchControlStudies()).resolves.toEqual([]);
+    await expect(store.listResearchControlCampaigns()).resolves.toEqual([]);
+  });
+
   it("rejects a study without a bound Trading review condition", async () => {
     const store = new LocalStore(path.join(root, "no-comparator"));
     await store.initialize();

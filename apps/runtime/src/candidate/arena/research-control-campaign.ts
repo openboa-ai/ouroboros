@@ -134,6 +134,7 @@ export interface RunResearchControlCampaignInput {
   workspaceRoot: string;
   idempotencyKey: string;
   sourceCandidateId?: string;
+  expectedTradingPromotionId?: string;
   researchAgent: TradingResearchRuntimeAgent;
   researchAgentIdentity: ManagedResearchAgent;
   agentFactory: (
@@ -157,6 +158,7 @@ export interface PrepareResearchControlCampaignCommitRequestInput {
   store: LocalStore;
   idempotencyKey: string;
   sourceCandidateId?: string;
+  expectedTradingPromotionId?: string;
   researchAgentIdentity: ManagedResearchAgent;
   tickCountPerArm: number;
   maximumBaselineRegularFileCount?: number;
@@ -388,7 +390,10 @@ export async function prepareResearchControlCampaignCommitRequest(
     candidateId: sourceCandidateId,
     repoRoot
   });
-  const paperComparator = await resolvePaperComparator(input.store);
+  const paperComparator = await resolvePaperComparator(
+    input.store,
+    input.expectedTradingPromotionId
+  );
   const paperEvaluationProtocol = resolvePaperEvaluationProtocol(
     paperComparator,
     input.paperEvaluationProtocol
@@ -438,6 +443,10 @@ export async function runResearchControlCampaign(
       input.paperEvaluationProtocol
     );
     if (campaign.source.candidate_ref.id !== sourceCandidateId ||
+      (input.expectedTradingPromotionId !== undefined &&
+        (campaign.paper_comparator.comparator_status !== "trading_review" ||
+          campaign.paper_comparator.trading_promotion_ref.id !==
+            input.expectedTradingPromotionId)) ||
       !campaignAgentMatches(campaign, input.researchAgentIdentity) ||
       campaign.policy.tick_count_per_arm !== input.tickCountPerArm ||
       !paperEvaluationProtocolMatchesCampaign(
@@ -454,6 +463,9 @@ export async function runResearchControlCampaign(
       store: input.store,
       idempotencyKey: input.idempotencyKey,
       sourceCandidateId,
+      ...(input.expectedTradingPromotionId === undefined
+        ? {}
+        : { expectedTradingPromotionId: input.expectedTradingPromotionId }),
       researchAgentIdentity: input.researchAgentIdentity,
       tickCountPerArm: input.tickCountPerArm,
       maximumBaselineRegularFileCount: maximumFileCount,
@@ -826,9 +838,17 @@ async function collectArmOutcomeEvidence(
 }
 
 async function resolvePaperComparator(
-  store: LocalStore
+  store: LocalStore,
+  expectedTradingPromotionId?: string
 ): Promise<ResearchControlCampaignPaperComparator> {
   const promotion = await store.getLatestTradingPromotion();
+  if (expectedTradingPromotionId !== undefined &&
+    promotion?.trading_promotion_id !== expectedTradingPromotionId) {
+    throw runtimeError(
+      "research_control_campaign_source_candidate_invalid",
+      "ResearchControlCampaign Trading review comparator changed before commitment."
+    );
+  }
   if (!promotion) {
     return {
       comparator_status: "unavailable",

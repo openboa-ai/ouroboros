@@ -61,6 +61,7 @@ export interface CommitResearchControlStudyRuntimeInput {
   studyIdempotencyKey: string;
   replicationIdempotencyKeys: string[];
   sourceCandidateId?: string;
+  expectedTradingPromotionId?: string;
   researchAgentIdentity: ManagedResearchAgent;
   tickCountPerArm: number;
   maximumBaselineRegularFileCount?: number;
@@ -123,28 +124,49 @@ export async function commitResearchControlStudyRuntime(
       "ResearchControlStudy runtime requires a planned replication sample."
     );
   }
-  const prepared = await prepareResearchControlCampaignCommitRequest({
-    store: input.store,
-    idempotencyKey: firstReplicationKey,
-    ...(input.sourceCandidateId
-      ? { sourceCandidateId: input.sourceCandidateId }
-      : {}),
-    researchAgentIdentity: input.researchAgentIdentity,
-    tickCountPerArm: input.tickCountPerArm,
-    ...(input.maximumBaselineRegularFileCount === undefined
-      ? {}
-      : {
-          maximumBaselineRegularFileCount:
-            input.maximumBaselineRegularFileCount
-        }),
-    ...(input.maximumBaselineTotalBytes === undefined
-      ? {}
-      : { maximumBaselineTotalBytes: input.maximumBaselineTotalBytes }),
-    ...(input.paperEvaluationProtocol
-      ? { paperEvaluationProtocol: input.paperEvaluationProtocol }
-      : {}),
-    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {})
-  });
+  let prepared;
+  try {
+    prepared = await prepareResearchControlCampaignCommitRequest({
+      store: input.store,
+      idempotencyKey: firstReplicationKey,
+      ...(input.sourceCandidateId
+        ? { sourceCandidateId: input.sourceCandidateId }
+        : {}),
+      ...(input.expectedTradingPromotionId === undefined
+        ? {}
+        : {
+            expectedTradingPromotionId:
+              input.expectedTradingPromotionId
+          }),
+      researchAgentIdentity: input.researchAgentIdentity,
+      tickCountPerArm: input.tickCountPerArm,
+      ...(input.maximumBaselineRegularFileCount === undefined
+        ? {}
+        : {
+            maximumBaselineRegularFileCount:
+              input.maximumBaselineRegularFileCount
+          }),
+      ...(input.maximumBaselineTotalBytes === undefined
+        ? {}
+        : { maximumBaselineTotalBytes: input.maximumBaselineTotalBytes }),
+      ...(input.paperEvaluationProtocol
+        ? { paperEvaluationProtocol: input.paperEvaluationProtocol }
+        : {}),
+      ...(input.repoRoot ? { repoRoot: input.repoRoot } : {})
+    });
+  } catch (error) {
+    if (!hasErrorCode(
+      error,
+      "research_control_campaign_source_candidate_invalid"
+    )) {
+      throw error;
+    }
+    throw runtimeError(
+      "research_control_study_runtime_condition_invalid",
+      "ResearchControlStudy runtime Trading review condition changed before commitment.",
+      error
+    );
+  }
   const committedAt = (input.now ?? (() => new Date().toISOString()))();
   let condition;
   try {
