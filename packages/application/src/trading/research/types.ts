@@ -269,6 +269,127 @@ export interface TradingEvaluationResult {
   paper_handoff_conformance?: TradingPaperHandoffConformanceEvidence;
 }
 
+export interface ResearchWorkerDevelopmentFeedback {
+  status: TradingEvaluationStatus;
+  score: number;
+  metrics: TradingEvaluationMetric[];
+  summary: string;
+  risk_decision: TradingRiskDecision;
+  profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
+}
+
+export type ResearchWorkerSessionStatus =
+  | "open"
+  | "selected"
+  | "finished_without_submission"
+  | "failed";
+
+export interface ResearchWorkerToolStatus {
+  session_status: ResearchWorkerSessionStatus;
+  submission_limit: number;
+  completed_submission_count: number;
+  remaining_submission_count: number;
+  selected_submission_sequence: number | null;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionInput {
+  idempotency_key: string;
+  research_note: string;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionRequest
+  extends ResearchWorkerDevelopmentSubmissionInput {
+  submission_sequence: number;
+}
+
+export interface ResearchWorkerDevelopmentEvaluationEvidence {
+  submission_sequence: number;
+  artifact_dir: string;
+  artifact_digest: string;
+  started_at: string;
+  completed_at: string;
+  evaluation: TradingEvaluationResult;
+  feedback: ResearchWorkerDevelopmentFeedback;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionResult {
+  session_status: "open";
+  submission_sequence: number;
+  remaining_submission_count: number;
+  feedback: ResearchWorkerDevelopmentFeedback;
+}
+
+export interface ResearchWorkerDevelopmentSelectionInput {
+  idempotency_key: string;
+  submission_sequence: number;
+  reason: string;
+}
+
+export interface ResearchWorkerSelectionResult {
+  session_status: "selected";
+  submission_sequence: number;
+  reason: string;
+}
+
+export interface ResearchWorkerFinishInput {
+  idempotency_key: string;
+  reason: string;
+}
+
+export interface ResearchWorkerFinishResult {
+  session_status: "finished_without_submission";
+  reason: string;
+}
+
+export interface ResearchWorkerToolPort {
+  status(): Promise<ResearchWorkerToolStatus>;
+  submitDevelopment(
+    input: ResearchWorkerDevelopmentSubmissionInput
+  ): Promise<ResearchWorkerDevelopmentSubmissionResult>;
+  selectDevelopment(
+    input: ResearchWorkerDevelopmentSelectionInput
+  ): Promise<ResearchWorkerSelectionResult>;
+  finishWithoutSubmission(
+    input: ResearchWorkerFinishInput
+  ): Promise<ResearchWorkerFinishResult>;
+}
+
+export interface ResearchWorkerSessionInput {
+  artifact_dir: string;
+  program_path: string;
+  notebook_path: string;
+  submission_limit: number;
+  timeout_ms: number;
+  arena_context?: string;
+  tools: ResearchWorkerToolPort;
+}
+
+export type ResearchWorkerSessionResult =
+  | {
+      status: "selected";
+      summary: string;
+      selected_submission_sequence: number;
+      provider_command_count: number;
+    }
+  | {
+      status: "finished_without_submission";
+      summary: string;
+      provider_command_count: number;
+    }
+  | {
+      status: "failed";
+      summary: string;
+      provider_command_count: number;
+      failure_reason?: AgentEditFailureReason;
+      error?: string;
+    };
+
+export interface ResearchWorkerSessionAdapter {
+  readonly agent: ManagedResearchAgent;
+  runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult>;
+}
+
 export interface TradingScenarioEvaluationResult {
   scenario_id: string;
   runner_kind: TradingArtifactRunnerKind;

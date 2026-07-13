@@ -35,14 +35,14 @@ Vitest, LocalStore-backed CandidateArena integration.
 - Create: `packages/application/src/trading/research/research-worker-session.ts`
 - Create: `packages/application/src/trading/research/research-worker-session.test.ts`
 
-- [ ] Write RED tests for flexible call ordering, zero/one/full-budget submissions, explicit
+- [x] Write RED tests for flexible call ordering, zero/one/full-budget submissions, explicit
   selection, finish, no automatic selection, and terminal states.
-- [ ] Add provider-independent session, tool, status, development result, selection, and finish
+- [x] Add provider-independent session, tool, status, development result, selection, and finish
   contracts.
-- [ ] Implement strict idempotency, serialization, budget accounting, and terminal guards around an
+- [x] Implement strict idempotency, serialization, budget accounting, and terminal guards around an
   injected development evaluator callback.
-- [ ] Run focused tests, application typecheck, and `git diff --check`.
-- [ ] Commit as `feat: define autonomous research sessions`.
+- [x] Run focused tests, application typecheck, and `git diff --check`.
+- [x] Commit as `feat: define autonomous research sessions`.
 
 ### Task 2: Immutable Development Submission Harness
 
@@ -142,4 +142,3 @@ Vitest, LocalStore-backed CandidateArena integration.
   or live path changed; confirm `.superpowers/` remains untouched.
 - [ ] Commit as `docs: record autonomous research sessions`.
 - [ ] Reassess the CandidateArena Goal and choose the next unclosed evidence frontier.
-
