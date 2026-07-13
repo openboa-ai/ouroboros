@@ -112,6 +112,8 @@ import {
   researchControlStudyOutcomeHasRuntimeShape,
   researchGeneralizationOutcomeDigestInput,
   researchGeneralizationOutcomeHasRuntimeShape,
+  researchGeneralizationPolicyDecisionDigestInput,
+  researchGeneralizationPolicyDecisionHasRuntimeShape,
   researchGeneralizationMarketClassifierPolicyDigestInput,
   researchGeneralizationMarketConditionDigestInput,
   researchGeneralizationProtocolDigestInput,
@@ -182,6 +184,7 @@ import type {
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord,
   ResearchGeneralizationOutcomeRecord,
+  ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
@@ -513,6 +516,13 @@ export type LocalStoreErrorCode =
   | "research_generalization_outcome_reference_mismatch"
   | "research_generalization_outcome_conflict"
   | "research_generalization_outcome_reload_failed"
+  | "invalid_research_generalization_policy_decision_input"
+  | "research_generalization_policy_decision_digest_mismatch"
+  | "research_generalization_policy_decision_identity_mismatch"
+  | "research_generalization_policy_decision_reference_not_found"
+  | "research_generalization_policy_decision_reference_mismatch"
+  | "research_generalization_policy_decision_conflict"
+  | "research_generalization_policy_decision_reload_failed"
   | "invalid_research_allocation_policy_decision_input"
   | "research_allocation_policy_decision_digest_mismatch"
   | "research_allocation_policy_decision_identity_mismatch"
@@ -816,6 +826,7 @@ type Collection =
   | "research-control-study-outcomes"
   | "research-generalization-protocols"
   | "research-generalization-outcomes"
+  | "research-generalization-policy-decisions"
   | "research-allocation-policy-decisions"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
@@ -4614,6 +4625,191 @@ export class LocalStore {
       return "protocol_condition_mismatch";
     }
     return undefined;
+  }
+
+  async recordResearchGeneralizationPolicyDecision(
+    decision: ResearchGeneralizationPolicyDecisionRecord
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord> {
+    if (!researchGeneralizationPolicyDecisionHasRuntimeShape(decision)) {
+      throw new LocalStoreError(
+        "invalid_research_generalization_policy_decision_input",
+        "invalid ResearchGeneralizationPolicyDecision input"
+      );
+    }
+    if (decision.policy_decision_digest !== comparisonExactRecordDigest(
+      researchGeneralizationPolicyDecisionDigestInput(decision)
+    )) {
+      throw new LocalStoreError(
+        "research_generalization_policy_decision_digest_mismatch",
+        "ResearchGeneralizationPolicyDecision digest does not match its content"
+      );
+    }
+    if (decision.research_generalization_policy_decision_id !==
+      researchGeneralizationPolicyDecisionIdForOutcome(
+        decision.generalization_outcome_ref.id
+      )) {
+      throw new LocalStoreError(
+        "research_generalization_policy_decision_identity_mismatch",
+        "ResearchGeneralizationPolicyDecision identity is not deterministic"
+      );
+    }
+    await this.assertResearchGeneralizationPolicyDecisionGraph(decision);
+    const existing = await this.getResearchGeneralizationPolicyDecision(
+      decision.research_generalization_policy_decision_id
+    );
+    if (existing) {
+      if (!sameJson(existing, decision)) {
+        throw new LocalStoreError(
+          "research_generalization_policy_decision_conflict",
+          "ResearchGeneralizationPolicyDecision is append-only"
+        );
+      }
+      return existing;
+    }
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-generalization-policy-decisions",
+      decision.research_generalization_policy_decision_id
+    ), decision);
+    if (publication === "exists") {
+      const winner = await this.getResearchGeneralizationPolicyDecision(
+        decision.research_generalization_policy_decision_id
+      );
+      if (!winner || !sameJson(winner, decision)) {
+        throw new LocalStoreError(
+          "research_generalization_policy_decision_conflict",
+          "ResearchGeneralizationPolicyDecision is append-only"
+        );
+      }
+      return winner;
+    }
+    return decision;
+  }
+
+  async getResearchGeneralizationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord | undefined> {
+    const value = await this.readOptionalRecord<unknown>(
+      "research-generalization-policy-decisions",
+      decisionId
+    );
+    if (value === undefined) return undefined;
+    const decision = this.assertPersistedResearchGeneralizationPolicyDecision(
+      value
+    );
+    await this.assertResearchGeneralizationPolicyDecisionGraph(decision, true);
+    return decision;
+  }
+
+  async listResearchGeneralizationPolicyDecisions(): Promise<
+    ResearchGeneralizationPolicyDecisionRecord[]
+  > {
+    const decisions = (await this.readCollection<unknown>(
+      "research-generalization-policy-decisions"
+    )).map((value) =>
+      this.assertPersistedResearchGeneralizationPolicyDecision(value)
+    );
+    await Promise.all(decisions.map((decision) =>
+      this.assertResearchGeneralizationPolicyDecisionGraph(decision, true)
+    ));
+    return decisions.sort((left, right) =>
+      left.decided_at.localeCompare(right.decided_at) ||
+      left.research_generalization_policy_decision_id.localeCompare(
+        right.research_generalization_policy_decision_id
+      )
+    );
+  }
+
+  private assertPersistedResearchGeneralizationPolicyDecision(
+    value: unknown
+  ): ResearchGeneralizationPolicyDecisionRecord {
+    if (!researchGeneralizationPolicyDecisionHasRuntimeShape(value) ||
+      value.policy_decision_digest !== comparisonExactRecordDigest(
+        researchGeneralizationPolicyDecisionDigestInput(value)
+      ) || value.research_generalization_policy_decision_id !==
+        researchGeneralizationPolicyDecisionIdForOutcome(
+          value.generalization_outcome_ref.id
+        )) {
+      throw new LocalStoreError(
+        "research_generalization_policy_decision_reload_failed",
+        "persisted ResearchGeneralizationPolicyDecision is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchGeneralizationPolicyDecisionGraph(
+    decision: ResearchGeneralizationPolicyDecisionRecord,
+    reloading = false
+  ): Promise<void> {
+    const fail = (
+      code: Extract<LocalStoreErrorCode,
+        | "research_generalization_policy_decision_reference_not_found"
+        | "research_generalization_policy_decision_reference_mismatch"
+      >,
+      message: string
+    ): never => {
+      throw new LocalStoreError(
+        reloading ? "research_generalization_policy_decision_reload_failed" :
+          code,
+        message
+      );
+    };
+    const [protocol, outcome] = await Promise.all([
+      this.getResearchGeneralizationProtocol(decision.protocol_ref.id),
+      this.getResearchGeneralizationOutcome(
+        decision.generalization_outcome_ref.id
+      )
+    ]);
+    if (!protocol || !outcome) {
+      return fail(
+        "research_generalization_policy_decision_reference_not_found",
+        "ResearchGeneralizationPolicyDecision source graph was not found"
+      );
+    }
+    const targetPolicyDigest = comparisonExactRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(
+        protocol.target_allocation_policy
+      )
+    );
+    const approved = researchGeneralizationPolicyDecisionIsApproved(
+      protocol,
+      outcome
+    );
+    if (!researchGeneralizationProtocolHasRuntimeShape(protocol) ||
+      protocol.protocol_digest !== comparisonExactRecordDigest(
+        researchGeneralizationProtocolDigestInput(protocol)
+      ) || protocol.target_allocation_policy_digest !== targetPolicyDigest ||
+      !researchGeneralizationOutcomeHasRuntimeShape(outcome) ||
+      outcome.outcome_digest !== comparisonExactRecordDigest(
+        researchGeneralizationOutcomeDigestInput(outcome)
+      ) || outcome.research_generalization_outcome_id !==
+        researchGeneralizationOutcomeIdForProtocol(
+          protocol.research_generalization_protocol_id
+        ) || outcome.protocol_ref.id !==
+          protocol.research_generalization_protocol_id ||
+      outcome.protocol_digest !== protocol.protocol_digest ||
+      outcome.target_allocation_policy_digest !== targetPolicyDigest ||
+      Date.parse(outcome.adjudicated_at) < Date.parse(protocol.committed_at) ||
+      decision.protocol_ref.id !==
+        protocol.research_generalization_protocol_id ||
+      decision.protocol_digest !== protocol.protocol_digest ||
+      decision.generalization_outcome_ref.id !==
+        outcome.research_generalization_outcome_id ||
+      decision.generalization_outcome_digest !== outcome.outcome_digest ||
+      decision.target_allocation_policy_digest !== targetPolicyDigest ||
+      Date.parse(decision.decided_at) <= Date.parse(outcome.adjudicated_at) ||
+      approved !== (decision.decision_status === "approved") ||
+      decision.decision_reason !== (approved
+        ? "supported_cross_condition_adaptive_effect"
+        : "generalization_outcome_not_eligible") ||
+      decision.effective_default_mode !== (approved
+        ? "adaptive_default"
+        : null)) {
+      fail(
+        "research_generalization_policy_decision_reference_mismatch",
+        "ResearchGeneralizationPolicyDecision differs from its source graph"
+      );
+    }
   }
 
   async recordResearchAllocationPolicyDecision(
@@ -20882,6 +21078,15 @@ function researchGeneralizationOutcomeIdForProtocol(
   }`;
 }
 
+function researchGeneralizationPolicyDecisionIdForOutcome(
+  outcomeId: string
+): string {
+  const canonical = exactStudyKey(outcomeId);
+  return `research-generalization-policy-decision-${
+    createHash("sha256").update(canonical).digest("hex").slice(0, 20)
+  }`;
+}
+
 function researchGeneralizationStudySpacingViolations(
   protocol: ResearchGeneralizationProtocolRecord,
   studies: ResearchControlStudyRecord[]
@@ -20926,6 +21131,32 @@ function researchAllocationPolicyDecisionIsApproved(
     outcome.exact_sign_test_p_value <= study.analysis_policy.alpha &&
     outcome.mean_rate_difference >
       study.analysis_policy.minimum_mean_rate_difference;
+}
+
+function researchGeneralizationPolicyDecisionIsApproved(
+  protocol: ResearchGeneralizationProtocolRecord,
+  outcome: ResearchGeneralizationOutcomeRecord
+): boolean {
+  return outcome.inference_status === "generalization_supported" &&
+    outcome.policy_decision_eligibility ===
+      "eligible_for_separate_generalization_policy_decision" &&
+    outcome.causal_scope ===
+      "pre_effect_market_condition_blocked_cross_baseline_study_effects" &&
+    outcome.completed_study_count ===
+      protocol.analysis_policy.minimum_terminal_study_count &&
+    outcome.non_tied_study_count ===
+      protocol.analysis_policy.minimum_non_tied_study_count &&
+    outcome.missing_study_count === 0 &&
+    outcome.ineligible_study_count === 0 &&
+    outcome.distinct_baseline_count >=
+      protocol.analysis_policy.minimum_distinct_baseline_count &&
+    outcome.exact_sign_test_p_value <= protocol.analysis_policy.alpha &&
+    outcome.equal_weight_mean_rate_difference !== null &&
+    outcome.equal_weight_mean_rate_difference > 0 &&
+    outcome.harmful_condition_blocks.length === 0 &&
+    outcome.block_results.every((block) =>
+      block.block_status === "complete_positive"
+    );
 }
 
 function exactStudyKey(value: string): string {

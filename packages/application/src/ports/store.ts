@@ -30,6 +30,7 @@ import type {
   ResearchControlStudyRecord,
   ResearchControlStudyOutcomeRecord,
   ResearchGeneralizationOutcomeRecord,
+  ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord,
   ResearchAllocationPolicyDecisionRecord,
   ResearchPreflightCommitmentRecord,
@@ -267,6 +268,15 @@ export interface OuroborosStorePort {
   ): Promise<ResearchGeneralizationOutcomeRecord | undefined>;
   listResearchGeneralizationOutcomes(): Promise<
     ResearchGeneralizationOutcomeRecord[]
+  >;
+  recordResearchGeneralizationPolicyDecision(
+    decision: ResearchGeneralizationPolicyDecisionRecord
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord>;
+  getResearchGeneralizationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord | undefined>;
+  listResearchGeneralizationPolicyDecisions(): Promise<
+    ResearchGeneralizationPolicyDecisionRecord[]
   >;
   recordResearchAllocationPolicyDecision(
     decision: ResearchAllocationPolicyDecisionRecord
