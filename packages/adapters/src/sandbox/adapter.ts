@@ -254,7 +254,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         await waitForProcessTreeExit(persistedProcess.pid, 500);
       }
       await removePersistedSandboxProcessFiles(pidFile);
-      const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
+      const lines = await readSandboxLogLines(
+        deterministicSandboxLogFile(instanceId)
+      );
       return {
         lifecycle_status: "stopped",
         stopped_at: stoppedAt,
@@ -297,8 +299,8 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     command: string[],
     placement: SandboxPlacementRecord
   ): Promise<SandboxAdapterStartResult> {
-    const logFile = sandboxLogFile(input.instance_id);
-    const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    const logFile = deterministicSandboxLogFile(input.instance_id);
+    const heartbeatFile = deterministicSandboxHeartbeatFile(input.instance_id);
     const pidFile = sandboxPidFile(input.instance_id);
     await this.stopExistingLongRunningSession(input.instance_id, pidFile);
     await Promise.all([
@@ -1179,10 +1181,18 @@ function rejectedSystemCodeCommandResult(
 }
 
 function sandboxLogFile(instanceId: string): string {
-  return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.jsonl`;
+  return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.jsonl`;
 }
 
 function sandboxHeartbeatFile(instanceId: string): string {
+  return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.heartbeat.json`;
+}
+
+function deterministicSandboxLogFile(instanceId: string): string {
+  return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.jsonl`;
+}
+
+function deterministicSandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.heartbeat.json`;
 }
 
