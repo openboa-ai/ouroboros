@@ -113,7 +113,7 @@ describe("ResearchControlStudyScheduler", () => {
     await scheduler.stop();
   });
 
-  it("ensures one policy decision after catch-up and before bounded wait", async () => {
+  it("reconciles generalization outcomes before policy after catch-up", async () => {
     const events: string[] = [];
     const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
     const scheduler = new ResearchControlStudyScheduler({
@@ -127,6 +127,17 @@ describe("ResearchControlStudyScheduler", () => {
         }
       },
       supervisor: new OrderedCatchUpSupervisor(events),
+      generalizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          events.push("generalization-outcome");
+          return {
+            status: "ensured" as const,
+            outcomeId: "research-generalization-outcome-001",
+            protocolId: "research-generalization-protocol-001",
+            inferenceStatus: "generalization_supported" as const
+          };
+        }
+      },
       policyDecisionCoordinator: {
         async ensureNextDecision() {
           events.push("policy-decision");
@@ -150,11 +161,18 @@ describe("ResearchControlStudyScheduler", () => {
       "commitment",
       "supervisor-start",
       "supervisor-caught-up",
+      "generalization-outcome",
       "policy-decision"
     ]);
     expect(scheduler.status()).toMatchObject({
       status: "waiting",
       cycleCount: 1,
+      lastGeneralizationOutcome: {
+        status: "ensured",
+        outcomeId: "research-generalization-outcome-001",
+        protocolId: "research-generalization-protocol-001",
+        inferenceStatus: "generalization_supported"
+      },
       lastPolicyDecision: {
         status: "ensured",
         decisionId: "research-allocation-policy-decision-001",
@@ -169,6 +187,7 @@ describe("ResearchControlStudyScheduler", () => {
   it("does not decide policy while the oldest study is contended", async () => {
     const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
     let decisionCount = 0;
+    let outcomeCount = 0;
     const scheduler = new ResearchControlStudyScheduler({
       supervisor: new ScriptedSupervisor([{
         status: "contended",
@@ -177,6 +196,16 @@ describe("ResearchControlStudyScheduler", () => {
         reason: "owner_alive",
         leaseExpiresAt: "2026-07-13T00:00:30.000Z"
       }]),
+      generalizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          outcomeCount += 1;
+          return {
+            status: "up_to_date" as const,
+            protocolCount: 0,
+            outcomeCount: 0
+          };
+        }
+      },
       policyDecisionCoordinator: {
         async ensureNextDecision() {
           decisionCount += 1;
@@ -190,9 +219,52 @@ describe("ResearchControlStudyScheduler", () => {
     scheduler.start();
     await clock.waiting();
 
+    expect(outcomeCount).toBe(0);
     expect(decisionCount).toBe(0);
+    expect(scheduler.status()).not.toHaveProperty("lastGeneralizationOutcome");
     expect(scheduler.status()).not.toHaveProperty("lastPolicyDecision");
     await scheduler.stop();
+  });
+
+  it("fails after catch-up when outcome reconciliation fails", async () => {
+    const error = Object.assign(new Error("injected outcome failure"), {
+      code: "research_generalization_outcome_coordination_failed"
+    });
+    let policyDecisionCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor: new ScriptedSupervisor([{
+        status: "caught_up",
+        completedStudyCount: 2
+      }]),
+      generalizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          throw error;
+        }
+      },
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          policyDecisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      sleep: async () => {
+        throw Object.assign(new Error("unexpected bounded wait"), {
+          code: "unexpected_bounded_wait"
+        });
+      }
+    });
+
+    scheduler.start();
+    await scheduler.drain();
+
+    expect(policyDecisionCount).toBe(0);
+    expect(scheduler.status()).toEqual({
+      status: "failed",
+      cycleCount: 1,
+      completedStudyCount: 2,
+      errorCode: "research_generalization_outcome_coordination_failed",
+      errorMessage: "injected outcome failure"
+    });
   });
 
   it("fails after catch-up when automatic policy decision fails", async () => {

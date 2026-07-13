@@ -222,6 +222,68 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
+  it("runs injected generalization outcomes through the default scheduler", async () => {
+    let outcomeCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchGeneralizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          outcomeCount += 1;
+          return {
+            status: "up_to_date" as const,
+            protocolCount: 0,
+            outcomeCount: 0
+          };
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      outcomeCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationOutcome: {
+        status: "up_to_date",
+        protocolCount: 0,
+        outcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("creates the default automatic generalization outcome coordinator", async () => {
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastGeneralizationOutcome !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationOutcome: {
+        status: "up_to_date",
+        protocolCount: 0,
+        outcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
   it("creates the default automatic policy decision coordinator", async () => {
     let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
     const server = await buildServer({
@@ -250,6 +312,7 @@ describe("runtime canonical operator API", () => {
   it("does not commit or decide when scheduler startup is disabled", async () => {
     let commitmentCount = 0;
     let decisionCount = 0;
+    let outcomeCount = 0;
     const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
       researchControlStudyCommitmentCoordinator: {
@@ -259,6 +322,16 @@ describe("runtime canonical operator API", () => {
             status: "deferred",
             reason: "no_trading_promotion"
           } as const;
+        }
+      },
+      researchGeneralizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          outcomeCount += 1;
+          return {
+            status: "up_to_date" as const,
+            protocolCount: 0,
+            outcomeCount: 0
+          };
         }
       },
       researchAllocationPolicyDecisionCoordinator: {
@@ -271,6 +344,7 @@ describe("runtime canonical operator API", () => {
 
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(commitmentCount).toBe(0);
+    expect(outcomeCount).toBe(0);
     expect(decisionCount).toBe(0);
     await server.close();
   });

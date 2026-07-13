@@ -3,6 +3,10 @@ import type {
   ResearchAllocationPolicyDecisionCoordinatorLifecycle
 } from "@ouroboros/application/candidate/research-allocation-policy-decision";
 import type {
+  ResearchGeneralizationOutcomeCoordinationResult,
+  ResearchGeneralizationOutcomeCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
+import type {
   ResearchControlStudyProcessStatus,
   ResearchControlStudyProcessSupervisor
 } from "./research-control-study-process-supervisor";
@@ -33,6 +37,7 @@ export type ResearchControlStudySchedulerStatus = (
     }
 ) & {
   lastCommitment?: ResearchControlStudyCommitmentResult;
+  lastGeneralizationOutcome?: ResearchGeneralizationOutcomeCoordinationResult;
   lastPolicyDecision?: ResearchAllocationPolicyDecisionCoordinationResult;
 };
 
@@ -76,6 +81,8 @@ implements ResearchControlStudySchedulerLifecycle {
   private cycleCount = 0;
   private completedStudyCount = 0;
   private lastCommitment?: ResearchControlStudyCommitmentResult;
+  private lastGeneralizationOutcome?:
+    ResearchGeneralizationOutcomeCoordinationResult;
   private lastPolicyDecision?:
     ResearchAllocationPolicyDecisionCoordinationResult;
   private runPromise?: Promise<void>;
@@ -85,6 +92,8 @@ implements ResearchControlStudySchedulerLifecycle {
   constructor(private readonly options: {
     supervisor: SupervisorLifecycle;
     commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
+    generalizationOutcomeCoordinator?:
+      ResearchGeneralizationOutcomeCoordinatorLifecycle;
     policyDecisionCoordinator?:
       ResearchAllocationPolicyDecisionCoordinatorLifecycle;
     pollIntervalMs?: number;
@@ -128,6 +137,13 @@ implements ResearchControlStudySchedulerLifecycle {
       ...status,
       ...(this.lastCommitment
         ? { lastCommitment: structuredClone(this.lastCommitment) }
+        : {}),
+      ...(this.lastGeneralizationOutcome
+        ? {
+            lastGeneralizationOutcome: structuredClone(
+              this.lastGeneralizationOutcome
+            )
+          }
         : {}),
       ...(this.lastPolicyDecision
         ? { lastPolicyDecision: structuredClone(this.lastPolicyDecision) }
@@ -210,6 +226,13 @@ implements ResearchControlStudySchedulerLifecycle {
         if (this.stopRequested) {
           this.markStopped();
           return;
+        }
+        if (supervisorStatus.status === "caught_up" &&
+          this.options.generalizationOutcomeCoordinator) {
+          this.lastGeneralizationOutcome = structuredClone(
+            await this.options.generalizationOutcomeCoordinator
+              .ensureNextOutcome()
+          );
         }
         if (supervisorStatus.status === "caught_up" &&
           this.options.policyDecisionCoordinator) {

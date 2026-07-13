@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { ResearchAllocationPolicyDecisionCoordinatorLifecycle } from
   "@ouroboros/application/candidate/research-allocation-policy-decision";
+import type { ResearchGeneralizationOutcomeCoordinatorLifecycle } from
+  "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
 import type { GatewayMarketDataPort } from
   "@ouroboros/application/ports/market-data";
 import type { TradingArtifactRunner } from
@@ -69,6 +71,8 @@ export interface CreateResearchControlStudyServerSchedulerInput
   schedulerSleep?: (milliseconds: number) => Promise<void>;
   leaseSessionFactory?: ResearchControlStudyExecutionLeaseSessionFactory;
   commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
+  generalizationOutcomeCoordinator?:
+    ResearchGeneralizationOutcomeCoordinatorLifecycle;
   policyDecisionCoordinator?:
     ResearchAllocationPolicyDecisionCoordinatorLifecycle;
 }
@@ -162,6 +166,12 @@ export function createResearchControlStudyServerScheduler(
     supervisor,
     ...(input.commitmentCoordinator
       ? { commitmentCoordinator: input.commitmentCoordinator }
+      : {}),
+    ...(input.generalizationOutcomeCoordinator
+      ? {
+          generalizationOutcomeCoordinator:
+            input.generalizationOutcomeCoordinator
+        }
       : {}),
     ...(input.policyDecisionCoordinator
       ? { policyDecisionCoordinator: input.policyDecisionCoordinator }
