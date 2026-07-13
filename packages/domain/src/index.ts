@@ -5,8 +5,11 @@ import type {
 import type { PrivateReadGateDecision } from "./private-read-gate";
 import {
   isCandidateAdmissionDecisionConsistent,
+  type CandidateAdmissionBehaviorComparisonStatus,
   type CandidateAdmissionDecisionRecord,
-  type CandidateAdmissionReason
+  type CandidateAdmissionReason,
+  type CandidateAdmissionResearchWorkerOutcome,
+  type CandidateAdmissionStatus
 } from "./candidate-admission-policy";
 
 export * from "./private-read-gate";
@@ -7303,6 +7306,257 @@ export interface ResearchExperimentAgentIdentity {
   identity_digest: string;
 }
 
+export type ResearchMemoryControlArmKind =
+  | "released_memory_treatment"
+  | "memory_masked_control";
+
+export interface ResearchMemoryControlArmPlan {
+  arm_kind: ResearchMemoryControlArmKind;
+  memory_mode: ResearchWorkerMemoryMode;
+  tick_id: string;
+}
+
+export interface ResearchMemoryControlPairPlan {
+  pair_index: number;
+  research_direction_ref: Ref;
+  direction_kind: ResearchDirectionKind;
+  released_memory_treatment: ResearchMemoryControlArmPlan;
+  memory_masked_control: ResearchMemoryControlArmPlan;
+}
+
+export interface ResearchMemoryControlOpportunityProtocol {
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  sealed_suite_version: "research_sealed_admission_v1";
+  sealed_generator_version: "research_scenario_generator_v1";
+  sealed_rotation_commitment_digest: string;
+  sealed_suite_digest: string;
+}
+
+export interface ResearchMemoryControlStudyPolicy {
+  policy_version: "research_memory_control_study_v1";
+  pair_count: number;
+  allocation_mode: "explicit";
+  development_submission_limit_per_worker: 1;
+  sealed_submission_limit_per_worker: 1;
+  baseline_copy_policy: "fresh_verified_copy_per_arm";
+  within_pair_start_policy: "concurrent_initial_sides";
+  maximum_within_pair_start_skew_ms: 5_000;
+  across_pair_execution_policy: "sequential";
+  maximum_baseline_regular_file_count: number;
+  maximum_baseline_total_bytes: number;
+}
+
+export interface ResearchMemoryControlStudyAnalysisPolicy {
+  policy_version: "paired_exact_repeat_sign_test_v1";
+  primary_estimand:
+    "mean_masked_minus_released_memory_exact_repeat_indicator";
+  significance_method: "two_sided_exact_sign_test";
+  alpha: 0.05;
+  minimum_non_tied_pair_count: 6;
+  tie_policy: "exclude_from_sign_test_include_in_mean";
+  ineligible_pair_policy: "retain_in_counts_exclude_from_inference";
+  minimum_mean_paired_difference: 0;
+}
+
+export interface ResearchMemoryControlStudyRecord extends BaseRecord {
+  record_kind: "research_memory_control_study";
+  research_memory_control_study_id: string;
+  idempotency_key: string;
+  hypothesis: "released_memory_reduces_exact_behavior_repeats";
+  baseline: ResearchExperimentBaselineSnapshot;
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
+  research_agent_profile_id: string;
+  opportunity_protocol: ResearchMemoryControlOpportunityProtocol;
+  pair_plans: ResearchMemoryControlPairPlan[];
+  policy: ResearchMemoryControlStudyPolicy;
+  analysis_policy: ResearchMemoryControlStudyAnalysisPolicy;
+  committed_at: string;
+  study_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export type ResearchMemoryControlArmTerminalStatus =
+  | "completed"
+  | "no_submission"
+  | "worker_failed"
+  | "platform_failed"
+  | "interrupted";
+
+export type ResearchMemoryControlFailureKind =
+  | "research_worker_failed"
+  | "provider_failed"
+  | "runner_failed"
+  | "restart_interrupted"
+  | "evidence_reconstruction_failed";
+
+export interface ResearchMemoryControlResourceSummary {
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+export interface ResearchMemoryControlTickEvidence {
+  tick_ref: Ref;
+  tick_id: string;
+  tick_digest: string;
+  started_at: string;
+  completed_at: string;
+  tick_status: CandidateArenaTickStatus;
+  direction_result_status: CandidateArenaDirectionResultStatus;
+}
+
+export interface ResearchMemoryControlPreflightEvidence {
+  commitment_ref: Ref;
+  commitment_digest: string;
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  sealed_suite_version: "research_sealed_admission_v1";
+  sealed_generator_version: "research_scenario_generator_v1";
+  sealed_suite_digest: string;
+  sealed_rotation_commitment_digest: string;
+  memory_policy: ResearchWorkerMemoryPolicy;
+}
+
+export interface ResearchMemoryControlWorkerEvidence {
+  worker_ref: Ref;
+  agent_profile_id: string;
+  provider_kind: ProviderKind;
+  model: string;
+}
+
+export interface ResearchMemoryControlAllocationEvidence {
+  allocation_ref: Ref;
+  allocation_digest: string;
+  allocation_mode: "explicit";
+  allocation_policy_digest: string;
+  direction_kind: ResearchDirectionKind;
+  selection_kind: "explicit";
+  experiment_budget: 1;
+}
+
+export interface ResearchMemoryControlAdmissionEvidence {
+  decision_ref: Ref;
+  decision_digest: string;
+  status: CandidateAdmissionStatus;
+  reason: CandidateAdmissionReason;
+  research_worker_outcome: CandidateAdmissionResearchWorkerOutcome;
+  behavior_comparison_status:
+    | CandidateAdmissionBehaviorComparisonStatus
+    | null;
+  fingerprint_ref: Ref | null;
+  fingerprint_digest: string | null;
+  matching_fingerprint_ref: Ref | null;
+  matching_fingerprint_digest: string | null;
+}
+
+export type ResearchMemoryControlPairIneligibilityReason =
+  | "no_submission"
+  | "worker_or_platform_failure"
+  | "behavior_fingerprint_unavailable"
+  | "malformed_evidence_graph"
+  | "missing_memory_contrast"
+  | "interrupted_or_unpaired_run";
+
+export type ResearchMemoryControlObservation =
+  | "exact_repeat"
+  | "distinct_behavior"
+  | "ineligible";
+
+export interface ResearchMemoryControlArmResult {
+  arm_kind: ResearchMemoryControlArmKind;
+  memory_mode: ResearchWorkerMemoryMode;
+  planned_tick_id: string;
+  terminal_status: ResearchMemoryControlArmTerminalStatus;
+  failure_kind: ResearchMemoryControlFailureKind | null;
+  tick_evidence: ResearchMemoryControlTickEvidence | null;
+  preflight_evidence: ResearchMemoryControlPreflightEvidence | null;
+  worker_evidence: ResearchMemoryControlWorkerEvidence | null;
+  allocation_evidence: ResearchMemoryControlAllocationEvidence | null;
+  admission_evidence: ResearchMemoryControlAdmissionEvidence | null;
+  resource_summary: ResearchMemoryControlResourceSummary | null;
+  observation: ResearchMemoryControlObservation;
+  exact_repeat_indicator: 0 | 1 | null;
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+}
+
+export interface ResearchMemoryControlPairOutcomeRecord extends BaseRecord {
+  record_kind: "research_memory_control_pair_outcome";
+  research_memory_control_pair_outcome_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  pair_index: number;
+  pair_plan_digest: string;
+  research_direction_ref: Ref;
+  direction_kind: ResearchDirectionKind;
+  released_memory: ResearchMemoryControlArmResult;
+  memory_masked: ResearchMemoryControlArmResult;
+  eligibility_status: "eligible" | "ineligible";
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+  initial_start_skew_ms: number | null;
+  paired_difference: -1 | 0 | 1 | null;
+  terminal_at: string;
+  pair_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchMemoryControlStudyPairResult {
+  pair_index: number;
+  pair_outcome_ref: Ref;
+  pair_outcome_digest: string;
+  eligibility_status: "eligible" | "ineligible";
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+  paired_difference: -1 | 0 | 1 | null;
+}
+
+export interface ResearchMemoryControlStudyOutcomeRecord extends BaseRecord {
+  record_kind: "research_memory_control_study_outcome";
+  research_memory_control_study_outcome_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  pair_results: ResearchMemoryControlStudyPairResult[];
+  planned_pair_count: number;
+  completed_pair_count: number;
+  eligible_pair_count: number;
+  ineligible_pair_count: number;
+  favorable_pair_count: number;
+  unfavorable_pair_count: number;
+  tied_pair_count: number;
+  non_tied_pair_count: number;
+  mean_paired_difference: number | null;
+  exact_sign_test_p_value: number;
+  inference_status:
+    | "memory_effect_supported"
+    | "memory_effect_not_supported"
+    | "insufficient_memory_control_evidence";
+  causal_scope: "same_baseline_paired_exact_repeat_effect_only";
+  memory_policy_decision_eligibility: "not_eligible";
+  next_action:
+    | "review_memory_evidence_without_automatic_policy_change"
+    | "retain_current_memory_policy_and_redesign_study";
+  adjudicated_at: string;
+  study_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
 export type ResearchControlCampaignPaperComparator =
   | {
       comparator_status: "trading_review";
@@ -8365,6 +8619,45 @@ export function researchControlStudyDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function researchMemoryControlStudyDigestInput(
+  record: ResearchMemoryControlStudyRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_study_id: _id,
+    study_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchMemoryControlPairOutcomeDigestInput(
+  record: ResearchMemoryControlPairOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_pair_outcome_id: _id,
+    pair_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchMemoryControlStudyOutcomeDigestInput(
+  record: ResearchMemoryControlStudyOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_study_outcome_id: _id,
+    study_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export function researchControlStudyExecutionLeaseDigestInput(
   record: ResearchControlStudyExecutionLeaseRecord
 ): string {
@@ -8726,6 +9019,846 @@ export function researchGeneralizationMarketConditionHasRuntimeShape(
   return condition.fast_mean === fastMean && condition.slow_mean === slowMean &&
     condition.directional_gap_ratio === gap &&
     condition.condition_block === expectedBlock;
+}
+
+export function researchMemoryControlStudyHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_study_id",
+    "idempotency_key",
+    "hypothesis",
+    "baseline",
+    "source",
+    "research_agent",
+    "research_agent_profile_id",
+    "opportunity_protocol",
+    "pair_plans",
+    "policy",
+    "analysis_policy",
+    "committed_at",
+    "study_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_study" ||
+    value.version !== 1 || typeof value.research_memory_control_study_id !==
+      "string" || !/^research-memory-control-study-[a-f0-9]{20}$/.test(
+        value.research_memory_control_study_id
+      ) || !comparisonString(value.idempotency_key) || value.hypothesis !==
+      "released_memory_reduces_exact_behavior_repeats" ||
+    !researchExperimentBaselineHasRuntimeShape(value.baseline) ||
+    value.baseline.exclusion_policy !== "research_experiment_evidence_only" ||
+    !researchExperimentSourceHasRuntimeShape(value.source) ||
+    !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
+    !comparisonString(value.research_agent.model) ||
+    !comparisonString(value.research_agent_profile_id) ||
+    !researchMemoryControlOpportunityProtocolHasRuntimeShape(
+      value.opportunity_protocol
+    ) ||
+    !Array.isArray(value.pair_plans) || value.pair_plans.length < 6 ||
+    value.pair_plans.length > 30 ||
+    !researchMemoryControlStudyPolicyHasRuntimeShape(
+      value.policy,
+      value.pair_plans.length
+    ) || !researchMemoryControlStudyAnalysisPolicyHasRuntimeShape(
+      value.analysis_policy
+    ) || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const study = value as unknown as ResearchMemoryControlStudyRecord;
+  if (study.baseline.regular_file_count >
+      study.policy.maximum_baseline_regular_file_count ||
+    study.baseline.total_bytes > study.policy.maximum_baseline_total_bytes ||
+    !study.pair_plans.every((pair, index) =>
+      researchMemoryControlPairPlanHasRuntimeShape(pair, index + 1)
+    )) {
+    return false;
+  }
+  const directions = study.pair_plans.map((pair) => pair.direction_kind);
+  const tickIds = study.pair_plans.flatMap((pair) => [
+    pair.released_memory_treatment.tick_id,
+    pair.memory_masked_control.tick_id
+  ]);
+  return new Set(directions).size >= 2 &&
+    candidateArenaAllocationStringsUnique(tickIds);
+}
+
+export function researchMemoryControlPairOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlPairOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_pair_outcome_id",
+    "study_ref",
+    "study_digest",
+    "pair_index",
+    "pair_plan_digest",
+    "research_direction_ref",
+    "direction_kind",
+    "released_memory",
+    "memory_masked",
+    "eligibility_status",
+    "ineligibility_reason",
+    "initial_start_skew_ms",
+    "paired_difference",
+    "terminal_at",
+    "pair_outcome_digest",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_pair_outcome" ||
+    value.version !== 1 ||
+    typeof value.research_memory_control_pair_outcome_id !== "string" ||
+    !/^research-memory-control-pair-outcome-[a-f0-9]{20}$/.test(
+      value.research_memory_control_pair_outcome_id
+    ) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !comparisonPositive(value.pair_index) ||
+    !Number.isInteger(value.pair_index) || value.pair_index > 30 ||
+    !researchControlCampaignSha256Digest(value.pair_plan_digest) ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !researchDirectionKindHasRuntimeShape(value.direction_kind) ||
+    !researchMemoryControlArmResultHasRuntimeShape(
+      value.released_memory,
+      "released_memory_treatment"
+    ) || !researchMemoryControlArmResultHasRuntimeShape(
+      value.memory_masked,
+      "memory_masked_control"
+    ) || !(value.initial_start_skew_ms === null || (
+      comparisonNonNegative(value.initial_start_skew_ms) &&
+      Number.isInteger(value.initial_start_skew_ms)
+    )) || !comparisonIso(value.terminal_at) ||
+    !researchControlCampaignSha256Digest(value.pair_outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchMemoryControlPairOutcomeRecord;
+  if (!researchMemoryControlArmAssignmentMatches(
+    outcome.released_memory,
+    outcome,
+    "released_memory_treatment"
+  ) || !researchMemoryControlArmAssignmentMatches(
+    outcome.memory_masked,
+    outcome,
+    "memory_masked_control"
+  )) {
+    return false;
+  }
+  const releasedIndicator = outcome.released_memory.exact_repeat_indicator;
+  const maskedIndicator = outcome.memory_masked.exact_repeat_indicator;
+  const expectedStartSkew = researchMemoryControlInitialStartSkew(outcome);
+  if (outcome.initial_start_skew_ms !== expectedStartSkew) return false;
+  if (outcome.eligibility_status === "eligible") {
+    return outcome.ineligibility_reason === null &&
+      (releasedIndicator === 0 || releasedIndicator === 1) &&
+      (maskedIndicator === 0 || maskedIndicator === 1) &&
+      outcome.released_memory.ineligibility_reason === null &&
+      outcome.memory_masked.ineligibility_reason === null &&
+      outcome.paired_difference === maskedIndicator - releasedIndicator &&
+      expectedStartSkew !== null &&
+      expectedStartSkew <= 5_000 &&
+      researchMemoryControlPairedEvidenceMatches(outcome) &&
+      researchMemoryControlMemoryContrastMatches(outcome);
+  }
+  return outcome.eligibility_status === "ineligible" &&
+    researchMemoryControlIneligibilityReason(outcome.ineligibility_reason) &&
+    outcome.paired_difference === null &&
+    (outcome.released_memory.observation === "ineligible" ||
+      outcome.memory_masked.observation === "ineligible") &&
+    (outcome.released_memory.ineligibility_reason ===
+      outcome.ineligibility_reason ||
+      outcome.memory_masked.ineligibility_reason ===
+        outcome.ineligibility_reason);
+}
+
+export function researchMemoryControlStudyOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_study_outcome_id",
+    "study_ref",
+    "study_digest",
+    "pair_results",
+    "planned_pair_count",
+    "completed_pair_count",
+    "eligible_pair_count",
+    "ineligible_pair_count",
+    "favorable_pair_count",
+    "unfavorable_pair_count",
+    "tied_pair_count",
+    "non_tied_pair_count",
+    "mean_paired_difference",
+    "exact_sign_test_p_value",
+    "inference_status",
+    "causal_scope",
+    "memory_policy_decision_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "study_outcome_digest",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_study_outcome" ||
+    value.version !== 1 ||
+    typeof value.research_memory_control_study_outcome_id !== "string" ||
+    !/^research-memory-control-study-outcome-[a-f0-9]{20}$/.test(
+      value.research_memory_control_study_outcome_id
+    ) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !Array.isArray(value.pair_results) || value.pair_results.length < 6 ||
+    value.pair_results.length > 30 ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.study_outcome_digest) ||
+    value.causal_scope !==
+      "same_baseline_paired_exact_repeat_effect_only" ||
+    value.memory_policy_decision_eligibility !== "not_eligible" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchMemoryControlStudyOutcomeRecord;
+  if (!outcome.pair_results.every((pair, index) =>
+    researchMemoryControlStudyPairResultHasRuntimeShape(pair, index + 1)
+  ) || !candidateArenaAllocationStringsUnique(outcome.pair_results.map(
+    (pair) => pair.pair_outcome_ref.id
+  ))) {
+    return false;
+  }
+  const eligible = outcome.pair_results.filter(
+    (pair) => pair.eligibility_status === "eligible"
+  );
+  const differences = eligible.map((pair) => pair.paired_difference!);
+  const favorable = differences.filter((difference) => difference > 0).length;
+  const unfavorable = differences.filter((difference) => difference < 0).length;
+  const tied = differences.length - favorable - unfavorable;
+  const nonTied = favorable + unfavorable;
+  const mean = differences.length === 0
+    ? null
+    : comparisonRound6(
+        differences.reduce<number>((sum, difference) => sum + difference, 0) /
+          differences.length
+      );
+  const pValue = researchControlStudyExactSignPValue(favorable, unfavorable);
+  const supported = nonTied >= 6 && favorable > unfavorable &&
+    pValue <= 0.05 && mean !== null && mean > 0;
+  const inference = nonTied < 6
+    ? "insufficient_memory_control_evidence"
+    : supported
+    ? "memory_effect_supported"
+    : "memory_effect_not_supported";
+  const nextAction = supported
+    ? "review_memory_evidence_without_automatic_policy_change"
+    : "retain_current_memory_policy_and_redesign_study";
+  return outcome.planned_pair_count === outcome.pair_results.length &&
+    outcome.completed_pair_count === outcome.pair_results.length &&
+    outcome.eligible_pair_count === eligible.length &&
+    outcome.ineligible_pair_count ===
+      outcome.pair_results.length - eligible.length &&
+    outcome.favorable_pair_count === favorable &&
+    outcome.unfavorable_pair_count === unfavorable &&
+    outcome.tied_pair_count === tied &&
+    outcome.non_tied_pair_count === nonTied &&
+    outcome.mean_paired_difference === mean &&
+    outcome.exact_sign_test_p_value === pValue &&
+    outcome.inference_status === inference && outcome.next_action === nextAction;
+}
+
+function researchMemoryControlOpportunityProtocolHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlOpportunityProtocol {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "development_suite_version",
+    "development_suite_digest",
+    "sealed_suite_version",
+    "sealed_generator_version",
+    "sealed_rotation_commitment_digest",
+    "sealed_suite_digest"
+  ]) && value.development_suite_version ===
+      "research_development_replay_v1" &&
+    researchControlCampaignSha256Digest(value.development_suite_digest) &&
+    value.sealed_suite_version === "research_sealed_admission_v1" &&
+    value.sealed_generator_version === "research_scenario_generator_v1" &&
+    researchControlCampaignSha256Digest(
+      value.sealed_rotation_commitment_digest
+    ) && researchControlCampaignSha256Digest(value.sealed_suite_digest);
+}
+
+function researchMemoryControlStudyPolicyHasRuntimeShape(
+  value: unknown,
+  pairCount: number
+): value is ResearchMemoryControlStudyPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "pair_count",
+    "allocation_mode",
+    "development_submission_limit_per_worker",
+    "sealed_submission_limit_per_worker",
+    "baseline_copy_policy",
+    "within_pair_start_policy",
+    "maximum_within_pair_start_skew_ms",
+    "across_pair_execution_policy",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes"
+  ]) && value.policy_version === "research_memory_control_study_v1" &&
+    value.pair_count === pairCount && value.allocation_mode === "explicit" &&
+    value.development_submission_limit_per_worker === 1 &&
+    value.sealed_submission_limit_per_worker === 1 &&
+    value.baseline_copy_policy === "fresh_verified_copy_per_arm" &&
+    value.within_pair_start_policy === "concurrent_initial_sides" &&
+    value.maximum_within_pair_start_skew_ms === 5_000 &&
+    value.across_pair_execution_policy === "sequential" &&
+    comparisonPositive(value.maximum_baseline_regular_file_count) &&
+    Number.isInteger(value.maximum_baseline_regular_file_count) &&
+    value.maximum_baseline_regular_file_count <= 100_000 &&
+    comparisonPositive(value.maximum_baseline_total_bytes) &&
+    Number.isInteger(value.maximum_baseline_total_bytes) &&
+    value.maximum_baseline_total_bytes <= 1_000_000_000;
+}
+
+function researchMemoryControlStudyAnalysisPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyAnalysisPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "primary_estimand",
+    "significance_method",
+    "alpha",
+    "minimum_non_tied_pair_count",
+    "tie_policy",
+    "ineligible_pair_policy",
+    "minimum_mean_paired_difference"
+  ]) && value.policy_version === "paired_exact_repeat_sign_test_v1" &&
+    value.primary_estimand ===
+      "mean_masked_minus_released_memory_exact_repeat_indicator" &&
+    value.significance_method === "two_sided_exact_sign_test" &&
+    value.alpha === 0.05 && value.minimum_non_tied_pair_count === 6 &&
+    value.tie_policy === "exclude_from_sign_test_include_in_mean" &&
+    value.ineligible_pair_policy ===
+      "retain_in_counts_exclude_from_inference" &&
+    value.minimum_mean_paired_difference === 0;
+}
+
+function researchMemoryControlPairPlanHasRuntimeShape(
+  value: unknown,
+  pairIndex: number
+): value is ResearchMemoryControlPairPlan {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "pair_index",
+    "research_direction_ref",
+    "direction_kind",
+    "released_memory_treatment",
+    "memory_masked_control"
+  ]) && value.pair_index === pairIndex &&
+    comparisonRef(value.research_direction_ref, "research_direction") &&
+    researchDirectionKindHasRuntimeShape(value.direction_kind) &&
+    researchMemoryControlArmPlanHasRuntimeShape(
+      value.released_memory_treatment,
+      "released_memory_treatment"
+    ) && researchMemoryControlArmPlanHasRuntimeShape(
+      value.memory_masked_control,
+      "memory_masked_control"
+    ) && value.released_memory_treatment.tick_id !==
+      value.memory_masked_control.tick_id;
+}
+
+function researchMemoryControlArmPlanHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchMemoryControlArmKind
+): value is ResearchMemoryControlArmPlan {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "arm_kind",
+    "memory_mode",
+    "tick_id"
+  ]) && value.arm_kind === armKind && comparisonString(value.tick_id) &&
+    (armKind === "released_memory_treatment"
+      ? value.memory_mode === "released_memory"
+      : value.memory_mode === "memory_masked");
+}
+
+function researchMemoryControlArmResultHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchMemoryControlArmKind
+): value is ResearchMemoryControlArmResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "memory_mode",
+    "planned_tick_id",
+    "terminal_status",
+    "failure_kind",
+    "tick_evidence",
+    "preflight_evidence",
+    "worker_evidence",
+    "allocation_evidence",
+    "admission_evidence",
+    "resource_summary",
+    "observation",
+    "exact_repeat_indicator",
+    "ineligibility_reason"
+  ]) || value.arm_kind !== armKind || !comparisonString(value.planned_tick_id) ||
+    ![
+      "completed",
+      "no_submission",
+      "worker_failed",
+      "platform_failed",
+      "interrupted"
+    ].includes(String(value.terminal_status)) ||
+    (armKind === "released_memory_treatment"
+      ? value.memory_mode !== "released_memory"
+      : value.memory_mode !== "memory_masked") ||
+    !researchMemoryControlFailureKindOrNull(value.failure_kind) ||
+    !researchMemoryControlTickEvidenceHasRuntimeShape(
+      value.tick_evidence,
+      value.planned_tick_id
+    ) || !researchMemoryControlPreflightEvidenceHasRuntimeShape(
+      value.preflight_evidence,
+      value.memory_mode as ResearchWorkerMemoryMode
+    ) || !researchMemoryControlWorkerEvidenceHasRuntimeShape(
+      value.worker_evidence
+    ) || !researchMemoryControlAllocationEvidenceHasRuntimeShape(
+      value.allocation_evidence
+    ) || !researchMemoryControlAdmissionEvidenceHasRuntimeShape(
+      value.admission_evidence
+    ) || !researchMemoryControlResourceSummaryHasRuntimeShape(
+      value.resource_summary
+    )) {
+    return false;
+  }
+  const arm = value as unknown as ResearchMemoryControlArmResult;
+  const requiresFailure = arm.terminal_status === "worker_failed" ||
+    arm.terminal_status === "platform_failed" ||
+    arm.terminal_status === "interrupted";
+  if (requiresFailure !== (arm.failure_kind !== null)) return false;
+  if (arm.observation === "exact_repeat") {
+    return arm.terminal_status === "completed" &&
+      arm.exact_repeat_indicator === 1 && arm.ineligibility_reason === null &&
+      researchMemoryControlCompletedEvidencePresent(arm) &&
+      researchMemoryControlAdmissionClassifies(arm.admission_evidence, true);
+  }
+  if (arm.observation === "distinct_behavior") {
+    return arm.terminal_status === "completed" &&
+      arm.exact_repeat_indicator === 0 && arm.ineligibility_reason === null &&
+      researchMemoryControlCompletedEvidencePresent(arm) &&
+      researchMemoryControlAdmissionClassifies(arm.admission_evidence, false);
+  }
+  return arm.observation === "ineligible" &&
+    arm.exact_repeat_indicator === null &&
+    researchMemoryControlIneligibilityReason(arm.ineligibility_reason) &&
+    researchMemoryControlIneligibleArmMatchesReason(arm);
+}
+
+function researchMemoryControlTickEvidenceHasRuntimeShape(
+  value: unknown,
+  plannedTickId: unknown
+): value is ResearchMemoryControlTickEvidence | null {
+  if (value === null) return true;
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "tick_ref",
+    "tick_id",
+    "tick_digest",
+    "started_at",
+    "completed_at",
+    "tick_status",
+    "direction_result_status"
+  ]) && comparisonRef(value.tick_ref, "candidate_arena_tick") &&
+    value.tick_id === plannedTickId &&
+    researchControlCampaignSha256Digest(value.tick_digest) &&
+    comparisonIso(value.started_at) && comparisonIso(value.completed_at) &&
+    Date.parse(value.completed_at) >= Date.parse(value.started_at) &&
+    ["completed", "completed_with_errors", "failed"].includes(
+      String(value.tick_status)
+    ) && [
+      "created",
+      "duplicate",
+      "quarantined",
+      "no_submission",
+      "failed"
+    ].includes(String(value.direction_result_status));
+}
+
+function researchMemoryControlPreflightEvidenceHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchMemoryControlPreflightEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "commitment_ref",
+      "commitment_digest",
+      "development_suite_version",
+      "development_suite_digest",
+      "sealed_suite_version",
+      "sealed_generator_version",
+      "sealed_suite_digest",
+      "sealed_rotation_commitment_digest",
+      "memory_policy"
+    ]) && comparisonRef(
+      value.commitment_ref,
+      "research_preflight_commitment"
+    ) && researchControlCampaignSha256Digest(value.commitment_digest) &&
+    value.development_suite_version === "research_development_replay_v1" &&
+    researchControlCampaignSha256Digest(value.development_suite_digest) &&
+    value.sealed_suite_version === "research_sealed_admission_v1" &&
+    value.sealed_generator_version === "research_scenario_generator_v1" &&
+    researchControlCampaignSha256Digest(value.sealed_suite_digest) &&
+    researchControlCampaignSha256Digest(
+      value.sealed_rotation_commitment_digest
+    ) &&
+    researchWorkerMemoryPolicyHasRuntimeShape(value.memory_policy) &&
+    value.memory_policy.memory_mode === memoryMode);
+}
+
+function researchMemoryControlWorkerEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlWorkerEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "worker_ref",
+      "agent_profile_id",
+      "provider_kind",
+      "model"
+    ]) && comparisonRef(value.worker_ref, "research_worker") &&
+    comparisonString(value.agent_profile_id) && comparisonString(value.model) &&
+    ["codex_cli", "claude_code", "local_process", "fixture_only"].includes(
+      String(value.provider_kind)
+    ));
+}
+
+function researchMemoryControlAllocationEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlAllocationEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "allocation_ref",
+      "allocation_digest",
+      "allocation_mode",
+      "allocation_policy_digest",
+      "direction_kind",
+      "selection_kind",
+      "experiment_budget"
+    ]) && comparisonRef(
+      value.allocation_ref,
+      "candidate_arena_research_allocation"
+    ) && researchControlCampaignSha256Digest(value.allocation_digest) &&
+    value.allocation_mode === "explicit" &&
+    researchControlCampaignSha256Digest(value.allocation_policy_digest) &&
+    researchDirectionKindHasRuntimeShape(value.direction_kind) &&
+    value.selection_kind === "explicit" && value.experiment_budget === 1);
+}
+
+function researchMemoryControlAdmissionEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlAdmissionEvidence | null {
+  if (value === null) return true;
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "decision_ref",
+    "decision_digest",
+    "status",
+    "reason",
+    "research_worker_outcome",
+    "behavior_comparison_status",
+    "fingerprint_ref",
+    "fingerprint_digest",
+    "matching_fingerprint_ref",
+    "matching_fingerprint_digest"
+  ]) || !comparisonRef(value.decision_ref, "candidate_admission_decision") ||
+    !researchControlCampaignSha256Digest(value.decision_digest) ||
+    !["admitted", "duplicate", "quarantined"].includes(
+      String(value.status)
+    ) || ![
+      "evaluation_accepted",
+      "research_worker_failed",
+      "no_candidate_change",
+      "experiment_failed",
+      "evaluation_disqualified",
+      "evaluation_quarantined",
+      "evidence_already_counted",
+      "evidence_quarantined",
+      "paper_handoff_conformance_failed",
+      "behavior_duplicate",
+      "behavior_fingerprint_unavailable"
+    ].includes(String(value.reason)) ||
+    !["changed", "unchanged", "failed"].includes(
+      String(value.research_worker_outcome)
+    ) || !(value.behavior_comparison_status === null || [
+      "distinct",
+      "duplicate",
+      "unavailable"
+    ].includes(String(value.behavior_comparison_status)))) {
+    return false;
+  }
+  const linked = [value.fingerprint_ref, value.fingerprint_digest];
+  const matching = [
+    value.matching_fingerprint_ref,
+    value.matching_fingerprint_digest
+  ];
+  const fingerprintRef = value.fingerprint_ref as Ref | null;
+  const fingerprintDigest = value.fingerprint_digest as string | null;
+  const matchingFingerprintRef = value.matching_fingerprint_ref as Ref | null;
+  const matchingFingerprintDigest =
+    value.matching_fingerprint_digest as string | null;
+  const linkedPresent = linked.every((item) => item !== null);
+  const matchingPresent = matching.every((item) => item !== null);
+  if (linked.some((item) => item === null) !==
+      linked.every((item) => item === null) ||
+    matching.some((item) => item === null) !==
+      matching.every((item) => item === null) ||
+    (linkedPresent && (!comparisonRef(
+      value.fingerprint_ref,
+      "research_behavior_fingerprint"
+    ) || !researchControlCampaignSha256Digest(value.fingerprint_digest))) ||
+    (matchingPresent && (!comparisonRef(
+      value.matching_fingerprint_ref,
+      "research_behavior_fingerprint"
+    ) || !researchControlCampaignSha256Digest(
+      value.matching_fingerprint_digest
+    )))) {
+    return false;
+  }
+  return value.behavior_comparison_status === "duplicate"
+    ? linkedPresent && matchingPresent &&
+      fingerprintRef!.id !== matchingFingerprintRef!.id &&
+      fingerprintDigest === matchingFingerprintDigest
+    : value.behavior_comparison_status === "distinct"
+    ? linkedPresent && !matchingPresent
+    : !linkedPresent && !matchingPresent;
+}
+
+function researchMemoryControlResourceSummaryHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlResourceSummary | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "provider_request_total",
+      "runner_command_total",
+      "scenario_count",
+      "elapsed_ms"
+    ]) && [
+      value.provider_request_total,
+      value.runner_command_total,
+      value.scenario_count,
+      value.elapsed_ms
+    ].every((item) => comparisonNonNegative(item) && Number.isInteger(item)));
+}
+
+function researchMemoryControlFailureKindOrNull(value: unknown): boolean {
+  return value === null || [
+    "research_worker_failed",
+    "provider_failed",
+    "runner_failed",
+    "restart_interrupted",
+    "evidence_reconstruction_failed"
+  ].includes(String(value));
+}
+
+function researchMemoryControlIneligibilityReason(
+  value: unknown
+): value is ResearchMemoryControlPairIneligibilityReason {
+  return [
+    "no_submission",
+    "worker_or_platform_failure",
+    "behavior_fingerprint_unavailable",
+    "malformed_evidence_graph",
+    "missing_memory_contrast",
+    "interrupted_or_unpaired_run"
+  ].includes(String(value));
+}
+
+function researchMemoryControlAdmissionClassifies(
+  admission: ResearchMemoryControlAdmissionEvidence | null,
+  exactRepeat: boolean
+): boolean {
+  if (!admission) return false;
+  if (exactRepeat) {
+    return (admission.research_worker_outcome === "unchanged" &&
+      admission.status === "duplicate" &&
+      admission.reason === "no_candidate_change" &&
+      admission.behavior_comparison_status === null) ||
+      (admission.research_worker_outcome === "changed" &&
+        admission.status === "duplicate" &&
+        admission.reason === "behavior_duplicate" &&
+        admission.behavior_comparison_status === "duplicate");
+  }
+  return admission.research_worker_outcome === "changed" &&
+    admission.behavior_comparison_status === "distinct";
+}
+
+function researchMemoryControlArmAssignmentMatches(
+  arm: ResearchMemoryControlArmResult,
+  outcome: ResearchMemoryControlPairOutcomeRecord,
+  armKind: ResearchMemoryControlArmKind
+): boolean {
+  const assignment = arm.preflight_evidence?.memory_policy.control_assignment;
+  return !assignment || (
+    assignment.study_ref.id === outcome.study_ref.id &&
+    assignment.study_digest === outcome.study_digest &&
+    assignment.pair_index === outcome.pair_index &&
+    assignment.arm_kind === armKind
+  );
+}
+
+function researchMemoryControlMemoryContrastMatches(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): boolean {
+  const released = outcome.released_memory.preflight_evidence?.memory_policy;
+  const masked = outcome.memory_masked.preflight_evidence?.memory_policy;
+  return Boolean(released && masked && released.control_assignment &&
+    masked.control_assignment && released.available_memory_item_count > 0 &&
+    released.available_memory_item_count === masked.available_memory_item_count &&
+    released.memory_source_digest === masked.memory_source_digest);
+}
+
+function researchMemoryControlCompletedEvidencePresent(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  return arm.tick_evidence !== null && arm.preflight_evidence !== null &&
+    arm.worker_evidence !== null && arm.allocation_evidence !== null &&
+    arm.admission_evidence !== null && arm.resource_summary !== null;
+}
+
+function researchMemoryControlIneligibleArmMatchesReason(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  switch (arm.ineligibility_reason) {
+    case "no_submission":
+      return arm.terminal_status === "no_submission" &&
+        arm.failure_kind === null && arm.tick_evidence !== null &&
+        arm.preflight_evidence !== null && arm.worker_evidence !== null &&
+        arm.allocation_evidence !== null && arm.admission_evidence === null &&
+        arm.resource_summary !== null;
+    case "worker_or_platform_failure":
+      return (arm.terminal_status === "worker_failed" ||
+        arm.terminal_status === "platform_failed") &&
+        arm.failure_kind !== null && arm.preflight_evidence !== null &&
+        arm.worker_evidence !== null && arm.allocation_evidence !== null &&
+        arm.resource_summary !== null;
+    case "interrupted_or_unpaired_run":
+      return arm.terminal_status === "interrupted" &&
+        arm.failure_kind !== null && arm.preflight_evidence !== null &&
+        arm.worker_evidence !== null && arm.allocation_evidence !== null &&
+        arm.resource_summary !== null;
+    case "behavior_fingerprint_unavailable":
+      return arm.terminal_status === "completed" &&
+        researchMemoryControlCompletedEvidencePresent(arm) &&
+        arm.admission_evidence?.behavior_comparison_status === "unavailable";
+    case "missing_memory_contrast":
+      return arm.terminal_status === "completed" &&
+        researchMemoryControlCompletedEvidencePresent(arm);
+    case "malformed_evidence_graph":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function researchMemoryControlInitialStartSkew(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): number | null {
+  const releasedStartedAt = outcome.released_memory.tick_evidence?.started_at;
+  const maskedStartedAt = outcome.memory_masked.tick_evidence?.started_at;
+  return releasedStartedAt && maskedStartedAt
+    ? Math.abs(Date.parse(releasedStartedAt) - Date.parse(maskedStartedAt))
+    : null;
+}
+
+function researchMemoryControlPairedEvidenceMatches(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): boolean {
+  const releasedWorker = outcome.released_memory.worker_evidence;
+  const maskedWorker = outcome.memory_masked.worker_evidence;
+  const releasedAllocation = outcome.released_memory.allocation_evidence;
+  const maskedAllocation = outcome.memory_masked.allocation_evidence;
+  const releasedPreflight = outcome.released_memory.preflight_evidence;
+  const maskedPreflight = outcome.memory_masked.preflight_evidence;
+  return Boolean(releasedWorker && maskedWorker && releasedAllocation &&
+    maskedAllocation && releasedPreflight && maskedPreflight &&
+    releasedWorker.worker_ref.id === maskedWorker.worker_ref.id &&
+    releasedWorker.agent_profile_id === maskedWorker.agent_profile_id &&
+    releasedWorker.provider_kind === maskedWorker.provider_kind &&
+    releasedWorker.model === maskedWorker.model &&
+    releasedAllocation.allocation_mode === maskedAllocation.allocation_mode &&
+    releasedAllocation.allocation_policy_digest ===
+      maskedAllocation.allocation_policy_digest &&
+    releasedAllocation.direction_kind === outcome.direction_kind &&
+    maskedAllocation.direction_kind === outcome.direction_kind &&
+    releasedAllocation.selection_kind === maskedAllocation.selection_kind &&
+    releasedAllocation.experiment_budget ===
+      maskedAllocation.experiment_budget &&
+    releasedPreflight.development_suite_version ===
+      maskedPreflight.development_suite_version &&
+    releasedPreflight.development_suite_digest ===
+      maskedPreflight.development_suite_digest &&
+    releasedPreflight.sealed_suite_version ===
+      maskedPreflight.sealed_suite_version &&
+    releasedPreflight.sealed_generator_version ===
+      maskedPreflight.sealed_generator_version &&
+    releasedPreflight.sealed_suite_digest ===
+      maskedPreflight.sealed_suite_digest &&
+    releasedPreflight.sealed_rotation_commitment_digest ===
+      maskedPreflight.sealed_rotation_commitment_digest);
+}
+
+function researchMemoryControlStudyPairResultHasRuntimeShape(
+  value: unknown,
+  pairIndex: number
+): value is ResearchMemoryControlStudyPairResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "pair_index",
+    "pair_outcome_ref",
+    "pair_outcome_digest",
+    "eligibility_status",
+    "ineligibility_reason",
+    "paired_difference"
+  ]) || value.pair_index !== pairIndex || !comparisonRef(
+    value.pair_outcome_ref,
+    "research_memory_control_pair_outcome"
+  ) || !researchControlCampaignSha256Digest(value.pair_outcome_digest)) {
+    return false;
+  }
+  return value.eligibility_status === "eligible"
+    ? value.ineligibility_reason === null &&
+      (value.paired_difference === -1 || value.paired_difference === 0 ||
+        value.paired_difference === 1)
+    : value.eligibility_status === "ineligible" &&
+      researchMemoryControlIneligibilityReason(value.ineligibility_reason) &&
+      value.paired_difference === null;
+}
+
+function researchDirectionKindHasRuntimeShape(
+  value: unknown
+): value is ResearchDirectionKind {
+  return RESEARCH_DIRECTION_KINDS.includes(value as ResearchDirectionKind);
 }
 
 export function researchControlStudyHasRuntimeShape(
@@ -12664,6 +13797,9 @@ export type FixtureRecord =
   | ResearchControlCampaignOutcomeRecord
   | ResearchControlStudyRecord
   | ResearchControlStudyOutcomeRecord
+  | ResearchMemoryControlStudyRecord
+  | ResearchMemoryControlPairOutcomeRecord
+  | ResearchMemoryControlStudyOutcomeRecord
   | ResearchAllocationPolicyDecisionRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord

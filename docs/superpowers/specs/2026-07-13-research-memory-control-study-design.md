@@ -140,13 +140,17 @@ The study freezes:
 
 - one bounded LocalStore regular-file baseline snapshot;
 - one exact source candidate version, SystemCode record, and artifact closure;
-- one managed provider, model, profile, and permission-policy identity;
+- one managed provider, explicit model, profile, and permission-policy identity; provider-default
+  model resolution is not a valid study commitment;
 - 6 to 30 pair plans in canonical sequence;
 - one explicit `ResearchDirection` per pair;
 - one development submission per worker and one sealed submission maximum;
 - exact treatment and control tick IDs;
 - `released_memory` for treatment and `memory_masked` for control;
-- concurrent initial execution within each pair;
+- one exact development replay suite, sealed suite, and sealed rotation commitment shared by both
+  arms;
+- concurrent initial execution within each pair with no more than 5,000 milliseconds between the
+  two recorded tick starts;
 - sequential execution across pairs;
 - a two-sided paired exact sign-test policy;
 - research-only authority flags.
@@ -173,8 +177,9 @@ For each pair, the runtime:
 3. verifies both copies against the exact baseline snapshot;
 4. replicates the exact study commitment into both arm stores and binds the planned pair/arm
    assignment before any allocation or preflight effect;
-5. runs the two planned CandidateArena ticks concurrently with identical source, agent, direction,
-   explicit allocation, and maximum budget;
+5. runs the two planned CandidateArena ticks concurrently, with at most 5,000 milliseconds of start
+   skew, using identical source, worker/provider/model/profile identity, direction, explicit
+   allocation policy, development replay suite, sealed suite and rotation, and maximum budget;
 6. applies only the planned memory mode to each side;
 7. loads exact tick, preflight, checkpoint, admission, and behavior evidence from each arm store;
 8. records one immutable `ResearchMemoryControlPairOutcome` in the coordinator store;
@@ -192,9 +197,11 @@ Restart behavior is evidence-derived:
 - an exact pair outcome exists: return it without another worker effect;
 - copied baseline, identity, policy, or graph drift: fail closed and do not run either side.
 
-The runtime records concise platform failure kinds, not provider stdout/stderr or raw evaluator
-data. One failed pair does not cancel later precommitted pairs, but it remains in the final
-denominator and cannot be replaced.
+The runtime records concise platform failure kinds and bounded resource summaries, including an
+explicit zero summary when interruption happens before a countable provider or runner effect, not
+provider stdout/stderr or raw evaluator data. Identity, allocation, or opportunity drift is retained
+as terminal malformed evidence rather than aborting the denominator. One failed pair does not cancel
+later precommitted pairs, but it remains in the final denominator and cannot be replaced.
 
 ## Exact-Repeat Estimand
 
@@ -220,9 +227,11 @@ Therefore `+1` favors released memory, `0` is tied, and `-1` favors the masked c
 exact repeated-behavior estimand, not a general candidate-quality or economic estimand.
 
 The pair outcome also retains non-authoritative diagnostics: admission status, no-submission and
-failure status, provider requests, runner commands, scenario count, elapsed time, and exact
-candidate/tick/preflight references. These diagnostics cannot substitute for the primary
-classification.
+failure status, provider requests, runner commands, scenario count, elapsed time, exact worker and
+allocation identity, both tick start times and their computed skew, suite commitments, and exact
+candidate/tick/preflight references. Missing resource summaries or unequal identity, allocation,
+opportunity protocol, or start-bound evidence makes the pair ineligible. These diagnostics cannot
+substitute for the primary classification.
 
 ## Study Inference
 

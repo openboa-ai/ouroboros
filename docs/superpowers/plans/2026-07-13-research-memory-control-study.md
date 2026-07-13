@@ -38,6 +38,7 @@ ResearchWorkerCheckpoint, LocalStore, Vitest, existing exact sign-test implement
 
 **Files:**
 
+- Modify: `docs/superpowers/specs/2026-07-13-research-memory-control-study-design.md`
 - Modify: `packages/domain/src/index.ts`
 - Modify: `packages/domain/src/research-control-campaign.test.ts`
 - Create: `packages/application/src/candidate/research-worker-memory.ts`
@@ -271,13 +272,13 @@ researchMemoryControlPairOutcomeId(studyId: string, pairIndex: number): string
 researchMemoryControlStudyOutcomeId(studyId: string): string
 ```
 
-- [ ] **Step 1: Write RED domain/application decision tests**
+- [x] **Step 1: Write RED domain/application decision tests**
 
   Cover 6/30 bounds, at least two directions, canonical sequence/IDs, opposite modes, one submission,
   no authority widening, exact digest sensitivity, eligible `+1/0/-1` pair classification, and all
   ineligible reasons from the design.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
   ```bash
   npx vitest run packages/domain/src/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study-outcome.test.ts
@@ -285,20 +286,22 @@ researchMemoryControlStudyOutcomeId(studyId: string): string
 
   Expected: FAIL because the records and decision functions do not exist.
 
-- [ ] **Step 3: Implement study and pair decisions**
+- [x] **Step 3: Implement study and pair decisions**
 
   Require the study baseline to contain a non-empty source and exact agent identity. Pair evidence
-  must bind planned tick IDs, exact memory policies, same memory source digest/count, tick/preflight/
-  admission digests, external behavior status, and resource summaries. Use `null`, never zero, for
-  an ineligible paired difference.
+  must bind planned tick IDs, exact memory policies, same memory source digest/count, worker,
+  provider/explicit-model/profile, explicit allocation, study-precommitted development/sealed
+  opportunity protocol, bounded start skew, tick/preflight/admission/fingerprint digests, external
+  behavior status, and resource summaries. Identity, allocation, opportunity, and fingerprint drift
+  becomes terminal malformed evidence. Use `null`, never zero, for an ineligible paired difference.
 
-- [ ] **Step 4: Implement all-pairs inference**
+- [x] **Step 4: Implement all-pairs inference**
 
   Reuse `exactTwoSidedSignTestPValue`. Require every planned pair outcome in exact order. Six
   favorable non-tied pairs must yield `0.03125` and `memory_effect_supported`; missing, substituted,
   ineligible, tied-only, adverse, non-positive mean, or widened-authority evidence must not.
 
-- [ ] **Step 5: Run GREEN and typechecks**
+- [x] **Step 5: Run GREEN and typechecks**
 
   ```bash
   npx vitest run packages/domain/src/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study-outcome.test.ts
@@ -307,10 +310,10 @@ researchMemoryControlStudyOutcomeId(studyId: string): string
   git diff --check
   ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
-  git add packages/domain/src/index.ts packages/domain/src/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study.ts packages/application/src/candidate/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study-outcome.ts packages/application/src/candidate/research-memory-control-study-outcome.test.ts
+  git add docs/superpowers/specs/2026-07-13-research-memory-control-study-design.md docs/superpowers/plans/2026-07-13-research-memory-control-study.md packages/domain/src/index.ts packages/domain/src/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study.ts packages/application/src/candidate/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study-outcome.ts packages/application/src/candidate/research-memory-control-study-outcome.test.ts
   git commit -m "feat: define research memory control studies"
   ```
 
