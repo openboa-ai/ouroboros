@@ -58,15 +58,23 @@ export class PaperTradingComparisonConfirmationWindowService {
       const applicableStart = currentIndex === 0
         ? campaign.committed_at
         : states[currentIndex - 1]!.verdict!.evaluated_at;
-      const now = exactNow(this.now);
-      if (!states[currentIndex]!.commitment && Date.parse(now) >
+      const startedAt = exactNow(this.now);
+      if (!states[currentIndex]!.commitment && Date.parse(startedAt) >
         Date.parse(applicableStart) +
           campaign.campaign_policy.maximum_slot_start_delay_ms) {
         throw notTerminal();
       }
       const coordinatorInput = inputForSlot(campaign, currentIndex);
       const graph = await this.options.comparisons.prepare(coordinatorInput);
-      if (!graphMatchesSlot(graph, campaign, currentIndex, applicableStart, now)) {
+      const completedAt = exactNow(this.now);
+      if (Date.parse(completedAt) < Date.parse(startedAt) ||
+        !graphMatchesSlot(
+          graph,
+          campaign,
+          currentIndex,
+          applicableStart,
+          completedAt
+        )) {
         throw graphInvalid();
       }
       return graph;

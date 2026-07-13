@@ -19,7 +19,9 @@ def request_stop(_signum, _frame):
 
 
 def utc_now():
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def get_json(base_url, path):

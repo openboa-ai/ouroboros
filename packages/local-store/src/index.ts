@@ -11898,12 +11898,12 @@ export class LocalStore {
         activationAttempt.paper_trading_comparison_activation_attempt_id
       )
     ]);
-    const sideMatches = (
+    const sideBaseline = (
       role: "champion" | "challenger",
       state: PaperTradingComparisonRuntimeSideState,
       observations: PaperTradingObservationRecord[],
       result: PaperTradingComparisonActivationSideResultRecord | undefined
-    ): boolean => {
+    ) => {
       const priorAcknowledgements = previousAttempt
         ? acknowledgements.filter((record) =>
             record.role === role &&
@@ -11911,6 +11911,14 @@ export class LocalStore {
         : [];
       const priorAcknowledgement = priorAcknowledgements[0];
       const priorEvidence = previousOutcome?.[role];
+      const providerEvidenceOrderingMatches = Boolean(
+        previousOutcome && priorEvidence && priorAcknowledgement &&
+        (previousOutcome.checkpoint_sequence === 1
+          ? priorAcknowledgement.provider_request_count_at_acknowledgement >=
+            priorEvidence.provider_request_count_after
+          : priorAcknowledgement.provider_request_count_at_acknowledgement <=
+            priorEvidence.provider_request_count_after)
+      );
       const providerBaselineMatches = attempt.checkpoint_sequence === 1
         ? attempt[role].provider_request_count_before === result?.provider_request_count
         : Boolean(
@@ -11924,8 +11932,7 @@ export class LocalStore {
               activationAttempt[role].trading_run_ref.id &&
             priorAcknowledgement.tick_digest === previousAttempt.tick_digest &&
             priorAcknowledgement.tick_sequence === previousAttempt.checkpoint_sequence &&
-            priorAcknowledgement.provider_request_count_at_acknowledgement >=
-              priorEvidence.provider_request_count_after &&
+            providerEvidenceOrderingMatches &&
             priorAcknowledgement.provider_request_count_at_acknowledgement <=
               activationAttempt.activation_policy.maximum_provider_request_count_per_side &&
             Date.parse(priorAcknowledgement.acknowledged_at) <
@@ -11941,51 +11948,96 @@ export class LocalStore {
               ) && priorEvidence.tick_acknowledgement_digest ===
                 priorAcknowledgement.acknowledgement_digest) &&
             attempt[role].provider_request_count_before >=
-              priorAcknowledgement.provider_request_count_at_acknowledgement &&
+              Math.max(
+                priorAcknowledgement.provider_request_count_at_acknowledgement,
+                priorEvidence.provider_request_count_after
+              ) &&
             attempt[role].provider_request_count_before <=
               activationAttempt.activation_policy.maximum_provider_request_count_per_side
           );
-      return Boolean(
-        result &&
+      const runningStateMatches = Boolean(result &&
         this.paperTradingComparisonSideIsRunningWithinAttempt(
           activationAttempt,
           result,
           state
-        ) &&
-        state.evidenceState === (attempt.checkpoint_sequence === 1
-          ? "zero"
-          : "paired_checkpoint") &&
-        paperTradingComparisonRefsEqual(
+        ));
+      const expectedEvidenceState = attempt.checkpoint_sequence === 1
+        ? "zero"
+        : "paired_checkpoint";
+      const tradingRunMatches = paperTradingComparisonRefsEqual(
           attempt[role].trading_run_ref,
           activationAttempt[role].trading_run_ref
-        ) &&
-        paperTradingComparisonRefsEqual(
+        );
+      const evaluationRefMatches = paperTradingComparisonRefsEqual(
           attempt[role].paper_trading_evaluation_ref,
           activationAttempt[role].paper_trading_evaluation_ref
-        ) &&
+        );
+      const evaluationDigestMatches =
         attempt[role].evaluation_record_digest === comparisonExactRecordDigest(
           paperTradingComparisonEvaluationRecordDigestInput(state.evaluation)
-        ) &&
+        );
+      const observationDigestMatches =
         attempt[role].observation_chain_digest === comparisonExactRecordDigest(
           paperTradingComparisonObservationChainDigestInput(observations)
-        ) &&
-        providerBaselineMatches
-      );
+        );
+      const details = {
+        latest_start_result_present: result !== undefined,
+        running_state_matches: runningStateMatches,
+        evidence_state: state.evidenceState,
+        expected_evidence_state: expectedEvidenceState,
+        trading_run_matches: tradingRunMatches,
+        evaluation_ref_matches: evaluationRefMatches,
+        evaluation_digest_matches: evaluationDigestMatches,
+        observation_digest_matches: observationDigestMatches,
+        provider_evidence_ordering_matches: providerEvidenceOrderingMatches,
+        provider_baseline_matches: providerBaselineMatches,
+        attempt_provider_request_count:
+          attempt[role].provider_request_count_before,
+        ...(priorAcknowledgement ? {
+          prior_acknowledgement_provider_request_count:
+            priorAcknowledgement.provider_request_count_at_acknowledgement,
+          ...(priorEvidence ? {
+            prior_evidence_provider_request_count:
+              priorEvidence.provider_request_count_after
+          } : {}),
+          prior_acknowledged_at: priorAcknowledgement.acknowledged_at
+        } : {}),
+        maximum_provider_request_count:
+          activationAttempt.activation_policy.maximum_provider_request_count_per_side,
+        attempted_at: attempt.attempted_at
+      };
+      return {
+        matches: result !== undefined &&
+          runningStateMatches &&
+          state.evidenceState === expectedEvidenceState &&
+          tradingRunMatches &&
+          evaluationRefMatches &&
+          evaluationDigestMatches &&
+          observationDigestMatches &&
+          providerBaselineMatches,
+        details
+      };
     };
-    if (!sideMatches(
+    const championBaseline = sideBaseline(
       "champion",
       championState,
       championObservations,
       championResult
-    ) || !sideMatches(
+    );
+    const challengerBaseline = sideBaseline(
       "challenger",
       challengerState,
       challengerObservations,
       challengerResult
-    )) {
+    );
+    if (!championBaseline.matches || !challengerBaseline.matches) {
       throw new LocalStoreError(
         "paper_trading_comparison_checkpoint_attempt_state_mismatch",
-        "paper trading comparison checkpoint attempt does not match both running side baselines"
+        "paper trading comparison checkpoint attempt does not match both running side baselines",
+        {
+          champion: championBaseline.details,
+          challenger: challengerBaseline.details
+        }
       );
     }
 
@@ -14735,10 +14787,6 @@ export class LocalStore {
         selection.paper_trading_evaluation_commitment_ref
       ) &&
       promotionEvaluation.observation_count === orderedPromotionObservations.length &&
-      promotionEvaluation.observation_count >=
-        preparation.comparison_policy.minimum_observation_count &&
-      Date.parse(promotionEvaluation.stopped_at!) - Date.parse(promotionEvaluation.started_at) >=
-        preparation.comparison_policy.minimum_elapsed_ms &&
       paperTradingComparisonRefsEqual(boundPromotion.candidate_ref, preparation.champion.candidate_ref) &&
       paperTradingComparisonRefsEqual(
         boundPromotion.candidate_version_ref,

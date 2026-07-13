@@ -129,6 +129,7 @@ describe("ResearchControlCampaign matched source window", () => {
     });
 
     expect(result.transition).toBe("none");
+    expect(result.wakeAt).toBe("2026-07-12T10:00:03.000Z");
     expect(fixture.operations.filter((operation) =>
       operation.startsWith("enable:")
     )).toEqual([
@@ -137,6 +138,30 @@ describe("ResearchControlCampaign matched source window", () => {
     ]);
     expect(fixture.operations.filter((operation) =>
       operation.startsWith("advance:")
+    )).toEqual([]);
+  });
+
+  it("does not re-enable attribution already advanced to a repeated tick", async () => {
+    const fixture = sourceWindowFixture({
+      initialPhases: {
+        adaptive_treatment: "waiting_repeated_tick_acknowledgements",
+        static_control: "waiting_repeated_tick_acknowledgements"
+      }
+    });
+
+    const result = await fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    });
+
+    expect(result).toMatchObject({
+      transition: "none",
+      terminal: false,
+      wakeAt: "2026-07-12T10:00:03.000Z"
+    });
+    expect(fixture.operations.filter((operation) =>
+      operation.startsWith("enable:")
     )).toEqual([]);
   });
 
@@ -209,7 +234,13 @@ describe("ResearchControlCampaign matched source window", () => {
       batch: fixture.batch,
       sources: activeSources()
     })).rejects.toMatchObject({
-      code: "research_control_campaign_paper_source_window_transition_failed"
+      code: "research_control_campaign_paper_source_window_transition_failed",
+      details: {
+        failures: [{
+          arm_kind: "static_control",
+          reason: "Error:injected_attribution_failure"
+        }]
+      }
     });
 
     expect(fixture.operations).toEqual(expect.arrayContaining([
@@ -233,7 +264,13 @@ describe("ResearchControlCampaign matched source window", () => {
       batch: fixture.batch,
       sources: activeSources()
     })).rejects.toMatchObject({
-      code: "research_control_campaign_paper_source_window_transition_failed"
+      code: "research_control_campaign_paper_source_window_transition_failed",
+      details: {
+        failures: [{
+          arm_kind: "static_control",
+          reason: "Error:injected_window_failure"
+        }]
+      }
     });
 
     expect(fixture.operations).toEqual(expect.arrayContaining([
@@ -279,6 +316,7 @@ type WindowPhase =
   | "checkpoint_committed"
   | "next_tick_captured"
   | "waiting_tick_acknowledgements"
+  | "waiting_repeated_tick_acknowledgements"
   | "views_advanced_ready"
   | "views_advanced_waiting";
 
@@ -494,6 +532,7 @@ function windowSnapshot(
   phase: WindowPhase
 ) {
   const hasSecondTick = phase === "next_tick_captured" ||
+    phase === "waiting_repeated_tick_acknowledgements" ||
     phase === "views_advanced_ready" ||
     phase === "views_advanced_waiting";
   return {
@@ -506,10 +545,13 @@ function windowSnapshot(
 
 function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
   const nextTick = phase === "next_tick_captured";
+  const repeatedTickPaired =
+    phase === "waiting_repeated_tick_acknowledgements";
   const openCheckpoint = phase === "views_advanced_ready" ||
     phase === "views_advanced_waiting";
   const waitingForAcknowledgements =
     phase === "waiting_tick_acknowledgements" ||
+    repeatedTickPaired ||
     phase === "views_advanced_waiting";
   return {
     owned: true,
@@ -518,12 +560,12 @@ function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
     interval_ms: 1_000,
     maximum_observation_count: 3,
     maximum_elapsed_ms: 10_000,
-    tick_count: nextTick || openCheckpoint ? 2 : 1,
-    latest_tick_observed_at: nextTick || openCheckpoint
+    tick_count: nextTick || repeatedTickPaired || openCheckpoint ? 2 : 1,
+    latest_tick_observed_at: nextTick || repeatedTickPaired || openCheckpoint
       ? "2026-07-12T10:00:02.000Z"
       : "2026-07-12T10:00:00.500Z",
-    checkpoint_attempt_count: openCheckpoint ? 2 : 1,
-    paired_checkpoint_count: 1,
+    checkpoint_attempt_count: repeatedTickPaired || openCheckpoint ? 2 : 1,
+    paired_checkpoint_count: repeatedTickPaired ? 2 : 1,
     latest_checkpoint_status: openCheckpoint ? "open" : "paired",
     latest_checkpoint_has_failed_side: false,
     ...(openCheckpoint

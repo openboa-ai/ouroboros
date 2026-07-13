@@ -64,6 +64,36 @@ describe("ResearchControlCampaign paper runner", () => {
     });
   });
 
+  it("preserves nested paper failure evidence for operator diagnosis", async () => {
+    const cause = Object.assign(new Error("checkpoint transition failed"), {
+      code: "checkpoint_transition_failed",
+      details: { sequence: 3 }
+    });
+    const runner = new ResearchControlCampaignPaperRunner({
+      executor: {
+        async advance() {
+          throw Object.assign(new Error("paper action failed"), {
+            code: "paper_action_failed",
+            details: { action: "advance_source_window" },
+            cause
+          });
+        }
+      }
+    });
+
+    runner.start({ campaignId: "campaign-failed" });
+    await runner.drain();
+
+    expect(runner.status()).toEqual({
+      status: "failed",
+      errorCode: "paper_action_failed",
+      errorMessage:
+        "paper action failed {\"action\":\"advance_source_window\"}" +
+        " <- checkpoint_transition_failed: checkpoint transition failed" +
+        " {\"sequence\":3}"
+    });
+  });
+
   it("drains an active advance before stopping", async () => {
     const pending = deferred<ResearchControlCampaignPaperExecutorStep>();
     const runner = new ResearchControlCampaignPaperRunner({

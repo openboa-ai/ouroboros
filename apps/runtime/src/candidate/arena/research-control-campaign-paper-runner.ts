@@ -119,7 +119,7 @@ export class ResearchControlCampaignPaperRunner {
       this.currentStatus = {
         status: "failed",
         errorCode: stableErrorCode(error),
-        errorMessage: error instanceof Error ? error.message : "unknown_error",
+        errorMessage: errorChain(error),
         ...(latestStep ? { latestStep } : {})
       };
     }
@@ -157,4 +157,18 @@ function stableErrorCode(error: unknown): string {
       typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
     : "research_control_campaign_paper_runner_failed";
+}
+
+function errorChain(error: unknown): string {
+  const messages: string[] = [];
+  let current = error;
+  while (current instanceof Error) {
+    const details = "details" in current && current.details
+      ? ` ${JSON.stringify(current.details)}`
+      : "";
+    const prefix = messages.length === 0 ? "" : `${stableErrorCode(current)}: `;
+    messages.push(`${prefix}${current.message}${details}`);
+    current = current.cause;
+  }
+  return messages.length > 0 ? messages.join(" <- ") : "unknown_error";
 }

@@ -141,6 +141,10 @@ describe("generated TradingSystem artifact", () => {
           comparison_tick_delivery_digest: contexts[1]!.delivery_digest
         }
       ]);
+      expect(parseTradingSystemPaperEventLine(
+        JSON.stringify(decisions[1]),
+        { sandboxId: "generated-comparison-cadence", lineIndex: 1 }
+      )).toMatchObject({ status: "accepted" });
       expect(acknowledgementLogSnapshots[0]).not.toEqual(expect.arrayContaining([
         expect.objectContaining({
           event_id: "generated-comparison-cadence:order-request:0002"

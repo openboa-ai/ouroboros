@@ -3498,6 +3498,23 @@ describe("LocalStore", () => {
     )).resolves.toEqual(challengerRunsAfterRoleSwapEvidence);
   });
 
+  it("allows a prospective comparison protocol stricter than historical champion evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store, {
+      comparisonPolicy: {
+        minimum_observation_count: 31,
+        maximum_observation_count: 31
+      }
+    });
+    expect(fixture.championPromotionEvidence.evaluation.observation_count)
+      .toBe(30);
+
+    await expect(store.reservePaperTradingComparisonPreparation(
+      fixture.preparation
+    )).resolves.toEqual(fixture.preparation);
+  });
+
   it("serializes concurrent paper comparison preparation reservations for one candidate-version pair", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -7682,10 +7699,18 @@ describe("LocalStore", () => {
         }
       });
 
-      await expectStoreError(
-        store.recordPaperTradingComparisonCheckpointAttempt(overCap),
-        "paper_trading_comparison_checkpoint_attempt_state_mismatch"
-      );
+      await expect(store.recordPaperTradingComparisonCheckpointAttempt(overCap))
+        .rejects.toMatchObject({
+          code: "paper_trading_comparison_checkpoint_attempt_state_mismatch",
+          details: {
+            champion: {
+              provider_baseline_matches: false
+            },
+            challenger: {
+              provider_baseline_matches: true
+            }
+          }
+        });
     });
 
     it("requires the exact previous paired outcome for checkpoint sequence 2", async () => {

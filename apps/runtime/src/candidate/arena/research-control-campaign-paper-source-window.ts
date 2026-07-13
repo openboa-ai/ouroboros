@@ -93,6 +93,7 @@ export interface ResearchControlCampaignPaperSourceWindowAdvanceResult {
   transition: PaperTradingComparisonWindowTransition;
   steps: PaperTradingComparisonWindowStep[];
   terminal: boolean;
+  wakeAt?: string;
 }
 
 export class ResearchControlCampaignPaperSourceWindowCoordinator {
@@ -280,7 +281,8 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
           source,
           decisions[index]!
         )),
-        terminal: false
+        terminal: false,
+        wakeAt: matchedPollingWakeAt(this.now(), snapshots, decisions)
       };
     }
     const transition = uniqueTransition(decisions);
@@ -292,7 +294,8 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       );
     }
     if (transition === "none" && decisions.every((decision) =>
-      decision.phase === "waiting_tick_acknowledgements"
+      decision.phase === "waiting_tick_acknowledgements" &&
+      decision.checkpoint_sequence === 1
     )) {
       const enabled = await Promise.allSettled(snapshots.map(({ source, snapshot }) =>
         this.options.arms[source.armKind].enableComparisonTickAttribution({
@@ -300,7 +303,12 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
           tickId: snapshot.latest_tick_id
         })
       ));
-      if (enabled.some((result) => result.status === "rejected")) {
+      const failures = enabled.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [transitionFailure(sources[index]!.armKind, result.reason)]
+          : []
+      );
+      if (failures.length > 0) {
         await Promise.allSettled(sources.map((source) =>
           this.options.arms[source.armKind].runtime.stopOwnedAttempt({
             attemptId: source.activationAttemptId,
@@ -309,7 +317,8 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
         ));
         throw windowError(
           "research_control_campaign_paper_source_window_transition_failed",
-          "Matched source tick attribution failed and peers were stopped."
+          "Matched source tick attribution failed and peers were stopped.",
+          { failures }
         );
       }
     }
@@ -320,7 +329,10 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
           source,
           decisions[index]!
         )),
-        terminal
+        terminal,
+        ...(terminal ? {} : {
+          wakeAt: matchedPollingWakeAt(this.now(), snapshots, decisions)
+        })
       };
     }
     const frozen = transition === "capture_next_tick"
@@ -329,7 +341,12 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
     const settled = await Promise.allSettled(sources.map((source) =>
       this.advanceOne(source, frozen, transition)
     ));
-    if (settled.some((result) => result.status === "rejected")) {
+    const failures = settled.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [transitionFailure(sources[index]!.armKind, result.reason)]
+        : []
+    );
+    if (failures.length > 0) {
       await Promise.allSettled(sources.map((source) =>
         this.options.arms[source.armKind].runtime.stopOwnedAttempt({
           attemptId: source.activationAttemptId,
@@ -338,7 +355,8 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       ));
       throw windowError(
         "research_control_campaign_paper_source_window_transition_failed",
-        "Matched source window transition failed and peers were stopped."
+        "Matched source window transition failed and peers were stopped.",
+        { transition, failures }
       );
     }
     const steps = settled.map((result) =>
@@ -466,6 +484,28 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       );
     }
   }
+}
+
+function matchedPollingWakeAt(
+  now: string,
+  snapshots: Array<{
+    snapshot: { facts: { interval_ms: number } };
+  }>,
+  decisions: PaperTradingComparisonWindowDecision[]
+): string {
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(nowMs) || new Date(nowMs).toISOString() !== now) {
+    throw windowError(
+      "research_control_campaign_paper_source_window_graph_invalid",
+      "Matched source polling requires an exact runtime clock."
+    );
+  }
+  const wakes = snapshots.map(({ snapshot }, index) =>
+    decisions[index]?.next_wake_at ??
+      new Date(nowMs + snapshot.facts.interval_ms).toISOString()
+  );
+  return new Date(Math.max(...wakes.map((wakeAt) => Date.parse(wakeAt))))
+    .toISOString();
 }
 
 function noOpWindowStep(
@@ -682,6 +722,25 @@ function conciseError(error: unknown): string {
   return error instanceof Error
     ? `${error.name}:${error.message}`.slice(0, 240)
     : "unknown_error";
+}
+
+function transitionFailure(
+  armKind: ResearchControlCampaignArmKind,
+  error: unknown
+): Record<string, unknown> {
+  if (error === null || typeof error !== "object") {
+    return { arm_kind: armKind, reason: conciseError(error) };
+  }
+  const code = (error as { code?: unknown }).code;
+  const details = (error as { details?: unknown }).details;
+  return {
+    arm_kind: armKind,
+    reason: conciseError(error),
+    ...(typeof code === "string" ? { stable_error_code: code } : {}),
+    ...(details !== null && typeof details === "object" && !Array.isArray(details)
+      ? { details: structuredClone(details as Record<string, unknown>) }
+      : {})
+  };
 }
 
 function summarizeActivationSideResult(

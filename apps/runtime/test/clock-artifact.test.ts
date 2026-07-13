@@ -8,6 +8,8 @@ import {
   createGatewayRuntimeBinding,
   startPaperTradingApiProvider
 } from "@ouroboros/application/trading/gateway/runtime-binding";
+import { parseTradingSystemPaperEventLine } from
+  "@ouroboros/application/trading/paper/events";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFile);
@@ -264,6 +266,10 @@ describe("Python clock system code fixture", () => {
           comparison_tick_delivery_digest: contexts[1]!.delivery_digest
         }
       ]);
+      expect(parseTradingSystemPaperEventLine(
+        JSON.stringify(decisions[1]),
+        { sandboxId: "clock-comparison-cadence", lineIndex: 1 }
+      )).toMatchObject({ status: "accepted" });
       expect(acknowledgementLogSnapshots[0]).not.toEqual(expect.arrayContaining([
         expect.objectContaining({ event_id: "clock-comparison-cadence:order-request:0002" })
       ]));

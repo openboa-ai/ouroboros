@@ -17,6 +17,9 @@ import { installResearchControlCampaignPaperGraph } from
 import type {
   ResearchControlCampaignPaperConfirmationAdvanceResult
 } from "./research-control-campaign-paper-confirmation";
+import type {
+  ResearchControlCampaignPaperSourceWindowAdvanceResult
+} from "./research-control-campaign-paper-source-window";
 
 export type ResearchControlCampaignPaperExecutorErrorCode =
   | "research_control_campaign_paper_executor_graph_invalid"
@@ -72,7 +75,7 @@ export interface ResearchControlCampaignPaperExecutorActions {
   advanceSourceWindow(
     action: ActionOf<"advance_source_window">,
     context: ResearchControlCampaignPaperExecutorContext
-  ): Promise<unknown>;
+  ): Promise<ResearchControlCampaignPaperSourceWindowAdvanceResult>;
   adjudicateSourceVerdict(
     action: ActionOf<"adjudicate_source_verdict">,
     context: ResearchControlCampaignPaperExecutorContext
@@ -178,9 +181,21 @@ export class ResearchControlCampaignPaperExecutor {
         case "start_source_batch":
           await this.options.actions.startSourceBatch(action, context);
           break;
-        case "advance_source_window":
-          await this.options.actions.advanceSourceWindow(action, context);
+        case "advance_source_window": {
+          const result = await this.options.actions.advanceSourceWindow(
+            action,
+            context
+          );
+          if (result.transition === "none" && !result.terminal && result.wakeAt) {
+            return {
+              status: "waiting",
+              action: "wait_until",
+              sequence: action.sequence,
+              wakeAt: result.wakeAt
+            };
+          }
           break;
+        }
         case "adjudicate_source_verdict":
           await this.options.actions.adjudicateSourceVerdict(action, context);
           break;

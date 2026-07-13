@@ -112,10 +112,13 @@ The probe uses:
 - isolated host execution only when explicitly enabled, otherwise Docker Sandboxes `sbx`;
 - cleanup on success, rejection, timeout, and parser failure.
 
-The provider must observe successful market snapshot, account state, and order validation requests.
-Only declared provider routes are allowed. The candidate must emit exactly one accepted paper
-decision event, at least one matching heartbeat, and one matching bounded stop event. The external
-parser reuses the production `paper_trading_event_protocol_v1` event contract.
+The provider must observe successful market snapshot and account state requests. An emitted
+`order_request` additionally requires a successful matching order validation request; `hold` and
+`no_action` are valid no-order decisions and must not synthesize an order validation call. If a
+no-order decision does call validation, that request must still match the decision exactly. Only
+declared provider routes are allowed. The candidate must emit exactly one accepted paper decision
+event, at least one matching heartbeat, and one matching bounded stop event. The external parser
+reuses the production `paper_trading_event_protocol_v1` event contract.
 
 Host and `sbx` runners return the same result shape. Runner availability, sandbox creation, and
 provider startup failures throw an infrastructure-classified error. Candidate exit, timeout after
@@ -220,7 +223,8 @@ show the compact proof later, but no new UI control is required in this frontier
 
 ### Pure evaluation
 
-- accept one valid order or hold decision plus heartbeat, stop, and provider protocol;
+- accept one validated order or one hold/no-action decision without a synthetic order, plus
+  heartbeat, stop, and the decision-appropriate provider protocol;
 - reject replay-only exit, malformed event, wrong instance, missing heartbeat/stop, timeout,
   unexpected route, excess requests, hidden fields, self-reported profit, and private/live fields;
 - classify runner/provider setup failure as infrastructure rather than candidate rejection.

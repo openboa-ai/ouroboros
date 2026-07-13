@@ -49,6 +49,44 @@ describe("PaperTradingComparisonCommitment", () => {
     })).toMatchObject({ qualification_status: "qualified", qualification_reasons: [] });
   });
 
+  it("qualifies canonical rounded revenue minus cost accounting", () => {
+    const commitment = qualificationCommitment();
+    const evaluation = qualificationEvaluation(commitment);
+    const observations = qualificationObservations(commitment, evaluation);
+    const latest = observations.at(-1)!;
+    const account = {
+      ...latest.paper_account_snapshot!,
+      equity_usdt: "9999.841957622833",
+      realized_pnl_usdt: "0",
+      unrealized_pnl_usdt: "-0.00021554",
+      fee_paid_usdt: "0.078913418584",
+      slippage_paid_usdt: "0.059185063938",
+      funding_paid_usdt: "0.019728354646"
+    };
+    const score = {
+      revenue_usdt: -0.000216,
+      cost_usdt: 0.157827,
+      net_revenue_usdt: -0.158043,
+      net_return_pct: -0.00158
+    };
+    latest.paper_account_snapshot = account;
+    latest.score_delta = score;
+    latest.cumulative_score = score;
+    evaluation.paper_account_snapshot = account;
+    evaluation.latest_score = score;
+
+    expect(decidePaperTradingQualification({
+      evaluation,
+      commitment,
+      observations,
+      commitmentDigestVerified: true,
+      runnerActive: false
+    })).toMatchObject({
+      qualification_status: "qualified",
+      qualification_reasons: []
+    });
+  });
+
   it("rejects stopped closures whose frozen runtime identity differs from SystemCode", () => {
     const closure = stoppedClosure();
     expect(paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(closure)).toBe(true);

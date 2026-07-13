@@ -1132,7 +1132,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const currentAttribution = this.enabledComparisonTickAttributions.get(sessionKey);
     if (!provider || !binding || maximumProviderRequestCount === undefined ||
       !currentAttribution ||
-      providerRequestCount !== checkpointSide.provider_request_count_before ||
+      providerRequestCount < checkpointSide.provider_request_count_before ||
       providerRequestCount <
         previousAcknowledgement.provider_request_count_at_acknowledgement ||
       providerRequestCount > maximumProviderRequestCount ||
@@ -2108,21 +2108,33 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       sessionKey,
       input.provider_request_count
     );
-    if (totalProviderRequestCount <= enabled.checkpointProviderRequestCount ||
-      totalProviderRequestCount > enabled.maximumProviderRequestCount ||
-      !isExactIsoTimestamp(input.delivered_at) ||
-      !comparisonTickMarketMatches(input.market, enabled.tick)) {
+    if (totalProviderRequestCount <= enabled.checkpointProviderRequestCount) {
+      return undefined;
+    }
+    if (totalProviderRequestCount > enabled.maximumProviderRequestCount ||
+      !isExactIsoTimestamp(input.delivered_at)) {
       throw new Error("paper_trading_comparison_tick_delivery_context_invalid");
     }
 
     const deliveryId = comparisonTickDeliveryId(enabled);
+    const existing = await this.options.store.getPaperTradingComparisonTickDelivery(
+      deliveryId
+    );
+    if (existing) {
+      const acknowledgement = await this.options.store
+        .getPaperTradingComparisonTickAcknowledgement(
+          comparisonTickAcknowledgementId(existing)
+        );
+      if (acknowledgement) return undefined;
+    }
+    if (!comparisonTickMarketMatches(input.market, enabled.tick)) {
+      throw new Error("paper_trading_comparison_tick_delivery_context_invalid");
+    }
+
     const authority: PaperTradingComparisonTickIOWriteContext = {
       ...structuredClone(enabled.authority),
       operation: "deliver_market_snapshot"
     };
-    const existing = await this.options.store.getPaperTradingComparisonTickDelivery(
-      deliveryId
-    );
     let delivery: PaperTradingComparisonTickDeliveryRecord;
     if (existing) {
       delivery = await this.options.store.recordPaperTradingComparisonTickDelivery(

@@ -75,6 +75,25 @@ describe("PaperTradingSessionService", () => {
       .toEqual(PAPER_TRADING_COMPARISON_ZERO_SCORE);
   });
 
+  it("keeps rounded paper score revenue minus cost equal to net revenue", () => {
+    const account = {
+      ...initialPaperTradingEngineState().account,
+      equity_usdt: "9999.841957622833",
+      realized_pnl_usdt: "0",
+      unrealized_pnl_usdt: "-0.00021554",
+      fee_paid_usdt: "0.078913418584",
+      slippage_paid_usdt: "0.059185063938",
+      funding_paid_usdt: "0.019728354646"
+    };
+
+    expect(paperTradingScoreFromAccount(account)).toEqual({
+      revenue_usdt: -0.000216,
+      cost_usdt: 0.157827,
+      net_revenue_usdt: -0.158043,
+      net_return_pct: -0.00158
+    });
+  });
+
   it("repairs a commitment-only qualification preparation without runtime effects", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1035,6 +1054,15 @@ describe("PaperTradingSessionService", () => {
       order_submission_authority: false,
       authority_status: "not_live"
     });
+    await expect(hooks.deliver({
+      market: {
+        ...market,
+        observed_at: new Date(Date.parse(deliveredAt) + 4_000).toISOString()
+      },
+      provider_request_count: 8,
+      delivered_at: new Date(Date.parse(deliveredAt) + 4_000).toISOString()
+    })).resolves.toBeUndefined();
+    expect(fixture.tickDeliveries()).toHaveLength(1);
 
     for (const invalid of [
       { ...context, tick_digest: "sha256:stale" },
@@ -1178,9 +1206,16 @@ describe("PaperTradingSessionService", () => {
     const deliveredAt = new Date(
       Date.parse(fixture.repeated.attempt.attempted_at) + 1_000
     ).toISOString();
+    const checkpointProviderRequestCount =
+      fixture.repeated.attempt.challenger.provider_request_count_before;
+    await expect(fixture.hooks.deliver({
+      market: comparisonTickMarket(fixture.tick),
+      provider_request_count: checkpointProviderRequestCount,
+      delivered_at: deliveredAt
+    })).resolves.toBeUndefined();
     const context = await fixture.hooks.deliver({
       market: comparisonTickMarket(fixture.repeated.tick),
-      provider_request_count: 7,
+      provider_request_count: checkpointProviderRequestCount + 1,
       delivered_at: deliveredAt
     });
     if (!context) throw new Error("tick 2 delivery did not return context");
@@ -1195,12 +1230,12 @@ describe("PaperTradingSessionService", () => {
 
     await expect(fixture.hooks.acknowledge({
       context: fixture.firstContext,
-      provider_request_count: 8,
+      provider_request_count: checkpointProviderRequestCount + 2,
       acknowledged_at: new Date(Date.parse(deliveredAt) + 1_000).toISOString()
     })).rejects.toMatchObject({ code: "comparison_tick_context_stale" });
     await expect(fixture.hooks.acknowledge({
       context,
-      provider_request_count: 9,
+      provider_request_count: checkpointProviderRequestCount + 3,
       acknowledged_at: new Date(Date.parse(deliveredAt) + 2_000).toISOString()
     })).resolves.toMatchObject({
       acknowledgement_ref: { id: expect.any(String) },
@@ -1264,9 +1299,9 @@ describe("PaperTradingSessionService", () => {
     });
   });
 
-  it("rejects provider-count drift before changing the repeated comparison view", async () => {
+  it("accepts bounded prior-tick polling before changing the repeated comparison view", async () => {
     const fixture = await readyRepeatedCheckpointSessionFixture(
-      "advance-provider-count-drift"
+      "advance-bounded-provider-count-drift"
     );
     fixture.setProviderRequestCount(
       fixture.repeated.attempt.challenger.provider_request_count_before + 1
@@ -1277,11 +1312,9 @@ describe("PaperTradingSessionService", () => {
       side: fixture.side,
       authority: fixture.repeated.authority,
       tick: fixture.repeated.tick
-    })).rejects.toMatchObject({
-      code: "paper_trading_comparison_checkpoint_state_mismatch"
-    });
+    })).resolves.toBeUndefined();
     await expect(fixture.readBoundComparisonMarket()).resolves.toMatchObject({
-      price: 60_000
+      price: 60_100
     });
     expect(fixture.writes).toEqual(writesBefore);
     expect(fixture.effects).toMatchObject({
@@ -1290,6 +1323,26 @@ describe("PaperTradingSessionService", () => {
       sandboxStarts: 1,
       sandboxStops: 0,
       underlyingMarketReads: 0
+    });
+  });
+
+  it("rejects provider requests beyond the comparison policy before view advance", async () => {
+    const fixture = await readyRepeatedCheckpointSessionFixture(
+      "advance-provider-count-limit"
+    );
+    fixture.setProviderRequestCount(
+      fixture.attempt.activation_policy.maximum_provider_request_count_per_side + 1
+    );
+
+    await expect(fixture.service.advanceComparisonCheckpointSide({
+      side: fixture.side,
+      authority: fixture.repeated.authority,
+      tick: fixture.repeated.tick
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_checkpoint_state_mismatch"
+    });
+    await expect(fixture.readBoundComparisonMarket()).resolves.toMatchObject({
+      price: 60_000
     });
   });
 

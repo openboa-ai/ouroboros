@@ -158,7 +158,9 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
       marketData: input.marketData,
       now
     }),
-    verdicts
+    enableComparisonTickAttribution,
+    verdicts,
+    now
   });
 
   return {

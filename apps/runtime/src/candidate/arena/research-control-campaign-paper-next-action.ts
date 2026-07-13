@@ -218,7 +218,7 @@ export function projectResearchControlCampaignPaperNextAction(
       decision.transition === "none" && decision.next_wake_at
     );
     if (waiting) {
-      const wakeAt = uniqueValue(exactDecisions.map((decision) =>
+      const wakeAt = latestWakeAt(exactDecisions.map((decision) =>
         decision.next_wake_at!
       ));
       return { action: "wait_until", sequence: currentSequence, wakeAt };
@@ -499,12 +499,13 @@ function emptyEvidence(
   return { armKind, sequence };
 }
 
-function uniqueValue(values: string[]): string {
-  const unique = new Set(values);
-  if (unique.size !== 1) {
-    throw invalidGraph("Matched source windows disagree on their next wake time.");
+function latestWakeAt(values: string[]): string {
+  if (values.length === 0 || values.some((value) => !exactIso(value))) {
+    throw invalidGraph("Matched source windows have an invalid next wake time.");
   }
-  return values[0]!;
+  return values.reduce((latest, value) =>
+    Date.parse(value) > Date.parse(latest) ? value : latest
+  );
 }
 
 function slotKey(

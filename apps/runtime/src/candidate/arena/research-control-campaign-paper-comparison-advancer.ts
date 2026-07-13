@@ -21,6 +21,7 @@ import type {
   PaperTradingComparisonActivationAttemptRecord,
   PaperTradingComparisonActivationOutcomeRecord,
   PaperTradingComparisonActivationRecord,
+  PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonConfirmationCampaignRecord,
   PaperTradingComparisonTickRecord,
   PaperTradingComparisonVerdictRecord
@@ -99,6 +100,8 @@ type ComparisonAdvanceStore = Pick<
 >;
 
 export class ResearchControlCampaignPaperComparisonAdvancer {
+  private readonly now: () => string;
+
   constructor(private readonly options: {
     store: ComparisonAdvanceStore;
     ticks: Pick<PaperTradingComparisonTickCoordinator, "captureFirstTick">;
@@ -110,8 +113,15 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
       | "start"
     >;
     createWindowDriver(): Pick<PaperTradingComparisonWindowDriver, "advance">;
+    enableComparisonTickAttribution(input: {
+      activationAttemptId: string;
+      tickId: string;
+    }): Promise<void>;
     verdicts: Pick<PaperTradingComparisonVerdictService, "evaluate">;
-  }) {}
+    now?: () => string;
+  }) {
+    this.now = options.now ?? (() => new Date().toISOString());
+  }
 
   async advance(input: {
     campaignId: string;
@@ -120,7 +130,7 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
   }): Promise<ResearchControlCampaignPaperComparisonAdvanceResult> {
     const identity = normalizeIdentity(input);
     const campaign = await this.loadCampaign(identity.campaignId);
-    await this.validateReservedSlot(campaign, identity);
+    const commitment = await this.validateReservedSlot(campaign, identity);
     const [ticks, activations, verdicts] = await Promise.all([
       this.options.store.listPaperTradingComparisonTicks(identity.comparisonId),
       this.options.store.listPaperTradingComparisonActivations(
@@ -188,7 +198,13 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
             attempt.paper_trading_comparison_activation_attempt_id
         };
       }
-      return this.advanceWindow(identity, activation, attempt);
+      return this.advanceWindow(
+        identity,
+        activation,
+        attempt,
+        ticks.at(-1)!,
+        commitment.comparison_policy.interval_ms
+      );
     }
     if (latest.outcome_status !== "stopped_cleanly" ||
       !outcomes.some((outcome) => outcome.outcome_status === "both_running")) {
@@ -219,7 +235,7 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
   private async validateReservedSlot(
     campaign: PaperTradingComparisonConfirmationCampaignRecord,
     identity: ComparisonAdvanceIdentity
-  ): Promise<void> {
+  ): Promise<PaperTradingComparisonCommitmentRecord> {
     const matches = campaign.slots.filter((slot) =>
       slot.slot_index === identity.slotIndex
     );
@@ -232,12 +248,15 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
       commitment.paper_trading_comparison_commitment_id !==
         identity.comparisonId ||
       commitment.preparation_ref.id !==
-        slot.paper_trading_comparison_preparation_id) {
+        slot.paper_trading_comparison_preparation_id ||
+      !Number.isInteger(commitment.comparison_policy?.interval_ms) ||
+      commitment.comparison_policy.interval_ms <= 0) {
       throw advanceError(
         "research_control_campaign_paper_comparison_graph_invalid",
         "Confirmation comparison is not the exact reserved campaign slot."
       );
     }
+    return commitment;
   }
 
   private async captureFirstTick(
@@ -372,7 +391,9 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
   private async advanceWindow(
     identity: ComparisonAdvanceIdentity,
     activation: PaperTradingComparisonActivationRecord,
-    attempt: PaperTradingComparisonActivationAttemptRecord
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    tick: PaperTradingComparisonTickRecord,
+    intervalMs: number
   ): Promise<ResearchControlCampaignPaperComparisonAdvanceResult> {
     let step: PaperTradingComparisonWindowStep;
     try {
@@ -399,7 +420,30 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
       );
     }
     if (step.transition === "none") {
-      if (step.terminal || !isExactIso(step.next_wake_at)) {
+      if (step.terminal) {
+        throw advanceError(
+          "research_control_campaign_paper_comparison_graph_invalid",
+          "A terminal confirmation window cannot remain in a no-op state."
+        );
+      }
+      if (step.phase === "waiting_tick_acknowledgements" &&
+        step.checkpoint_sequence === 1) {
+        try {
+          await this.options.enableComparisonTickAttribution({
+            activationAttemptId:
+              attempt.paper_trading_comparison_activation_attempt_id,
+            tickId: tick.paper_trading_comparison_tick_id
+          });
+        } catch (error) {
+          throw advanceError(
+            "research_control_campaign_paper_comparison_transition_failed",
+            "Confirmation comparison tick attribution could not be enabled.",
+            error
+          );
+        }
+      }
+      const wakeAt = step.next_wake_at ?? pollingWakeAt(this.now(), intervalMs);
+      if (!isExactIso(wakeAt)) {
         throw advanceError(
           "research_control_campaign_paper_comparison_graph_invalid",
           "Nonterminal confirmation wait lacks an exact wake time."
@@ -408,7 +452,7 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
       return {
         status: "waiting",
         ...identity,
-        wakeAt: step.next_wake_at
+        wakeAt
       };
     }
     return {
@@ -489,6 +533,16 @@ export class ResearchControlCampaignPaperComparisonAdvancer {
       );
     }
   }
+}
+
+function pollingWakeAt(now: string, intervalMs: number): string {
+  if (!isExactIso(now) || !Number.isInteger(intervalMs) || intervalMs <= 0) {
+    throw advanceError(
+      "research_control_campaign_paper_comparison_graph_invalid",
+      "Confirmation polling requires an exact clock and frozen positive interval."
+    );
+  }
+  return new Date(Date.parse(now) + intervalMs).toISOString();
 }
 
 function normalizeIdentity(input: {

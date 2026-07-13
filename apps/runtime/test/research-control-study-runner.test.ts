@@ -123,6 +123,37 @@ describe("ResearchControlStudyRunner", () => {
       errorMessage: "injected graph failure"
     });
   });
+
+  it("preserves nested campaign failure evidence for operator diagnosis", async () => {
+    const cause = Object.assign(new Error("paper comparison failed"), {
+      code: "paper_comparison_failed",
+      details: { action: "advance_source_window" }
+    });
+    const runner = new ResearchControlStudyRunner({
+      executor: {
+        async advance() {
+          throw new ResearchControlStudyExecutorError(
+            "research_control_study_executor_action_failed",
+            "campaign action failed",
+            { replication_index: 2 },
+            { cause }
+          );
+        }
+      }
+    });
+
+    runner.start({ studyId: "study-failed" });
+    await runner.drain();
+
+    expect(runner.status()).toEqual({
+      status: "failed",
+      errorCode: "research_control_study_executor_action_failed",
+      errorMessage:
+        "campaign action failed {\"replication_index\":2}" +
+        " <- paper_comparison_failed: paper comparison failed" +
+        " {\"action\":\"advance_source_window\"}"
+    });
+  });
 });
 
 function campaignStep(replicationIndex: number) {

@@ -31,6 +31,22 @@ describe("PaperTradingComparisonConfirmationWindowService", () => {
     );
   });
 
+  it("accepts a commitment created after the preparation effect starts", async () => {
+    const harness = windowHarness();
+    const times = [
+      "2026-07-12T03:00:59.999Z",
+      "2026-07-12T03:01:00.000Z"
+    ];
+    const service = new PaperTradingComparisonConfirmationWindowService({
+      store: harness.store,
+      comparisons: harness.comparisons,
+      now: () => times.shift() ?? "2026-07-12T03:01:00.000Z"
+    });
+
+    await expect(service.prepareNext({ campaignId: harness.campaignId }))
+      .resolves.toEqual(harness.graphFor(1));
+  });
+
   it("exactly replays the current materialized slot without advancing", async () => {
     const harness = windowHarness();
     const service = new PaperTradingComparisonConfirmationWindowService({

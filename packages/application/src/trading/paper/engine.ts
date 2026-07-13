@@ -500,11 +500,13 @@ export function paperTradingScoreFromAccount(
   const cost = parseDecimal(account.fee_paid_usdt) +
     parseDecimal(account.slippage_paid_usdt) +
     parseDecimal(account.funding_paid_usdt);
-  const net = parseDecimal(account.equity_usdt) - initialEquityUsdt;
+  const roundedRevenue = roundProfit(revenue);
+  const roundedCost = roundProfit(cost);
+  const net = roundProfit(roundedRevenue - roundedCost);
   return {
-    revenue_usdt: roundProfit(revenue),
-    cost_usdt: roundProfit(cost),
-    net_revenue_usdt: roundProfit(net),
+    revenue_usdt: roundedRevenue,
+    cost_usdt: roundedCost,
+    net_revenue_usdt: net,
     net_return_pct: roundProfit(net / initialEquityUsdt * 100)
   };
 }

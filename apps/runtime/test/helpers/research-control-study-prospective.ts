@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   DeterministicSandboxAdapter,
@@ -73,9 +73,17 @@ export function prospectiveClock(startAt: string) {
 
 export function prospectiveMarketData(input: {
   now: () => string;
+  priceAt?: (observedAt: string) => number;
 }): GatewayMarketDataPort {
   let sequence = 0;
   const observedAt = (requested?: string) => requested ?? input.now();
+  const priceAt = (at: string) => {
+    const price = input.priceAt?.(at) ?? 60_000;
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new TypeError("prospective_market_price_invalid");
+    }
+    return price;
+  };
   return {
     provider_kind: "binance_production_public_market_data",
     source_kind: "binance_production_public_hybrid",
@@ -86,12 +94,14 @@ export function prospectiveMarketData(input: {
     ],
     authority_status: "read_only",
     async readMarketSnapshot(request = {}) {
-      const at = shiftTimestamp(observedAt(request.observedAt), -2);
+      const requestedAt = observedAt(request.observedAt);
+      const at = shiftTimestamp(requestedAt, -2);
+      const price = priceAt(requestedAt);
       return {
         symbol: "BTCUSDT",
-        price: 60_000,
-        moving_average_fast: 60_100,
-        moving_average_slow: 59_900,
+        price,
+        moving_average_fast: price + 100,
+        moving_average_slow: price - 100,
         volatility: 0.01,
         expected_direction: "long",
         observed_at: at,
@@ -106,6 +116,7 @@ export function prospectiveMarketData(input: {
     },
     async readPublicMarketLivenessSurface(request = {}) {
       const at = observedAt(request.observedAt);
+      const price = priceAt(at);
       return {
         record_kind: "public_market_liveness_surface",
         version: 1,
@@ -121,9 +132,9 @@ export function prospectiveMarketData(input: {
         quantity_step_size: "0.001",
         min_quantity: "0.001",
         min_notional: "100",
-        mark_price: "60000",
-        index_price: "59999",
-        estimated_settle_price: "59998",
+        mark_price: price.toFixed(1),
+        index_price: (price - 1).toFixed(1),
+        estimated_settle_price: (price - 2).toFixed(1),
         funding_rate: "0.00010000",
         interest_rate: "0.00010000",
         next_funding_time: shiftTimestamp(at, 8 * 60 * 60 * 1_000),
@@ -164,7 +175,9 @@ export function prospectiveMarketData(input: {
       };
     },
     async readPublicExecutionSnapshot(request = {}) {
-      const at = shiftTimestamp(observedAt(request.observedAt), -1);
+      const requestedAt = observedAt(request.observedAt);
+      const at = shiftTimestamp(requestedAt, -1);
+      const price = priceAt(requestedAt);
       const marker = `prospective-execution-${++sequence}`;
       return {
         symbol: "BTCUSDT",
@@ -177,15 +190,15 @@ export function prospectiveMarketData(input: {
         gap_detected: false,
         stream_marker: marker,
         book_ticker: {
-          bid_price: "59999.9",
+          bid_price: (price - 0.1).toFixed(1),
           bid_quantity: "1.000",
-          ask_price: "60000.1",
+          ask_price: (price + 0.1).toFixed(1),
           ask_quantity: "1.000",
           event_time: at
         },
         agg_trades: [{
           trade_id: marker,
-          price: "60000",
+          price: price.toFixed(1),
           quantity: "1.000",
           trade_time: at,
           is_buyer_maker: false
@@ -316,24 +329,39 @@ export function networklessResearchPreflightArtifactRunner():
       return passingPaperHandoffProbe(input);
     },
     async run(input) {
+      const source = await readFile(path.join(input.artifact_dir, "run.py"), "utf8");
+      const direction = source.match(
+        /^ARENA_RESEARCH_DIRECTION = "([a-z_]+)"$/m
+      )?.[1];
+      const riskFraction = Number(source.match(
+        /^RISK_FRACTION = ([0-9.]+)$/m
+      )?.[1] ?? "0.02");
+      if (!Number.isFinite(riskFraction) || riskFraction <= 0) {
+        throw new TypeError("prospective_artifact_risk_fraction_invalid");
+      }
       const market = input.provider.candidate_input.market;
       const account = input.provider.candidate_input.account;
       const shouldHold =
+        direction === "funding_aware_risk" ||
         market.moving_average_fast === market.moving_average_slow;
+      const trendSide = market.moving_average_fast < market.moving_average_slow
+        ? "sell" as const
+        : "buy" as const;
+      const side = direction === "mean_reversion"
+        ? trendSide === "buy" ? "sell" as const : "buy" as const
+        : trendSide;
       const orderRequest = {
         symbol: market.symbol,
         side: shouldHold
           ? "hold" as const
-          : market.moving_average_fast < market.moving_average_slow
-            ? "sell" as const
-            : "buy" as const,
+          : side,
         quantity: shouldHold
           ? 0
           : Number((account.equity *
-              Math.min(0.02, account.max_risk_fraction) /
+              Math.min(riskFraction, account.max_risk_fraction) /
               market.price).toFixed(8)),
         order_type: shouldHold ? "none" as const : "market" as const,
-        reason: "networkless prospective ResearchControlStudy fixture"
+        reason: `networkless prospective ${direction ?? "unclassified"} fixture`
       };
       const validation = validateOrderRequest(orderRequest, market, account);
       const events: TradingSystemEvent[] = [

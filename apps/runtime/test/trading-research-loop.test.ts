@@ -164,7 +164,10 @@ describe("Trading research research loop MVP", () => {
     expect(result.best_artifact_dir).toContain("kept-artifact");
     expect(result.submitted_artifact_dir).toContain("submitted-artifact");
     expect(result.submitted_artifact_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
-    expect(result.sealed_admission).toMatchObject({
+    expect(
+      result.sealed_admission,
+      JSON.stringify(result.sealed_admission?.evaluation.paper_handoff_conformance, null, 2)
+    ).toMatchObject({
       submission_sequence: 1,
       suite_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       artifact_digest: result.submitted_artifact_digest,
@@ -312,6 +315,41 @@ describe("Trading research research loop MVP", () => {
       await expect(readdir(outputDir)).resolves.toEqual([
         "paper-handoff-heartbeat.jsonl",
         "paper-handoff-output.jsonl"
+      ]);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it("accepts a flat paper handoff without synthesizing an OrderRequest", async () => {
+    const artifactDir = path.join(tmpDir, "paper-handoff-flat-artifact");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const flatScenario = defaultReplayTradingScenarioSet.find((scenario) =>
+      scenario.market.expected_direction === "flat"
+    );
+    expect(flatScenario).toBeDefined();
+    const provider = await startReplayTradingApiProvider(flatScenario!);
+    try {
+      const probe = await new HostTradingArtifactRunner({ allowHostExecution: true })
+        .probePaperHandoff({
+          artifact_dir: artifactDir,
+          manifest: await readTradingSystemManifest(artifactDir),
+          provider,
+          output_dir: path.join(tmpDir, "paper-handoff-flat-output"),
+          instance_id: "paper-handoff-flat-system-code-001",
+          start_at: "2026-07-12T10:00:00.000Z"
+        });
+
+      expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+        status: "passed",
+        reason: "passed",
+        provider_request_count: 2,
+        decision_event_kind: "hold",
+        runnable_paper_handoff: true
+      });
+      expect(probe.provider_requests.map((request) => request.path)).toEqual([
+        "/market/snapshot",
+        "/account/state"
       ]);
     } finally {
       await provider.close();
@@ -1426,7 +1464,10 @@ process.exit(17);
       })
     ]);
     expect(scenarioResults.every((result) => result.sandbox_name?.startsWith("ouro-s10-test-"))).toBe(true);
-    expect(result.sealed_admission).toMatchObject({
+    expect(
+      result.sealed_admission,
+      JSON.stringify(result.sealed_admission?.evaluation.paper_handoff_conformance, null, 2)
+    ).toMatchObject({
       submission_sequence: 1,
       evaluation: {
         status: "accepted",

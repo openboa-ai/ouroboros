@@ -23,6 +23,39 @@ describe("paper handoff conformance evaluator", () => {
     }
   );
 
+  it.each(["hold", "no_action"] as const)(
+    "accepts a %s decision without synthesizing an order validation request",
+    (decisionKind) => {
+      const probe = probeFixture(decisionKind);
+      probe.provider_requests = probe.provider_requests.filter((request) =>
+        request.path !== "/orders/validate"
+      );
+
+      expect(evaluatePaperTradingHandoffProbe(probe)).toEqual({
+        status: "passed",
+        reason: "passed",
+        provider_request_count: 2,
+        decision_event_kind: decisionKind,
+        heartbeat_count: 1,
+        runtime_stopped: true,
+        runnable_paper_handoff: true
+      });
+    }
+  );
+
+  it("requires external order validation for an order_request decision", () => {
+    const probe = probeFixture("order_request");
+    probe.provider_requests = probe.provider_requests.filter((request) =>
+      request.path !== "/orders/validate"
+    );
+
+    expect(evaluatePaperTradingHandoffProbe(probe)).toMatchObject({
+      status: "rejected",
+      reason: "provider_protocol_incomplete",
+      runnable_paper_handoff: false
+    });
+  });
+
   it.each([
     ["runner crash", "runner_crash", (probe: any) => {
       probe.status = "crashed";

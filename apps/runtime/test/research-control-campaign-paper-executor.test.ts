@@ -91,6 +91,22 @@ describe("ResearchControlCampaign paper executor", () => {
     expect(harness.operations).toEqual(["install", "advance_confirmation"]);
   });
 
+  it("maps a source polling transition to wait_until after its effect", async () => {
+    const harness = executorHarness({
+      action: { action: "advance_source_window", sequence: 1 },
+      sourceWakeAt: "2026-07-12T10:00:00.025Z"
+    });
+
+    await expect(harness.executor.advance({ campaignId: "campaign-001" }))
+      .resolves.toEqual({
+        status: "waiting",
+        action: "wait_until",
+        sequence: 1,
+        wakeAt: "2026-07-12T10:00:00.025Z"
+      });
+    expect(harness.operations).toEqual(["install", "advance_source_window"]);
+  });
+
   it("collects the final outcome once and then returns complete", async () => {
     let action: ResearchControlCampaignPaperNextAction = {
       action: "collect_campaign_outcome"
@@ -126,6 +142,7 @@ function executorHarness(input: {
   readonly action: ResearchControlCampaignPaperNextAction;
   onCollect?: () => void;
   confirmationWakeAt?: string;
+  sourceWakeAt?: string;
 }) {
   const graph = graphFixture();
   const operations: string[] = [];
@@ -160,7 +177,15 @@ function executorHarness(input: {
       ),
       authorizeSourceBatch: () => actionHandler("authorize_source_batch"),
       startSourceBatch: () => actionHandler("start_source_batch"),
-      advanceSourceWindow: () => actionHandler("advance_source_window"),
+      async advanceSourceWindow() {
+        await actionHandler("advance_source_window");
+        return {
+          transition: "none" as const,
+          steps: [],
+          terminal: false,
+          ...(input.sourceWakeAt ? { wakeAt: input.sourceWakeAt } : {})
+        };
+      },
       adjudicateSourceVerdict: () => actionHandler(
         "adjudicate_source_verdict"
       ),

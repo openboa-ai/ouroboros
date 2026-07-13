@@ -255,7 +255,8 @@ export async function runResearchControlCampaignToOutcome(
   if (status.status === "failed") {
     throw runtimeError(
       "research_control_campaign_to_outcome_paper_failed",
-      `ResearchControlCampaign paper runner failed: ${status.errorCode}.`
+      `ResearchControlCampaign paper runner failed: ${status.errorCode}: ` +
+        status.errorMessage
     );
   }
   if (status.status !== "completed") {

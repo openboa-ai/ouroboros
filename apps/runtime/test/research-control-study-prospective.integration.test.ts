@@ -44,8 +44,12 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
   });
 
   afterEach(async () => {
-    await paperHarness?.cleanup();
-    await rm(root, { recursive: true, force: true });
+    try {
+      await paperHarness?.cleanup();
+    } finally {
+      paperHarness = undefined;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("executes six precommitted real-arm replications and replays without effects", async () => {
@@ -57,8 +61,12 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
     const promotionBefore = await store.getLatestTradingPromotion();
     const allocationDecisionsBefore =
       await store.listResearchAllocationPolicyDecisions();
-    const clock = prospectiveClock(new Date().toISOString());
-    const marketData = prospectiveMarketData({ now: clock.now });
+    const startedAt = new Date().toISOString();
+    const clock = prospectiveClock(startedAt);
+    const marketData = prospectiveMarketData({
+      now: clock.now,
+      priceAt: fallingPricePath(startedAt)
+    });
     const protocol = boundProtocol(
       paperTradingMarketDataConfigurationDigest(marketData)
     );
@@ -130,10 +138,9 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
 
     runtime.runner.start({ studyId: study.research_control_study_id });
     await runtime.runner.drain();
-    const runnerStatus = runtime.runner.status();
-    expect(runnerStatus, JSON.stringify(runnerStatus)).toMatchObject({
-      status: "completed"
-    });
+    const runtimeStatus = runtime.runner.status();
+    expect(runtimeStatus.status, JSON.stringify(runtimeStatus, null, 2))
+      .toBe("completed");
 
     const [campaigns, reports, schedules, outcomes, studyOutcomes] =
       await Promise.all([
@@ -156,19 +163,6 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
     )).toEqual(study.replications.map((replication) =>
       replication.campaign_ref.id
     ));
-    expect(studyOutcomes[0]).toMatchObject({
-      planned_replication_count: 6,
-      completed_replication_count: 6,
-      adaptive_positive_count: 0,
-      static_positive_count: 0,
-      tied_count: 6,
-      non_tied_count: 0,
-      mean_rate_difference: 0,
-      exact_sign_test_p_value: 1,
-      inference_status: "insufficient_non_tied_replications",
-      policy_decision_eligibility: "not_eligible",
-      next_action: "accumulate_or_redesign_precommitted_study"
-    });
     for (const outcome of outcomes) {
       expect(outcome.arms).toHaveLength(2);
       for (const arm of outcome.arms) {
@@ -177,10 +171,10 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
         )).toBe(true);
       }
     }
-    expect(outcomes.flatMap((outcome) => outcome.arms.flatMap((arm) =>
-      arm.slot_results.map((slot) => slot.terminal_status)
-    ))).toEqual(Array.from({ length: 12 }, () => "source_not_improved"));
     const qualificationEvidence = [];
+    const allocationEvidence = [];
+    const checkpointEvidence = [];
+    const verdictEvidence = [];
     for (const outcome of outcomes) {
       const paths = researchControlCampaignWorkspacePaths({
         workspaceRoot,
@@ -195,15 +189,51 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
         const terminal = await store.getResearchControlCampaignPaperSlotOutcome(
           slot.paper_slot_outcome_ref.id
         );
-        if (terminal?.terminal_evidence.evidence_kind !== "source_verdict") {
-          throw new Error("prospective source verdict evidence missing");
-        }
+        if (!terminal) throw new Error("prospective terminal evidence missing");
         const armStore = new LocalStore(paths.armRoots[arm.arm_kind]);
         await armStore.initialize();
-        const verdict = await armStore.getPaperTradingComparisonVerdict(
-          terminal.terminal_evidence.source_verdict_ref.id
-        );
+        const allocation = (await armStore
+          .listCandidateArenaResearchAllocations())[0];
+        allocationEvidence.push({
+          arm: arm.arm_kind,
+          allocationMode: allocation?.allocation_mode,
+          firstDirection: allocation?.selected_directions[0]?.direction_kind
+        });
+        const sourceVerdictId = terminal.terminal_evidence.evidence_kind ===
+            "source_verdict"
+          ? terminal.terminal_evidence.source_verdict_ref.id
+          : terminal.terminal_evidence.evidence_kind === "confirmation_release"
+            ? (await armStore.getPaperTradingComparisonConfirmationCampaign(
+                terminal.terminal_evidence.confirmation_campaign_ref.id
+              ))?.source_verdict_ref.id
+            : undefined;
+        const verdict = sourceVerdictId
+          ? await armStore.getPaperTradingComparisonVerdict(sourceVerdictId)
+          : undefined;
         if (!verdict) throw new Error("prospective source verdict missing");
+        verdictEvidence.push({
+          arm: arm.arm_kind,
+          outcome: verdict.verdict_outcome,
+          metric: verdict.metric,
+          championCandidateId: verdict.champion.candidate_ref.id,
+          challengerCandidateId: verdict.challenger.candidate_ref.id
+        });
+        const checkpoints = await Promise.all(
+          verdict.checkpoint_outcome_refs.map((reference) =>
+            armStore.getPaperTradingComparisonCheckpointOutcome(reference.id)
+          )
+        );
+        checkpointEvidence.push({
+          arm: arm.arm_kind,
+          checkpoints: checkpoints.map((checkpoint) => ({
+            sequence: checkpoint?.checkpoint_sequence,
+            status: checkpoint?.outcome_status,
+            reason: checkpoint?.outcome_reason,
+            ...(checkpoint?.stable_error_code
+              ? { stableErrorCode: checkpoint.stable_error_code }
+              : {})
+          }))
+        });
         qualificationEvidence.push({
           pair: verdict.pair_qualification.qualification_reasons,
           champion: verdict.pair_qualification.champion.qualification_reasons,
@@ -212,16 +242,80 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
         });
       }
     }
+    expect(checkpointEvidence).toEqual(Array.from({ length: 6 }, () => ([
+      {
+        arm: "adaptive_treatment",
+        checkpoints: [
+          { sequence: 1, status: "paired", reason: "paired_checkpoint_recorded" },
+          { sequence: 2, status: "paired", reason: "paired_checkpoint_recorded" },
+          { sequence: 3, status: "paired", reason: "paired_checkpoint_recorded" }
+        ]
+      },
+      {
+        arm: "static_control",
+        checkpoints: [
+          { sequence: 1, status: "paired", reason: "paired_checkpoint_recorded" },
+          { sequence: 2, status: "paired", reason: "paired_checkpoint_recorded" },
+          { sequence: 3, status: "paired", reason: "paired_checkpoint_recorded" }
+        ]
+      }
+    ])).flat());
     expect(qualificationEvidence).toEqual(Array.from({ length: 12 }, () => ({
       pair: [],
       champion: [],
       challenger: []
     })));
+    for (let index = 0; index < verdictEvidence.length; index += 2) {
+      const adaptive = verdictEvidence[index]!;
+      const control = verdictEvidence[index + 1]!;
+      expect(adaptive).toMatchObject({
+        arm: "adaptive_treatment",
+        outcome: "challenger_improved"
+      });
+      expect(adaptive.metric?.observed_lift_usdt).toBeGreaterThanOrEqual(0.01);
+      expect(control).toMatchObject({
+        arm: "static_control",
+        outcome: "challenger_not_improved"
+      });
+      expect(control.metric?.observed_lift_usdt).toBeLessThan(0.01);
+    }
+    expect(outcomes.map((outcome) => outcome.arms.map((arm) => ({
+      arm: arm.arm_kind,
+      terminal: arm.slot_results[0]?.terminal_status
+    })))).toEqual(Array.from({ length: 6 }, () => ([
+      { arm: "adaptive_treatment", terminal: "qualified_improvement" },
+      { arm: "static_control", terminal: "source_not_improved" }
+    ])));
+    expect(studyOutcomes[0]).toMatchObject({
+      planned_replication_count: 6,
+      completed_replication_count: 6,
+      adaptive_positive_count: 6,
+      static_positive_count: 0,
+      tied_count: 0,
+      non_tied_count: 6,
+      mean_rate_difference: 1,
+      exact_sign_test_p_value: 0.03125,
+      inference_status: "adaptive_effect_supported",
+      policy_decision_eligibility: "eligible_for_separate_policy_decision",
+      next_action: "review_research_allocation_policy"
+    });
+    expect(allocationEvidence).toEqual(Array.from({ length: 6 }, () => ([
+      {
+        arm: "adaptive_treatment",
+        allocationMode: "adaptive_default",
+        firstDirection: "mean_reversion"
+      },
+      {
+        arm: "static_control",
+        allocationMode: "static_control",
+        firstDirection: "trend_following"
+      }
+    ])).flat());
     expect(paperHarness.tracker).toEqual({
-      providerStarts: 24,
-      providerCloses: 24,
-      sandboxStarts: 24,
-      sandboxStops: 24
+      providerStarts: 36,
+      providerCloses: 36,
+      sandboxStarts: 36,
+      sandboxStops: 36
     });
     expect(await store.getLatestTradingPromotion()).toEqual(promotionBefore);
     expect(await store.listResearchAllocationPolicyDecisions()).toEqual(
@@ -269,6 +363,14 @@ async function preEffectEvidence(store: LocalStore) {
   };
 }
 
+function fallingPricePath(startedAt: string): (observedAt: string) => number {
+  const origin = Date.parse(startedAt);
+  return (observedAt) => {
+    const elapsed = Math.max(0, Date.parse(observedAt) - origin);
+    return Math.max(10_000, 100_000 - Math.floor(elapsed / 25) * 10);
+  };
+}
+
 function boundProtocol(
   marketDataConfigurationDigest: string
 ): ResearchControlCampaignPaperEvaluationProtocolInput {
@@ -279,9 +381,9 @@ function boundProtocol(
       comparison_mode: "champion_challenge",
       symbol: "BTCUSDT",
       interval_ms: 25,
-      minimum_observation_count: 2,
-      minimum_elapsed_ms: 25,
-      maximum_observation_count: 2,
+      minimum_observation_count: 3,
+      minimum_elapsed_ms: 50,
+      maximum_observation_count: 3,
       maximum_elapsed_ms: 600_000,
       maximum_start_skew_ms: 5_000,
       maximum_provider_request_count_per_side: 100,

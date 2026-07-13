@@ -534,14 +534,19 @@ The following current surfaces require implementation work before P0 can pass:
   the real comparison services advance confirmation one persisted transition at a time and preserve
   exact wake times through the campaign runner. One listener-capable six-replication fixture study
   now closes all 12 candidate slots through two post-activation checkpoints and restarts without
-  effects through real loopback providers and deterministic sandbox processes. Every slot is a
-  pair-qualified `source_not_improved` verdict with empty pair and side qualification reasons. The
-  study retains six ties, zero non-ties, p-value 1, no policy decision, unchanged promotion state,
-  and exact provider/sandbox 24/24 lifecycle symmetry. This proves qualified denominator execution,
-  not qualified discovery or adaptive effect. Server auto-start, cross-process leasing, distinct
-  candidate behavior, qualified non-tied study evidence, distinct-regime inference, learned policy
-  parameters, and automatic policy-decision creation remain open. The separate one-sided exact
-  adaptive policy decision and future-allocation provenance path are implemented.
+  effects through real loopback providers and deterministic sandbox processes. Generated
+  `TradingSystem` decisions are emitted before their exact tick acknowledgements. Under one frozen
+  falling-price fixture, every adaptive mean-reversion slot is pair-qualified, improves at source,
+  reproduces once in confirmation, and closes as `qualified_improvement`; every equal-bound static
+  trend-following slot closes as `source_not_improved`. The study records six non-ties, a mean rate
+  difference of 1, exact sign-test p-value 0.03125, and `adaptive_effect_supported`, while leaving
+  promotion and allocation-policy state unchanged. Exact provider/sandbox 36/36 lifecycle symmetry
+  includes the 24 source-side sessions plus 12 required adaptive confirmation sessions. This proves
+  qualified non-tied causal-protocol execution for the deterministic fixture, not real-market
+  superiority, cross-regime generalization, or a learned policy. Server auto-start, cross-process
+  leasing, distinct-regime inference, learned policy parameters, and automatic policy-decision
+  creation remain open. The separate one-sided exact adaptive policy decision and future-allocation
+  provenance path are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -562,11 +567,11 @@ The following current surfaces require implementation work before P0 can pass:
   plus its sequential executor are implemented. The separate exact-digest adaptive policy decision
   and explicit/repository/decision allocation provenance are also implemented. An internal
   single-owner process can now discover and drain committed studies. A six-replication real-arm
-  fixture study proves exact qualified denominator closure, provider and sandbox 24/24 cleanup, and
-  effect-free restart; all 12 slots are qualified negative verdicts, while six ties and zero
-  non-ties support no discovery or adaptive-effect claim. Distinct candidate behavior, qualified
-  non-tied prospective evidence, server auto-start, cross-process ownership, distinct-regime
-  inference, and learned allocation remain open.
+  fixture study proves exact qualified non-tied closure, provider and sandbox 36/36 cleanup, and
+  effect-free restart. Its six adaptive positives and six static negatives support the bounded
+  `adaptive_effect_supported` fixture conclusion without mutating policy or promotion state.
+  Real-market and distinct-regime replication, server auto-start, cross-process ownership,
+  production learned allocation, and external-validity claims remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
@@ -574,8 +579,12 @@ The isolated candidate-to-paper handoff is now partial conformance evidence rath
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
 credential, direct-order, and live fields; sealed evidence is not released to the worker at all.
 Only the frozen development winner runs the one-shot sealed set and bounded host or `sbx`
-target-protocol probe. LocalStore binds commitment, submitted SystemCode, terminal evaluation,
-ExperimentRun, evaluation task, conformance, and admission; materialization requires the complete
+target-protocol probe. Every decision must use the external market and account reads; only an
+emitted `OrderRequest` requires `/orders/validate`. An externally parsed `hold` or `no_action`
+remains valid no-order continuity without synthesizing an order, while any validation request that
+is emitted must still match the decision exactly. LocalStore binds commitment, submitted
+SystemCode, terminal evaluation, ExperimentRun, evaluation task, conformance, and admission;
+materialization requires the complete
 passed graph, and generated-candidate paper start revalidates it before effects. Rejection creates
 no candidate and remains causal memory, while runner/provider setup failure remains infrastructure
 attribution without fabricated terminal evidence. This proves evaluator isolation and bounded
@@ -623,8 +632,8 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    implemented and validated; read-only paired qualification and sealed single-window adjudication
    are also implemented internally. Arm-local comparison/session composition, candidate-owned
    post-activation cadence, matched-arm synchronization, the bounded campaign runner, and one exact
-   six-replication qualified-tie protocol study are implemented. Distinct candidate behavior,
-   qualified non-tied discovery evidence, and deployed scheduling remain.
+   six-replication qualified non-tied fixture protocol study are implemented. Real-market
+   cross-regime evidence and deployed scheduling remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
@@ -667,6 +676,6 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
-   TradingPromotion, arm-local runtime composition, and exact six-replication qualified-tie study
-   closure are proven, while qualified non-tied replicated-study evidence, deployed scheduling,
+   TradingPromotion, arm-local runtime composition, and exact six-replication qualified non-tied
+   fixture-study closure are proven. Real-market cross-regime replication, deployed scheduling,
    longer soak evidence, durable worker process adoption, and full P0 evidence remain.

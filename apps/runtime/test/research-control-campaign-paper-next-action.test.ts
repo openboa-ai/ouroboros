@@ -111,6 +111,29 @@ describe("ResearchControlCampaign paper next-action projector", () => {
     });
   });
 
+  it("waits until the later wake when matched source windows poll at different times", () => {
+    expect(project({
+      schedule: scheduleFixture({
+        candidateArms: ["adaptive_treatment", "static_control"]
+      }),
+      slots: [
+        activeSlot(windowDecision({
+          transition: "none",
+          next_wake_at: "2026-07-12T10:00:00.750Z"
+        })),
+        staticActiveSlot(windowDecision({
+          transition: "none",
+          next_wake_at: "2026-07-12T10:00:00.900Z"
+        }))
+      ],
+      startBatches: [pairedReadyBatch()]
+    })).toEqual({
+      action: "wait_until",
+      sequence: 1,
+      wakeAt: "2026-07-12T10:00:00.900Z"
+    });
+  });
+
   it("advances an actionable active source window", () => {
     expect(project({
       slots: [activeSlot(windowDecision({ transition: "capture_next_tick" }))],
@@ -332,6 +355,60 @@ function activeSlot(
   });
 }
 
+function staticActiveSlot(
+  decision: PaperTradingComparisonWindowDecision
+): ResearchControlCampaignPaperSlotEvidence {
+  const tick = {
+    ...firstTickRecord(),
+    paper_trading_comparison_tick_id: "static-source-first-tick-1",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment" as const,
+      id: "static_control-comparison-1"
+    },
+    paper_trading_comparison_commitment_digest: "sha256:static-commitment-1",
+    tick_digest: "sha256:static-first-tick-1"
+  };
+  const activation = {
+    ...activationRecord(),
+    paper_trading_comparison_activation_id: "static-activation-001",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment" as const,
+      id: "static_control-comparison-1"
+    },
+    first_tick_ref: {
+      record_kind: "paper_trading_comparison_tick" as const,
+      id: tick.paper_trading_comparison_tick_id
+    }
+  };
+  const attempt = {
+    ...activationAttemptRecord(),
+    paper_trading_comparison_activation_attempt_id: "static-attempt-001",
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation" as const,
+      id: activation.paper_trading_comparison_activation_id
+    }
+  };
+  return {
+    armKind: "static_control",
+    sequence: 1,
+    preparation: staticPreparationRecord(),
+    commitment: staticCommitmentRecord(),
+    firstTick: tick,
+    activation,
+    activationAttempt: attempt,
+    activationOutcome: {
+      ...activationOutcomeRecord(),
+      paper_trading_comparison_activation_outcome_id:
+        "static-activation-outcome-001",
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: attempt.paper_trading_comparison_activation_attempt_id
+      }
+    },
+    sourceWindowDecision: decision
+  };
+}
+
 function verdictSlot(
   verdictOutcome: PaperTradingComparisonVerdictRecord["verdict_outcome"],
   changes: Partial<ResearchControlCampaignPaperSlotEvidence> = {}
@@ -438,6 +515,31 @@ function readyBatch(): ResearchControlCampaignPaperStartBatchRecord {
       first_tick_observed_at: "2026-07-12T10:00:00.500Z"
     }],
     source_start_deadline_at: "2026-07-12T10:00:01.000Z"
+  } as ResearchControlCampaignPaperStartBatchRecord;
+}
+
+function pairedReadyBatch(): ResearchControlCampaignPaperStartBatchRecord {
+  const adaptive = readyBatch();
+  return {
+    ...adaptive,
+    batch_status: "paired_ready",
+    sides: [
+      adaptive.sides[0]!,
+      {
+        arm_kind: "static_control",
+        source_comparison_ref: {
+          record_kind: "paper_trading_comparison_commitment",
+          id: "static_control-comparison-1"
+        },
+        source_comparison_digest: "sha256:static-commitment-1",
+        first_tick_ref: {
+          record_kind: "paper_trading_comparison_tick",
+          id: "static-source-first-tick-1"
+        },
+        first_tick_digest: "sha256:static-first-tick-1",
+        first_tick_observed_at: "2026-07-12T10:00:00.500Z"
+      }
+    ]
   } as ResearchControlCampaignPaperStartBatchRecord;
 }
 

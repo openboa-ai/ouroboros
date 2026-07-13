@@ -81,7 +81,10 @@ export function evaluatePaperTradingHandoffProbe(
     probe.provider_requests.some((request) => hasPrivateOrLiveAuthority(request.body))) {
     return rejected("private_or_live_authority", base);
   }
-  if (!requiredProviderRequestsComplete(probe.provider_requests)) {
+  if (!requiredProviderRequestsComplete(
+    probe.provider_requests,
+    observed.decisionKind
+  )) {
     return rejected("provider_protocol_incomplete", base);
   }
   if (observed.paperEventRejected) {
@@ -218,18 +221,22 @@ function providerValidationMatchesDecision(
   } | undefined
 ): boolean {
   const request = [...requests].reverse().find((item) =>
-    item.method === "POST" && item.path === "/orders/validate" && item.response_status === 200
+    item.method === "POST" && item.path === "/orders/validate"
   );
-  if (!request || !isRecord(request.body)) {
-    return false;
-  }
   if (decisionKind === "hold" || decisionKind === "no_action") {
+    if (!request) {
+      return true;
+    }
+    if (request.response_status !== 200 || !isRecord(request.body)) {
+      return false;
+    }
     return request.body.symbol === "BTCUSDT" &&
       request.body.side === "hold" &&
       request.body.order_type === "none" &&
       Object.is(request.body.quantity, 0);
   }
-  if (decisionKind !== "order_request" || !orderRequest) {
+  if (decisionKind !== "order_request" || !orderRequest ||
+    !request || request.response_status !== 200 || !isRecord(request.body)) {
     return false;
   }
   const quantity = typeof request.body.quantity === "number"
@@ -243,12 +250,18 @@ function providerValidationMatchesDecision(
       normalizedDecimal(request.body.limit_price) === normalizedDecimal(orderRequest.limit_price));
 }
 
-function requiredProviderRequestsComplete(requests: TradingProviderRequestLog[]): boolean {
-  return [
+function requiredProviderRequestsComplete(
+  requests: TradingProviderRequestLog[],
+  decisionKind: "order_request" | "hold" | "no_action" | undefined
+): boolean {
+  const requiredRequests = [
     ["GET", "/market/snapshot"],
-    ["GET", "/account/state"],
-    ["POST", "/orders/validate"]
-  ].every(([method, path]) => requests.some((request) =>
+    ["GET", "/account/state"]
+  ];
+  if (decisionKind === "order_request") {
+    requiredRequests.push(["POST", "/orders/validate"]);
+  }
+  return requiredRequests.every(([method, path]) => requests.some((request) =>
     request.method === method && request.path === path && request.response_status === 200
   ));
 }

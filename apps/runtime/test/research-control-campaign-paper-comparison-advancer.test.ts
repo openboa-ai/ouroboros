@@ -72,6 +72,48 @@ describe("ResearchControlCampaign paper comparison advancer", () => {
     expect(fixture.operations).toEqual(["driver:none"]);
   });
 
+  it("enables first-tick attribution before polling for acknowledgements", async () => {
+    const fixture = comparisonFixture({
+      driverStep: {
+        phase: "waiting_tick_acknowledgements",
+        checkpoint_sequence: 1,
+        transition: "none",
+        terminal: false
+      }
+    });
+    fixture.installRunningAttempt(true);
+
+    await expect(fixture.advancer.advance(fixture.input)).resolves.toEqual({
+      status: "waiting",
+      campaignId: "confirmation-campaign",
+      slotIndex: 1,
+      comparisonId: "confirmation-comparison-1",
+      wakeAt: "2026-07-12T10:00:00.025Z"
+    });
+    expect(fixture.operations).toEqual([
+      "driver:none",
+      "enable:confirmation-attempt-1:confirmation-tick-1"
+    ]);
+  });
+
+  it("polls a repeated tick without re-enabling its advanced attribution", async () => {
+    const fixture = comparisonFixture({
+      driverStep: {
+        phase: "waiting_tick_acknowledgements",
+        checkpoint_sequence: 2,
+        transition: "none",
+        terminal: false
+      }
+    });
+    fixture.installRunningAttempt(true);
+
+    await expect(fixture.advancer.advance(fixture.input)).resolves.toMatchObject({
+      status: "waiting",
+      wakeAt: "2026-07-12T10:00:00.025Z"
+    });
+    expect(fixture.operations).toEqual(["driver:none"]);
+  });
+
   it("recovers but never adopts an unowned running attempt", async () => {
     const fixture = comparisonFixture();
     fixture.installRunningAttempt(false);
@@ -162,6 +204,8 @@ describe("ResearchControlCampaign paper comparison advancer", () => {
 
 function comparisonFixture(options: {
   driverStep?: {
+    phase?: string;
+    checkpoint_sequence?: number;
     transition: "capture_first_checkpoint" | "none";
     terminal: boolean;
     next_wake_at?: string;
@@ -189,7 +233,8 @@ function comparisonFixture(options: {
             preparation_ref: {
               record_kind: "paper_trading_comparison_preparation",
               id: "confirmation-preparation-1"
-            }
+            },
+            comparison_policy: { interval_ms: 25 }
           }
         : undefined;
     },
@@ -277,6 +322,12 @@ function comparisonFixture(options: {
         }
       };
     },
+    async enableComparisonTickAttribution(input) {
+      operations.push(
+        `enable:${input.activationAttemptId}:${input.tickId}`
+      );
+    },
+    now: () => "2026-07-12T10:00:00.000Z",
     verdicts: {
       async evaluate() {
         operations.push("verdict");

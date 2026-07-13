@@ -5455,20 +5455,28 @@ function qualificationScore(account: PaperTradingAccountSnapshot, initialEquity:
   const round = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
   const revenue = decimal(account.realized_pnl_usdt) + decimal(account.unrealized_pnl_usdt);
   const cost = decimal(account.fee_paid_usdt) + decimal(account.slippage_paid_usdt) + decimal(account.funding_paid_usdt);
-  const net = decimal(account.equity_usdt) - initialEquity;
-  return { revenue_usdt: round(revenue), cost_usdt: round(cost), net_revenue_usdt: round(net), net_return_pct: round(net / initialEquity * 100) };
+  const roundedRevenue = round(revenue);
+  const roundedCost = round(cost);
+  const net = round(roundedRevenue - roundedCost);
+  return { revenue_usdt: roundedRevenue, cost_usdt: roundedCost, net_revenue_usdt: net, net_return_pct: round(net / initialEquity * 100) };
 }
 function qualificationSameScore(left: TradingProfitLossReadModel, right: TradingProfitLossReadModel): boolean { return left.revenue_usdt === right.revenue_usdt && left.cost_usdt === right.cost_usdt && left.net_revenue_usdt === right.net_revenue_usdt && left.net_return_pct === right.net_return_pct; }
+function qualificationAccountEquityReconciles(account: PaperTradingAccountSnapshot, initialEquity: number): boolean {
+  const values = [account.equity_usdt, account.realized_pnl_usdt, account.unrealized_pnl_usdt, account.fee_paid_usdt, account.slippage_paid_usdt, account.funding_paid_usdt].map(Number);
+  if (!values.every(Number.isFinite)) return false;
+  const [equity, realized, unrealized, fee, slippage, funding] = values as [number, number, number, number, number, number];
+  return Math.abs((equity - initialEquity) - (realized + unrealized - fee - slippage - funding)) <= 0.000001;
+}
 function qualificationAccounting(evaluation: PaperTradingEvaluationRecord, commitment: PaperTradingEvaluationCommitmentRecord, observations: PaperTradingObservationRecord[]): boolean {
   const initial = Number(commitment.initial_account_snapshot.equity_usdt);
-  if (!Number.isFinite(initial) || initial <= 0 || !qualificationSameScore(qualificationScore(commitment.initial_account_snapshot, initial), PAPER_TRADING_COMPARISON_ZERO_SCORE)) return false;
+  if (!Number.isFinite(initial) || initial <= 0 || !qualificationSameScore(qualificationScore(commitment.initial_account_snapshot, initial), PAPER_TRADING_COMPARISON_ZERO_SCORE) || !qualificationAccountEquityReconciles(commitment.initial_account_snapshot, initial)) return false;
   let prior = PAPER_TRADING_COMPARISON_ZERO_SCORE;
   let account = commitment.initial_account_snapshot;
   for (const item of [...observations].sort((left, right) => left.sequence - right.sequence)) {
     const current = item.cumulative_score;
     const delta = { revenue_usdt: Math.round((current.revenue_usdt - prior.revenue_usdt) * 1_000_000) / 1_000_000, cost_usdt: Math.round((current.cost_usdt - prior.cost_usdt) * 1_000_000) / 1_000_000, net_revenue_usdt: Math.round((current.net_revenue_usdt - prior.net_revenue_usdt) * 1_000_000) / 1_000_000, net_return_pct: Math.round((current.net_return_pct - prior.net_return_pct) * 1_000_000) / 1_000_000 };
     if (![...Object.values(item.score_delta), ...Object.values(current)].every(Number.isFinite) || !qualificationSameScore(item.score_delta, delta)) return false;
-    if (item.paper_account_snapshot) { if (!qualificationSameScore(qualificationScore(item.paper_account_snapshot, initial), current)) return false; account = item.paper_account_snapshot; }
+    if (item.paper_account_snapshot) { if (!qualificationSameScore(qualificationScore(item.paper_account_snapshot, initial), current) || !qualificationAccountEquityReconciles(item.paper_account_snapshot, initial)) return false; account = item.paper_account_snapshot; }
     else if (!qualificationSameScore(current, prior)) return false;
     prior = current;
   }

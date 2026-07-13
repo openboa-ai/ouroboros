@@ -826,7 +826,10 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       }
       const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
         source: input.source,
-        sourceSystemCodeRef: input.source.system_code?.ref,
+        sourceSystemCodeRef: ref(
+          "system_code",
+          preflight.sourceSystemCode.system_code_id
+        ),
         systemCode,
         evaluation: entry.evaluation,
         direction: input.direction,
@@ -1592,7 +1595,10 @@ async function recordArenaResearchRecords(input: {
     version: 1,
     artifact_lineage_id: `artifact-lineage-${suffix}`,
     child_system_code_ref: ref("system_code", input.systemCode.system_code_id),
-    parent_system_code_ref: input.source.system_code?.ref,
+    parent_system_code_ref: ref(
+      "system_code",
+      input.sourceSystemCode.system_code_id
+    ),
     source_finding_refs: [ref("research_finding", finding.research_finding_id)],
     created_by_research_worker_ref: experiment.research_worker_ref,
     created_at: now,

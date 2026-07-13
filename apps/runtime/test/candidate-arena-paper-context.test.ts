@@ -1202,6 +1202,18 @@ describe("CandidateArena paper evidence context", () => {
     expect(sourceSnapshot.artifact_path).toContain("candidate-arena-runs");
     expect(sourceSnapshot.artifact_path).toContain(path.join("seed", "run.py"));
     const candidate = await store.getCandidate(outcome.created_candidate_ids[0]!);
+    expect(candidate?.full_cycle_lineage?.source.system_code_ref).toEqual(
+      admission?.source_system_code_ref
+    );
+    const generatedLineage = (await store.listArtifactLineages()).find((lineage) =>
+      lineage.child_system_code_ref.id === admission?.system_code_ref.id
+    );
+    expect(generatedLineage?.parent_system_code_ref).toEqual(
+      admission?.source_system_code_ref
+    );
+    expect(sourceSnapshot.provenance_refs).toEqual([
+      expect.objectContaining({ record_kind: "system_code" })
+    ]);
     expect(candidate?.full_cycle_lineage?.evidence?.evaluation_status).toBe("accepted");
     const checkpoint = (await store.listResearchWorkerCheckpoints()).find((entry) =>
       entry.candidate_arena_tick_id === outcome.tick_id
@@ -3808,20 +3820,7 @@ async function seedPaperTradingEvidence(
         ).toISOString());
     const cumulativeScore = override?.cumulativeScore ?? (isFinal
       ? latestScore
-      : {
-          revenue_usdt: roundPaperContextValue(
-            latestScore.revenue_usdt * sequence / observationCount
-          ),
-          cost_usdt: roundPaperContextValue(
-            latestScore.cost_usdt * sequence / observationCount
-          ),
-          net_revenue_usdt: roundPaperContextValue(
-            latestScore.net_revenue_usdt * sequence / observationCount
-          ),
-          net_return_pct: roundPaperContextValue(
-            latestScore.net_return_pct * sequence / observationCount
-          )
-        });
+      : scaledPaperContextScore(latestScore, sequence, observationCount));
     const nextEvaluation: PaperTradingEvaluationRecord = {
       ...evaluation,
       status: isFinal ? finalEvaluation.status : "running",
@@ -3885,6 +3884,26 @@ async function seedPaperTradingEvidence(
     latestObservation = nextObservation;
   }
   return { evaluation, observation: latestObservation };
+}
+
+function scaledPaperContextScore(
+  score: PaperTradingEvaluationRecord["latest_score"],
+  sequence: number,
+  observationCount: number
+): PaperTradingEvaluationRecord["latest_score"] {
+  const revenue = roundPaperContextValue(
+    score.revenue_usdt * sequence / observationCount
+  );
+  const cost = roundPaperContextValue(
+    score.cost_usdt * sequence / observationCount
+  );
+  const net = roundPaperContextValue(revenue - cost);
+  return {
+    revenue_usdt: revenue,
+    cost_usdt: cost,
+    net_revenue_usdt: net,
+    net_return_pct: roundPaperContextValue(net / 10_000 * 100)
+  };
 }
 
 function paperContextAccountForScore(
