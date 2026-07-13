@@ -177,8 +177,10 @@ provenance, `TradingReview` active target binding, latest TradingSystem paper de
 been emitted, research-efficiency summaries and compact `CandidateArenaResearchAllocation`
 projections for latest CandidateArena ticks, compact handoff-conformance ID/status/reason for each
 direction result, compact research-preflight commitment ID/development submission count/generic
-terminal status and reason, `ResearchPopulationDiversity`, and authority flags. It never exposes raw preflight seed, sealed suite,
-scenario identity/result, score delta, evaluator trace, event path, or runner command evidence.
+terminal status and reason, `ResearchPopulationDiversity`, required compact
+`ResearchGeneralizationReadModel`, and authority flags. It never exposes raw preflight seed, sealed
+suite, scenario identity/result, score delta, evaluator trace, event path, or runner command
+evidence.
 
 `ResearchEfficiency` is not a leaderboard or promotion metric. Its compatibility totals retain
 development provider-request, runner-command, scenario, and elapsed-time semantics used by bounded
@@ -227,6 +229,26 @@ behavior from more than one exact fingerprint protocol and development-suite coh
 `incomparable_suites` and omits unique or entropy fields. A cross-tick suite transition may close
 the window while preserving measured tick entries. No raw fingerprint ID, digest, observation,
 scenario, sealed result, paper outcome, or allocation mutation is part of this read model.
+
+`CandidateArenaReadModel.research_generalization` is required on `GET /api/operator` and the
+`arena.status` command result. Its lifecycle is `not_started`, `collecting`, `awaiting_outcome`, or
+`closed`. The active entry is the oldest committed protocol without an outcome and reports exact
+planned, assigned, and terminal totals, canonical `long`, `short`, and `flat` progress, collection
+deadline, next action, and `research_only` authority. The latest entry is independently selected by
+adjudication time and outcome ID descending, so a previous outcome remains visible while a newer
+protocol collects. It reports bounded inference counts and statistics, harmful blocks,
+policy-decision eligibility, next action, and explicit false policy-replacement, promotion,
+order-submission, and live-exchange authority.
+
+CandidateArena constructs this projection from complete protocol, study, study-outcome, and
+generalization-outcome arrays. Duplicate identities, orphan references, or mismatched slot
+assignments fail with `research_generalization_read_model_graph_invalid`; they never degrade to an
+empty projection. Raw kline windows, source artifacts, baseline digests, study and campaign IDs,
+evaluator internals, and per-slot effects are excluded. CLI and TUI render compact status parity;
+Web Research renders lifecycle, condition progress, deadline, latest inference, statistics, and
+authority before Finding clusters and Research signals. This read model adds no command and never
+feeds allocation, ResearchWorker context, policy selection, rank, qualification, promotion, order,
+private, or live behavior.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the

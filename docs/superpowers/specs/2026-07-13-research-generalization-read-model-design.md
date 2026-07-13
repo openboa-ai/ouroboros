@@ -1,6 +1,11 @@
 # ResearchGeneralization Read Model Design
 
-Status: approved for autonomous implementation under the active CandidateArena goal.
+Status: implemented and verified on 2026-07-13.
+
+Implementation evidence: `f356bd2` adds the strict pure projection, `e3e6b1c` attaches it to the
+shared CandidateArena operator state, and `86d7c5f` renders authority-safe CLI, TUI, and Web
+readback. Verification passed 190 focused tests, all workspace typechecks, 184 full-suite files with
+2,949 tests, and every required repository guard.
 
 ## Goal
 
@@ -131,7 +136,7 @@ projection; production LocalStore implements the complete port.
 
 ### HTTP And Commands
 
-`GET /api/operator`, `GET /api/arena`, and `arena.status` expose the same required
+`GET /api/operator` and `arena.status` expose the same required
 `candidate_arena.research_generalization` projection. No new route or command is added.
 
 ### CLI
@@ -185,4 +190,3 @@ Acceptance requires:
 - CLI, TUI, and Web tests proving equivalent status, progress, next-action, and authority meaning;
 - all workspace typechecks and the full repository validation suite;
 - no changes to allocator, ResearchWorker prompt, commands, promotion, orders, or live authority.
-

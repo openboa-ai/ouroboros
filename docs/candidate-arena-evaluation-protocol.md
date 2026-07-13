@@ -146,6 +146,14 @@ terminal closure or expiry; it cannot drop unfavorable or missing evidence. Gene
 requires six eligible non-ties, at least three distinct baseline snapshots, exact two-sided sign
 p-value at most 0.05, positive equal-weight mean, and no zero-or-negative block. Support grants no
 current policy replacement: it is only eligible for a separately designed decision boundary.
+`ResearchGeneralizationReadModel` exposes this prospective graph through the shared CandidateArena
+operator state without changing it. It independently selects the oldest protocol missing an
+outcome and the latest adjudicated outcome, reports canonical condition progress and bounded
+statistics, and preserves both when a newer protocol collects after an earlier closure. Complete
+graph validation fails on duplicate, orphaned, or mismatched slot evidence. Raw windows, artifacts,
+digests, study/campaign identities, and per-slot effects remain outside operator readback. The
+projection has `not_promotion_authority` and does not enter allocation, ResearchWorker context,
+policy decisions, ranking, qualification, promotion, orders, private reads, or live behavior.
 `ResearchAllocationPolicyDecision` separately reloads that exact graph. Version 1 approves only an
 eligible supported adaptive effect for the exact studied policy digest. Non-supported or
 underpowered evidence records `not_approved` with no effective mode and cannot select static
@@ -591,6 +599,9 @@ The following current surfaces require implementation work before P0 can pass:
   automatic policy-decision reconciliation. It also owns a prospective six-slot
   `ResearchGeneralizationProtocol`, public closed-kline block classification, deterministic
   24-hour-spaced slot assignment, and oldest-first terminal-or-expired outcome reconciliation.
+  The required `ResearchGeneralizationReadModel` now makes exact lifecycle, active condition-block
+  progress, deadline, and latest outcome visible through `GET /api/operator`, `arena.status`, CLI,
+  TUI, and Web Research while remaining outside every feedback and authority path.
   Complete eligible real-market protocol evidence, multi-host fencing, and learned policy
   parameters remain open. The separate one-sided exact adaptive policy decision and
   future-allocation provenance path are implemented; no broad generalization-policy decision is.
