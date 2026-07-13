@@ -144,11 +144,15 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     if (!isDeepStrictEqual(active, input.lease)) {
       throw ownershipLost("active lease changed before renewal");
     }
+    const renewedAt = this.readNow();
+    if (Date.parse(renewedAt) >= Date.parse(active.expires_at)) {
+      throw ownershipLost("active lease has expired");
+    }
     let renewed: ResearchControlStudyExecutionLeaseRecord;
     try {
       renewed = renewResearchControlStudyExecutionLease({
         lease: active,
-        renewedAt: this.readNow()
+        renewedAt
       });
     } catch (error) {
       throw invalidInput("lease renewal time is invalid", error);

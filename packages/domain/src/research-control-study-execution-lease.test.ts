@@ -72,6 +72,20 @@ describe("ResearchControlStudyExecutionLease", () => {
     expect(active.renewed_at).toBe("2026-07-13T00:00:00.000Z");
   });
 
+  it("rejects renewal at or after the persisted lease expiry", () => {
+    for (const renewedAt of [
+      "2026-07-13T00:00:30.000Z",
+      "2026-07-13T00:00:31.000Z"
+    ]) {
+      expect(() => renewResearchControlStudyExecutionLease({
+        lease: activeLease(),
+        renewedAt
+      })).toThrowError(expect.objectContaining({
+        code: "invalid_research_control_study_execution_lease_input"
+      }));
+    }
+  });
+
   it.each([
     ["released", "owner_released"],
     ["expired", "expired_owner_absent"]

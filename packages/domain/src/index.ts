@@ -8749,7 +8749,8 @@ export function renewResearchControlStudyExecutionLease(input: {
     const renewedAt = researchControlStudyExecutionLeaseCanonicalTime(
       input.renewedAt
     );
-    if (Date.parse(renewedAt) <= Date.parse(input.lease.renewed_at)) {
+    if (Date.parse(renewedAt) <= Date.parse(input.lease.renewed_at) ||
+      Date.parse(renewedAt) >= Date.parse(input.lease.expires_at)) {
       throw researchControlStudyExecutionLeaseInvalidDecision();
     }
     const record: ResearchControlStudyExecutionLeaseRecord = {
