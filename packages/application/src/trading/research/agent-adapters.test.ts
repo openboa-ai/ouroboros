@@ -148,6 +148,31 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       }
     }
   });
+
+  it("accepts a successful Codex exit that closes stdin without reading the prompt", async () => {
+    const executablePath = path.join(tmpDir, "fake-codex-closes-stdin.cjs");
+    await writeFile(
+      path.join(tmpDir, "program.md"),
+      "x".repeat(16 * 1024 * 1024),
+      "utf8"
+    );
+    await writeFile(executablePath, closesStdinCodexScript(), "utf8");
+    await chmod(executablePath, 0o755);
+    const adapter = new CodexTradingResearchAgentAdapter({
+      command: executablePath,
+      timeout_ms: 5_000
+    });
+
+    await expect(adapter.improveArtifact({
+      agent: adapter.agent,
+      artifact_dir: tmpDir,
+      program_path: path.join(tmpDir, "program.md"),
+      notebook_path: path.join(tmpDir, "notebook.json"),
+      iteration: 1
+    })).resolves.toMatchObject({
+      status: "no_change"
+    });
+  });
 });
 
 function timeoutIgnoringCodexScript(): string {
@@ -163,6 +188,14 @@ const descendant = spawn(process.execPath, ["-e", [
 fs.writeFileSync(process.env.TEST_PID_PATH, JSON.stringify([process.pid, descendant.pid]));
 process.on("SIGTERM", () => {});
 setInterval(() => {}, 1000);
+`;
+}
+
+function closesStdinCodexScript(): string {
+  return `#!/usr/bin/env node
+const fs = require("node:fs");
+fs.closeSync(0);
+setTimeout(() => process.exit(0), 50);
 `;
 }
 

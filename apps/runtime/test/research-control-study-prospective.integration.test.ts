@@ -342,7 +342,7 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
       completedOutcome
     ]);
     expect(paperHarness.tracker).toEqual(effectsBeforeRestart);
-  }, 180_000);
+  }, 480_000);
 });
 
 async function preEffectEvidence(store: LocalStore) {

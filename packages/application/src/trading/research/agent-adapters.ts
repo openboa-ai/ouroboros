@@ -530,6 +530,11 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     child.on("error", (error) => {
       fail(error);
     });
+    child.stdin.on("error", (error) => {
+      if ((error as NodeJS.ErrnoException).code !== "EPIPE") {
+        fail(error);
+      }
+    });
     child.on("close", (code) => {
       clearCommandTimeout();
       if (settled) {
