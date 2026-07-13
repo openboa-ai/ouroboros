@@ -11314,12 +11314,36 @@ export interface ResearchGeneralizationLatestOutcomeReadModel {
   authority_status: "not_live";
 }
 
+export interface ResearchGeneralizationLatestPolicyDecisionReadModel {
+  research_generalization_policy_decision_id: string;
+  research_generalization_protocol_id: string;
+  research_generalization_outcome_id: string;
+  decision_status: ResearchGeneralizationPolicyDecisionRecord[
+    "decision_status"
+  ];
+  decision_reason: ResearchGeneralizationPolicyDecisionRecord[
+    "decision_reason"
+  ];
+  effective_default_mode: ResearchGeneralizationPolicyDecisionRecord[
+    "effective_default_mode"
+  ];
+  decided_at: string;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
 export interface ResearchGeneralizationReadModel {
   status: ResearchGeneralizationReadModelStatus;
   protocol_count: number;
   outcome_count: number;
   active_protocol: ResearchGeneralizationActiveProtocolReadModel | null;
   latest_outcome: ResearchGeneralizationLatestOutcomeReadModel | null;
+  latest_policy_decision:
+    ResearchGeneralizationLatestPolicyDecisionReadModel | null;
   authority_status: "not_promotion_authority";
 }
 

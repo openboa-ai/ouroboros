@@ -3,6 +3,7 @@ import type {
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord,
   ResearchGeneralizationOutcomeRecord,
+  ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord
 } from "@ouroboros/domain";
 import {
@@ -16,13 +17,15 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [],
       studies: [],
       studyOutcomes: [],
-      outcomes: []
+      outcomes: [],
+      decisions: []
     })).toEqual({
       status: "not_started",
       protocol_count: 0,
       outcome_count: 0,
       active_protocol: null,
       latest_outcome: null,
+      latest_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -35,7 +38,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [protocol],
       studies: [shortStudy, longStudy],
       studyOutcomes: [studyOutcome(longStudy)],
-      outcomes: []
+      outcomes: [],
+      decisions: []
     });
 
     expect(readModel).toEqual({
@@ -75,6 +79,7 @@ describe("ResearchGeneralizationReadModel", () => {
         authority_status: "research_only"
       },
       latest_outcome: null,
+      latest_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -89,7 +94,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [protocol],
       studies,
       studyOutcomes: studies.map(studyOutcome),
-      outcomes: []
+      outcomes: [],
+      decisions: []
     })).toMatchObject({
       status: "awaiting_outcome",
       active_protocol: {
@@ -111,7 +117,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [protocol],
       studies,
       studyOutcomes: studies.slice(0, 4).map(studyOutcome),
-      outcomes: []
+      outcomes: [],
+      decisions: []
     })).toMatchObject({
       status: "collecting",
       active_protocol: {
@@ -143,7 +150,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [latestProtocol, oldProtocol],
       studies: [],
       studyOutcomes: [],
-      outcomes: [oldOutcome, latestOutcome]
+      outcomes: [oldOutcome, latestOutcome],
+      decisions: []
     })).toEqual({
       status: "closed",
       protocol_count: 2,
@@ -174,6 +182,7 @@ describe("ResearchGeneralizationReadModel", () => {
         live_exchange_authority: false,
         authority_status: "not_live"
       },
+      latest_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -198,7 +207,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [secondActive, closed, firstActive],
       studies: [],
       studyOutcomes: [],
-      outcomes: [outcome]
+      outcomes: [outcome],
+      decisions: []
     });
 
     expect(readModel).toMatchObject({
@@ -217,6 +227,158 @@ describe("ResearchGeneralizationReadModel", () => {
     });
   });
 
+  it("projects the newest policy decision with closed downstream authority", () => {
+    const oldProtocol = protocolFixture("decision-old", "2026-05-01T00:00:00.000Z");
+    const latestProtocol = protocolFixture(
+      "decision-latest",
+      "2026-06-01T00:00:00.000Z"
+    );
+    const oldOutcome = generalizationOutcome(
+      oldProtocol,
+      "2026-06-10T00:00:00.000Z",
+      "generalization_supported"
+    );
+    const latestOutcome = generalizationOutcome(
+      latestProtocol,
+      "2026-07-10T00:00:00.000Z",
+      "generalization_not_supported"
+    );
+    const oldDecision = generalizationPolicyDecision(
+      oldProtocol,
+      oldOutcome,
+      "2026-06-10T00:00:01.000Z"
+    );
+    const latestDecision = generalizationPolicyDecision(
+      latestProtocol,
+      latestOutcome,
+      "2026-07-10T00:00:01.000Z"
+    );
+
+    expect(buildResearchGeneralizationReadModel({
+      protocols: [latestProtocol, oldProtocol],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [latestOutcome, oldOutcome],
+      decisions: [oldDecision, latestDecision]
+    }).latest_policy_decision).toEqual({
+      research_generalization_policy_decision_id:
+        latestDecision.research_generalization_policy_decision_id,
+      research_generalization_protocol_id:
+        latestProtocol.research_generalization_protocol_id,
+      research_generalization_outcome_id:
+        latestOutcome.research_generalization_outcome_id,
+      decision_status: "not_approved",
+      decision_reason: "generalization_outcome_not_eligible",
+      effective_default_mode: null,
+      decided_at: "2026-07-10T00:00:01.000Z",
+      research_policy_selection_authority: true,
+      evaluation_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "research_policy_only"
+    });
+  });
+
+  it("shows active collection beside the latest outcome and policy decision", () => {
+    const closed = protocolFixture(
+      "decision-closed",
+      "2026-05-01T00:00:00.000Z"
+    );
+    const active = protocolFixture(
+      "decision-active",
+      "2026-07-01T00:00:00.000Z"
+    );
+    const outcome = generalizationOutcome(
+      closed,
+      "2026-06-01T00:00:00.000Z",
+      "generalization_supported"
+    );
+    const decision = generalizationPolicyDecision(
+      closed,
+      outcome,
+      "2026-06-01T00:00:01.000Z"
+    );
+
+    expect(buildResearchGeneralizationReadModel({
+      protocols: [active, closed],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [outcome],
+      decisions: [decision]
+    })).toMatchObject({
+      status: "collecting",
+      active_protocol: {
+        research_generalization_protocol_id:
+          active.research_generalization_protocol_id
+      },
+      latest_outcome: {
+        research_generalization_outcome_id:
+          outcome.research_generalization_outcome_id
+      },
+      latest_policy_decision: {
+        research_generalization_policy_decision_id:
+          decision.research_generalization_policy_decision_id,
+        decision_status: "approved"
+      }
+    });
+  });
+
+  it.each([
+    ["orphan outcome", (decision: ResearchGeneralizationPolicyDecisionRecord) => {
+      decision.generalization_outcome_ref.id = "absent-outcome";
+    }],
+    ["protocol mismatch", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      decision.protocol_ref.id = "absent-protocol";
+    }],
+    ["source digest mismatch", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      decision.generalization_outcome_digest = `sha256:${"f".repeat(64)}`;
+    }],
+    ["time inversion", (decision: ResearchGeneralizationPolicyDecisionRecord) => {
+      decision.decided_at = "2026-07-10T00:00:00.000Z";
+    }],
+    ["false approval", (decision: ResearchGeneralizationPolicyDecisionRecord) => {
+      decision.decision_status = "approved";
+      decision.decision_reason = "supported_cross_condition_adaptive_effect";
+      decision.effective_default_mode = "adaptive_default";
+    }],
+    ["promotion authority", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      decision.promotion_authority = true as false;
+    }]
+  ])("fails closed for corrupt policy decision graph: %s", (
+    _label,
+    mutate
+  ) => {
+    const protocol = protocolFixture("decision-invalid", "2026-06-01T00:00:00.000Z");
+    const outcome = generalizationOutcome(
+      protocol,
+      "2026-07-10T00:00:00.000Z",
+      "generalization_not_supported"
+    );
+    const decision = generalizationPolicyDecision(
+      protocol,
+      outcome,
+      "2026-07-10T00:00:01.000Z"
+    );
+    mutate(decision);
+
+    expect(() => buildResearchGeneralizationReadModel({
+      protocols: [protocol],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [outcome],
+      decisions: [decision]
+    })).toThrowError(expect.objectContaining({
+      code: "research_generalization_read_model_graph_invalid"
+    }));
+  });
+
   it("is independent of source enumeration order", () => {
     const protocol = protocolFixture("ordered", "2026-07-01T00:00:00.000Z");
     const studies = protocol.study_slots.map((_, index) =>
@@ -226,13 +388,15 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [protocol],
       studies,
       studyOutcomes: studies.slice(0, 3).map(studyOutcome),
-      outcomes: []
+      outcomes: [],
+      decisions: []
     });
     const reverse = buildResearchGeneralizationReadModel({
       protocols: [protocol],
       studies: [...studies].reverse(),
       studyOutcomes: studies.slice(0, 3).map(studyOutcome).reverse(),
-      outcomes: []
+      outcomes: [],
+      decisions: []
     });
 
     expect(reverse).toEqual(forward);
@@ -301,7 +465,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [protocol],
       studies: [],
       studyOutcomes: [],
-      outcomes: [outcome]
+      outcomes: [outcome],
+      decisions: []
     })).toThrowError(expect.objectContaining({
       code: "research_generalization_read_model_graph_invalid"
     }));
@@ -316,7 +481,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [first, second],
       studies: [],
       studyOutcomes: [],
-      outcomes: []
+      outcomes: [],
+      decisions: []
     })).toThrowError(expect.objectContaining({
       code: "research_generalization_read_model_graph_invalid"
     }));
@@ -334,7 +500,8 @@ describe("ResearchGeneralizationReadModel", () => {
       protocols: [active, protocol],
       studies: [],
       studyOutcomes: [],
-      outcomes: [outcome]
+      outcomes: [outcome],
+      decisions: []
     });
 
     readModel.latest_outcome!.harmful_condition_blocks.push("long");
@@ -351,6 +518,7 @@ interface Graph {
   studies: ResearchControlStudyRecord[];
   studyOutcomes: ResearchControlStudyOutcomeRecord[];
   outcomes: ResearchGeneralizationOutcomeRecord[];
+  decisions: ResearchGeneralizationPolicyDecisionRecord[];
 }
 
 function activeGraph(): Graph {
@@ -360,7 +528,8 @@ function activeGraph(): Graph {
     protocols: [protocol],
     studies: [study],
     studyOutcomes: [studyOutcome(study)],
-    outcomes: []
+    outcomes: [],
+    decisions: []
   };
 }
 
@@ -376,6 +545,7 @@ function protocolFixture(
     research_generalization_protocol_id: protocolId,
     committed_at: committedAt,
     protocol_digest: `sha256:${"1".repeat(64)}`,
+    target_allocation_policy_digest: `sha256:${"2".repeat(64)}`,
     condition_blocks: blocks.map((conditionBlock) => ({
       condition_block: conditionBlock,
       required_study_count: 2
@@ -459,6 +629,9 @@ function generalizationOutcome(
       record_kind: "research_generalization_protocol",
       id: protocol.research_generalization_protocol_id
     },
+    protocol_digest: protocol.protocol_digest,
+    target_allocation_policy_digest:
+      protocol.target_allocation_policy_digest,
     planned_study_count: 6,
     completed_study_count: 6,
     non_tied_study_count: supported ? 6 : 5,
@@ -477,10 +650,51 @@ function generalizationOutcome(
       ? "review_broad_research_allocation_policy"
       : "retain_negative_generalization_evidence",
     adjudicated_at: adjudicatedAt,
+    outcome_digest: `sha256:${"3".repeat(64)}`,
     policy_replacement_authority: false,
     promotion_authority: false,
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "not_live"
   } as ResearchGeneralizationOutcomeRecord;
+}
+
+function generalizationPolicyDecision(
+  protocol: ResearchGeneralizationProtocolRecord,
+  outcome: ResearchGeneralizationOutcomeRecord,
+  decidedAt: string
+): ResearchGeneralizationPolicyDecisionRecord {
+  const approved = outcome.inference_status === "generalization_supported";
+  return {
+    record_kind: "research_generalization_policy_decision",
+    version: 1,
+    research_generalization_policy_decision_id:
+      `research-generalization-policy-decision-${
+        outcome.research_generalization_outcome_id
+      }`,
+    protocol_ref: {
+      record_kind: "research_generalization_protocol",
+      id: protocol.research_generalization_protocol_id
+    },
+    protocol_digest: protocol.protocol_digest,
+    generalization_outcome_ref: {
+      record_kind: "research_generalization_outcome",
+      id: outcome.research_generalization_outcome_id
+    },
+    generalization_outcome_digest: outcome.outcome_digest,
+    target_allocation_policy_digest:
+      protocol.target_allocation_policy_digest,
+    decision_status: approved ? "approved" : "not_approved",
+    decision_reason: approved
+      ? "supported_cross_condition_adaptive_effect"
+      : "generalization_outcome_not_eligible",
+    effective_default_mode: approved ? "adaptive_default" : null,
+    decided_at: decidedAt,
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  } as ResearchGeneralizationPolicyDecisionRecord;
 }

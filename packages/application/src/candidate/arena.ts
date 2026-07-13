@@ -650,7 +650,8 @@ async function arenaResearchGeneralization(
     store.listResearchGeneralizationProtocols,
     store.listResearchControlStudies,
     store.listResearchControlStudyOutcomes,
-    store.listResearchGeneralizationOutcomes
+    store.listResearchGeneralizationOutcomes,
+    store.listResearchGeneralizationPolicyDecisions
   ];
   const availableCount = methods.filter((method) =>
     typeof method === "function"
@@ -660,7 +661,8 @@ async function arenaResearchGeneralization(
       protocols: [],
       studies: [],
       studyOutcomes: [],
-      outcomes: []
+      outcomes: [],
+      decisions: []
     });
   }
   if (availableCount !== methods.length) {
@@ -668,17 +670,20 @@ async function arenaResearchGeneralization(
       "ResearchGeneralization store read methods must be available together."
     );
   }
-  const [protocols, studies, studyOutcomes, outcomes] = await Promise.all([
-    store.listResearchGeneralizationProtocols(),
-    store.listResearchControlStudies(),
-    store.listResearchControlStudyOutcomes(),
-    store.listResearchGeneralizationOutcomes()
-  ]);
+  const [protocols, studies, studyOutcomes, outcomes, decisions] =
+    await Promise.all([
+      store.listResearchGeneralizationProtocols(),
+      store.listResearchControlStudies(),
+      store.listResearchControlStudyOutcomes(),
+      store.listResearchGeneralizationOutcomes(),
+      store.listResearchGeneralizationPolicyDecisions()
+    ]);
   return buildResearchGeneralizationReadModel({
     protocols,
     studies,
     studyOutcomes,
-    outcomes
+    outcomes,
+    decisions
   });
 }
 

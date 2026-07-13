@@ -3,6 +3,7 @@ import type {
   ResearchControlStudyRecord,
   ResearchGeneralizationActiveProtocolReadModel,
   ResearchGeneralizationOutcomeRecord,
+  ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord,
   ResearchGeneralizationProtocolStudySlot,
   ResearchGeneralizationReadModel
@@ -13,6 +14,7 @@ export interface BuildResearchGeneralizationReadModelInput {
   studies: ResearchControlStudyRecord[];
   studyOutcomes: ResearchControlStudyOutcomeRecord[];
   outcomes: ResearchGeneralizationOutcomeRecord[];
+  decisions: ResearchGeneralizationPolicyDecisionRecord[];
 }
 
 export class ResearchGeneralizationReadModelError extends Error {
@@ -45,7 +47,8 @@ function projectResearchGeneralization(
   input: BuildResearchGeneralizationReadModelInput
 ): ResearchGeneralizationReadModel {
   if (!Array.isArray(input?.protocols) || !Array.isArray(input.studies) ||
-    !Array.isArray(input.studyOutcomes) || !Array.isArray(input.outcomes)) {
+    !Array.isArray(input.studyOutcomes) || !Array.isArray(input.outcomes) ||
+    !Array.isArray(input.decisions)) {
     throw graphInvalid("ResearchGeneralization read-model arrays are required.");
   }
   const protocolsById = uniqueBy(
@@ -68,7 +71,7 @@ function projectResearchGeneralization(
     (outcome) => outcome.study_ref.id,
     "ResearchControlStudyOutcome study refs must be unique."
   );
-  uniqueBy(
+  const outcomesById = uniqueBy(
     input.outcomes,
     (outcome) => outcome.research_generalization_outcome_id,
     "ResearchGeneralizationOutcome identities must be unique."
@@ -77,6 +80,16 @@ function projectResearchGeneralization(
     input.outcomes,
     (outcome) => outcome.protocol_ref.id,
     "ResearchGeneralizationOutcome protocol refs must be unique."
+  );
+  uniqueBy(
+    input.decisions,
+    (decision) => decision.research_generalization_policy_decision_id,
+    "ResearchGeneralizationPolicyDecision identities must be unique."
+  );
+  uniqueBy(
+    input.decisions,
+    (decision) => decision.generalization_outcome_ref.id,
+    "ResearchGeneralizationPolicyDecision outcome refs must be unique."
   );
 
   for (const outcome of input.studyOutcomes) {
@@ -99,6 +112,47 @@ function projectResearchGeneralization(
       outcome.authority_status !== "not_live") {
       throw graphInvalid(
         "ResearchGeneralizationOutcome authority is not closed."
+      );
+    }
+  }
+  for (const decision of input.decisions) {
+    const protocol = protocolsById.get(decision.protocol_ref.id);
+    const outcome = outcomesById.get(
+      decision.generalization_outcome_ref.id
+    );
+    if (!protocol || !outcome) {
+      throw graphInvalid(
+        "ResearchGeneralizationPolicyDecision references absent evidence."
+      );
+    }
+    const approved = outcome.inference_status ===
+        "generalization_supported" &&
+      outcome.policy_decision_eligibility ===
+        "eligible_for_separate_generalization_policy_decision";
+    if (outcome.protocol_ref.id !==
+        protocol.research_generalization_protocol_id ||
+      decision.protocol_digest !== protocol.protocol_digest ||
+      outcome.protocol_digest !== protocol.protocol_digest ||
+      decision.generalization_outcome_digest !== outcome.outcome_digest ||
+      decision.target_allocation_policy_digest !==
+        protocol.target_allocation_policy_digest ||
+      outcome.target_allocation_policy_digest !==
+        protocol.target_allocation_policy_digest ||
+      Date.parse(decision.decided_at) <= Date.parse(outcome.adjudicated_at) ||
+      decision.decision_status !== (approved ? "approved" : "not_approved") ||
+      decision.decision_reason !== (approved
+        ? "supported_cross_condition_adaptive_effect"
+        : "generalization_outcome_not_eligible") ||
+      decision.effective_default_mode !== (approved
+        ? "adaptive_default"
+        : null) || decision.research_policy_selection_authority !== true ||
+      decision.evaluation_authority !== false ||
+      decision.promotion_authority !== false ||
+      decision.order_submission_authority !== false ||
+      decision.live_exchange_authority !== false ||
+      decision.authority_status !== "research_policy_only") {
+      throw graphInvalid(
+        "ResearchGeneralizationPolicyDecision differs from its evidence."
       );
     }
   }
@@ -141,6 +195,12 @@ function projectResearchGeneralization(
       left.research_generalization_outcome_id
     )
   )[0];
+  const latestDecision = [...input.decisions].sort((left, right) =>
+    right.decided_at.localeCompare(left.decided_at) ||
+    right.research_generalization_policy_decision_id.localeCompare(
+      left.research_generalization_policy_decision_id
+    )
+  )[0];
   const activeProtocol = orderedActive[0]
     ? projectActiveProtocol(
         orderedActive[0],
@@ -157,6 +217,9 @@ function projectResearchGeneralization(
     outcome_count: input.outcomes.length,
     active_protocol: activeProtocol,
     latest_outcome: latestOutcome ? projectLatestOutcome(latestOutcome) : null,
+    latest_policy_decision: latestDecision
+      ? projectLatestPolicyDecision(latestDecision)
+      : null,
     authority_status: "not_promotion_authority"
   };
 }
@@ -281,6 +344,28 @@ function projectLatestOutcome(
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "not_live"
+  };
+}
+
+function projectLatestPolicyDecision(
+  decision: ResearchGeneralizationPolicyDecisionRecord
+): NonNullable<ResearchGeneralizationReadModel["latest_policy_decision"]> {
+  return {
+    research_generalization_policy_decision_id:
+      decision.research_generalization_policy_decision_id,
+    research_generalization_protocol_id: decision.protocol_ref.id,
+    research_generalization_outcome_id:
+      decision.generalization_outcome_ref.id,
+    decision_status: decision.decision_status,
+    decision_reason: decision.decision_reason,
+    effective_default_mode: decision.effective_default_mode,
+    decided_at: decision.decided_at,
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
   };
 }
 

@@ -895,6 +895,7 @@ describe("runtime canonical operator API", () => {
           authority_status: "research_only"
         },
         latest_outcome: null,
+        latest_policy_decision: null,
         authority_status: "not_promotion_authority"
       });
       expect(JSON.stringify(projection)).not.toContain("public_kline_window");
