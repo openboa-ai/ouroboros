@@ -27,17 +27,22 @@ The runtime already provides the necessary authority-safe protocol:
    and time;
 4. the external checkpoint coordinator records a new order or no-order continuity.
 
-The fixture TradingSystem currently reads the provider once at startup and emits only heartbeats
-afterward, so it never consumes a later comparison tick.
+Both executable families in a real source comparison originally read the provider once at startup
+and emitted only heartbeats afterward: the fixture champion in `fixtures/trading-systems/clock.py`
+and the research-generated challenger copied from `artifacts/trading-system/run.py`. A first
+implementation changed only the champion. The next two-checkpoint run then isolated the failure:
+both champion processes stopped, while the two generated challengers in replication 1 exceeded
+1,900 heartbeats without a later provider read. The cadence contract must therefore be carried by
+both standalone artifacts.
 
 ## Alternatives
 
 ### 1. TradingSystem-owned provider polling and acknowledgement
 
-Enhance the opaque clock fixture so its own `--interval-ms` loop reads the paper provider. When a
-response carries a new `comparison_tick_context.delivery_ref.id`, post the exact context to the ack
-endpoint and remember the delivery ID. Repeated delivery of the same context is read but not
-acknowledged again.
+Enhance the opaque clock fixture and generated TradingSystem template so each artifact's own
+`--interval-ms` loop reads the paper provider. When a response carries a new
+`comparison_tick_context.delivery_ref.id`, post the exact context to the ack endpoint and remember
+the delivery ID. Repeated delivery of the same context is read but not acknowledged again.
 
 This is the selected design. It exercises the real process, HTTP provider, session hooks, Store
 authority, and external checkpoint path without moving decision authority into Ouroboros.
@@ -55,9 +60,11 @@ coordinator mechanics but not the candidate runtime. Reject it as synthetic evid
 
 ## Runtime Behavior
 
-`clock.py` keeps its initial market-driven order behavior unchanged. When
-`TRADING_API_BASE_URL` is present, each subsequent fixture cadence performs one market read. If no
-comparison context is present, it emits the normal heartbeat and waits. If a context is present:
+`clock.py` and generated `run.py` keep their initial market-driven order behavior unchanged. They
+remain separate because each generated artifact is a sealed standalone closure and cannot import a
+repository fixture. When `TRADING_API_BASE_URL` is present, each subsequent artifact cadence
+performs one market read. If no comparison context is present, it emits the normal heartbeat and
+waits. If a context is present:
 
 1. require an object context with a non-empty `delivery_ref.id`;
 2. if the ID matches the last acknowledged delivery, do not post it again;
@@ -91,9 +98,9 @@ remain six ties with p-value 1 and no allocation-policy eligibility.
 
 ## Verification
 
-Artifact contract test:
+Artifact contract tests:
 
-- run the real Python fixture against a real loopback paper provider;
+- run the real clock fixture and generated candidate template against real loopback paper providers;
 - serve `undefined`, context 1, repeated context 1, then context 2 across startup and three cadence
   reads;
 - assert the exact context bodies are acknowledged in order;

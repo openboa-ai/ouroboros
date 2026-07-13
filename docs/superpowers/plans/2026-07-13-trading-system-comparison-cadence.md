@@ -192,6 +192,124 @@ git add apps/runtime/test/clock-artifact.test.ts fixtures/trading-systems/clock.
 git commit -m "feat: acknowledge comparison ticks from TradingSystem"
 ```
 
+### Task 1B: Generated candidate comparison cadence
+
+**Files:**
+- Modify: `apps/runtime/test/generated-trading-system-artifact.test.ts`
+- Modify: `artifacts/trading-system/run.py`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+**Interfaces:**
+- Consumes: the same provider context and acknowledgement contract proven by Task 1.
+- Produces: every sealed candidate copied from `artifacts/trading-system/run.py` can consume a
+  post-activation tick instead of emitting heartbeats forever.
+
+- [ ] **Step 1: Record the isolated runtime evidence**
+
+Record in the design that the first two-checkpoint run reached replication 1, stopped the clock
+champions, and left the adaptive/static generated `submitted-artifact/run.py` processes alive past
+1,900 heartbeats with no later provider request. This establishes that the generated template, not
+the runner or provider limit, is the remaining boundary.
+
+- [ ] **Step 2: Write the failing generated-artifact provider test**
+
+Extend `generated-trading-system-artifact.test.ts` with the real provider imports and the same two
+context helper used by the clock contract:
+
+```ts
+import {
+  createGatewayRuntimeBinding,
+  startPaperTradingApiProvider
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
+
+it("acknowledges each new comparison tick once on generated candidate cadence", async () => {
+  const contexts = [comparisonContext(1), comparisonContext(2)];
+  const deliveries = [undefined, contexts[0], contexts[0], contexts[1]];
+  const acknowledged: unknown[] = [];
+  let deliveryIndex = 0;
+  const provider = await startPaperTradingApiProvider(
+    createGatewayRuntimeBinding({ marketData: fakeGatewayMarketDataPort() }),
+    {
+      comparison_tick_hooks: {
+        deliver: async () => deliveries[deliveryIndex++],
+        acknowledge: async ({ context }) => {
+          acknowledged.push(context);
+          const sequence = (context as { tick_sequence: number }).tick_sequence;
+          return {
+            acknowledgement_ref: {
+              record_kind: "paper_trading_comparison_tick_acknowledgement",
+              id: `generated-artifact-ack-${sequence}`
+            },
+            acknowledgement_digest: `sha256:generated-artifact-ack-${sequence}`
+          };
+        }
+      }
+    }
+  );
+  try {
+    await execFileAsync("python3", [
+      artifactPath,
+      "--instance-id", "generated-comparison-cadence",
+      "--ticks", "4",
+      "--interval-ms", "1"
+    ], { env: { ...process.env, TRADING_API_BASE_URL: provider.base_url } });
+    expect(acknowledged).toEqual(contexts);
+  } finally {
+    await provider.close();
+  }
+});
+```
+
+Also assert the exact request sequence from Task 1 so a repeated context cannot create a second
+acknowledgement.
+
+- [ ] **Step 3: Run the generated-artifact test and confirm RED**
+
+Run:
+
+```bash
+npx vitest run apps/runtime/test/generated-trading-system-artifact.test.ts --reporter=verbose
+```
+
+Expected: the new test fails with an empty acknowledgement list because `run_paper` performs no
+provider read after its initial decision.
+
+- [ ] **Step 4: Implement the standalone generated-candidate contract**
+
+Add the exact `acknowledge_comparison_tick` validation and delivery-ID deduplication from Task 1 to
+`artifacts/trading-system/run.py`. In valid paper mode, acknowledge an initial context if present.
+After each non-terminal sleep, read `/market/snapshot` and acknowledge a new context before the next
+heartbeat. Rejected fixture mode remains provider-free. Do not import repository code because the
+generated artifact closure must remain exactly `manifest.json` plus `run.py`.
+
+- [ ] **Step 5: Run both artifact contract tests**
+
+Run:
+
+```bash
+npx vitest run \
+  apps/runtime/test/clock-artifact.test.ts \
+  apps/runtime/test/generated-trading-system-artifact.test.ts \
+  packages/application/src/trading/gateway/runtime-binding.test.ts \
+  --reporter=verbose
+```
+
+Expected: all tests pass and both executable artifact families acknowledge context 1 and context 2
+exactly once.
+
+- [ ] **Step 6: Commit the completed artifact contract**
+
+```bash
+git add \
+  apps/runtime/test/generated-trading-system-artifact.test.ts \
+  artifacts/trading-system/run.py \
+  docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md \
+  docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md
+git commit -m "feat: acknowledge comparison ticks from generated candidates"
+```
+
 ### Task 2: Qualified two-checkpoint prospective study
 
 **Files:**
@@ -199,7 +317,7 @@ git commit -m "feat: acknowledge comparison ticks from TradingSystem"
 - Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
 
 **Interfaces:**
-- Consumes: the Task 1 artifact cadence and existing real arm/session composition.
+- Consumes: the Task 1 and Task 1B artifact cadences plus existing real arm/session composition.
 - Produces: six completed replications containing 12 pair-qualified source verdicts and no policy
   decision.
 
