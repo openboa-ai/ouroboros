@@ -239,16 +239,21 @@ adjudication time and outcome ID descending, so a previous outcome remains visib
 protocol collects. It reports bounded inference counts and statistics, harmful blocks,
 policy-decision eligibility, next action, and explicit false policy-replacement, promotion,
 order-submission, and live-exchange authority.
+The latest policy-decision entry is independently selected by decision time and ID descending. It
+reports decision, protocol, and outcome IDs, status, reason, effective default mode, decision time,
+`research_policy_only`, and explicit false evaluation, promotion, order-submission, and
+live-exchange authority. It exposes no digest, slot, study, campaign, artifact, or evaluator detail.
 
-CandidateArena constructs this projection from complete protocol, study, study-outcome, and
-generalization-outcome arrays. Duplicate identities, orphan references, or mismatched slot
-assignments fail with `research_generalization_read_model_graph_invalid`; they never degrade to an
-empty projection. Raw kline windows, source artifacts, baseline digests, study and campaign IDs,
-evaluator internals, and per-slot effects are excluded. CLI and TUI render compact status parity;
-Web Research renders lifecycle, condition progress, deadline, latest inference, statistics, and
-authority before Finding clusters and Research signals. This read model adds no command and never
-feeds allocation, ResearchWorker context, policy selection, rank, qualification, promotion, order,
-private, or live behavior.
+CandidateArena constructs this projection from complete protocol, study, study-outcome,
+generalization-outcome, and generalization-policy-decision arrays. Duplicate identities, orphan
+references, or mismatched source assignments fail with
+`research_generalization_read_model_graph_invalid`; they never degrade to an empty projection. Raw
+kline windows, source artifacts, baseline digests, study and campaign IDs, evaluator internals, and
+per-slot effects are excluded. CLI and TUI render compact status parity including decision status
+and effective mode; Web Research renders lifecycle, condition progress, deadline, latest inference,
+statistics, latest decision, and closed authorities before Finding clusters and Research signals.
+This read model adds no command and never feeds allocation, ResearchWorker context, policy
+selection, rank, qualification, promotion, order, private, or live behavior.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the
@@ -335,6 +340,14 @@ change paper rank, qualification, Trading review readiness, or promotion decisio
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
 protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
 generation only. Every new tick must persist one pre-effect `CandidateArenaResearchAllocation`.
+Without explicit directions or mode, allocation-policy basis precedence is the latest applicable
+approved `ResearchGeneralizationPolicyDecision`, the latest applicable approved same-baseline
+`ResearchAllocationPolicyDecision`, then repository default. A broad decision is applicable only
+when its canonical digest is valid, it approves `adaptive_default`, and it targets the current
+repository policy digest. Its allocation basis seals the decision and generalization-outcome refs
+and digests; LocalStore reloads that graph and requires `decided_at < allocated_at`. Unsupported,
+insufficient, stale, forged, wrong-policy, or time-inverted decisions are never applied. Explicit
+directions and explicit adaptive/static mode do not read or inherit either decision family.
 Without explicit directions, `adaptive_default` selects exactly three of five default lanes from
 released clusters, recent direction outcomes, `ResearchEfficiency`, and completed allocation
 history: at most two focus lanes, at least one exploration lane, concurrency two, focus budget two,

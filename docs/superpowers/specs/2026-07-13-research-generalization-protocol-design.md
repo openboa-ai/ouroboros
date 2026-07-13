@@ -258,9 +258,11 @@ authority only. Neither record grants:
 - order submission or private exchange access;
 - live authority.
 
-A future broad `ResearchAllocationPolicyDecision` may consume an exact supported generalization
-outcome, but that is a separate frontier and decision record. Existing same-baseline decisions stay
-unchanged and keep their narrow provenance.
+The later `ResearchGeneralizationPolicyDecision` frontier now consumes an exact supported
+generalization outcome in a separate decision record. It may approve only the frozen adaptive
+policy digest for future uncontrolled allocation provenance. Existing same-baseline decisions stay
+unchanged and keep their narrow provenance; neither decision family gains promotion or live
+authority.
 
 ## Recovery And Concurrency
 

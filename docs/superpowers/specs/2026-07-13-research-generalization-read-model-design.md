@@ -7,6 +7,10 @@ shared CandidateArena operator state, and `86d7c5f` renders authority-safe CLI, 
 readback. Verification passed 190 focused tests, all workspace typechecks, 184 full-suite files with
 2,949 tests, and every required repository guard.
 
+Extension note: `551c2a8` and `8e048b1` later extended the same required projection with compact
+`latest_policy_decision` evidence after the separate decision boundary was implemented. The
+projection remains read-only and still creates or selects no decision.
+
 ## Goal
 
 Make prospective ResearchGeneralizationProtocol progress and terminal
@@ -31,8 +35,8 @@ This is the selected approach.
 ### Generalization evidence as FindingCluster or ResearchWorker input
 
 This would close a feedback loop quickly, but it mixes allocation-policy inference with
-TradingSystem strategy findings. It could exert scheduling or generation pressure before a
-separate generalization-policy decision has been designed. It is excluded.
+TradingSystem strategy findings. It could exert scheduling or generation pressure outside the
+separate generalization-policy decision. It is excluded.
 
 ### Raw protocol/outcome resource routes
 
@@ -177,7 +181,7 @@ The projection is read-only evidence. It must not:
 - submit an order or enable private/live exchange access.
 
 `generalization_supported` remains an externally evaluated research inference that is merely
-eligible for a separately designed policy decision.
+eligible for the separate policy decision; projection alone never applies it.
 
 ## Verification
 

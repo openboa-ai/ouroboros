@@ -1,7 +1,8 @@
 # ResearchGeneralizationProtocol Implementation Plan
 
-Status: completed and repository-verified on 2026-07-13. Real-market protocol collection and any
-separate generalization-policy decision remain outside this implementation frontier.
+Status: completed and repository-verified on 2026-07-13. Real-market protocol collection remains
+open. The separate generalization-policy decision was outside this implementation frontier and is
+now implemented by the matching policy-decision design and plan.
 
 Implementation record: `e57873e`, `67cf883`, `1b60e86`, `c1774f8`, `1af1283`, and `8ef9f78`.
 Final verification passed 183 Vitest files with 2930 tests, all workspace typechecks, and all

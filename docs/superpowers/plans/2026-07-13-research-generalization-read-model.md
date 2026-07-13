@@ -391,16 +391,17 @@ git commit -m "docs: record generalization readback contract"
 
 - [x] **Step 7: Reassess the active CandidateArena goal**
 
-Treat complete real-market protocol evidence, any generalization-policy decision, multi-host
-fencing, and automatic promotion as separate frontiers. Do not infer success from the projection.
+At this frontier's completion, complete real-market protocol evidence, the generalization-policy
+decision, multi-host fencing, and automatic promotion remained separate. Do not infer success from
+the projection.
 
 Completion evidence: focused projection/HTTP/surface validation passed 190 tests; all workspace
 typechecks passed; the full suite passed 184 files and 2,949 tests; docs, architecture, naming,
 tracked-env, secret, and diff guards passed. The frontier changed no allocator, ResearchWorker
 context, command registry, promotion service, order path, private adapter, or live flag.
 
-Reassessment outcome: the active CandidateArena goal remains open. The next bounded implementation
-frontier is a separately designed generalization-policy decision that may consume only exact
-eligible `generalization_supported` evidence and must preserve explicit control, exploration, and
-authority boundaries. Real-market protocol completion and multi-host fencing remain operational
-evidence frontiers and must not be simulated by this readback.
+Reassessment outcome: the active CandidateArena goal remains open. The selected next bounded
+frontier was the separate generalization-policy decision, now implemented under its matching design
+and plan with explicit control, exploration, and authority boundaries preserved. Real-market
+protocol completion and multi-host fencing remain operational evidence frontiers and must not be
+simulated by this readback.

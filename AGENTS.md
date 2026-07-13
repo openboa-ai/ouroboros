@@ -132,23 +132,34 @@ baseline snapshots, an exact two-sided sign-test p-value at most 0.05, a positiv
 mean, and no non-positive block before reporting `generalization_supported`. Missing, tied,
 ineligible, duplicated, expired, or harmful evidence remains explicit. After successful scheduler
 catch-up, the default outcome coordinator reconciles at most the oldest missing protocol outcome
-before the existing allocation-policy decision reconciliation. Neither record changes policy,
-promotes, submits orders, or gains private/live authority; a supported outcome is only eligible for
-a separately designed generalization-policy decision.
+before the generalization-policy and same-baseline allocation-policy decision coordinators. Neither
+protocol nor outcome changes policy, promotes, submits orders, or gains private/live authority; a
+supported outcome is only eligible for the separate generalization-policy decision.
+`ResearchGeneralizationPolicyDecision` is that append-only broad research-policy selection
+boundary. It reloads one exact protocol/outcome graph and may approve only the frozen
+`adaptive_default` policy digest after exact `generalization_supported` evidence. Every other valid
+terminal outcome records `not_approved` with no effective mode; it never infers static superiority.
+For future uncontrolled ticks, explicit directions and modes win, then the latest applicable broad
+approval, then the latest applicable same-baseline approval, then the repository adaptive default.
+LocalStore independently validates decision and outcome provenance before worker effects. After
+successful catch-up, the default scheduler reconciles at most one oldest missing generalization
+decision before the same-baseline decision. This grants research-policy selection authority only,
+never evaluation, rank, qualification, promotion, order, private, or live authority.
 `ResearchGeneralizationReadModel` is the required compact operator projection of that graph. It
 reports `not_started`, `collecting`, `awaiting_outcome`, or `closed`, the oldest protocol without an
-outcome, the latest adjudicated outcome, canonical long/short/flat progress, next action, and closed
-authority through `CandidateArenaReadModel.research_generalization`. CandidateArena builds it from
-complete protocol, study, study-outcome, and outcome evidence; duplicate or irreconcilable graph
-state fails the read path instead of appearing empty. CLI, TUI, and Web Research may render this
-projection, but it must not enter allocation, ResearchWorker context, policy selection, rank,
-qualification, promotion, order, private, or live behavior.
+outcome, the latest adjudicated outcome, the latest policy decision, canonical long/short/flat
+progress, next action, and closed authority through
+`CandidateArenaReadModel.research_generalization`. CandidateArena builds it from complete protocol,
+study, study-outcome, outcome, and decision evidence; duplicate or irreconcilable graph state fails
+the read path instead of appearing empty. CLI, TUI, and Web Research may render this projection,
+but the projection itself must not enter allocation, ResearchWorker context, policy selection,
+rank, qualification, promotion, order, private, or live behavior.
 `ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
 an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
-digest; non-supported or underpowered evidence never selects static control. Uncontrolled Arena
-ticks prefer the latest applicable approval, then the repository adaptive default, while explicit
-directions and explicit adaptive/static modes always win. Every allocation seals that basis, and
-LocalStore independently validates decision-backed provenance before worker effects. After each
+digest; non-supported or underpowered evidence never selects static control. It is the fallback
+decision family when no applicable broad generalization approval exists. Every allocation seals
+its exact basis, and LocalStore independently validates decision-backed provenance before worker
+effects. After each
 successful default scheduler catch-up, `ResearchAllocationPolicyDecisionCoordinator` validates
 existing decisions and ensures the oldest missing terminal outcome, at most one per cycle. It
 records supported, unsupported, and underpowered outcomes symmetrically, advances an equal
@@ -332,8 +343,9 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchControlStudy` | Append-only pre-effect commitment of 6 to 30 exact ResearchControlCampaign replications under one same-frozen-snapshot condition and one paired exact sign-test policy. It fixes every campaign identity before effects, permits no early stopping, and owns research scheduling authority only. |
 | `ResearchControlStudyOutcome` | Append-only external aggregate over every planned ResearchControlCampaignOutcome. It reports same-baseline stochastic-replication inference and may make a supported effect eligible for a separate policy decision, but cannot replace policy, promote, submit orders, or gain private/live authority. |
 | `ResearchGeneralizationProtocol` | Append-only pre-effect cross-study commitment that freezes six deterministic ResearchControlStudy slots across two public long, short, and flat condition-block replications, independent source-baseline controls, timing, resource bounds, and equal-weight analysis. It owns research scheduling authority only. |
-| `ResearchGeneralizationOutcome` | Append-only external aggregate over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline inference, preserves missing and harmful evidence, and may only make exact supported evidence eligible for a separately designed generalization-policy decision. |
-| `ResearchGeneralizationReadModel` | Required compact CandidateArena operator projection of protocol lifecycle, oldest active progress, canonical condition blocks, latest outcome inference, next actions, and explicit non-authority. It is read-only and never feeds allocation, ResearchWorker context, policy selection, rank, qualification, promotion, order, private, or live behavior. |
+| `ResearchGeneralizationOutcome` | Append-only external aggregate over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline inference, preserves missing and harmful evidence, and may only make exact supported evidence eligible for the separate ResearchGeneralizationPolicyDecision. |
+| `ResearchGeneralizationPolicyDecision` | Append-only research-only selection record derived from one exact ResearchGeneralizationProtocol and ResearchGeneralizationOutcome. Version 1 may approve only the frozen adaptive policy digest after eligible supported cross-condition evidence; every other valid outcome is not approved, never selects static control, and grants no evaluation, promotion, order, private, or live authority. |
+| `ResearchGeneralizationReadModel` | Required compact CandidateArena operator projection of protocol lifecycle, oldest active progress, canonical condition blocks, latest outcome inference, latest policy decision, next actions, and explicit non-authority. It is read-only and never feeds allocation, ResearchWorker context, policy selection, rank, qualification, promotion, order, private, or live behavior. |
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that completes or resumes one exact planned campaign per advance and adjudicates only after every terminal outcome. It persists no parallel progress record and owns no policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through existing runtimes, rescans after each completion, and persists no separate progress or downstream authority. |
 | `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, waits for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and grants runtime coordination only. |

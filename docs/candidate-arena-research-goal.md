@@ -123,8 +123,9 @@ campaign, drives it through terminal paper outcome, and repeats sequentially unt
 adjudication without a duplicate progress record. A separate append-only
 `ResearchAllocationPolicyDecision` now approves only the exact studied adaptive policy after an
 eligible supported outcome; unsupported and underpowered outcomes remain not approved and never
-select static control. Uncontrolled ticks prefer the latest applicable exact approval, then the
-repository adaptive fallback, while explicit directions and modes always win. After successful
+select static control. Uncontrolled ticks prefer the latest applicable broad generalization
+approval, then the latest applicable same-baseline approval, then the repository adaptive fallback,
+while explicit directions and modes always win. After successful
 study catch-up, an internal coordinator validates existing decisions and ensures the oldest terminal
 outcome missing one, at most one per cycle. It processes every inference status symmetrically,
 publishes one exact same-root winner, and makes an automatic approval available to the next
@@ -146,8 +147,15 @@ Gateway-owned classifier uses only 30 fully closed `BTCUSDT` one-minute klines a
 overridden by a worker narrative. `ResearchGeneralizationOutcome` preserves all six slots and
 requires complete eligible non-tied evidence, at least three baseline snapshots, exact p-value at
 most 0.05, positive equal-weight block performance, and no harmful block. Automatic reconciliation
-closes one oldest complete or expired protocol after catch-up. This is an implemented external
-validity test boundary, not evidence that real-market generalization has already succeeded.
+closes one oldest complete or expired protocol after catch-up. A separate append-only
+`ResearchGeneralizationPolicyDecision` is then created for the oldest outcome missing one. It
+approves only the exact frozen `adaptive_default` policy digest after eligible
+`generalization_supported` evidence; every other valid outcome is `not_approved` with no effective
+mode and never selects static control. Broad approval outranks a same-baseline approval only for a
+future uncontrolled allocation, and LocalStore revalidates its exact decision/outcome provenance
+before effects. CLI, TUI, and Web expose the latest decision through the shared read model with all
+evaluation, promotion, order, and live authorities false. This is an implemented external-validity
+test and approval boundary, not evidence that real-market generalization has already succeeded.
 Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
 same-host servers using the same LocalStore root. Exact ownership is checked before each executor
 advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
@@ -156,8 +164,8 @@ effects and do not enter research context, allocation, evaluation, ranking, or p
 Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather
-than adopts unowned attempts. Multi-host fencing, completed real-market generalization evidence, a
-separate broad-policy decision, and learned policy parameters remain open.
+than adopts unowned attempts. Multi-host fencing, completed real-market generalization evidence,
+generated or tuned policy parameters, and causal discovery-yield proof remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized

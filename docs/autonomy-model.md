@@ -134,7 +134,8 @@ The next level of detail should improve the autonomous loop without widening aut
   exploration experiment budgets within five total iterations. Completed tick-bound allocations
   drive exploration coverage, while `static_control` provides the equal-bound `2`, `2`, `1`
   no-evidence comparison. Every allocation also seals whether that policy came from explicit caller
-  intent, the repository fallback, or one exact approved `ResearchAllocationPolicyDecision`.
+  intent, the repository fallback, one exact approved `ResearchAllocationPolicyDecision`, or one
+  exact approved `ResearchGeneralizationPolicyDecision`.
 - Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
   signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost, learned
   allocation, and durable provider-process/sandbox adoption remain future detail.
@@ -150,19 +151,22 @@ The next level of detail should improve the autonomous loop without widening aut
   `ResearchControlStudy` now precommits 6 to 30 exact same-baseline campaigns and a paired exact
   sign-test policy before any planned campaign exists. Its terminal outcome consumes every planned
   campaign without early stopping and limits causal scope to stochastic repetitions of that frozen
-  condition. The internal study executor now derives progress from exact records, completes one
-  campaign-to-outcome closure per advance, and can run all replications sequentially with restart
-  recovery and stop-between-campaign semantics. A separate deterministic policy-decision service
-  now approves only the exact studied adaptive policy after eligible supported evidence; unsupported
-  or underpowered outcomes remain not approved and never imply static superiority. Uncontrolled
-  ticks use the latest applicable exact approval before repository fallback, while explicit modes
-  always win. An internal single-owner process supervisor now discovers incomplete studies oldest
-  first and drains their existing runtimes until caught up without durable process state or automatic
-  policy decisions. Each campaign arm can now be composed from its exact LocalStore and arm-local
-  paper-session service; confirmation advances one persisted transition at a time, sleeps on exact
-  window wake times, and recovers rather than adopts unowned runtime attempts. Server auto-start,
-  cross-process leasing, actual prospective study evidence, distinct-regime inference, and learned
-  policy parameters remain future detail.
+  condition. The internal study executor derives progress from exact records and completes one
+  campaign-to-outcome closure per advance with restart recovery and stop-between-campaign semantics.
+  A separate same-baseline policy decision approves only the exact studied adaptive policy after
+  eligible supported evidence; unsupported or underpowered outcomes remain not approved and never
+  imply static superiority. `ResearchGeneralizationProtocol` adds six pre-effect slots across two
+  public long, short, and flat blocks, independent baselines, fixed spacing/deadline, and equal-weight
+  analysis. Its terminal outcome preserves every missing, tied, ineligible, and harmful result. A
+  separate `ResearchGeneralizationPolicyDecision` may approve only that protocol's frozen
+  `adaptive_default` policy digest after exact supported cross-condition evidence. Uncontrolled ticks
+  resolve explicit directions and modes first, then broad approval, same-baseline approval, and the
+  repository fallback. The default server scheduler owns oldest-first study discovery, same-host
+  renewable execution leasing, and post-catch-up outcome, broad-decision, then same-baseline-decision
+  reconciliation. Each campaign arm is composed from its exact LocalStore and arm-local paper
+  session; confirmation advances one persisted transition at a time and recovers rather than adopts
+  unowned attempts. Multi-host fencing, complete real-market prospective evidence, generated or
+  tuned policy parameters, and long-duration deployed soak remain future detail.
 - Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
   conformance, and admission are now bound before materialization and generated-candidate paper
   start. Direction readback is compact, and efficiency separates development from sealed counts

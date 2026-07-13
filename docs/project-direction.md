@@ -50,8 +50,9 @@ separate allocation-policy decision may be considered; the outcome cannot replac
 the exact study and outcome, approves only eligible `adaptive_effect_supported` evidence, binds the
 studied allocation-policy digest, and otherwise records `not_approved` with no effective mode.
 Non-significance never selects static control. Future uncontrolled allocations cite the latest
-applicable approval or the repository adaptive fallback; explicit directions and adaptive/static
-modes retain precedence, and every allocation seals its exact basis before effects. After successful
+applicable broad generalization approval, then the latest applicable same-baseline approval, then
+the repository adaptive fallback; explicit directions and adaptive/static modes retain precedence,
+and every allocation seals its exact basis before effects. After successful
 study scheduler catch-up, an internal coordinator validates existing decisions and ensures the
 oldest terminal outcome missing one, at most one per cycle. It reconciles supported, unsupported,
 and underpowered outcomes symmetrically and publishes through same-root create-only semantics.
@@ -91,10 +92,16 @@ could not: six precommitted slots with two public `long`, `short`, and `flat` co
 reuse controls. Gateway-owned closed one-minute kline evidence opens only the earliest exact
 matching slot before effects. `ResearchGeneralizationOutcome` then accounts for every slot with
 equal block weighting, an exact sign test, a three-baseline minimum, and a harmful-block veto. The
-default scheduler reconciles one oldest complete or expired protocol after catch-up and before the
-existing same-baseline policy decision. This implements the forward-time generalization protocol,
-not the real-market result: complete eligible six-study evidence, any broader policy decision,
-economic promotion, and live authority remain open.
+default scheduler reconciles one oldest complete or expired protocol after catch-up. A separate
+`ResearchGeneralizationPolicyDecision` then reloads that exact graph and may approve only the frozen
+`adaptive_default` policy digest after eligible `generalization_supported` evidence. Every other
+valid outcome becomes `not_approved` with no effective mode and never implies static superiority.
+The scheduler reconciles at most one oldest missing broad decision before the same-baseline policy
+decision; LocalStore independently validates any future allocation that cites it. The shared read
+model exposes the latest decision and explicit false downstream authorities to CLI, TUI, and Web
+without entering ResearchWorker context. This implements the forward-time generalization protocol
+and its approval-only research-policy bridge, not a real-market result: complete eligible six-study
+evidence, generated or tuned policy parameters, economic promotion, and live authority remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

@@ -29,6 +29,7 @@ that pack every axis into one identifier.
 | `ResearchControlStudyOutcome` | Append-only external inference over every planned ResearchControlCampaignOutcome. Its causal scope is limited to same-baseline stochastic replications; supported adaptive effect grants only eligibility for a separate allocation-policy decision and no replacement, promotion, order, private, or live authority. |
 | `ResearchGeneralizationProtocol` | Append-only pre-effect cross-study commitment over six deterministic ResearchControlStudy slots: two each for public long, short, and flat condition blocks. It freezes timing, worker, paper/campaign, source-baseline, resource, and equal-weight analysis policy and owns research scheduling authority only. |
 | `ResearchGeneralizationOutcome` | Append-only external inference over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline evidence, including missing, ineligible, tied, duplicated, and harmful results, and grants no policy replacement, promotion, order, private, or live authority. |
+| `ResearchGeneralizationPolicyDecision` | Append-only research-only selection derived from one exact ResearchGeneralizationProtocol and ResearchGeneralizationOutcome. Version 1 approves only the frozen adaptive policy digest after eligible supported cross-condition evidence; every other valid outcome is not approved, never selects static control, and grants no evaluation, promotion, order, private, or live authority. |
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that runs or resumes one exact planned campaign per advance and adjudicates only after full terminal closure. It adds no progress record or policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through one existing runtime at a time, verifies persisted completion, and stores no parallel progress or downstream authority. |
 | `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, fails closed for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and has runtime-coordination authority only. |
@@ -160,7 +161,11 @@ standard term fits. Record that decision in repo docs and tests.
   approve the exact studied policy digest, and explicit caller intent remains higher priority.
 - Do not treat `ResearchGeneralizationOutcome.generalization_supported` as policy replacement,
   economic superiority, TradingPromotion eligibility, or live authority. It only permits a
-  separately designed generalization-policy decision to review the exact frozen protocol.
+  separate `ResearchGeneralizationPolicyDecision` to review the exact frozen protocol.
+- Do not call an approved `ResearchGeneralizationPolicyDecision` a learned policy, regime winner,
+  generalized TradingSystem, or promotion. It authorizes only the exact frozen `adaptive_default`
+  policy digest as provenance for future uncontrolled research allocation; explicit directions and
+  modes still win. `not_approved` never means static control is superior.
 - Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
   It is read-only generation context for the next ResearchWorker.
 - Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical

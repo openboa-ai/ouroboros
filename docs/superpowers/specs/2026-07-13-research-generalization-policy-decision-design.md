@@ -1,6 +1,7 @@
 # ResearchGeneralizationPolicyDecision Design
 
-Status: approved for autonomous implementation under the active CandidateArena goal.
+Status: implemented under the active CandidateArena goal; repository-wide verification is recorded
+in the matching implementation plan.
 
 ## Goal
 
@@ -241,3 +242,16 @@ The frontier is complete only when tests prove:
 9. focused tests, all workspace typechecks, the full suite, and every repository guard pass;
 10. no allocator scoring, ResearchWorker context, rank, promotion, order, private, or live path
     changes outside the exact provenance selection described above.
+
+## Implementation Result
+
+The implementation preserves the designed source graph and authority boundary. The domain runtime
+guard, pure decision/service/coordinator, independent LocalStore validation, allocation provenance,
+default scheduler composition, shared read model, and CLI/TUI/Web projections are implemented in
+separate commits. The scheduler order is outcome, broad decision, then same-baseline decision after
+`caught_up`; explicit direction and mode still bypass both decision families. The read model exposes
+only compact decision IDs/status/reason/effective mode/time and closed downstream authorities.
+
+This result approves no policy parameters beyond the exact frozen repository policy digest. It is
+not evidence of completed real-market generalization, learned allocation, TradingSystem economic
+superiority, automatic promotion, private exchange access, or live authority.

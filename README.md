@@ -129,16 +129,17 @@ one-tick-per-arm study. It preserves the campaign's numeric, market-data, and pa
 normalizes only the comparison mode to `champion_challenge`. No promotion or one already-pending
 study defers; malformed or drifted evidence stops the scheduler before effects. Same-root races use
 create-only publication and accept only the exact deterministic winner. The scheduler then runs the
-supervisor immediately. After successful catch-up, and before its interruptible bounded wait,
-`ResearchAllocationPolicyDecisionCoordinator` validates existing decisions and ensures the oldest
-terminal outcome missing one. It processes at most one per cycle and records supported,
-unsupported, and underpowered evidence symmetrically as `approved` or `not_approved`; a
-non-significant result never selects static control. Decision publication is create-only across
-same-root contenders, and an automatic approval is available to the next uncontrolled Arena tick as
-exact provenance. The scheduler can then consider a later reviewed source without an operator
-command. Each opened runtime reconstructs source, agent identity, campaign bounds, and the bound
-paper protocol from the exact persisted study condition. Shutdown stops this scheduler before
-CandidateArena and paper-session dependencies.
+supervisor immediately. After successful catch-up, and before its interruptible bounded wait, it
+reconciles the oldest missing generalization outcome, the oldest missing generalization-policy
+decision, and then the oldest missing same-baseline allocation-policy decision. Each coordinator
+creates at most one record per cycle. The same-baseline decision records supported, unsupported,
+and underpowered evidence symmetrically as `approved` or `not_approved`; a non-significant result
+never selects static control. Decision publication is create-only across same-root contenders, and
+an automatic approval is available to the next uncontrolled Arena tick as exact provenance. The
+scheduler can then consider a later reviewed source without an operator command. Each opened
+runtime reconstructs source, agent identity, campaign bounds, and the bound paper protocol from the
+exact persisted study condition. Shutdown stops this scheduler before CandidateArena and
+paper-session dependencies.
 The same default commitment path now first creates or reloads one immutable
 `ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
 Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
@@ -146,11 +147,21 @@ versus 30-close mean classifier opens only a matching `long`, `short`, or `flat`
 precommits two studies per block, 24-hour global spacing, a 90-day deadline, exact ResearchWorker
 and paper/campaign identities, source reuse guards, and equal-weight analysis. After study catch-up,
 `ResearchGeneralizationOutcomeCoordinator` reconciles at most the oldest complete or expired
-protocol before the existing same-baseline policy decision coordinator. The outcome includes all
+protocol before policy decisions. The outcome includes all
 six slots and supports generalization only with six eligible non-ties, at least three distinct
 baseline snapshots, exact p-value at most 0.05, positive equal-weight mean, and no harmful block.
 It is external research evidence only and cannot replace allocation policy, promote a candidate,
 submit an order, or grant private/live authority.
+`ResearchGeneralizationPolicyDecisionService` separately reloads the exact protocol/outcome graph.
+Version 1 approves only the protocol's frozen `adaptive_default` policy digest after an eligible
+`generalization_supported` outcome. Unsupported and insufficient outcomes are persisted as
+`not_approved` with no effective mode and never imply static superiority. Future uncontrolled
+allocations resolve explicit directions, explicit mode, the latest applicable broad approval, the
+latest applicable same-baseline approval, and finally the repository adaptive default, in that
+order. Every selected decision basis is sealed before effects and independently revalidated by
+LocalStore. The shared generalization read model exposes the latest decision's source IDs, status,
+reason, effective mode, time, and closed downstream authority to CLI, TUI, and Web without a new
+command or feedback path.
 Before opening a pending study, each server
 now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
 LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
@@ -159,9 +170,9 @@ takeover requires both exact expiry and a confirmed-absent same-host PID. The le
 runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
 fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
 only; automatic policy decisions own future uncontrolled research allocation only. The prospective
-condition-blocked selection protocol is implemented, while its complete six-study real-market
-evidence, a separate generalization-policy decision, learned policy, automatic TradingPromotion,
-and champion handoff remain separate and outside this path.
+condition-blocked selection protocol and separate approval-only generalization decision are
+implemented, while complete six-study real-market evidence, generated or tuned policy parameters,
+automatic TradingPromotion, and champion handoff remain separate and outside this path.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
