@@ -1,5 +1,15 @@
-import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import {
+  access,
+  link,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  unlink,
+  writeFile
+} from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   comparePrivateReadinessPostures,
@@ -3706,10 +3716,22 @@ export class LocalStore {
         );
       }
     }
-    await this.writeJson(this.itemPath(
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
       "research-control-studies",
       study.research_control_study_id
     ), study);
+    if (publication === "exists") {
+      const winner = await this.getResearchControlStudy(
+        study.research_control_study_id
+      );
+      if (!winner || !sameJson(winner, study)) {
+        throw new LocalStoreError(
+          "research_control_study_conflict",
+          "ResearchControlStudy is append-only"
+        );
+      }
+      return winner;
+    }
     return study;
   }
 
@@ -17251,6 +17273,36 @@ export class LocalStore {
     // codeql[js/http-to-file-access]
     await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
     await rename(tmpPath, filePath);
+  }
+
+  private async writeJsonCreateOnly(
+    filePath: string,
+    value: unknown
+  ): Promise<"created" | "exists"> {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+    // LocalStore writes validated records to encoded paths under storeRoot.
+    // codeql[js/http-to-file-access]
+    await writeFile(
+      temporaryPath,
+      `${JSON.stringify(value, null, 2)}\n`,
+      "utf8"
+    );
+    try {
+      await link(temporaryPath, filePath);
+      return "created";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        return "exists";
+      }
+      throw error;
+    } finally {
+      try {
+        await unlink(temporaryPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
   }
 }
 

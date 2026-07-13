@@ -58,6 +58,53 @@ describe("LocalStore ResearchControlStudy", () => {
     expect(await store.listResearchControlStudies()).toEqual([first, second]);
   });
 
+  it("publishes one exact study across independent store instances", async () => {
+    const sharedRoot = path.join(root, "exact-race");
+    const left = new LocalStore(sharedRoot);
+    const right = new LocalStore(sharedRoot);
+    await left.initialize();
+    await right.initialize();
+    const study = studyFixture("exact-race-study");
+
+    await expect(Promise.all([
+      left.recordResearchControlStudy(study),
+      right.recordResearchControlStudy(structuredClone(study))
+    ])).resolves.toEqual([study, study]);
+    await expect(left.listResearchControlStudies()).resolves.toEqual([study]);
+  });
+
+  it("publishes one winner for conflicting cross-instance study bytes", async () => {
+    const sharedRoot = path.join(root, "conflict-race");
+    const left = new LocalStore(sharedRoot);
+    const right = new LocalStore(sharedRoot);
+    await left.initialize();
+    await right.initialize();
+    const first = studyFixture(
+      "conflict-race-study",
+      "2026-07-12T09:00:00.000Z"
+    );
+    const second = studyFixture(
+      "conflict-race-study",
+      "2026-07-12T09:00:01.000Z"
+    );
+
+    const settled = await Promise.allSettled([
+      left.recordResearchControlStudy(first),
+      right.recordResearchControlStudy(second)
+    ]);
+    const fulfilled = settled.filter((item) => item.status === "fulfilled");
+    const rejected = settled.filter((item) => item.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      reason: { code: "research_control_study_conflict" }
+    });
+    const persisted = await left.listResearchControlStudies();
+    expect(persisted).toHaveLength(1);
+    expect([first, second]).toContainEqual(persisted[0]);
+  });
+
   it("rejects same-ID study drift and malformed persisted bytes", async () => {
     const study = studyFixture();
     await store.recordResearchControlStudy(study);
