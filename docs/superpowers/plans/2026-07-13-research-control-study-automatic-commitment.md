@@ -12,7 +12,9 @@
 
 - Keep `ResearchControlStudy` as the only persisted pre-effect commitment; add no parallel job or intent record.
 - Repository policy v1 fixes one incomplete study maximum, 6 replications, 1 tick per arm, 10,000 baseline files, and 1,000,000,000 baseline bytes.
-- Derive paper comparison inputs from the exact TradingPromotion confirmation campaign; do not add an environment-controlled protocol default.
+- Derive paper comparison inputs from the exact TradingPromotion confirmation campaign, preserving
+  its limits while normalizing only `comparison_mode` to `champion_challenge`; do not add an
+  environment-controlled protocol default.
 - Same-host same-root races publish one complete record and never overwrite an existing study.
 - Missing prerequisites defer; malformed, drifted, or conflicting evidence fails closed.
 - Automatic commitment owns research scheduling only and creates no policy decision, promotion, order, private, or live authority.
@@ -31,7 +33,7 @@
 - Consumes: validated `ResearchControlStudyRecord` and the existing encoded item path.
 - Produces: `LocalStore.recordResearchControlStudy` with atomic create-only publication across independent LocalStore instances.
 
-- [ ] **Step 1: Write failing cross-instance publication tests**
+- [x] **Step 1: Write failing cross-instance publication tests**
 
 Add tests using two `LocalStore` objects over one temporary root. Publish one exact study concurrently and require both calls to return the same bytes. Then publish two valid records with the same deterministic ID but different `committed_at` and resealed digest; require exactly one fulfillment, one `research_control_study_conflict`, and one complete persisted winner.
 
@@ -57,7 +59,7 @@ expect(settled.filter((item) => item.status === "rejected")[0])
   .toMatchObject({ reason: { code: "research_control_study_conflict" } });
 ```
 
-- [ ] **Step 2: Run the LocalStore test and verify RED**
+- [x] **Step 2: Run the LocalStore test and verify RED**
 
 Run:
 
@@ -67,7 +69,7 @@ npx vitest run packages/local-store/test/research-control-study.test.ts
 
 Expected: at least one race fails because both instances use the shared `.tmp` rename path or an existing study can be overwritten.
 
-- [ ] **Step 3: Add complete create-only JSON publication**
+- [x] **Step 3: Add complete create-only JSON publication**
 
 Import `link`, `unlink`, and `randomUUID`. Add a private helper that writes a unique non-collection temporary file, atomically links complete bytes to the final path, and reports whether it created the final record.
 
@@ -95,7 +97,7 @@ private async writeJsonCreateOnly(
 
 Use it only for ResearchControlStudy after the existing validation and campaign-precedence checks. On `exists`, reload the final record and return it only when exact JSON matches; otherwise throw the existing append-only conflict.
 
-- [ ] **Step 4: Verify LocalStore regression and types**
+- [x] **Step 4: Verify LocalStore regression and types**
 
 Run:
 
@@ -106,7 +108,7 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: all ResearchControlStudy tests pass and LocalStore has zero type errors.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add packages/local-store/src/index.ts packages/local-store/test/research-control-study.test.ts
@@ -126,7 +128,7 @@ git commit -m "fix: publish research studies atomically"
 - Consumes: latest TradingPromotion resolved by the existing campaign preparation path.
 - Produces: optional `expectedTradingPromotionId` on campaign preparation, campaign execution, and study commitment inputs.
 
-- [ ] **Step 1: Write failing promotion-pin tests**
+- [x] **Step 1: Write failing promotion-pin tests**
 
 In the runtime commitment tests, pass the exact fixture promotion ID and require success. Pass a different ID and require failure before any study or campaign exists.
 
@@ -152,7 +154,7 @@ await expect(commitResearchControlStudyRuntime({
 expect(await otherStore.listResearchControlStudies()).toEqual([]);
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -162,7 +164,7 @@ npx vitest run apps/runtime/test/research-control-study-runtime.test.ts
 
 Expected: TypeScript transform or assertion failure because the expected-promotion field is not enforced.
 
-- [ ] **Step 3: Thread and enforce the expected promotion**
+- [x] **Step 3: Thread and enforce the expected promotion**
 
 Add the optional field to `PrepareResearchControlCampaignCommitRequestInput`, `RunResearchControlCampaignInput`, and `CommitResearchControlStudyRuntimeInput`:
 
@@ -191,7 +193,7 @@ async function resolvePaperComparator(
 
 Map this preparation failure to `research_control_study_runtime_condition_invalid` in the study commitment boundary. Existing callers that omit the field retain current behavior.
 
-- [ ] **Step 4: Verify runtime regression and types**
+- [x] **Step 4: Verify runtime regression and types**
 
 Run:
 
@@ -202,7 +204,7 @@ npm run typecheck --workspace @ouroboros/runtime
 
 Expected: exact pinning and all existing study runtime behavior pass.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-campaign.ts apps/runtime/src/candidate/arena/research-control-study-runtime.ts apps/runtime/test/research-control-study-runtime.test.ts
@@ -222,7 +224,7 @@ git commit -m "feat: pin study commitment promotion"
 - Consumes: `LocalStore`, current managed-agent identity callback, exact latest TradingPromotion graph, and `commitResearchControlStudyRuntime`.
 - Produces: `RESEARCH_CONTROL_STUDY_COMMITMENT_POLICY`, `ResearchControlStudyCommitmentResult`, and `ResearchControlStudyCommitmentCoordinator.ensureCommittedStudy()`.
 
-- [ ] **Step 1: Write failing policy, prerequisite, and idempotency tests**
+- [x] **Step 1: Write failing policy, prerequisite, and idempotency tests**
 
 Cover the public behavior:
 
@@ -250,7 +252,7 @@ Copy the existing trading-review fixture to a temporary root, ensure one study, 
 
 Add a store with a different pending study and require `deferred/pending_study_exists`. Inject a commit function that makes an exact winner visible then throws, and require winner reload acceptance; a mismatched winner must throw a stable coordinator error.
 
-- [ ] **Step 2: Run the coordinator test and verify RED**
+- [x] **Step 2: Run the coordinator test and verify RED**
 
 Run:
 
@@ -260,7 +262,7 @@ npx vitest run apps/runtime/test/research-control-study-commitment-coordinator.t
 
 Expected: import failure because the coordinator and policy do not exist.
 
-- [ ] **Step 3: Implement exact result, policy, and errors**
+- [x] **Step 3: Implement exact result, policy, and errors**
 
 Use these public shapes:
 
@@ -288,14 +290,19 @@ export class ResearchControlStudyCommitmentCoordinatorError extends Error {
 }
 ```
 
-- [ ] **Step 4: Derive the sealed protocol and deterministic key**
+- [x] **Step 4: Derive the sealed protocol and deterministic key**
 
-Load the confirmation campaign referenced by the promotion and require exact ref/digest equality. Derive the protocol input with copied comparison, market, and paper-policy fields plus this schedule:
+Load the confirmation campaign referenced by the promotion and require exact ref/digest equality.
+Derive the protocol input with copied comparison limits, market, and paper-policy fields, normalize
+only the mode for a new reviewed-source comparison, and add this schedule:
 
 ```ts
 const protocol = {
   protocol_status: "bound" as const,
-  comparison_policy: structuredClone(campaign.comparison_policy),
+  comparison_policy: {
+    ...structuredClone(campaign.comparison_policy),
+    comparison_mode: "champion_challenge" as const
+  },
   market_data_configuration_digest:
     campaign.market_data_configuration_digest,
   paper_policy_identity: structuredClone(campaign.paper_policy_identity),
@@ -314,7 +321,7 @@ const protocol = {
 
 Hash canonical policy, promotion ref/digest, campaign ref/digest, candidate refs, agent identity digest, and protocol input. Build one study key and six ordered replication keys from that digest.
 
-- [ ] **Step 5: Implement ensure, queue bound, and race reload**
+- [x] **Step 5: Implement ensure, queue bound, and race reload**
 
 `ensureCommittedStudy` must:
 
@@ -330,7 +337,7 @@ The exact-intent validator must compare study key, source candidate/version, pro
 agent identity, bound protocol input/digest, campaign policy bounds, repository allocation policy,
 and all six replication keys. It must not compare the race-winning baseline digest or timestamp.
 
-- [ ] **Step 6: Verify coordinator and related runtime tests**
+- [x] **Step 6: Verify coordinator and related runtime tests**
 
 Run:
 
@@ -341,7 +348,7 @@ npm run typecheck --workspace @ouroboros/runtime
 
 Expected: all coordinator, pinning, and atomic Store tests pass.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-study-commitment-coordinator.ts apps/runtime/test/research-control-study-commitment-coordinator.test.ts
@@ -362,7 +369,7 @@ git commit -m "feat: ensure bounded research studies"
 - Consumes: `Pick<ResearchControlStudyCommitmentCoordinator, "ensureCommittedStudy">`.
 - Produces: pre-discovery commitment and optional `lastCommitment` in scheduler status.
 
-- [ ] **Step 1: Write failing scheduler-order and failure tests**
+- [x] **Step 1: Write failing scheduler-order and failure tests**
 
 Use a recording coordinator and supervisor. Prove `commit` precedes `supervisor-start`, a committed
 study is discoverable in the same cycle, deferred status still enters one bounded wait, and a
@@ -389,7 +396,7 @@ expect(scheduler.status()).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run scheduler tests and verify RED**
+- [x] **Step 2: Run scheduler tests and verify RED**
 
 Run:
 
@@ -399,7 +406,7 @@ npx vitest run apps/runtime/test/research-control-study-scheduler.test.ts apps/r
 
 Expected: constructor/type failure because the coordinator dependency and status are absent.
 
-- [ ] **Step 3: Invoke commitment before every discovery cycle**
+- [x] **Step 3: Invoke commitment before every discovery cycle**
 
 Extend scheduler options with:
 
@@ -417,7 +424,7 @@ errors terminal before any runtime opens.
 Pass the optional coordinator through `CreateResearchControlStudyServerSchedulerInput` to the
 scheduler. Do not pass it into the process supervisor or execution lease.
 
-- [ ] **Step 4: Verify scheduler/server-runtime regression and types**
+- [x] **Step 4: Verify scheduler/server-runtime regression and types**
 
 Run:
 
@@ -428,7 +435,7 @@ npm run typecheck --workspace @ouroboros/runtime
 
 Expected: all scheduler tests pass with no behavior change on the unconfigured path.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-study-scheduler.ts apps/runtime/src/candidate/arena/research-control-study-server-runtime.ts apps/runtime/test/research-control-study-scheduler.test.ts apps/runtime/test/research-control-study-server-runtime.test.ts
@@ -447,7 +454,7 @@ git commit -m "feat: commit studies before discovery"
 - Consumes: Task 3 coordinator and Task 4 server-scheduler input.
 - Produces: default automatic commitment using current agent selection, plus explicit coordinator injection for tests.
 
-- [ ] **Step 1: Write failing server composition tests**
+- [x] **Step 1: Write failing server composition tests**
 
 Add a recording coordinator to `BuildServerOptions`, start the default scheduler against an empty
 Store, and require one `ensureCommittedStudy` call before scheduler waiting. Verify
@@ -455,7 +462,7 @@ Store, and require one `ensureCommittedStudy` call before scheduler waiting. Ver
 copy of the trading-review fixture to prove the default policy commits one study with the current
 fixture agent and returns existing on replay.
 
-- [ ] **Step 2: Run server tests and verify RED**
+- [x] **Step 2: Run server tests and verify RED**
 
 Run:
 
@@ -465,7 +472,7 @@ npx vitest run apps/runtime/test/server.test.ts
 
 Expected: option/helper import failure because server composition does not create or inject the coordinator.
 
-- [ ] **Step 3: Compose the default coordinator once per server**
+- [x] **Step 3: Compose the default coordinator once per server**
 
 Add:
 
@@ -497,7 +504,7 @@ next cycle. Pass the coordinator and existing lease session factory into
 Do not call the coordinator outside scheduler start; the existing disabled-start option therefore
 performs no automatic write.
 
-- [ ] **Step 4: Verify server and full study-scheduler focused tests**
+- [x] **Step 4: Verify server and full study-scheduler focused tests**
 
 Run:
 
@@ -508,7 +515,7 @@ npm run typecheck --workspace @ouroboros/runtime
 
 Expected: default composition, disabled path, atomic commitment, and scheduler lifecycle all pass.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ```bash
 git add apps/runtime/src/server.ts apps/runtime/test/server.test.ts
@@ -534,7 +541,7 @@ git commit -m "feat: start bounded research studies automatically"
 - Consumes: verified implementation from Tasks 1-5.
 - Produces: canonical current truth, exact validation evidence, and next bounded frontier selection.
 
-- [ ] **Step 1: Update canonical docs with proven behavior**
+- [x] **Step 1: Update canonical docs with proven behavior**
 
 Record only verified claims:
 
@@ -549,7 +556,7 @@ Record only verified claims:
 Remove automatic commitment from current-gap lists. Keep distinct-regime/forward-time scheduling,
 automatic policy decisions, automatic promotion, handoff, multi-host ownership, soak, and P0 open.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Run:
 
@@ -561,7 +568,7 @@ npm run check:repo-guards
 
 Expected: zero failing tests, zero type errors, and all repository guards green.
 
-- [ ] **Step 3: Record exact evidence and self-review the frontier**
+- [x] **Step 3: Record exact evidence and self-review the frontier**
 
 Update the design status to implemented and verified, check every plan box, and record exact commit
 hashes, test-file/test counts, type checks, and guard result. Confirm the worktree contains only the
@@ -571,9 +578,27 @@ Select the next frontier from current evidence. Prefer automatic, exact
 `ResearchAllocationPolicyDecision` creation after a terminal eligible study if no higher-severity
 correctness gap appears; keep automatic promotion separate.
 
-- [ ] **Step 4: Commit durable truth**
+- [x] **Step 4: Commit durable truth**
 
 ```bash
 git add AGENTS.md README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-13-research-control-study-automatic-commitment-design.md docs/superpowers/plans/2026-07-13-research-control-study-automatic-commitment.md
 git commit -m "docs: record automatic study commitment"
 ```
+
+## Execution Evidence
+
+- Task 1: `8da4926` (`fix: publish research studies atomically`)
+- Task 2: `e697bf4` (`feat: pin study commitment promotion`)
+- Task 3: `43eac5f` (`feat: ensure bounded research studies`)
+- Task 4: `ecaf3f1` (`feat: commit studies before discovery`)
+- Task 5: `b2faf96` (`feat: start bounded research studies automatically`)
+- Focused regression: 5 files, 77 tests passed.
+- Full regression: 178 files, 2,839 tests passed.
+- Type safety: `npm run typecheck` passed for every workspace.
+- Repository policy: `npm run check:repo-guards` passed, including docs, architecture, naming,
+  tracked environment, secret, and diff checks.
+- Worktree review: only the eight intended durable-truth documents and the pre-existing untracked
+  `.superpowers/` path remained before this documentation commit.
+
+The next preferred frontier is automatic exact `ResearchAllocationPolicyDecision` creation after a
+terminal eligible study. Automatic promotion remains a separate authority boundary.

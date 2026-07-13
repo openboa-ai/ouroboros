@@ -91,11 +91,19 @@ progress record; restart therefore reconstructs state from the evidence graph.
 record. One composition root discovers incomplete studies from exact study/outcome lists, orders
 them by commitment time and ID, opens one injected runtime, verifies persisted completion, and
 rescans until caught up. It fails before later work when discovery, runtime opening, execution, or
-completion persistence is invalid. `ResearchControlStudyScheduler` owns repeated process-local
-supervisor cycles under `buildServer`: default startup follows Store initialization and paper
-recovery, a bounded interruptible wait discovers later commitments, and shutdown drains the study
-path before CandidateArena and shared paper sessions. The server runtime reconstructs each campaign
-only from its persisted study condition and revalidates the configured research-agent identity.
+completion persistence is invalid. `ResearchControlStudyCommitmentCoordinator` is the internal
+pre-discovery application component. It derives one deterministic, bounded study from the latest
+exact TradingPromotion, its sealed confirmation campaign, the selected managed-agent identity, and
+repository policy. It retains the campaign's exact numeric, market-data, and paper settings,
+normalizes comparison mode to `champion_challenge`, bounds the queue at one incomplete study, and
+uses LocalStore create-only publication to resolve same-root process races without overwrite. Its
+committed, existing, or deferred result is operational state only; malformed or drifted evidence
+fails closed and it grants no downstream authority. `ResearchControlStudyScheduler` invokes this
+component before each process-local supervisor cycle under `buildServer`: default startup follows
+Store initialization and paper recovery, a bounded interruptible wait considers later promotions,
+and shutdown drains the study path before CandidateArena and shared paper sessions. The server
+runtime reconstructs each campaign only from its persisted study condition and revalidates the
+configured research-agent identity.
 `ResearchControlStudyExecutionLease` is the outer same-host ownership boundary. A filesystem
 adapter under the shared LocalStore root atomically claims the oldest pending study; one renewable
 session guards every executor advance and releases on completion, failure, or shutdown. Active

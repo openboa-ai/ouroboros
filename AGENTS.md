@@ -102,8 +102,16 @@ not a public command or policy application path.
 composition root may start one supervisor for one store; it discovers incomplete studies oldest
 first, opens only one existing study runtime, reloads exact terminal evidence after completion, and
 rescans until caught up. Failure never skips an earlier study, and stop drains the active campaign
-without opening the next study. `ResearchControlStudyScheduler` starts this path under the runtime
-server and polls later commitments with an interruptible bound. Before opening a study, one
+without opening the next study. Before every default server discovery cycle,
+`ResearchControlStudyCommitmentCoordinator` reloads the latest exact TradingPromotion graph and
+ensures at most one deterministic six-replication, one-tick-per-arm study under the repository-fixed
+policy. It preserves the sealed numeric, market-data, and paper policy while binding comparison to
+`champion_challenge`; no promotion or an existing incomplete study defers, while corrupt or drifted
+evidence fails closed. Same-root contenders publish through create-only LocalStore semantics and
+accept only an exact deterministic winner. This operational component is not research evidence and
+has no allocation-policy, promotion, order, private, or live authority.
+`ResearchControlStudyScheduler` invokes that coordinator before starting the supervisor and polls
+for later reviewed sources with an interruptible bound. Before opening a study, one
 renewable `ResearchControlStudyExecutionLease` excludes other same-host servers sharing the
 LocalStore root, guards every executor advance, and releases on terminal paths. Alive or unknown
 owners wait; takeover requires expiry and confirmed absence of the same-host PID. Lease records

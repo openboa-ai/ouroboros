@@ -122,19 +122,26 @@ open one injected study runtime at a time, reload exact completion, and rescan u
 Failure does not skip later work, restart derives from append-only evidence, and stop drains the
 active campaign. The campaign-to-outcome runtime can now open root-specific arm stores and build
 those real arm services from an arm-local session factory. `ResearchControlStudyScheduler` now
-keeps that one-shot supervisor alive under the runtime server: it runs immediately by default,
-waits on an interruptible bounded poll after catch-up, and discovers later commitments without an
-operator command. Each opened runtime reconstructs source, agent identity, campaign bounds, and
-the bound paper protocol from the exact persisted study condition. Shutdown stops this scheduler
-before CandidateArena and paper-session dependencies. Before opening a pending study, each server
+keeps that one-shot supervisor alive under the runtime server. Before each discovery cycle, the
+default `ResearchControlStudyCommitmentCoordinator` reloads the latest exact TradingPromotion and
+its sealed confirmation campaign, then creates or accepts one deterministic six-replication,
+one-tick-per-arm study. It preserves the campaign's numeric, market-data, and paper policy and
+normalizes only the comparison mode to `champion_challenge`. No promotion or one already-pending
+study defers; malformed or drifted evidence stops the scheduler before effects. Same-root races use
+create-only publication and accept only the exact deterministic winner. The scheduler then runs the
+supervisor immediately, waits on an interruptible bounded poll after catch-up, and can commit and
+discover a later reviewed source without an operator command. Each opened runtime reconstructs
+source, agent identity, campaign bounds, and the bound paper protocol from the exact persisted study
+condition. Shutdown stops this scheduler before CandidateArena and paper-session dependencies.
+Before opening a pending study, each server
 now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
 LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
 and records released or expired ownership history. A live or liveness-unknown owner remains held;
 takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
 runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
-fencing and PID-namespace claims remain outside. Study commitment and policy-decision creation
-remain separate service actions rather than scheduler side effects; actual replicated study evidence,
-distinct-regime generalization, automatic TradingPromotion, and champion handoff remain outside.
+fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
+only; policy-decision creation, distinct-regime and forward-time study selection, automatic
+TradingPromotion, and champion handoff remain separate and outside this path.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate

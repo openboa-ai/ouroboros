@@ -67,15 +67,21 @@ planned campaign to terminal paper outcome per advance, and repeats sequentially
 record; its default campaign path can open exact arm roots and build real arms from arm-local
 session factories. `ResearchControlStudyProcessSupervisor` now discovers incomplete studies oldest first,
 drains one injected runtime at a time, verifies persisted completion, and rescans until caught up.
-`ResearchControlStudyScheduler` now starts that process path by default in `buildServer`, performs
-bounded interruptible polling for later commitments, reconstructs every campaign from the exact
+Before each default scheduler discovery cycle, `ResearchControlStudyCommitmentCoordinator` now
+ensures one deterministic study from the latest exact TradingPromotion and sealed confirmation
+campaign. Repository policy fixes six one-tick-per-arm replications and baseline limits, preserves
+the campaign's numeric, market-data, and paper policy, and normalizes only comparison mode to
+`champion_challenge`. A missing promotion or one incomplete study defers; corruption or drift halts
+before effects, and create-only LocalStore publication gives same-root contenders one exact winner.
+`ResearchControlStudyScheduler` starts that process path by default in `buildServer`, performs
+bounded interruptible polling for later reviewed sources, reconstructs every campaign from the exact
 persisted condition, and stops before shared runtime dependencies. One renewable
 `ResearchControlStudyExecutionLease` now prevents same-host servers sharing a LocalStore root from
 opening the same pending study. Every executor advance asserts exact ownership; alive or unknown
 owners wait, and only an expired owner with a confirmed-absent same-host PID may be replaced. Lease
 history is operational coordination, never study evidence or policy authority. Multi-host fencing,
 real-market replicated outcome evidence, distinct-regime inference, learned policy parameters, and
-automatic study or decision creation remain open.
+automatic policy-decision creation remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

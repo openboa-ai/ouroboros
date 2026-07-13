@@ -147,13 +147,23 @@ resumes only the earliest incomplete campaign, requires its terminal paper outco
 replication, and invokes study adjudication only after full closure. The sequential runner can drain
 an active campaign and stop between replications; no mutable StudyRun progress record participates
 in evidence or recovery.
+The internal `ResearchControlStudyCommitmentCoordinator` runs before each default scheduler
+discovery cycle. It reloads the latest exact TradingPromotion and its sealed confirmation campaign,
+then deterministically creates or accepts one study with six one-tick-per-arm replications and fixed
+baseline limits. The bound protocol preserves every numeric comparison limit, market-data digest,
+and paper-policy identity while normalizing only `comparison_mode` to `champion_challenge` for the
+new reviewed-source study. A missing promotion or another incomplete study defers. Malformed,
+drifted, or conflicting evidence halts before runtime effects, and same-root process races use
+create-only publication with one exact winner. Commitment status is operational only and grants no
+allocation-policy, promotion, order, private, or live authority.
 The internal `ResearchControlStudyProcessSupervisor` discovers incomplete studies from exact
 study/outcome lists, orders them by commitment time and ID, opens one injected study runtime, and
 rescans only after exact persisted completion. It does not skip a failed earlier study or create a
 policy decision. `ResearchControlStudyScheduler` now runs that one-shot owner immediately under the
-default runtime server, waits on an interruptible bounded poll after catch-up, and rescans later
-commitments. Runtime opening reuses the exact persisted condition and fails before effects on agent
-identity drift. Before runtime opening, `ResearchControlStudyExecutionLease` atomically elects one
+default runtime server, invokes commitment before discovery, waits on an interruptible bounded poll
+after catch-up, and considers later reviewed sources. Runtime opening reuses the exact persisted
+condition and fails before effects on agent identity drift. Before runtime opening,
+`ResearchControlStudyExecutionLease` atomically elects one
 same-host server for one shared LocalStore root. The active owner renews and asserts its exact token
 before every executor advance. Alive or liveness-unknown owners remain held after expiry; takeover
 requires both expiry and a confirmed-absent same-host PID. Release and confirmed-dead takeover write
@@ -497,10 +507,10 @@ The following current surfaces require implementation work before P0 can pass:
   deterministic future slots, enforce strict sequence/non-overlap/deadlines, count all terminal
   results, and persist one restart-stable confirmed or not-confirmed outcome. A separate internal
   ResearchRelease can materialize causal Finding/Lineage memory, and the explicit operator command
-  can move an exactly confirmed challenger into Trading review. Already committed studies now run
-  through the server scheduler with same-host shared-LocalStore execution leasing, but there is no
-  multi-host fencing, automatic study commitment, automatic promotion loop, provider-process
-  adoption after restart, or champion runner handoff.
+  can move an exactly confirmed challenger into Trading review. The default server now creates one
+  deterministic latest-promotion study when the bounded queue is empty and runs it with same-host
+  shared-LocalStore execution leasing. There is still no multi-host fencing, automatic policy
+  decision or promotion loop, provider-process adoption after restart, or champion runner handoff.
 - ResearchRelease has a server-owned execution path only inside an already committed study. Raw
   sealed outcomes stay unavailable to ResearchWorkers unless that exact append-only release
   succeeds; standalone release and promotion remain explicit, promotion does not imply research
@@ -553,10 +563,11 @@ The following current surfaces require implementation work before P0 can pass:
   includes the 24 source-side sessions plus 12 required adaptive confirmation sessions. This proves
   qualified non-tied causal-protocol execution for the deterministic fixture, not real-market
   superiority, cross-regime generalization, or a learned policy. The default server now owns
-  process-local bounded polling and exact persisted-condition runtime reconstruction. Cross-process
-  leasing, automatic study commitment, distinct-regime inference, learned policy parameters, and
-  automatic policy-decision creation remain open. The separate one-sided exact adaptive policy
-  decision and future-allocation provenance path are implemented.
+  bounded polling, deterministic latest-promotion study commitment, exact persisted-condition
+  runtime reconstruction, and same-host cross-process execution leasing. Distinct-regime and
+  forward-time study selection, multi-host fencing, learned policy parameters, and automatic
+  policy-decision creation remain open. The separate one-sided exact adaptive policy decision and
+  future-allocation provenance path are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -580,9 +591,10 @@ The following current surfaces require implementation work before P0 can pass:
   fixture study proves exact qualified non-tied closure, provider and sandbox 36/36 cleanup, and
   effect-free restart. Its six adaptive positives and six static negatives support the bounded
   `adaptive_effect_supported` fixture conclusion without mutating policy or promotion state.
-  The default server now starts and drains this process-local study path and polls for later
-  commitments. Real-market and distinct-regime replication, cross-process ownership, production
-  learned allocation, and external-validity claims remain open.
+  The default server now commits, starts, and drains this study path, polls for later reviewed
+  sources, and excludes competing same-host processes through renewable leases. Real-market and
+  distinct-regime replication, multi-host fencing, production learned allocation, and
+  external-validity claims remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
@@ -644,7 +656,7 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    are also implemented internally. Arm-local comparison/session composition, candidate-owned
    post-activation cadence, matched-arm synchronization, the bounded campaign runner, and one exact
    six-replication qualified non-tied fixture protocol study are implemented. Real-market
-   cross-regime evidence and deployed scheduling remain.
+   cross-regime evidence and longitudinal deployed soak remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
@@ -672,9 +684,10 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    recoverable Finding/Lineage materialization; causal CandidateArena context; exact
    campaign/outcome/final-verdict promotion binding; atomic current-champion
    revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
-   `trading_candidate.promote` composition. Committed studies have same-host leased server
-   scheduling; automatic commitment, multi-host fencing, automatic promotion, and runner handoff
-   remain later frontiers.
+   `trading_candidate.promote` composition. The default server deterministically commits one
+   latest-promotion study at a time and executes it under same-host renewable leasing; multi-host
+   fencing, automatic policy decisions, automatic promotion, and runner handoff remain later
+   frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
    changes actual three-of-five selection, concurrency, and experiment budgets before effects;
@@ -689,6 +702,6 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
    TradingPromotion, arm-local runtime composition, and exact six-replication qualified non-tied
-   fixture-study closure are proven. Default process-local server scheduling is implemented;
-   real-market cross-regime replication, multi-process ownership, deployed soak evidence, durable
-   worker process adoption, and full P0 evidence remain.
+   fixture-study closure are proven. Default automatic commitment, server scheduling, and same-host
+   multi-process ownership are implemented; real-market cross-regime replication, multi-host
+   fencing, deployed soak evidence, durable worker process adoption, and full P0 evidence remain.

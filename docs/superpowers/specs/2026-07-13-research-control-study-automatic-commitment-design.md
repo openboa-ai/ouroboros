@@ -1,6 +1,6 @@
 # ResearchControlStudy Automatic Commitment Design
 
-**Status:** Approved for implementation under the standing autonomous Goal mandate
+**Status:** Implemented and verified
 
 ## Goal
 
@@ -13,11 +13,11 @@ live authority.
 
 ## Why This Frontier Is Next
 
-The server scheduler now discovers and executes committed studies continuously, and the execution
-lease prevents two same-host processes from opening the same study. No product path commits a
-study, so the autonomous path still requires a test or caller to create the first durable unit of
-work. This leaves the AAR-inspired generate, evaluate, remember, and adapt loop structurally
-present but operationally unable to start a controlled replication on its own.
+Before this frontier, the server scheduler discovered and executed committed studies continuously,
+and the execution lease prevented two same-host processes from opening the same study. No product
+path committed a study, so the autonomous path still required a test or caller to create the first
+durable unit of work. This left the AAR-inspired generate, evaluate, remember, and adapt loop
+structurally present but operationally unable to start a controlled replication on its own.
 
 Automatic commitment is the smallest next step. Automatic policy replacement and promotion remain
 separate because study evidence must exist before either can be considered.
@@ -97,11 +97,17 @@ closed with stable attribution.
 ## Paper Protocol Reconstruction
 
 The coordinator does not invent a mutable paper policy. It reloads the immutable confirmation
-campaign named by the latest TradingPromotion and copies:
+campaign named by the latest TradingPromotion and preserves:
 
-- `comparison_policy`;
+- every numeric and behavioral `comparison_policy` field except `comparison_mode`;
 - `market_data_configuration_digest`;
 - `paper_policy_identity`.
+
+The promotion's confirmation campaign may still carry `bootstrap`, the mode under which that
+candidate originally challenged Trading review. A new study uses the promoted candidate as its
+current reviewed comparator, so the coordinator normalizes only `comparison_mode` to
+`champion_challenge`. This is part of the deterministic automatic intent and cannot vary by
+environment or provider output.
 
 It derives only the already-defined v1 schedule shape:
 
@@ -160,7 +166,7 @@ agent, protocol, and campaign policy. Otherwise it fails closed.
 
 Add the coordinator as an optional explicit dependency of `ResearchControlStudyScheduler`.
 Immediately before each supervisor start, the scheduler calls `ensureCommittedStudy`. The returned
-operational result becomes `last_commitment` in scheduler status. Existing schedulers without the
+operational result becomes `lastCommitment` in scheduler status. Existing schedulers without the
 dependency preserve their exact status shape.
 
 `buildServer` creates the default coordinator from:
@@ -214,7 +220,7 @@ promotion evidence.
 - commitment runs before discovery and a new study executes in the same cycle;
 - deferred commitment preserves bounded polling;
 - commitment failure is terminal and opens no runtime;
-- status exposes only bounded `last_commitment` metadata;
+- status exposes only bounded `lastCommitment` metadata;
 - default server composition uses the current selected agent and repository policy;
 - disabled or explicitly injected scheduler paths do not create studies;
 - shutdown ordering remains scheduler first.
@@ -245,6 +251,17 @@ Run focused tests, the complete Vitest suite, all workspace type checks, and rep
 7. Automatic commitment grants research scheduling authority only and creates no downstream
    decision or trading authority.
 8. Focused races, full tests, type checks, and repository guards pass.
+
+## Implementation Evidence
+
+- `8da4926` made ResearchControlStudy publication atomic and create-only across LocalStore instances.
+- `e697bf4` pinned study preparation and execution to one expected TradingPromotion.
+- `43eac5f` added the deterministic bounded commitment coordinator.
+- `ecaf3f1` invoked commitment before every scheduler discovery cycle.
+- `b2faf96` composed the coordinator into the default runtime server and covered opt-out paths.
+- Focused scheduler/server/store regression passed with 5 files and 77 tests.
+- Full Vitest passed with 178 files and 2,839 tests.
+- All workspace type checks and `npm run check:repo-guards` passed.
 
 ## Remaining Boundary
 
