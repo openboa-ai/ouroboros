@@ -528,6 +528,14 @@ function fixtureOperator(
       arena_kind: "candidate_arena",
       runner_status: "running",
       tick_count: 3,
+      research_generalization: {
+        status: "not_started",
+        protocol_count: 0,
+        outcome_count: 0,
+        active_protocol: null,
+        latest_outcome: null,
+        authority_status: "not_promotion_authority"
+      },
       research_population_diversity: {
         protocol_version: "research_population_diversity_v1",
         window_tick_count: 0,

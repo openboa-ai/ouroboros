@@ -66,6 +66,10 @@ import {
 } from "./research-allocation";
 import { buildResearchPopulationDiversity } from "./research-population-diversity";
 import {
+  buildResearchGeneralizationReadModel,
+  ResearchGeneralizationReadModelError
+} from "./research-generalization-read-model";
+import {
   closeResearchWorkerCheckpoint,
   recoverIncompleteResearchWorkerCheckpoints,
   resolveResearchWorkerLifecycle
@@ -538,7 +542,13 @@ export async function buildCandidateArenaReadModel(
       right.tick_id.localeCompare(left.tick_id)
     )
     .slice(0, 10);
-  const [directions, commitments, fingerprints, admissions] = await Promise.all([
+  const [
+    directions,
+    commitments,
+    fingerprints,
+    admissions,
+    researchGeneralization
+  ] = await Promise.all([
     typeof store.listResearchDirections === "function"
       ? store.listResearchDirections()
       : Promise.resolve([]),
@@ -550,7 +560,8 @@ export async function buildCandidateArenaReadModel(
       : Promise.resolve([]),
     typeof store.listCandidateAdmissionDecisions === "function"
       ? store.listCandidateAdmissionDecisions()
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    arenaResearchGeneralization(store)
   ]);
   const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
       "function"
@@ -586,6 +597,7 @@ export async function buildCandidateArenaReadModel(
     arena_kind: "candidate_arena",
     runner_status: runnerStatus,
     tick_count: tickCount,
+    research_generalization: researchGeneralization,
     research_population_diversity: buildResearchPopulationDiversity({
       ticks: latestTickRecords,
       directions,
@@ -629,6 +641,45 @@ export async function buildCandidateArenaReadModel(
       researchReleases
     )
   };
+}
+
+async function arenaResearchGeneralization(
+  store: OuroborosStorePort
+): Promise<CandidateArenaReadModel["research_generalization"]> {
+  const methods = [
+    store.listResearchGeneralizationProtocols,
+    store.listResearchControlStudies,
+    store.listResearchControlStudyOutcomes,
+    store.listResearchGeneralizationOutcomes
+  ];
+  const availableCount = methods.filter((method) =>
+    typeof method === "function"
+  ).length;
+  if (availableCount === 0) {
+    return buildResearchGeneralizationReadModel({
+      protocols: [],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: []
+    });
+  }
+  if (availableCount !== methods.length) {
+    throw new ResearchGeneralizationReadModelError(
+      "ResearchGeneralization store read methods must be available together."
+    );
+  }
+  const [protocols, studies, studyOutcomes, outcomes] = await Promise.all([
+    store.listResearchGeneralizationProtocols(),
+    store.listResearchControlStudies(),
+    store.listResearchControlStudyOutcomes(),
+    store.listResearchGeneralizationOutcomes()
+  ]);
+  return buildResearchGeneralizationReadModel({
+    protocols,
+    studies,
+    studyOutcomes,
+    outcomes
+  });
 }
 
 async function recordCandidateArenaTickPaperTradingContinuation(

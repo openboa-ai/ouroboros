@@ -562,6 +562,14 @@ describe("runtime canonical operator API", () => {
           ),
           candidate_arena: {
             runner_status: "stopped",
+            research_generalization: {
+              status: "not_started",
+              protocol_count: 0,
+              outcome_count: 0,
+              active_protocol: null,
+              latest_outcome: null,
+              authority_status: "not_promotion_authority"
+            },
             authority_status: "not_live"
           },
           selected_candidate_id: null,
@@ -747,6 +755,77 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("projects active ResearchGeneralizationProtocol progress without raw evidence", async () => {
+    const fixtureRoot = path.join(tmpDir, "generalization-readback-fixture");
+    await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
+      recursive: true
+    });
+    const store = new LocalStore(fixtureRoot);
+    await store.initialize();
+    const agent = new FixtureTradingResearchAgentAdapter();
+    const coordinator = createResearchControlStudyServerCommitmentCoordinator({
+      store,
+      researchAgentIdentity: () => agent.agent,
+      marketData: fakeGatewayMarketDataPort(),
+      repoRoot: process.cwd(),
+      now: () => "2026-07-13T00:00:00.000Z"
+    });
+    await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
+      status: "protocol_committed"
+    });
+    const server = await buildRuntimeTestServer({ store });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(response.statusCode).toBe(200);
+      const projection = response.json().operator.candidate_arena
+        .research_generalization;
+      expect(projection).toMatchObject({
+        status: "collecting",
+        protocol_count: 1,
+        outcome_count: 0,
+        active_protocol: {
+          status: "collecting",
+          planned_study_count: 6,
+          assigned_study_count: 0,
+          terminal_study_count: 0,
+          condition_blocks: [
+            {
+              condition_block: "long",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            },
+            {
+              condition_block: "short",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            },
+            {
+              condition_block: "flat",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            }
+          ],
+          next_action: "collect_precommitted_studies",
+          authority_status: "research_only"
+        },
+        latest_outcome: null,
+        authority_status: "not_promotion_authority"
+      });
+      expect(JSON.stringify(projection)).not.toContain("public_kline_window");
+      expect(JSON.stringify(projection)).not.toContain("protocol_digest");
+      expect(JSON.stringify(projection)).not.toContain("study_ref");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs user mutations through /api/commands and reflects them in /api/operator", async () => {
     const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
@@ -767,6 +846,12 @@ describe("runtime canonical operator API", () => {
         },
         operator: {
           candidate_arena: {
+            research_generalization: {
+              status: "not_started",
+              protocol_count: 0,
+              outcome_count: 0,
+              authority_status: "not_promotion_authority"
+            },
             authority_status: "not_live"
           }
         }

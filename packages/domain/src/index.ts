@@ -11176,6 +11176,7 @@ export interface CandidateArenaReadModel {
   arena_kind: "candidate_arena";
   runner_status: "running" | "stopped";
   tick_count: number;
+  research_generalization: ResearchGeneralizationReadModel;
   research_population_diversity: ResearchPopulationDiversityReadModel;
   active_researchers: CandidateArenaResearcherReadModel[];
   leaderboard: CandidateArenaLeaderboardEntryReadModel[];
