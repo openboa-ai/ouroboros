@@ -12,6 +12,7 @@ import {
 import type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-substrate-fixtures";
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
+export * from "./research-control-study-execution-lease-store";
 import {
   compareAccountPositionRiskMirrorSurfaces,
   compareOrderFillSurfaces,
