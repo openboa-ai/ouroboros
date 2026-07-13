@@ -209,6 +209,7 @@ export function createResearchControlStudyServerCommitmentCoordinator(
     store: LocalStore;
     researchAgentIdentity:
       () => ManagedResearchAgent | Promise<ManagedResearchAgent>;
+    marketData: GatewayMarketDataPort;
     repoRoot?: string;
     now?: () => string;
   }
@@ -216,6 +217,7 @@ export function createResearchControlStudyServerCommitmentCoordinator(
   return new ResearchControlStudyCommitmentCoordinator({
     store: input.store,
     researchAgentIdentity: input.researchAgentIdentity,
+    marketData: input.marketData,
     ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
     ...(input.now ? { now: input.now } : {})
   });
@@ -440,6 +442,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           researchAgentIdentity: () => tradingResearchAgentFactory(
             candidateArenaRunner.researchAgent()
           ).agent,
+          marketData: gatewayMarketDataPort,
           repoRoot: process.cwd()
         }),
       policyDecisionCoordinator:

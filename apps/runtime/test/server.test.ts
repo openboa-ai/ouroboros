@@ -283,13 +283,23 @@ describe("runtime canonical operator API", () => {
     const store = new LocalStore(fixtureRoot);
     await store.initialize();
     const agent = new FixtureTradingResearchAgentAdapter();
+    const marketData = fakeGatewayMarketDataPort();
+    let now = Date.parse("2026-07-13T00:00:00.000Z");
     const coordinator = createResearchControlStudyServerCommitmentCoordinator({
       store,
       researchAgentIdentity: () => agent.agent,
+      marketData,
       repoRoot: process.cwd(),
-      now: () => "2026-07-13T00:00:00.000Z"
+      now: () => {
+        const value = new Date(now).toISOString();
+        now += 1_000;
+        return value;
+      }
     });
 
+    await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
+      status: "protocol_committed"
+    });
     const committed = await coordinator.ensureCommittedStudy();
     const studies = await store.listResearchControlStudies();
     expect(studies).toHaveLength(1);
@@ -298,8 +308,9 @@ describe("runtime canonical operator API", () => {
       studyId: studies[0]!.research_control_study_id
     });
     await expect(coordinator.ensureCommittedStudy()).resolves.toEqual({
-      status: "existing",
-      studyId: studies[0]!.research_control_study_id
+      status: "deferred",
+      reason: "pending_study_exists",
+      pendingStudyId: studies[0]!.research_control_study_id
     });
   });
 

@@ -10,13 +10,23 @@ import {
   type ResearchControlCampaignAgentIdentity,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignPolicy,
+  type ResearchGeneralizationMarketCondition,
+  type ResearchGeneralizationProtocolRecord,
+  type ResearchGeneralizationProtocolStudySlot,
   type ResearchControlStudyRecord,
   type TradingPromotionRecord
 } from "@ouroboros/domain";
 import type { ResearchControlCampaignPaperEvaluationProtocolInput } from
   "@ouroboros/application/candidate/research-control-campaign";
-import { researchControlStudyId } from
-  "@ouroboros/application/candidate/research-control-study";
+import {
+  ResearchGeneralizationProtocolService,
+  researchGeneralizationProtocolId,
+  type ResearchGeneralizationProtocolCommitRequest
+} from "@ouroboros/application/candidate/research-generalization-protocol";
+import { decideResearchGeneralizationMarketCondition } from
+  "@ouroboros/application/candidate/research-generalization-market-condition";
+import type { GatewayMarketDataPort } from
+  "@ouroboros/application/ports/market-data";
 import type { ManagedResearchAgent } from
   "@ouroboros/application/trading/research/types";
 import { LocalStore } from "@ouroboros/local-store";
@@ -28,8 +38,8 @@ import { discoverResearchControlStudyProcessQueue } from
   "./research-control-study-process-discovery";
 
 export const RESEARCH_CONTROL_STUDY_COMMITMENT_POLICY = Object.freeze({
-  policy_version: "research-control-study-commitment-v1" as const,
-  trigger: "latest_trading_promotion" as const,
+  policy_version: "research-control-study-commitment-v2" as const,
+  trigger: "research_generalization_protocol_slot" as const,
   maximum_incomplete_study_count: 1 as const,
   replication_count: 6 as const,
   tick_count_per_arm: 1 as const,
@@ -39,13 +49,28 @@ export const RESEARCH_CONTROL_STUDY_COMMITMENT_POLICY = Object.freeze({
 
 export type ResearchControlStudyCommitmentResult =
   | {
+      status: "protocol_committed";
+      protocolId: string;
+    }
+  | {
       status: "committed" | "existing";
       studyId: string;
     }
   | {
       status: "deferred";
-      reason: "no_trading_promotion" | "pending_study_exists";
+      reason:
+        | "no_trading_promotion"
+        | "pending_study_exists"
+        | "market_condition_unavailable"
+        | "study_spacing_not_elapsed"
+        | "condition_block_full"
+        | "source_baseline_reused"
+        | "protocol_expired"
+        | "active_protocol_conflict";
       pendingStudyId?: string;
+      protocolId?: string;
+      conditionBlock?: "long" | "short" | "flat";
+      nextEligibleAt?: string;
     };
 
 export interface ResearchControlStudyCommitmentCoordinatorLifecycle {
@@ -78,6 +103,15 @@ interface ResearchControlStudyCommitmentIntent {
     { protocol_status: "bound" }
   >;
   campaignPolicy: ResearchControlCampaignPolicy;
+  protocol: ResearchGeneralizationProtocolRecord;
+  slot: ResearchGeneralizationProtocolStudySlot;
+  marketCondition: ResearchGeneralizationMarketCondition;
+  committedAt: string;
+}
+
+interface ResearchGeneralizationProtocolIntent {
+  protocolId: string;
+  request: ResearchGeneralizationProtocolCommitRequest;
 }
 
 export class ResearchControlStudyCommitmentCoordinator
@@ -90,6 +124,7 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
     store: LocalStore;
     researchAgentIdentity:
       () => ManagedResearchAgent | Promise<ManagedResearchAgent>;
+    marketData?: GatewayMarketDataPort;
     now?: () => string;
     repoRoot?: string;
     commitStudy?: (
@@ -101,28 +136,17 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
 
   async ensureCommittedStudy(): Promise<ResearchControlStudyCommitmentResult> {
     try {
-      const [studies, outcomes, promotion] = await Promise.all([
+      const committedAt = exactTime(
+        (this.options.now ?? (() => new Date().toISOString()))()
+      );
+      const [studies, outcomes, promotion, protocols] = await Promise.all([
         this.options.store.listResearchControlStudies(),
         this.options.store.listResearchControlStudyOutcomes(),
-        this.options.store.getLatestTradingPromotion()
+        this.options.store.getLatestTradingPromotion(),
+        this.options.store.listResearchGeneralizationProtocols()
       ]);
       if (!promotion) {
         return { status: "deferred", reason: "no_trading_promotion" };
-      }
-      const [campaign, agent] = await Promise.all([
-        this.loadPromotionCampaign(promotion),
-        this.options.researchAgentIdentity()
-      ]);
-      const intent = commitmentIntent(promotion, campaign, agent);
-      const existing = studies.find((study) =>
-        study.research_control_study_id === intent.studyId
-      );
-      if (existing) {
-        this.assertExactIntent(existing, intent);
-        return {
-          status: "existing",
-          studyId: existing.research_control_study_id
-        };
       }
       const pending = discoverResearchControlStudyProcessQueue({
         studies,
@@ -133,6 +157,137 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
           status: "deferred",
           reason: "pending_study_exists",
           pendingStudyId: pending.research_control_study_id
+        };
+      }
+      const [campaign, agent] = await Promise.all([
+        this.loadPromotionCampaign(promotion),
+        this.options.researchAgentIdentity()
+      ]);
+      const protocolIntent = generalizationProtocolIntent(campaign, agent);
+      let protocol = protocols.find((candidate) =>
+        candidate.research_generalization_protocol_id ===
+          protocolIntent.protocolId
+      );
+      if (!protocol) {
+        const active = protocols.find((candidate) =>
+          Date.parse(candidate.timing_policy.collection_deadline_at) >=
+            Date.parse(committedAt)
+        );
+        if (active) {
+          return {
+            status: "deferred",
+            reason: "active_protocol_conflict",
+            protocolId: active.research_generalization_protocol_id
+          };
+        }
+        protocol = await new ResearchGeneralizationProtocolService({
+          store: this.options.store,
+          now: () => committedAt
+        }).commit(protocolIntent.request);
+        return {
+          status: "protocol_committed",
+          protocolId: protocol.research_generalization_protocol_id
+        };
+      }
+      protocol = await new ResearchGeneralizationProtocolService({
+        store: this.options.store,
+        now: () => committedAt
+      }).commit(protocolIntent.request);
+      if (Date.parse(committedAt) >
+        Date.parse(protocol.timing_policy.collection_deadline_at)) {
+        return {
+          status: "deferred",
+          reason: "protocol_expired",
+          protocolId: protocol.research_generalization_protocol_id
+        };
+      }
+      const protocolStudies = studies.filter((study) =>
+        study.generalization_assignment?.protocol_ref.id ===
+          protocol.research_generalization_protocol_id
+      ).sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_control_study_id.localeCompare(
+          right.research_control_study_id
+        )
+      );
+      const latestStudy = protocolStudies.at(-1);
+      if (latestStudy) {
+        const nextEligibleEpoch = Date.parse(latestStudy.committed_at) +
+          protocol.timing_policy.minimum_study_commitment_interval_ms;
+        if (Date.parse(committedAt) < nextEligibleEpoch) {
+          return {
+            status: "deferred",
+            reason: "study_spacing_not_elapsed",
+            protocolId: protocol.research_generalization_protocol_id,
+            nextEligibleAt: new Date(nextEligibleEpoch).toISOString()
+          };
+        }
+      }
+      if (!this.options.marketData?.readPublicKlineWindow) {
+        return { status: "deferred", reason: "market_condition_unavailable" };
+      }
+      let marketCondition: ResearchGeneralizationMarketCondition;
+      try {
+        const publicKlineWindow = await this.options.marketData
+          .readPublicKlineWindow({
+            symbol: "BTCUSDT",
+            interval: "1m",
+            limit: 30,
+            observedAt: committedAt
+          });
+        marketCondition = decideResearchGeneralizationMarketCondition({
+          publicKlineWindow,
+          classifiedAt: committedAt
+        });
+      } catch {
+        return { status: "deferred", reason: "market_condition_unavailable" };
+      }
+      const occupiedStudyIds = new Set(studies.map((study) =>
+        study.research_control_study_id
+      ));
+      const slot = protocol.study_slots.find((candidate) =>
+        candidate.condition_block === marketCondition.condition_block &&
+        !occupiedStudyIds.has(candidate.study_ref.id)
+      );
+      if (!slot) {
+        return {
+          status: "deferred",
+          reason: "condition_block_full",
+          protocolId: protocol.research_generalization_protocol_id,
+          conditionBlock: marketCondition.condition_block
+        };
+      }
+      if (protocolStudies.some((study) =>
+        study.generalization_assignment?.condition_block ===
+          marketCondition.condition_block &&
+        study.generalization_assignment
+          .source_system_code_artifact_digest ===
+            campaign.challenger.system_code_artifact_digest
+      )) {
+        return {
+          status: "deferred",
+          reason: "source_baseline_reused",
+          protocolId: protocol.research_generalization_protocol_id,
+          conditionBlock: marketCondition.condition_block
+        };
+      }
+      const intent = commitmentIntent({
+        promotion,
+        campaign,
+        agent,
+        protocol,
+        slot,
+        marketCondition,
+        committedAt
+      });
+      const existing = studies.find((study) =>
+        study.research_control_study_id === intent.studyId
+      );
+      if (existing) {
+        this.assertExactIntent(existing, intent);
+        return {
+          status: "existing",
+          studyId: existing.research_control_study_id
         };
       }
       return await this.commitOrReload(intent);
@@ -191,7 +346,21 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
       paperEvaluationProtocol: structuredClone(
         intent.paperEvaluationProtocolInput
       ),
-      ...(this.options.now ? { now: this.options.now } : {}),
+      generalizationAssignment: {
+        protocol_ref: {
+          record_kind: "research_generalization_protocol",
+          id: intent.protocol.research_generalization_protocol_id
+        },
+        protocol_digest: intent.protocol.protocol_digest,
+        slot_index: intent.slot.slot_index,
+        condition_block: intent.slot.condition_block,
+        condition_block_study_index:
+          intent.slot.condition_block_study_index,
+        market_condition: structuredClone(intent.marketCondition),
+        source_system_code_artifact_digest:
+          intent.campaign.challenger.system_code_artifact_digest
+      },
+      now: () => intent.committedAt,
       ...(this.options.repoRoot ? { repoRoot: this.options.repoRoot } : {})
     };
     try {
@@ -226,6 +395,7 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
     const condition = study?.condition;
     const comparator = condition?.paper_comparator;
     const source = condition?.source;
+    const assignment = study?.generalization_assignment;
     if (!researchControlStudyHasRuntimeShape(study) ||
       study.idempotency_key !== intent.studyIdempotencyKey ||
       study.research_control_study_id !== intent.studyId ||
@@ -272,6 +442,20 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
           replication.campaign_idempotency_key
         ),
         intent.replicationIdempotencyKeys
+      ) || !assignment ||
+      assignment.protocol_ref.id !==
+        intent.protocol.research_generalization_protocol_id ||
+      assignment.protocol_digest !== intent.protocol.protocol_digest ||
+      assignment.slot_index !== intent.slot.slot_index ||
+      assignment.condition_block !== intent.slot.condition_block ||
+      assignment.condition_block_study_index !==
+        intent.slot.condition_block_study_index ||
+      assignment.source_system_code_artifact_digest !==
+        intent.campaign.challenger.system_code_artifact_digest ||
+      assignment.assigned_at !== intent.committedAt ||
+      !isDeepStrictEqual(
+        assignment.market_condition,
+        intent.marketCondition
       )) {
       throw commitmentFailed(
         "ResearchControlStudy automatic intent conflicts with persisted evidence."
@@ -280,53 +464,70 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
   }
 }
 
-function commitmentIntent(
-  promotion: TradingPromotionRecord,
+function generalizationProtocolIntent(
   campaign: PaperTradingComparisonConfirmationCampaignRecord,
   agent: ManagedResearchAgent
-): ResearchControlStudyCommitmentIntent {
+): ResearchGeneralizationProtocolIntent {
   const agentIdentity = exactAgentIdentity(agent);
-  const paperEvaluationProtocolInput = boundProtocolInput(campaign);
-  const paperEvaluationProtocol = sealProtocol(paperEvaluationProtocolInput);
-  const promotionDigest = exactDigest(
-    paperTradingComparisonTradingPromotionDigestInput(promotion)
-  );
+  const paperEvaluationProtocol = boundProtocolInput(campaign);
   const campaignPolicy = exactCampaignPolicy();
   const intentDigest = exactDigest({
     commitment_policy: RESEARCH_CONTROL_STUDY_COMMITMENT_POLICY,
-    promotion: {
-      id: promotion.trading_promotion_id,
-      digest: promotionDigest
-    },
-    confirmation_campaign: {
-      id: campaign.paper_trading_comparison_confirmation_campaign_id,
-      digest: campaign.campaign_digest
-    },
-    source: {
-      candidate_ref: promotion.candidate_ref,
-      candidate_version_ref: promotion.candidate_version_ref
-    },
+    target_allocation_policy: CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
     research_agent: agentIdentity,
-    paper_evaluation_protocol: paperEvaluationProtocolInput,
+    paper_evaluation_protocol: paperEvaluationProtocol,
     campaign_policy: campaignPolicy
   }).slice("sha256:".length);
-  const studyIdempotencyKey = `automatic-study-${intentDigest}`;
-  const replicationIdempotencyKeys = Array.from(
-    { length: RESEARCH_CONTROL_STUDY_COMMITMENT_POLICY.replication_count },
-    (_, index) => `${studyIdempotencyKey}-replication-${index + 1}`
-  );
+  const idempotencyKey = `automatic-generalization-${intentDigest}`;
+  const {
+    identity_digest: _identityDigest,
+    ...researchAgent
+  } = agentIdentity;
+  const request: ResearchGeneralizationProtocolCommitRequest = {
+    idempotencyKey,
+    targetAllocationPolicy: CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+    researchAgent,
+    paperEvaluationProtocol,
+    campaignPolicy
+  };
   return {
-    studyIdempotencyKey,
-    studyId: researchControlStudyId(studyIdempotencyKey),
-    replicationIdempotencyKeys,
-    promotion,
-    promotionDigest,
-    campaign,
-    agent,
+    protocolId: researchGeneralizationProtocolId(idempotencyKey),
+    request
+  };
+}
+
+function commitmentIntent(input: {
+  promotion: TradingPromotionRecord;
+  campaign: PaperTradingComparisonConfirmationCampaignRecord;
+  agent: ManagedResearchAgent;
+  protocol: ResearchGeneralizationProtocolRecord;
+  slot: ResearchGeneralizationProtocolStudySlot;
+  marketCondition: ResearchGeneralizationMarketCondition;
+  committedAt: string;
+}): ResearchControlStudyCommitmentIntent {
+  const agentIdentity = exactAgentIdentity(input.agent);
+  const paperEvaluationProtocolInput = boundProtocolInput(input.campaign);
+  const paperEvaluationProtocol = sealProtocol(paperEvaluationProtocolInput);
+  return {
+    studyIdempotencyKey: input.slot.study_idempotency_key,
+    studyId: input.slot.study_ref.id,
+    replicationIdempotencyKeys: [
+      ...input.slot.replication_idempotency_keys
+    ],
+    promotion: input.promotion,
+    promotionDigest: exactDigest(
+      paperTradingComparisonTradingPromotionDigestInput(input.promotion)
+    ),
+    campaign: input.campaign,
+    agent: input.agent,
     agentIdentity,
     paperEvaluationProtocolInput,
     paperEvaluationProtocol,
-    campaignPolicy
+    campaignPolicy: exactCampaignPolicy(),
+    protocol: input.protocol,
+    slot: input.slot,
+    marketCondition: input.marketCondition,
+    committedAt: input.committedAt
   };
 }
 
@@ -438,6 +639,17 @@ function sameRef(
 
 function canonicalString(value: unknown): value is string {
   return typeof value === "string" && Boolean(value) && value.trim() === value;
+}
+
+function exactTime(value: unknown): string {
+  if (!canonicalString(value)) {
+    throw commitmentFailed("ResearchControlStudy commitment clock is invalid.");
+  }
+  const epoch = Date.parse(value);
+  if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== value) {
+    throw commitmentFailed("ResearchControlStudy commitment clock is invalid.");
+  }
+  return value;
 }
 
 function exactDigest(value: unknown): string {
