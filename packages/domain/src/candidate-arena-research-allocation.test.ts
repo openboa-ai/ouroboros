@@ -27,6 +27,13 @@ describe("CandidateArenaResearchAllocation", () => {
     expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(true);
   });
 
+  it("accepts an exact approved-generalization basis only for adaptive allocation", () => {
+    const allocation = adaptiveAllocationFixture();
+    allocation.allocation_policy_basis = approvedGeneralizationPolicyBasis();
+
+    expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(true);
+  });
+
   it("freezes every scheduling and authority field in digest input", () => {
     const baseline = adaptiveAllocationFixture();
     const baselineDigestInput = candidateArenaResearchAllocationDigestInput(
@@ -66,6 +73,11 @@ describe("CandidateArenaResearchAllocation", () => {
     ["malformed policy-decision basis", (value: any) => {
       value.allocation_policy_basis = approvedPolicyBasis();
       value.allocation_policy_basis.policy_decision_digest = "sha256:short";
+    }],
+    ["malformed generalization-policy basis", (value: any) => {
+      value.allocation_policy_basis = approvedGeneralizationPolicyBasis();
+      value.allocation_policy_basis.generalization_outcome_ref.record_kind =
+        "research_control_study_outcome";
     }],
     ["policy drift", (value: any) => { value.policy.concurrency_limit = 3; }],
     ["duplicate signal", (value: any) => {
@@ -262,6 +274,22 @@ function approvedPolicyBasis() {
       id: "research-control-study-outcome-study"
     },
     study_outcome_digest: `sha256:${"b".repeat(64)}`
+  };
+}
+
+function approvedGeneralizationPolicyBasis() {
+  return {
+    basis_kind: "research_generalization_policy_decision" as const,
+    policy_decision_ref: {
+      record_kind: "research_generalization_policy_decision",
+      id: "research-generalization-policy-decision-outcome"
+    },
+    policy_decision_digest: `sha256:${"c".repeat(64)}`,
+    generalization_outcome_ref: {
+      record_kind: "research_generalization_outcome",
+      id: "research-generalization-outcome-protocol"
+    },
+    generalization_outcome_digest: `sha256:${"d".repeat(64)}`
   };
 }
 

@@ -3649,6 +3649,42 @@ export class LocalStore {
           "CandidateArena allocation policy decision is forged or stale"
         );
       }
+    } else if (allocation.allocation_policy_basis.basis_kind ===
+        "research_generalization_policy_decision") {
+      const basis = allocation.allocation_policy_basis;
+      const decision = await this.getResearchGeneralizationPolicyDecision(
+        basis.policy_decision_ref.id
+      );
+      if (!decision) {
+        throw new LocalStoreError(
+          "candidate_arena_research_allocation_policy_decision_not_found",
+          "CandidateArena generalization policy decision was not found"
+        );
+      }
+      const currentPolicyDigest = comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(allocation.policy)
+      );
+      if (!researchGeneralizationPolicyDecisionHasRuntimeShape(decision) ||
+        decision.policy_decision_digest !== comparisonExactRecordDigest(
+          researchGeneralizationPolicyDecisionDigestInput(decision)
+        ) || decision.research_generalization_policy_decision_id !==
+          basis.policy_decision_ref.id || decision.policy_decision_digest !==
+          basis.policy_decision_digest ||
+        decision.generalization_outcome_ref.id !==
+          basis.generalization_outcome_ref.id ||
+        decision.generalization_outcome_digest !==
+          basis.generalization_outcome_digest ||
+        decision.decision_status !== "approved" ||
+        decision.effective_default_mode !== allocation.allocation_mode ||
+        decision.decision_policy.target_allocation_mode !==
+          allocation.allocation_mode ||
+        decision.target_allocation_policy_digest !== currentPolicyDigest ||
+        Date.parse(decision.decided_at) >= Date.parse(allocation.allocated_at)) {
+        throw new LocalStoreError(
+          "candidate_arena_research_allocation_policy_decision_mismatch",
+          "CandidateArena generalization policy decision is forged or stale"
+        );
+      }
     }
     const existing = await this.getCandidateArenaResearchAllocation(
       allocation.candidate_arena_research_allocation_id

@@ -6744,6 +6744,13 @@ export type CandidateArenaResearchAllocationPolicyBasis =
       policy_decision_digest: string;
       study_outcome_ref: Ref;
       study_outcome_digest: string;
+    }
+  | {
+      basis_kind: "research_generalization_policy_decision";
+      policy_decision_ref: Ref;
+      policy_decision_digest: string;
+      generalization_outcome_ref: Ref;
+      generalization_outcome_digest: string;
     };
 
 export interface CandidateArenaResearchAllocationPolicy {
@@ -7010,8 +7017,8 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
     value.basis_kind === "repository_default") {
     return comparisonHasExactKeys(value, ["basis_kind"]);
   }
-  return value.basis_kind === "research_allocation_policy_decision" &&
-    comparisonHasExactKeys(value, [
+  if (value.basis_kind === "research_allocation_policy_decision") {
+    return comparisonHasExactKeys(value, [
       "basis_kind",
       "policy_decision_ref",
       "policy_decision_digest",
@@ -7026,6 +7033,25 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       value.study_outcome_ref,
       "research_control_study_outcome"
     ) && researchControlCampaignSha256Digest(value.study_outcome_digest);
+  }
+  return value.basis_kind === "research_generalization_policy_decision" &&
+    comparisonHasExactKeys(value, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "generalization_outcome_ref",
+      "generalization_outcome_digest"
+    ]) && comparisonRef(
+      value.policy_decision_ref,
+      "research_generalization_policy_decision"
+    ) && researchControlCampaignSha256Digest(
+      value.policy_decision_digest
+    ) && comparisonRef(
+      value.generalization_outcome_ref,
+      "research_generalization_outcome"
+    ) && researchControlCampaignSha256Digest(
+      value.generalization_outcome_digest
+    );
 }
 
 function candidateArenaResearchAllocationPolicyHasRuntimeShape(

@@ -432,6 +432,10 @@ class PolicyDecisionCoordinatorStore {
     return structuredClone(this.decisions);
   }
 
+  async listResearchGeneralizationPolicyDecisions() {
+    return [];
+  }
+
   async getResearchControlStudy(id: string) {
     return structuredClone(this.studies.find((study) =>
       study.research_control_study_id === id

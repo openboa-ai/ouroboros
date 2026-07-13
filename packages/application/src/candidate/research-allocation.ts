@@ -7,6 +7,8 @@ import {
   paperTradingComparisonPersistedRecordDigestInput,
   researchAllocationPolicyDecisionDigestInput,
   researchAllocationPolicyDecisionHasRuntimeShape,
+  researchGeneralizationPolicyDecisionDigestInput,
+  researchGeneralizationPolicyDecisionHasRuntimeShape,
   type CandidateArenaFindingClusterReadModel,
   type CandidateArenaResearchAllocationMode,
   type CandidateArenaResearchAllocationPolicyBasis,
@@ -19,6 +21,7 @@ import {
   type CandidateArenaTickReadModel,
   type PaperTradingFailureKind,
   type ResearchAllocationPolicyDecisionRecord,
+  type ResearchGeneralizationPolicyDecisionRecord,
   type ResearchDirectionKind
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
@@ -143,7 +146,11 @@ export class CandidateArenaResearchAllocationService {
 }
 
 export interface ResolveCandidateArenaResearchAllocationPolicyInput {
-  store: Pick<OuroborosStorePort, "listResearchAllocationPolicyDecisions">;
+  store: Pick<
+    OuroborosStorePort,
+    | "listResearchAllocationPolicyDecisions"
+    | "listResearchGeneralizationPolicyDecisions"
+  >;
   explicitDirections?: ResearchDirectionKind[];
   requestedAllocationMode?: CandidateArenaResearchAllocationMode;
 }
@@ -174,7 +181,45 @@ export async function resolveCandidateArenaResearchAllocationPolicy(
       CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
     )
   );
-  const decisions = await input.store.listResearchAllocationPolicyDecisions();
+  const [generalizationDecisions, decisions] = await Promise.all([
+    input.store.listResearchGeneralizationPolicyDecisions(),
+    input.store.listResearchAllocationPolicyDecisions()
+  ]);
+  const applicableGeneralization = generalizationDecisions.filter(
+    (decision): decision is ResearchGeneralizationPolicyDecisionRecord =>
+      researchGeneralizationPolicyDecisionHasRuntimeShape(decision) &&
+      decision.policy_decision_digest === canonicalDigest(
+        researchGeneralizationPolicyDecisionDigestInput(decision)
+      ) && decision.decision_status === "approved" &&
+      decision.effective_default_mode === "adaptive_default" &&
+      decision.target_allocation_policy_digest === currentPolicyDigest
+  ).sort((left, right) =>
+    left.decided_at.localeCompare(right.decided_at) ||
+    left.research_generalization_policy_decision_id.localeCompare(
+      right.research_generalization_policy_decision_id
+    )
+  );
+  const selectedGeneralization = applicableGeneralization.at(-1);
+  if (selectedGeneralization) {
+    return {
+      allocationMode: "adaptive_default",
+      allocationPolicyBasis: {
+        basis_kind: "research_generalization_policy_decision",
+        policy_decision_ref: {
+          record_kind: "research_generalization_policy_decision",
+          id: selectedGeneralization
+            .research_generalization_policy_decision_id
+        },
+        policy_decision_digest:
+          selectedGeneralization.policy_decision_digest,
+        generalization_outcome_ref: {
+          ...selectedGeneralization.generalization_outcome_ref
+        },
+        generalization_outcome_digest:
+          selectedGeneralization.generalization_outcome_digest
+      }
+    };
+  }
   const applicable = decisions.filter((decision): decision is
     ResearchAllocationPolicyDecisionRecord =>
     researchAllocationPolicyDecisionHasRuntimeShape(decision) &&
@@ -780,8 +825,8 @@ function canonicalAllocationPolicyBasis(
     }
     return { basis_kind: value.basis_kind };
   }
-  if (value.basis_kind !== "research_allocation_policy_decision" ||
-    allocationMode !== "adaptive_default" || !hasExactKeys(value, [
+  if (value.basis_kind === "research_allocation_policy_decision") {
+    if (allocationMode !== "adaptive_default" || !hasExactKeys(value, [
       "basis_kind",
       "policy_decision_ref",
       "policy_decision_digest",
@@ -794,14 +839,38 @@ function canonicalAllocationPolicyBasis(
       value.study_outcome_ref,
       "research_control_study_outcome"
     ) || !sha256Digest(value.study_outcome_digest)) {
+      throw invalidDecision();
+    }
+    return {
+      basis_kind: "research_allocation_policy_decision",
+      policy_decision_ref: { ...value.policy_decision_ref },
+      policy_decision_digest: value.policy_decision_digest,
+      study_outcome_ref: { ...value.study_outcome_ref },
+      study_outcome_digest: value.study_outcome_digest
+    };
+  }
+  if (value.basis_kind !== "research_generalization_policy_decision" ||
+    allocationMode !== "adaptive_default" || !hasExactKeys(value, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "generalization_outcome_ref",
+      "generalization_outcome_digest"
+    ]) || !exactRef(
+      value.policy_decision_ref,
+      "research_generalization_policy_decision"
+    ) || !sha256Digest(value.policy_decision_digest) || !exactRef(
+      value.generalization_outcome_ref,
+      "research_generalization_outcome"
+    ) || !sha256Digest(value.generalization_outcome_digest)) {
     throw invalidDecision();
   }
   return {
-    basis_kind: "research_allocation_policy_decision",
+    basis_kind: "research_generalization_policy_decision",
     policy_decision_ref: { ...value.policy_decision_ref },
     policy_decision_digest: value.policy_decision_digest,
-    study_outcome_ref: { ...value.study_outcome_ref },
-    study_outcome_digest: value.study_outcome_digest
+    generalization_outcome_ref: { ...value.generalization_outcome_ref },
+    generalization_outcome_digest: value.generalization_outcome_digest
   };
 }
 
@@ -814,6 +883,14 @@ function cloneAllocationPolicyBasis(
         policy_decision_ref: { ...value.policy_decision_ref },
         study_outcome_ref: { ...value.study_outcome_ref }
       }
+    : value.basis_kind === "research_generalization_policy_decision"
+      ? {
+          ...value,
+          policy_decision_ref: { ...value.policy_decision_ref },
+          generalization_outcome_ref: {
+            ...value.generalization_outcome_ref
+          }
+        }
     : { ...value };
 }
 

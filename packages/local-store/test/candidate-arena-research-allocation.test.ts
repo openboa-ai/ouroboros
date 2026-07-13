@@ -8,9 +8,11 @@ import {
   candidateArenaResearchAllocationDigestInput,
   paperTradingComparisonPersistedRecordDigestInput,
   researchAllocationPolicyDecisionDigestInput,
+  researchGeneralizationPolicyDecisionDigestInput,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaTickRecord,
   type ResearchAllocationPolicyDecisionRecord,
+  type ResearchGeneralizationPolicyDecisionRecord,
   type ResearchDirectionKind
 } from "@ouroboros/domain";
 import { LocalStore } from "../src/index";
@@ -99,6 +101,117 @@ describe("LocalStore CandidateArenaResearchAllocation", () => {
     await expect(decisionStore.recordCandidateArenaResearchAllocation(
       allocation
     )).resolves.toEqual(allocation);
+  });
+
+  it("persists a broad-decision allocation only against its exact approval", async () => {
+    const decision = generalizationPolicyDecisionFixture();
+    const decisionStore = new AllocationPolicyDecisionStore(
+      storeRoot,
+      undefined,
+      decision
+    );
+    const allocation = allocationFixture();
+    allocation.allocation_policy_basis = {
+      basis_kind: "research_generalization_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_generalization_policy_decision",
+        id: decision.research_generalization_policy_decision_id
+      },
+      policy_decision_digest: decision.policy_decision_digest,
+      generalization_outcome_ref: {
+        ...decision.generalization_outcome_ref
+      },
+      generalization_outcome_digest:
+        decision.generalization_outcome_digest
+    };
+    allocation.allocation_digest = allocationDigest(allocation);
+
+    await expect(decisionStore.recordCandidateArenaResearchAllocation(
+      allocation
+    )).resolves.toEqual(allocation);
+  });
+
+  it.each([
+    ["missing decision", () => undefined],
+    ["decision digest drift", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      const changed = structuredClone(decision);
+      changed.policy_decision_digest = `sha256:${"f".repeat(64)}`;
+      return changed;
+    }],
+    ["not approved", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      const changed = structuredClone(decision);
+      changed.decision_status = "not_approved";
+      changed.decision_reason = "generalization_outcome_not_eligible";
+      changed.effective_default_mode = null;
+      changed.policy_decision_digest =
+        generalizationPolicyDecisionDigest(changed);
+      return changed;
+    }],
+    ["stale target policy", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      const changed = structuredClone(decision);
+      changed.target_allocation_policy_digest = `sha256:${"e".repeat(64)}`;
+      changed.policy_decision_digest =
+        generalizationPolicyDecisionDigest(changed);
+      return changed;
+    }],
+    ["wrong outcome", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      const changed = structuredClone(decision);
+      changed.generalization_outcome_ref.id = "other-outcome";
+      changed.policy_decision_digest =
+        generalizationPolicyDecisionDigest(changed);
+      return changed;
+    }],
+    ["future decision", (
+      decision: ResearchGeneralizationPolicyDecisionRecord
+    ) => {
+      const changed = structuredClone(decision);
+      changed.decided_at = "2026-07-12T10:00:01.000Z";
+      changed.policy_decision_digest =
+        generalizationPolicyDecisionDigest(changed);
+      return changed;
+    }]
+  ])("rejects a broad-decision allocation with %s", async (
+    _label,
+    mutate
+  ) => {
+    const sourceDecision = generalizationPolicyDecisionFixture();
+    const storedDecision = mutate(sourceDecision);
+    const decisionStore = new AllocationPolicyDecisionStore(
+      storeRoot,
+      undefined,
+      storedDecision
+    );
+    const allocation = allocationFixture();
+    allocation.allocation_policy_basis = {
+      basis_kind: "research_generalization_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_generalization_policy_decision",
+        id: sourceDecision.research_generalization_policy_decision_id
+      },
+      policy_decision_digest: sourceDecision.policy_decision_digest,
+      generalization_outcome_ref: {
+        ...sourceDecision.generalization_outcome_ref
+      },
+      generalization_outcome_digest:
+        sourceDecision.generalization_outcome_digest
+    };
+    allocation.allocation_digest = allocationDigest(allocation);
+
+    await expect(decisionStore.recordCandidateArenaResearchAllocation(
+      allocation
+    )).rejects.toMatchObject({
+      code: storedDecision === undefined
+        ? "candidate_arena_research_allocation_policy_decision_not_found"
+        : "candidate_arena_research_allocation_policy_decision_mismatch"
+    });
   });
 
   it.each([
@@ -279,7 +392,9 @@ function allocationFixture(
 class AllocationPolicyDecisionStore extends LocalStore {
   constructor(
     root: string,
-    private readonly decision?: ResearchAllocationPolicyDecisionRecord
+    private readonly decision?: ResearchAllocationPolicyDecisionRecord,
+    private readonly generalizationDecision?:
+      ResearchGeneralizationPolicyDecisionRecord
   ) {
     super(root);
   }
@@ -289,6 +404,15 @@ class AllocationPolicyDecisionStore extends LocalStore {
   ): Promise<ResearchAllocationPolicyDecisionRecord | undefined> {
     return this.decision?.research_allocation_policy_decision_id === decisionId
       ? structuredClone(this.decision)
+      : undefined;
+  }
+
+  override async getResearchGeneralizationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord | undefined> {
+    return this.generalizationDecision
+      ?.research_generalization_policy_decision_id === decisionId
+      ? structuredClone(this.generalizationDecision)
       : undefined;
   }
 }
@@ -343,6 +467,63 @@ function policyDecisionDigest(
   decision: ResearchAllocationPolicyDecisionRecord
 ): string {
   return exactDigest(researchAllocationPolicyDecisionDigestInput(decision));
+}
+
+function generalizationPolicyDecisionFixture():
+ResearchGeneralizationPolicyDecisionRecord {
+  const decision: ResearchGeneralizationPolicyDecisionRecord = {
+    record_kind: "research_generalization_policy_decision",
+    version: 1,
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-outcome",
+    protocol_ref: {
+      record_kind: "research_generalization_protocol",
+      id: "research-generalization-protocol-allocation"
+    },
+    protocol_digest: `sha256:${"c".repeat(64)}`,
+    generalization_outcome_ref: {
+      record_kind: "research_generalization_outcome",
+      id: "research-generalization-outcome-allocation"
+    },
+    generalization_outcome_digest: `sha256:${"d".repeat(64)}`,
+    target_allocation_policy_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(
+        CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+      )
+    ),
+    decision_policy: {
+      policy_version: "generalization_supported_adaptive_v1",
+      target_allocation_mode: "adaptive_default",
+      required_inference_status: "generalization_supported",
+      required_causal_scope:
+        "pre_effect_market_condition_blocked_cross_baseline_study_effects",
+      required_policy_decision_eligibility:
+        "eligible_for_separate_generalization_policy_decision",
+      application_scope: "future_uncontrolled_candidate_arena_ticks"
+    },
+    decision_status: "approved",
+    decision_reason: "supported_cross_condition_adaptive_effect",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-07-12T09:59:59.999Z",
+    policy_decision_digest: "pending",
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+  decision.policy_decision_digest =
+    generalizationPolicyDecisionDigest(decision);
+  return decision;
+}
+
+function generalizationPolicyDecisionDigest(
+  decision: ResearchGeneralizationPolicyDecisionRecord
+): string {
+  return exactDigest(
+    researchGeneralizationPolicyDecisionDigestInput(decision)
+  );
 }
 
 function exactDigest(value: string): string {
