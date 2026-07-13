@@ -61,6 +61,7 @@ import {
   CandidateArenaResearchAllocationService,
   candidateArenaAdaptiveDirectionFocus,
   candidateArenaResearchEfficiencyBudgetFocus,
+  resolveCandidateArenaResearchAllocationPolicy,
   toCandidateArenaResearchAllocationReadModel
 } from "./research-allocation";
 import { buildResearchPopulationDiversity } from "./research-population-diversity";
@@ -376,9 +377,12 @@ export async function runCandidateArenaTick(
     "stopped",
     tickCount
   );
-  const allocationMode: CandidateArenaResearchAllocationMode = input.directions
-    ? "explicit"
-    : input.researchAllocationMode ?? "adaptive_default";
+  const { allocationMode, allocationPolicyBasis } =
+    await resolveCandidateArenaResearchAllocationPolicy({
+      store: input.store,
+      explicitDirections: input.directions,
+      requestedAllocationMode: input.researchAllocationMode
+    });
   const allocation = await withArenaStoreMutation(input.store, () =>
     new CandidateArenaResearchAllocationService({
       store: input.store,
@@ -386,6 +390,7 @@ export async function runCandidateArenaTick(
     }).allocate({
       tickId,
       allocationMode,
+      allocationPolicyBasis,
       explicitDirections: input.directions,
       findingClusters: priorArena.finding_clusters,
       latestTicks: priorArena.latest_ticks

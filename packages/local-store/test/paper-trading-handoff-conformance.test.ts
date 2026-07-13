@@ -369,6 +369,7 @@ function allocationFixture(): CandidateArenaResearchAllocationRecord {
     candidate_arena_research_allocation_id: "paper-handoff-allocation",
     tick_id: "paper-handoff-tick",
     allocation_mode: "explicit",
+    allocation_policy_basis: { basis_kind: "explicit_request" },
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: [],
     signal_snapshot: [],

@@ -1,9 +1,17 @@
+import { createHash } from "node:crypto";
 import type {
   CandidateArenaFindingClusterReadModel,
+  CandidateArenaResearchAllocationPolicyBasis,
   CandidateArenaResearchAllocationRecord,
   CandidateArenaTickDirectionResultReadModel,
   CandidateArenaTickReadModel,
+  ResearchAllocationPolicyDecisionRecord,
   ResearchDirectionKind
+} from "@ouroboros/domain";
+import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchAllocationPolicyDecisionDigestInput
 } from "@ouroboros/domain";
 import { describe, expect, it } from "vitest";
 import type { OuroborosStorePort } from "../ports/store";
@@ -11,7 +19,8 @@ import {
   CandidateArenaResearchAllocationDecisionError,
   CandidateArenaResearchAllocationService,
   DEFAULT_ARENA_DIRECTIONS,
-  decideCandidateArenaResearchAllocation
+  decideCandidateArenaResearchAllocation,
+  resolveCandidateArenaResearchAllocationPolicy
 } from "./research-allocation";
 
 describe("decideCandidateArenaResearchAllocation", () => {
@@ -181,6 +190,33 @@ describe("decideCandidateArenaResearchAllocation", () => {
     expect(allocation.policy.concurrency_limit).toBe(2);
   });
 
+  it("seals the exact policy-selection basis into the allocation", () => {
+    const allocationPolicyBasis = approvedPolicyBasis();
+    const allocation = decide({
+      tickId: "policy-backed-tick",
+      allocationPolicyBasis
+    });
+
+    expect(allocation.allocation_policy_basis).toEqual(allocationPolicyBasis);
+    expect(allocation.allocation_policy_basis).not.toBe(allocationPolicyBasis);
+  });
+
+  it.each([
+    ["static repository default", "static_control", {
+      basis_kind: "repository_default"
+    }],
+    ["explicit policy decision", "explicit", approvedPolicyBasis()]
+  ])("rejects incompatible %s basis", (_label, allocationMode, basis) => {
+    expect(() => decide({
+      tickId: "incompatible-basis",
+      allocationMode: allocationMode as "static_control" | "explicit",
+      allocationPolicyBasis: basis as CandidateArenaResearchAllocationPolicyBasis,
+      explicitDirections: allocationMode === "explicit"
+        ? ["trend_following"]
+        : undefined
+    })).toThrowError(CandidateArenaResearchAllocationDecisionError);
+  });
+
   it("proves an equal-bound adaptive versus static selection ablation", () => {
     const adaptive = decide({
       tickId: "adaptive-tick",
@@ -297,6 +333,111 @@ describe("decideCandidateArenaResearchAllocation", () => {
     expect({ findingClusters, latestTicks, priorAllocations }).toEqual(snapshot);
   });
 
+  it.each([
+    ["directions", ["trend_following"], undefined, "explicit"],
+    ["static mode", undefined, "static_control", "static_control"],
+    ["adaptive mode", undefined, "adaptive_default", "adaptive_default"]
+  ])("gives explicit %s precedence without reading policy decisions", async (
+    _label,
+    explicitDirections,
+    requestedAllocationMode,
+    expectedMode
+  ) => {
+    const calls: string[] = [];
+    const resolved = await resolveCandidateArenaResearchAllocationPolicy({
+      store: policyDecisionStore([], calls),
+      explicitDirections: explicitDirections as ResearchDirectionKind[] | undefined,
+      requestedAllocationMode: requestedAllocationMode as
+        "static_control" | "adaptive_default" | undefined
+    });
+
+    expect(resolved).toEqual({
+      allocationMode: expectedMode,
+      allocationPolicyBasis: { basis_kind: "explicit_request" }
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("resolves an uncontrolled tick from the latest applicable approval", async () => {
+    const earlier = policyDecisionFixture(
+      "earlier",
+      "2026-07-12T08:00:00.000Z"
+    );
+    const latest = policyDecisionFixture(
+      "latest",
+      "2026-07-12T09:00:00.000Z"
+    );
+
+    await expect(resolveCandidateArenaResearchAllocationPolicy({
+      store: policyDecisionStore([latest, earlier])
+    })).resolves.toEqual({
+      allocationMode: "adaptive_default",
+      allocationPolicyBasis: {
+        basis_kind: "research_allocation_policy_decision",
+        policy_decision_ref: {
+          record_kind: "research_allocation_policy_decision",
+          id: latest.research_allocation_policy_decision_id
+        },
+        policy_decision_digest: latest.policy_decision_digest,
+        study_outcome_ref: { ...latest.study_outcome_ref },
+        study_outcome_digest: latest.study_outcome_digest
+      }
+    });
+  });
+
+  it("falls back without treating unsupported or stale evidence as static", async () => {
+    const unsupported = policyDecisionFixture(
+      "unsupported",
+      "2026-07-12T09:00:00.000Z"
+    );
+    unsupported.decision_status = "not_approved";
+    unsupported.decision_reason = "study_outcome_not_eligible";
+    unsupported.effective_default_mode = null;
+    resealPolicyDecision(unsupported);
+    const stale = policyDecisionFixture(
+      "stale",
+      "2026-07-12T10:00:00.000Z"
+    );
+    stale.target_allocation_policy_digest = `sha256:${"e".repeat(64)}`;
+    resealPolicyDecision(stale);
+
+    await expect(resolveCandidateArenaResearchAllocationPolicy({
+      store: policyDecisionStore([
+        unsupported,
+        stale,
+        { record_kind: "research_allocation_policy_decision" } as
+          ResearchAllocationPolicyDecisionRecord
+      ])
+    })).resolves.toEqual({
+      allocationMode: "adaptive_default",
+      allocationPolicyBasis: { basis_kind: "repository_default" }
+    });
+  });
+
+  it("does not let a later inapplicable decision shadow an earlier approval", async () => {
+    const approved = policyDecisionFixture(
+      "approved",
+      "2026-07-12T08:00:00.000Z"
+    );
+    const laterStale = policyDecisionFixture(
+      "later-stale",
+      "2026-07-12T10:00:00.000Z"
+    );
+    laterStale.target_allocation_policy_digest = `sha256:${"d".repeat(64)}`;
+    resealPolicyDecision(laterStale);
+
+    const resolved = await resolveCandidateArenaResearchAllocationPolicy({
+      store: policyDecisionStore([approved, laterStale])
+    });
+
+    expect(resolved.allocationPolicyBasis).toMatchObject({
+      basis_kind: "research_allocation_policy_decision",
+      policy_decision_ref: {
+        id: approved.research_allocation_policy_decision_id
+      }
+    });
+  });
+
   it("persists through only the research-allocation Store surface", async () => {
     const calls: string[] = [];
     let recorded: CandidateArenaResearchAllocationRecord | undefined;
@@ -343,6 +484,7 @@ describe("decideCandidateArenaResearchAllocation", () => {
     const allocation = await service.allocate({
       tickId: "service-tick",
       allocationMode: "adaptive_default",
+      allocationPolicyBasis: { basis_kind: "repository_default" },
       findingClusters: [publicExecutionFailureCluster()],
       latestTicks: []
     });
@@ -355,6 +497,7 @@ describe("decideCandidateArenaResearchAllocation", () => {
     ]);
     expect(calls).not.toEqual(expect.arrayContaining(forbidden));
     expect(allocation).toMatchObject({
+      allocation_policy_basis: { basis_kind: "repository_default" },
       research_scheduling_authority: true,
       promotion_authority: false,
       order_submission_authority: false,
@@ -367,6 +510,7 @@ describe("decideCandidateArenaResearchAllocation", () => {
 function decide(input: {
   tickId: string;
   allocationMode?: "adaptive_default" | "static_control" | "explicit";
+  allocationPolicyBasis?: CandidateArenaResearchAllocationPolicyBasis;
   explicitDirections?: ResearchDirectionKind[];
   findingClusters?: CandidateArenaFindingClusterReadModel[];
   latestTicks?: CandidateArenaTickReadModel[];
@@ -377,12 +521,107 @@ function decide(input: {
     tickId: input.tickId,
     allocatedAt: "2026-07-12T10:00:00.000Z",
     allocationMode: input.allocationMode ?? "adaptive_default",
+    allocationPolicyBasis: input.allocationPolicyBasis ?? (
+      input.allocationMode === "static_control" ||
+      input.allocationMode === "explicit"
+        ? { basis_kind: "explicit_request" }
+        : { basis_kind: "repository_default" }
+    ),
     explicitDirections: input.explicitDirections,
     findingClusters: input.findingClusters ?? [],
     latestTicks: input.latestTicks ?? [],
     priorAllocations: input.priorAllocations ?? [],
     completedTickIds: input.completedTickIds ?? []
   });
+}
+
+function approvedPolicyBasis(): CandidateArenaResearchAllocationPolicyBasis {
+  return {
+    basis_kind: "research_allocation_policy_decision",
+    policy_decision_ref: {
+      record_kind: "research_allocation_policy_decision",
+      id: "research-allocation-policy-decision-study-outcome"
+    },
+    policy_decision_digest: `sha256:${"a".repeat(64)}`,
+    study_outcome_ref: {
+      record_kind: "research_control_study_outcome",
+      id: "research-control-study-outcome-study"
+    },
+    study_outcome_digest: `sha256:${"b".repeat(64)}`
+  };
+}
+
+function policyDecisionStore(
+  decisions: ResearchAllocationPolicyDecisionRecord[],
+  calls: string[] = []
+): OuroborosStorePort {
+  return {
+    async listResearchAllocationPolicyDecisions() {
+      calls.push("listResearchAllocationPolicyDecisions");
+      return structuredClone(decisions);
+    }
+  } as unknown as OuroborosStorePort;
+}
+
+function policyDecisionFixture(
+  suffix: string,
+  decidedAt: string
+): ResearchAllocationPolicyDecisionRecord {
+  const decision: ResearchAllocationPolicyDecisionRecord = {
+    record_kind: "research_allocation_policy_decision",
+    version: 1,
+    research_allocation_policy_decision_id:
+      `research-allocation-policy-decision-${suffix}`,
+    study_ref: {
+      record_kind: "research_control_study",
+      id: `research-control-study-${suffix}`
+    },
+    study_digest: `sha256:${"a".repeat(64)}`,
+    study_outcome_ref: {
+      record_kind: "research_control_study_outcome",
+      id: `research-control-study-outcome-${suffix}`
+    },
+    study_outcome_digest: `sha256:${"b".repeat(64)}`,
+    target_allocation_policy_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(
+        CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+      )
+    ),
+    decision_policy: {
+      policy_version: "adaptive_supported_effect_v1",
+      target_allocation_mode: "adaptive_default",
+      required_inference_status: "adaptive_effect_supported",
+      required_causal_scope: "same_baseline_stochastic_replication_only",
+      required_policy_decision_eligibility:
+        "eligible_for_separate_policy_decision",
+      application_scope: "future_uncontrolled_candidate_arena_ticks"
+    },
+    decision_status: "approved",
+    decision_reason: "supported_same_baseline_adaptive_effect",
+    effective_default_mode: "adaptive_default",
+    decided_at: decidedAt,
+    policy_decision_digest: "pending",
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+  resealPolicyDecision(decision);
+  return decision;
+}
+
+function resealPolicyDecision(
+  decision: ResearchAllocationPolicyDecisionRecord
+): void {
+  decision.policy_decision_digest = exactDigest(
+    researchAllocationPolicyDecisionDigestInput(decision)
+  );
+}
+
+function exactDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function publicExecutionFailureCluster(): CandidateArenaFindingClusterReadModel {

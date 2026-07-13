@@ -20,6 +20,13 @@ describe("CandidateArenaResearchAllocation", () => {
     )).toBe(true);
   });
 
+  it("accepts an exact approved-policy basis only for adaptive allocation", () => {
+    const allocation = adaptiveAllocationFixture();
+    allocation.allocation_policy_basis = approvedPolicyBasis();
+
+    expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(true);
+  });
+
   it("freezes every scheduling and authority field in digest input", () => {
     const baseline = adaptiveAllocationFixture();
     const baselineDigestInput = candidateArenaResearchAllocationDigestInput(
@@ -27,6 +34,7 @@ describe("CandidateArenaResearchAllocation", () => {
     );
     const mutations: Array<(value: CandidateArenaResearchAllocationRecord) => void> = [
       (value) => { value.allocation_mode = "static_control"; },
+      (value) => { value.allocation_policy_basis = { basis_kind: "explicit_request" }; },
       (value) => { value.policy.concurrency_limit = 1 as 2; },
       (value) => { value.signal_snapshot[0]!.focus_score = 4; },
       (value) => { value.selected_directions.reverse(); },
@@ -48,6 +56,17 @@ describe("CandidateArenaResearchAllocation", () => {
 
   it.each([
     ["unknown mode", (value: any) => { value.allocation_mode = "learned"; }],
+    ["missing policy basis", (value: any) => {
+      delete value.allocation_policy_basis;
+    }],
+    ["static repository-default basis", (value: any) => {
+      value.allocation_mode = "static_control";
+      value.allocation_policy_basis = { basis_kind: "repository_default" };
+    }],
+    ["malformed policy-decision basis", (value: any) => {
+      value.allocation_policy_basis = approvedPolicyBasis();
+      value.allocation_policy_basis.policy_decision_digest = "sha256:short";
+    }],
     ["policy drift", (value: any) => { value.policy.concurrency_limit = 3; }],
     ["duplicate signal", (value: any) => {
       value.signal_snapshot.push(structuredClone(value.signal_snapshot[0]));
@@ -212,6 +231,9 @@ function allocationBase(
       "candidate-arena-research-allocation-adaptive-tick-2",
     tick_id: "adaptive-tick-2",
     allocation_mode: allocationMode,
+    allocation_policy_basis: allocationMode === "adaptive_default"
+      ? { basis_kind: "repository_default" }
+      : { basis_kind: "explicit_request" },
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: [{
       record_kind: "candidate_arena_tick",
@@ -224,6 +246,22 @@ function allocationBase(
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "research_only"
+  };
+}
+
+function approvedPolicyBasis() {
+  return {
+    basis_kind: "research_allocation_policy_decision" as const,
+    policy_decision_ref: {
+      record_kind: "research_allocation_policy_decision",
+      id: "research-allocation-policy-decision-study-outcome"
+    },
+    policy_decision_digest: `sha256:${"a".repeat(64)}`,
+    study_outcome_ref: {
+      record_kind: "research_control_study_outcome",
+      id: "research-control-study-outcome-study"
+    },
+    study_outcome_digest: `sha256:${"b".repeat(64)}`
   };
 }
 

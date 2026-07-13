@@ -67,12 +67,51 @@ each tick's worker cross-section. Assigned-direction entropy and exact same-suit
 stay separate; mixed protocol or development-suite cohorts are `incomparable_suites`. This bounded
 read model may guide researcher attention but never rank, admit, allocate, qualify, promote, submit
 orders, or grant private/live authority.
-`ResearchControlCampaign` is the causal boundary for testing an Arena policy. It commits one exact
+`ResearchControlCampaign` is the controlled execution boundary for testing an Arena policy. It commits one exact
 LocalStore baseline, actual research artifact closure, managed-agent identity, equal maximum bounds,
 and adaptive/static tick sequences before effects; runs each arm in an independent LocalStore; and
 persists only an unadjudicated research report with deterministic future paper candidate slots.
 Admission, duplicate, diversity, and efficiency differences are diagnostics, never a winner or
-economic result. Prospective paper comparison evidence must adjudicate the reserved slots later.
+economic result. A bound campaign commits one deterministic
+`ResearchControlCampaignPaperSchedule`; the internal bounded executor prepares all candidate-bearing
+arms before source effects, seals matched shared snapshots in a
+`ResearchControlCampaignPaperStartBatch`, and records every source, deadline, or confirmation path
+as one `ResearchControlCampaignPaperSlotOutcome`. `ResearchControlCampaignOutcome` separately
+requires the pre-effect Trading review comparator, the complete exact slot-outcome set, and one
+shared paper policy. It counts every slot and records one non-causal observation with no
+policy-replacement, promotion, order, private, or live authority. The optional executor step and
+runner are internal orchestration, not a default deployed scheduler or public command.
+`createResearchControlCampaignPaperRuntimeArm` now composes one arm-local store and paper-session
+service into the existing comparison, activation, checkpoint, qualification, confirmation, and
+release services. Confirmation advances one persisted transition per executor action and propagates
+its exact wake time instead of polling. Each arm owns a distinct runtime activation coordinator;
+an unowned running attempt is recovered, never adopted.
+`ResearchControlStudy` is the replicated inference boundary. Before any planned campaign exists it
+commits 6 to 30 exact campaign identities, one same-frozen-snapshot condition, and one paired exact
+sign-test policy. `ResearchControlStudyOutcome` requires every planned campaign and terminal
+campaign outcome exactly once, permits no early stopping, and limits its causal scope to
+same-baseline stochastic repetitions. A supported adaptive effect grants only eligibility for a
+separate allocation-policy decision; neither record replaces policy, promotes, submits orders, or
+widens private/live authority.
+`createResearchControlStudyRuntime` is the canonical internal study composition. Its executor
+derives progress only from append-only study, campaign, campaign-outcome, and study-outcome records,
+completes at most one planned campaign per advance in fixed order, and adjudicates only after exact
+closure. Its runner may repeat those actions and drains an active campaign before stopping. It is
+not a public command or policy application path.
+`ResearchControlStudyProcessSupervisor` is the internal one-shot process-discovery boundary. One
+composition root may start one supervisor for one store; it discovers incomplete studies oldest
+first, opens only one existing study runtime, reloads exact terminal evidence after completion, and
+rescans until caught up. Failure never skips an earlier study, and stop drains the active campaign
+without opening the next study. It persists no process state and does not provide server auto-start,
+long polling, cross-process leases, public commands, or automatic policy decisions.
+`ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
+an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
+digest; non-supported or underpowered evidence never selects static control. Uncontrolled Arena
+ticks prefer the latest applicable approval, then the repository adaptive default, while explicit
+directions and explicit adaptive/static modes always win. Every allocation seals that basis, and
+LocalStore independently validates decision-backed provenance before worker effects. Study
+completion does not create this decision automatically, and the decision grants no evaluation,
+promotion, order, private, or live authority.
 Binance public market data enters through the Gateway-owned
 `MarketDataPort`, never directly through a `TradingSystem`. A selected `TradingSystem` owns its
 decision cadence; paper observations are checkpoint/readback events that consume newly emitted
@@ -233,7 +272,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and candidate artifact runs remain disposable. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
-| `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and closed authority without becoming economic or promotion evidence. |
+| `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and whether policy came from an explicit request, repository default, or exact approved ResearchAllocationPolicyDecision without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick/direction/worker/allocation/source SystemCode to bounded development feedback and one evaluator-owned rotating sealed-admission suite; it stores commitments and digests, never the raw evaluator seed or sealed scenarios, and grants no admission, promotion, order, private, or live authority. |
 | `ResearchWorkerCheckpoint` | Append-only terminal lifecycle evidence for one stable ResearchWorker and exact ResearchPreflightCommitment; it carries bounded sanitized notebook continuity and closed budget history into a later new commitment without resuming old effects or granting downstream authority. |
 | `ResearchBehaviorFingerprint` | Append-only development-only record of normalized effective decisions for one exact protocol, suite digest, commitment, and frozen SystemCode; exact matching is bounded observational duplicate evidence, not semantic equivalence, score, qualification, promotion, order, private, or live authority. |
@@ -241,6 +280,16 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchEfficiency` | Authority-free development and sealed-admission submission/provider-request/runner-command/scenario/elapsed summaries for comparing research cost and latency without exposing sealed evaluator content or becoming rank. |
 | `ResearchPopulationDiversity` | Read-only latest-ten-tick coverage aggregate plus newest-first per-tick worker cross-sections that separate assigned ResearchDirection concentration from exact same-suite observed ResearchBehaviorFingerprint concentration; mixed cohorts are incomparable, and the read model has no scheduling, evaluation, admission, rank, qualification, promotion, order, private, or live authority. |
 | `ResearchControlCampaign` | Append-only pre-effect adaptive-versus-static CandidateArena ablation over one exact store and source-artifact baseline. Isolated arm intents and the research-phase report freeze bounds, ticks, diagnostics, and future paper candidate slots while the primary outcome remains unadjudicated and authority-closed. |
+| `ResearchControlCampaignPaperSchedule` | Append-only post-report, pre-paper commitment of every arm slot, source comparison identity, comparator, policy, order, and deadline for one ResearchControlCampaign. |
+| `ResearchControlCampaignPaperStartBatch` | Coordinator-owned cross-arm witness for one schedule sequence. It seals candidate-bearing source commitments and shared first-tick public market/execution evidence, or a terminal start-ineligible reason, without copying peer TradingRuns. |
+| `ResearchControlCampaignPaperSlotOutcome` | Arm-local append-only terminal classification for one scheduled candidate slot, backed by an exact source verdict, source expiry, start batch, confirmation expiry, or confirmation ResearchRelease. |
+| `ResearchControlCampaignPaperExecutor` | Internal bounded runtime orchestrator, assembled by `createResearchControlCampaignPaperRuntime`, that derives one action from append-only campaign paper evidence. It has paper scheduling/evaluation authority only and is not a public command, policy decision, promotion path, or live runner. |
+| `ResearchControlCampaignOutcome` | Append-only external adjudication of every precommitted ResearchControlCampaign paper slot against its pre-effect Trading review comparator and one shared policy. Only exact confirmed-improvement ResearchRelease evidence receives discovery credit; one outcome is not causal proof or policy authority. |
+| `ResearchControlStudy` | Append-only pre-effect commitment of 6 to 30 exact ResearchControlCampaign replications under one same-frozen-snapshot condition and one paired exact sign-test policy. It fixes every campaign identity before effects, permits no early stopping, and owns research scheduling authority only. |
+| `ResearchControlStudyOutcome` | Append-only external aggregate over every planned ResearchControlCampaignOutcome. It reports same-baseline stochastic-replication inference and may make a supported effect eligible for a separate policy decision, but cannot replace policy, promote, submit orders, or gain private/live authority. |
+| `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that completes or resumes one exact planned campaign per advance and adjudicates only after every terminal outcome. It persists no parallel progress record and owns no policy-replacement, promotion, order, private, or live authority. |
+| `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through existing runtimes, rescans after each completion, and persists no separate progress or downstream authority. |
+| `ResearchAllocationPolicyDecision` | Append-only research-only selection record derived separately from one exact ResearchControlStudy and outcome. Version 1 may approve only the studied adaptive policy digest after eligible supported same-baseline evidence; otherwise it records not-approved with no effective mode and never selects static control. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |

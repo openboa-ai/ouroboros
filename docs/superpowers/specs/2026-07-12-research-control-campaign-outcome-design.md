@@ -1,6 +1,6 @@
 # ResearchControlCampaign Outcome Design
 
-**Status:** Approved for implementation under the standing CandidateArena Goal authority
+**Status:** Implemented and verified
 
 ## Goal
 
@@ -63,6 +63,11 @@ The adjudicator accepts only:
   every candidate-bearing slot in both arms.
 
 No reserved slot may be omitted, duplicated, substituted, or filled with a later candidate.
+
+`shared_evaluation_policy_status` is `bound` whenever at least one candidate-bearing slot exists.
+If neither arm reserved a candidate, it is explicitly
+`not_applicable_no_reserved_candidates`; the accompanying digest binds that canonical empty-policy
+state rather than pretending that a paper policy existed.
 
 ## Metric
 
@@ -127,6 +132,12 @@ Finding text do not enter the outcome.
 - Missing arm workspace after outcome persistence: exact coordinator outcome remains replayable.
 - Arm evidence mutation before outcome persistence: digest or graph validation fails closed.
 
+The runtime collector discovers a release only when candidate, CandidateVersion, SystemCode, and
+artifact digest all match one reserved slot. Zero matches is incomplete, multiple matches is
+ambiguous, and a release without its exact campaign/outcome closure is incomplete. Once the
+coordinator outcome exists, replay validates campaign/report identity and does not reopen either arm
+store.
+
 ## Non-Goals
 
 - Starting paper sessions or comparison windows.
@@ -152,3 +163,20 @@ Finding text do not enter the outcome.
 7. Outcome exposes no raw paper/research evidence and cannot replace policy or promote.
 8. Focused tests, workspace typechecks, repository guards, and the full suite pass.
 
+## Implementation Evidence
+
+- Domain outcome contract: `9342861`, with explicit empty-policy status correction in `abca8ab`.
+- External application adjudicator and coordinator LocalStore persistence: `4d3478b`.
+- Arm-local release collector and terminal replay: `91a43a5`.
+- Direct outcome coverage: 30 domain, 17 application, 14 LocalStore campaign/outcome, and 6 runtime
+  collector tests passed.
+- Existing runtime campaign regression: 10 tests passed.
+- All workspace typechecks passed, including the Operator Desktop Rust build.
+- Docs, architecture, naming, tracked-env, secret, and diff guards passed.
+- Full repository suite: 304 of 304 suites and 2279 of 2279 tests passed, with zero failed,
+  pending, or todo. The final JSON report is
+  `/private/tmp/ouroboros-research-control-outcome-final.json`.
+
+This closes supplied terminal outcome adjudication, not outcome production. The next causal
+frontier must precommit and operate the paper-slot scheduler, then accumulate replicated campaigns
+under a predeclared inference and policy decision rule.

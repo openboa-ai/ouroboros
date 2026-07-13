@@ -6,13 +6,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   decideResearchControlCampaign
 } from "@ouroboros/application/candidate/research-control-campaign";
+import {
+  decideResearchControlCampaignPaperSchedule
+} from "@ouroboros/application/candidate/research-control-campaign-paper-schedule";
+import {
+  decideResearchControlCampaignPaperSlotOutcome
+} from "@ouroboros/application/candidate/research-control-campaign-paper-slot-outcome";
 import type { OuroborosStorePort } from "@ouroboros/application/ports/store";
 import {
   paperTradingComparisonPersistedRecordDigestInput,
   researchControlCampaignOutcomeHasRuntimeShape,
   researchControlCampaignReportDigestInput,
-  type PaperTradingComparisonResearchReleaseRecord,
   type ResearchControlCampaignOutcomeRecord,
+  type ResearchControlCampaignPaperScheduleRecord,
+  type ResearchControlCampaignPaperSlotOutcomeRecord,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchPopulationDiversityReadModel
@@ -63,9 +70,7 @@ describe("ResearchControlCampaign outcome collector", () => {
       })
     ]);
     expect(result.outcome.observed_result).toBe("rates_equal");
-    expect(result.outcome.shared_evaluation_policy_status).toBe(
-      "not_applicable_no_reserved_candidates"
-    );
+    expect(result.outcome.shared_evaluation_policy_status).toBe("bound");
     expect(fixture.store.outcomeWrites).toBe(1);
     expect(armOpenCount).toBe(2);
   });
@@ -92,7 +97,7 @@ describe("ResearchControlCampaign outcome collector", () => {
     expect(fixture.store.outcomeWrites).toBe(1);
   });
 
-  it("rejects a reserved slot with no terminal release", async () => {
+  it("rejects a reserved slot with no terminal slot outcome", async () => {
     const fixture = collectorFixture({ adaptiveCandidate: true });
 
     await expect(collectResearchControlCampaignOutcome({
@@ -106,41 +111,51 @@ describe("ResearchControlCampaign outcome collector", () => {
     expect(fixture.store.outcomeWrites).toBe(0);
   });
 
-  it("rejects multiple releases for one reserved candidate", async () => {
+  it("rejects multiple terminal outcomes for one reserved slot", async () => {
     const fixture = collectorFixture({ adaptiveCandidate: true });
-    const release = matchingRelease(fixture.report);
+    const slotOutcome = expiredSlotOutcome(fixture.schedule);
 
     await expect(collectResearchControlCampaignOutcome({
       store: fixture.store as unknown as OuroborosStorePort,
       workspaceRoot: path.join(tmpDir, "workspace"),
       campaignId: fixture.campaign.research_control_campaign_id,
       openArmStore: (_root, armKind) => armKind === "adaptive_treatment"
-        ? armReaderWithReleases([release, {
-            ...release,
-            paper_trading_comparison_research_release_id: "duplicate-release"
-          }])
+        ? armReaderWithSlotOutcomes([slotOutcome, slotOutcome])
         : emptyArmReader()
     })).rejects.toMatchObject({
       code: "research_control_campaign_outcome_evidence_ambiguous"
     });
   });
 
-  it("rejects a release whose campaign closure is absent", async () => {
+  it("copies exact arm-local terminal outcomes before adjudication", async () => {
     const fixture = collectorFixture({ adaptiveCandidate: true });
+    const slotOutcome = expiredSlotOutcome(fixture.schedule);
 
-    await expect(collectResearchControlCampaignOutcome({
+    const result = await collectResearchControlCampaignOutcome({
       store: fixture.store as unknown as OuroborosStorePort,
       workspaceRoot: path.join(tmpDir, "workspace"),
       campaignId: fixture.campaign.research_control_campaign_id,
+      now: () => "2026-07-12T10:42:00.000Z",
       openArmStore: (_root, armKind) => armKind === "adaptive_treatment"
-        ? armReaderWithReleases([matchingRelease(fixture.report)])
+        ? armReaderWithSlotOutcomes([slotOutcome])
         : emptyArmReader()
-    })).rejects.toMatchObject({
-      code: "research_control_campaign_outcome_evidence_incomplete"
     });
+
+    expect(result.outcome.arms[0]?.slot_results[0]).toMatchObject({
+      terminal_status: "paper_slot_expired",
+      paper_slot_outcome_ref: {
+        id: slotOutcome.research_control_campaign_paper_slot_outcome_id
+      },
+      paper_slot_outcome_digest: slotOutcome.slot_outcome_digest,
+      discovery_credit: 0
+    });
+    expect(fixture.store.slotOutcomeWrites).toBe(1);
+    expect(await fixture.store.getResearchControlCampaignPaperSlotOutcome(
+      slotOutcome.research_control_campaign_paper_slot_outcome_id
+    )).toEqual(slotOutcome);
   });
 
-  it("rejects missing and ambiguous coordinator source evidence", async () => {
+  it("rejects missing and ambiguous campaign or report evidence", async () => {
     const fixture = collectorFixture();
     fixture.store.campaign = undefined;
     await expect(collectResearchControlCampaignOutcome({
@@ -161,17 +176,51 @@ describe("ResearchControlCampaign outcome collector", () => {
       code: "research_control_campaign_outcome_source_ambiguous"
     });
   });
+
+  it("rejects missing and ambiguous paper schedule evidence", async () => {
+    const fixture = collectorFixture();
+    fixture.store.schedules = [];
+
+    await expect(collectResearchControlCampaignOutcome({
+      store: fixture.store as unknown as OuroborosStorePort,
+      workspaceRoot: path.join(tmpDir, "workspace"),
+      campaignId: fixture.campaign.research_control_campaign_id
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_outcome_source_not_found"
+    });
+
+    fixture.store.schedules = [
+      fixture.schedule,
+      {
+        ...structuredClone(fixture.schedule),
+        research_control_campaign_paper_schedule_id: "ambiguous-schedule"
+      }
+    ];
+    await expect(collectResearchControlCampaignOutcome({
+      store: fixture.store as unknown as OuroborosStorePort,
+      workspaceRoot: path.join(tmpDir, "workspace"),
+      campaignId: fixture.campaign.research_control_campaign_id
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_outcome_source_ambiguous"
+    });
+  });
 });
 
 function collectorFixture(options: { adaptiveCandidate?: boolean } = {}) {
   const campaign = campaignFixture();
   const report = reportFixture(campaign, options.adaptiveCandidate ?? false);
+  const schedule = decideResearchControlCampaignPaperSchedule({
+    campaign,
+    report,
+    committedAt: "2026-07-12T10:31:00.000Z"
+  });
   const store = new CoordinatorStoreDouble(
     path.join(tmpDir, "coordinator"),
     campaign,
-    report
+    report,
+    schedule
   );
-  return { campaign, report, store };
+  return { campaign, report, schedule, store };
 }
 
 function campaignFixture(): ResearchControlCampaignRecord {
@@ -216,6 +265,49 @@ function campaignFixture(): ResearchControlCampaignRecord {
       paper_trading_evaluation_ref: {
         record_kind: "paper_trading_evaluation",
         id: "champion-evaluation"
+      }
+    },
+    paperEvaluationProtocol: {
+      protocol_status: "bound",
+      comparison_policy: {
+        policy_version: "paper-comparison-v1",
+        comparison_mode: "champion_challenge",
+        symbol: "BTCUSDT",
+        interval_ms: 60_000,
+        minimum_observation_count: 1,
+        minimum_elapsed_ms: 60_000,
+        maximum_observation_count: 1,
+        maximum_elapsed_ms: 600_000,
+        maximum_start_skew_ms: 5_000,
+        maximum_provider_request_count_per_side: 100,
+        maximum_retry_count_per_side: 2,
+        primary_metric: "net_revenue_usdt",
+        minimum_net_revenue_lift_usdt: 1,
+        required_confirmation_count: 1,
+        require_non_overlapping_windows: true,
+        require_both_qualified: true,
+        release_policy: "sealed_until_adjudication"
+      },
+      market_data_configuration_digest: digest("6"),
+      paper_policy_identity: {
+        market_data_policy_version: "market-v1",
+        gateway_policy_version: "gateway-v1",
+        cost_policy_version: "cost-v1",
+        funding_policy_version: "funding-v1",
+        slippage_policy_version: "slippage-v1",
+        fill_policy_version: "fill-v1",
+        risk_policy_version: "risk-v1",
+        paper_account_policy_version: "account-v1",
+        decision_event_protocol_version: "decision-v1",
+        persistent_state_boundary_version: "state-v1"
+      },
+      schedule_policy: {
+        policy_version: "research-control-paper-schedule-v1",
+        source_start_order: "paired_by_sequence",
+        maximum_active_source_pairs: 2,
+        maximum_cross_arm_first_tick_skew_ms: 5_000,
+        source_missed_start_policy: "slot_expired",
+        confirmation_precommit_deadline_ms: 600_000
       }
     },
     tickCountPerArm: 1,
@@ -388,44 +480,32 @@ function diversityFixture(
   };
 }
 
-function matchingRelease(
-  report: ResearchControlCampaignReportRecord
-): PaperTradingComparisonResearchReleaseRecord {
-  const slot = report.arms[0].paper_candidate_slots[0]!;
-  if (slot.status !== "candidate_reserved") throw new Error("candidate_required");
-  return {
-    candidate_ref: { ...slot.candidate_ref },
-    candidate_version_ref: { ...slot.candidate_version_ref },
-    system_code_ref: { ...slot.system_code_ref },
-    system_code_artifact_digest: slot.system_code_artifact_digest,
-    paper_trading_comparison_research_release_id: "release-001",
-    campaign_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign",
-      id: "confirmation-001"
+function expiredSlotOutcome(
+  schedule: ResearchControlCampaignPaperScheduleRecord
+): ResearchControlCampaignPaperSlotOutcomeRecord {
+  return decideResearchControlCampaignPaperSlotOutcome({
+    schedule,
+    armKind: "adaptive_treatment",
+    sequence: 1,
+    terminalEvidence: {
+      evidence_kind: "source_slot_expired",
+      terminal_status: "paper_slot_expired",
+      expired_at: "2026-07-12T10:41:00.000Z"
     },
-    campaign_outcome_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
-      id: "confirmation-outcome-001"
-    }
-  } as PaperTradingComparisonResearchReleaseRecord;
+    terminalAt: "2026-07-12T10:41:00.000Z"
+  });
 }
 
 function emptyArmReader(): ResearchControlCampaignOutcomeArmReader {
-  return armReaderWithReleases([]);
+  return armReaderWithSlotOutcomes([]);
 }
 
-function armReaderWithReleases(
-  releases: PaperTradingComparisonResearchReleaseRecord[]
+function armReaderWithSlotOutcomes(
+  outcomes: ResearchControlCampaignPaperSlotOutcomeRecord[]
 ): ResearchControlCampaignOutcomeArmReader {
   return {
-    async listPaperTradingComparisonResearchReleases() {
-      return structuredClone(releases);
-    },
-    async getPaperTradingComparisonConfirmationCampaign() {
-      return undefined;
-    },
-    async getPaperTradingComparisonConfirmationCampaignOutcome() {
-      return undefined;
+    async listResearchControlCampaignPaperSlotOutcomes() {
+      return structuredClone(outcomes);
     }
   };
 }
@@ -433,16 +513,21 @@ function armReaderWithReleases(
 class CoordinatorStoreDouble {
   campaign: ResearchControlCampaignRecord | undefined;
   reports: ResearchControlCampaignReportRecord[];
+  schedules: ResearchControlCampaignPaperScheduleRecord[];
+  slotOutcomes = new Map<string, ResearchControlCampaignPaperSlotOutcomeRecord>();
   outcome: ResearchControlCampaignOutcomeRecord | undefined;
+  slotOutcomeWrites = 0;
   outcomeWrites = 0;
 
   constructor(
     private readonly storeRoot: string,
     campaign: ResearchControlCampaignRecord,
-    report: ResearchControlCampaignReportRecord
+    report: ResearchControlCampaignReportRecord,
+    schedule: ResearchControlCampaignPaperScheduleRecord
   ) {
     this.campaign = campaign;
     this.reports = [report];
+    this.schedules = [schedule];
   }
 
   root() {
@@ -462,6 +547,44 @@ class CoordinatorStoreDouble {
   async getResearchControlCampaignReport(id: string) {
     return structuredClone(this.reports.find((report) =>
       report.research_control_campaign_report_id === id
+    ));
+  }
+
+  async listResearchControlCampaignPaperSchedules() {
+    return structuredClone(this.schedules);
+  }
+
+  async getResearchControlCampaignPaperSchedule(id: string) {
+    return structuredClone(this.schedules.find((schedule) =>
+      schedule.research_control_campaign_paper_schedule_id === id
+    ));
+  }
+
+  async recordResearchControlCampaignPaperSlotOutcome(
+    _outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord> {
+    throw new Error("collector_must_not_use_arm_creation_path");
+  }
+
+  async replicateResearchControlCampaignPaperSlotOutcome(
+    outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ) {
+    this.slotOutcomeWrites += 1;
+    const recorded = structuredClone(outcome);
+    this.slotOutcomes.set(
+      outcome.research_control_campaign_paper_slot_outcome_id,
+      recorded
+    );
+    return structuredClone(recorded);
+  }
+
+  async getResearchControlCampaignPaperSlotOutcome(id: string) {
+    return structuredClone(this.slotOutcomes.get(id));
+  }
+
+  async listResearchControlCampaignPaperSlotOutcomes(scheduleId?: string) {
+    return structuredClone([...this.slotOutcomes.values()].filter((outcome) =>
+      scheduleId === undefined || outcome.schedule_ref.id === scheduleId
     ));
   }
 

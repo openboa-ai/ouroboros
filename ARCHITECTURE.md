@@ -58,7 +58,49 @@ research source, and clones that immutable baseline into independent adaptive an
 roots. Domain/application services own campaign, arm-intent, and research-report decisions;
 LocalStore validates append-only graphs; the runtime alone owns filesystem placement and paired
 execution. Arm ticks and candidates do not enter the primary Arena store. The report is diagnostic
-and unadjudicated until a later prospective paper scheduler resolves its reserved candidate slots.
+and remains unadjudicated. A deterministic `ResearchControlCampaignPaperSchedule` freezes every
+report slot before paper effects. Candidate-bearing arm stores retain their own TradingRuns and
+Ledger evidence; a coordinator-owned `ResearchControlCampaignPaperStartBatch` is the compact
+cross-arm witness that paired first and repeated ticks used one shared public market/execution
+snapshot. A bounded runtime executor derives one next action from append-only evidence, runs source
+and strict confirmation windows through existing paper services, and closes every candidate slot
+with one arm-local `ResearchControlCampaignPaperSlotOutcome`. The collector replicates those exact
+slot outcomes to the coordinator and the application adjudicator persists one authority-closed
+`ResearchControlCampaignOutcome`. Existing graph and outcome records replay without reopening
+completed effects. `createResearchControlCampaignPaperRuntime` is the canonical internal factory
+for these coordinators, the evidence loader, executor, and interruptible runner, while
+`runResearchControlCampaign` exposes an optional single-step hook.
+`createResearchControlCampaignPaperRuntimeArm` is the lower composition boundary. It binds one
+arm-local store and session service to the existing comparison, activation, tick, checkpoint,
+qualification, verdict, confirmation, and release services. One activation coordinator owns the
+arm's source and confirmation session attempts. Confirmation execution projects one durable
+transition at a time; a window `next_wake_at` becomes an executor wait step, and restart recovery
+stops an unowned running attempt instead of adopting it.
+Domain and application services also own `ResearchControlStudy`, which precommits 6 to 30 exact
+campaign IDs under one frozen condition and baseline before any planned campaign is stored.
+LocalStore enforces that order and exact graph, while `ResearchControlStudyOutcome` consumes every
+terminal planned campaign outcome under one fixed paired exact sign test. Its causal scope is
+same-baseline stochastic replication only, with no early stopping and no direct policy mutation.
+The runtime `ResearchControlStudyExecutor` derives the earliest legal action from those records,
+composes one campaign through terminal paper outcome per advance, and reloads exact persisted bytes
+before progressing. Its default arm path opens each copied LocalStore root and receives a session
+service bound to that exact store before applying the arm factory; explicit custom arm composition
+remains available. `createResearchControlStudyRuntime` adds a sequential runner without a second
+progress record; restart therefore reconstructs state from the evidence graph.
+`ResearchControlStudyProcessSupervisor` adds the process-level queue without adding another durable
+record. One composition root discovers incomplete studies from exact study/outcome lists, orders
+them by commitment time and ID, opens one injected runtime, verifies persisted completion, and
+rescans until caught up. It fails before later work when discovery, runtime opening, execution, or
+completion persistence is invalid. Server auto-start, long polling, cross-process leases, and
+deployed listener-capable study evidence remain outside this boundary.
+Application services separately derive `ResearchAllocationPolicyDecision` from one exact persisted
+study and outcome. Only eligible supported same-baseline adaptive evidence can approve the studied
+policy digest; every other valid outcome is not approved and cannot select static control. Before
+an uncontrolled Arena tick, the allocation resolver chooses explicit caller intent first, then the
+latest approved decision for the current policy digest, then the repository adaptive default.
+`CandidateArenaResearchAllocation` seals the chosen basis before effects, and LocalStore reloads
+and verifies decision/outcome digests and time order. This grants research-policy selection only;
+promotion and champion runtime handoff remain outside the boundary.
 `ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
 not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
 commitment still runs isolated candidate bytes and closes through one append-only

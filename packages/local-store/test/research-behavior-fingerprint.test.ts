@@ -463,6 +463,7 @@ function allocationFixture(
     candidate_arena_research_allocation_id: `allocation-${suffix}`,
     tick_id: `tick-${suffix}`,
     allocation_mode: "explicit",
+    allocation_policy_basis: { basis_kind: "explicit_request" },
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: [],
     signal_snapshot: [],

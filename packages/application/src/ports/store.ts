@@ -22,8 +22,14 @@ import type {
   ResearchDirectionRecord,
   ResearchControlCampaignArmIntentRecord,
   ResearchControlCampaignOutcomeRecord,
+  ResearchControlCampaignPaperScheduleRecord,
+  ResearchControlCampaignPaperStartBatchRecord,
+  ResearchControlCampaignPaperSlotOutcomeRecord,
   ResearchControlCampaignRecord,
   ResearchControlCampaignReportRecord,
+  ResearchControlStudyRecord,
+  ResearchControlStudyOutcomeRecord,
+  ResearchAllocationPolicyDecisionRecord,
   ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
@@ -184,6 +190,39 @@ export interface OuroborosStorePort {
   listResearchControlCampaignReports(): Promise<
     ResearchControlCampaignReportRecord[]
   >;
+  recordResearchControlCampaignPaperSchedule(
+    schedule: ResearchControlCampaignPaperScheduleRecord
+  ): Promise<ResearchControlCampaignPaperScheduleRecord>;
+  getResearchControlCampaignPaperSchedule(
+    scheduleId: string
+  ): Promise<ResearchControlCampaignPaperScheduleRecord | undefined>;
+  listResearchControlCampaignPaperSchedules(): Promise<
+    ResearchControlCampaignPaperScheduleRecord[]
+  >;
+  recordResearchControlCampaignPaperStartBatch(
+    batch: ResearchControlCampaignPaperStartBatchRecord
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord>;
+  replicateResearchControlCampaignPaperStartBatch(
+    batch: ResearchControlCampaignPaperStartBatchRecord
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord>;
+  getResearchControlCampaignPaperStartBatch(
+    batchId: string
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord | undefined>;
+  listResearchControlCampaignPaperStartBatches(
+    scheduleId?: string
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord[]>;
+  recordResearchControlCampaignPaperSlotOutcome(
+    outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord>;
+  replicateResearchControlCampaignPaperSlotOutcome(
+    outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord>;
+  getResearchControlCampaignPaperSlotOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord | undefined>;
+  listResearchControlCampaignPaperSlotOutcomes(
+    scheduleId?: string
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord[]>;
   recordResearchControlCampaignOutcome(
     outcome: ResearchControlCampaignOutcomeRecord
   ): Promise<ResearchControlCampaignOutcomeRecord>;
@@ -192,6 +231,31 @@ export interface OuroborosStorePort {
   ): Promise<ResearchControlCampaignOutcomeRecord | undefined>;
   listResearchControlCampaignOutcomes(): Promise<
     ResearchControlCampaignOutcomeRecord[]
+  >;
+  recordResearchControlStudy(
+    study: ResearchControlStudyRecord
+  ): Promise<ResearchControlStudyRecord>;
+  getResearchControlStudy(
+    studyId: string
+  ): Promise<ResearchControlStudyRecord | undefined>;
+  listResearchControlStudies(): Promise<ResearchControlStudyRecord[]>;
+  recordResearchControlStudyOutcome(
+    outcome: ResearchControlStudyOutcomeRecord
+  ): Promise<ResearchControlStudyOutcomeRecord>;
+  getResearchControlStudyOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlStudyOutcomeRecord | undefined>;
+  listResearchControlStudyOutcomes(): Promise<
+    ResearchControlStudyOutcomeRecord[]
+  >;
+  recordResearchAllocationPolicyDecision(
+    decision: ResearchAllocationPolicyDecisionRecord
+  ): Promise<ResearchAllocationPolicyDecisionRecord>;
+  getResearchAllocationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchAllocationPolicyDecisionRecord | undefined>;
+  listResearchAllocationPolicyDecisions(): Promise<
+    ResearchAllocationPolicyDecisionRecord[]
   >;
   recordResearchDirection(
     direction: ResearchDirectionRecord

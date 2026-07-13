@@ -8,6 +8,7 @@ import {
   researchControlCampaignArmIntentHasRuntimeShape,
   researchControlCampaignDigestInput,
   researchControlCampaignHasRuntimeShape,
+  researchControlCampaignPaperEvaluationProtocolDigestInput,
   researchControlCampaignReportDigestInput,
   researchControlCampaignReportHasRuntimeShape,
   researchPopulationDiversityHasRuntimeShape,
@@ -21,6 +22,7 @@ import {
   type ResearchControlCampaignBaselineSnapshot,
   type ResearchControlCampaignPaperCandidateSlot,
   type ResearchControlCampaignPaperComparator,
+  type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchControlCampaignSource,
@@ -39,11 +41,25 @@ export interface ResearchControlCampaignDecisionInput {
   source: ResearchControlCampaignSource;
   researchAgent: ManagedResearchAgent;
   paperComparator: ResearchControlCampaignPaperComparator;
+  paperEvaluationProtocol: ResearchControlCampaignPaperEvaluationProtocolInput;
   tickCountPerArm: number;
   maximumBaselineRegularFileCount?: number;
   maximumBaselineTotalBytes?: number;
   committedAt: string;
 }
+
+export type ResearchControlCampaignPaperEvaluationProtocolInput =
+  | Omit<
+      Extract<
+        ResearchControlCampaignPaperEvaluationProtocol,
+        { protocol_status: "bound" }
+      >,
+      "protocol_digest"
+    >
+  | Extract<
+      ResearchControlCampaignPaperEvaluationProtocol,
+      { protocol_status: "unavailable" }
+    >;
 
 export type ResearchControlCampaignCommitRequest = Omit<
   ResearchControlCampaignDecisionInput,
@@ -279,6 +295,9 @@ export function decideResearchControlCampaign(
       source: structuredClone(input.source),
       research_agent: researchAgent,
       paper_comparator: structuredClone(input.paperComparator),
+      paper_evaluation_protocol: campaignPaperEvaluationProtocol(
+        input.paperEvaluationProtocol
+      ),
       allocation_policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
       allocation_policy_digest: canonicalDigest(
         CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
@@ -666,6 +685,26 @@ function campaignAgentIdentity(
   };
 }
 
+function campaignPaperEvaluationProtocol(
+  input: ResearchControlCampaignPaperEvaluationProtocolInput
+): ResearchControlCampaignPaperEvaluationProtocol {
+  if (!input) throw invalidDecision();
+  if (input.protocol_status === "unavailable") {
+    return structuredClone(input);
+  }
+  const protocol: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  > = {
+    ...structuredClone(input),
+    protocol_digest: pendingDigest()
+  };
+  protocol.protocol_digest = canonicalDigest(
+    researchControlCampaignPaperEvaluationProtocolDigestInput(protocol)
+  );
+  return protocol;
+}
+
 function campaignTickIds(
   token: string,
   arm: "adaptive" | "static",
@@ -676,7 +715,7 @@ function campaignTickIds(
   );
 }
 
-function researchControlCampaignId(idempotencyKey: string): string {
+export function researchControlCampaignId(idempotencyKey: string): string {
   const canonical = canonicalString(idempotencyKey);
   return `research-control-campaign-${safeId(canonical, { maxLength: 48 })}-${
     digestHex(canonical).slice(0, 12)

@@ -36,6 +36,40 @@ observed-behavior cross-section.
 `ResearchControlCampaign` is the pre-effect adaptive-versus-static policy experiment: one exact
 store and source-artifact baseline, isolated arm stores, fixed bounded ticks, diagnostic-only
 research report, and deterministic future paper candidate slots. It does not declare a winner.
+`ResearchControlCampaignOutcome` is the append-only external adjudication of those slots against
+the campaign's pre-effect Trading review comparator and one shared prospective paper policy. It
+counts every slot and treats only an exact `confirmed_improvement` ResearchRelease as qualified
+discovery credit. One outcome is an observation, not causal proof or policy-replacement authority.
+`ResearchControlStudy` is the pre-effect replicated experiment commitment. It fixes 6 to 30 exact
+campaign identities, one same-frozen-snapshot condition, and one paired exact sign-test policy
+before any planned campaign is stored, and it permits no early stopping.
+`ResearchControlStudyOutcome` aggregates every exact planned campaign outcome once and limits its
+causal scope to same-baseline stochastic repetitions. Supported adaptive effect means only that a
+separate allocation-policy decision may be considered; the outcome cannot replace policy.
+`ResearchAllocationPolicyDecision` is that separate append-only research-only decision. It reloads
+the exact study and outcome, approves only eligible `adaptive_effect_supported` evidence, binds the
+studied allocation-policy digest, and otherwise records `not_approved` with no effective mode.
+Non-significance never selects static control. Future uncontrolled allocations cite the latest
+applicable approval or the repository adaptive fallback; explicit directions and adaptive/static
+modes retain precedence, and every allocation seals its exact basis before effects.
+The internal paper executor commits a deterministic schedule, seals candidate-bearing source starts
+with shared public snapshots, advances one persisted action at a time, and converts every source,
+deadline, or confirmation terminal path into an exact slot outcome before adjudication. The
+executor is restart-derived and paper-only; it is not yet a default always-on runtime, public
+command, policy replacement mechanism, or TradingPromotion path.
+`createResearchControlCampaignPaperRuntimeArm` now binds each arm-local store and session service
+to the existing comparison, activation, checkpoint, qualification, confirmation, and release
+services. It performs one confirmation transition per action, propagates exact wake times, and
+recovers rather than adopts unowned attempts. `createResearchControlCampaignPaperRuntime` composes
+those arms into source, confirmation, evidence, action, executor, and runner wiring.
+`createResearchControlStudyRuntime` similarly derives exact study progress, runs one
+planned campaign to terminal paper outcome per advance, and repeats sequentially without a progress
+record; its default campaign path can open exact arm roots and build real arms from arm-local
+session factories. `ResearchControlStudyProcessSupervisor` now discovers incomplete studies oldest first,
+drains one injected runtime at a time, verifies persisted completion, and rescans until caught up.
+It is single-process and explicitly started. Server auto-start, cross-process leasing, actual
+replicated outcome evidence, distinct-regime inference, learned policy parameters, and automatic
+decision creation remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

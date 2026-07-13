@@ -4,8 +4,12 @@ import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchAllocationPolicyDecisionDigestInput,
+  researchAllocationPolicyDecisionHasRuntimeShape,
   type CandidateArenaFindingClusterReadModel,
   type CandidateArenaResearchAllocationMode,
+  type CandidateArenaResearchAllocationPolicyBasis,
   type CandidateArenaResearchAllocationReadModel,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaResearchAllocationSelection,
@@ -14,6 +18,7 @@ import {
   type CandidateArenaTickDirectionResultReadModel,
   type CandidateArenaTickReadModel,
   type PaperTradingFailureKind,
+  type ResearchAllocationPolicyDecisionRecord,
   type ResearchDirectionKind
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
@@ -46,6 +51,7 @@ export interface DecideCandidateArenaResearchAllocationInput {
   tickId: string;
   allocatedAt: string;
   allocationMode: CandidateArenaResearchAllocationMode;
+  allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
   explicitDirections?: ResearchDirectionKind[];
   findingClusters: CandidateArenaFindingClusterReadModel[];
   latestTicks: CandidateArenaTickReadModel[];
@@ -89,6 +95,7 @@ export class CandidateArenaResearchAllocationService {
   async allocate(input: {
     tickId: string;
     allocationMode: CandidateArenaResearchAllocationMode;
+    allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
     explicitDirections?: ResearchDirectionKind[];
     findingClusters: CandidateArenaFindingClusterReadModel[];
     latestTicks: CandidateArenaTickReadModel[];
@@ -115,6 +122,7 @@ export class CandidateArenaResearchAllocationService {
       tickId,
       allocatedAt: this.now(),
       allocationMode: input.allocationMode,
+      allocationPolicyBasis: input.allocationPolicyBasis,
       explicitDirections: input.explicitDirections,
       findingClusters: input.findingClusters,
       latestTicks: input.latestTicks,
@@ -134,6 +142,75 @@ export class CandidateArenaResearchAllocationService {
   }
 }
 
+export interface ResolveCandidateArenaResearchAllocationPolicyInput {
+  store: Pick<OuroborosStorePort, "listResearchAllocationPolicyDecisions">;
+  explicitDirections?: ResearchDirectionKind[];
+  requestedAllocationMode?: CandidateArenaResearchAllocationMode;
+}
+
+export interface ResolvedCandidateArenaResearchAllocationPolicy {
+  allocationMode: CandidateArenaResearchAllocationMode;
+  allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
+}
+
+export async function resolveCandidateArenaResearchAllocationPolicy(
+  input: ResolveCandidateArenaResearchAllocationPolicyInput
+): Promise<ResolvedCandidateArenaResearchAllocationPolicy> {
+  if (input.explicitDirections !== undefined) {
+    return {
+      allocationMode: "explicit",
+      allocationPolicyBasis: { basis_kind: "explicit_request" }
+    };
+  }
+  if (input.requestedAllocationMode !== undefined) {
+    return {
+      allocationMode: allocationModeValue(input.requestedAllocationMode),
+      allocationPolicyBasis: { basis_kind: "explicit_request" }
+    };
+  }
+
+  const currentPolicyDigest = canonicalDigest(
+    paperTradingComparisonPersistedRecordDigestInput(
+      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+    )
+  );
+  const decisions = await input.store.listResearchAllocationPolicyDecisions();
+  const applicable = decisions.filter((decision): decision is
+    ResearchAllocationPolicyDecisionRecord =>
+    researchAllocationPolicyDecisionHasRuntimeShape(decision) &&
+      decision.policy_decision_digest === canonicalDigest(
+        researchAllocationPolicyDecisionDigestInput(decision)
+      ) && decision.decision_status === "approved" &&
+      decision.effective_default_mode === "adaptive_default" &&
+      decision.target_allocation_policy_digest === currentPolicyDigest
+  ).sort((left, right) =>
+    left.decided_at.localeCompare(right.decided_at) ||
+    left.research_allocation_policy_decision_id.localeCompare(
+      right.research_allocation_policy_decision_id
+    )
+  );
+  const selected = applicable.at(-1);
+  if (!selected) {
+    return {
+      allocationMode: "adaptive_default",
+      allocationPolicyBasis: { basis_kind: "repository_default" }
+    };
+  }
+  return {
+    allocationMode: "adaptive_default",
+    allocationPolicyBasis: {
+      basis_kind: "research_allocation_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_allocation_policy_decision",
+        id: selected.research_allocation_policy_decision_id
+      },
+      policy_decision_digest: selected.policy_decision_digest,
+      study_outcome_ref: { ...selected.study_outcome_ref },
+      study_outcome_digest: selected.study_outcome_digest
+    }
+  };
+}
+
 export function toCandidateArenaResearchAllocationReadModel(
   allocation: CandidateArenaResearchAllocationRecord
 ): CandidateArenaResearchAllocationReadModel {
@@ -141,6 +218,9 @@ export function toCandidateArenaResearchAllocationReadModel(
     allocation_id: allocation.candidate_arena_research_allocation_id,
     tick_id: allocation.tick_id,
     allocation_mode: allocation.allocation_mode,
+    allocation_policy_basis: cloneAllocationPolicyBasis(
+      allocation.allocation_policy_basis
+    ),
     policy: { ...allocation.policy },
     selected_directions: allocation.selected_directions.map((selection) => ({
       ...selection,
@@ -162,6 +242,10 @@ export function decideCandidateArenaResearchAllocation(
   const tickId = canonicalId(input?.tickId);
   const allocatedAt = canonicalTime(input?.allocatedAt);
   const allocationMode = allocationModeValue(input?.allocationMode);
+  const allocationPolicyBasis = canonicalAllocationPolicyBasis(
+    input?.allocationPolicyBasis,
+    allocationMode
+  );
   if (!Array.isArray(input.findingClusters) ||
     !Array.isArray(input.latestTicks) ||
     !Array.isArray(input.priorAllocations) ||
@@ -213,6 +297,7 @@ export function decideCandidateArenaResearchAllocation(
       `candidate-arena-research-allocation-${safeId(tickId)}`,
     tick_id: tickId,
     allocation_mode: allocationMode,
+    allocation_policy_basis: allocationPolicyBasis,
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: sourceTickRefs,
     signal_snapshot: signalSnapshot,
@@ -622,10 +707,15 @@ function allocationRequestMatches(
   existing: CandidateArenaResearchAllocationRecord,
   input: {
     allocationMode: CandidateArenaResearchAllocationMode;
+    allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
     explicitDirections?: ResearchDirectionKind[];
   }
 ): boolean {
-  if (existing.allocation_mode !== input.allocationMode) return false;
+  if (existing.allocation_mode !== input.allocationMode ||
+    !isDeepStrictEqual(
+      existing.allocation_policy_basis,
+      input.allocationPolicyBasis
+    )) return false;
   if (input.allocationMode !== "explicit") {
     return input.explicitDirections === undefined;
   }
@@ -672,6 +762,85 @@ function allocationModeValue(
     throw invalidDecision();
   }
   return value;
+}
+
+function canonicalAllocationPolicyBasis(
+  value: unknown,
+  allocationMode: CandidateArenaResearchAllocationMode
+): CandidateArenaResearchAllocationPolicyBasis {
+  if (!plainObject(value) || typeof value.basis_kind !== "string") {
+    throw invalidDecision();
+  }
+  if (value.basis_kind === "explicit_request" ||
+    value.basis_kind === "repository_default") {
+    if (!hasExactKeys(value, ["basis_kind"]) ||
+      ((allocationMode === "static_control" || allocationMode === "explicit") &&
+        value.basis_kind !== "explicit_request")) {
+      throw invalidDecision();
+    }
+    return { basis_kind: value.basis_kind };
+  }
+  if (value.basis_kind !== "research_allocation_policy_decision" ||
+    allocationMode !== "adaptive_default" || !hasExactKeys(value, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "study_outcome_ref",
+      "study_outcome_digest"
+    ]) || !exactRef(
+      value.policy_decision_ref,
+      "research_allocation_policy_decision"
+    ) || !sha256Digest(value.policy_decision_digest) || !exactRef(
+      value.study_outcome_ref,
+      "research_control_study_outcome"
+    ) || !sha256Digest(value.study_outcome_digest)) {
+    throw invalidDecision();
+  }
+  return {
+    basis_kind: "research_allocation_policy_decision",
+    policy_decision_ref: { ...value.policy_decision_ref },
+    policy_decision_digest: value.policy_decision_digest,
+    study_outcome_ref: { ...value.study_outcome_ref },
+    study_outcome_digest: value.study_outcome_digest
+  };
+}
+
+function cloneAllocationPolicyBasis(
+  value: CandidateArenaResearchAllocationPolicyBasis
+): CandidateArenaResearchAllocationPolicyBasis {
+  return value.basis_kind === "research_allocation_policy_decision"
+    ? {
+        ...value,
+        policy_decision_ref: { ...value.policy_decision_ref },
+        study_outcome_ref: { ...value.study_outcome_ref }
+      }
+    : { ...value };
+}
+
+function exactRef(
+  value: unknown,
+  recordKind: string
+): value is { record_kind: string; id: string } {
+  return plainObject(value) && hasExactKeys(value, ["record_kind", "id"]) &&
+    value.record_kind === recordKind && typeof value.id === "string" &&
+    value.id.trim().length > 0 && value.id === value.id.trim();
+}
+
+function sha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function plainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: string[]
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return arraysEqual(actual, expected);
 }
 
 function stringArray(value: unknown): value is string[] {

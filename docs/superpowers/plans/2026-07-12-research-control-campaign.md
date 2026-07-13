@@ -148,6 +148,7 @@ npm test
   or todo. The sandboxed run failed only because loopback listeners received `EPERM`; the approved
   local-port rerun passed.
 
-The campaign now creates valid isolated treatment/control research populations and freezes future
-paper candidate slots. Prospective paper scheduling and campaign outcome adjudication are the next
-frontier, not evidence supplied by this completed plan.
+The campaign frontier created isolated treatment/control research populations and froze future
+paper candidate slots. This historical plan deliberately stopped before outcome adjudication. The
+later outcome, paper-protocol, and paper-executor plans now own the internal schedule, execution,
+and terminal adjudication implementation; default always-on deployment remains open.

@@ -331,6 +331,7 @@ function allocationFixture(): CandidateArenaResearchAllocationRecord {
     candidate_arena_research_allocation_id: "allocation-tick-7",
     tick_id: "tick-7",
     allocation_mode: "adaptive_default",
+    allocation_policy_basis: { basis_kind: "repository_default" },
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: [],
     signal_snapshot: [

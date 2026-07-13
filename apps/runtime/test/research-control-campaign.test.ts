@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCandidateArenaTick } from "@ouroboros/application/candidate/arena";
+import type { ResearchControlCampaignPaperEvaluationProtocolInput } from
+  "@ouroboros/application/candidate/research-control-campaign";
 import { FixtureTradingResearchAgentAdapter } from
   "@ouroboros/application/trading/research/agent-adapters";
 import type { TradingArtifactRunner } from
@@ -16,7 +18,10 @@ import type {
   TradingResearchAgentAdapter,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
-import { researchControlCampaignReportHasRuntimeShape } from "@ouroboros/domain";
+import {
+  researchControlCampaignReportHasRuntimeShape,
+  type TradingPromotionRecord
+} from "@ouroboros/domain";
 import {
   FIXTURE_CANDIDATE_ID,
   FIXTURE_SYSTEM_CODE_ID,
@@ -42,7 +47,7 @@ afterEach(async () => {
 });
 
 describe("ResearchControlCampaign snapshots", () => {
-  it("hashes regular files canonically and excludes only campaign evidence", async () => {
+  it("hashes product state and excludes only control experiment evidence", async () => {
     const root = path.join(tmpDir, "source");
     await mkdir(path.join(root, "nested"), { recursive: true });
     await writeFile(path.join(root, "b.json"), "b\n", "utf8");
@@ -72,6 +77,34 @@ describe("ResearchControlCampaign snapshots", () => {
       "outcome\n",
       "utf8"
     );
+    await mkdir(path.join(
+      root,
+      "research-control-campaign-paper-start-batches/items"
+    ), { recursive: true });
+    await writeFile(
+      path.join(
+        root,
+        "research-control-campaign-paper-start-batches/items/batch.json"
+      ),
+      "batch\n",
+      "utf8"
+    );
+    await mkdir(path.join(root, "research-control-studies/items"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(root, "research-control-studies/items/study.json"),
+      "study\n",
+      "utf8"
+    );
+    await mkdir(path.join(root, "research-control-study-outcomes/items"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(root, "research-control-study-outcomes/items/outcome.json"),
+      "study outcome\n",
+      "utf8"
+    );
     const second = await captureResearchControlCampaignSnapshot({
       root,
       maximumRegularFileCount: 10,
@@ -86,6 +119,15 @@ describe("ResearchControlCampaign snapshots", () => {
       total_bytes: 4,
       exclusion_policy: "research_control_campaign_evidence_only"
     });
+
+    await writeFile(path.join(root, "ordinary-state.json"), "state\n", "utf8");
+    const changed = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    });
+    expect(changed.snapshot_digest).not.toBe(first.snapshot_digest);
+    expect(changed.regular_file_count).toBe(3);
   });
 
   it.each([
@@ -175,6 +217,10 @@ describe("ResearchControlCampaign runtime", () => {
       comparator_status: "unavailable",
       reason: "no_trading_promotion_at_commitment"
     });
+    expect(outcome.campaign.paper_evaluation_protocol).toEqual({
+      protocol_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    });
     expect(tickCalls).toHaveLength(2);
     expect(await sourceStore.listCandidateArenaTicks()).toEqual([]);
     expect(await sourceStore.listResearchControlCampaigns()).toEqual([
@@ -233,6 +279,65 @@ describe("ResearchControlCampaign runtime", () => {
 
     expect(second.report).toEqual(first.report);
     expect(tickCallCount).toBe(2);
+  });
+
+  it("commits and replays the bound paper schedule with the report", async () => {
+    const sourceStore = new TradingReviewCampaignStore(
+      path.join(tmpDir, "scheduled-source")
+    );
+    await sourceStore.initialize();
+    const paperCalls: string[] = [];
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        path.join(tmpDir, "scheduled-workspace"),
+        runCandidateArenaTick
+      ),
+      paperEvaluationProtocol: boundPaperEvaluationProtocol(),
+      paperExecutor: {
+        async advance({ campaignId }: { campaignId: string }) {
+          paperCalls.push(campaignId);
+          return {
+            status: "waiting" as const,
+            action: "wait_until" as const,
+            sequence: 1,
+            wakeAt: "2026-07-12T10:00:01.000Z"
+          };
+        }
+      }
+    };
+
+    const first = await runResearchControlCampaign(input);
+    const firstSchedules = await sourceStore
+      .listResearchControlCampaignPaperSchedules();
+    if (first.campaign.paper_evaluation_protocol.protocol_status !== "bound") {
+      throw new Error("fixture_expected_bound_paper_protocol");
+    }
+    expect(firstSchedules).toHaveLength(1);
+    expect(first.paperStep).toMatchObject({
+      status: "waiting",
+      action: "wait_until"
+    });
+    expect(firstSchedules[0]).toMatchObject({
+      campaign_ref: {
+        id: first.campaign.research_control_campaign_id
+      },
+      report_ref: {
+        id: first.report.research_control_campaign_report_id
+      },
+      paper_evaluation_protocol_digest:
+        first.campaign.paper_evaluation_protocol.protocol_digest
+    });
+
+    const replay = await runResearchControlCampaign(input);
+    expect(replay.report).toEqual(first.report);
+    expect(await sourceStore.listResearchControlCampaignPaperSchedules())
+      .toEqual(firstSchedules);
+    expect(replay.paperStep).toEqual(first.paperStep);
+    expect(paperCalls).toEqual([
+      first.campaign.research_control_campaign_id,
+      first.campaign.research_control_campaign_id
+    ]);
   });
 
   it("waits for both arms and reruns only a missing exact tick after interruption", async () => {
@@ -310,6 +415,109 @@ function campaignRunInput(
     artifactRunner: networklessArtifactRunner(),
     replayProviderFactory: networklessReplayProvider,
     runTick
+  };
+}
+
+function boundPaperEvaluationProtocol():
+  ResearchControlCampaignPaperEvaluationProtocolInput {
+  return {
+    protocol_status: "bound" as const,
+    comparison_policy: {
+      policy_version: "paper-comparison-v1",
+      comparison_mode: "champion_challenge" as const,
+      symbol: "BTCUSDT" as const,
+      interval_ms: 60_000,
+      minimum_observation_count: 1,
+      minimum_elapsed_ms: 60_000,
+      maximum_observation_count: 1,
+      maximum_elapsed_ms: 600_000,
+      maximum_start_skew_ms: 5_000,
+      maximum_provider_request_count_per_side: 100,
+      maximum_retry_count_per_side: 2,
+      primary_metric: "net_revenue_usdt" as const,
+      minimum_net_revenue_lift_usdt: 1,
+      required_confirmation_count: 1,
+      require_non_overlapping_windows: true,
+      require_both_qualified: true,
+      release_policy: "sealed_until_adjudication" as const
+    },
+    market_data_configuration_digest: `sha256:${"6".repeat(64)}`,
+    paper_policy_identity: {
+      market_data_policy_version: "market-v1",
+      gateway_policy_version: "gateway-v1",
+      cost_policy_version: "cost-v1",
+      funding_policy_version: "funding-v1",
+      slippage_policy_version: "slippage-v1",
+      fill_policy_version: "fill-v1",
+      risk_policy_version: "risk-v1",
+      paper_account_policy_version: "account-v1",
+      decision_event_protocol_version: "decision-v1",
+      persistent_state_boundary_version: "state-v1"
+    },
+    schedule_policy: {
+      policy_version: "research-control-paper-schedule-v1" as const,
+      source_start_order: "paired_by_sequence" as const,
+      maximum_active_source_pairs: 2 as const,
+      maximum_cross_arm_first_tick_skew_ms: 5_000,
+      source_missed_start_policy: "slot_expired" as const,
+      confirmation_precommit_deadline_ms: 600_000
+    }
+  };
+}
+
+class TradingReviewCampaignStore extends LocalStore {
+  override async getLatestTradingPromotion(): Promise<TradingPromotionRecord> {
+    return runtimeTradingPromotion();
+  }
+
+  override async getTradingPromotion(
+    promotionId: string
+  ): Promise<TradingPromotionRecord | undefined> {
+    const promotion = runtimeTradingPromotion();
+    return promotion.trading_promotion_id === promotionId
+      ? promotion
+      : undefined;
+  }
+}
+
+function runtimeTradingPromotion(): TradingPromotionRecord {
+  return {
+    record_kind: "trading_promotion",
+    version: 1,
+    trading_promotion_id: "runtime-schedule-comparator",
+    status: "promoted_for_trading_review",
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: "runtime-champion-candidate"
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: "runtime-champion-version"
+    },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: "runtime-champion-evaluation"
+    },
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: "runtime-champion-confirmation"
+      },
+      campaign_digest: `sha256:${"a".repeat(64)}`,
+      campaign_outcome_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: "runtime-champion-confirmation-outcome"
+      },
+      campaign_outcome_digest: `sha256:${"b".repeat(64)}`,
+      final_verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: "runtime-champion-verdict"
+      },
+      final_verdict_digest: `sha256:${"c".repeat(64)}`
+    },
+    promoted_at: "2026-07-12T09:00:00.000Z",
+    authority_status: "not_live"
   };
 }
 

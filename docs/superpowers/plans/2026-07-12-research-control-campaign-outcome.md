@@ -1,6 +1,6 @@
 # ResearchControlCampaign Outcome Implementation Plan
 
-**Status:** In progress
+**Status:** Complete
 
 **Goal:** Bind the pre-effect Trading review comparator and adjudicate every exact campaign paper
 slot only from same-comparator, same-policy terminal prospective ResearchRelease evidence.
@@ -68,8 +68,8 @@ slot only from same-comparator, same-policy terminal prospective ResearchRelease
 **Files**
 
 - Modify `packages/local-store/src/index.ts`
-- Add `packages/local-store/test/research-control-campaign-outcome.test.ts`
-- Add `apps/runtime/src/candidate/arena/research-control-campaign-outcome.ts`
+- Modify `packages/local-store/test/research-control-campaign.test.ts`
+- Modify `apps/runtime/src/candidate/arena/research-control-campaign.ts`
 - Add `apps/runtime/test/research-control-campaign-outcome.test.ts`
 
 **Steps**
@@ -122,3 +122,21 @@ npm test
 - Do not call one campaign a causal policy winner or make it policy-replacement eligible.
 - Do not expand into production scheduling, automatic promotion, private access, or live trading.
 
+## Final Evidence
+
+- `packages/domain/src/research-control-campaign-outcome.test.ts`: 30 passed.
+- `packages/application/src/candidate/research-control-campaign-outcome.test.ts`: 17 passed.
+- `packages/local-store/test/research-control-campaign.test.ts`: 14 passed.
+- `apps/runtime/test/research-control-campaign-outcome.test.ts`: 6 passed.
+- `apps/runtime/test/research-control-campaign.test.ts`: 10 passed as runtime regression coverage.
+- The cross-layer focused set passed, and all workspace typechecks passed including the Operator
+  Desktop Rust build.
+- Repository docs, architecture, naming, tracked-env, secret, and diff guards passed.
+- Full repository suite: 304 of 304 suites and 2279 of 2279 tests passed; zero failed, pending, or
+  todo. Final machine-readable evidence is
+  `/private/tmp/ouroboros-research-control-outcome-final.json`.
+
+The completed frontier can adjudicate supplied terminal releases and replay the coordinator result
+without arm stores. It does not create those releases. Production paper-slot scheduling,
+replicated-campaign inference, allocation-policy replacement, automatic promotion, and champion
+runtime handoff remain open.

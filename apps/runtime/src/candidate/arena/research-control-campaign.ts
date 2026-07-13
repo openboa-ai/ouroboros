@@ -15,13 +15,17 @@ import {
   ResearchControlCampaignService,
   buildResearchControlCampaignReport,
   type ResearchControlCampaignArmEvidenceInput,
-  type ResearchControlCampaignCandidateClosure
+  type ResearchControlCampaignCandidateClosure,
+  type ResearchControlCampaignCommitRequest,
+  type ResearchControlCampaignPaperEvaluationProtocolInput
 } from "@ouroboros/application/candidate/research-control-campaign";
 import {
   ResearchControlCampaignOutcomeService,
-  type ResearchControlCampaignOutcomeArmEvidence,
-  type ResearchControlCampaignOutcomePaperClosure
+  type ResearchControlCampaignOutcomeArmEvidence
 } from "@ouroboros/application/candidate/research-control-campaign-outcome";
+import {
+  ResearchControlCampaignPaperScheduleService
+} from "@ouroboros/application/candidate/research-control-campaign-paper-schedule";
 import type { OuroborosStorePort } from "@ouroboros/application/ports/store";
 import {
   resolveCandidateArenaSourceArtifactDir,
@@ -47,28 +51,39 @@ import type { TradingResearchRuntimeAgent } from
   "@ouroboros/application/trading/research/runtime-config";
 import {
   paperTradingComparisonPersistedRecordDigestInput,
+  paperTradingComparisonRefsEqual,
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingComparisonTradingPromotionHasRuntimeShape,
+  researchControlCampaignPaperEvaluationProtocolDigestInput,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
   type ResearchControlCampaignBaselineSnapshot,
   type ResearchControlCampaignPaperComparator,
+  type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchControlCampaignSource,
   type ResearchControlCampaignOutcomeRecord,
-  type PaperTradingComparisonConfirmationCampaignRecord,
-  type PaperTradingComparisonConfirmationCampaignOutcomeRecord,
-  type PaperTradingComparisonResearchReleaseRecord
+  type ResearchControlCampaignPaperScheduleRecord,
+  type ResearchControlCampaignPaperSlotOutcomeRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import type {
+  ResearchControlCampaignPaperExecutor,
+  ResearchControlCampaignPaperExecutorStep
+} from "./research-control-campaign-paper-executor";
 
 const SNAPSHOT_EXCLUDED_COLLECTIONS = new Set([
   "research-control-campaigns",
   "research-control-campaign-arm-intents",
   "research-control-campaign-reports",
-  "research-control-campaign-outcomes"
+  "research-control-campaign-paper-schedules",
+  "research-control-campaign-paper-start-batches",
+  "research-control-campaign-paper-slot-outcomes",
+  "research-control-campaign-outcomes",
+  "research-control-studies",
+  "research-control-study-outcomes"
 ]);
 const DEFAULT_MAXIMUM_REGULAR_FILE_COUNT = 10_000;
 const DEFAULT_MAXIMUM_TOTAL_BYTES = 1_000_000_000;
@@ -87,6 +102,7 @@ export type ResearchControlCampaignRuntimeErrorCode =
   | "research_control_campaign_source_candidate_invalid"
   | "research_control_campaign_source_artifact_invalid"
   | "research_control_campaign_source_artifact_mismatch"
+  | "research_control_campaign_paper_protocol_invalid"
   | "research_control_campaign_agent_identity_mismatch"
   | "research_control_campaign_arm_tick_failed"
   | "research_control_campaign_arm_evidence_invalid"
@@ -126,13 +142,32 @@ export interface RunResearchControlCampaignInput {
   tickCountPerArm: number;
   maximumBaselineRegularFileCount?: number;
   maximumBaselineTotalBytes?: number;
+  paperEvaluationProtocol?: ResearchControlCampaignPaperEvaluationProtocolInput;
   now?: () => string;
   repoRoot?: string;
   artifactRunner?: TradingArtifactRunner;
   replayProviderFactory?: ReplayTradingApiProviderFactory;
+  paperExecutor?: Pick<ResearchControlCampaignPaperExecutor, "advance">;
   runTick?: (
     input: RunCandidateArenaTickInput
   ) => Promise<CandidateArenaTickOutcome>;
+}
+
+export interface PrepareResearchControlCampaignCommitRequestInput {
+  store: LocalStore;
+  idempotencyKey: string;
+  sourceCandidateId?: string;
+  researchAgentIdentity: ManagedResearchAgent;
+  tickCountPerArm: number;
+  maximumBaselineRegularFileCount?: number;
+  maximumBaselineTotalBytes?: number;
+  paperEvaluationProtocol?: ResearchControlCampaignPaperEvaluationProtocolInput;
+  repoRoot?: string;
+}
+
+export interface PreparedResearchControlCampaignCommitRequest {
+  request: ResearchControlCampaignCommitRequest;
+  sourceArtifactDirectory: string;
 }
 
 export interface ResearchControlCampaignWorkspacePaths {
@@ -146,20 +181,13 @@ export interface RunResearchControlCampaignOutcome
   extends ResearchControlCampaignWorkspacePaths {
   campaign: ResearchControlCampaignRecord;
   report: ResearchControlCampaignReportRecord;
+  paperStep?: ResearchControlCampaignPaperExecutorStep;
 }
 
 export interface ResearchControlCampaignOutcomeArmReader {
-  listPaperTradingComparisonResearchReleases(): Promise<
-    PaperTradingComparisonResearchReleaseRecord[]
-  >;
-  getPaperTradingComparisonConfirmationCampaign(
-    campaignId: string
-  ): Promise<PaperTradingComparisonConfirmationCampaignRecord | undefined>;
-  getPaperTradingComparisonConfirmationCampaignOutcome(
-    outcomeId: string
-  ): Promise<
-    PaperTradingComparisonConfirmationCampaignOutcomeRecord | undefined
-  >;
+  listResearchControlCampaignPaperSlotOutcomes(
+    scheduleId?: string
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord[]>;
 }
 
 export interface CollectResearchControlCampaignOutcomeInput {
@@ -341,6 +369,46 @@ export function researchControlCampaignWorkspacePaths(input: {
   };
 }
 
+export async function prepareResearchControlCampaignCommitRequest(
+  input: PrepareResearchControlCampaignCommitRequestInput
+): Promise<PreparedResearchControlCampaignCommitRequest> {
+  const sourceCandidateId = input.sourceCandidateId ?? FIXTURE_CANDIDATE_ID;
+  const repoRoot = input.repoRoot ?? process.cwd();
+  const maximumFileCount = input.maximumBaselineRegularFileCount ??
+    DEFAULT_MAXIMUM_REGULAR_FILE_COUNT;
+  const maximumBytes = input.maximumBaselineTotalBytes ??
+    DEFAULT_MAXIMUM_TOTAL_BYTES;
+  const baseline = await captureResearchControlCampaignSnapshot({
+    root: input.store.root(),
+    maximumRegularFileCount: maximumFileCount,
+    maximumTotalBytes: maximumBytes
+  });
+  const source = await resolveCampaignSource({
+    store: input.store,
+    candidateId: sourceCandidateId,
+    repoRoot
+  });
+  const paperComparator = await resolvePaperComparator(input.store);
+  const paperEvaluationProtocol = resolvePaperEvaluationProtocol(
+    paperComparator,
+    input.paperEvaluationProtocol
+  );
+  return {
+    request: {
+      idempotencyKey: input.idempotencyKey,
+      baseline,
+      source: source.source,
+      researchAgent: input.researchAgentIdentity,
+      paperComparator,
+      paperEvaluationProtocol,
+      tickCountPerArm: input.tickCountPerArm,
+      maximumBaselineRegularFileCount: maximumFileCount,
+      maximumBaselineTotalBytes: maximumBytes
+    },
+    sourceArtifactDirectory: source.artifactDirectory
+  };
+}
+
 export async function runResearchControlCampaign(
   input: RunResearchControlCampaignInput
 ): Promise<RunResearchControlCampaignOutcome> {
@@ -365,41 +433,42 @@ export async function runResearchControlCampaign(
   let sourceArtifactDirectory: string | undefined;
   if (existingCampaign) {
     campaign = existingCampaign;
+    const paperEvaluationProtocol = resolvePaperEvaluationProtocol(
+      campaign.paper_comparator,
+      input.paperEvaluationProtocol
+    );
     if (campaign.source.candidate_ref.id !== sourceCandidateId ||
       !campaignAgentMatches(campaign, input.researchAgentIdentity) ||
-      campaign.policy.tick_count_per_arm !== input.tickCountPerArm) {
+      campaign.policy.tick_count_per_arm !== input.tickCountPerArm ||
+      !paperEvaluationProtocolMatchesCampaign(
+        paperEvaluationProtocol,
+        campaign.paper_evaluation_protocol
+      )) {
       throw runtimeError(
         "research_control_campaign_workspace_conflict",
         "ResearchControlCampaign resume request conflicts with frozen intent."
       );
     }
   } else {
-    const baseline = await captureResearchControlCampaignSnapshot({
-      root: input.store.root(),
-      maximumRegularFileCount: maximumFileCount,
-      maximumTotalBytes: maximumBytes
-    });
-    const source = await resolveCampaignSource({
+    const prepared = await prepareResearchControlCampaignCommitRequest({
       store: input.store,
-      candidateId: sourceCandidateId,
+      idempotencyKey: input.idempotencyKey,
+      sourceCandidateId,
+      researchAgentIdentity: input.researchAgentIdentity,
+      tickCountPerArm: input.tickCountPerArm,
+      maximumBaselineRegularFileCount: maximumFileCount,
+      maximumBaselineTotalBytes: maximumBytes,
+      ...(input.paperEvaluationProtocol
+        ? { paperEvaluationProtocol: input.paperEvaluationProtocol }
+        : {}),
       repoRoot
     });
-    sourceArtifactDirectory = source.artifactDirectory;
+    sourceArtifactDirectory = prepared.sourceArtifactDirectory;
     const service = new ResearchControlCampaignService({
       store: input.store,
       now: input.now
     });
-    const paperComparator = await resolvePaperComparator(input.store);
-    campaign = await service.commit({
-      idempotencyKey: input.idempotencyKey,
-      baseline,
-      source: source.source,
-      researchAgent: input.researchAgentIdentity,
-      paperComparator,
-      tickCountPerArm: input.tickCountPerArm,
-      maximumBaselineRegularFileCount: maximumFileCount,
-      maximumBaselineTotalBytes: maximumBytes
-    });
+    campaign = await service.commit(prepared.request);
   }
 
   const paths = researchControlCampaignWorkspacePaths({
@@ -411,7 +480,23 @@ export async function runResearchControlCampaign(
     .find((report) => report.campaign_ref.id ===
       campaign.research_control_campaign_id);
   if (existingReport) {
-    return { ...paths, campaign, report: existingReport };
+    const schedule = await commitResearchControlCampaignPaperSchedule(
+      input.store,
+      campaign,
+      existingReport,
+      input.now
+    );
+    const paperStep = await advanceResearchControlCampaignPaperExecutor(
+      input.paperExecutor,
+      campaign,
+      schedule
+    );
+    return {
+      ...paths,
+      campaign,
+      report: existingReport,
+      ...(paperStep ? { paperStep } : {})
+    };
   }
 
   if (!sourceArtifactDirectory && !await pathExists(paths.sourceArtifactRoot)) {
@@ -521,7 +606,50 @@ export async function runResearchControlCampaign(
     completedAt
   });
   await coordinatorService.recordReport(report);
-  return { ...paths, campaign, report };
+  const schedule = await commitResearchControlCampaignPaperSchedule(
+    input.store,
+    campaign,
+    report,
+    input.now
+  );
+  const paperStep = await advanceResearchControlCampaignPaperExecutor(
+    input.paperExecutor,
+    campaign,
+    schedule
+  );
+  return {
+    ...paths,
+    campaign,
+    report,
+    ...(paperStep ? { paperStep } : {})
+  };
+}
+
+async function commitResearchControlCampaignPaperSchedule(
+  store: OuroborosStorePort,
+  campaign: ResearchControlCampaignRecord,
+  report: ResearchControlCampaignReportRecord,
+  now: (() => string) | undefined
+): Promise<ResearchControlCampaignPaperScheduleRecord | undefined> {
+  if (campaign.paper_evaluation_protocol.protocol_status === "unavailable") {
+    return undefined;
+  }
+  const service = new ResearchControlCampaignPaperScheduleService({
+    store,
+    ...(now ? { now } : {})
+  });
+  return service.commit({ campaign, report });
+}
+
+async function advanceResearchControlCampaignPaperExecutor(
+  executor: Pick<ResearchControlCampaignPaperExecutor, "advance"> | undefined,
+  campaign: ResearchControlCampaignRecord,
+  schedule: ResearchControlCampaignPaperScheduleRecord | undefined
+): Promise<ResearchControlCampaignPaperExecutorStep | undefined> {
+  if (!executor || !schedule) return undefined;
+  return executor.advance({
+    campaignId: campaign.research_control_campaign_id
+  });
 }
 
 export async function collectResearchControlCampaignOutcome(
@@ -552,6 +680,30 @@ export async function collectResearchControlCampaignOutcome(
     );
   }
   const report = reports[0]!;
+  const schedules = (
+    await input.store.listResearchControlCampaignPaperSchedules()
+  ).filter((schedule: ResearchControlCampaignPaperScheduleRecord) =>
+    paperTradingComparisonRefsEqual(schedule.campaign_ref, {
+      record_kind: "research_control_campaign",
+      id: campaign.research_control_campaign_id
+    }) && paperTradingComparisonRefsEqual(schedule.report_ref, {
+      record_kind: "research_control_campaign_report",
+      id: report.research_control_campaign_report_id
+    })
+  );
+  if (schedules.length === 0) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_not_found",
+      "ResearchControlCampaign outcome source paper schedule was not found."
+    );
+  }
+  if (schedules.length !== 1) {
+    throw runtimeError(
+      "research_control_campaign_outcome_source_ambiguous",
+      "ResearchControlCampaign outcome source paper schedule is ambiguous."
+    );
+  }
+  const schedule = schedules[0]!;
   const paths = researchControlCampaignWorkspacePaths({
     workspaceRoot: input.workspaceRoot,
     campaignId: campaign.research_control_campaign_id,
@@ -563,7 +715,7 @@ export async function collectResearchControlCampaignOutcome(
   });
 
   try {
-    const replay = await outcomeService.replay({ campaign, report });
+    const replay = await outcomeService.replay({ campaign, report, schedule });
     if (replay) return { ...paths, campaign, report, outcome: replay };
 
     const openArmStore = input.openArmStore ?? ((root: string) =>
@@ -574,6 +726,8 @@ export async function collectResearchControlCampaignOutcome(
     ] = [
       await collectArmOutcomeEvidence(
         report.arms[0],
+        schedule.arms[0],
+        schedule,
         openArmStore(
           paths.armRoots.adaptive_treatment,
           "adaptive_treatment"
@@ -581,10 +735,24 @@ export async function collectResearchControlCampaignOutcome(
       ),
       await collectArmOutcomeEvidence(
         report.arms[1],
+        schedule.arms[1],
+        schedule,
         openArmStore(paths.armRoots.static_control, "static_control")
       )
     ];
-    const outcome = await outcomeService.adjudicate({ campaign, report, arms });
+    for (const slotOutcome of arms.flatMap((arm) => arm.slotOutcomes)) {
+      const recorded = await input.store
+        .replicateResearchControlCampaignPaperSlotOutcome(slotOutcome);
+      if (!isDeepStrictEqual(recorded, slotOutcome)) {
+        throw new Error("paper_slot_outcome_persistence_mismatch");
+      }
+    }
+    const outcome = await outcomeService.adjudicate({
+      campaign,
+      report,
+      schedule,
+      arms
+    });
     return { ...paths, campaign, report, outcome };
   } catch (error) {
     if (error instanceof ResearchControlCampaignRuntimeError) throw error;
@@ -598,72 +766,62 @@ export async function collectResearchControlCampaignOutcome(
 
 async function collectArmOutcomeEvidence(
   reportArm: ResearchControlCampaignReportRecord["arms"][number],
+  scheduleArm: ResearchControlCampaignPaperScheduleRecord["arms"][number],
+  schedule: ResearchControlCampaignPaperScheduleRecord,
   store: ResearchControlCampaignOutcomeArmReader
 ): Promise<ResearchControlCampaignOutcomeArmEvidence> {
-  const releases = await store.listPaperTradingComparisonResearchReleases();
-  const paperClosures: ResearchControlCampaignOutcomePaperClosure[] = [];
-  for (const slot of reportArm.paper_candidate_slots) {
-    if (slot.status === "no_admitted_candidate") continue;
-    const matches = releases.filter((release) =>
-      release.candidate_ref.record_kind === slot.candidate_ref.record_kind &&
-      release.candidate_ref.id === slot.candidate_ref.id &&
-      release.candidate_version_ref.record_kind ===
-        slot.candidate_version_ref.record_kind &&
-      release.candidate_version_ref.id === slot.candidate_version_ref.id &&
-      release.system_code_ref.record_kind === slot.system_code_ref.record_kind &&
-      release.system_code_ref.id === slot.system_code_ref.id &&
-      release.system_code_artifact_digest === slot.system_code_artifact_digest
+  if (scheduleArm.arm_kind !== reportArm.arm_kind) {
+    throw runtimeError(
+      "research_control_campaign_outcome_evidence_invalid",
+      "ResearchControlCampaign paper schedule arm does not match its report."
+    );
+  }
+  const outcomes = await store.listResearchControlCampaignPaperSlotOutcomes(
+    schedule.research_control_campaign_paper_schedule_id
+  );
+  if (outcomes.some((outcome) => outcome.arm_kind !== reportArm.arm_kind ||
+    !paperTradingComparisonRefsEqual(outcome.schedule_ref, {
+      record_kind: "research_control_campaign_paper_schedule",
+      id: schedule.research_control_campaign_paper_schedule_id
+    }))) {
+    throw runtimeError(
+      "research_control_campaign_outcome_evidence_invalid",
+      "ResearchControlCampaign arm returned an outcome outside its schedule."
+    );
+  }
+  const slotOutcomes: ResearchControlCampaignPaperSlotOutcomeRecord[] = [];
+  for (const slot of scheduleArm.slots) {
+    if (slot.slot_status === "no_admitted_candidate") continue;
+    const matches = outcomes.filter((outcome) =>
+      outcome.sequence === slot.sequence &&
+      paperTradingComparisonRefsEqual(outcome.tick_ref, slot.tick_ref)
     );
     if (matches.length === 0) {
       throw runtimeError(
         "research_control_campaign_outcome_evidence_incomplete",
-        "ResearchControlCampaign reserved paper slot has no terminal release.",
+        "ResearchControlCampaign reserved paper slot has no terminal outcome.",
         { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
       );
     }
     if (matches.length !== 1) {
       throw runtimeError(
         "research_control_campaign_outcome_evidence_ambiguous",
-        "ResearchControlCampaign reserved paper slot has multiple terminal releases.",
+        "ResearchControlCampaign reserved paper slot has multiple terminal outcomes.",
         { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
       );
     }
-    const researchRelease = matches[0]!;
-    if (researchRelease.campaign_ref.record_kind !==
-        "paper_trading_comparison_confirmation_campaign" ||
-      researchRelease.campaign_outcome_ref.record_kind !==
-        "paper_trading_comparison_confirmation_campaign_outcome") {
-      throw runtimeError(
-        "research_control_campaign_outcome_evidence_invalid",
-        "ResearchControlCampaign terminal release references are malformed."
-      );
-    }
-    const [confirmationCampaign, confirmationOutcome] = await Promise.all([
-      store.getPaperTradingComparisonConfirmationCampaign(
-        researchRelease.campaign_ref.id
-      ),
-      store.getPaperTradingComparisonConfirmationCampaignOutcome(
-        researchRelease.campaign_outcome_ref.id
-      )
-    ]);
-    if (!confirmationCampaign || !confirmationOutcome) {
-      throw runtimeError(
-        "research_control_campaign_outcome_evidence_incomplete",
-        "ResearchControlCampaign terminal release closure is incomplete.",
-        { arm_kind: reportArm.arm_kind, sequence: slot.sequence }
-      );
-    }
-    paperClosures.push({
-      sequence: slot.sequence,
-      tickRef: { ...slot.tick_ref },
-      confirmationCampaign,
-      confirmationOutcome,
-      researchRelease
-    });
+    slotOutcomes.push(matches[0]!);
+  }
+  if (slotOutcomes.length !== outcomes.length) {
+    throw runtimeError(
+      "research_control_campaign_outcome_evidence_ambiguous",
+      "ResearchControlCampaign arm returned an unscheduled terminal outcome.",
+      { arm_kind: reportArm.arm_kind }
+    );
   }
   return {
     armKind: reportArm.arm_kind,
-    paperClosures
+    slotOutcomes
   };
 }
 
@@ -698,6 +856,43 @@ async function resolvePaperComparator(
       ...promotion.paper_trading_evaluation_ref
     }
   };
+}
+
+function resolvePaperEvaluationProtocol(
+  comparator: ResearchControlCampaignPaperComparator,
+  configured: ResearchControlCampaignPaperEvaluationProtocolInput | undefined
+): ResearchControlCampaignPaperEvaluationProtocolInput {
+  if (configured) return structuredClone(configured);
+  if (comparator.comparator_status === "unavailable") {
+    return {
+      protocol_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    };
+  }
+  throw runtimeError(
+    "research_control_campaign_paper_protocol_invalid",
+    "Trading review ResearchControlCampaign requires explicit paper protocol configuration."
+  );
+}
+
+function paperEvaluationProtocolMatchesCampaign(
+  requested: ResearchControlCampaignPaperEvaluationProtocolInput,
+  persisted: ResearchControlCampaignPaperEvaluationProtocol
+): boolean {
+  if (requested.protocol_status === "unavailable") {
+    return isDeepStrictEqual(requested, persisted);
+  }
+  const expected: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  > = {
+    ...structuredClone(requested),
+    protocol_digest: `sha256:${"0".repeat(64)}`
+  };
+  expected.protocol_digest = canonicalDigest(
+    researchControlCampaignPaperEvaluationProtocolDigestInput(expected)
+  );
+  return isDeepStrictEqual(expected, persisted);
 }
 
 async function captureRegularFile(

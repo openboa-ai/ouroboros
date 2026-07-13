@@ -37,6 +37,7 @@ describe("ResearchControlCampaignOutcome", () => {
       admitted_candidate_slot_count: 1,
       no_admitted_candidate_count: 1,
       qualified_discovery_count: 0,
+      source_not_improved_count: 0,
       not_reproduced_count: 1,
       evidence_ineligible_count: 0,
       paper_slot_expired_count: 0,
@@ -52,6 +53,7 @@ describe("ResearchControlCampaignOutcome", () => {
       admitted_candidate_slot_count: 2,
       no_admitted_candidate_count: 0,
       qualified_discovery_count: 1,
+      source_not_improved_count: 0,
       not_reproduced_count: 0,
       evidence_ineligible_count: 1,
       paper_slot_expired_count: 0,
@@ -63,7 +65,7 @@ describe("ResearchControlCampaignOutcome", () => {
     expect(researchControlCampaignOutcomeHasRuntimeShape(outcome)).toBe(true);
   });
 
-  it("makes an all-no-candidate policy absence explicit", () => {
+  it("keeps the pre-effect policy bound when every slot has no candidate", () => {
     const outcome = outcomeFixture();
     for (const arm of outcome.arms) {
       arm.slot_results = [
@@ -75,14 +77,13 @@ describe("ResearchControlCampaignOutcome", () => {
         admitted_candidate_slot_count: 0,
         no_admitted_candidate_count: 2,
         qualified_discovery_count: 0,
+        source_not_improved_count: 0,
         not_reproduced_count: 0,
         evidence_ineligible_count: 0,
         paper_slot_expired_count: 0,
         qualified_discovery_rate: 0
       };
     }
-    outcome.shared_evaluation_policy_status =
-      "not_applicable_no_reserved_candidates";
     outcome.observed_rate_difference = 0;
     outcome.observed_result = "rates_equal";
 
@@ -97,7 +98,7 @@ describe("ResearchControlCampaignOutcome", () => {
     if (changedSlot.terminal_status === "no_admitted_candidate") {
       throw new Error("fixture_expected_paper_slot");
     }
-    changedSlot.research_release_digest = digest("9");
+    changedSlot.paper_slot_outcome_digest = digest("9");
 
     expect(researchControlCampaignOutcomeDigestInput(changed)).not.toBe(
       baselineInput
@@ -114,6 +115,9 @@ describe("ResearchControlCampaignOutcome", () => {
     }],
     ["malformed comparator digest", (value: any) => {
       value.paper_comparator.trading_promotion_digest = "sha256:short";
+    }],
+    ["malformed schedule ref", (value: any) => {
+      value.schedule_ref.record_kind = "research_control_campaign_report";
     }],
     ["missing shared policy", (value: any) => {
       delete value.shared_evaluation_policy_digest;
@@ -136,14 +140,14 @@ describe("ResearchControlCampaignOutcome", () => {
       value.arms[0].slot_results[1].tick_ref =
         value.arms[0].slot_results[0].tick_ref;
     }],
-    ["duplicate release", (value: any) => {
-      value.arms[1].slot_results[1].research_release_ref =
-        value.arms[1].slot_results[0].research_release_ref;
+    ["duplicate slot outcome", (value: any) => {
+      value.arms[1].slot_results[1].paper_slot_outcome_ref =
+        value.arms[1].slot_results[0].paper_slot_outcome_ref;
     }],
     ["no candidate with paper evidence", (value: any) => {
-      value.arms[0].slot_results[1].research_release_ref = {
-        record_kind: "paper_trading_comparison_research_release",
-        id: "forbidden-release"
+      value.arms[0].slot_results[1].paper_slot_outcome_ref = {
+        record_kind: "research_control_campaign_paper_slot_outcome",
+        id: "forbidden-slot-outcome"
       };
     }],
     ["qualified slot without credit", (value: any) => {
@@ -152,8 +156,9 @@ describe("ResearchControlCampaignOutcome", () => {
     ["nonqualified slot with credit", (value: any) => {
       value.arms[1].slot_results[0].discovery_credit = 1;
     }],
-    ["release kind mismatch", (value: any) => {
-      value.arms[1].slot_results[0].release_kind = "confirmed_improvement";
+    ["slot outcome ref malformed", (value: any) => {
+      value.arms[1].slot_results[0].paper_slot_outcome_ref.record_kind =
+        "paper_trading_comparison_research_release";
     }],
     ["candidate ref malformed", (value: any) => {
       value.arms[0].slot_results[0].candidate_ref.record_kind =
@@ -212,6 +217,11 @@ function outcomeFixture(): ResearchControlCampaignOutcomeRecord {
       id: "research-control-campaign-report-001"
     },
     report_digest: digest("2"),
+    schedule_ref: {
+      record_kind: "research_control_campaign_paper_schedule",
+      id: "research-control-campaign-paper-schedule-001"
+    },
+    schedule_digest: digest("c"),
     paper_comparator: {
       comparator_status: "trading_review",
       trading_promotion_ref: {
@@ -247,6 +257,7 @@ function outcomeFixture(): ResearchControlCampaignOutcomeRecord {
           admitted_candidate_slot_count: 1,
           no_admitted_candidate_count: 1,
           qualified_discovery_count: 1,
+          source_not_improved_count: 0,
           not_reproduced_count: 0,
           evidence_ineligible_count: 0,
           paper_slot_expired_count: 0,
@@ -257,7 +268,7 @@ function outcomeFixture(): ResearchControlCampaignOutcomeRecord {
         arm_kind: "static_control",
         allocation_mode: "static_control",
         slot_results: [
-          paperSlot("static", 1, "not_reproduced"),
+          paperSlot("static", 1, "source_not_improved"),
           paperSlot("static", 2, "evidence_ineligible")
         ],
         metrics: {
@@ -265,7 +276,8 @@ function outcomeFixture(): ResearchControlCampaignOutcomeRecord {
           admitted_candidate_slot_count: 2,
           no_admitted_candidate_count: 0,
           qualified_discovery_count: 0,
-          not_reproduced_count: 1,
+          source_not_improved_count: 1,
+          not_reproduced_count: 0,
           evidence_ineligible_count: 1,
           paper_slot_expired_count: 0,
           qualified_discovery_rate: 0
@@ -292,16 +304,11 @@ function paperSlot(
   sequence: number,
   status:
     | "qualified_improvement"
+    | "source_not_improved"
     | "not_reproduced"
     | "evidence_ineligible"
     | "paper_slot_expired"
 ): ResearchControlCampaignOutcomeRecord["arms"][number]["slot_results"][number] {
-  const releaseKind = {
-    qualified_improvement: "confirmed_improvement",
-    not_reproduced: "challenger_not_reproduced",
-    evidence_ineligible: "comparison_evidence_ineligible",
-    paper_slot_expired: "campaign_slot_expired"
-  } as const;
   return {
     sequence,
     tick_ref: {
@@ -322,22 +329,11 @@ function paperSlot(
       id: `${prefix}-code-${sequence}`
     },
     system_code_artifact_digest: digest(prefix === "adaptive" ? "6" : "7"),
-    confirmation_campaign_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign",
-      id: `${prefix}-confirmation-${sequence}`
+    paper_slot_outcome_ref: {
+      record_kind: "research_control_campaign_paper_slot_outcome",
+      id: `${prefix}-slot-outcome-${sequence}`
     },
-    confirmation_campaign_digest: digest("8"),
-    confirmation_outcome_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
-      id: `${prefix}-confirmation-outcome-${sequence}`
-    },
-    confirmation_outcome_digest: digest("9"),
-    research_release_ref: {
-      record_kind: "paper_trading_comparison_research_release",
-      id: `${prefix}-release-${sequence}`
-    },
-    research_release_digest: digest("a"),
-    release_kind: releaseKind[status],
+    paper_slot_outcome_digest: digest("a"),
     discovery_credit: status === "qualified_improvement" ? 1 : 0
   };
 }

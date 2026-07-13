@@ -95,8 +95,9 @@ of five directions with at most two focus lanes and at least one exploration lan
 two; focus and exploration receive two and one experiment iterations respectively within a total
 budget of five; completed allocations drive exploration coverage; and `static_control` provides an
 equal-bound `2`, `2`, `1` ablation. This does not complete the Adaptive allocation axis or the Goal:
-provider-dollar cost, learned allocation, controlled discovery-yield results, and the remaining
-completion evidence are still open.
+each allocation now also seals explicit-request, repository-default, or exact approved-decision
+provenance. Provider-dollar cost, learned policy parameters, actual controlled discovery-yield
+results, and the remaining completion evidence are still open.
 
 Current partial implementation evidence now also covers the first controlled allocation execution
 boundary. `ResearchControlCampaign` commits one exact LocalStore baseline, source SystemCode record,
@@ -105,9 +106,32 @@ submission bounds, and exact adaptive/static tick IDs before effects. The runtim
 baseline independently into two arm stores, executes matching sequences concurrently, reuses only
 exact completed ticks after restart, and leaves the primary Arena population untouched. Its report
 conserves arm outcomes and resource proxies, embeds campaign-only diversity, and reserves the first
-admitted candidate per tick. The primary outcome remains `unadjudicated`; these research diagnostics
-do not prove allocation lift. Public scheduling of reserved candidates into prospective qualified
-paper comparisons and campaign outcome adjudication remain open.
+admitted candidate per tick. The campaign freezes the current Trading review comparator before arm
+effects and commits a deterministic paper schedule after the exact report. An internal bounded
+executor prepares every candidate-bearing source batch before market effects, uses one shared public
+market/execution snapshot for matched arm ticks, enforces strict confirmation deadlines, and records
+one terminal slot outcome for every source, expiry, or confirmation path. A separate append-only
+`ResearchControlCampaignOutcome` validates those exact slot outcomes under one shared paper policy.
+Every precommitted slot remains in the denominator and only `qualified_improvement` receives
+qualified-discovery credit. The research report itself remains `unadjudicated`, one outcome cannot
+claim causal allocation lift or replace policy. `ResearchControlStudy` now precommits 6 to 30 exact
+same-baseline campaign identities and one paired exact sign-test policy before any planned campaign
+exists. `ResearchControlStudyOutcome` requires all planned terminal campaign outcomes with no early
+stopping, and limits any supported effect to same-baseline stochastic repetitions plus eligibility
+for a separate policy decision. The internal study runtime now resumes the earliest incomplete
+campaign, drives it through terminal paper outcome, and repeats sequentially until exact
+adjudication without a duplicate progress record. A separate append-only
+`ResearchAllocationPolicyDecision` now approves only the exact studied adaptive policy after an
+eligible supported outcome; unsupported and underpowered outcomes remain not approved and never
+select static control. Uncontrolled ticks prefer the latest applicable exact approval, then the
+repository adaptive fallback, while explicit directions and modes always win. Default process
+discovery is now available as an explicitly owned, single-process, one-shot supervisor that drains
+incomplete studies oldest first and rescans exact evidence. Each copied arm can now be opened as an
+exact LocalStore with its own paper-session service and composed into the existing comparison,
+qualification, confirmation, and release protocol. Confirmation advances one persisted transition
+at a time and propagates exact wake times; restart stops rather than adopts unowned attempts. Server
+auto-start, cross-process leasing, actual replicated study evidence, distinct-regime inference,
+automatic decision creation, and learned policy parameters remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized
@@ -160,7 +184,8 @@ This does not complete external evaluation, P0, or the Goal. A bounded hidden se
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
 clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
-and AI-agent ablations, production comparison scheduling, automatic promotion, champion runner handoff,
+and AI-agent ablations, executed adaptive/static studies across regimes, deployed always-on paper
+execution, automatic promotion, champion runner handoff,
 private/live authority, and the other completion axes remain open.
 
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a

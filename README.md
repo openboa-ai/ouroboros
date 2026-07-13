@@ -82,8 +82,50 @@ composition. It seals one bounded LocalStore baseline plus the actual single-fil
 then clones independent `adaptive_default` and `static_control` stores and runs their exact tick
 sequences concurrently by sequence. The append-only report records admission, duplicate, failure,
 diversity, and efficiency diagnostics and reserves the first admitted candidate per tick for future
-paper evidence. It deliberately has `unadjudicated` primary outcome and no winner. There is not yet
-a public operator command, paper-slot scheduler, or campaign outcome adjudicator.
+paper evidence. It deliberately has `unadjudicated` primary outcome and no winner. Before arm
+effects, the campaign also freezes the exact current Trading review comparator or explicit
+unavailability. A bound campaign now commits one deterministic
+`ResearchControlCampaignPaperSchedule`. The internal bounded paper executor can install that graph
+in candidate-bearing arm stores, prepare matched source comparisons, seal shared first-tick market
+and public-execution evidence in a `ResearchControlCampaignPaperStartBatch`, drive source and
+confirmation windows, and close every candidate slot with an exact
+`ResearchControlCampaignPaperSlotOutcome`. The outcome collector consumes those slot outcomes,
+counts every precommitted slot, credits only `qualified_improvement`, and persists one
+authority-closed single-campaign observation in the coordinator.
+`ResearchControlStudy` now precommits 6 to 30 deterministic campaign identities before any planned
+campaign exists, freezes their exact source/agent/comparator/paper/allocation condition on one
+baseline snapshot, and fixes a two-sided paired exact sign test with no early stopping.
+`ResearchControlStudyOutcome` consumes every planned terminal campaign outcome exactly once. Its
+only causal claim is over same-baseline stochastic repetitions; a supported adaptive effect makes a
+separate policy decision eligible but does not change allocation policy itself.
+`ResearchAllocationPolicyDecisionService` now creates that separate append-only research-only
+decision from the exact persisted study graph. Version 1 approves only an eligible
+`adaptive_effect_supported` outcome and binds the exact studied allocation-policy digest;
+non-supported or underpowered outcomes remain `not_approved` and never select static control. Each
+future allocation records an explicit-request, repository-default, or approved-decision basis.
+Uncontrolled ticks use the latest applicable exact approval, while caller-specified directions and
+adaptive/static modes always take precedence. LocalStore revalidates decision-backed provenance and
+time order before accepting the pre-effect allocation.
+`createResearchControlCampaignPaperRuntimeArm` composes each arm-local store and paper-session
+service into the existing comparison, activation, checkpoint, qualification, confirmation, and
+release services. Confirmation advances one restart-projectable transition per executor action and
+propagates exact window wake times to the runner instead of polling. Each arm has one runtime
+activation owner, and restart recovery stops rather than adopts an unowned running attempt.
+`createResearchControlCampaignPaperRuntime` then composes the source, confirmation, evidence,
+action, executor, and interruptible runner components, and `runResearchControlCampaign` can invoke
+one injected executor step.
+`createResearchControlStudyRuntime` now binds that campaign lifecycle into a sequential study
+executor and runner. Each advance completes or resumes only the earliest planned campaign, reloads
+its terminal closure, and adjudicates only after all replications; stop drains the active campaign.
+`ResearchControlStudyProcessSupervisor` can now discover incomplete committed studies oldest first,
+open one injected study runtime at a time, reload exact completion, and rescan until caught up.
+Failure does not skip later work, restart derives from append-only evidence, and stop drains the
+active campaign. The campaign-to-outcome runtime can now open root-specific arm stores and build
+those real arm services from an arm-local session factory. It is still an explicitly owned internal
+one-shot process, not server auto-start, long polling, a cross-process lease, or a public operator
+command. Policy-decision creation remains a separate service action rather than a study side
+effect; actual replicated study evidence,
+distinct-regime generalization, automatic TradingPromotion, and champion handoff remain outside.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
@@ -99,9 +141,9 @@ This isolation and diversity measurement reduce direct evaluator reuse and make 
 concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
 or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
-de-risking sequences, directed-versus-undirected and memory/baseline controls, prospective
-adaptive-versus-static paper adjudication, controlled discovery-yield and long-duration restart soak evidence,
-production comparison scheduling, automatic promotion, champion runner handoff, private/live
+de-risking sequences, directed-versus-undirected and memory/baseline controls, actually executed
+replicated study evidence across distinct regimes, controlled discovery-yield and long-duration
+restart soak evidence, deployed always-on paper execution, automatic promotion, champion runner handoff, private/live
 authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external

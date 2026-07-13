@@ -40,6 +40,7 @@ describe("ResearchControlCampaign", () => {
         id: "champion-paper-evaluation"
       }
     };
+    campaign.paper_evaluation_protocol = boundPaperProtocol();
 
     expect(researchControlCampaignHasRuntimeShape(campaign)).toBe(true);
   });
@@ -73,6 +74,12 @@ describe("ResearchControlCampaign", () => {
           }
         };
       },
+      (value) => {
+        value.paper_evaluation_protocol = {
+          protocol_status: "unavailable",
+          reason: "paper_configuration_unavailable_at_commitment"
+        };
+      },
       (value) => { value.arms[0]!.tick_ids[0] = "different-tick"; },
       (value) => { value.policy.tick_count_per_arm = 2; },
       (value) => { value.committed_at = "2026-07-12T12:00:00.000Z"; },
@@ -89,6 +96,9 @@ describe("ResearchControlCampaign", () => {
   it.each([
     ["extra winner field", (value: any) => { value.winner = "adaptive_treatment"; }],
     ["missing comparator", (value: any) => { delete value.paper_comparator; }],
+    ["missing paper protocol", (value: any) => {
+      delete value.paper_evaluation_protocol;
+    }],
     ["unknown comparator status", (value: any) => {
       value.paper_comparator.comparator_status = "select_later";
     }],
@@ -119,6 +129,35 @@ describe("ResearchControlCampaign", () => {
           id: "champion-evaluation"
         }
       };
+    }],
+    ["bound protocol without Trading review", (value: any) => {
+      value.paper_evaluation_protocol = boundPaperProtocol();
+    }],
+    ["Trading review without bound protocol", (value: any) => {
+      value.paper_comparator = tradingReviewComparator();
+    }],
+    ["bootstrap paper protocol", (value: any) => {
+      value.paper_comparator = tradingReviewComparator();
+      value.paper_evaluation_protocol = boundPaperProtocol();
+      value.paper_evaluation_protocol.comparison_policy.comparison_mode =
+        "bootstrap";
+    }],
+    ["paper protocol digest drift", (value: any) => {
+      value.paper_comparator = tradingReviewComparator();
+      value.paper_evaluation_protocol = boundPaperProtocol();
+      value.paper_evaluation_protocol.protocol_digest = "sha256:short";
+    }],
+    ["paper protocol cross-arm skew above pair bound", (value: any) => {
+      value.paper_comparator = tradingReviewComparator();
+      value.paper_evaluation_protocol = boundPaperProtocol();
+      value.paper_evaluation_protocol.schedule_policy
+        .maximum_cross_arm_first_tick_skew_ms = 5_001;
+    }],
+    ["paper protocol confirmation deadline drift", (value: any) => {
+      value.paper_comparator = tradingReviewComparator();
+      value.paper_evaluation_protocol = boundPaperProtocol();
+      value.paper_evaluation_protocol.schedule_policy
+        .confirmation_precommit_deadline_ms = 599_999;
     }],
     ["reversed arms", (value: any) => { value.arms.reverse(); }],
     ["unequal arm tick counts", (value: any) => { value.arms[1].tick_ids = []; }],
@@ -357,6 +396,10 @@ function campaignFixture(): ResearchControlCampaignRecord {
       comparator_status: "unavailable",
       reason: "no_trading_promotion_at_commitment"
     },
+    paper_evaluation_protocol: {
+      protocol_status: "unavailable",
+      reason: "no_trading_promotion_at_commitment"
+    },
     allocation_policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     allocation_policy_digest: digest("d"),
     arms: [
@@ -400,6 +443,76 @@ function campaignFixture(): ResearchControlCampaignRecord {
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "research_only"
+  };
+}
+
+function tradingReviewComparator() {
+  return {
+    comparator_status: "trading_review" as const,
+    trading_promotion_ref: {
+      record_kind: "trading_promotion",
+      id: "trading-promotion-001"
+    },
+    trading_promotion_digest: digest("8"),
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: "champion-candidate"
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: "champion-version"
+    },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: "champion-paper-evaluation"
+    }
+  };
+}
+
+function boundPaperProtocol() {
+  return {
+    protocol_status: "bound" as const,
+    comparison_policy: {
+      policy_version: "paper-comparison-v1",
+      comparison_mode: "champion_challenge" as const,
+      symbol: "BTCUSDT" as const,
+      interval_ms: 60_000,
+      minimum_observation_count: 2,
+      minimum_elapsed_ms: 60_000,
+      maximum_observation_count: 2,
+      maximum_elapsed_ms: 600_000,
+      maximum_start_skew_ms: 5_000,
+      maximum_provider_request_count_per_side: 100,
+      maximum_retry_count_per_side: 2,
+      primary_metric: "net_revenue_usdt" as const,
+      minimum_net_revenue_lift_usdt: 1,
+      required_confirmation_count: 2,
+      require_non_overlapping_windows: true as const,
+      require_both_qualified: true as const,
+      release_policy: "sealed_until_adjudication" as const
+    },
+    market_data_configuration_digest: digest("9"),
+    paper_policy_identity: {
+      market_data_policy_version: "market-v1",
+      gateway_policy_version: "gateway-v1",
+      cost_policy_version: "cost-v1",
+      funding_policy_version: "funding-v1",
+      slippage_policy_version: "slippage-v1",
+      fill_policy_version: "fill-v1",
+      risk_policy_version: "risk-v1",
+      paper_account_policy_version: "account-v1",
+      decision_event_protocol_version: "decision-v1",
+      persistent_state_boundary_version: "state-v1"
+    },
+    schedule_policy: {
+      policy_version: "research-control-paper-schedule-v1" as const,
+      source_start_order: "paired_by_sequence" as const,
+      maximum_active_source_pairs: 2 as const,
+      maximum_cross_arm_first_tick_skew_ms: 5_000,
+      source_missed_start_policy: "slot_expired" as const,
+      confirmation_precommit_deadline_ms: 600_000
+    },
+    protocol_digest: digest("a")
   };
 }
 

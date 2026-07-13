@@ -1,54 +1,54 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
-  paperTradingComparisonConfirmationCampaignDigestInput,
-  paperTradingComparisonConfirmationCampaignHasRuntimeShape,
-  paperTradingComparisonConfirmationCampaignOutcomeDigestInput,
-  paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
-  paperTradingComparisonResearchReleaseDigestInput,
-  paperTradingComparisonResearchReleaseHasRuntimeShape,
   researchControlCampaignDigestInput,
   researchControlCampaignHasRuntimeShape,
   researchControlCampaignOutcomeDigestInput,
   researchControlCampaignOutcomeHasRuntimeShape,
+  researchControlCampaignPaperEvaluationProtocolDigestInput,
+  researchControlCampaignPaperScheduleDigestInput,
+  researchControlCampaignPaperScheduleHasRuntimeShape,
+  researchControlCampaignPaperSlotOutcomeDigestInput,
+  researchControlCampaignPaperSlotOutcomeHasRuntimeShape,
   researchControlCampaignReportDigestInput,
   researchControlCampaignReportHasRuntimeShape,
-  type PaperTradingComparisonConfirmationCampaignOutcomeRecord,
-  type PaperTradingComparisonConfirmationCampaignRecord,
-  type PaperTradingComparisonResearchReleaseKind,
-  type PaperTradingComparisonResearchReleaseRecord,
-  type Ref,
   type ResearchControlCampaignArmKind,
   type ResearchControlCampaignOutcomeArm,
   type ResearchControlCampaignOutcomeArmMetrics,
   type ResearchControlCampaignOutcomeRecord,
   type ResearchControlCampaignOutcomeSlotResult,
   type ResearchControlCampaignPaperCandidateSlot,
+  type ResearchControlCampaignPaperScheduleArm,
+  type ResearchControlCampaignPaperScheduleRecord,
+  type ResearchControlCampaignPaperScheduleSlot,
+  type ResearchControlCampaignPaperSlotOutcomeRecord,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
-import { decidePaperTradingComparisonResearchRelease } from
-  "../trading/paper/comparison-research-release-decision";
 
-export interface ResearchControlCampaignOutcomePaperClosure {
-  sequence: number;
-  tickRef: Ref;
-  confirmationCampaign: PaperTradingComparisonConfirmationCampaignRecord;
-  confirmationOutcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord;
-  researchRelease: PaperTradingComparisonResearchReleaseRecord;
-}
+type BoundResearchControlCampaign = ResearchControlCampaignRecord & {
+  paper_comparator: Extract<
+    ResearchControlCampaignRecord["paper_comparator"],
+    { comparator_status: "trading_review" }
+  >;
+  paper_evaluation_protocol: Extract<
+    ResearchControlCampaignRecord["paper_evaluation_protocol"],
+    { protocol_status: "bound" }
+  >;
+};
 
 export interface ResearchControlCampaignOutcomeArmEvidence {
   armKind: ResearchControlCampaignArmKind;
-  paperClosures: ResearchControlCampaignOutcomePaperClosure[];
+  slotOutcomes: ResearchControlCampaignPaperSlotOutcomeRecord[];
 }
 
 export interface AdjudicateResearchControlCampaignOutcomeInput {
   campaign: ResearchControlCampaignRecord;
   report: ResearchControlCampaignReportRecord;
+  schedule: ResearchControlCampaignPaperScheduleRecord;
   arms: readonly [
     ResearchControlCampaignOutcomeArmEvidence,
     ResearchControlCampaignOutcomeArmEvidence
@@ -93,13 +93,22 @@ export class ResearchControlCampaignOutcomeService {
   async replay(input: {
     campaign: ResearchControlCampaignRecord;
     report: ResearchControlCampaignReportRecord;
+    schedule: ResearchControlCampaignPaperScheduleRecord;
   }): Promise<ResearchControlCampaignOutcomeRecord | undefined> {
     const existing = await this.options.store.getResearchControlCampaignOutcome(
       researchControlCampaignOutcomeId(input.report)
     );
     if (!existing) return undefined;
-    if (!outcomeMatchesGraph(existing, input.campaign, input.report) ||
-      !await this.storeGraphMatches(input.campaign, input.report)) {
+    if (!outcomeMatchesGraph(
+      existing,
+      input.campaign,
+      input.report,
+      input.schedule
+    ) || !await this.storeGraphMatches(
+      input.campaign,
+      input.report,
+      input.schedule
+    )) {
       throw new ResearchControlCampaignOutcomeServiceError(
         "research_control_campaign_outcome_conflict",
         "Persisted ResearchControlCampaignOutcome conflicts with its frozen graph."
@@ -113,11 +122,16 @@ export class ResearchControlCampaignOutcomeService {
   ): Promise<ResearchControlCampaignOutcomeRecord> {
     const replay = await this.replay({
       campaign: input.campaign,
-      report: input.report
+      report: input.report,
+      schedule: input.schedule
     });
     if (replay) return replay;
 
-    if (!await this.storeGraphMatches(input.campaign, input.report)) {
+    if (!await this.storeGraphMatches(
+      input.campaign,
+      input.report,
+      input.schedule
+    ) || !await this.slotOutcomesMatchStore(input.arms)) {
       throw new ResearchControlCampaignOutcomeServiceError(
         "research_control_campaign_outcome_graph_invalid",
         "ResearchControlCampaignOutcome source graph is absent or mismatched."
@@ -130,8 +144,12 @@ export class ResearchControlCampaignOutcomeService {
     const recorded = await this.options.store.recordResearchControlCampaignOutcome(
       outcome
     );
-    if (!isDeepStrictEqual(recorded, outcome) ||
-      !outcomeMatchesGraph(recorded, input.campaign, input.report)) {
+    if (!isDeepStrictEqual(recorded, outcome) || !outcomeMatchesGraph(
+      recorded,
+      input.campaign,
+      input.report,
+      input.schedule
+    )) {
       throw new ResearchControlCampaignOutcomeServiceError(
         "research_control_campaign_outcome_persistence_conflict",
         "Store did not preserve exact ResearchControlCampaignOutcome evidence."
@@ -142,18 +160,40 @@ export class ResearchControlCampaignOutcomeService {
 
   private async storeGraphMatches(
     campaign: ResearchControlCampaignRecord,
-    report: ResearchControlCampaignReportRecord
+    report: ResearchControlCampaignReportRecord,
+    schedule: ResearchControlCampaignPaperScheduleRecord
   ): Promise<boolean> {
-    const [storedCampaign, storedReport] = await Promise.all([
+    const [storedCampaign, storedReport, storedSchedule] = await Promise.all([
       this.options.store.getResearchControlCampaign(
         campaign.research_control_campaign_id
       ),
       this.options.store.getResearchControlCampaignReport(
         report.research_control_campaign_report_id
+      ),
+      this.options.store.getResearchControlCampaignPaperSchedule(
+        schedule.research_control_campaign_paper_schedule_id
       )
     ]);
     return isDeepStrictEqual(storedCampaign, campaign) &&
-      isDeepStrictEqual(storedReport, report);
+      isDeepStrictEqual(storedReport, report) &&
+      isDeepStrictEqual(storedSchedule, schedule);
+  }
+
+  private async slotOutcomesMatchStore(
+    arms: readonly [
+      ResearchControlCampaignOutcomeArmEvidence,
+      ResearchControlCampaignOutcomeArmEvidence
+    ]
+  ): Promise<boolean> {
+    const outcomes = arms.flatMap((arm) => arm.slotOutcomes);
+    const stored = await Promise.all(outcomes.map((outcome) =>
+      this.options.store.getResearchControlCampaignPaperSlotOutcome(
+        outcome.research_control_campaign_paper_slot_outcome_id
+      )
+    ));
+    return stored.every((record, index) =>
+      isDeepStrictEqual(record, outcomes[index])
+    );
   }
 }
 
@@ -163,7 +203,6 @@ export function adjudicateResearchControlCampaignOutcome(
   try {
     assertSourceGraph(input);
     const adjudicatedAt = canonicalTime(input.adjudicatedAt);
-    const policyDigests: string[] = [];
     const arms: [
       ResearchControlCampaignOutcomeArm,
       ResearchControlCampaignOutcomeArm
@@ -171,22 +210,18 @@ export function adjudicateResearchControlCampaignOutcome(
       buildOutcomeArm(
         input,
         input.report.arms[0],
+        input.schedule.arms[0],
         input.arms[0],
-        adjudicatedAt,
-        policyDigests
+        adjudicatedAt
       ),
       buildOutcomeArm(
         input,
         input.report.arms[1],
+        input.schedule.arms[1],
         input.arms[1],
-        adjudicatedAt,
-        policyDigests
+        adjudicatedAt
       )
     ];
-    if (new Set(policyDigests).size > 1) throw invalidDecision();
-    const sharedPolicyDigest = policyDigests[0] ?? canonicalDigest({
-      policy_status: "not_applicable_no_reserved_candidates"
-    });
     const observedRateDifference = round6(
       arms[0].metrics.qualified_discovery_rate -
         arms[1].metrics.qualified_discovery_rate
@@ -206,11 +241,15 @@ export function adjudicateResearchControlCampaignOutcome(
         id: input.report.research_control_campaign_report_id
       },
       report_digest: input.report.report_digest,
+      schedule_ref: {
+        record_kind: "research_control_campaign_paper_schedule",
+        id: input.schedule.research_control_campaign_paper_schedule_id
+      },
+      schedule_digest: input.schedule.schedule_digest,
       paper_comparator: structuredClone(input.campaign.paper_comparator),
-      shared_evaluation_policy_status: policyDigests.length === 0
-        ? "not_applicable_no_reserved_candidates"
-        : "bound",
-      shared_evaluation_policy_digest: sharedPolicyDigest,
+      shared_evaluation_policy_status: "bound",
+      shared_evaluation_policy_digest:
+        input.campaign.paper_evaluation_protocol.protocol_digest,
       arms,
       observed_rate_difference: observedRateDifference,
       observed_result: observedRateDifference > 0
@@ -254,83 +293,134 @@ export function researchControlCampaignOutcomeId(
 function assertSourceGraph(
   input: AdjudicateResearchControlCampaignOutcomeInput
 ): asserts input is AdjudicateResearchControlCampaignOutcomeInput & {
-  campaign: ResearchControlCampaignRecord & {
-    paper_comparator: Extract<
-      ResearchControlCampaignRecord["paper_comparator"],
-      { comparator_status: "trading_review" }
-    >;
-  };
+  campaign: BoundResearchControlCampaign;
 } {
   if (!input || !researchControlCampaignHasRuntimeShape(input.campaign) ||
     !researchControlCampaignReportHasRuntimeShape(input.report) ||
+    !researchControlCampaignPaperScheduleHasRuntimeShape(input.schedule) ||
     input.campaign.paper_comparator.comparator_status !== "trading_review" ||
+    input.campaign.paper_evaluation_protocol.protocol_status !== "bound" ||
     canonicalDigest(researchControlCampaignDigestInput(input.campaign)) !==
-      input.campaign.campaign_digest ||
+      input.campaign.campaign_digest || canonicalDigest(
+        researchControlCampaignPaperEvaluationProtocolDigestInput(
+          input.campaign.paper_evaluation_protocol
+        )
+      ) !== input.campaign.paper_evaluation_protocol.protocol_digest ||
     canonicalDigest(researchControlCampaignReportDigestInput(input.report)) !==
-      input.report.report_digest ||
+      input.report.report_digest || canonicalDigest(
+        researchControlCampaignPaperScheduleDigestInput(input.schedule)
+      ) !== input.schedule.schedule_digest ||
     !paperTradingComparisonRefsEqual(input.report.campaign_ref, {
       record_kind: "research_control_campaign",
       id: input.campaign.research_control_campaign_id
     }) || input.report.campaign_digest !== input.campaign.campaign_digest ||
-    input.report.arms.length !== input.campaign.arms.length ||
-    input.report.arms.some((arm, index) =>
-      arm.arm_kind !== input.campaign.arms[index]!.arm_kind ||
-      arm.allocation_mode !== input.campaign.arms[index]!.allocation_mode ||
-      arm.arm_intent_ref.id !== input.campaign.arms[index]!
-        .research_control_campaign_arm_intent_id ||
-      arm.paper_candidate_slots.length !==
-        input.campaign.policy.paper_candidate_slot_count_per_arm
-    ) || Date.parse(input.report.completed_at) <
-      Date.parse(input.campaign.committed_at) || !Array.isArray(input.arms) ||
-    input.arms.length !== 2 ||
+    !paperTradingComparisonRefsEqual(input.schedule.campaign_ref, {
+      record_kind: "research_control_campaign",
+      id: input.campaign.research_control_campaign_id
+    }) || input.schedule.campaign_digest !== input.campaign.campaign_digest ||
+    !paperTradingComparisonRefsEqual(input.schedule.report_ref, {
+      record_kind: "research_control_campaign_report",
+      id: input.report.research_control_campaign_report_id
+    }) || input.schedule.report_digest !== input.report.report_digest ||
+    !isDeepStrictEqual(
+      input.schedule.paper_comparator,
+      input.campaign.paper_comparator
+    ) || input.schedule.paper_evaluation_protocol_digest !==
+      input.campaign.paper_evaluation_protocol.protocol_digest ||
+    Date.parse(input.report.completed_at) <
+      Date.parse(input.campaign.committed_at) ||
+    Date.parse(input.schedule.committed_at) <
+      Date.parse(input.report.completed_at) ||
+    input.report.arms.some((reportArm, armIndex) =>
+      !scheduleArmMatchesReport(input.schedule.arms[armIndex]!, reportArm)
+    ) || !Array.isArray(input.arms) || input.arms.length !== 2 ||
     input.arms[0]?.armKind !== "adaptive_treatment" ||
     input.arms[1]?.armKind !== "static_control") {
     throw invalidDecision();
   }
 }
 
+function scheduleArmMatchesReport(
+  scheduleArm: ResearchControlCampaignPaperScheduleArm,
+  reportArm: ResearchControlCampaignReportRecord["arms"][number]
+): boolean {
+  return scheduleArm.arm_kind === reportArm.arm_kind &&
+    scheduleArm.slots.length === reportArm.paper_candidate_slots.length &&
+    scheduleArm.slots.every((slot, index) =>
+      scheduleSlotMatchesReport(slot, reportArm.paper_candidate_slots[index]!)
+    );
+}
+
+function scheduleSlotMatchesReport(
+  scheduleSlot: ResearchControlCampaignPaperScheduleSlot,
+  reportSlot: ResearchControlCampaignPaperCandidateSlot
+): boolean {
+  if (scheduleSlot.sequence !== reportSlot.sequence ||
+    !paperTradingComparisonRefsEqual(scheduleSlot.tick_ref, reportSlot.tick_ref) ||
+    scheduleSlot.slot_status === "no_admitted_candidate" ||
+    reportSlot.status === "no_admitted_candidate") {
+    return scheduleSlot.slot_status === "no_admitted_candidate" &&
+      reportSlot.status === "no_admitted_candidate";
+  }
+  return paperTradingComparisonRefsEqual(
+    scheduleSlot.candidate_ref,
+    reportSlot.candidate_ref
+  ) && paperTradingComparisonRefsEqual(
+    scheduleSlot.candidate_version_ref,
+    reportSlot.candidate_version_ref
+  ) && paperTradingComparisonRefsEqual(
+    scheduleSlot.system_code_ref,
+    reportSlot.system_code_ref
+  ) && scheduleSlot.system_code_artifact_digest ===
+    reportSlot.system_code_artifact_digest &&
+    paperTradingComparisonRefsEqual(
+      scheduleSlot.admission_decision_ref,
+      reportSlot.admission_decision_ref
+    );
+}
+
 function buildOutcomeArm(
   input: AdjudicateResearchControlCampaignOutcomeInput & {
-    campaign: ResearchControlCampaignRecord & {
-      paper_comparator: Extract<
-        ResearchControlCampaignRecord["paper_comparator"],
-        { comparator_status: "trading_review" }
-      >;
-    };
+    campaign: BoundResearchControlCampaign;
   },
   reportArm: ResearchControlCampaignReportRecord["arms"][number],
+  scheduleArm: ResearchControlCampaignPaperScheduleArm,
   evidence: ResearchControlCampaignOutcomeArmEvidence,
-  adjudicatedAt: string,
-  policyDigests: string[]
+  adjudicatedAt: string
 ): ResearchControlCampaignOutcomeArm {
   if (!evidence || evidence.armKind !== reportArm.arm_kind ||
-    !Array.isArray(evidence.paperClosures)) {
+    scheduleArm.arm_kind !== reportArm.arm_kind ||
+    !Array.isArray(evidence.slotOutcomes)) {
     throw invalidDecision();
   }
-  const closures = uniqueClosureMap(evidence.paperClosures);
-  const slotResults = reportArm.paper_candidate_slots.map((slot) => {
-    const key = closureKey(slot.sequence, slot.tick_ref);
-    const closure = closures.get(key);
-    if (slot.status === "no_admitted_candidate") {
-      if (closure) throw invalidDecision();
+  const outcomes = uniqueOutcomeMap(evidence.slotOutcomes);
+  const slotResults = reportArm.paper_candidate_slots.map((reportSlot, index) => {
+    const scheduleSlot = scheduleArm.slots[index]!;
+    const key = slotKey(reportSlot.sequence, reportSlot.tick_ref);
+    const slotOutcome = outcomes.get(key);
+    if (reportSlot.status === "no_admitted_candidate") {
+      if (slotOutcome || scheduleSlot.slot_status !== "no_admitted_candidate") {
+        throw invalidDecision();
+      }
       return {
-        sequence: slot.sequence,
-        tick_ref: { ...slot.tick_ref },
+        sequence: reportSlot.sequence,
+        tick_ref: { ...reportSlot.tick_ref },
         terminal_status: "no_admitted_candidate",
         discovery_credit: 0
       } satisfies ResearchControlCampaignOutcomeSlotResult;
     }
-    if (!closure) throw invalidDecision();
-    closures.delete(key);
+    if (!slotOutcome || scheduleSlot.slot_status !== "candidate_scheduled") {
+      throw invalidDecision();
+    }
+    outcomes.delete(key);
     return buildPaperSlotResult(
-      input,
-      slot,
-      closure,
-      adjudicatedAt,
-      policyDigests
+      input.schedule,
+      scheduleSlot,
+      slotOutcome,
+      adjudicatedAt
     );
   });
-  if (closures.size !== 0) throw invalidDecision();
+  if (outcomes.size !== 0) throw invalidDecision();
   return {
     arm_kind: reportArm.arm_kind,
     allocation_mode: reportArm.allocation_mode,
@@ -340,185 +430,61 @@ function buildOutcomeArm(
 }
 
 function buildPaperSlotResult(
-  input: AdjudicateResearchControlCampaignOutcomeInput & {
-    campaign: ResearchControlCampaignRecord & {
-      paper_comparator: Extract<
-        ResearchControlCampaignRecord["paper_comparator"],
-        { comparator_status: "trading_review" }
-      >;
-    };
-  },
+  schedule: ResearchControlCampaignPaperScheduleRecord,
   slot: Extract<
-    ResearchControlCampaignPaperCandidateSlot,
-    { status: "candidate_reserved" }
+    ResearchControlCampaignPaperScheduleSlot,
+    { slot_status: "candidate_scheduled" }
   >,
-  closure: ResearchControlCampaignOutcomePaperClosure,
-  adjudicatedAt: string,
-  policyDigests: string[]
+  outcome: ResearchControlCampaignPaperSlotOutcomeRecord,
+  adjudicatedAt: string
 ): ResearchControlCampaignOutcomeSlotResult {
-  const confirmationCampaign = closure.confirmationCampaign;
-  const confirmationOutcome = closure.confirmationOutcome;
-  const release = closure.researchRelease;
-  if (!paperTradingComparisonConfirmationCampaignHasRuntimeShape(
-    confirmationCampaign
-  ) || !paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape(
-    confirmationOutcome
-  ) || !paperTradingComparisonResearchReleaseHasRuntimeShape(release) ||
-    canonicalDigest(paperTradingComparisonConfirmationCampaignDigestInput(
-      confirmationCampaign
-    )) !== confirmationCampaign.campaign_digest ||
+  if (!researchControlCampaignPaperSlotOutcomeHasRuntimeShape(outcome) ||
     canonicalDigest(
-      paperTradingComparisonConfirmationCampaignOutcomeDigestInput(
-        confirmationOutcome
-      )
-    ) !== confirmationOutcome.outcome_digest ||
-    canonicalDigest(paperTradingComparisonResearchReleaseDigestInput(release)) !==
-      release.release_digest ||
-    confirmationCampaign.comparison_policy.comparison_mode !==
-      "champion_challenge" ||
-    confirmationCampaign.champion_selection.selection_kind !==
-      "trading_review" ||
+      researchControlCampaignPaperSlotOutcomeDigestInput(outcome)
+    ) !== outcome.slot_outcome_digest ||
+    !paperTradingComparisonRefsEqual(outcome.schedule_ref, {
+      record_kind: "research_control_campaign_paper_schedule",
+      id: schedule.research_control_campaign_paper_schedule_id
+    }) || outcome.schedule_digest !== schedule.schedule_digest ||
+    outcome.sequence !== slot.sequence ||
+    !paperTradingComparisonRefsEqual(outcome.tick_ref, slot.tick_ref) ||
+    !paperTradingComparisonRefsEqual(outcome.candidate_ref, slot.candidate_ref) ||
     !paperTradingComparisonRefsEqual(
-      confirmationCampaign.champion_selection.trading_promotion_ref,
-      input.campaign.paper_comparator.trading_promotion_ref
-    ) || confirmationCampaign.champion_selection.trading_promotion_digest !==
-      input.campaign.paper_comparator.trading_promotion_digest ||
+      outcome.candidate_version_ref,
+      slot.candidate_version_ref
+    ) || !paperTradingComparisonRefsEqual(
+      outcome.system_code_ref,
+      slot.system_code_ref
+    ) || outcome.system_code_artifact_digest !==
+      slot.system_code_artifact_digest ||
     !paperTradingComparisonRefsEqual(
-      confirmationCampaign.champion_selection.paper_trading_evaluation_ref,
-      input.campaign.paper_comparator.paper_trading_evaluation_ref
-    ) || !sideMatchesComparator(
-      confirmationCampaign.champion,
-      input.campaign.paper_comparator
-    ) || !sideMatchesSlot(confirmationCampaign.challenger, slot) ||
-    !paperTradingComparisonRefsEqual(confirmationOutcome.campaign_ref, {
-      record_kind: "paper_trading_comparison_confirmation_campaign",
-      id: confirmationCampaign
-        .paper_trading_comparison_confirmation_campaign_id
-    }) || confirmationOutcome.campaign_digest !==
-      confirmationCampaign.campaign_digest ||
-    !paperTradingComparisonRefsEqual(release.campaign_ref,
-      confirmationOutcome.campaign_ref) ||
-    release.campaign_digest !== confirmationCampaign.campaign_digest ||
-    !paperTradingComparisonRefsEqual(release.campaign_outcome_ref, {
-      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
-      id: confirmationOutcome
-        .paper_trading_comparison_confirmation_campaign_outcome_id
-    }) || release.campaign_outcome_digest !== confirmationOutcome.outcome_digest ||
-    !releaseMatchesSlot(release, slot) ||
-    release.release_kind !== expectedReleaseKind(confirmationOutcome) ||
-    Date.parse(confirmationCampaign.committed_at) <
-      Date.parse(input.report.completed_at) ||
-    Date.parse(confirmationOutcome.evaluated_at) <
-      Date.parse(confirmationCampaign.committed_at) ||
-    Date.parse(release.released_at) < Date.parse(confirmationOutcome.evaluated_at) ||
-    Date.parse(adjudicatedAt) < Date.parse(release.released_at)) {
+      outcome.admission_decision_ref,
+      slot.admission_decision_ref
+    ) || outcome.source_comparison_idempotency_key !==
+      slot.source_comparison_idempotency_key ||
+    outcome.source_preparation_id !== slot.source_preparation_id ||
+    outcome.source_comparison_commitment_id !==
+      slot.source_comparison_commitment_id ||
+    Date.parse(outcome.terminal_at) < Date.parse(schedule.committed_at) ||
+    Date.parse(adjudicatedAt) < Date.parse(outcome.terminal_at)) {
     throw invalidDecision();
   }
-
-  const policyDigest = canonicalDigest({
-    comparison_policy: confirmationCampaign.comparison_policy,
-    market_data_configuration_digest:
-      confirmationCampaign.market_data_configuration_digest,
-    paper_policy_identity: confirmationCampaign.paper_policy_identity
-  });
-  policyDigests.push(policyDigest);
-  const terminal = releaseTerminal(release.release_kind);
+  const terminalStatus = outcome.terminal_evidence.terminal_status;
   return {
     sequence: slot.sequence,
     tick_ref: { ...slot.tick_ref },
-    terminal_status: terminal.status,
+    terminal_status: terminalStatus,
     candidate_ref: { ...slot.candidate_ref },
     candidate_version_ref: { ...slot.candidate_version_ref },
     system_code_ref: { ...slot.system_code_ref },
     system_code_artifact_digest: slot.system_code_artifact_digest,
-    confirmation_campaign_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign",
-      id: confirmationCampaign.paper_trading_comparison_confirmation_campaign_id
+    paper_slot_outcome_ref: {
+      record_kind: "research_control_campaign_paper_slot_outcome",
+      id: outcome.research_control_campaign_paper_slot_outcome_id
     },
-    confirmation_campaign_digest: confirmationCampaign.campaign_digest,
-    confirmation_outcome_ref: {
-      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
-      id: confirmationOutcome
-        .paper_trading_comparison_confirmation_campaign_outcome_id
-    },
-    confirmation_outcome_digest: confirmationOutcome.outcome_digest,
-    research_release_ref: {
-      record_kind: "paper_trading_comparison_research_release",
-      id: release.paper_trading_comparison_research_release_id
-    },
-    research_release_digest: release.release_digest,
-    release_kind: release.release_kind,
-    discovery_credit: terminal.discoveryCredit
+    paper_slot_outcome_digest: outcome.slot_outcome_digest,
+    discovery_credit: terminalStatus === "qualified_improvement" ? 1 : 0
   };
-}
-
-function sideMatchesComparator(
-  side: PaperTradingComparisonConfirmationCampaignRecord["champion"],
-  comparator: Extract<
-    ResearchControlCampaignRecord["paper_comparator"],
-    { comparator_status: "trading_review" }
-  >
-): boolean {
-  return paperTradingComparisonRefsEqual(side.candidate_ref, comparator.candidate_ref) &&
-    paperTradingComparisonRefsEqual(
-      side.candidate_version_ref,
-      comparator.candidate_version_ref
-    );
-}
-
-function sideMatchesSlot(
-  side: PaperTradingComparisonConfirmationCampaignRecord["challenger"],
-  slot: Extract<
-    ResearchControlCampaignPaperCandidateSlot,
-    { status: "candidate_reserved" }
-  >
-): boolean {
-  return paperTradingComparisonRefsEqual(side.candidate_ref, slot.candidate_ref) &&
-    paperTradingComparisonRefsEqual(
-      side.candidate_version_ref,
-      slot.candidate_version_ref
-    ) && paperTradingComparisonRefsEqual(side.system_code_ref, slot.system_code_ref) &&
-    side.system_code_artifact_digest === slot.system_code_artifact_digest;
-}
-
-function releaseMatchesSlot(
-  release: PaperTradingComparisonResearchReleaseRecord,
-  slot: Extract<
-    ResearchControlCampaignPaperCandidateSlot,
-    { status: "candidate_reserved" }
-  >
-): boolean {
-  return paperTradingComparisonRefsEqual(release.candidate_ref, slot.candidate_ref) &&
-    paperTradingComparisonRefsEqual(
-      release.candidate_version_ref,
-      slot.candidate_version_ref
-    ) && paperTradingComparisonRefsEqual(release.system_code_ref, slot.system_code_ref) &&
-    release.system_code_artifact_digest === slot.system_code_artifact_digest;
-}
-
-function expectedReleaseKind(
-  outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
-): PaperTradingComparisonResearchReleaseKind {
-  return decidePaperTradingComparisonResearchRelease(outcome).release_kind;
-}
-
-function releaseTerminal(kind: PaperTradingComparisonResearchReleaseKind): {
-  status: Exclude<
-    ResearchControlCampaignOutcomeSlotResult["terminal_status"],
-    "no_admitted_candidate"
-  >;
-  discoveryCredit: 0 | 1;
-} {
-  switch (kind) {
-    case "confirmed_improvement":
-      return { status: "qualified_improvement", discoveryCredit: 1 };
-    case "challenger_not_reproduced":
-      return { status: "not_reproduced", discoveryCredit: 0 };
-    case "comparison_evidence_ineligible":
-      return { status: "evidence_ineligible", discoveryCredit: 0 };
-    case "campaign_slot_expired":
-      return { status: "paper_slot_expired", discoveryCredit: 0 };
-  }
 }
 
 function buildMetrics(
@@ -533,6 +499,7 @@ function buildMetrics(
     admitted_candidate_slot_count: slots.length - noCandidate,
     no_admitted_candidate_count: noCandidate,
     qualified_discovery_count: qualified,
+    source_not_improved_count: count("source_not_improved"),
     not_reproduced_count: count("not_reproduced"),
     evidence_ineligible_count: count("evidence_ineligible"),
     paper_slot_expired_count: count("paper_slot_expired"),
@@ -540,23 +507,31 @@ function buildMetrics(
   };
 }
 
-function uniqueClosureMap(
-  closures: ResearchControlCampaignOutcomePaperClosure[]
-): Map<string, ResearchControlCampaignOutcomePaperClosure> {
-  const result = new Map<string, ResearchControlCampaignOutcomePaperClosure>();
-  for (const closure of closures) {
-    if (!closure || !Number.isInteger(closure.sequence) || closure.sequence < 1) {
+function uniqueOutcomeMap(
+  outcomes: ResearchControlCampaignPaperSlotOutcomeRecord[]
+): Map<string, ResearchControlCampaignPaperSlotOutcomeRecord> {
+  const result = new Map<string, ResearchControlCampaignPaperSlotOutcomeRecord>();
+  const ids = new Set<string>();
+  for (const outcome of outcomes) {
+    if (!outcome || ids.has(
+      outcome.research_control_campaign_paper_slot_outcome_id
+    )) {
       throw invalidDecision();
     }
-    const key = closureKey(closure.sequence, closure.tickRef);
+    const key = slotKey(outcome.sequence, outcome.tick_ref);
     if (result.has(key)) throw invalidDecision();
-    result.set(key, closure);
+    ids.add(outcome.research_control_campaign_paper_slot_outcome_id);
+    result.set(key, outcome);
   }
   return result;
 }
 
-function closureKey(sequence: number, tickRef: Ref): string {
-  if (!tickRef || tickRef.record_kind !== "candidate_arena_tick" ||
+function slotKey(
+  sequence: number,
+  tickRef: { record_kind: string; id: string }
+): string {
+  if (!Number.isInteger(sequence) || sequence < 1 ||
+    tickRef?.record_kind !== "candidate_arena_tick" ||
     !canonicalStringOrUndefined(tickRef.id)) {
     throw invalidDecision();
   }
@@ -566,7 +541,8 @@ function closureKey(sequence: number, tickRef: Ref): string {
 function outcomeMatchesGraph(
   outcome: ResearchControlCampaignOutcomeRecord,
   campaign: ResearchControlCampaignRecord,
-  report: ResearchControlCampaignReportRecord
+  report: ResearchControlCampaignReportRecord,
+  schedule: ResearchControlCampaignPaperScheduleRecord
 ): boolean {
   return researchControlCampaignOutcomeHasRuntimeShape(outcome) &&
     canonicalDigest(researchControlCampaignOutcomeDigestInput(outcome)) ===
@@ -581,6 +557,10 @@ function outcomeMatchesGraph(
       record_kind: "research_control_campaign_report",
       id: report.research_control_campaign_report_id
     }) && outcome.report_digest === report.report_digest &&
+    paperTradingComparisonRefsEqual(outcome.schedule_ref, {
+      record_kind: "research_control_campaign_paper_schedule",
+      id: schedule.research_control_campaign_paper_schedule_id
+    }) && outcome.schedule_digest === schedule.schedule_digest &&
     isDeepStrictEqual(outcome.paper_comparator, campaign.paper_comparator);
 }
 
@@ -621,7 +601,7 @@ function canonicalTime(value: unknown): string {
 }
 
 function round6(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
+  return Number(value.toFixed(6));
 }
 
 function invalidDecision(): ResearchControlCampaignOutcomeDecisionError {

@@ -61,6 +61,10 @@ persisted schema names. Any future public or persisted fields require a separate
 | `ResearchBehaviorFingerprint` | No raw cross-candidate observations; generic duplicate Finding after close | Yes | No; may exclude an exact admitted duplicate | No |
 | `ResearchPopulationDiversity` | Aggregate counts and entropy only; no raw identity or evaluator evidence | Yes, as concentration context only | No | No |
 | `ResearchControlCampaign` research report | Arm diagnostics and precommitted candidate slots only; no winner or paper outcome | No, until a separate terminal paper release | No retroactive admission | No |
+| `ResearchControlCampaignOutcome` | No raw paper records; exact refs, digests, slot classifications, and bounded arm rates only | Yes, after every slot is terminal | No retroactive admission | Records released qualification evidence but grants no promotion |
+| `ResearchControlStudy` | Exact planned campaign identities and frozen condition only; no outcomes | No, until every planned outcome closes | No | No |
+| `ResearchControlStudyOutcome` | Aggregate counts, mean difference, exact sign p-value, bounded inference, and refs/digests only | Yes, within same-baseline causal scope | No | No; may only enable a separate policy decision |
+| `ResearchAllocationPolicyDecision` | Exact study/outcome refs, digests, bounded status, and research-policy authority only | Yes, as future allocation provenance | No | No; never selects promotion or live authority |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
 | Paper research-feedback window | Yes after each declared release point | Yes | Already admitted | No |
@@ -109,11 +113,45 @@ collections to avoid self-reference; candidate, Finding, Lineage, checkpoint, du
 and artifact state remain covered. The actual single-file research source is sealed and copied
 separately so compatibility SystemCode artifact identifiers cannot masquerade as the bytes used by
 both arms. Each arm has its own LocalStore, worker state, candidate artifacts, and exact tick IDs.
-The primary store retains only campaign, coordinator arm intents, and the terminal report, not arm
-ticks or candidates. The report may compare research diagnostics and reserve one deterministic
-candidate slot per tick, but it fixes `unadjudicated` and
-`not_available_from_research_phase`. Only future prospective comparison, qualification, verdict,
-confirmation, and release evidence may adjudicate those slots.
+The primary store retains campaign, coordinator arm intents, the terminal report, the deterministic
+paper schedule, compact start-batch witnesses, replicated terminal slot outcomes, and the aggregate
+outcome. Arm ticks, candidates, TradingRuns, and Ledger evidence stay in their owning arm store. The
+report may compare research diagnostics and reserve one deterministic candidate slot per tick, but
+it fixes `unadjudicated` and `not_available_from_research_phase`. Before effects the campaign freezes
+the exact Trading review comparator or explicit unavailability. After the report, the schedule binds
+every source identity and deadline before paper effects. Matched source ticks consume one shared
+public market/execution snapshot, while a `ResearchControlCampaignPaperStartBatch` records only the
+cross-arm fairness witness rather than copying peer runtime graphs. Source verdicts, missed
+deadlines, and strict confirmation ResearchReleases each close through one exact
+`ResearchControlCampaignPaperSlotOutcome`. `ResearchControlCampaignOutcome` accepts only a complete
+set of those schedule-owned terminal outcomes under the frozen comparator and policy. No-candidate,
+ineligible, expired, source-not-improved, and non-reproduced slots remain in the denominator; only
+`qualified_improvement` receives credit. The outcome fixes `single_campaign_observation_only` and
+cannot replace allocation policy, promote, submit orders, or gain live authority.
+`ResearchControlStudy` must exist before all of its 6 to 30 deterministic campaign identities. It
+freezes one exact campaign condition and baseline snapshot plus a two-sided paired exact sign-test
+policy. Every planned campaign outcome enters `ResearchControlStudyOutcome` once; ties remain in the
+mean but leave the sign test, and no outcome-aware inclusion or early stopping is allowed. A
+supported adaptive effect has `same_baseline_stochastic_replication_only` causal scope and grants
+only `eligible_for_separate_policy_decision`. It never mutates allocation policy or creates trading
+authority.
+`ResearchAllocationPolicyDecision` separately reloads that exact graph. Version 1 approves only an
+eligible supported adaptive effect for the exact studied policy digest. Non-supported or
+underpowered evidence records `not_approved` with no effective mode and cannot select static
+control. Uncontrolled ticks resolve explicit caller intent first, then the latest applicable exact
+approval, then the repository adaptive fallback. The chosen basis enters the pre-effect allocation
+digest and read model, and LocalStore independently rejects forged, stale, or time-inverted decision
+provenance.
+The internal study executor derives the next action from that exact evidence graph. It runs or
+resumes only the earliest incomplete campaign, requires its terminal paper outcome before the next
+replication, and invokes study adjudication only after full closure. The sequential runner can drain
+an active campaign and stop between replications; no mutable StudyRun progress record participates
+in evidence or recovery.
+The internal `ResearchControlStudyProcessSupervisor` discovers incomplete studies from exact
+study/outcome lists, orders them by commitment time and ID, opens one injected study runtime, and
+rescans only after exact persisted completion. It does not skip a failed earlier study or create a
+policy decision. Version 1 is one-shot and single-process; server auto-start, polling, and
+cross-process leases are outside the evidence contract.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
 contiguous stable-worker link, current and cumulative development submission counts, zero remaining
@@ -473,7 +511,8 @@ The following current surfaces require implementation work before P0 can pass:
   bounded policy selects three default lanes with at most two focus and at least one exploration,
   runs no more than two workers concurrently, applies focus/exploration budgets of two/one within
   five total experiments, counts only completed tick-bound allocations for exploration coverage,
-  and exposes an equal-bound static control. ResearchWorkers now have stable logical identity by
+  and exposes an equal-bound static control. Every allocation seals explicit-request,
+  repository-default, or exact approved-decision provenance. ResearchWorkers now have stable logical identity by
   direction/provider/model/profile, a stable workspace, sanitized per-tick notebook continuity,
   closed cumulative budget history, and restart-safe orphan reconciliation. Provider-process and
   sandbox adoption, worker-chosen experiment sequencing, provider-dollar cost, and learned
@@ -481,8 +520,22 @@ The following current surfaces require implementation work before P0 can pass:
 - `ResearchControlCampaign` now composes an actual isolated adaptive/static run from one verified
   store and source-artifact baseline. Campaign and arm intent precede effects; sequence-paired arms
   wait for both settlements; restart reuses exact completed ticks and runs only missing ticks; and
-  a terminal research report freezes diagnostics plus future paper slots without a winner. Public
-  paper-slot scheduling, prospective outcome adjudication, and policy replacement remain open.
+  a terminal research report freezes diagnostics plus future paper slots without a winner. The
+  internal bounded executor now commits the deterministic schedule, installs exact arm graphs,
+  seals shared-snapshot start batches, drives source and confirmation paths one persisted action at
+  a time, and records every candidate terminal path as an arm-local slot outcome. The collector
+  validates and replicates those exact outcomes, counts every slot, and persists one non-causal
+  adaptive/static observation that survives later arm-store loss. The replicated study contract now
+  precommits every exact campaign, enforces no early stopping, applies a fixed exact sign test, and
+  persists the same-baseline aggregate outcome. The internal study runtime now derives exact
+  progress and can execute those campaigns sequentially through adjudication. Default process
+  discovery now drains incomplete studies deterministically through one explicitly owned process.
+  Each arm can now be composed from its exact LocalStore plus an arm-local paper-session service;
+  the real comparison services advance confirmation one persisted transition at a time and preserve
+  exact wake times through the campaign runner. Server auto-start, cross-process leasing, actual
+  replicated study evidence, distinct-regime inference, learned policy parameters, and automatic
+  policy-decision creation remain open. The separate one-sided exact adaptive policy decision and
+  future-allocation provenance path are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -498,8 +551,13 @@ The following current surfaces require implementation work before P0 can pass:
   trajectories remain distinct, assigned labels and exact observed behavior remain orthogonal,
   cross-suite evidence is incomparable, and entropy changes no allocation, rank, admission,
   qualification, or promotion policy. Directed/undirected, memory/no-memory, and agent/baseline
-  controls remain open. Adaptive/static arm execution exists, but its prospective qualified outcome
-  is still open.
+  controls remain open. Adaptive/static arm execution, prospective paper-slot execution, and one
+  terminal outcome contract exist internally, and the replicated same-baseline inference contract
+  plus its sequential executor are implemented. The separate exact-digest adaptive policy decision
+  and explicit/repository/decision allocation provenance are also implemented. An internal
+  single-owner process can now discover and drain committed studies. Actual prospective study
+  evidence, server auto-start, cross-process ownership, distinct-regime inference, and learned
+  allocation remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
 
@@ -554,7 +612,8 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    bounded symmetric runtime activation/recovery, atomic paired checkpoints through sequence 3,
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
    implemented and validated; read-only paired qualification and sealed single-window adjudication
-   are also implemented internally, while production comparison and runner composition remain.
+   are also implemented internally. Arm-local comparison/session composition and the bounded
+   campaign runner are implemented; deployed scheduling and prospective study evidence remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
@@ -588,12 +647,15 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
    changes actual three-of-five selection, concurrency, and experiment budgets before effects;
    completed allocation history preserves exploration and static control supplies an equal-bound
-   ablation. Stable ResearchWorker workspace identity, bounded sanitized notebook continuity,
+   ablation. A separate exact-digest policy decision can now supply evidence-backed provenance to
+   an uncontrolled adaptive tick without overriding explicit modes or treating non-significance as
+   static superiority. Stable ResearchWorker workspace identity, bounded sanitized notebook continuity,
    append-only budget closure, and fail-closed restart reconciliation are implemented. Durable
    provider-process/sandbox adoption, worker-chosen sequencing, provider-dollar cost, learned
    allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
-   verdict, multi-window confirmation campaign, ResearchRelease, and explicit comparison-backed
-   TradingPromotion are proven, while production composition, longer soak evidence, durable worker
-   process adoption, and full P0 evidence remain.
+   verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
+   TradingPromotion, and arm-local runtime composition are proven, while deployed scheduling,
+   prospective replicated-study evidence, longer soak evidence, durable worker process adoption,
+   and full P0 evidence remain.

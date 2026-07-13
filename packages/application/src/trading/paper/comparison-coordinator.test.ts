@@ -18,7 +18,9 @@ import {
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTickAcknowledgementDigestInput,
-  paperTradingEvaluationCommitmentDigestInput
+  paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingEvaluationCommitmentDigestInput,
+  researchControlCampaignReportDigestInput
 } from "@ouroboros/domain";
 import type {
   CandidateAdmissionDecisionRecord,
@@ -39,6 +41,11 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
   ResearchFindingRecord,
+  ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignPaperScheduleRecord,
+  ResearchControlCampaignRecord,
+  ResearchControlCampaignReportRecord,
+  ResearchPopulationDiversityReadModel,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingPromotionRecord,
@@ -54,6 +61,12 @@ import {
   PAPER_TRADING_EVALUATION_POLICY_IDENTITY_V1,
   paperTradingMarketDataConfigurationDigest
 } from "./commitment";
+import {
+  decideResearchControlCampaign,
+  decideResearchControlCampaignArmIntent
+} from "../../candidate/research-control-campaign";
+import { decideResearchControlCampaignPaperSchedule } from
+  "../../candidate/research-control-campaign-paper-schedule";
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
 import { qualifyPaperTradingEvaluation } from "./qualification";
 import { PaperTradingSessionService } from "./session-service";
@@ -107,6 +120,48 @@ afterEach(async () => {
 });
 
 describe("PaperTradingComparisonCoordinator", () => {
+  it("accepts the exact precommitted research source reservation", async () => {
+    const fixture = await comparisonFixture({
+      strictChallengerArtifactDigest: true
+    });
+    const schedule = await installResearchControlPaperSchedule(fixture);
+    const slot = schedule.arms[0].slots[0]!;
+    if (slot.slot_status !== "candidate_scheduled") {
+      throw new Error("fixture_expected_scheduled_candidate");
+    }
+    fixture.input.idempotencyKey = slot.source_comparison_idempotency_key;
+
+    const prepared = await fixture.coordinator.prepare(fixture.input);
+
+    expect(prepared.preparation.paper_trading_comparison_preparation_id)
+      .toBe(slot.source_preparation_id);
+    expect(prepared.commitment.paper_trading_comparison_commitment_id)
+      .toBe(slot.source_comparison_commitment_id);
+  });
+
+  it("rejects an arbitrary research source identity before TradingRun allocation", async () => {
+    const fixture = await comparisonFixture({
+      strictChallengerArtifactDigest: true
+    });
+    await installResearchControlPaperSchedule(fixture);
+    const championRunsBefore = await fixture.store.listTradingRunsForCandidateVersion(
+      fixture.input.champion.candidateVersionId
+    );
+    const challengerRunsBefore = await fixture.store.listTradingRunsForCandidateVersion(
+      fixture.input.challenger.candidateVersionId
+    );
+
+    await expect(fixture.coordinator.prepare(fixture.input)).rejects.toMatchObject({
+      code: "research_control_campaign_paper_schedule_source_conflict"
+    });
+    await expect(fixture.store.listTradingRunsForCandidateVersion(
+      fixture.input.champion.candidateVersionId
+    )).resolves.toEqual(championRunsBefore);
+    await expect(fixture.store.listTradingRunsForCandidateVersion(
+      fixture.input.challenger.candidateVersionId
+    )).resolves.toEqual(challengerRunsBefore);
+  });
+
   it("prepares and verifies two inert qualification sides before sealing the pair", async () => {
     const fixture = await comparisonFixture();
     const championDefaultRunId = fixture.champion.runtime.ref.id;
@@ -3056,6 +3111,7 @@ interface ComparisonFixtureOptions {
   preAdmissionQualification?: boolean;
   reversePromotionObservationTime?: boolean;
   challengerSystemCodeAfterAdmission?: boolean;
+  strictChallengerArtifactDigest?: boolean;
   comparisonPolicy?: Partial<PaperTradingComparisonPolicy>;
 }
 
@@ -3202,7 +3258,8 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     : comparisonChallengerSystemCode(
         options.challengerSystemCodeAfterAdmission
           ? "2026-07-09T20:57:00.000Z"
-          : "2026-07-09T20:50:00.000Z"
+          : "2026-07-09T20:50:00.000Z",
+        options.strictChallengerArtifactDigest ?? false
       );
   if (!challengerCode) {
     throw new Error("comparison challenger SystemCode was not found");
@@ -3443,6 +3500,304 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
     marketData,
     input,
     effects
+  };
+}
+
+async function installResearchControlPaperSchedule(
+  fixture: Awaited<ReturnType<typeof comparisonFixture>>
+): Promise<ResearchControlCampaignPaperScheduleRecord> {
+  const challengerSystemCodeRef = fixture.challenger.system_code?.ref;
+  if (!challengerSystemCodeRef) {
+    throw new Error("fixture challenger SystemCode ref was not materialized");
+  }
+  const challengerSystemCode = await fixture.store.getSystemCode(
+    challengerSystemCodeRef.id
+  );
+  if (!challengerSystemCode) {
+    throw new Error("fixture challenger SystemCode was not persisted");
+  }
+  const promotionDigest = comparisonExactRecordDigest(
+    paperTradingComparisonTradingPromotionDigestInput(fixture.promotion)
+  );
+  const campaign = decideResearchControlCampaign({
+    idempotencyKey: "comparison-coordinator-paper-schedule",
+    baseline: {
+      protocol_version: "local_store_regular_files_v1",
+      snapshot_digest: comparisonExactRecordDigest("schedule-baseline"),
+      regular_file_count: 1,
+      total_bytes: 1,
+      exclusion_policy: "research_control_campaign_evidence_only"
+    },
+    source: {
+      candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: fixture.challenger.candidate_id
+      },
+      candidate_version_ref: {
+        record_kind: "candidate_version",
+        id: fixture.challenger.candidate_version.candidate_version_id
+      },
+      system_code_ref: {
+        record_kind: "system_code",
+        id: challengerSystemCode.system_code_id
+      },
+      system_code_artifact_digest: challengerSystemCode.artifact_digest,
+      system_code_record_digest: comparisonExactRecordDigest(
+        paperTradingComparisonSystemCodeRecordDigestInput(challengerSystemCode)
+      ),
+      research_artifact_protocol: "single_file_python_v1",
+      research_artifact_closure_digest:
+        comparisonExactRecordDigest("schedule-source-closure")
+    },
+    researchAgent: {
+      id: "comparison-schedule-fixture",
+      provider: "fixture",
+      permission_policy: "fixture_only"
+    },
+    paperComparator: {
+      comparator_status: "trading_review",
+      trading_promotion_ref: {
+        record_kind: "trading_promotion",
+        id: fixture.promotion.trading_promotion_id
+      },
+      trading_promotion_digest: promotionDigest,
+      candidate_ref: { ...fixture.promotion.candidate_ref },
+      candidate_version_ref: { ...fixture.promotion.candidate_version_ref },
+      paper_trading_evaluation_ref: {
+        ...fixture.promotion.paper_trading_evaluation_ref
+      }
+    },
+    paperEvaluationProtocol: {
+      protocol_status: "bound",
+      comparison_policy: structuredClone(fixture.input.comparisonPolicy),
+      market_data_configuration_digest:
+        fixture.input.marketDataConfigurationDigest,
+      paper_policy_identity: structuredClone(fixture.input.paperPolicyIdentity),
+      schedule_policy: {
+        policy_version: "research-control-paper-schedule-v1",
+        source_start_order: "paired_by_sequence",
+        maximum_active_source_pairs: 2,
+        maximum_cross_arm_first_tick_skew_ms:
+          fixture.input.comparisonPolicy.maximum_start_skew_ms,
+        source_missed_start_policy: "slot_expired",
+        confirmation_precommit_deadline_ms:
+          fixture.input.comparisonPolicy.maximum_elapsed_ms
+      }
+    },
+    tickCountPerArm: 1,
+    committedAt: "2026-07-10T00:00:01.000Z"
+  });
+  const adaptiveIntent = decideResearchControlCampaignArmIntent({
+    campaign,
+    armKind: "adaptive_treatment",
+    committedAt: "2026-07-10T00:00:02.000Z"
+  });
+  const staticIntent = decideResearchControlCampaignArmIntent({
+    campaign,
+    armKind: "static_control",
+    committedAt: "2026-07-10T00:00:02.000Z"
+  });
+  const report = researchControlScheduleReport(
+    campaign,
+    adaptiveIntent,
+    staticIntent,
+    fixture,
+    challengerSystemCode
+  );
+  await fixture.store.recordResearchControlCampaign(campaign);
+  await fixture.store.recordResearchControlCampaignArmIntent(adaptiveIntent);
+  await fixture.store.recordResearchControlCampaignArmIntent(staticIntent);
+  await fixture.store.recordResearchControlCampaignReport(report);
+  const schedule = decideResearchControlCampaignPaperSchedule({
+    campaign,
+    report,
+    committedAt: "2026-07-10T00:00:09.000Z"
+  });
+  await fixture.store.recordResearchControlCampaignPaperSchedule(schedule);
+  return schedule;
+}
+
+function researchControlScheduleReport(
+  campaign: ResearchControlCampaignRecord,
+  adaptiveIntent: ResearchControlCampaignArmIntentRecord,
+  staticIntent: ResearchControlCampaignArmIntentRecord,
+  fixture: Awaited<ReturnType<typeof comparisonFixture>>,
+  challengerSystemCode: SystemCodeRecord
+): ResearchControlCampaignReportRecord {
+  const report: ResearchControlCampaignReportRecord = {
+    record_kind: "research_control_campaign_report",
+    version: 1,
+    research_control_campaign_report_id:
+      "research-control-campaign-report-comparison-schedule",
+    campaign_ref: {
+      record_kind: "research_control_campaign",
+      id: campaign.research_control_campaign_id
+    },
+    campaign_digest: campaign.campaign_digest,
+    arms: [
+      researchControlScheduleReportArm(adaptiveIntent, {
+        candidateId: fixture.challenger.candidate_id,
+        candidateVersionId:
+          fixture.challenger.candidate_version.candidate_version_id,
+        systemCode: challengerSystemCode,
+        admissionId:
+          fixture.challengerAdmission.candidate_admission_decision_id
+      }),
+      researchControlScheduleReportArm(staticIntent)
+    ],
+    primary_outcome_status: "unadjudicated",
+    causal_conclusion: "not_available_from_research_phase",
+    next_action: "schedule_prospective_paper_slots",
+    completed_at: "2026-07-10T00:00:08.000Z",
+    report_digest: comparisonExactRecordDigest("pending-schedule-report"),
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  report.report_digest = comparisonExactRecordDigest(
+    researchControlCampaignReportDigestInput(report)
+  );
+  return report;
+}
+
+function researchControlScheduleReportArm(
+  intent: ResearchControlCampaignArmIntentRecord,
+  candidate?: {
+    candidateId: string;
+    candidateVersionId: string;
+    systemCode: SystemCodeRecord;
+    admissionId: string;
+  }
+): ResearchControlCampaignReportRecord["arms"][number] {
+  const tickId = intent.tick_ids[0]!;
+  const tickRef = {
+    record_kind: "candidate_arena_tick",
+    id: `candidate-arena-tick-${tickId}`
+  };
+  const hasCandidate = candidate !== undefined;
+  return {
+    arm_kind: intent.arm_kind,
+    allocation_mode: intent.allocation_mode,
+    arm_intent_ref: {
+      record_kind: "research_control_campaign_arm_intent",
+      id: intent.research_control_campaign_arm_intent_id
+    },
+    arm_intent_digest: intent.intent_digest,
+    tick_refs: [tickRef],
+    allocation_refs: [{
+      record_kind: "candidate_arena_research_allocation",
+      id: `candidate-arena-research-allocation-${tickId}`
+    }],
+    diagnostics: {
+      attempt_count: 3,
+      admitted_candidate_count: hasCandidate ? 1 : 0,
+      duplicate_count: 0,
+      quarantined_count: 0,
+      failed_count: hasCandidate ? 2 : 3,
+      provider_request_total: 0,
+      runner_command_total: 0,
+      scenario_count: 0,
+      elapsed_ms: 0
+    },
+    population_diversity: researchControlScheduleDiversity(
+      tickId,
+      hasCandidate
+    ),
+    paper_candidate_slots: [{
+      sequence: 1,
+      tick_ref: tickRef,
+      ...(candidate ? {
+        status: "candidate_reserved" as const,
+        candidate_ref: {
+          record_kind: "trading_system_candidate",
+          id: candidate.candidateId
+        },
+        candidate_version_ref: {
+          record_kind: "candidate_version",
+          id: candidate.candidateVersionId
+        },
+        system_code_ref: {
+          record_kind: "system_code",
+          id: candidate.systemCode.system_code_id
+        },
+        system_code_artifact_digest: candidate.systemCode.artifact_digest,
+        admission_decision_ref: {
+          record_kind: "candidate_admission_decision",
+          id: candidate.admissionId
+        }
+      } : { status: "no_admitted_candidate" as const })
+    }],
+    final_store_snapshot_digest:
+      comparisonExactRecordDigest(`${intent.arm_kind}-final-store`),
+    completed_at: "2026-07-10T00:00:07.000Z",
+    research_diagnostics_authority: false,
+    promotion_authority: false,
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function researchControlScheduleDiversity(
+  tickId: string,
+  hasCandidate: boolean
+): ResearchPopulationDiversityReadModel {
+  const assigned = {
+    measurement_status: "measured" as const,
+    sample_count: 3,
+    unique_count: 3,
+    entropy_bits: 1.584963,
+    normalized_entropy: 1
+  };
+  const observed = {
+    measurement_status: "insufficient_evidence" as const,
+    sample_count: hasCandidate ? 1 : 0,
+    unique_count: hasCandidate ? 1 : 0,
+    entropy_bits: 0,
+    normalized_entropy: 0,
+    cohort_count: hasCandidate ? 1 : 0,
+    admitted_submission_count: hasCandidate ? 1 : 0,
+    exact_behavior_duplicate_count: 0,
+    artifact_duplicate_count: 0,
+    unavailable_fingerprint_count: 0
+  };
+  return {
+    protocol_version: "research_population_diversity_v1",
+    window_tick_count: 1,
+    assigned_directions: assigned,
+    observed_behaviors: observed,
+    by_direction: [
+      {
+        direction_kind: "trend_following",
+        attempt_count: 1,
+        observed_behavior_count: hasCandidate ? 1 : 0,
+        unique_behavior_count: hasCandidate ? 1 : 0,
+        admitted_submission_count: hasCandidate ? 1 : 0,
+        exact_behavior_duplicate_count: 0
+      },
+      ...(["mean_reversion", "volatility_regime"] as const).map(
+        (direction_kind) => ({
+          direction_kind,
+          attempt_count: 1,
+          observed_behavior_count: 0,
+          unique_behavior_count: 0,
+          admitted_submission_count: 0,
+          exact_behavior_duplicate_count: 0
+        })
+      )
+    ],
+    tick_series: [{
+      tick_id: tickId,
+      completed_at: "2026-07-10T00:00:06.000Z",
+      assigned_directions: assigned,
+      observed_behaviors: observed,
+      evaluation_authority: false,
+      promotion_authority: false,
+      authority_status: "not_promotion_authority"
+    }],
+    evaluation_authority: false,
+    promotion_authority: false,
+    authority_status: "not_promotion_authority"
   };
 }
 
@@ -3735,7 +4090,8 @@ async function reverseCoordinatorQualificationObservationTime(
 }
 
 function comparisonChallengerSystemCode(
-  createdAt = "2026-07-09T20:50:00.000Z"
+  createdAt = "2026-07-09T20:50:00.000Z",
+  strictArtifactDigest = false
 ): SystemCodeRecord {
   return {
     record_kind: "system_code",
@@ -3743,7 +4099,9 @@ function comparisonChallengerSystemCode(
     system_code_id: "system-code-paper-comparison-challenger",
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
-    artifact_digest: "sha256:paper-comparison-challenger",
+    artifact_digest: strictArtifactDigest
+      ? comparisonExactRecordDigest("paper-comparison-challenger")
+      : "sha256:paper-comparison-challenger",
     runtime_kind: "python",
     entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
     declared_output_contract: {
