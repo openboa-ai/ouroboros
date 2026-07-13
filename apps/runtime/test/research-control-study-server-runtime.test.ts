@@ -296,6 +296,10 @@ describe("ResearchControlStudy server runtime", () => {
 
   it("passes automatic generalization policy decisions into the scheduler cycle", async () => {
     let decisionCount = 0;
+    let signalDecision!: () => void;
+    const decisionObserved = new Promise<void>((resolve) => {
+      signalDecision = resolve;
+    });
     const scheduler = createResearchControlStudyServerScheduler({
       store: new LocalStore(
         "/tmp/ouroboros-generalization-policy-decision-scheduler-store"
@@ -306,6 +310,7 @@ describe("ResearchControlStudy server runtime", () => {
       generalizationPolicyDecisionCoordinator: {
         async ensureNextDecision() {
           decisionCount += 1;
+          signalDecision();
           return {
             status: "up_to_date" as const,
             generalizationOutcomeCount: 0
@@ -316,9 +321,7 @@ describe("ResearchControlStudy server runtime", () => {
     });
 
     scheduler.start();
-    for (let index = 0; index < 20 && decisionCount === 0; index += 1) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
+    await decisionObserved;
     await scheduler.stop();
 
     expect(decisionCount).toBe(1);
