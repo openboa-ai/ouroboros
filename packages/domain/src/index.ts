@@ -7642,6 +7642,45 @@ export interface ResearchControlStudyRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
+export interface ResearchControlStudyExecutionLeaseOwner {
+  server_instance_id: string;
+  host_id: string;
+  process_id: number;
+}
+
+export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
+  record_kind: "research_control_study_execution_lease";
+  research_control_study_execution_lease_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  owner: ResearchControlStudyExecutionLeaseOwner;
+  lease_token: string;
+  lease_status: "active" | "released" | "expired";
+  lease_duration_ms: number;
+  acquired_at: string;
+  renewed_at: string;
+  expires_at: string;
+  closed_at?: string;
+  close_reason?: "owner_released" | "expired_owner_absent";
+  lease_digest: string;
+  runtime_coordination_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "runtime_coordination_only";
+}
+
+export class ResearchControlStudyExecutionLeaseDecisionError extends Error {
+  readonly code = "invalid_research_control_study_execution_lease_input";
+
+  constructor() {
+    super("Invalid ResearchControlStudy execution lease input");
+    this.name = "ResearchControlStudyExecutionLeaseDecisionError";
+  }
+}
+
 export interface ResearchControlStudyReplicationResult {
   replication_index: number;
   campaign_ref: Ref;
@@ -7841,6 +7880,165 @@ export function researchControlStudyDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function researchControlStudyExecutionLeaseDigestInput(
+  record: ResearchControlStudyExecutionLeaseRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_study_execution_lease_id: _id,
+    lease_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function decideResearchControlStudyExecutionLease(input: {
+  study: ResearchControlStudyRecord;
+  owner: ResearchControlStudyExecutionLeaseOwner;
+  leaseToken: string;
+  leaseDurationMs: number;
+  acquiredAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyHasRuntimeShape(input?.study) ||
+      !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(input?.owner) ||
+      !researchControlStudyExecutionLeasePositiveInteger(
+        input?.leaseDurationMs
+      )) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const leaseToken = researchControlStudyExecutionLeaseCanonicalString(
+      input.leaseToken
+    );
+    const acquiredAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.acquiredAt
+    );
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      record_kind: "research_control_study_execution_lease",
+      version: 1,
+      research_control_study_execution_lease_id:
+        researchControlStudyExecutionLeaseId(
+          input.study.research_control_study_id,
+          leaseToken
+        ),
+      study_ref: {
+        record_kind: "research_control_study",
+        id: input.study.research_control_study_id
+      },
+      study_digest: input.study.study_digest,
+      owner: { ...input.owner },
+      lease_token: leaseToken,
+      lease_status: "active",
+      lease_duration_ms: input.leaseDurationMs,
+      acquired_at: acquiredAt,
+      renewed_at: acquiredAt,
+      expires_at: researchControlStudyExecutionLeaseExpiry(
+        acquiredAt,
+        input.leaseDurationMs
+      ),
+      lease_digest: researchControlStudyExecutionLeasePendingDigest(),
+      runtime_coordination_authority: true,
+      evaluation_authority: false,
+      policy_replacement_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "runtime_coordination_only"
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
+export function renewResearchControlStudyExecutionLease(input: {
+  lease: ResearchControlStudyExecutionLeaseRecord;
+  renewedAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(input?.lease) ||
+      input.lease.lease_status !== "active") {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const renewedAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.renewedAt
+    );
+    if (Date.parse(renewedAt) <= Date.parse(input.lease.renewed_at)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      ...input.lease,
+      study_ref: { ...input.lease.study_ref },
+      owner: { ...input.lease.owner },
+      renewed_at: renewedAt,
+      expires_at: researchControlStudyExecutionLeaseExpiry(
+        renewedAt,
+        input.lease.lease_duration_ms
+      ),
+      lease_digest: researchControlStudyExecutionLeasePendingDigest()
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
+export function closeResearchControlStudyExecutionLease(input: {
+  lease: ResearchControlStudyExecutionLeaseRecord;
+  leaseStatus: "released" | "expired";
+  closedAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(input?.lease) ||
+      input.lease.lease_status !== "active" ||
+      (input.leaseStatus !== "released" && input.leaseStatus !== "expired")) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const closedAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.closedAt
+    );
+    if (Date.parse(closedAt) < Date.parse(input.lease.renewed_at)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      ...input.lease,
+      study_ref: { ...input.lease.study_ref },
+      owner: { ...input.lease.owner },
+      lease_status: input.leaseStatus,
+      closed_at: closedAt,
+      close_reason: input.leaseStatus === "released"
+        ? "owner_released"
+        : "expired_owner_absent",
+      lease_digest: researchControlStudyExecutionLeasePendingDigest()
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
 export function researchControlStudyOutcomeDigestInput(
   record: ResearchControlStudyOutcomeRecord
 ): string {
@@ -7925,6 +8123,91 @@ export function researchControlStudyHasRuntimeShape(
   ) && candidateArenaAllocationStringsUnique(
     study.replications.map((entry) => entry.campaign_ref.id)
   );
+}
+
+export function researchControlStudyExecutionLeaseHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyExecutionLeaseRecord {
+  if (!comparisonObject(value) || ![
+    "active",
+    "released",
+    "expired"
+  ].includes(String(value.lease_status))) {
+    return false;
+  }
+  const terminal = value.lease_status !== "active";
+  const exactKeys = [
+    "record_kind",
+    "version",
+    "research_control_study_execution_lease_id",
+    "study_ref",
+    "study_digest",
+    "owner",
+    "lease_token",
+    "lease_status",
+    "lease_duration_ms",
+    "acquired_at",
+    "renewed_at",
+    "expires_at",
+    ...(terminal ? ["closed_at", "close_reason"] : []),
+    "lease_digest",
+    "runtime_coordination_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ];
+  if (!comparisonHasExactKeys(value, exactKeys) ||
+    value.record_kind !== "research_control_study_execution_lease" ||
+    value.version !== 1 ||
+    typeof value.research_control_study_execution_lease_id !== "string" ||
+    !/^research-control-study-execution-lease-[a-f0-9]{32}$/.test(
+      value.research_control_study_execution_lease_id
+    ) || !comparisonRef(value.study_ref, "research_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(value.owner) ||
+    !researchControlStudyExecutionLeaseCanonicalStringShape(value.lease_token) ||
+    !researchControlStudyExecutionLeasePositiveInteger(
+      value.lease_duration_ms
+    ) ||
+    !comparisonIso(value.acquired_at) || !comparisonIso(value.renewed_at) ||
+    !comparisonIso(value.expires_at) ||
+    Date.parse(value.renewed_at) < Date.parse(value.acquired_at) ||
+    value.runtime_coordination_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "runtime_coordination_only" ||
+    !researchControlCampaignSha256Digest(value.lease_digest)) {
+    return false;
+  }
+  const lease = value as unknown as ResearchControlStudyExecutionLeaseRecord;
+  try {
+    if (lease.expires_at !== researchControlStudyExecutionLeaseExpiry(
+      lease.renewed_at,
+      lease.lease_duration_ms
+    ) || lease.research_control_study_execution_lease_id !==
+      researchControlStudyExecutionLeaseId(lease.study_ref.id, lease.lease_token)) {
+      return false;
+    }
+    if (lease.lease_status === "active") {
+      if (lease.closed_at !== undefined || lease.close_reason !== undefined) return false;
+    } else if (!comparisonIso(lease.closed_at) ||
+      Date.parse(lease.closed_at) < Date.parse(lease.renewed_at) ||
+      lease.close_reason !== (lease.lease_status === "released"
+        ? "owner_released"
+        : "expired_owner_absent")) {
+      return false;
+    }
+    return lease.lease_digest ===
+      researchControlStudyExecutionLeaseExactDigest(lease);
+  } catch {
+    return false;
+  }
 }
 
 export function researchControlStudyOutcomeHasRuntimeShape(
@@ -9513,6 +9796,189 @@ function researchControlCampaignArmReportHasRuntimeShape(
     candidateArenaAllocationStringsUnique(reserved.map((slot) =>
       slot.candidate_version_ref.id
     ));
+}
+
+function researchControlStudyExecutionLeaseOwnerHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyExecutionLeaseOwner {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "server_instance_id",
+    "host_id",
+    "process_id"
+  ]) && researchControlStudyExecutionLeaseCanonicalStringShape(
+    value.server_instance_id
+  ) && researchControlStudyExecutionLeaseCanonicalStringShape(value.host_id) &&
+    researchControlStudyExecutionLeasePositiveInteger(value.process_id);
+}
+
+function researchControlStudyExecutionLeaseCanonicalStringShape(
+  value: unknown
+): value is string {
+  return comparisonString(value) && value.trim() === value;
+}
+
+function researchControlStudyExecutionLeasePositiveInteger(
+  value: unknown
+): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function researchControlStudyExecutionLeaseCanonicalString(
+  value: unknown
+): string {
+  if (!researchControlStudyExecutionLeaseCanonicalStringShape(value)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return value;
+}
+
+function researchControlStudyExecutionLeaseCanonicalTime(value: unknown): string {
+  const text = researchControlStudyExecutionLeaseCanonicalString(value);
+  if (!comparisonIso(text)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return text;
+}
+
+function researchControlStudyExecutionLeaseExpiry(
+  renewedAt: string,
+  leaseDurationMs: number
+): string {
+  const expiry = Date.parse(renewedAt) + leaseDurationMs;
+  if (!Number.isSafeInteger(expiry)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return new Date(expiry).toISOString();
+}
+
+function researchControlStudyExecutionLeaseId(
+  studyId: string,
+  leaseToken: string
+): string {
+  return `research-control-study-execution-lease-${
+    researchControlStudyExecutionLeaseSha256Hex(`${studyId}:${leaseToken}`)
+      .slice(0, 32)
+  }`;
+}
+
+function researchControlStudyExecutionLeaseExactDigest(
+  record: ResearchControlStudyExecutionLeaseRecord
+): string {
+  return `sha256:${researchControlStudyExecutionLeaseSha256Hex(
+    researchControlStudyExecutionLeaseDigestInput(record)
+  )}`;
+}
+
+function researchControlStudyExecutionLeasePendingDigest(): string {
+  return `sha256:${"0".repeat(64)}`;
+}
+
+function researchControlStudyExecutionLeaseInvalidDecision():
+  ResearchControlStudyExecutionLeaseDecisionError {
+  return new ResearchControlStudyExecutionLeaseDecisionError();
+}
+
+const RESEARCH_CONTROL_STUDY_EXECUTION_LEASE_SHA256_CONSTANTS = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]);
+
+function researchControlStudyExecutionLeaseRotateRight(
+  value: number,
+  bits: number
+): number {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+function researchControlStudyExecutionLeaseSha256Hex(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+  const data = new Uint8Array(paddedLength);
+  data.set(bytes);
+  data[bytes.length] = 0x80;
+  const view = new DataView(data.buffer);
+  const bitLength = bytes.length * 8;
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000));
+  view.setUint32(paddedLength - 4, bitLength >>> 0);
+  const hash = new Uint32Array([
+    0x6a09e667,
+    0xbb67ae85,
+    0x3c6ef372,
+    0xa54ff53a,
+    0x510e527f,
+    0x9b05688c,
+    0x1f83d9ab,
+    0x5be0cd19
+  ]);
+  const words = new Uint32Array(64);
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      words[index] = view.getUint32(offset + index * 4);
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const left = words[index - 15]!;
+      const right = words[index - 2]!;
+      const sigma0 = researchControlStudyExecutionLeaseRotateRight(left, 7) ^
+        researchControlStudyExecutionLeaseRotateRight(left, 18) ^ (left >>> 3);
+      const sigma1 = researchControlStudyExecutionLeaseRotateRight(right, 17) ^
+        researchControlStudyExecutionLeaseRotateRight(right, 19) ^ (right >>> 10);
+      words[index] = (words[index - 16]! + sigma0 + words[index - 7]! +
+        sigma1) >>> 0;
+    }
+    let a = hash[0]!;
+    let b = hash[1]!;
+    let c = hash[2]!;
+    let d = hash[3]!;
+    let e = hash[4]!;
+    let f = hash[5]!;
+    let g = hash[6]!;
+    let h = hash[7]!;
+    for (let index = 0; index < 64; index += 1) {
+      const sigma1 = researchControlStudyExecutionLeaseRotateRight(e, 6) ^
+        researchControlStudyExecutionLeaseRotateRight(e, 11) ^
+        researchControlStudyExecutionLeaseRotateRight(e, 25);
+      const choice = (e & f) ^ (~e & g);
+      const temporary1 = (h + sigma1 + choice +
+        RESEARCH_CONTROL_STUDY_EXECUTION_LEASE_SHA256_CONSTANTS[index]! +
+        words[index]!) >>> 0;
+      const sigma0 = researchControlStudyExecutionLeaseRotateRight(a, 2) ^
+        researchControlStudyExecutionLeaseRotateRight(a, 13) ^
+        researchControlStudyExecutionLeaseRotateRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temporary2 = (sigma0 + majority) >>> 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temporary1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temporary1 + temporary2) >>> 0;
+    }
+    hash[0] = (hash[0]! + a) >>> 0;
+    hash[1] = (hash[1]! + b) >>> 0;
+    hash[2] = (hash[2]! + c) >>> 0;
+    hash[3] = (hash[3]! + d) >>> 0;
+    hash[4] = (hash[4]! + e) >>> 0;
+    hash[5] = (hash[5]! + f) >>> 0;
+    hash[6] = (hash[6]! + g) >>> 0;
+    hash[7] = (hash[7]! + h) >>> 0;
+  }
+  return Array.from(hash, (word) => word.toString(16).padStart(8, "0")).join("");
 }
 
 function researchControlCampaignSha256Digest(value: unknown): value is string {
