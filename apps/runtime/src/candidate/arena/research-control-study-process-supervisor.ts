@@ -128,8 +128,7 @@ export class ResearchControlStudyProcessSupervisor {
         if (this.stopRequested) {
           this.currentStatus = {
             status: "stopped",
-            completedStudyCount,
-            ...(currentStudyId ? { studyId: currentStudyId } : {})
+            completedStudyCount
           };
           return;
         }

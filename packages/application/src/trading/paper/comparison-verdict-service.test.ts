@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import {
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationRecordDigestInput,
-  paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonQualificationResultDigestInput,
   paperTradingComparisonVerdictDigestInput,
   paperTradingComparisonVerdictHasRuntimeShape,

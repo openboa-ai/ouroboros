@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   paperTradingComparisonCommitmentDigestInput,
   paperTradingComparisonConfirmationCampaignDigestInput,
   paperTradingComparisonConfirmationCampaignHasRuntimeShape,

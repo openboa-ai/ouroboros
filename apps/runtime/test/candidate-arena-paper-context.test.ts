@@ -1366,7 +1366,7 @@ describe("CandidateArena paper evidence context", () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
-    const outcome = await runCandidateArenaTick({
+    await runCandidateArenaTick({
       store,
       tickId: "rejected-learning-tick-1",
       directions: ["mean_reversion"],

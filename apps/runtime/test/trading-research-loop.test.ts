@@ -1958,7 +1958,7 @@ process.exit(17);
       const runner = new DockerSandboxesSbxTradingArtifactRunner({
         sbxPath: fakeSbx,
         workspacePath: tmpDir,
-        sandboxNamePrefix: "ouro-s10-direct"
+        sandboxNamePrefix: `${"-".repeat(10_000)}ouro-s10-direct---`
       });
       const run = await runner.run({
         artifact_dir: artifactDir,
@@ -1977,6 +1977,8 @@ process.exit(17);
       await expect(readFile(path.join(outputDir, "evaluator-owned-sentinel"), "utf8"))
         .resolves.toBe("preserve\n");
       const commands = await readFile(commandLog, "utf8");
+      expect(commands).toMatch(/^create --name ouro-s10-direct-/m);
+      expect(commands).not.toMatch(/^create --name -/m);
       expect(commands).toContain(`shell ${sandboxWorkspace}`);
       expect(commands).toContain(`exec -w ${path.join(sandboxWorkspace, "artifact")}`);
       expect(commands).not.toMatch(/trend_long|range_flat/i);

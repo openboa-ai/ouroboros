@@ -12,7 +12,6 @@ import {
   type PaperTradingEvaluationRecord,
   type PaperTradingObservationRecord,
   type PaperTradingQualificationStatus,
-  type Ref,
   type ResearcherProviderReadModel,
   type TradingProfitLossReadModel,
   type TradingPromotionComparisonConfirmationReadModel,
@@ -1703,10 +1702,6 @@ function paperTradingBoardRunnerStatus(
     return "needs_resume";
   }
   return "inactive";
-}
-
-function ref(record_kind: string, id: string): Ref {
-  return { record_kind, id };
 }
 
 async function paperTradingCommitmentForEvaluation(

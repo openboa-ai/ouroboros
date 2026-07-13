@@ -856,7 +856,16 @@ function exitCodeFor(error: Error & { code?: unknown }): number | null {
 }
 
 function safePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "empty";
+  const normalized = value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  let start = 0;
+  while (start < normalized.length && normalized[start] === "-") {
+    start += 1;
+  }
+  let end = normalized.length;
+  while (end > start && normalized[end - 1] === "-") {
+    end -= 1;
+  }
+  return normalized.slice(start, end) || "empty";
 }
 
 function sandboxProviderPort(outputDir: string): number {

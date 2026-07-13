@@ -14,7 +14,6 @@ import {
   paperTradingComparisonCommitmentDigestInput,
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationRecordDigestInput,
-  paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTickAcknowledgementDigestInput,

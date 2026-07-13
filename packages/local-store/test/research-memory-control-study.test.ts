@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   candidateArenaResearchAllocationDigestInput,
-  paperTradingComparisonPersistedRecordDigestInput,
   researchMemoryControlPairOutcomeDigestInput,
   researchMemoryControlStudyDigestInput,
   researchMemoryControlStudyOutcomeDigestInput,
@@ -34,7 +33,6 @@ import {
 import {
   decideResearchMemoryControlPairOutcome,
   decideResearchMemoryControlStudyOutcome,
-  researchMemoryControlPairOutcomeId,
   type DecideResearchMemoryControlPairOutcomeInput
 } from "@ouroboros/application/candidate/research-memory-control-study-outcome";
 import type { ResearchMemoryControlPairOutcomePersistenceInput } from
