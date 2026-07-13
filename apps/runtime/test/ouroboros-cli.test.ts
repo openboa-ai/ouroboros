@@ -165,9 +165,18 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade agg-60000-001");
   });
 
-  it("formats active research generalization progress without granting authority", async () => {
+  it.each([
+    ["awaiting_allocation", 0, 0],
+    ["allocated", 1, 0],
+    ["completed_tick", 1, 1]
+  ] as const)("formats %s research policy application without granting authority", async (
+    applicationStatus,
+    allocationCount,
+    completedTickCount
+  ) => {
     const operator = fixtureOperator();
-    operator.candidate_arena.research_generalization = fixtureCollectingResearchGeneralization();
+    operator.candidate_arena.research_generalization =
+      fixtureCollectingResearchGeneralization(applicationStatus);
     const result = await runOuroborosCli(["status"], {
       fetch: async () => jsonResponse({ operator }),
       runtimeBaseUrl: "http://runtime.test"
@@ -175,7 +184,13 @@ describe("ouroboros CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / decision not_approved / effective none / next collect_precommitted_studies / not_promotion_authority"
+      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / latest decision not_approved / latest mode none / effective mode adaptive_default"
+    );
+    expect(result.stdout).toContain(
+      `application ${applicationStatus} / allocations ${allocationCount} / completed ticks ${completedTickCount}`
+    );
+    expect(result.stdout).toContain(
+      "next collect_precommitted_studies / not_promotion_authority"
     );
   });
 
@@ -1051,7 +1066,10 @@ function fixtureOperator(
   };
 }
 
-function fixtureCollectingResearchGeneralization():
+function fixtureCollectingResearchGeneralization(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick" =
+    "completed_tick"
+):
   OperatorReadModel["candidate_arena"]["research_generalization"] {
   return {
     status: "collecting",
@@ -1090,7 +1108,8 @@ function fixtureCollectingResearchGeneralization():
     },
     latest_outcome: fixtureLatestResearchGeneralizationOutcome(),
     latest_policy_decision: fixtureLatestResearchGeneralizationPolicyDecision(),
-    effective_policy_decision: null,
+    effective_policy_decision:
+      fixtureEffectiveResearchGeneralizationPolicyDecision(applicationStatus),
     authority_status: "not_promotion_authority"
   };
 }
@@ -1135,6 +1154,45 @@ function fixtureLatestResearchGeneralizationPolicyDecision(): NonNullable<
     decision_reason: "generalization_outcome_not_eligible",
     effective_default_mode: null,
     decided_at: "2026-07-12T00:00:01.000Z",
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+}
+
+function fixtureEffectiveResearchGeneralizationPolicyDecision(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick"
+): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["effective_policy_decision"]
+> {
+  const allocated = applicationStatus !== "awaiting_allocation";
+  const completed = applicationStatus === "completed_tick";
+  return {
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-effective",
+    research_generalization_protocol_id:
+      "research-generalization-protocol-effective",
+    research_generalization_outcome_id:
+      "research-generalization-outcome-effective",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-06-12T00:00:01.000Z",
+    application: {
+      application_status: applicationStatus,
+      allocation_count: allocated ? 1 : 0,
+      completed_tick_count: completed ? 1 : 0,
+      latest_allocation: allocated
+        ? {
+            candidate_arena_research_allocation_id:
+              "candidate-arena-research-allocation-effective",
+            tick_id: "candidate-arena-tick-effective",
+            allocated_at: "2026-06-12T00:00:02.000Z",
+            completed_at: completed ? "2026-06-12T00:00:04.000Z" : null
+          }
+        : null
+    },
     research_policy_selection_authority: true,
     evaluation_authority: false,
     promotion_authority: false,

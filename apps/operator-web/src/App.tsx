@@ -4077,6 +4077,7 @@ function buildResearchGeneralizationSectionModel(
   const active = generalization.active_protocol;
   const latest = generalization.latest_outcome;
   const latestDecision = generalization.latest_policy_decision;
+  const effectiveDecision = generalization.effective_policy_decision;
   return {
     status: generalization.status,
     protocolCount: String(generalization.protocol_count),
@@ -4141,6 +4142,43 @@ function buildResearchGeneralizationSectionModel(
             + `order submission ${latestDecision.order_submission_authority}; `
             + `live exchange ${latestDecision.live_exchange_authority}; `
             + latestDecision.authority_status
+        }
+      : null,
+    effectiveDecision: effectiveDecision
+      ? {
+          decisionId:
+            effectiveDecision.research_generalization_policy_decision_id,
+          protocolId: effectiveDecision.research_generalization_protocol_id,
+          outcomeId: effectiveDecision.research_generalization_outcome_id,
+          effectiveMode: effectiveDecision.effective_default_mode,
+          decidedAt: effectiveDecision.decided_at,
+          applicationStatus:
+            effectiveDecision.application.application_status,
+          allocationCount: String(
+            effectiveDecision.application.allocation_count
+          ),
+          completedTickCount: String(
+            effectiveDecision.application.completed_tick_count
+          ),
+          latestAllocation: effectiveDecision.application.latest_allocation
+            ? {
+                allocationId: effectiveDecision.application.latest_allocation
+                  .candidate_arena_research_allocation_id,
+                tickId:
+                  effectiveDecision.application.latest_allocation.tick_id,
+                allocatedAt: effectiveDecision.application.latest_allocation
+                  .allocated_at,
+                completedAt: effectiveDecision.application.latest_allocation
+                  .completed_at ?? "not completed"
+              }
+            : null,
+          authority:
+            `research policy selection ${effectiveDecision.research_policy_selection_authority}; `
+            + `evaluation ${effectiveDecision.evaluation_authority}; `
+            + `promotion ${effectiveDecision.promotion_authority}; `
+            + `order submission ${effectiveDecision.order_submission_authority}; `
+            + `live exchange ${effectiveDecision.live_exchange_authority}; `
+            + effectiveDecision.authority_status
         }
       : null
   };

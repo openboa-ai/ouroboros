@@ -47,6 +47,23 @@ export interface ResearchGeneralizationSectionModel {
     decidedAt: string;
     authority: string;
   } | null;
+  effectiveDecision: {
+    decisionId: string;
+    protocolId: string;
+    outcomeId: string;
+    effectiveMode: string;
+    decidedAt: string;
+    applicationStatus: string;
+    allocationCount: string;
+    completedTickCount: string;
+    latestAllocation: {
+      allocationId: string;
+      tickId: string;
+      allocatedAt: string;
+      completedAt: string;
+    } | null;
+    authority: string;
+  } | null;
 }
 
 export function ResearchGeneralizationSection({
@@ -54,7 +71,7 @@ export function ResearchGeneralizationSection({
 }: {
   model: ResearchGeneralizationSectionModel;
 }) {
-  const { active, latest, latestDecision } = model;
+  const { active, latest, latestDecision, effectiveDecision } = model;
 
   return (
     <OperatorPanel aria-label="Research generalization">
@@ -69,7 +86,7 @@ export function ResearchGeneralizationSection({
           />
         )}
       />
-      {!active && !latest && !latestDecision ? (
+      {!active && !latest && !latestDecision && !effectiveDecision ? (
         <OperatorEmptyState
           title="No research generalization protocol"
           description="No prospective protocol has been committed."
@@ -186,6 +203,72 @@ export function ResearchGeneralizationSection({
                 <OperatorField
                   label="Decision authority"
                   value={latestDecision.authority}
+                />
+              </OperatorFieldGrid>
+            </>
+          )}
+
+          {effectiveDecision && (
+            <>
+              <OperatorDetailText>
+                Effective policy application
+              </OperatorDetailText>
+              <OperatorFieldGrid density="dense">
+                <OperatorField
+                  label="Effective decision"
+                  value={effectiveDecision.decisionId}
+                />
+                <OperatorField
+                  label="Source protocol"
+                  value={effectiveDecision.protocolId}
+                />
+                <OperatorField
+                  label="Source outcome"
+                  value={effectiveDecision.outcomeId}
+                />
+                <OperatorField
+                  label="Effective default mode"
+                  value={effectiveDecision.effectiveMode}
+                />
+                <OperatorField
+                  label="Decided"
+                  value={effectiveDecision.decidedAt}
+                />
+                <OperatorField
+                  label="Application status"
+                  value={effectiveDecision.applicationStatus}
+                />
+                <OperatorField
+                  label="Allocation count"
+                  value={effectiveDecision.allocationCount}
+                />
+                <OperatorField
+                  label="Completed tick count"
+                  value={effectiveDecision.completedTickCount}
+                />
+                {effectiveDecision.latestAllocation && (
+                  <>
+                    <OperatorField
+                      label="Latest allocation"
+                      value={effectiveDecision.latestAllocation.allocationId}
+                    />
+                    <OperatorField
+                      label="Allocation tick"
+                      value={effectiveDecision.latestAllocation.tickId}
+                    />
+                    <OperatorField
+                      label="Allocated"
+                      value={effectiveDecision.latestAllocation.allocatedAt}
+                    />
+                    <OperatorField
+                      label="Completed"
+                      value={effectiveDecision.latestAllocation.completedAt}
+                    />
+                  </>
+                )}
+                <OperatorField
+                  label="Effective decision authority"
+                  value={effectiveDecision.authority}
                 />
               </OperatorFieldGrid>
             </>

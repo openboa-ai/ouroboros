@@ -511,9 +511,20 @@ function formatResearchGeneralizationSummary(
   }
   if (generalization.latest_policy_decision) {
     prefix.push(
-      `decision ${generalization.latest_policy_decision.decision_status}`,
-      `effective ${generalization.latest_policy_decision.effective_default_mode ?? "none"}`
+      `latest decision ${generalization.latest_policy_decision.decision_status}`,
+      `latest mode ${generalization.latest_policy_decision.effective_default_mode ?? "none"}`
     );
+  }
+  if (generalization.effective_policy_decision) {
+    const effective = generalization.effective_policy_decision;
+    prefix.push(
+      `effective mode ${effective.effective_default_mode}`,
+      `application ${effective.application.application_status}`,
+      `allocations ${effective.application.allocation_count}`,
+      `completed ticks ${effective.application.completed_tick_count}`
+    );
+  } else if (generalization.latest_policy_decision) {
+    prefix.push("effective mode none");
   }
   if (generalization.active_protocol) {
     prefix.push(`next ${generalization.active_protocol.next_action}`);

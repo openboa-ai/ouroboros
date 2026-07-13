@@ -4511,12 +4511,54 @@ describe("CandidateDetail", () => {
     expect(section).toContain("live exchange false");
     expect(section).toContain("research_policy_only");
     expect(section).toContain("not_promotion_authority");
+    expect(section).toContain("Effective policy application");
+    expect(section).toContain(
+      "research-generalization-policy-decision-effective"
+    );
+    expect(section).toContain("adaptive_default");
+    expect(section).toContain("completed_tick");
+    expect(section).toContain(
+      "candidate-arena-research-allocation-effective"
+    );
+    expect(section).toContain("candidate-arena-tick-effective");
     expect(section.indexOf("Latest outcome")).toBeLessThan(
       section.indexOf("Latest policy decision")
+    );
+    expect(section.indexOf("Latest policy decision")).toBeLessThan(
+      section.indexOf("Effective policy application")
     );
     expect(section).not.toContain("public_kline_window");
     expect(section).not.toContain("protocol_digest");
     expect(section).not.toContain("study_ref");
+    expect(section).not.toContain("<button");
+  });
+
+  it.each([
+    "awaiting_allocation",
+    "allocated",
+    "completed_tick"
+  ] as const)("surfaces %s generalized policy application evidence", (
+    applicationStatus
+  ) => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={arenaSelectedCandidate()}
+        operator={operatorReadModelFixture({
+          candidate_arena: {
+            ...fixtureCandidateArena,
+            research_generalization:
+              fixtureResearchGeneralizationReadModel(applicationStatus)
+          }
+        })}
+      />
+    );
+    const section = extractResearchGeneralizationSection(html);
+
+    expect(section).toContain("Effective policy application");
+    expect(section).toContain(applicationStatus);
+    expect(section).toContain("research_policy_only");
+    expect(section).not.toContain("allocation_digest");
     expect(section).not.toContain("<button");
   });
 
@@ -7146,7 +7188,10 @@ function operatorReadModelFixture(overrides: Partial<OperatorReadModel> = {}): O
   };
 }
 
-function fixtureResearchGeneralizationReadModel():
+function fixtureResearchGeneralizationReadModel(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick" =
+    "completed_tick"
+):
   OperatorReadModel["candidate_arena"]["research_generalization"] {
   return {
     status: "collecting",
@@ -7222,8 +7267,48 @@ function fixtureResearchGeneralizationReadModel():
       live_exchange_authority: false,
       authority_status: "research_policy_only"
     },
-    effective_policy_decision: null,
+    effective_policy_decision:
+      fixtureEffectiveResearchGeneralizationPolicyDecision(applicationStatus),
     authority_status: "not_promotion_authority"
+  };
+}
+
+function fixtureEffectiveResearchGeneralizationPolicyDecision(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick"
+): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["effective_policy_decision"]
+> {
+  const allocated = applicationStatus !== "awaiting_allocation";
+  const completed = applicationStatus === "completed_tick";
+  return {
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-effective",
+    research_generalization_protocol_id:
+      "research-generalization-protocol-effective",
+    research_generalization_outcome_id:
+      "research-generalization-outcome-effective",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-06-12T00:00:01.000Z",
+    application: {
+      application_status: applicationStatus,
+      allocation_count: allocated ? 1 : 0,
+      completed_tick_count: completed ? 1 : 0,
+      latest_allocation: allocated
+        ? {
+            candidate_arena_research_allocation_id:
+              "candidate-arena-research-allocation-effective",
+            tick_id: "candidate-arena-tick-effective",
+            allocated_at: "2026-06-12T00:00:02.000Z",
+            completed_at: completed ? "2026-06-12T00:00:04.000Z" : null
+          }
+        : null
+    },
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
   };
 }
 
