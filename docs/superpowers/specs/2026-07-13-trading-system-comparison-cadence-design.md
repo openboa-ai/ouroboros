@@ -186,9 +186,15 @@ candidate poll exposed the missing arm wiring by exhausting the 100-request prov
 observation drain and 600-second outer comparison window. Cadence does not substitute for explicit
 role-bound attribution enablement.
 
-Expected classification is 12 pair-qualified source verdicts. Equal candidates are
-`source_not_improved`, not evidence-ineligible and not an improvement. The six-replication study may
-remain six ties with p-value 1 and no allocation-policy eligibility.
+Observed classification is 12 pair-qualified `source_not_improved` verdicts. Pair, champion, and
+challenger qualification reasons are empty for every slot. The study closes as six ties, zero
+non-ties, mean rate difference 0, exact sign-test p-value 1,
+`insufficient_non_tied_replications`, and no allocation-policy decision. Provider starts/closes and
+sandbox starts/stops are each 24/24; restart adds no effects; promotion state is unchanged.
+
+This is qualified denominator and cadence evidence, not an improvement. It supports no candidate
+superiority, adaptive-allocation benefit, profitability, condition generalization, deployment, or
+live-authority claim.
 
 ## Verification
 

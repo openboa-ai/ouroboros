@@ -661,14 +661,14 @@ git commit -m "test: qualify prospective comparison cadence"
 - Consumes: exact Task 2 status, qualification, lifecycle, study-inference, and restart evidence.
 - Produces: durable scope classification and the next bounded non-tied-candidate frontier.
 
-- [ ] **Step 1: Record only observed evidence**
+- [x] **Step 1: Record only observed evidence**
 
 Document the exact terminal counts and qualification reasons. State that eligible ties validate the
 comparison denominator but do not support candidate superiority, adaptive allocation, economic
 authority, live authority, or condition generalization. Name distinct post-activation candidate
 behavior as the next frontier only if the study remains tied.
 
-- [ ] **Step 2: Run all required verification**
+- [x] **Step 2: Run all required verification**
 
 Run:
 
@@ -681,7 +681,7 @@ npm test -- --reporter=dot
 Expected: every workspace typecheck, docs/architecture/naming/env/secret/diff guard, and the full
 Vitest suite passes under the repository's four-worker bound.
 
-- [ ] **Step 3: Verify scope and commit**
+- [x] **Step 3: Verify scope and commit**
 
 Confirm `.superpowers/` is absent from staged paths, run `git diff --cached --check`, and commit:
 
