@@ -159,9 +159,15 @@ Version 1 approves only the protocol's frozen `adaptive_default` policy digest a
 allocations resolve explicit directions, explicit mode, the latest applicable broad approval, the
 latest applicable same-baseline approval, and finally the repository adaptive default, in that
 order. Every selected decision basis is sealed before effects and independently revalidated by
-LocalStore. The shared generalization read model exposes the latest decision's source IDs, status,
-reason, effective mode, time, and closed downstream authority to CLI, TUI, and Web without a new
-command or feedback path.
+LocalStore. The shared generalization read model keeps the chronologically latest decision separate
+from the exact approved decision the uncontrolled-allocation resolver currently selects. A newer
+negative decision therefore remains visible without revoking an older applicable approval. The
+effective projection joins existing allocation and completed-tick records as
+`awaiting_allocation`, `allocated`, or `completed_tick`, with exact counts and latest allocation
+evidence. CLI, TUI, and Web render the same authority-closed state without a new record, command,
+worker-feedback path, or trading authority. A production-service integration fixture proves this
+composition and its harmful-block negative control deterministically; it is contract proof, not
+real-market generalization or profitability evidence.
 Before opening a pending study, each server
 now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
 LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,

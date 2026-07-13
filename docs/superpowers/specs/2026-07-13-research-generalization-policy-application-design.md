@@ -1,6 +1,6 @@
 # ResearchGeneralization Policy Application Design
 
-Status: approved for autonomous implementation under the active CandidateArena goal.
+Status: implemented and verified under the active CandidateArena goal.
 
 ## Goal
 
@@ -217,3 +217,23 @@ The frontier is complete only when tests prove:
 7. CandidateArena, HTTP, CLI, TUI, and Web expose the same compact authority-closed evidence;
 8. all focused tests, workspace typechecks, full suite, and repository guards pass;
 9. no scoring, worker context, rank, promotion, runner, order, private, or live path changes.
+
+## Verification Evidence
+
+Implementation commits:
+
+- `908b031` shares the exact effective-decision selector.
+- `3b13d68` projects and composes effective policy application evidence.
+- `89315f2` renders CLI, TUI, and Web parity.
+- `713ebf5` proves supported closure and harmful-block rejection through production services.
+
+Verification on 2026-07-13:
+
+- focused integration and surface suite: 7 files, 255 tests passed;
+- workspace typecheck passed for every package;
+- full suite: 188 files, 3,058 tests passed;
+- docs, architecture, naming, tracked-env, secret, and diff guards passed.
+
+The deterministic integration graph is contract evidence only. Real public-path protocol closure,
+learned or tuned policy parameters, economic generalization, promotion, and live authority remain
+outside this frontier.

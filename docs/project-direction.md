@@ -98,10 +98,14 @@ default scheduler reconciles one oldest complete or expired protocol after catch
 valid outcome becomes `not_approved` with no effective mode and never implies static superiority.
 The scheduler reconciles at most one oldest missing broad decision before the same-baseline policy
 decision; LocalStore independently validates any future allocation that cites it. The shared read
-model exposes the latest decision and explicit false downstream authorities to CLI, TUI, and Web
-without entering ResearchWorker context. This implements the forward-time generalization protocol
-and its approval-only research-policy bridge, not a real-market result: complete eligible six-study
-evidence, generated or tuned policy parameters, economic promotion, and live authority remain open.
+model distinguishes chronological `latest_policy_decision` from the resolver-equivalent
+`effective_policy_decision`. It joins the latter to exact pre-effect allocations and completed
+CandidateArena ticks, reporting `awaiting_allocation`, `allocated`, or `completed_tick` plus compact
+counts and latest allocation evidence. CLI, TUI, and Web expose this authority-closed projection
+without feeding it into ResearchWorker context or direction scoring. Deterministic end-to-end
+fixtures prove the contract and a harmful-block negative control, not a real-market result:
+complete eligible six-study evidence from deployed public paths, generated or tuned policy
+parameters, economic promotion, and live authority remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

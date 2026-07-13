@@ -153,9 +153,15 @@ approves only the exact frozen `adaptive_default` policy digest after eligible
 `generalization_supported` evidence; every other valid outcome is `not_approved` with no effective
 mode and never selects static control. Broad approval outranks a same-baseline approval only for a
 future uncontrolled allocation, and LocalStore revalidates its exact decision/outcome provenance
-before effects. CLI, TUI, and Web expose the latest decision through the shared read model with all
-evaluation, promotion, order, and live authorities false. This is an implemented external-validity
-test and approval boundary, not evidence that real-market generalization has already succeeded.
+before effects. The shared read model preserves the chronologically latest decision while separately
+selecting the exact older or newer approval that currently governs uncontrolled allocation. It then
+validates existing allocation and completed-tick links and reports `awaiting_allocation`,
+`allocated`, or `completed_tick` with exact counts. CLI, TUI, and Web expose the same compact state
+with all evaluation, promotion, order, and live authorities false. A deterministic production-
+service closure test proves the supported path and harmful-block negative control across protocol,
+six studies, outcome, decision, resolver, allocation, and completed tick. This is an implemented
+contract and external-validity boundary, not evidence that real-market generalization has already
+succeeded.
 Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
 same-host servers using the same LocalStore root. Exact ownership is checked before each executor
 advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
@@ -218,7 +224,8 @@ This does not complete external evaluation, P0, or the Goal. A bounded hidden se
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
 clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
-and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from real public paths,
+and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from deployed real public
+paths,
 deployed always-on paper execution, automatic promotion, champion runner handoff,
 private/live authority, and the other completion axes remain open.
 

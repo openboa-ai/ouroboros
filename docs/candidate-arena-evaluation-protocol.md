@@ -67,6 +67,7 @@ persisted schema names. Any future public or persisted fields require a separate
 | `ResearchGeneralizationProtocol` | Six exact pre-effect study slots, frozen public condition blocks, timing, source-baseline, resource, and analysis policy | No, until terminal closure or expiry | No | No; research scheduling only |
 | `ResearchGeneralizationOutcome` | Every planned slot, equal-weight block effects, baseline count, exact sign p-value, bounded inference, and refs/digests | Yes, within prospective condition-blocked cross-baseline scope | No | No; may only enable the separate ResearchGeneralizationPolicyDecision |
 | `ResearchGeneralizationPolicyDecision` | Exact protocol/outcome refs, digests, bounded status, effective mode, and research-policy authority only | Yes, as future uncontrolled-allocation provenance | No | No; never grants evaluation, promotion, order, private, or live authority |
+| Effective generalization policy application projection | Latest and resolver-effective decisions, compact allocation/completed-tick counts, and latest exact allocation link | No; it observes existing application and adds no feedback | No | No; read-only contract evidence with closed downstream authority |
 | `ResearchAllocationPolicyDecision` | Exact study/outcome refs, digests, bounded status, and research-policy authority only | Yes, as future allocation provenance | No | No; never selects promotion or live authority |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
@@ -152,13 +153,17 @@ approve only the protocol's frozen `adaptive_default` policy digest. Unsupported
 outcomes become `not_approved` with no effective mode and never establish static superiority.
 `ResearchGeneralizationReadModel` exposes this prospective graph through the shared CandidateArena
 operator state without changing it. It independently selects the oldest protocol missing an
-outcome, the latest adjudicated outcome, and the latest policy decision, reports canonical
-condition progress and bounded statistics, and preserves all three when a newer protocol collects
-after an earlier closure. Complete graph validation fails on duplicate, orphaned, or mismatched
-source evidence. Raw windows, artifacts, digests, study/campaign identities, and per-slot effects
-remain outside operator readback. The projection has `not_promotion_authority` and does not enter
-allocation, ResearchWorker context, policy decisions, ranking, qualification, promotion, orders,
-private reads, or live behavior.
+outcome, the latest adjudicated outcome, the chronologically latest policy decision, and the exact
+approved decision the uncontrolled-allocation resolver currently selects. A newer negative decision
+does not revoke an older applicable approval. The effective decision joins only to exact existing
+allocations and completed ticks, producing `awaiting_allocation`, `allocated`, or `completed_tick`,
+counts, and the latest allocation link. Complete protocol-to-decision and decision-to-allocation-to-
+tick graph validation fails on duplicate, orphaned, mismatched, malformed, or impossible-time
+evidence. Raw windows, artifacts, digests, study/campaign identities, and per-slot effects remain
+outside operator readback. The projection has `not_promotion_authority` and does not enter
+ResearchWorker context, direction scoring, ranking, qualification, promotion, orders, private
+reads, or live behavior. Deterministic full-graph fixtures are contract proof only, not real-market
+generalization or profitability evidence.
 `ResearchAllocationPolicyDecision` separately reloads that exact graph. Version 1 approves only an
 eligible supported adaptive effect for the exact studied policy digest. Non-supported or
 underpowered evidence records `not_approved` with no effective mode and cannot select static

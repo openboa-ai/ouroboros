@@ -240,20 +240,33 @@ protocol collects. It reports bounded inference counts and statistics, harmful b
 policy-decision eligibility, next action, and explicit false policy-replacement, promotion,
 order-submission, and live-exchange authority.
 The latest policy-decision entry is independently selected by decision time and ID descending. It
-reports decision, protocol, and outcome IDs, status, reason, effective default mode, decision time,
-`research_policy_only`, and explicit false evaluation, promotion, order-submission, and
-live-exchange authority. It exposes no digest, slot, study, campaign, artifact, or evaluator detail.
+is chronological history and reports decision, protocol, and outcome IDs, status, reason, effective
+default mode, decision time, `research_policy_only`, and explicit false evaluation, promotion,
+order-submission, and live-exchange authority. It exposes no digest, slot, study, campaign,
+artifact, or evaluator detail.
+
+`effective_policy_decision` is independently selected by the same exact helper used by the
+uncontrolled-allocation resolver. It is the newest applicable approved broad decision for the
+current repository allocation policy, so it may be older than `latest_policy_decision` when a newer
+decision is `not_approved`. Its application is `awaiting_allocation`, `allocated`, or
+`completed_tick`, and reports every exact citing allocation, every exact completed tick, and the
+latest allocation's allocation ID, tick ID, allocation time, and optional completion time. The
+projection carries research-policy selection authority only; all evaluation, promotion,
+order-submission, and live-exchange authorities remain false.
 
 CandidateArena constructs this projection from complete protocol, study, study-outcome,
-generalization-outcome, and generalization-policy-decision arrays. Duplicate identities, orphan
-references, or mismatched source assignments fail with
+generalization-outcome, generalization-policy-decision, allocation, and tick arrays. Every broad
+allocation must match the canonical current policy, decision/outcome refs and digests, mode,
+provenance, and pre-effect time ordering. Every consuming completed tick must match the allocation
+ref and digest, tick identity, terminal status, and allocation/start/completion order. Duplicate
+identities, orphan references, mismatched source assignments, or corrupt application links fail with
 `research_generalization_read_model_graph_invalid`; they never degrade to an empty projection. Raw
 kline windows, source artifacts, baseline digests, study and campaign IDs, evaluator internals, and
-per-slot effects are excluded. CLI and TUI render compact status parity including decision status
-and effective mode; Web Research renders lifecycle, condition progress, deadline, latest inference,
-statistics, latest decision, and closed authorities before Finding clusters and Research signals.
-This read model adds no command and never feeds allocation, ResearchWorker context, policy
-selection, rank, qualification, promotion, order, private, or live behavior.
+per-slot effects are excluded. CLI and TUI label the chronological latest mode separately from the
+resolver-effective mode and render application status and counts. Web Research renders the same
+evidence in an `Effective policy application` block after `Latest policy decision`. This read model
+adds no record or command and never feeds ResearchWorker context, direction scoring, rank,
+qualification, promotion, order, private, or live behavior.
 
 Admission persists references to both the exact source SystemCode snapshot and submitted
 SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the

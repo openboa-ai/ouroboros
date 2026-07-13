@@ -161,7 +161,11 @@ The next level of detail should improve the autonomous loop without widening aut
   separate `ResearchGeneralizationPolicyDecision` may approve only that protocol's frozen
   `adaptive_default` policy digest after exact supported cross-condition evidence. Uncontrolled ticks
   resolve explicit directions and modes first, then broad approval, same-baseline approval, and the
-  repository fallback. The default server scheduler owns oldest-first study discovery, same-host
+  repository fallback. The operator read model preserves chronological latest decision history and
+  separately projects the resolver-effective approval over exact existing allocations and completed
+  ticks as `awaiting_allocation`, `allocated`, or `completed_tick`. This projection observes
+  autonomy; it does not become a new decision, feedback, scheduling, or trading authority. The
+  default server scheduler owns oldest-first study discovery, same-host
   renewable execution leasing, and post-catch-up outcome, broad-decision, then same-baseline-decision
   reconciliation. Each campaign arm is composed from its exact LocalStore and arm-local paper
   session; confirmation advances one persisted transition at a time and recovers rather than adopts

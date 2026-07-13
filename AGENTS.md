@@ -147,13 +147,16 @@ decision before the same-baseline decision. This grants research-policy selectio
 never evaluation, rank, qualification, promotion, order, private, or live authority.
 `ResearchGeneralizationReadModel` is the required compact operator projection of that graph. It
 reports `not_started`, `collecting`, `awaiting_outcome`, or `closed`, the oldest protocol without an
-outcome, the latest adjudicated outcome, the latest policy decision, canonical long/short/flat
-progress, next action, and closed authority through
-`CandidateArenaReadModel.research_generalization`. CandidateArena builds it from complete protocol,
-study, study-outcome, outcome, and decision evidence; duplicate or irreconcilable graph state fails
-the read path instead of appearing empty. CLI, TUI, and Web Research may render this projection,
-but the projection itself must not enter allocation, ResearchWorker context, policy selection,
-rank, qualification, promotion, order, private, or live behavior.
+outcome, the latest adjudicated outcome, and the chronologically latest policy decision. It also
+reports the exact approved broad decision currently selected by the uncontrolled-allocation
+resolver as `effective_policy_decision`; a newer `not_approved` decision does not revoke an older
+applicable approval. Its application projection is `awaiting_allocation`, `allocated`, or
+`completed_tick`, counts exact citing allocations and completed ticks, and exposes the latest
+allocation link. CandidateArena builds it from complete protocol, study, study-outcome, outcome,
+decision, allocation, and tick evidence. Duplicate or irreconcilable source or application graph
+state fails the read path instead of appearing empty. CLI, TUI, and Web Research may render this
+projection, but it is read-only evidence over existing records and must not enter ResearchWorker
+context, direction scoring, rank, qualification, promotion, order, private, or live behavior.
 `ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
 an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
 digest; non-supported or underpowered evidence never selects static control. It is the fallback

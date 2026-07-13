@@ -166,6 +166,12 @@ standard term fits. Record that decision in repo docs and tests.
   generalized TradingSystem, or promotion. It authorizes only the exact frozen `adaptive_default`
   policy digest as provenance for future uncontrolled research allocation; explicit directions and
   modes still win. `not_approved` never means static control is superior.
+- Use `latest_policy_decision` only for chronological decision history and
+  `effective_policy_decision` only for the exact approved decision selected by the current
+  uncontrolled-allocation resolver. Call its read-only join to existing allocations and completed
+  ticks `policy application`, with `awaiting_allocation`, `allocated`, or `completed_tick` status.
+  Do not call it deployment, policy promotion, learned policy, regime winner, or generalization
+  success; no new persisted application record exists.
 - Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
   It is read-only generation context for the next ResearchWorker.
 - Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical
