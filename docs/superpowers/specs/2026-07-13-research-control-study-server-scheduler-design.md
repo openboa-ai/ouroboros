@@ -1,6 +1,6 @@
 # ResearchControlStudy Server Scheduler Design
 
-**Status:** Approved for implementation under the standing autonomous Goal mandate
+**Status:** Implemented and locally verified on 2026-07-13
 
 ## Goal
 

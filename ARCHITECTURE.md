@@ -91,8 +91,12 @@ progress record; restart therefore reconstructs state from the evidence graph.
 record. One composition root discovers incomplete studies from exact study/outcome lists, orders
 them by commitment time and ID, opens one injected runtime, verifies persisted completion, and
 rescans until caught up. It fails before later work when discovery, runtime opening, execution, or
-completion persistence is invalid. Server auto-start, long polling, cross-process leases, and
-deployed listener-capable study evidence remain outside this boundary.
+completion persistence is invalid. `ResearchControlStudyScheduler` owns repeated process-local
+supervisor cycles under `buildServer`: default startup follows Store initialization and paper
+recovery, a bounded interruptible wait discovers later commitments, and shutdown drains the study
+path before CandidateArena and shared paper sessions. The server runtime reconstructs each campaign
+only from its persisted study condition and revalidates the configured research-agent identity.
+Cross-process leases and deployed multi-instance study ownership remain outside this boundary.
 Application services separately derive `ResearchAllocationPolicyDecision` from one exact persisted
 study and outcome. Only eligible supported same-baseline adaptive evidence can approve the studied
 policy digest; every other valid outcome is not approved and cannot select static control. Before

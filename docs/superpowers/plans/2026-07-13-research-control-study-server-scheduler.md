@@ -8,6 +8,9 @@
 
 **Tech Stack:** TypeScript, Fastify lifecycle hooks, Vitest, existing LocalStore, CandidateArena runtime services, PaperTradingSessionService.
 
+**Status:** Completed on 2026-07-13. Full validation passed with 174 test files and 2760 tests,
+workspace-wide type checks, and `npm run check:repo-guards`.
+
 ## Global Constraints
 
 - GitHub `main` repo truth and root `AGENTS.md` doctrine remain authoritative.
@@ -31,7 +34,7 @@
 - Consumes: `ResearchControlStudyProcessSupervisor` lifecycle methods `start`, `drain`, `stop`, and `status`.
 - Produces: `ResearchControlStudyScheduler`, `ResearchControlStudySchedulerStatus`, and a lifecycle interface usable by `buildServer`.
 
-- [ ] **Step 1: Write failing scheduler lifecycle tests**
+- [x] **Step 1: Write failing scheduler lifecycle tests**
 
 Cover immediate start, `caught_up` wait and rescan, cumulative completed count, duplicate start,
 interruptible stop, active-supervisor stop delegation, terminal failure, and invalid interval. Use a
@@ -60,7 +63,7 @@ await scheduler.stop();
 expect(scheduler.status()).toMatchObject({ status: "stopped" });
 ```
 
-- [ ] **Step 2: Run the scheduler test and verify RED**
+- [x] **Step 2: Run the scheduler test and verify RED**
 
 Run:
 
@@ -70,7 +73,7 @@ npx vitest run apps/runtime/test/research-control-study-scheduler.test.ts
 
 Expected: FAIL because `research-control-study-scheduler.ts` does not exist.
 
-- [ ] **Step 3: Implement the minimal scheduler**
+- [x] **Step 3: Implement the minimal scheduler**
 
 Implement this public surface:
 
@@ -99,12 +102,12 @@ ISO clocks before projecting `nextPollAt`, unref default timers, and treat any s
 other than `caught_up`, `failed`, or an expected stop as a stable scheduler failure. Add each
 supervisor cycle's `completedStudyCount` to the scheduler cumulative total.
 
-- [ ] **Step 4: Run the scheduler test and verify GREEN**
+- [x] **Step 4: Run the scheduler test and verify GREEN**
 
 Run the Task 1 command. Expected: all scheduler tests pass with no leaked timer or unresolved
 promise.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-study-scheduler.ts apps/runtime/test/research-control-study-scheduler.test.ts
@@ -123,7 +126,7 @@ git commit -m "feat: schedule pending research studies"
 - Consumes: `LocalStore`, `ResearchControlStudyRecord`, `createResearchControlStudyRuntime`, server research-agent factory, artifact runner, replay provider, public market data, and arm session factory.
 - Produces: `openResearchControlStudyServerRuntime` and `createResearchControlStudyServerScheduler`.
 
-- [ ] **Step 1: Write failing reconstruction tests**
+- [x] **Step 1: Write failing reconstruction tests**
 
 Use `researchControlStudyFixture` and an injected `createStudyRuntime` spy. Assert the captured
 campaign input contains:
@@ -156,7 +159,7 @@ Assert `protocol_digest` is absent, artifact/replay adapters are forwarded, the 
 identity-digest drift throws `research_control_study_server_runtime_agent_mismatch` before
 `createStudyRuntime` is called.
 
-- [ ] **Step 2: Run the reconstruction test and verify RED**
+- [x] **Step 2: Run the reconstruction test and verify RED**
 
 Run:
 
@@ -166,7 +169,7 @@ npx vitest run apps/runtime/test/research-control-study-server-runtime.test.ts
 
 Expected: FAIL because the server-runtime factory does not exist.
 
-- [ ] **Step 3: Implement exact reconstruction and scheduler composition**
+- [x] **Step 3: Implement exact reconstruction and scheduler composition**
 
 Implement:
 
@@ -195,7 +198,7 @@ protocol and pass every other field unchanged.
 `ResearchControlStudyProcessSupervisor` whose `openStudy` calls this function, then wrap it in Task
 1's scheduler. Do not add a second discovery implementation.
 
-- [ ] **Step 4: Run reconstruction and existing process tests**
+- [x] **Step 4: Run reconstruction and existing process tests**
 
 Run:
 
@@ -205,7 +208,7 @@ npx vitest run apps/runtime/test/research-control-study-server-runtime.test.ts a
 
 Expected: all files pass.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add apps/runtime/src/candidate/arena/research-control-study-server-runtime.ts apps/runtime/test/research-control-study-server-runtime.test.ts
@@ -224,7 +227,7 @@ git commit -m "feat: reconstruct committed study runtimes"
 - Consumes: Task 1 scheduler lifecycle, Task 2 scheduler factory, and existing arm session factory.
 - Produces: default server startup and shutdown ownership for pending studies.
 
-- [ ] **Step 1: Write failing server lifecycle tests**
+- [x] **Step 1: Write failing server lifecycle tests**
 
 Add an injected scheduler fake and prove:
 
@@ -245,7 +248,7 @@ Add a disabled-start case with `runResearchControlStudiesOnStart: false` that le
 at zero while still allowing safe close. Record lifecycle events and assert scheduler stop begins
 before primary paper-session stop.
 
-- [ ] **Step 2: Run the server tests and verify RED**
+- [x] **Step 2: Run the server tests and verify RED**
 
 Run:
 
@@ -256,7 +259,7 @@ npx vitest run apps/runtime/test/server.test.ts
 Expected: type or assertion failure because the new `BuildServerOptions` and lifecycle wiring are
 absent.
 
-- [ ] **Step 3: Add server options and default composition**
+- [x] **Step 3: Add server options and default composition**
 
 Add these options:
 
@@ -281,7 +284,7 @@ After store initialization and paper-session recovery, create or accept the sche
 observer, and start it unless explicitly disabled. In `onClose`, await scheduler stop before
 CandidateArena, autonomous paper starts, and the primary paper-session service are stopped.
 
-- [ ] **Step 4: Run server and runtime-focused tests**
+- [x] **Step 4: Run server and runtime-focused tests**
 
 Run:
 
@@ -291,7 +294,7 @@ npx vitest run apps/runtime/test/server.test.ts apps/runtime/test/research-contr
 
 Expected: all files pass.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add apps/runtime/src/server.ts apps/runtime/test/server.test.ts
@@ -315,14 +318,14 @@ git commit -m "feat: run research studies with the server"
 - Consumes: verified scheduler and server behavior.
 - Produces: canonical implementation posture, explicit remaining cross-process boundary, and final evidence.
 
-- [ ] **Step 1: Update current implementation posture**
+- [x] **Step 1: Update current implementation posture**
 
 State only what tests prove: default server auto-start, bounded polling, exact persisted-condition
 reconstruction, one active process-local study, failure halt, and shutdown drain. Remove `server
 auto-start` and `long polling` from current gaps. Keep cross-process lease, automatic study
 commitment, policy decision, promotion, champion handoff, real-market regimes, and long soak open.
 
-- [ ] **Step 2: Run focused and full validation**
+- [x] **Step 2: Run focused and full validation**
 
 Run:
 
@@ -335,7 +338,7 @@ npm run check:repo-guards
 
 Expected: zero failing tests, zero type errors, and every repository guard passes.
 
-- [ ] **Step 3: Inspect and commit final durable truth**
+- [x] **Step 3: Inspect and commit final durable truth**
 
 ```bash
 git status --short
@@ -344,7 +347,7 @@ git add README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena
 git commit -m "docs: record study server scheduling"
 ```
 
-- [ ] **Step 4: Promotion review**
+- [x] **Step 4: Promotion review**
 
 Confirm only `.superpowers/` remains untracked, list the implementation commits, and select
 persisted cross-process study ownership as the next frontier rather than claiming P0 or Goal

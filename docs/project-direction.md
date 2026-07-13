@@ -67,9 +67,11 @@ planned campaign to terminal paper outcome per advance, and repeats sequentially
 record; its default campaign path can open exact arm roots and build real arms from arm-local
 session factories. `ResearchControlStudyProcessSupervisor` now discovers incomplete studies oldest first,
 drains one injected runtime at a time, verifies persisted completion, and rescans until caught up.
-It is single-process and explicitly started. Server auto-start, cross-process leasing, actual
-replicated outcome evidence, distinct-regime inference, learned policy parameters, and automatic
-decision creation remain open.
+`ResearchControlStudyScheduler` now starts that process path by default in `buildServer`, performs
+bounded interruptible polling for later commitments, reconstructs every campaign from the exact
+persisted condition, and stops before shared runtime dependencies. Ownership remains single-process;
+cross-process leasing, real-market replicated outcome evidence, distinct-regime inference, learned
+policy parameters, and automatic study or decision creation remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

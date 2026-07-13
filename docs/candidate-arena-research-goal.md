@@ -125,13 +125,14 @@ adjudication without a duplicate progress record. A separate append-only
 eligible supported outcome; unsupported and underpowered outcomes remain not approved and never
 select static control. Uncontrolled ticks prefer the latest applicable exact approval, then the
 repository adaptive fallback, while explicit directions and modes always win. Default process
-discovery is now available as an explicitly owned, single-process, one-shot supervisor that drains
-incomplete studies oldest first and rescans exact evidence. Each copied arm can now be opened as an
-exact LocalStore with its own paper-session service and composed into the existing comparison,
-qualification, confirmation, and release protocol. Confirmation advances one persisted transition
-at a time and propagates exact wake times; restart stops rather than adopts unowned attempts. Server
-auto-start, cross-process leasing, actual replicated study evidence, distinct-regime inference,
-automatic decision creation, and learned policy parameters remain open.
+discovery uses a single-process, one-shot supervisor that drains incomplete studies oldest first and
+rescans exact evidence. A process-local server scheduler now starts it by default, waits on a bounded
+interruptible poll after catch-up, and reconstructs each runtime from the persisted study condition.
+Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
+into the existing comparison, qualification, confirmation, and release protocol. Confirmation
+advances one persisted transition at a time and propagates exact wake times; restart stops rather
+than adopts unowned attempts. Cross-process leasing, automatic study commitment, real-market and
+distinct-regime replication, automatic decision creation, and learned policy parameters remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized

@@ -121,10 +121,14 @@ its terminal closure, and adjudicates only after all replications; stop drains t
 open one injected study runtime at a time, reload exact completion, and rescan until caught up.
 Failure does not skip later work, restart derives from append-only evidence, and stop drains the
 active campaign. The campaign-to-outcome runtime can now open root-specific arm stores and build
-those real arm services from an arm-local session factory. It is still an explicitly owned internal
-one-shot process, not server auto-start, long polling, a cross-process lease, or a public operator
-command. Policy-decision creation remains a separate service action rather than a study side
-effect; actual replicated study evidence,
+those real arm services from an arm-local session factory. `ResearchControlStudyScheduler` now
+keeps that one-shot supervisor alive under the runtime server: it runs immediately by default,
+waits on an interruptible bounded poll after catch-up, and discovers later commitments without an
+operator command. Each opened runtime reconstructs source, agent identity, campaign bounds, and
+the bound paper protocol from the exact persisted study condition. Shutdown stops this scheduler
+before CandidateArena and paper-session dependencies. This ownership is process-local, not a
+cross-process lease or a public operator command. Study commitment and policy-decision creation
+remain separate service actions rather than scheduler side effects; actual replicated study evidence,
 distinct-regime generalization, automatic TradingPromotion, and champion handoff remain outside.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
