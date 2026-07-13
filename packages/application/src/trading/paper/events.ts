@@ -11,13 +11,13 @@ export type TradingSystemPaperEventKind =
   | "hold"
   | "no_action";
 
-export interface PaperTradingComparisonTickAcknowledgementAttribution {
-  comparison_tick_acknowledgement_ref?: Ref;
-  comparison_tick_acknowledgement_digest?: string;
+export interface PaperTradingComparisonTickDeliveryAttribution {
+  comparison_tick_delivery_ref?: Ref;
+  comparison_tick_delivery_digest?: string;
 }
 
 export interface TradingSystemPaperOrderRequestEvent extends
-  PaperTradingComparisonTickAcknowledgementAttribution {
+  PaperTradingComparisonTickDeliveryAttribution {
   event_id: string;
   event_kind: "order_request";
   observed_at: string;
@@ -26,7 +26,7 @@ export interface TradingSystemPaperOrderRequestEvent extends
 }
 
 export interface PaperTradingErrorEvent extends
-  PaperTradingComparisonTickAcknowledgementAttribution {
+  PaperTradingComparisonTickDeliveryAttribution {
   event_id: string;
   event_kind: "error";
   observed_at: string;
@@ -38,14 +38,14 @@ export type PaperTradingSystemEvent =
       ledger_ref?: Ref;
       gateway_outcome: GatewayResultOutcome;
     })
-  | (PaperTradingComparisonTickAcknowledgementAttribution & {
+  | (PaperTradingComparisonTickDeliveryAttribution & {
       event_id: string;
       event_kind: "cancel_order";
       observed_at: string;
       order_id?: string;
       reason: string;
     })
-  | (PaperTradingComparisonTickAcknowledgementAttribution & {
+  | (PaperTradingComparisonTickDeliveryAttribution & {
       event_id: string;
       event_kind: "hold" | "no_action" | "error";
       observed_at: string;
@@ -54,14 +54,14 @@ export type PaperTradingSystemEvent =
 
 export type ParsedTradingSystemPaperEvent =
   | TradingSystemPaperOrderRequestEvent
-  | (PaperTradingComparisonTickAcknowledgementAttribution & {
+  | (PaperTradingComparisonTickDeliveryAttribution & {
       event_id: string;
       event_kind: "cancel_order";
       observed_at: string;
       order_id?: string;
       reason: string;
     })
-  | (PaperTradingComparisonTickAcknowledgementAttribution & {
+  | (PaperTradingComparisonTickDeliveryAttribution & {
       event_id: string;
       event_kind: "hold" | "no_action";
       observed_at: string;
@@ -170,7 +170,7 @@ export function parseTradingSystemPaperEventLine(
   if (hasForbiddenAuthorityField(raw)) {
     return rejectedPaperEvent(eventId, observedAt, "forbidden_private_or_live_authority");
   }
-  const attributionResult = parseComparisonTickAcknowledgementAttribution(raw);
+  const attributionResult = parseComparisonTickDeliveryAttribution(raw);
   if ("reason" in attributionResult) {
     return rejectedPaperEvent(eventId, observedAt, attributionResult.reason);
   }
@@ -227,45 +227,45 @@ export function parseTradingSystemPaperEventLine(
   };
 }
 
-function parseComparisonTickAcknowledgementAttribution(
+function parseComparisonTickDeliveryAttribution(
   raw: Record<string, unknown>
 ):
-  | { attribution: PaperTradingComparisonTickAcknowledgementAttribution }
-  | { reason: "comparison_tick_acknowledgement_attribution_invalid" } {
-  const referenceKey = "comparison_tick_acknowledgement_ref";
-  const digestKey = "comparison_tick_acknowledgement_digest";
+  | { attribution: PaperTradingComparisonTickDeliveryAttribution }
+  | { reason: "comparison_tick_delivery_attribution_invalid" } {
+  const referenceKey = "comparison_tick_delivery_ref";
+  const digestKey = "comparison_tick_delivery_digest";
   const attributionKeys = Object.keys(raw).filter((key) =>
     key.startsWith("comparison_tick_")
   );
   if (attributionKeys.some((key) => key !== referenceKey && key !== digestKey)) {
-    return { reason: "comparison_tick_acknowledgement_attribution_invalid" };
+    return { reason: "comparison_tick_delivery_attribution_invalid" };
   }
   const hasReference = Object.hasOwn(raw, referenceKey);
   const hasDigest = Object.hasOwn(raw, digestKey);
   if (!hasReference && !hasDigest) return { attribution: {} };
   if (hasReference !== hasDigest || !isRecord(raw[referenceKey])) {
-    return { reason: "comparison_tick_acknowledgement_attribution_invalid" };
+    return { reason: "comparison_tick_delivery_attribution_invalid" };
   }
   const reference = raw[referenceKey];
   if (
     Object.keys(reference).length !== 2 ||
     !Object.hasOwn(reference, "record_kind") ||
     !Object.hasOwn(reference, "id") ||
-    reference.record_kind !== "paper_trading_comparison_tick_acknowledgement" ||
+    reference.record_kind !== "paper_trading_comparison_tick_delivery" ||
     typeof reference.id !== "string" ||
     !reference.id.trim() ||
     typeof raw[digestKey] !== "string" ||
     !/^sha256:\S+$/.test(raw[digestKey])
   ) {
-    return { reason: "comparison_tick_acknowledgement_attribution_invalid" };
+    return { reason: "comparison_tick_delivery_attribution_invalid" };
   }
   return {
     attribution: {
-      comparison_tick_acknowledgement_ref: {
-        record_kind: "paper_trading_comparison_tick_acknowledgement",
+      comparison_tick_delivery_ref: {
+        record_kind: "paper_trading_comparison_tick_delivery",
         id: reference.id
       },
-      comparison_tick_acknowledgement_digest: raw[digestKey]
+      comparison_tick_delivery_digest: raw[digestKey]
     }
   };
 }

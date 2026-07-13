@@ -45,7 +45,7 @@ Gateway/Ledger, ResearchControlStudy runtime.
 - Produces: optional parsed event fields `comparison_tick_delivery_ref?: Ref` and
   `comparison_tick_delivery_digest?: string`.
 
-- [ ] **Step 1: Write the failing parser contract**
+- [x] **Step 1: Write the failing parser contract**
 
 Replace the parser fixture attribution with:
 
@@ -63,7 +63,7 @@ Require order, cancel, hold, and no-action events to preserve it. Require partia
 record kind, malformed digest, extra `comparison_tick_*` fields, and the old raw acknowledgement
 field pair to return `comparison_tick_delivery_attribution_invalid`.
 
-- [ ] **Step 2: Run the parser test and verify RED**
+- [x] **Step 2: Run the parser test and verify RED**
 
 Run:
 
@@ -74,17 +74,17 @@ npx vitest run packages/application/src/trading/paper/events.test.ts
 Expected: failures show the parser does not preserve `comparison_tick_delivery_*` and still accepts
 the old field names.
 
-- [ ] **Step 3: Implement the minimal parser replacement**
+- [x] **Step 3: Implement the minimal parser replacement**
 
 Rename the parsed event attribution type and parser helper to delivery vocabulary. Permit only the
 two exact delivery keys, validate `paper_trading_comparison_tick_delivery`, and return the stable
 error `comparison_tick_delivery_attribution_invalid` for malformed or old attribution.
 
-- [ ] **Step 4: Verify parser GREEN**
+- [x] **Step 4: Verify parser GREEN**
 
 Run the Step 2 command. Expected: all parser tests pass.
 
-- [ ] **Step 5: Write failing repeated-preparation tests**
+- [x] **Step 5: Write failing repeated-preparation tests**
 
 Change the repeated event fixture to use the acknowledgement's delivery evidence:
 
@@ -97,7 +97,7 @@ Assert exact delivery-bound hold consumption succeeds, while stale delivery ref/
 acknowledgement fields fail before `previewLedger` with
 `comparison_tick_delivery_attribution_invalid`. Preserve acknowledged-silence assertions.
 
-- [ ] **Step 6: Run preparation tests and verify RED**
+- [x] **Step 6: Run preparation tests and verify RED**
 
 Run:
 
@@ -108,7 +108,7 @@ npx vitest run packages/application/src/trading/paper/comparison-checkpoint-prep
 Expected: exact delivery-bound sequence-2 events fail because preparation still requires event
 acknowledgement fields.
 
-- [ ] **Step 7: Bind repeated events to the acknowledgement's delivery**
+- [x] **Step 7: Bind repeated events to the acknowledgement's delivery**
 
 In `preparePaperTradingComparisonCheckpointEvidence`, require every new sequence-2+ event to match:
 
@@ -120,7 +120,7 @@ event.comparison_tick_delivery_digest === acknowledgement.delivery_digest
 Preserve the acknowledgement ref/digest only on the prepared observation. Rename the event-cloning
 helper fields to delivery vocabulary.
 
-- [ ] **Step 8: Verify and commit Task 1**
+- [x] **Step 8: Verify and commit Task 1**
 
 Run:
 

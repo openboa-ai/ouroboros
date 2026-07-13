@@ -99,8 +99,8 @@ describe("paper comparison checkpoint preparation", () => {
     expect(prepared.consumed_event_count).toBe(1);
   });
 
-  it("accepts acknowledged event lineage through optional first-checkpoint preparation", async () => {
-    const fixture = preparationFixture([attributedHoldEventLine()]);
+  it("accepts delivery event lineage through optional first-checkpoint preparation", async () => {
+    const fixture = preparationFixture([deliveryAttributedHoldEventLine()]);
 
     const prepared = await preparePaperTradingComparisonCheckpointEvidence(
       fixture.input
@@ -117,7 +117,7 @@ describe("paper comparison checkpoint preparation", () => {
     expect(prepared.consumed_event_count).toBe(1);
   });
 
-  it("turns partial acknowledgement lineage into first-checkpoint negative evidence", async () => {
+  it("turns partial delivery lineage into first-checkpoint negative evidence", async () => {
     const fixture = preparationFixture([partialAttributionHoldEventLine()]);
 
     const prepared = await preparePaperTradingComparisonCheckpointEvidence(
@@ -126,10 +126,10 @@ describe("paper comparison checkpoint preparation", () => {
 
     expect(prepared.observation).toMatchObject({
       status: "failed",
-      failure_reason: "comparison_tick_acknowledgement_attribution_invalid",
+      failure_reason: "comparison_tick_delivery_attribution_invalid",
       decision: {
         decision_kind: "error",
-        reason: "comparison_tick_acknowledgement_attribution_invalid"
+        reason: "comparison_tick_delivery_attribution_invalid"
       }
     });
     expect(prepared.evaluation.status).toBe("failed");
@@ -171,24 +171,36 @@ describe("paper comparison checkpoint preparation", () => {
     expect(fixture.store.previewLedger).not.toHaveBeenCalled();
   });
 
-  it("rejects a stale event acknowledgement before sequence 2 Ledger preview", async () => {
-    const fixture = repeatedPreparationFixture([attributedHoldEventLine()]);
+  it("rejects a stale event delivery before sequence 2 Ledger preview", async () => {
+    const fixture = repeatedPreparationFixture([deliveryAttributedHoldEventLine()]);
 
     await expect(preparePaperTradingComparisonCheckpointEvidence(
       fixture.input
     )).rejects.toMatchObject({
-      code: "comparison_tick_acknowledgement_attribution_invalid"
+      code: "comparison_tick_delivery_attribution_invalid"
     });
     expect(fixture.store.previewLedger).not.toHaveBeenCalled();
   });
 
-  it("consumes an exactly acknowledged sequence 2 hold without Ledger evidence", async () => {
+  it("rejects legacy acknowledgement-attributed events before sequence 2 Ledger preview", async () => {
+    const fixture = repeatedPreparationFixture([
+      acknowledgementAttributedHoldEventLine()
+    ]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    )).rejects.toMatchObject({
+      code: "comparison_tick_delivery_attribution_invalid"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("consumes an exactly delivered sequence 2 hold without Ledger evidence", async () => {
     const fixture = repeatedPreparationFixture([]);
     fixture.input.candidate = candidateWithLogs([
-      attributedHoldEventLine({
-        id: fixture.acknowledgement
-          .paper_trading_comparison_tick_acknowledgement_id,
-        digest: fixture.acknowledgement.acknowledgement_digest
+      deliveryAttributedHoldEventLine({
+        id: fixture.acknowledgement.delivery_ref.id,
+        digest: fixture.acknowledgement.delivery_digest
       })
     ]);
 
@@ -610,10 +622,10 @@ function holdEventLine(): string {
   });
 }
 
-function attributedHoldEventLine(
+function deliveryAttributedHoldEventLine(
   attribution: { id: string; digest: string } = {
-    id: "ack-1",
-    digest: "sha256:acknowledgement"
+    id: "delivery-1",
+    digest: "sha256:delivery-1"
   }
 ): string {
   return JSON.stringify({
@@ -623,11 +635,11 @@ function attributedHoldEventLine(
     at: "2026-07-11T00:00:04.000Z",
     authority_status: "trace_only",
     reason: "candidate attributed cadence hold",
-    comparison_tick_acknowledgement_ref: {
-      record_kind: "paper_trading_comparison_tick_acknowledgement",
+    comparison_tick_delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
       id: attribution.id
     },
-    comparison_tick_acknowledgement_digest: attribution.digest
+    comparison_tick_delivery_digest: attribution.digest
   });
 }
 
@@ -639,10 +651,26 @@ function partialAttributionHoldEventLine(): string {
     at: "2026-07-11T00:00:04.000Z",
     authority_status: "trace_only",
     reason: "candidate partial attribution hold",
+    comparison_tick_delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
+      id: "delivery-1"
+    }
+  });
+}
+
+function acknowledgementAttributedHoldEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-legacy-attribution-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "legacy acknowledgement attribution must fail closed",
     comparison_tick_acknowledgement_ref: {
       record_kind: "paper_trading_comparison_tick_acknowledgement",
-      id: "ack-1"
-    }
+      id: "ack-2"
+    },
+    comparison_tick_acknowledgement_digest: "sha256:acknowledgement-2"
   });
 }
 

@@ -143,14 +143,14 @@ export async function preparePaperTradingComparisonCheckpointEvidence(
     );
   if (input.checkpointAttempt.checkpoint_sequence > 1 &&
     tradingSystemEvents.some((event) =>
-      !event.comparison_tick_acknowledgement_ref ||
-      event.comparison_tick_acknowledgement_ref.id !==
-        acknowledgement!.paper_trading_comparison_tick_acknowledgement_id ||
-      event.comparison_tick_acknowledgement_digest !==
-        acknowledgement!.acknowledgement_digest)) {
+      !event.comparison_tick_delivery_ref ||
+      event.comparison_tick_delivery_ref.id !==
+        acknowledgement!.delivery_ref.id ||
+      event.comparison_tick_delivery_digest !==
+        acknowledgement!.delivery_digest)) {
     throw new PaperTradingObservationError(
-      "comparison_tick_acknowledgement_attribution_invalid",
-      "Repeated paper comparison events require the exact current tick acknowledgement."
+      "comparison_tick_delivery_attribution_invalid",
+      "Repeated paper comparison events require the exact acknowledged tick delivery."
     );
   }
   const decision = await preparePaperTradingObservationDecision({
@@ -652,7 +652,7 @@ async function preparePaperTradingObservationDecision(input: {
         event_kind: "error",
         observed_at: event.observed_at,
         reason: event.reason,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       }))
     };
   }
@@ -693,7 +693,7 @@ async function preparePaperTradingObservationDecision(input: {
           id: ledger.order_request.order_request_id
         },
         gateway_outcome: ledger.gateway_result.decision_outcome,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       });
       continue;
     }
@@ -711,7 +711,7 @@ async function preparePaperTradingObservationDecision(input: {
         observed_at: event.observed_at,
         order_id: event.order_id,
         reason: event.reason,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       });
       continue;
     }
@@ -721,7 +721,7 @@ async function preparePaperTradingObservationDecision(input: {
       event_kind: event.event_kind,
       observed_at: event.observed_at,
       reason: event.reason,
-      ...comparisonTickAcknowledgementAttribution(event)
+      ...comparisonTickDeliveryAttribution(event)
     });
   }
   return {
@@ -732,23 +732,23 @@ async function preparePaperTradingObservationDecision(input: {
   };
 }
 
-function comparisonTickAcknowledgementAttribution(
+function comparisonTickDeliveryAttribution(
   event: ParsedTradingSystemPaperEvent
 ): Pick<
   ParsedTradingSystemPaperEvent,
-  | "comparison_tick_acknowledgement_ref"
-  | "comparison_tick_acknowledgement_digest"
+  | "comparison_tick_delivery_ref"
+  | "comparison_tick_delivery_digest"
 > {
-  if (!event.comparison_tick_acknowledgement_ref ||
-    !event.comparison_tick_acknowledgement_digest) {
+  if (!event.comparison_tick_delivery_ref ||
+    !event.comparison_tick_delivery_digest) {
     return {};
   }
   return {
-    comparison_tick_acknowledgement_ref: {
-      ...event.comparison_tick_acknowledgement_ref
+    comparison_tick_delivery_ref: {
+      ...event.comparison_tick_delivery_ref
     },
-    comparison_tick_acknowledgement_digest:
-      event.comparison_tick_acknowledgement_digest
+    comparison_tick_delivery_digest:
+      event.comparison_tick_delivery_digest
   };
 }
 
@@ -802,7 +802,7 @@ async function recordPaperTradingObservationDecision(input: {
         event_kind: "error",
         observed_at: event.observed_at,
         reason: event.reason,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       }))
     };
   }
@@ -833,7 +833,7 @@ async function recordPaperTradingObservationDecision(input: {
         order_request: event.order_request,
         ledger_ref: { record_kind: "order_request", id: ledger.order_request.order_request_id },
         gateway_outcome: ledger.gateway_result.decision_outcome,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       });
       continue;
     }
@@ -851,7 +851,7 @@ async function recordPaperTradingObservationDecision(input: {
         observed_at: event.observed_at,
         order_id: event.order_id,
         reason: event.reason,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       });
       continue;
     }
@@ -868,7 +868,7 @@ async function recordPaperTradingObservationDecision(input: {
         event_kind: "error",
         observed_at: event.observed_at,
         reason: event.reason,
-        ...comparisonTickAcknowledgementAttribution(event)
+        ...comparisonTickDeliveryAttribution(event)
       });
       continue;
     }
@@ -878,7 +878,7 @@ async function recordPaperTradingObservationDecision(input: {
       event_kind: event.event_kind,
       observed_at: event.observed_at,
       reason: event.reason,
-      ...comparisonTickAcknowledgementAttribution(event)
+      ...comparisonTickDeliveryAttribution(event)
     });
   }
   await recordPaperTradingObservationAudit({
