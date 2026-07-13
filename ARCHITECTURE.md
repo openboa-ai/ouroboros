@@ -7,7 +7,9 @@ CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
 -> pre-effect ResearchPreflightCommitment
--> bounded development replay/backtest feedback
+-> one bounded ResearchWorkerSession
+-> immutable development submissions and aggregate replay/backtest feedback
+-> explicit selection or no submission
 -> frozen SystemCode and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
@@ -28,11 +30,17 @@ Researchers and LLM agents are candidate generators. Development replay/backtest
 research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
 one `ResearchPreflightCommitment` to the allocation, direction, worker, source SystemCode, bounded
 development suite, and evaluator-owned sealed suite commitment. The worker never receives the raw
-seed, sealed scenarios, or sealed outcome; one development-selected artifact is frozen and may be
-submitted to that sealed set only once. Process loss fails that commitment closed rather than
-resampling. Exact
-terminal commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and generated
-paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
+seed, sealed scenarios, or sealed outcome. The application creates one provider-independent
+`ResearchWorkerSession` over a mutable working artifact and an externally owned development
+evaluator. A session-local adapter exposes only status, bounded immutable submission, explicit
+selection, and finish capabilities. Submission effects are serialized and idempotent; aggregate
+feedback returns to the worker, while scenario and sealed evidence remain outside. Selection binds
+one completed development sequence and copied bytes. Current workspace state and development rank
+cannot substitute for selection. No selection leaves the sealed suite unclaimed and produces no
+candidate graph. One selected artifact may be submitted to the sealed set only once. Process loss
+fails that commitment closed rather than resampling. Exact terminal
+commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and
+generated paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
 canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
 undeclared closure state. Continuous paper trading is the product evaluation
 authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs only to selected
@@ -140,8 +148,9 @@ outside the boundary.
 not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
 commitment still runs isolated candidate bytes and closes through one append-only
 `ResearchWorkerCheckpoint` with a contiguous prior link, bounded cumulative submission accounting,
-zero retry authority, and completed or failed-closed status. Restart reconciliation runs before a
-new tick effect: it reconstructs a terminal checkpoint from an exact persisted admission or closes
+zero retry authority, and completed or failed-closed status. Completed means either admission was
+recorded or the worker explicitly finished without selecting a submission. Restart reconciliation
+runs before a new tick effect: it reconstructs a terminal checkpoint from an exact persisted admission or closes
 the orphan as restart recovery. It never adopts a process or recreates evaluator-held sealed state.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.

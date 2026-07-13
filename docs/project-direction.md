@@ -28,6 +28,10 @@ paper trading over live public market data. Between them,
 satisfies the bounded target paper event protocol before admission and generated-candidate start.
 `ResearchPreflightCommitment` is the pre-effect record that keeps adaptive development feedback
 separate from one rotating, evaluator-owned sealed admission submission.
+`ResearchWorkerSession` is the disposable runtime lifetime under one exact commitment. The default
+Codex and fixture adapters run one bounded session, let the worker choose when to submit immutable
+development snapshots, return aggregate feedback, and require explicit selection or finish. It is
+not the stable ResearchWorker identity and grants no evaluation or trading authority.
 `ResearchBehaviorFingerprint` is the development-only population identity record that binds one
 frozen SystemCode to normalized effective orders on one exact protocol and suite digest.
 `ResearchPopulationDiversity` is the read-only latest-ten-tick coverage aggregate plus a bounded
@@ -145,8 +149,12 @@ living agent-based systems.
 
 Development replay success alone does not establish runnable handoff. CandidateArena persists the
 allocation, direction, worker, source bytes, development budget, and sealed-suite commitments
-before worker effects. It freezes one development-selected artifact, allows one sealed submission,
-and exposes no raw seed, sealed scenario, score, or evaluator internals to the worker. New admitted
+before worker effects. One provider session owns the mutable workspace, while each development
+submission is copied and evaluated outside that workspace. The worker may adapt across bounded
+aggregate feedback and explicitly select any completed sequence; neither highest score nor current
+workspace state is an implicit selection. CandidateArena freezes that exact snapshot, durably binds
+its development sequence and submitted digest, allows one sealed submission, and exposes no raw
+seed, sealed scenario, score, or evaluator internals to the worker. New admitted
 candidates bind that exact terminal graph and passed `PaperTradingHandoffConformance`, and
 generated-candidate paper start revalidates it before
 effects. Generated single-file Python SystemCode identity includes its frozen manifest and sole
@@ -158,7 +166,10 @@ ResearchWorker identity persists across ticks only when direction, provider, mod
 agent profile are exact. The worker owns a stable workspace with one sanitized notebook per tick;
 candidate artifact bytes remain isolated. Every new commitment closes through one append-only
 checkpoint with a contiguous prior link, bounded cumulative submission counts, and zero remaining
-retry authority. Restart recovery runs before the next worker effect. It reconstructs a checkpoint
+retry authority. Explicit finish without selection closes as
+`completed/finished_without_submission`, creates no candidate graph, and remains valid prior
+context for the next commitment. Provider or tool failure closes as failed. Restart recovery runs
+before the next worker effect. It reconstructs a checkpoint
 from an already persisted exact admission or fails the orphan closed, and never reruns the old
 artifact, process, provider, sandbox, budget, seed, or sealed suite.
 

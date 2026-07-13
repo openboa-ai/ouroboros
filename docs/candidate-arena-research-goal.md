@@ -182,16 +182,24 @@ new tick effect, restart recovery closes orphan commitments oldest first: an exa
 admission reconstructs only completed lifecycle evidence, while an orphan without admission becomes
 `failed_closed/restart_recovery`. Later same-worker prompts receive at most six recent public
 development summaries and never sealed, paper, path, command, provider-request, stdout/stderr, or
-private/live fields. This does not revive a provider process or sandbox, let the worker choose an
-open-ended de-risking sequence, or prove long-duration autonomous restart soak.
+private/live fields. The default Codex and fixture paths now run one bounded agent-owned session per
+commitment instead of one provider call per host iteration. A worker can spend zero through the
+committed development budget, adapt from aggregate feedback, explicitly select any completed
+immutable snapshot, or finish without selection. The latter records `no_submission`, creates no
+SystemCode/admission/Evaluation/Finding, closes `completed/finished_without_submission`, and can
+continue into a later fresh commitment. Provider failure retains completed development evidence and
+fails closed; restart never adopts the provider process or tool server. This proves bounded session
+mechanics and one real Codex probe, not long-duration autonomous research quality or restart soak.
 
 Current partial implementation evidence also covers isolated research preflight and the
 candidate-to-paper handoff boundary. Before a worker effect, CandidateArena persists direction,
 worker, source SystemCode, allocation, bounded development policy, and an evaluator-owned rotating
 sealed-suite commitment. Raw evaluator seed and sealed scenarios remain in memory. The worker gets
-aggregate development feedback only; one development-selected artifact is frozen and submitted
-once to sealed admission. Terminal evaluation, submitted bytes, suite, paper handoff conformance,
-admission, and materialization form one append-only graph, and process loss fails closed rather
+aggregate development feedback only; one explicitly selected development artifact is frozen and
+submitted once to sealed admission. The terminal Evaluation separately records sealed submission
+sequence one and the selected development submission sequence, while its submitted SystemCode
+digest binds the exact frozen bytes. Terminal evaluation, submitted bytes, suite, paper handoff
+conformance, admission, and materialization form one append-only graph, and process loss fails closed rather
 than resampling. Compact direction readback exposes only commitment ID, development submission
 count, generic terminal status/reason, and authority-free phase cost counts. Generated-candidate
 paper start revalidates the graph before effects. Rejected sealed evidence remains causal memory;
@@ -280,7 +288,8 @@ conditions has not demonstrated useful agent leverage.
    qualification evidence, and fair comparison.
 2. P1: candidate admission, invalid quarantine, duplicate handling, and referentially complete
    findings and lineage.
-3. P2: long-running ResearchWorker lifecycle, sandbox, notebook, snapshots, and shared memory.
+3. P2: long-running ResearchWorker soak, sandbox hardening, notebook causality, and shared-memory
+   efficacy beyond the implemented bounded session mechanics.
 4. P3: population diversity, exploration protection, and evidence-adaptive direction and budget
    allocation.
 5. P4: champion and challenger paper comparison, qualification policy, and repeatable frontier

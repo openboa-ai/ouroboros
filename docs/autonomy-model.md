@@ -28,7 +28,7 @@ authority that belongs to a higher layer.
 
 | Layer | Autonomous work | Authority boundary | Evidence |
 | --- | --- | --- | --- |
-| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across stable logical `ResearchWorker` and `ResearchDirection` lanes; precommit bounded development and one rotating sealed admission set; freeze one submission; run external target paper-protocol conformance; record admission, findings, lineage, and terminal worker checkpoint. | Researchers may consume aggregate development feedback and their own sanitized checkpoint notebook, but never sealed seed/scenarios/outcomes, resume old commitment authority, grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `ResearchPreflightCommitment`, `ResearchWorkerCheckpoint`, `SystemCode`, sealed terminal `Evaluation`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Finding`, `Lineage`, research leaderboard. |
+| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across stable logical `ResearchWorker` and `ResearchDirection` lanes; run one bounded agent-owned session under a pre-effect commitment; externally snapshot development submissions; require explicit selection or no submission; run one rotating sealed admission and target paper-protocol conformance; record admission, findings, lineage, and terminal worker checkpoint. | Researchers may consume aggregate development feedback and their own sanitized checkpoint notebook, but never sealed seed/scenarios/outcomes, raw paper telemetry, resume old commitment authority, grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `ResearchPreflightCommitment`, `ResearchWorkerCheckpoint`, `SystemCode`, sealed terminal `Evaluation`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Finding`, `Lineage`, research leaderboard. |
 | Selected paper evaluation | Run the selected `TradingSystem` as a managed paper session; inject `TRADING_API_BASE_URL`; observe emitted events on a schedule; update fake account, fills, score, and Ledger evidence. | `TradingSystem` owns decision cadence; Gateway validates and fake executes; paper observation never invents a trade decision from a refreshed snapshot. | `PaperTradingEvaluation`, observations, public market snapshots, public execution evidence, fake account state, Ledger chain. |
 | Paper qualification | Decide whether accumulated paper evidence is mature enough to trust. | Rank is not readiness. A high paper score can still be collecting evidence or blocked by quality. | `PaperTradingQualification` status, reasons, evidence window, runner state, market/fill quality. |
 | Trading review promotion | Move one qualified paper-backed candidate into Trading review. | Operator or explicit policy decides promotion. `TradingPromotion` remains `not_live`; it does not bind exchange authority. | `TradingPromotion`, `TradingReview`, selected candidate match/mismatch, paper board row, Ledger readback. |
@@ -47,8 +47,12 @@ For Ouroboros, "prototype" and "production" are product states, not UI polish le
 - `ResearchPreflightCommitment` is persisted before worker effects. It separates bounded adaptive
   development feedback from one evaluator-owned rotating sealed admission submission and stores no
   raw seed or sealed scenario. Process loss is terminal for that in-memory plan.
+- `ResearchWorkerSession` is one disposable provider runtime under that commitment. It owns a
+  bounded working artifact and session-local tool port; every development submission is copied and
+  evaluated externally, and only an explicit completed sequence can enter sealed admission.
 - `ResearchWorkerCheckpoint` closes each checkpoint-enabled commitment as completed or failed-closed,
-  carries only bounded sanitized development notebook and budget history, and reconciles orphans
+  including completed finish without a selection. It carries only bounded sanitized development
+  notebook and budget history, and reconciles orphans
   before a later worker effect. It resumes logical context through a new commitment, not a provider
   process, sandbox, old budget, or evaluator plan.
 - `PaperTradingHandoffConformance` externally checks the exact submitted artifact against the
@@ -89,8 +93,10 @@ That harness is repo-owned, reviewed, and versioned.
 
 - Static context: `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `docs/`, naming taxonomy, API
   contract, and validation policy.
-- Dynamic context: `.agents/skills`, selected researcher provider, CandidateArena context,
-  paper-board compaction, selected paper lineage/finding summaries, and recent paper failures.
+- Dynamic context: `.agents/skills`, selected researcher provider, aggregate CandidateArena
+  leaderboard/findings/diversity/allocation/efficiency context, FindingClusters, released campaign
+  findings, and the worker's sanitized prior checkpoint. Raw paper board, observation, account,
+  fill, decision, cadence, and failure telemetry stay outside the open session.
 - Tools and ports: `MarketDataPort`, Sandbox adapters, Gateway runtime API, store ports, provider
   adapters, CLI/TUI/Web command surfaces.
 - Guardrails: command registry authority flags, paper event protocol, qualification policy,
@@ -177,8 +183,11 @@ The next level of detail should improve the autonomous loop without widening aut
   without promotion authority. Exact same-suite `ResearchBehaviorFingerprint` comparison now keeps
   one admitted population slot and preserves duplicate Finding/Lineage without exposing raw
   observations. Approximate or cross-suite behavior clustering, broader evaluator side channels,
-  worker-chosen de-risking sequences, long-duration restart soak, and economic generalization remain
-  future detail; a query cap is not treated as a reward-hacking proof.
+  long-duration autonomous research quality, restart soak, and economic generalization remain
+  future detail; a query cap is not treated as a reward-hacking proof. The implemented bounded
+  Codex/fixture session supports worker-chosen submission timing, aggregate-feedback adaptation,
+  explicit non-best selection, no submission, immutable in-flight snapshots, and fail-closed fresh
+  restart without adopting provider state.
 - CandidateArena and next-worker context now share `ResearchPopulationDiversity` over the latest
   ten completed ticks. Top-level distributions measure rolling coverage and `tick_series` preserves
   each exact worker cross-section newest first. Assigned-direction and exact same-suite behavior

@@ -188,23 +188,31 @@ allocation. Nested `development` and `sealed_admission` summaries expose phase s
 counts under `not_promotion_authority`; they contain no scenario identity, outcome, score, event,
 path, command evidence, or evaluator internals.
 
+`ResearchWorkerSession` is internal application infrastructure and adds no `OuroborosCommand`, HTTP
+route, MCP tool, or operator mutation. One provider process receives a session-local authenticated
+tool endpoint for status, bounded development submission, explicit selection, and finish only. The
+endpoint and credentials are removed when the session ends.
+
 `CandidateAdmissionDecision` is the research-only external gate between `ResearchPreflight` and
 candidate materialization. Every new-format admitted decision binds the exact pre-effect
 `ResearchPreflightCommitment`, source/submitted SystemCode digests, sealed suite and sequence-one
-terminal evaluation, `PaperTradingHandoffConformance` ref/digest/status, and, for the new Arena
+terminal evaluation, selected development submission sequence, `PaperTradingHandoffConformance`
+ref/digest/status, and, for the new Arena
 path, `ResearchBehaviorFingerprint` comparison status/ref/digest. Duplicate or
 pre-probe quarantine decisions may have no conformance linkage. A CandidateArena direction result
 is `created` only when the persisted decision is `admitted` with
 `runnable_paper_handoff: true` and exact passed conformance. Unchanged output is `duplicate` and
-invalid external evaluation is `quarantined`. Every completed admission outcome carries
+invalid external evaluation is `quarantined`. An autonomous session that selects nothing is
+`no_submission`; it carries a finding summary plus compact efficiency/preflight readback but no
+candidate, admission, conformance, net revenue, or error. Every completed admission outcome carries
 `admission_decision_id` and `admission_reason`; duplicate and quarantined results also carry a
 finding summary without a candidate id. Direction readback exposes only compact conformance
 ID/status/reason, never raw probe output. Infrastructure exceptions remain `failed`. Changed versus
 unchanged is derived from the source and submitted SystemCode artifact
 digests, not the ResearchWorker's edit self-report. Only `not_counted` research evidence can be
 admitted; already counted evidence is quarantined instead of being repurposed as a runnable
-handoff. A tick is `completed` when every direction
-reaches an admission outcome, even if none is admitted; `completed_with_errors` or `failed` is
+handoff. A tick is `completed` when every direction reaches a terminal research outcome, including
+`no_submission`, even if none is admitted; `completed_with_errors` or `failed` is
 reserved for partial or total infrastructure failure. Admission does not qualify paper evidence,
 change paper rank, grant promotion, or enable live authority.
 
@@ -339,19 +347,13 @@ research visibility; raw outcomes remain sealed. The same predicate gates
 `paper_trading_evaluation_leader` source selection; sealed or corrupt paper evidence cannot become
 the next ResearchWorker's parent. Candidate-aggregate Ledger
 summaries are omitted until evidence can be resolved by the released evaluation's exact TradingRun.
-Selected paper
-evidence should also carry a compact
-`lineage` summary: lineage status, research direction, parent candidate, latest finding,
-evaluation status, and `lineage_only` authority. That lets the next ResearchWorker react to
-paper-backed lineage evidence without treating lineage as promotion authority.
-Selected paper evidence should also carry compact `paper_loop_latency`: expected observation
-interval, latest observed interval, latest and max lag, observed interval count, cadence status,
-and `not_promotion_authority`. It is derived from persisted `PaperTradingObservation` timestamps
-and exists only so the next ResearchWorker can notice lagging or thin paper cadence; it must not
-change paper rank, qualification, Trading review readiness, or promotion decisions.
-`CandidateArenaReadModel` and CandidateArena researcher context should also carry
+Operator readback may carry selected paper lineage and `paper_loop_latency`, but the open
+ResearchWorker context does not. It omits selected paper evidence, the paper board, raw latest-tick
+errors, market/public-execution snapshots, account/open-order/fill/decision state, cadence metrics,
+and raw failure strings. CandidateArena researcher context carries only bounded
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
-protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
+protocol failure, plus released campaign findings and aggregate leaderboard, diversity, allocation,
+and efficiency context. These objects are `not_promotion_authority`: they guide next candidate
 generation only. Every new tick must persist one pre-effect `CandidateArenaResearchAllocation`.
 Without explicit directions or mode, allocation-policy basis precedence is the latest applicable
 approved `ResearchGeneralizationPolicyDecision`, the latest applicable approved same-baseline

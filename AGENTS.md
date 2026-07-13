@@ -30,7 +30,8 @@ loop:
 problem
 -> parallel or iterative TradingSystem candidate generation
 -> pre-effect ResearchPreflightCommitment
--> bounded adaptive development ResearchPreflight
+-> bounded agent-owned ResearchWorkerSession and development ResearchPreflight
+-> explicit immutable development-submission selection
 -> frozen one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
@@ -48,7 +49,15 @@ continuous paper `revenue - cost`, and Gateway/Ledger evidence decide what count
 runnable handoff must bind its exact pre-effect commitment, sealed terminal evaluation, submitted
 `SystemCode`, and passed `PaperTradingHandoffConformance`. Development feedback has no admission
 authority; raw evaluator seed, sealed scenarios, and sealed outcome stay unavailable to the
-ResearchWorker, and process loss fails the exact commitment closed rather than resampling. A stable
+ResearchWorker. The default Codex and fixture paths run one bounded provider session over one
+artifact workspace. The worker may make multiple externally snapshotted development submissions,
+receive aggregate feedback, and explicitly select one completed sequence or finish without a
+selection. The host never selects from score or mutable workspace state. A selected sequence and
+exact submitted SystemCode digest are bound into the terminal Evaluation while sealed
+`submission_sequence: 1` continues to mean the single sealed attempt. Finishing without selection
+records `no_submission`, creates no SystemCode/admission/Evaluation/Finding, and closes the
+checkpoint as `completed/finished_without_submission`. Provider or tool failure fails closed.
+Process loss fails the exact commitment closed rather than resampling. A stable
 logical ResearchWorker may continue only through a new allocation and commitment after one
 append-only `ResearchWorkerCheckpoint`; restart recovery reconstructs an exact persisted admission
 closure or records `failed_closed/restart_recovery` before any new worker effect. It never resumes
@@ -328,8 +337,9 @@ Canonical Ouroboros nouns for the current product surface:
 | --- | --- |
 | `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
 | `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and candidate artifact runs remain disposable. |
+| `ResearchWorkerSession` | Runtime lifetime of one ResearchWorker under one exact ResearchPreflightCommitment. It owns one bounded artifact workspace and provider process plus status, development submission, explicit selection, and finish tools; it is not a persisted worker identity or trading authority. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
-| `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `CandidateArenaTick` | One arena iteration that records each direction as created, duplicate, quarantined, no submission, or failed, with candidate/finding/lineage evidence only when that outcome owns it. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and whether policy came from an explicit request, repository default, or exact approved ResearchAllocationPolicyDecision without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick/direction/worker/allocation/source SystemCode to bounded development feedback and one evaluator-owned rotating sealed-admission suite; it stores commitments and digests, never the raw evaluator seed or sealed scenarios, and grants no admission, promotion, order, private, or live authority. |
 | `ResearchWorkerCheckpoint` | Append-only terminal lifecycle evidence for one stable ResearchWorker and exact ResearchPreflightCommitment; it carries bounded sanitized notebook continuity and closed budget history into a later new commitment without resuming old effects or granting downstream authority. |

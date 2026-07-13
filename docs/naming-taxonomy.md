@@ -10,9 +10,10 @@ that pack every axis into one identifier.
 | --- | --- |
 | `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
 | `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and isolated candidate runs remain disposable. |
+| `ResearchWorkerSession` | Disposable runtime lifetime of one ResearchWorker under one exact ResearchPreflightCommitment. It owns one bounded working artifact and provider process plus development submission, selection, and finish capabilities; it is not a persisted worker identity or trading authority. |
 | `ResearchWorkerCheckpoint` | Append-only lifecycle closure for one stable ResearchWorker and exact ResearchPreflightCommitment. It carries bounded sanitized development notebook continuity and closed budget history into a later new commitment, but cannot resume old effects or grant evaluation, admission, promotion, order, private, or live authority. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
-| `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `CandidateArenaTick` | One arena iteration that records each direction as created, duplicate, quarantined, no submission, or failed, with candidate/finding/lineage evidence only when that outcome owns it. |
 | `CandidateArenaResearchAllocation` | Append-only pre-effect research-only scheduling decision for one CandidateArena tick; it freezes selected and deferred directions, bounded experiment budgets and concurrency, signal provenance, and an explicit-request, repository-default, or exact approved-decision policy basis without becoming economic or promotion evidence. |
 | `ResearchPreflightCommitment` | Append-only pre-effect binding of one tick, direction, worker, allocation, source SystemCode, bounded development policy, and evaluator-owned rotating sealed-admission suite. It stores only commitments/digests, permits one sealed submission, and grants no admission, promotion, order, private, or live authority. |
 | `ResearchBehaviorFingerprint` | Append-only development-only evidence that one frozen SystemCode emitted one sorted normalized effective decision per scenario on one exact protocol and development-suite digest. Equal fingerprints mean bounded observational duplication only, not semantic equivalence, profitability, qualification, promotion, order, private, or live authority. |
@@ -36,7 +37,7 @@ that pack every axis into one identifier.
 | `ResearchAllocationPolicyDecision` | Append-only research-only selection derived separately from one exact ResearchControlStudy and outcome. Version 1 approves only an eligible supported adaptive effect for the exact studied policy digest; all other valid outcomes are not approved, never select static control, and grant no evaluation, promotion, order, private, or live authority. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
-| `ResearchPreflight` | Candidate-creation evaluation family: bounded adaptive development feedback plus one evaluator-owned rotating sealed admission over a development-selected frozen artifact. It is not prospective economic or promotion authority. |
+| `ResearchPreflight` | Candidate-creation evaluation family: bounded adaptive development feedback plus one evaluator-owned rotating sealed admission over an explicitly selected frozen development artifact. It is not prospective economic or promotion authority. |
 | `PaperTradingHandoffConformance` | External research-only proof that one exact submitted SystemCode artifact closure satisfies the bounded target paper event protocol before admission, materialization, and generated-candidate paper start; it carries no economic, qualification, promotion, order, private, or live authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
@@ -114,6 +115,10 @@ standard term fits. Record that decision in repo docs and tests.
   PaperTradingEvaluation and Ledger evidence are proof.
 - Do not call development replay sealed or admission evidence. `ResearchPreflightCommitment` must
   precede worker effects; sealed admission starts only after artifact freeze and runs at most once.
+- Keep `submission_sequence: 1` for the one sealed attempt distinct from
+  `selected_development_submission_sequence`, which identifies the immutable development snapshot
+  chosen by the worker. `no_submission` means no selected snapshot and must carry no candidate,
+  admission, conformance, revenue, or failure evidence.
 - Do not expose raw evaluator seed, sealed scenarios, scenario outcomes, score deltas, raw events,
   paths, command evidence, or evaluator internals as ResearchWorker context or compact readback.
 - Do not call equal `ResearchBehaviorFingerprint` values universal strategy or program identity.

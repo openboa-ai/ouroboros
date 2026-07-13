@@ -39,14 +39,17 @@ persisted schema names. Any future public or persisted fields require a separate
 9. Replay success alone cannot claim runnable paper handoff. The exact sealed submitted artifact
    must pass an external bounded target paper-protocol probe before admission and materialization.
 10. One pre-effect `ResearchPreflightCommitment` must bind source, allocation, worker, development
-    budget, and rotating sealed-suite commitments. Development feedback selects and freezes one
-    artifact before one sealed submission; process loss closes rather than reconstructs the plan.
+    budget, and rotating sealed-suite commitments. The worker controls a bounded session, submits
+    externally frozen development snapshots, receives aggregate feedback, and explicitly selects a
+    completed sequence before one sealed submission. No score or mutable-workspace fallback may
+    select for it; process loss closes rather than reconstructs the plan.
 11. Population identity must distinguish artifact bytes from bounded behavior. One exact
     development protocol/suite fingerprint may own at most one admitted population slot; sealed and
     paper outcomes never define that fingerprint.
 12. A checkpoint-enabled logical ResearchWorker may continue only through a new allocation and
     commitment. Every old commitment closes once as completed or failed-closed before a later
-    worker effect; restart never adopts its process, budget, seed, or sealed suite.
+    worker effect. Completed includes exact admission closure and explicit finish without a
+    selection; restart never adopts its process, budget, seed, or sealed suite.
 13. Population diversity is a read-only diagnostic. Assigned direction and exact observed behavior
     distributions remain separate; behavior comparisons require one exact protocol/development-
     suite cohort, and no entropy value may become rank, admission, allocation, qualification, or
@@ -81,7 +84,8 @@ Research feedback and qualification are different evidence purposes even when bo
 `ResearchPreflightCommitment` is append-only and precedes every worker effect. It stores canonical
 digests and a seed commitment, not the raw evaluator seed or sealed scenarios. The evaluator-owned
 in-memory plan supports bounded adaptive development and exactly one sealed submission over the
-frozen winner. A lost process cannot reconstruct or silently resample that plan.
+explicitly selected frozen snapshot. No selection leaves the sealed plan unclaimed. A lost process
+cannot reconstruct or silently resample that plan.
 CandidateArena rank, materialized research lineage, and next-worker context retain the
 development-visible evaluation. The sealed terminal score decides admission only and is not
 released through the research leaderboard.
@@ -217,7 +221,8 @@ submission authority, and a bounded sanitized notebook tail. A same-worker next 
 tail in a separate prior context while its current notebook starts empty. Restart scans only
 checkpoint-enabled orphan commitments before new effects. Exact persisted admission reconstructs a
 completed checkpoint without rerunning materialization; otherwise recovery records failed-closed.
-Neither path recreates or claims the lost sealed plan.
+An explicit no-selection finish also records a completed checkpoint without admission and remains
+valid prior context. Neither path recreates or claims the lost sealed plan.
 
 `PaperTradingHandoffConformance` is a research-only compatibility gate between sealed admission and
 admission. It runs the same exact submitted bytes against the bounded production paper event protocol,
@@ -445,6 +450,10 @@ The evaluator and its durable logs live outside ResearchWorker and candidate san
   and evaluator internals never enter worker prompt, notebook, replay feedback, or next-generation
   Arena context. Operator readback receives only commitment ID, development submission count,
   generic terminal status/reason, and authority-free development/sealed cost counts.
+- Raw paper observations, market/account/open-order/fill/decision state, cadence telemetry, and
+  latest failure strings also stay outside the open ResearchWorker session. Only bounded aggregate
+  FindingClusters, released findings, diversity, allocation focus, leaderboard, and efficiency
+  context may guide generation.
 - Qualification outcomes remain sealed until the window closes or the run is invalidated.
 - Score probing, seed cherry-picking, window selection after observation, evaluator endpoint
   exfiltration, and side-channel access are recorded as anti-hacking findings.
@@ -472,8 +481,9 @@ paper qualification.
 ```text
 ResearchDirection
 -> pre-effect allocation, direction, worker, source, and ResearchPreflightCommitment
--> bounded development experiments and aggregate notebook feedback
--> freeze one development-selected artifact
+-> bounded ResearchWorkerSession with immutable development submissions and aggregate feedback
+-> explicit selected sequence | no_submission
+-> freeze the selected artifact
 -> one-shot rotating sealed admission with no worker feedback
 -> external PaperTradingHandoffConformance over the exact submitted artifact
 -> admit | negative evidence | duplicate | quarantine
@@ -617,7 +627,9 @@ The following current surfaces require implementation work before P0 can pass:
   and generated or tuned policy parameters remain open. Both the same-baseline and broad
   approval-only decisions plus their future-allocation provenance paths are implemented.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
-  development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
+  explicitly selected immutable development artifact, and permits one rotating sealed submission.
+  The terminal Evaluation binds the selected development sequence and exact submitted SystemCode
+  digest separately from sealed submission sequence one. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
   result, and conformance-bound admission mismatch. The raw seed and sealed suite are process-local,
   so crash recovery deliberately fails closed rather than resuming the evaluator plan.
@@ -709,8 +721,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    six-replication qualified non-tied fixture protocol study are implemented. Prospective
    condition-blocked slot commitment and conservative generalization adjudication are implemented;
    complete eligible real-market evidence and longitudinal deployed soak remain.
-2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
-   development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
+2. **Implemented:** pre-effect `ResearchPreflightCommitment`, one bounded Codex or fixture
+   `ResearchWorkerSession`, worker-timed immutable development submissions, aggregate feedback,
+   explicit selection or no submission, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
    `ResearchBehaviorFingerprint` comparison gate materialization; generated-candidate paper start
    revalidates the same persisted graph before effects.
@@ -750,11 +763,11 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    evidence-backed provenance to an uncontrolled adaptive tick without overriding explicit modes or
    treating non-significance as static superiority. Broad approval takes precedence because its
    causal scope is stronger; the default scheduler creates at most one oldest missing decision per
-   family after successful catch-up and records unsupported or underpowered results as not approved. Stable
-   ResearchWorker workspace identity, bounded sanitized notebook continuity, append-only budget
-   closure, and fail-closed restart reconciliation are implemented. Durable
-   provider-process/sandbox adoption, worker-chosen sequencing, provider-dollar cost, learned
-   allocation, and causal discovery-yield evidence remain.
+   family after successful catch-up and records unsupported or underpowered results as not approved.
+   Stable ResearchWorker workspace identity, bounded sanitized notebook continuity, append-only
+   budget closure, bounded worker-chosen sequencing, no-submission continuation, and fail-closed
+   restart reconciliation are implemented. Durable provider-process/sandbox adoption,
+   provider-dollar cost, learned allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed

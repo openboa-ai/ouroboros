@@ -92,16 +92,20 @@ input to the existing one-shot sealed admission.
 
 ## Taxonomy Decision
 
-No new persisted canonical record is introduced.
+No new persisted canonical record is introduced. The existing terminal
+`TradingEvaluationResultRecord` adds `selected_development_submission_sequence` beside the exact
+submitted SystemCode digest. Its existing `submission_sequence: 1` continues to identify the single
+sealed attempt. Historical linked records without the development sequence remain readable but
+cannot satisfy current new-admission write validation.
 
 - `ResearchWorkerSession` is the runtime lifetime of one ResearchWorker under one exact
   `ResearchPreflightCommitment`. It is not the stable logical ResearchWorker and does not survive
   restart.
 - A `development submission` remains one bounded ResearchPreflight evaluation of an immutable
   artifact snapshot.
-- `selected_development_submission` is a local/session result that identifies which completed
-  snapshot the worker chose for sealed admission. Selection grants no admission or trading
-  authority.
+- `selected_development_submission` is the local/session result that identifies which completed
+  snapshot the worker chose for sealed admission. The terminal Evaluation persists that sequence
+  with the submitted digest for readback. Selection grants no admission or trading authority.
 - `ResearchWorkerToolPort` is an application capability port, not a product command surface.
 
 Do not call the session an autonomous trading agent, a policy, an evaluation, or a promotion. Do
@@ -209,7 +213,8 @@ Existing `keep` and `discard` fields remain development-frontier diagnostics in 
 must not be interpreted as final worker selection. The notebook separately records
 `selected_development_submission` and terminal session status. The durable checkpoint continues to
 carry only its bounded sanitized version-1 fields; richer causal-memory writeback remains a separate
-versioned frontier.
+versioned frontier. Exact selected-sequence binding belongs to the terminal Evaluation rather than
+the worker-readable checkpoint.
 
 ## Codex Tool Adapter
 
@@ -261,6 +266,9 @@ the same preflight plan and may not be presented as ResearchWorker autonomy evid
 - A completed development submission remains in the notebook even when a later provider action
   fails.
 - No selection means no sealed suite claim.
+- No selection creates no SystemCode, Evaluation, Finding, conformance, or admission; CandidateArena
+  records `no_submission` and closes `completed/finished_without_submission` so a later fresh
+  commitment can consume the sanitized checkpoint.
 - The sealed suite is claimed at most once and only after an exact selected snapshot is frozen.
 - CandidateArena records or reconstructs the terminal checkpoint through the existing lifecycle
   rules; it never resumes the old provider process, tool server, timeout, or preflight plan.
@@ -276,7 +284,8 @@ The frontier must not:
 - let the worker change submission limits, timeout, tool routes, evaluation policy, or inclusion;
 - auto-select by score when the worker does not select;
 - let a selected snapshot bypass sealed admission or paper handoff conformance;
-- feed sealed or paper qualification evidence back into the open session;
+- feed sealed evidence or raw paper observation, account, fill, decision, cadence, failure, board,
+  or qualification evidence back into the open session;
 - add public commands, operator mutations, policy replacement, rank, promotion, private, or live
   authority;
 - claim that one fixture sequence proves long-running autonomy, memory causality, agent leverage,
@@ -294,10 +303,11 @@ The frontier is complete only when tests prove:
 5. duplicate, conflicting, concurrent, over-budget, post-terminal, malformed, and oversized tool
    calls fail without duplicate effects;
 6. tool responses and notebook context expose only aggregate development feedback;
-7. selection claims the sealed suite once and the exact selected artifact reaches existing
+7. selection claims the sealed suite once; the terminal Evaluation binds the selected development
+   sequence and submitted digest; and the exact artifact reaches existing
    conformance/admission/materialization checks;
 8. provider/tool failure and restart preserve completed evidence and close the old commitment
-   without process adoption;
+   without process adoption, including an adapter that reports failure without throwing;
 9. CandidateArena direction concurrency, allocation, Finding, Lineage, duplicate handling, and
    checkpoint behavior do not regress;
 10. focused tests, workspace typechecks, the full suite, and repository guards pass.

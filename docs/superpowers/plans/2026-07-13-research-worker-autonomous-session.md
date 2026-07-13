@@ -137,13 +137,39 @@ Vitest, LocalStore-backed CandidateArena integration.
 - Modify: `docs/autonomy-model.md`
 - Modify: `docs/naming-taxonomy.md`
 - Modify: this design and plan
+- Modify: `apps/runtime/test/trading-research-loop.test.ts`
+- Modify: `apps/runtime/test/candidate-arena-paper-context.test.ts`
+- Modify: terminal Evaluation, checkpoint, and LocalStore validators required by adversarial review
 
-- [ ] Add adversarial tests for evaluator probing, raw feedback, token/route misuse, workspace
+- [x] Add adversarial tests for evaluator probing, raw feedback, token/route misuse, workspace
   mutation races, duplicate effects, current-workspace fallback, and sealed retry.
-- [ ] Record agent-owned session semantics, bounded tools, immutable selection, restart limits, and
+- [x] Record agent-owned session semantics, bounded tools, immutable selection, restart limits, and
   remaining completion gaps in canonical docs.
-- [ ] Run focused tests, workspace typechecks, `npm test`, and `npm run check:repo-guards`.
-- [ ] Audit that no rank, worker-allocation scoring, promotion, paper qualification, order, private,
-  or live path changed; confirm `.superpowers/` remains untouched.
-- [ ] Commit as `docs: record autonomous research sessions`.
-- [ ] Reassess the CandidateArena Goal and choose the next unclosed evidence frontier.
+- [x] Run focused tests, workspace typechecks, `npm test`, and `npm run check:repo-guards`.
+- [x] Audit that no rank, promotion, paper qualification, order, private, or live path changed;
+  allocation impact is limited to the explicit `no_submission` recent-outcome adjustment, and
+  `.superpowers/` remains untouched.
+- [x] Commit as `docs: record autonomous research sessions`.
+- [x] Reassess the CandidateArena Goal and choose the next unclosed evidence frontier.
+
+## Completion Evidence
+
+- Session implementation commits: `17d7571`, `c67dc57`, `ce5122c`, `e72a67e`, `0995d3b`.
+- Independent adversarial review fixes: `329c367`.
+- Focused autonomous-session and lifecycle regression suites passed after RED/GREEN repair.
+- Full repository validation passed: 191 test files, 3,093 tests, workspace typecheck, and all repo
+  guards.
+- `.superpowers/` remains untracked and untouched.
+
+This frontier completes bounded autonomous-session mechanics, not the CandidateArena Goal. Direct
+evidence for long-running autonomy, causal memory benefit, agent leverage, prospective economic
+frontier lift, and deployed recovery soak remains open.
+
+## Next Evidence Frontier
+
+Run a precommitted longitudinal ResearchWorker control that compares released-memory context with a
+memory-masked arm under identical source snapshots, provider identity, directions, development
+budgets, evaluator policy, and restart schedule. Measure repeated invalid/duplicate behavior,
+qualified discovery yield, research cost, and checkpoint continuity across multiple fresh
+commitments. Reuse existing CandidateArena and ResearchControl evidence boundaries; do not create a
+promotion, private, order, or live path.

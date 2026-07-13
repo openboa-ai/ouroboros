@@ -25,7 +25,9 @@ market data with fake account, fake execution, and fake Ledger, and are judged b
 ```text
 parallel TradingSystem candidates
 -> pre-effect ResearchPreflightCommitment
--> bounded development replay/backtest feedback
+-> bounded agent-owned ResearchWorkerSession
+-> immutable development submissions and aggregate replay/backtest feedback
+-> explicit selection or no submission
 -> frozen artifact and one-shot rotating sealed admission
 -> external PaperTradingHandoffConformance
 -> development-only ResearchBehaviorFingerprint comparison
@@ -45,8 +47,15 @@ evaluated in paper before it earns authority.
 Development replay success alone cannot claim runnable paper handoff. Each direction first
 persists a `ResearchPreflightCommitment` that binds allocation, direction, worker, source bytes,
 development budget, and evaluator-owned sealed-suite commitments before worker effects. The worker
-may receive bounded aggregate development feedback, but one frozen artifact is submitted only once
-to the rotating sealed set. Raw evaluator seed and sealed scenarios remain process-local; process
+gets one bounded provider session and a session-local tool port. `status`, `submitDevelopment`,
+`selectDevelopment`, and `finishWithoutSubmission` are application capabilities, not public product
+commands. Each development call copies and evaluates an immutable external snapshot and returns
+aggregate feedback only. The worker explicitly selects a completed sequence; the host never falls
+back to the highest development score or current mutable workspace. No selection claims no sealed
+suite and records no submitted SystemCode, Evaluation, Finding, or admission. One selected frozen
+artifact is submitted only once to the rotating sealed set. Its development sequence and exact
+submitted digest remain durably bound while sealed submission sequence one denotes the one-shot
+sealed attempt. Raw evaluator seed and sealed scenarios remain process-local; process
 loss closes that commitment instead of reconstructing or resampling it. Every new admitted candidate
 must then bind the exact commitment, sealed terminal evaluation, submitted `SystemCode`, and one
 external `PaperTradingHandoffConformance`, and a
@@ -183,8 +192,9 @@ automatic TradingPromotion, and champion handoff remain separate and outside thi
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
 artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
-one append-only `ResearchWorkerCheckpoint`: completed admission or failed-closed execution, zero
-remaining submission authority, cumulative bounded budget accounting, and at most six recent
+one append-only `ResearchWorkerCheckpoint`: completed admission, completed finish without a
+submission, or failed-closed execution. It carries zero remaining submission authority, cumulative
+bounded budget accounting, and at most six recent
 development-visible notebook entries. Before a new tick effect, restart recovery closes every
 orphan in commitment order. An already persisted exact admission reconstructs only the terminal
 checkpoint; otherwise the orphan becomes `failed_closed/restart_recovery`. Neither path reruns the
@@ -194,7 +204,7 @@ This isolation and diversity measurement reduce direct evaluator reuse and make 
 concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
 or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
-de-risking sequences, directed-versus-undirected and memory/baseline controls, a completed
+long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
 six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
 long-duration restart soak evidence, deployed always-on paper execution, automatic promotion,
 champion runner handoff, private/live authority, P0, and the overall Goal remain open.
