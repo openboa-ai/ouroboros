@@ -1,0 +1,40 @@
+{
+  "record_kind": "candidate_index_projection",
+  "version": 1,
+  "candidates": [
+    {
+      "candidate_id": "candidate-a651f33d54cbfec8",
+      "display_name": "Confirmation campaign challenger",
+      "status": "materialized",
+      "active_version_id": "candidate-version-a651f33d54cbfec8",
+      "fixture_notice": {
+        "mode": "fixture_convenience_mode",
+        "label": "Fixture / convenience mode",
+        "statements": [
+          "No provider has run.",
+          "No trading-system program has executed.",
+          "No package has been scanned, granted, or mounted for real.",
+          "No evaluator has run and no evidence has counted.",
+          "No promotion, live gate, marketplace, or runtime action authority exists."
+        ]
+      }
+    },
+    {
+      "candidate_id": "fixture-candidate-sealed-replay-001",
+      "display_name": "Fixture generic trading-system candidate",
+      "status": "fixture_only",
+      "active_version_id": "fixture-candidate-version-001",
+      "fixture_notice": {
+        "mode": "fixture_convenience_mode",
+        "label": "Fixture / convenience mode",
+        "statements": [
+          "No provider has run.",
+          "No trading-system program has executed.",
+          "No package has been scanned, granted, or mounted for real.",
+          "No evaluator has run and no evidence has counted.",
+          "No promotion, live gate, marketplace, or runtime action authority exists."
+        ]
+      }
+    }
+  ]
+}

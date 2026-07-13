@@ -1,0 +1,8 @@
+{
+  "record_kind": "agent_spec",
+  "version": 1,
+  "agent_spec_id": "agent-spec-a651f33d54cbfec8",
+  "purpose": "candidate_generation",
+  "provider_kind": "fixture_only",
+  "model": "confirmation-fixture"
+}

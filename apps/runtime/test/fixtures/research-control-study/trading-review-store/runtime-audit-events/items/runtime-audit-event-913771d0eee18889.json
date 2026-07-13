@@ -1,0 +1,37 @@
+{
+  "record_kind": "runtime_audit_event",
+  "version": 1,
+  "runtime_audit_event_id": "runtime-audit-event-913771d0eee18889",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-747c3f18779a639c"
+  },
+  "event_kind": "runtime_lifecycle_transitioned",
+  "command_ref": {
+    "record_kind": "run_control_command",
+    "id": "run-control-command-913771d0eee18889"
+  },
+  "decision_ref": {
+    "record_kind": "run_control_decision",
+    "id": "run-control-decision-913771d0eee18889"
+  },
+  "actor_kind": "human_operator",
+  "actor_ref": {
+    "record_kind": "operator",
+    "id": "runtime-activation-coordinator"
+  },
+  "runtime_lifecycle_status": "running",
+  "message": "Paper comparison runtime start recorded.",
+  "supporting_record_refs": [
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-913771d0eee18889"
+    },
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-913771d0eee18889"
+    }
+  ],
+  "created_at": "2026-07-10T00:02:20.000Z",
+  "authority_status": "audit_only"
+}

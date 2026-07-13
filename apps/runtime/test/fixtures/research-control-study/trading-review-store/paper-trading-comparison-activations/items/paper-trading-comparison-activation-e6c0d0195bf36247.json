@@ -1,0 +1,67 @@
+{
+  "record_kind": "paper_trading_comparison_activation",
+  "version": 1,
+  "paper_trading_comparison_activation_id": "paper-trading-comparison-activation-e6c0d0195bf36247",
+  "paper_trading_comparison_commitment_ref": {
+    "record_kind": "paper_trading_comparison_commitment",
+    "id": "paper-trading-comparison-132d03edbe3dfafd"
+  },
+  "paper_trading_comparison_commitment_digest": "sha256:5036419c541b47bc316ff4a7b308c6d9448f89b529987c59c0e8c71847a0e716",
+  "first_tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-cd8a10910eede611"
+  },
+  "first_tick_digest": "sha256:0148fcd706ce4d9bfa0d7f65146136d2204d91fd9d387b62e018cf408f45cf7d",
+  "champion": {
+    "role": "champion",
+    "trading_run_ref": {
+      "record_kind": "trading_run",
+      "id": "trading-run-paper-session-c976fa49430dff38"
+    },
+    "paper_trading_evaluation_commitment_ref": {
+      "record_kind": "paper_trading_evaluation_commitment",
+      "id": "paper-trading-evaluation-commitment-trading-run-paper-session-c976fa49430dff38-31e5c23ee2ab1258"
+    },
+    "paper_trading_evaluation_ref": {
+      "record_kind": "paper_trading_evaluation",
+      "id": "paper-trading-evaluation-trading-run-paper-session-c976fa49430dff38-31e5c23ee2ab1258"
+    }
+  },
+  "challenger": {
+    "role": "challenger",
+    "trading_run_ref": {
+      "record_kind": "trading_run",
+      "id": "trading-run-paper-session-6247749464192266"
+    },
+    "paper_trading_evaluation_commitment_ref": {
+      "record_kind": "paper_trading_evaluation_commitment",
+      "id": "paper-trading-evaluation-commitment-trading-run-paper-session-6247749464192266-ab9bd829e4fd66a5"
+    },
+    "paper_trading_evaluation_ref": {
+      "record_kind": "paper_trading_evaluation",
+      "id": "paper-trading-evaluation-trading-run-paper-session-6247749464192266-ab9bd829e4fd66a5"
+    }
+  },
+  "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
+  "activation_policy": {
+    "policy_version": "paper-comparison-activation-v1",
+    "maximum_start_skew_ms": 5000,
+    "maximum_retry_count_per_side": 2,
+    "maximum_provider_request_count_per_side": 100,
+    "maximum_activation_elapsed_ms": 60000,
+    "cleanup_timeout_ms": 10000,
+    "require_both_running_before_observation": true,
+    "partial_start_policy": "stop_started_side_before_retry",
+    "restart_policy": "recover_both_or_stop_both",
+    "market_view_policy": "first_tick_then_contiguous_persisted_ticks"
+  },
+  "activation_scope": "qualification_pair",
+  "activation_status": "authorized",
+  "authorized_at": "2026-07-10T00:03:28.000Z",
+  "activation_digest": "sha256:795889cc4653382a85d7d53648366797565aafdace100823be76927ab7378980",
+  "live_exchange_authority": false,
+  "order_submission_authority": false,
+  "private_exchange_access": "forbidden",
+  "credentials_access": "forbidden",
+  "authority_status": "not_live"
+}

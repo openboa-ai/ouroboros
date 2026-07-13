@@ -1,0 +1,40 @@
+{
+  "record_kind": "trading_evaluation_result",
+  "version": 1,
+  "trading_evaluation_result_id": "evaluation-confirmation-champion",
+  "experiment_run_ref": {
+    "record_kind": "experiment_run",
+    "id": "experiment-confirmation-champion"
+  },
+  "trading_evaluation_task_ref": {
+    "record_kind": "trading_evaluation_task",
+    "id": "evaluation-task-champion"
+  },
+  "evaluator_ref": {
+    "record_kind": "external_evaluator",
+    "id": "confirmation-evaluator"
+  },
+  "result_status": "accepted",
+  "evidence_disposition": "not_counted",
+  "score_summary": {
+    "total_score": 0.7,
+    "oos_score": 0.7,
+    "drawdown_score": 0.7,
+    "turnover_score": 0.7,
+    "cost_survival_score": 0.7,
+    "reproducibility_score": 0.7,
+    "complexity_penalty": 0
+  },
+  "metric_refs": [
+    {
+      "record_kind": "metric_snapshot",
+      "id": "metric-champion"
+    }
+  ],
+  "evaluator_trace_ref": {
+    "record_kind": "trace_placeholder",
+    "id": "evaluator-trace-champion"
+  },
+  "completed_at": "2026-07-09T20:53:00.000Z",
+  "authority_status": "not_counted"
+}

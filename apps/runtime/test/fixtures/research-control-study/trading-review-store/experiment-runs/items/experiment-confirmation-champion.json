@@ -1,0 +1,28 @@
+{
+  "record_kind": "experiment_run",
+  "version": 1,
+  "experiment_run_id": "experiment-confirmation-champion",
+  "research_worker_ref": {
+    "record_kind": "research_worker",
+    "id": "worker-champion"
+  },
+  "research_direction_ref": {
+    "record_kind": "research_direction",
+    "id": "direction-champion"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "trading_evaluation_task_ref": {
+    "record_kind": "trading_evaluation_task",
+    "id": "evaluation-task-champion"
+  },
+  "trace_ref": {
+    "record_kind": "trace_placeholder",
+    "id": "trace-champion"
+  },
+  "submitted_at": "2026-07-09T20:52:00.000Z",
+  "status": "evaluated",
+  "authority_status": "not_live"
+}

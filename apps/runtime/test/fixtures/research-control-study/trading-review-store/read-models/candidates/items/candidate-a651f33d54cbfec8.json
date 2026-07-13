@@ -1,0 +1,1312 @@
+{
+  "candidate_id": "candidate-a651f33d54cbfec8",
+  "display_name": "Confirmation campaign challenger",
+  "status": "materialized",
+  "active_version_id": "candidate-version-a651f33d54cbfec8",
+  "fixture_notice": {
+    "mode": "fixture_convenience_mode",
+    "label": "Fixture / convenience mode",
+    "statements": [
+      "No provider has run.",
+      "No trading-system program has executed.",
+      "No package has been scanned, granted, or mounted for real.",
+      "No evaluator has run and no evidence has counted.",
+      "No promotion, live gate, marketplace, or runtime action authority exists."
+    ]
+  },
+  "trading_system": {
+    "system_id": "candidate-a651f33d54cbfec8",
+    "version_id": "candidate-version-a651f33d54cbfec8",
+    "ref": {
+      "record_kind": "trading_system_candidate",
+      "id": "candidate-a651f33d54cbfec8"
+    },
+    "status": "materialized",
+    "summary": "Candidate for prospective confirmation windows."
+  },
+  "system_code": {
+    "ref": {
+      "record_kind": "system_code",
+      "id": "system-code-confirmation-challenger"
+    },
+    "summary": "Emit bounded TradingSystem paper events.",
+    "declared_runtime": "python-sandbox-fixture",
+    "declared_outputs": [
+      "OrderRequest",
+      "ProgramEvent",
+      "Trace"
+    ]
+  },
+  "trading_run": {
+    "ref": {
+      "record_kind": "trading_run",
+      "id": "trading-run-a651f33d54cbfec8"
+    },
+    "stage": "paper",
+    "lifecycle_status": "registered",
+    "authority_status": "not_live"
+  },
+  "ledger": {
+    "ledger_kind": "ledger",
+    "has_activity": false,
+    "chain_complete": false,
+    "chain_count": 0,
+    "chains": [],
+    "latest_order_request": null,
+    "latest_gateway_result": null,
+    "latest_execution_result": null,
+    "order_request": {
+      "ref": {
+        "record_kind": "order_request",
+        "id": "none"
+      },
+      "label": "Order request",
+      "status": "not_submitted",
+      "authority_status": "not_submitted"
+    },
+    "gateway_result": {
+      "ref": {
+        "record_kind": "gateway_result",
+        "id": "none"
+      },
+      "label": "Gateway result",
+      "status": "not_evaluated",
+      "authority_status": "not_live"
+    },
+    "execution_result": {
+      "ref": {
+        "record_kind": "execution_result",
+        "id": "none"
+      },
+      "label": "Execution result",
+      "status": "not_submitted",
+      "authority_status": "not_submitted"
+    },
+    "authority_status": "not_live",
+    "no_authority": {
+      "live_exchange_authority": false,
+      "private_read_authority": false,
+      "order_submission_authority": false,
+      "credentials": false
+    },
+    "source_record_kinds": [
+      "order_request",
+      "gateway_result",
+      "execution_result"
+    ]
+  },
+  "improvement": {
+    "improvement_kind": "improvement",
+    "source_model": "automated_alignment_researcher",
+    "has_activity": false,
+    "proposal_chain_complete": false,
+    "evaluation_chain_complete": false,
+    "chain_complete": false,
+    "latest_source_finding": null,
+    "latest_change_proposal": null,
+    "latest_materialization": null,
+    "latest_research_run": null,
+    "latest_experiment": null,
+    "latest_evaluation_result": null,
+    "evidence": {
+      "status": "missing",
+      "reason": "evaluation_required",
+      "authority_status": "not_counted"
+    },
+    "promotion": {
+      "status": "not_promoted",
+      "reason": "promotion_requires_sealed_evidence",
+      "authority_status": "not_live"
+    },
+    "no_authority": {
+      "live_exchange": false,
+      "order_authority": false,
+      "credentials": false,
+      "promotion": false
+    }
+  },
+  "candidate_version": {
+    "candidate_version_id": "candidate-version-a651f33d54cbfec8",
+    "version_label": "materialized-v1",
+    "provenance_refs": [
+      {
+        "record_kind": "agent_run",
+        "id": "agent-run-confirmation"
+      },
+      {
+        "record_kind": "provider_readiness_record",
+        "id": "provider-readiness-a651f33d54cbfec8"
+      },
+      {
+        "record_kind": "candidate_materialization_attempt",
+        "id": "candidate-materialization-attempt-a651f33d54cbfec8"
+      }
+    ],
+    "materialization_attempt_ref": {
+      "record_kind": "candidate_materialization_attempt",
+      "id": "candidate-materialization-attempt-a651f33d54cbfec8"
+    }
+  },
+  "spec": {
+    "ref": {
+      "record_kind": "trading_system_spec",
+      "id": "trading-system-spec-a651f33d54cbfec8"
+    },
+    "summary": "Trade BTCUSDT through paper-only Gateway authority.",
+    "market": "Binance USD-M Futures",
+    "instrument": "BTCUSDT",
+    "supported_stage_binding_profiles": [
+      "backtest",
+      "paper"
+    ]
+  },
+  "program": {
+    "ref": {
+      "record_kind": "trading_system_program",
+      "id": "trading-system-program-a651f33d54cbfec8"
+    },
+    "summary": "Emit bounded TradingSystem paper events.",
+    "manifest": {
+      "ref": {
+        "record_kind": "program_manifest",
+        "id": "program-manifest-a651f33d54cbfec8"
+      },
+      "declared_runtime": "python-sandbox-fixture",
+      "declared_outputs": [
+        "OrderRequest",
+        "ProgramEvent",
+        "Trace"
+      ]
+    },
+    "validation": {
+      "ref": {
+        "record_kind": "program_validation_record",
+        "id": "program-validation-a651f33d54cbfec8"
+      },
+      "label": "Program validation",
+      "status": "fixture_placeholder",
+      "authority_status": "not_executable"
+    }
+  },
+  "capability_package": {
+    "ref": {
+      "record_kind": "capability_package",
+      "id": "capability-package-a651f33d54cbfec8"
+    },
+    "summary": "Read-only public market context for paper evaluation.",
+    "manifest": {
+      "ref": {
+        "record_kind": "capability_manifest",
+        "id": "capability-manifest-a651f33d54cbfec8"
+      },
+      "allowed_stages": [
+        "backtest",
+        "paper"
+      ],
+      "declared_permissions": [
+        "read_market_bars",
+        "read_position_state"
+      ],
+      "forbidden_contents": [
+        "exchange_credentials",
+        "evaluator_hidden_labels",
+        "live_order_authority"
+      ]
+    },
+    "admission": {
+      "ref": {
+        "record_kind": "capability_package_admission_record",
+        "id": "capability-admission-a651f33d54cbfec8"
+      },
+      "label": "Capability admission",
+      "status": "fixture_placeholder",
+      "authority_status": "not_scanned"
+    },
+    "grant": {
+      "ref": {
+        "record_kind": "capability_grant",
+        "id": "capability-grant-a651f33d54cbfec8"
+      },
+      "label": "Capability grant",
+      "status": "fixture_placeholder",
+      "authority_status": "not_granted"
+    },
+    "mount": {
+      "ref": {
+        "record_kind": "capability_mount_record",
+        "id": "capability-mount-a651f33d54cbfec8"
+      },
+      "label": "Capability mount",
+      "status": "fixture_placeholder",
+      "authority_status": "not_mounted"
+    }
+  },
+  "agent_provider": {
+    "agent_spec": {
+      "ref": {
+        "record_kind": "agent_spec",
+        "id": "agent-spec-a651f33d54cbfec8"
+      },
+      "label": "Agent spec",
+      "status": "fixture_placeholder",
+      "authority_status": "not_executed"
+    },
+    "agent_session": {
+      "ref": {
+        "record_kind": "agent_session",
+        "id": "agent-session-a651f33d54cbfec8"
+      },
+      "label": "Agent session",
+      "status": "fixture_placeholder",
+      "authority_status": "trace_only"
+    },
+    "agent_run": {
+      "ref": {
+        "record_kind": "agent_run",
+        "id": "agent-run-confirmation"
+      },
+      "label": "Agent run",
+      "status": "succeeded",
+      "authority_status": "trace_only"
+    },
+    "agent_event": {
+      "ref": {
+        "record_kind": "agent_event",
+        "id": "agent-event-confirmation"
+      },
+      "label": "Agent event",
+      "status": "provider_output_captured",
+      "authority_status": "not_executed"
+    },
+    "provider_readiness": {
+      "ref": {
+        "record_kind": "provider_readiness_record",
+        "id": "provider-readiness-a651f33d54cbfec8"
+      },
+      "label": "Provider readiness",
+      "status": "fixture_placeholder",
+      "authority_status": "readiness_only"
+    },
+    "provider_probe_attempt": {
+      "ref": {
+        "record_kind": "provider_probe_attempt",
+        "id": "provider-probe-a651f33d54cbfec8"
+      },
+      "label": "Provider probe",
+      "status": "fixture_placeholder",
+      "authority_status": "probe_trace_only"
+    }
+  },
+  "runtime": {
+    "ref": {
+      "record_kind": "trading_run",
+      "id": "trading-run-a651f33d54cbfec8"
+    },
+    "stage_binding_profile": "paper",
+    "runtime_lifecycle_status": "registered",
+    "authority_status": "not_live",
+    "placement": {
+      "ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-a651f33d54cbfec8"
+      },
+      "label": "Sandbox placement",
+      "status": "fixture_placeholder",
+      "authority_status": "not_launched"
+    },
+    "hands_environment": {
+      "ref": {
+        "record_kind": "hands_environment",
+        "id": "hands-environment-a651f33d54cbfec8"
+      },
+      "label": "Hands environment",
+      "status": "fixture_placeholder",
+      "authority_status": "not_mounted"
+    },
+    "memory_surface": {
+      "ref": {
+        "record_kind": "runtime_memory_surface",
+        "id": "runtime-memory-surface-a651f33d54cbfec8"
+      },
+      "trust_class": "fixture_context",
+      "access_mode": "read_only",
+      "surface_version": "materialized-v1",
+      "visibility": "operator_visible",
+      "quarantine_status": "not_quarantined",
+      "authority_status": "not_evidence"
+    },
+    "ledger": {
+      "has_activity": false,
+      "chain_complete": false,
+      "chain_count": 0,
+      "chains": [],
+      "latest_order_request": null,
+      "latest_gateway_result": null,
+      "latest_execution_result": null,
+      "order_request": {
+        "ref": {
+          "record_kind": "order_request",
+          "id": "none"
+        },
+        "label": "Order request",
+        "status": "not_submitted",
+        "authority_status": "not_submitted"
+      },
+      "gateway_result": {
+        "ref": {
+          "record_kind": "gateway_result",
+          "id": "none"
+        },
+        "label": "Gateway result",
+        "status": "not_evaluated",
+        "authority_status": "not_live"
+      },
+      "execution_result": {
+        "ref": {
+          "record_kind": "execution_result",
+          "id": "none"
+        },
+        "label": "Execution result",
+        "status": "not_submitted",
+        "authority_status": "not_submitted"
+      }
+    },
+    "run_control": {
+      "has_activity": false,
+      "chain_complete": false,
+      "latest_command": null,
+      "latest_decision": null,
+      "latest_audit_event": null,
+      "command": {
+        "ref": {
+          "record_kind": "run_control_command",
+          "id": "none"
+        },
+        "label": "Runtime control command",
+        "status": "pending_decision",
+        "authority_status": "not_live"
+      },
+      "decision": {
+        "ref": {
+          "record_kind": "run_control_decision",
+          "id": "none"
+        },
+        "label": "Runtime control decision",
+        "status": "not_evaluated",
+        "authority_status": "not_live"
+      },
+      "audit_event": {
+        "ref": {
+          "record_kind": "runtime_audit_event",
+          "id": "none"
+        },
+        "label": "Runtime audit event",
+        "status": "not_recorded",
+        "authority_status": "not_live"
+      }
+    },
+    "transcript": {
+      "transcript_kind": "trading_run_transcript",
+      "has_activity": false,
+      "item_count": 0,
+      "latest_item": null,
+      "items": [],
+      "authority_status": "not_live",
+      "no_authority": {
+        "live_exchange_authority": false,
+        "private_read_authority": false,
+        "order_submission_authority": false,
+        "credentials": false
+      }
+    }
+  },
+  "trading_substrate": {
+    "latest_order_fill_surface": {
+      "surface_id": "fixture-binance-btcusdt-order-fill-surface-001",
+      "surface_family": "order_fill",
+      "surface_label": "Binance BTCUSDT order_fill",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "order_scope_ref": "fixture-btcusdt-paper-order-001",
+      "local_client_order_id": "fixture-btcusdt-paper-order-001",
+      "upstream_order_id": "fixture-upstream-order-001",
+      "side": "buy",
+      "order_type": "limit",
+      "time_in_force": "GTC",
+      "requested_quantity": "0.001",
+      "cumulative_filled_quantity": "0.0004",
+      "remaining_quantity": "0.0006",
+      "average_fill_price": "65000",
+      "last_fill_price": "65010",
+      "last_fill_quantity": "0.0004",
+      "raw_upstream_status": "PARTIALLY_FILLED",
+      "raw_upstream_execution_type": "TRADE",
+      "posture": "partially_filled",
+      "source_timestamp": "2026-05-16T00:00:02.000Z",
+      "observed_at": "2026-05-16T00:00:03.000Z",
+      "updated_at": "2026-05-16T00:00:03.000Z",
+      "freshness": "stale",
+      "liveness": "degraded",
+      "degraded_reason": "fixture_seed_no_live_connector",
+      "source_kind": "fixture",
+      "source_ref": {
+        "record_kind": "fixture",
+        "id": "binance-btcusdt-order-fill"
+      },
+      "transport": {
+        "transport_kind": "official_binance_connector",
+        "repository": "binance/binance-connector-js",
+        "package_name": "@binance/derivatives-trading-usds-futures",
+        "api_family": "derivatives_trading_usds_futures",
+        "supported_endpoints": [
+          "rest_api",
+          "websocket_api",
+          "websocket_streams"
+        ],
+        "production_base_url": "https://fapi.binance.com",
+        "testnet_base_url": "https://demo-fapi.binance.com",
+        "integration_role": "transport_only",
+        "authority_status": "not_live"
+      },
+      "fixture_backed": true,
+      "simulated": true,
+      "no_authority": {
+        "live_exchange": false,
+        "order_submission": false,
+        "credentials": false
+      },
+      "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+      "authority_status": "not_live"
+    },
+    "latest_public_market_liveness_surface": {
+      "surface_id": "fixture-binance-btcusdt-public-market-liveness-surface-001",
+      "surface_family": "public_market_liveness",
+      "surface_label": "Binance BTCUSDT public_market_liveness",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "symbol_status": "TRADING",
+      "contract_type": "PERPETUAL",
+      "price_tick_size": "0.10",
+      "quantity_step_size": "0.001",
+      "min_quantity": "0.001",
+      "min_notional": "100",
+      "mark_price": "65000.12340000",
+      "index_price": "64995.00000000",
+      "estimated_settle_price": "64990.00000000",
+      "funding_rate": "0.00010000",
+      "interest_rate": "0.00010000",
+      "next_funding_time": "2026-05-16T08:00:00.000Z",
+      "server_time": "2026-05-16T00:00:01.000Z",
+      "source_timestamp": "2026-05-16T00:00:00.000Z",
+      "observed_at": "2026-05-16T00:00:03.000Z",
+      "updated_at": "2026-05-16T00:00:03.000Z",
+      "freshness": "stale",
+      "liveness": "degraded",
+      "degraded_reason": "fixture_seed_no_live_connector",
+      "source_kind": "fixture",
+      "source_ref": {
+        "record_kind": "fixture",
+        "id": "binance-btcusdt-public-market-liveness"
+      },
+      "transport": {
+        "transport_kind": "official_binance_connector",
+        "repository": "binance/binance-connector-js",
+        "package_name": "@binance/derivatives-trading-usds-futures",
+        "api_family": "derivatives_trading_usds_futures",
+        "supported_endpoints": [
+          "rest_api",
+          "websocket_api",
+          "websocket_streams"
+        ],
+        "production_base_url": "https://fapi.binance.com",
+        "testnet_base_url": "https://demo-fapi.binance.com",
+        "integration_role": "transport_only",
+        "authority_status": "not_live"
+      },
+      "fixture_backed": true,
+      "simulated": true,
+      "no_authority": {
+        "live_exchange": false,
+        "order_submission": false,
+        "credentials": false
+      },
+      "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+      "authority_status": "not_live"
+    },
+    "latest_private_readiness_preflight_surface": {
+      "surface_id": "fixture-binance-btcusdt-private-readiness-preflight-surface-001",
+      "surface_family": "private_readiness_preflight",
+      "surface_label": "Binance BTCUSDT private_readiness_preflight",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "credential_gate": {
+        "status": "not_configured",
+        "enabled": false,
+        "reason": "no_binance_api_key_configured"
+      },
+      "jurisdiction_gate": {
+        "status": "not_evaluated",
+        "enabled": false,
+        "reason": "operator_jurisdiction_not_recorded"
+      },
+      "operator_approval_gate": {
+        "status": "not_approved",
+        "enabled": false,
+        "reason": "operator_live_private_read_approval_missing"
+      },
+      "private_account_read_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "signed_user_data_account_read_deferred"
+      },
+      "private_position_read_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "signed_user_data_position_read_deferred"
+      },
+      "user_data_stream_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "listen_key_lifecycle_not_enabled"
+      },
+      "listen_key_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "listen_key_creation_forbidden_in_preflight"
+      },
+      "order_submission_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "trade_endpoint_forbidden"
+      },
+      "leverage_or_margin_mutation_gate": {
+        "status": "disabled",
+        "enabled": false,
+        "reason": "account_mutation_forbidden"
+      },
+      "account_information_endpoint": "GET /fapi/v3/account",
+      "user_data_stream_endpoint": "POST /fapi/v1/listenKey",
+      "order_endpoint": "POST /fapi/v1/order",
+      "next_blocked_action": "configure_private_read_credentials",
+      "next_blocked_reason": "credential_and_operator_gates_not_ready",
+      "source_timestamp": "2026-05-16T00:00:00.000Z",
+      "observed_at": "2026-05-16T00:00:03.000Z",
+      "updated_at": "2026-05-16T00:00:03.000Z",
+      "freshness": "stale",
+      "liveness": "degraded",
+      "degraded_reason": "fixture_seed_no_private_authority",
+      "source_kind": "fixture",
+      "source_ref": {
+        "record_kind": "fixture",
+        "id": "binance-btcusdt-private-readiness-preflight"
+      },
+      "transport": {
+        "transport_kind": "official_binance_connector",
+        "repository": "binance/binance-connector-js",
+        "package_name": "@binance/derivatives-trading-usds-futures",
+        "api_family": "derivatives_trading_usds_futures",
+        "supported_endpoints": [
+          "rest_api",
+          "websocket_api",
+          "websocket_streams"
+        ],
+        "production_base_url": "https://fapi.binance.com",
+        "testnet_base_url": "https://demo-fapi.binance.com",
+        "integration_role": "transport_only",
+        "authority_status": "not_live"
+      },
+      "fixture_backed": true,
+      "simulated": true,
+      "no_authority": {
+        "live_exchange": false,
+        "order_submission": false,
+        "credentials": false
+      },
+      "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+      "authority_status": "not_live"
+    },
+    "latest_private_readiness_posture": {
+      "posture_id": "fixture-binance-btcusdt-private-readiness-posture-001",
+      "posture_label": "Binance BTCUSDT private_readiness_posture",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "operator_approval_gate": {
+        "status": "not_ready",
+        "reason": "operator_live_private_read_approval_missing"
+      },
+      "jurisdiction_risk_gate": {
+        "status": "review_required",
+        "reason": "operator_jurisdiction_not_recorded"
+      },
+      "live_binding_gate": {
+        "status": "not_ready",
+        "reason": "live_binding_profile_not_configured"
+      },
+      "secret_handling_gate": {
+        "status": "not_ready",
+        "reason": "secret_handling_profile_not_configured"
+      },
+      "stop_behavior_gate": {
+        "status": "not_ready",
+        "reason": "operator_stop_behavior_not_recorded"
+      },
+      "secret_reference_configured": false,
+      "raw_secret_material_present": false,
+      "source_timestamp": "2026-05-16T00:00:00.000Z",
+      "observed_at": "2026-05-16T00:00:04.000Z",
+      "updated_at": "2026-05-16T00:00:04.000Z",
+      "source_kind": "fixture",
+      "source_ref": {
+        "record_kind": "fixture",
+        "id": "binance-btcusdt-private-readiness-posture"
+      },
+      "fixture_backed": true,
+      "simulated": true,
+      "no_authority": {
+        "live_exchange": false,
+        "order_submission": false,
+        "credentials": false
+      },
+      "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+      "authority_status": "not_live"
+    },
+    "private_readiness_posture_history": [
+      {
+        "posture_id": "fixture-binance-btcusdt-private-readiness-posture-001",
+        "posture_label": "Binance BTCUSDT private_readiness_posture",
+        "venue": "binance_usd_m_futures",
+        "instrument": "BTCUSDT",
+        "product_category": "perpetual_futures",
+        "operator_approval_gate": {
+          "status": "not_ready",
+          "reason": "operator_live_private_read_approval_missing"
+        },
+        "jurisdiction_risk_gate": {
+          "status": "review_required",
+          "reason": "operator_jurisdiction_not_recorded"
+        },
+        "live_binding_gate": {
+          "status": "not_ready",
+          "reason": "live_binding_profile_not_configured"
+        },
+        "secret_handling_gate": {
+          "status": "not_ready",
+          "reason": "secret_handling_profile_not_configured"
+        },
+        "stop_behavior_gate": {
+          "status": "not_ready",
+          "reason": "operator_stop_behavior_not_recorded"
+        },
+        "secret_reference_configured": false,
+        "raw_secret_material_present": false,
+        "source_timestamp": "2026-05-16T00:00:00.000Z",
+        "observed_at": "2026-05-16T00:00:04.000Z",
+        "updated_at": "2026-05-16T00:00:04.000Z",
+        "source_kind": "fixture",
+        "source_ref": {
+          "record_kind": "fixture",
+          "id": "binance-btcusdt-private-readiness-posture"
+        },
+        "fixture_backed": true,
+        "simulated": true,
+        "no_authority": {
+          "live_exchange": false,
+          "order_submission": false,
+          "credentials": false
+        },
+        "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+        "authority_status": "not_live"
+      }
+    ],
+    "latest_private_readiness_policy_decision": {
+      "decision_kind": "private_readiness_policy_decision",
+      "status": "not_ready",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "evaluated_at": "2026-05-16T00:00:04.000Z",
+      "source_surface_refs": [
+        {
+          "record_kind": "private_readiness_preflight_surface",
+          "id": "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
+        },
+        {
+          "record_kind": "account_position_risk_mirror_surface",
+          "id": "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
+        }
+      ],
+      "checked_gates": [
+        {
+          "dimension": "configuration",
+          "status": "not_ready",
+          "reason_code": "configuration_not_ready",
+          "reason": "no_binance_api_key_configured"
+        },
+        {
+          "dimension": "operator_approval",
+          "status": "not_ready",
+          "reason_code": "operator_approval_missing",
+          "reason": "operator_live_private_read_approval_missing"
+        },
+        {
+          "dimension": "jurisdiction_risk",
+          "status": "review_required",
+          "reason_code": "jurisdiction_review_required",
+          "reason": "operator_jurisdiction_not_recorded"
+        },
+        {
+          "dimension": "live_binding",
+          "status": "not_ready",
+          "reason_code": "live_binding_not_ready",
+          "reason": "live_binding_profile_not_configured"
+        },
+        {
+          "dimension": "secret_handling",
+          "status": "not_ready",
+          "reason_code": "secret_handling_not_ready",
+          "reason": "secret_handling_profile_not_configured"
+        },
+        {
+          "dimension": "account_position_freshness",
+          "status": "not_ready",
+          "reason_code": "account_position_freshness_not_ready",
+          "reason": "fixture_seed_no_private_account_or_position_read"
+        },
+        {
+          "dimension": "kill_switch",
+          "status": "ready",
+          "reason_code": "ready",
+          "reason": "inactive"
+        },
+        {
+          "dimension": "stop_behavior",
+          "status": "not_ready",
+          "reason_code": "stop_behavior_not_ready",
+          "reason": "operator_stop_behavior_not_recorded"
+        },
+        {
+          "dimension": "listen_key",
+          "status": "not_ready",
+          "reason_code": "listen_key_not_ready",
+          "reason": "listen_key_creation_forbidden_in_preflight"
+        },
+        {
+          "dimension": "user_data_stream",
+          "status": "not_ready",
+          "reason_code": "user_data_stream_not_ready",
+          "reason": "listen_key_lifecycle_not_enabled"
+        },
+        {
+          "dimension": "trade_authority",
+          "status": "ready",
+          "reason_code": "ready",
+          "reason": "TRADE authority disabled for private-read readiness"
+        }
+      ],
+      "reason_codes": [
+        "configuration_not_ready",
+        "operator_approval_missing",
+        "jurisdiction_review_required",
+        "live_binding_not_ready",
+        "secret_handling_not_ready",
+        "account_position_freshness_not_ready",
+        "stop_behavior_not_ready",
+        "listen_key_not_ready",
+        "user_data_stream_not_ready",
+        "private_account_read_not_ready",
+        "private_position_read_not_ready",
+        "no_private_read_performed"
+      ],
+      "blocking_conditions": [
+        "configuration: no_binance_api_key_configured",
+        "operator_approval: operator_live_private_read_approval_missing",
+        "jurisdiction_risk: operator_jurisdiction_not_recorded",
+        "live_binding: live_binding_profile_not_configured",
+        "secret_handling: secret_handling_profile_not_configured",
+        "account_position_freshness: fixture_seed_no_private_account_or_position_read",
+        "stop_behavior: operator_stop_behavior_not_recorded",
+        "listen_key: listen_key_creation_forbidden_in_preflight",
+        "user_data_stream: listen_key_lifecycle_not_enabled",
+        "configuration: signed_user_data_account_read_deferred",
+        "configuration: signed_user_data_position_read_deferred"
+      ],
+      "required_next_actions": [
+        "configure_private_read_credentials",
+        "configuration",
+        "operator_approval",
+        "jurisdiction_risk",
+        "live_binding",
+        "secret_handling",
+        "account_position_freshness",
+        "stop_behavior",
+        "listen_key",
+        "user_data_stream"
+      ],
+      "binance_security_types": [
+        "USER_DATA",
+        "USER_STREAM",
+        "TRADE"
+      ],
+      "no_private_read_performed": true,
+      "signed_request_authority": false,
+      "live_exchange_authority": false,
+      "order_submission_authority": false,
+      "authority_status": "not_live"
+    },
+    "latest_private_read_gate_decision": {
+      "decision_kind": "private_read_gate_decision",
+      "status": "not_ready",
+      "policy_status": "not_ready",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "evaluated_at": "2026-05-16T00:00:04.000Z",
+      "source_surface_refs": [
+        {
+          "record_kind": "private_readiness_preflight_surface",
+          "id": "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
+        },
+        {
+          "record_kind": "account_position_risk_mirror_surface",
+          "id": "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
+        }
+      ],
+      "credential_reference_status": "not_configured",
+      "credential_reference_source": "private_readiness_posture",
+      "signed_read_permission_preflight_status": "not_requested",
+      "signed_read_permission_preflight_source": "policy_decision",
+      "signed_request_construction_boundary_status": "not_requested",
+      "signed_request_construction_boundary_source": "policy_decision",
+      "signed_request_construction_required_components": [],
+      "signed_read_permission_grant_boundary_status": "not_requested",
+      "signed_read_permission_grant_boundary_source": "policy_decision",
+      "signed_request_execution_boundary_status": "not_requested",
+      "signed_request_execution_boundary_source": "policy_decision",
+      "account_balance_position_read_boundary_status": "not_requested",
+      "account_balance_position_read_boundary_source": "policy_decision",
+      "signed_read_permission": "not_granted",
+      "account_balance_position_read_authority": "not_granted",
+      "listen_key_user_data_stream_authority": "not_granted",
+      "leverage_margin_mutation_authority": "not_granted",
+      "order_submission_authority": "not_granted",
+      "gateway_result_authority": "not_granted",
+      "evidence_sealing_authority": "not_counted",
+      "promotion_authority": "not_granted",
+      "reason_codes": [
+        "configuration_not_ready",
+        "operator_approval_missing",
+        "jurisdiction_review_required",
+        "live_binding_not_ready",
+        "secret_handling_not_ready",
+        "account_position_freshness_not_ready",
+        "stop_behavior_not_ready",
+        "listen_key_not_ready",
+        "user_data_stream_not_ready",
+        "private_account_read_not_ready",
+        "private_position_read_not_ready",
+        "no_private_read_performed",
+        "private_read_gate_not_ready"
+      ],
+      "blocking_conditions": [
+        "configuration: no_binance_api_key_configured",
+        "operator_approval: operator_live_private_read_approval_missing",
+        "jurisdiction_risk: operator_jurisdiction_not_recorded",
+        "live_binding: live_binding_profile_not_configured",
+        "secret_handling: secret_handling_profile_not_configured",
+        "account_position_freshness: fixture_seed_no_private_account_or_position_read",
+        "stop_behavior: operator_stop_behavior_not_recorded",
+        "listen_key: listen_key_creation_forbidden_in_preflight",
+        "user_data_stream: listen_key_lifecycle_not_enabled",
+        "configuration: signed_user_data_account_read_deferred",
+        "configuration: signed_user_data_position_read_deferred"
+      ],
+      "required_next_actions": [
+        "configure_private_read_credentials",
+        "configuration",
+        "operator_approval",
+        "jurisdiction_risk",
+        "live_binding",
+        "secret_handling",
+        "account_position_freshness",
+        "stop_behavior",
+        "listen_key",
+        "user_data_stream"
+      ],
+      "binance_security_types": [
+        "USER_DATA",
+        "USER_STREAM",
+        "TRADE"
+      ],
+      "raw_secret_material_present": false,
+      "no_private_read_performed": true,
+      "signed_request_authority": false,
+      "live_exchange_authority": false,
+      "authority_status": "not_live"
+    },
+    "latest_trading_gateway_contract": {
+      "contract_kind": "trading_gateway_contract",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "evaluated_at": "2026-05-16T00:00:04.000Z",
+      "gateway_name": "TradingGateway",
+      "sandbox_direct_exchange_access": false,
+      "gateway_required_for": [
+        "USER_DATA",
+        "TRADE"
+      ],
+      "tracking_chain": [
+        "order_request",
+        "gateway_result",
+        "execution_result"
+      ],
+      "market_data": {
+        "security_type": "MARKET_DATA",
+        "status": "enabled",
+        "source": "public_market_liveness_surface",
+        "authority_status": "not_live"
+      },
+      "account_read": {
+        "security_type": "USER_DATA",
+        "status": "disabled",
+        "endpoint_labels": [
+          "GET /fapi/v3/account",
+          "GET /fapi/v3/positionRisk"
+        ],
+        "authority_status": "not_granted",
+        "gateway_required": true
+      },
+      "order_submission": {
+        "security_type": "TRADE",
+        "status": "disabled",
+        "endpoint_labels": [
+          "POST /fapi/v1/order"
+        ],
+        "authority_status": "not_granted",
+        "gateway_required": true
+      },
+      "no_authority": {
+        "raw_secret_material_present": false,
+        "no_private_read_performed": true,
+        "signed_request_authority": false,
+        "live_exchange_authority": false
+      },
+      "authority_status": "not_live"
+    },
+    "latest_account_position_risk_mirror_surface": {
+      "surface_id": "fixture-binance-btcusdt-account-position-risk-mirror-surface-001",
+      "surface_family": "account_position_risk_mirror",
+      "surface_label": "Binance BTCUSDT account_position_risk_mirror",
+      "venue": "binance_usd_m_futures",
+      "instrument": "BTCUSDT",
+      "product_category": "perpetual_futures",
+      "account_scope_ref": "fixture-binance-usdt-account-mirror",
+      "asset": "USDT",
+      "account_mode": "single_asset",
+      "total_wallet_balance": "1250.00000000",
+      "total_unrealized_profit": "12.50000000",
+      "total_margin_balance": "1262.50000000",
+      "available_balance": "1100.00000000",
+      "max_withdraw_amount": "1100.00000000",
+      "total_initial_margin": "162.50000000",
+      "total_maint_margin": "35.00000000",
+      "total_position_initial_margin": "150.00000000",
+      "total_open_order_initial_margin": "12.50000000",
+      "total_cross_wallet_balance": "1250.00000000",
+      "total_cross_un_pnl": "12.50000000",
+      "position_side": "BOTH",
+      "position_amount": "0.015",
+      "entry_price": "65000.00000000",
+      "break_even_price": "65010.00000000",
+      "mark_price": "65833.33333333",
+      "unrealized_profit": "12.50000000",
+      "liquidation_price": "42000.00000000",
+      "notional": "987.50000000",
+      "margin_asset": "USDT",
+      "margin_type": "cross",
+      "leverage": 5,
+      "isolated_margin": "0.00000000",
+      "isolated_wallet": "0.00000000",
+      "initial_margin": "150.00000000",
+      "maint_margin": "35.00000000",
+      "position_initial_margin": "150.00000000",
+      "open_order_initial_margin": "12.50000000",
+      "adl_quantile": 2,
+      "risk_status": "watch",
+      "risk_limit_profile_ref": "fixture-btcusdt-risk-limit-profile-001",
+      "max_notional_value": "1000000",
+      "kill_switch_status": "inactive",
+      "runtime_pause_status": "not_paused",
+      "account_information_endpoint": "GET /fapi/v3/account",
+      "position_information_endpoint": "GET /fapi/v3/positionRisk",
+      "leverage_endpoint": "POST /fapi/v1/leverage",
+      "margin_type_endpoint": "POST /fapi/v1/marginType",
+      "next_blocked_action": "configure_private_read_credentials",
+      "next_blocked_reason": "mirror_is_fixture_backed_no_signed_user_data_read",
+      "source_timestamp": "2026-05-16T00:00:00.000Z",
+      "observed_at": "2026-05-16T00:00:04.000Z",
+      "updated_at": "2026-05-16T00:00:04.000Z",
+      "freshness": "stale",
+      "liveness": "degraded",
+      "degraded_reason": "fixture_seed_no_private_account_or_position_read",
+      "source_kind": "fixture",
+      "source_ref": {
+        "record_kind": "fixture",
+        "id": "binance-btcusdt-account-position-risk-mirror"
+      },
+      "transport": {
+        "transport_kind": "official_binance_connector",
+        "repository": "binance/binance-connector-js",
+        "package_name": "@binance/derivatives-trading-usds-futures",
+        "api_family": "derivatives_trading_usds_futures",
+        "supported_endpoints": [
+          "rest_api",
+          "websocket_api",
+          "websocket_streams"
+        ],
+        "production_base_url": "https://fapi.binance.com",
+        "testnet_base_url": "https://demo-fapi.binance.com",
+        "integration_role": "transport_only",
+        "authority_status": "not_live"
+      },
+      "fixture_backed": true,
+      "simulated": true,
+      "no_authority": {
+        "live_exchange": false,
+        "order_submission": false,
+        "credentials": false
+      },
+      "no_authority_label": "live_exchange=false, order_submission=false, credentials=false",
+      "authority_status": "not_live"
+    }
+  },
+  "trace": {
+    "ref": {
+      "record_kind": "trace_placeholder",
+      "id": "trace-confirmation"
+    },
+    "label": "Trace placeholder",
+    "status": "fixture_placeholder",
+    "authority_status": "not_counted"
+  },
+  "evaluation": {
+    "has_runs": true,
+    "latest_run": {
+      "run_id": "evaluation-run-a651f33d54cbfec8",
+      "status": "created",
+      "stage": "backtest",
+      "profile": "backtest",
+      "execution_mode": "host_local",
+      "trace_ref": {
+        "record_kind": "trace_placeholder",
+        "id": "trace-confirmation"
+      },
+      "authority_status": "not_counted",
+      "created_at": "2026-07-10T00:00:00.000Z",
+      "error_state": null
+    },
+    "latest_comparison_set": {
+      "comparison_set_id": "evaluation-comparison-set-a651f33d54cbfec8",
+      "stage_binding_ref": {
+        "record_kind": "stage_binding",
+        "id": "stage-binding-backtest-a651f33d54cbfec8"
+      },
+      "evaluation_run_refs": [
+        {
+          "record_kind": "evaluation_run_record",
+          "id": "evaluation-run-a651f33d54cbfec8"
+        }
+      ],
+      "comparability_status": "not_evaluated",
+      "comparability_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    },
+    "latest_sealing_decision": {
+      "sealing_decision_id": "evidence-sealing-decision-a651f33d54cbfec8",
+      "evaluation_comparison_set_ref": {
+        "record_kind": "evaluation_comparison_set",
+        "id": "evaluation-comparison-set-a651f33d54cbfec8"
+      },
+      "evaluation_run_refs": [
+        {
+          "record_kind": "evaluation_run_record",
+          "id": "evaluation-run-a651f33d54cbfec8"
+        }
+      ],
+      "evidence_disposition": "not_counted",
+      "disposition_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    },
+    "trace": {
+      "state": "linked",
+      "trace_ref": {
+        "record_kind": "trace_placeholder",
+        "id": "trace-confirmation"
+      },
+      "authority_status": "not_counted",
+      "provider_output_artifact_refs": [],
+      "debug_artifact_refs": []
+    },
+    "evidence_classifications": [
+      {
+        "classification_id": "evidence-classification-175a7c101fc88636",
+        "classified_ref": {
+          "record_kind": "evaluation_run_record",
+          "id": "evaluation-run-a651f33d54cbfec8"
+        },
+        "classification_kind": "non_counted_evidence",
+        "classification_status": "not_counted",
+        "classification_reason": "no_external_evaluator",
+        "authority_status": "not_counted",
+        "sealed_by_decision_ref": {
+          "record_kind": "evidence_sealing_decision",
+          "id": "evidence-sealing-decision-a651f33d54cbfec8"
+        },
+        "created_at": "2026-07-10T00:00:00.000Z"
+      },
+      {
+        "classification_id": "evidence-classification-1c33f2dc7a927557",
+        "classified_ref": {
+          "record_kind": "evaluation_run_record",
+          "id": "evaluation-run-a651f33d54cbfec8"
+        },
+        "classification_kind": "candidate_evidence",
+        "classification_status": "candidate",
+        "classification_reason": "no_external_evaluator",
+        "authority_status": "not_counted",
+        "created_at": "2026-07-10T00:00:00.000Z"
+      },
+      {
+        "classification_id": "evidence-classification-375b3b7a8b119aea",
+        "classified_ref": {
+          "record_kind": "trace_placeholder",
+          "id": "trace-confirmation"
+        },
+        "classification_kind": "trace_debug_material",
+        "classification_status": "trace_only",
+        "classification_reason": "no_external_evaluator",
+        "authority_status": "not_counted",
+        "created_at": "2026-07-10T00:00:00.000Z"
+      },
+      {
+        "classification_id": "evidence-classification-3ae314d697f4e885",
+        "classified_ref": {
+          "record_kind": "evidence_sealing_decision",
+          "id": "evidence-sealing-decision-a651f33d54cbfec8"
+        },
+        "classification_kind": "sealed_decision",
+        "classification_status": "sealed",
+        "classification_reason": "no_external_evaluator",
+        "authority_status": "not_counted",
+        "sealed_by_decision_ref": {
+          "record_kind": "evidence_sealing_decision",
+          "id": "evidence-sealing-decision-a651f33d54cbfec8"
+        },
+        "created_at": "2026-07-10T00:00:00.000Z"
+      }
+    ],
+    "counted_evidence": {
+      "counted": false,
+      "evidence_disposition": "not_counted",
+      "disposition_reason": "no_external_evaluator",
+      "authority_status": "not_counted"
+    },
+    "error_state": null,
+    "run": {
+      "ref": {
+        "record_kind": "evaluation_run_record",
+        "id": "evaluation-run-a651f33d54cbfec8"
+      },
+      "label": "Evaluation run",
+      "status": "created",
+      "authority_status": "not_counted"
+    },
+    "comparison_set": {
+      "ref": {
+        "record_kind": "evaluation_comparison_set",
+        "id": "evaluation-comparison-set-a651f33d54cbfec8"
+      },
+      "label": "Evaluation comparison set",
+      "status": "not_evaluated",
+      "authority_status": "not_counted"
+    },
+    "sealing_decision": {
+      "ref": {
+        "record_kind": "evidence_sealing_decision",
+        "id": "evidence-sealing-decision-a651f33d54cbfec8"
+      },
+      "label": "Evidence sealing decision",
+      "status": "not_counted",
+      "authority_status": "not_counted"
+    }
+  },
+  "materialization_attempt": {
+    "attempt_id": "candidate-materialization-attempt-a651f33d54cbfec8",
+    "idempotency_key": "confirmation-integration-challenger",
+    "provider_kind": "fixture_only",
+    "model": "confirmation-fixture",
+    "agent_run_ref": {
+      "record_kind": "agent_run",
+      "id": "agent-run-confirmation"
+    },
+    "trace_ref": {
+      "record_kind": "trace_placeholder",
+      "id": "trace-confirmation"
+    },
+    "status": "materialized",
+    "validation_status": "accepted",
+    "resulting_candidate_ref": {
+      "record_kind": "trading_system_candidate",
+      "id": "candidate-a651f33d54cbfec8"
+    },
+    "artifact_refs": [
+      {
+        "record_kind": "provider_output_artifact",
+        "id": "confirmation-output"
+      }
+    ],
+    "created_at": "2026-07-10T00:00:00.000Z",
+    "authority_label": "provider_output_not_evidence"
+  },
+  "full_cycle_lineage": {
+    "handoff_status": "runnable",
+    "source": {
+      "trading_system_id": "fixture-candidate-sealed-replay-001",
+      "candidate_version_id": "fixture-candidate-version-001",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      }
+    },
+    "generated": {
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "artifact_digest": "sha256:confirmation-challenger",
+      "generated_by_agent": true
+    },
+    "materialized": {
+      "trading_system_id": "candidate-a651f33d54cbfec8",
+      "candidate_version_id": "candidate-version-a651f33d54cbfec8",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      }
+    },
+    "evidence": {
+      "evaluation_status": "accepted",
+      "evaluation_score": 0.7,
+      "direction_kind": "mean_reversion",
+      "trading_run_id": "trading-run-a651f33d54cbfec8",
+      "gateway_result_outcome": "missing",
+      "ledger_chain_complete": false
+    }
+  }
+}

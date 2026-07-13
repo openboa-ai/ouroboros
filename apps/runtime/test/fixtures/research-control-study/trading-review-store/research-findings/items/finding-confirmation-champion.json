@@ -1,0 +1,31 @@
+{
+  "record_kind": "research_finding",
+  "version": 1,
+  "research_finding_id": "finding-confirmation-champion",
+  "research_worker_ref": {
+    "record_kind": "research_worker",
+    "id": "worker-champion"
+  },
+  "research_direction_ref": {
+    "record_kind": "research_direction",
+    "id": "direction-champion"
+  },
+  "experiment_run_ref": {
+    "record_kind": "experiment_run",
+    "id": "experiment-confirmation-champion"
+  },
+  "trading_evaluation_result_ref": {
+    "record_kind": "trading_evaluation_result",
+    "id": "evaluation-confirmation-champion"
+  },
+  "finding_kind": "positive_result",
+  "summary": "External admission evidence for confirmation integration.",
+  "supporting_record_refs": [
+    {
+      "record_kind": "trading_evaluation_result",
+      "id": "evaluation-confirmation-champion"
+    }
+  ],
+  "created_at": "2026-07-09T20:54:00.000Z",
+  "authority_status": "research_trace_only"
+}

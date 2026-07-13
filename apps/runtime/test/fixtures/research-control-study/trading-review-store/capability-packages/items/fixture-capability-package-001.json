@@ -1,0 +1,22 @@
+{
+  "record_kind": "capability_package",
+  "version": 1,
+  "capability_package_id": "fixture-capability-package-001",
+  "summary": "Inspect-only capability package placeholder.",
+  "manifest_ref": {
+    "record_kind": "capability_manifest",
+    "id": "fixture-capability-manifest-001"
+  },
+  "admission_record_ref": {
+    "record_kind": "capability_package_admission_record",
+    "id": "fixture-capability-admission-001"
+  },
+  "grant_ref": {
+    "record_kind": "capability_grant",
+    "id": "fixture-capability-grant-001"
+  },
+  "mount_record_ref": {
+    "record_kind": "capability_mount_record",
+    "id": "fixture-capability-mount-001"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "record_kind": "agent_run",
+  "version": 1,
+  "agent_run_id": "fixture-agent-run-001",
+  "agent_session_ref": {
+    "record_kind": "agent_session",
+    "id": "fixture-agent-session-001"
+  },
+  "purpose": "candidate_generation_placeholder",
+  "authority_status": "not_executed"
+}

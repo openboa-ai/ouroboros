@@ -1,0 +1,26 @@
+{
+  "record_kind": "run_control_command",
+  "version": 1,
+  "run_control_command_id": "run-control-command-a08ca535b83087f3",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-6247749464192266"
+  },
+  "action": "stop",
+  "requested_lifecycle_status": "stopped",
+  "actor_kind": "human_operator",
+  "actor_ref": {
+    "record_kind": "operator",
+    "id": "runtime-activation-coordinator"
+  },
+  "runtime_operating_policy_ref": {
+    "record_kind": "runtime_operating_policy",
+    "id": "runtime-operating-policy-paper-v1"
+  },
+  "idempotency_key": "paper-comparison-run-control:paper-comparison-activation-attempt-816e4eb6873e6b532010984584a08a4b:challenger:stop",
+  "reason": "operator_request",
+  "reason_summary": "Authorized paper comparison runtime stop (handoff_cleanup).",
+  "requested_at": "2026-07-10T00:04:32.000Z",
+  "status": "decided",
+  "authority_status": "control_only"
+}

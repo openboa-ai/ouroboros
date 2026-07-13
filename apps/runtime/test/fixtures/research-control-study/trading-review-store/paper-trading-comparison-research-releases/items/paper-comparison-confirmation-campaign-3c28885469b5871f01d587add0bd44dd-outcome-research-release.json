@@ -1,0 +1,127 @@
+{
+  "record_kind": "paper_trading_comparison_research_release",
+  "version": 1,
+  "paper_trading_comparison_research_release_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release",
+  "campaign_ref": {
+    "record_kind": "paper_trading_comparison_confirmation_campaign",
+    "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd"
+  },
+  "campaign_digest": "sha256:ccf5ff9c57864846f68510b91affbe36b33550e1ef2a50fed13ad03a9bccdfbf",
+  "campaign_outcome_ref": {
+    "record_kind": "paper_trading_comparison_confirmation_campaign_outcome",
+    "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome"
+  },
+  "campaign_outcome_digest": "sha256:8b113bae29a7c95aa001df238aeb7dde570123134b6a53f9be35e33aeb65b4d9",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "system_code_artifact_digest": "sha256:confirmation-challenger",
+  "source_finding_ref": {
+    "record_kind": "research_finding",
+    "id": "finding-confirmation-challenger"
+  },
+  "source_finding_record_digest": "sha256:85f6f55468af1b0424e1897bc54477b6399d50579ab5ac79e9b37f3ae6f8e434",
+  "source_lineage_ref": {
+    "record_kind": "artifact_lineage",
+    "id": "lineage-confirmation-challenger-origin"
+  },
+  "source_lineage_record_digest": "sha256:2f5267ede1b1ed2b4495a806eba94afb0cc9decdd9f6011c50463d5eeba6e58f",
+  "direction_kind": "mean_reversion",
+  "release_kind": "confirmed_improvement",
+  "finding": {
+    "record_kind": "research_finding",
+    "version": 1,
+    "research_finding_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-finding",
+    "research_worker_ref": {
+      "record_kind": "research_worker",
+      "id": "worker-challenger"
+    },
+    "research_direction_ref": {
+      "record_kind": "research_direction",
+      "id": "direction-challenger"
+    },
+    "experiment_run_ref": {
+      "record_kind": "experiment_run",
+      "id": "experiment-confirmation-challenger"
+    },
+    "trading_evaluation_result_ref": {
+      "record_kind": "trading_evaluation_result",
+      "id": "evaluation-confirmation-challenger"
+    },
+    "finding_kind": "positive_result",
+    "summary": "Paper comparison confirmation campaign paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd: improved=2, not_improved=0, ineligible=0, expired=0; release=confirmed_improvement.",
+    "supporting_record_refs": [
+      {
+        "record_kind": "research_finding",
+        "id": "finding-confirmation-challenger"
+      },
+      {
+        "record_kind": "paper_trading_comparison_confirmation_campaign",
+        "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd"
+      },
+      {
+        "record_kind": "paper_trading_comparison_confirmation_campaign_outcome",
+        "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome"
+      },
+      {
+        "record_kind": "paper_trading_comparison_verdict",
+        "id": "paper-comparison-verdict-b8975c2c559cbd01b96d203aec43dc2d"
+      },
+      {
+        "record_kind": "paper_trading_comparison_verdict",
+        "id": "paper-comparison-verdict-06821287d643e214a568d90bb8c36ae3"
+      }
+    ],
+    "created_at": "2026-07-10T00:06:51.001Z",
+    "authority_status": "research_trace_only"
+  },
+  "finding_record_digest": "sha256:b0b76f4bd5811e40530b61826403a7447857b91be53ef7baa18d800944dd261d",
+  "lineage": {
+    "record_kind": "artifact_lineage",
+    "version": 1,
+    "artifact_lineage_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-lineage",
+    "child_system_code_ref": {
+      "record_kind": "system_code",
+      "id": "system-code-confirmation-challenger"
+    },
+    "parent_system_code_ref": {
+      "record_kind": "system_code",
+      "id": "fixture-system-code-clock-python-001"
+    },
+    "source_finding_refs": [
+      {
+        "record_kind": "research_finding",
+        "id": "finding-confirmation-challenger"
+      },
+      {
+        "record_kind": "research_finding",
+        "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-finding"
+      }
+    ],
+    "created_by_research_worker_ref": {
+      "record_kind": "research_worker",
+      "id": "worker-challenger"
+    },
+    "created_at": "2026-07-10T00:06:51.001Z",
+    "authority_status": "lineage_only"
+  },
+  "lineage_record_digest": "sha256:089da07749c905c873c3354893be44e761155ace9ec12a2a1e4dc193d584a9de",
+  "next_research_focus": "Preserve the confirmed artifact lineage and generate controlled variants under new prospective evidence.",
+  "released_at": "2026-07-10T00:06:51.001Z",
+  "release_digest": "sha256:75a3a056ade73878ca30214b8668ae2ac9a8e27fb417fa90f543bf0161a5e55c",
+  "research_visibility": "released_to_research",
+  "evaluation_authority": "external_to_trading_systems",
+  "promotion_authority": false,
+  "live_exchange_authority": false,
+  "order_submission_authority": false,
+  "authority_status": "lineage_only"
+}

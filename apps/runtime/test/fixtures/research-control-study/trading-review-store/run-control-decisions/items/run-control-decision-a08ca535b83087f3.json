@@ -1,0 +1,27 @@
+{
+  "record_kind": "run_control_decision",
+  "version": 1,
+  "run_control_decision_id": "run-control-decision-a08ca535b83087f3",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-6247749464192266"
+  },
+  "command_ref": {
+    "record_kind": "run_control_command",
+    "id": "run-control-command-a08ca535b83087f3"
+  },
+  "decision_outcome": "allowed",
+  "decision_reason": "policy_allows_control",
+  "decided_by_actor_kind": "policy_engine",
+  "decided_by_actor_ref": {
+    "record_kind": "runtime_policy_engine",
+    "id": "runtime-policy-engine-fixture"
+  },
+  "runtime_operating_policy_ref": {
+    "record_kind": "runtime_operating_policy",
+    "id": "runtime-operating-policy-paper-v1"
+  },
+  "resulting_lifecycle_status": "stopped",
+  "decided_at": "2026-07-10T00:04:32.000Z",
+  "authority_status": "control_only"
+}

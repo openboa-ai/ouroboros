@@ -1,0 +1,13 @@
+{
+  "record_kind": "trading_system_spec",
+  "version": 1,
+  "trading_system_spec_id": "fixture-trading-system-spec-sealed-replay-001",
+  "summary": "generic trading instruments trading-system fixture spec for inspect-only bootstrap.",
+  "market": "ExternalTradingApiProvider",
+  "instrument": "generic trading instruments",
+  "supported_stage_binding_profiles": [
+    "backtest",
+    "paper",
+    "live"
+  ]
+}

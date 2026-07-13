@@ -1,0 +1,10 @@
+{
+  "record_kind": "provider_probe_attempt",
+  "version": 1,
+  "provider_probe_attempt_id": "fixture-provider-probe-001",
+  "provider_readiness_record_ref": {
+    "record_kind": "provider_readiness_record",
+    "id": "fixture-provider-readiness-001"
+  },
+  "authority_status": "not_probed"
+}

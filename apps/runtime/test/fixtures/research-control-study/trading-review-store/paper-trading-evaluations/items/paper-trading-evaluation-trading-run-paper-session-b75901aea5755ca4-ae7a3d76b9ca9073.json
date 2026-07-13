@@ -1,0 +1,78 @@
+{
+  "record_kind": "paper_trading_evaluation",
+  "version": 1,
+  "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-b75901aea5755ca4-ae7a3d76b9ca9073",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-b75901aea5755ca4"
+  },
+  "paper_trading_evaluation_commitment_ref": {
+    "record_kind": "paper_trading_evaluation_commitment",
+    "id": "paper-trading-evaluation-commitment-trading-run-paper-session-b75901aea5755ca4-ae7a3d76b9ca9073"
+  },
+  "status": "stopped",
+  "interval_ms": 60000,
+  "observation_count": 2,
+  "started_at": "2026-07-10T00:02:17.000Z",
+  "latest_score": {
+    "revenue_usdt": 0,
+    "cost_usdt": 0,
+    "net_revenue_usdt": 0,
+    "net_return_pct": 0
+  },
+  "paper_account_snapshot": {
+    "wallet_balance_usdt": "10000",
+    "available_balance_usdt": "10000",
+    "equity_usdt": "10000",
+    "realized_pnl_usdt": "0",
+    "unrealized_pnl_usdt": "0",
+    "fee_paid_usdt": "0",
+    "slippage_paid_usdt": "0",
+    "funding_paid_usdt": "0",
+    "margin_reserved_usdt": "0",
+    "position": {
+      "symbol": "BTCUSDT",
+      "quantity": "0",
+      "side": "flat",
+      "mark_price": "60100",
+      "notional_usdt": "0"
+    },
+    "open_order_count": 0,
+    "authority_status": "not_live"
+  },
+  "open_orders": [],
+  "processed_trading_system_event_ids": [],
+  "processed_public_trade_ids": [],
+  "authority_status": "not_live",
+  "last_observed_at": "2026-07-10T00:03:20.000Z",
+  "latest_public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:03:19.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:03:20.000Z",
+    "agg_trades": [
+      {
+        "trade_id": "aggTrade:2026-07-10T00:03:20.000Z",
+        "price": "60000",
+        "quantity": "0.001",
+        "trade_time": "2026-07-10T00:03:19.999Z",
+        "is_buyer_maker": false
+      }
+    ],
+    "authority_status": "read_only"
+  },
+  "stopped_at": "2026-07-10T00:03:23.000Z"
+}

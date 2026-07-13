@@ -1,0 +1,32 @@
+{
+  "record_kind": "sandbox",
+  "version": 1,
+  "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a",
+  "adapter_kind": "deterministic_test",
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-b6b17eb3274ae27f"
+  },
+  "sandbox_placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-b6b17eb3274ae27f"
+  },
+  "lifecycle_status": "stopped",
+  "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-b6b17eb3-challenger",
+  "created_at": "2026-07-10T00:04:38.000Z",
+  "started_at": "2026-07-10T00:04:38.000Z",
+  "log_refs": [
+    {
+      "record_kind": "sandbox_log",
+      "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a-order-log"
+    }
+  ],
+  "heartbeat_refs": [],
+  "command_evidence_refs": [],
+  "authority_status": "not_live",
+  "stopped_at": "2026-07-10T00:05:41.000Z"
+}

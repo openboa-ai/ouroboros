@@ -1,0 +1,14 @@
+{
+  "record_kind": "trading_system_program",
+  "version": 1,
+  "trading_system_program_id": "fixture-trading-system-program-001",
+  "summary": "Agent-authored program placeholder; no code has executed.",
+  "manifest_ref": {
+    "record_kind": "program_manifest",
+    "id": "fixture-program-manifest-001"
+  },
+  "validation_record_ref": {
+    "record_kind": "program_validation_record",
+    "id": "fixture-program-validation-001"
+  }
+}

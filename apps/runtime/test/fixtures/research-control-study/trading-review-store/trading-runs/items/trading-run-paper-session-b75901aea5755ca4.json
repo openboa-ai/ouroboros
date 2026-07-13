@@ -1,0 +1,68 @@
+{
+  "record_kind": "trading_run",
+  "version": 1,
+  "trading_run_id": "trading-run-paper-session-b75901aea5755ca4",
+  "stage_binding_profile": "paper",
+  "runtime_lifecycle_status": "stopped",
+  "paper_evidence_purpose": "qualification",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-b75901aea5755ca4"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "hands-environment-paper-session-b75901aea5755ca4"
+  },
+  "memory_surface_ref": {
+    "record_kind": "runtime_memory_surface",
+    "id": "runtime-memory-surface-paper-session-b75901aea5755ca4"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "created_at": "2026-07-10T00:02:17.000Z",
+  "authority_status": "not_live",
+  "sandbox_ref": {
+    "record_kind": "sandbox",
+    "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-deb54f254c95ea63e68-f039dbdd4f344650"
+  },
+  "run_control_command_refs": [
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-6ae6a47b4e62c09f"
+    },
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-2fe1f6a4448c7ee6"
+    }
+  ],
+  "run_control_decision_refs": [
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-6ae6a47b4e62c09f"
+    },
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-2fe1f6a4448c7ee6"
+    }
+  ],
+  "runtime_audit_event_refs": [
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-6ae6a47b4e62c09f"
+    },
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-2fe1f6a4448c7ee6"
+    }
+  ]
+}

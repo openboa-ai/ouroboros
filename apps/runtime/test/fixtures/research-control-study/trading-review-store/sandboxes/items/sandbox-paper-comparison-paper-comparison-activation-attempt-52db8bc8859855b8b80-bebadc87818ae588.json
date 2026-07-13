@@ -1,0 +1,27 @@
+{
+  "record_kind": "sandbox",
+  "version": 1,
+  "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-bebadc87818ae588",
+  "adapter_kind": "deterministic_test",
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-5e87124cece6e828"
+  },
+  "sandbox_placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-5e87124cece6e828"
+  },
+  "lifecycle_status": "stopped",
+  "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-5e87124c-champion",
+  "created_at": "2026-07-10T00:04:38.000Z",
+  "started_at": "2026-07-10T00:04:38.000Z",
+  "log_refs": [],
+  "heartbeat_refs": [],
+  "command_evidence_refs": [],
+  "authority_status": "not_live",
+  "stopped_at": "2026-07-10T00:05:41.000Z"
+}

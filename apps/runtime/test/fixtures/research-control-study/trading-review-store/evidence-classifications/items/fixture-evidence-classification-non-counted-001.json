@@ -1,0 +1,30 @@
+{
+  "record_kind": "evidence_classification",
+  "version": 1,
+  "evidence_classification_id": "fixture-evidence-classification-non-counted-001",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "evaluation_run_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "fixture-evaluation-run-001"
+  },
+  "classified_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "fixture-evaluation-run-001"
+  },
+  "classification_kind": "non_counted_evidence",
+  "classification_status": "not_counted",
+  "classification_reason": "no_external_evaluator",
+  "created_at": "2026-05-05T00:00:00.000Z",
+  "sealed_by_decision_ref": {
+    "record_kind": "evidence_sealing_decision",
+    "id": "fixture-evidence-sealing-decision-001"
+  },
+  "authority_status": "not_counted"
+}

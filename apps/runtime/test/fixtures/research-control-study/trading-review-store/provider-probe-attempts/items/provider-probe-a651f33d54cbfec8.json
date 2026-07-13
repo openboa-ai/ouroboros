@@ -1,0 +1,13 @@
+{
+  "record_kind": "provider_probe_attempt",
+  "version": 1,
+  "provider_probe_attempt_id": "provider-probe-a651f33d54cbfec8",
+  "provider_readiness_record_ref": {
+    "record_kind": "provider_readiness_record",
+    "id": "provider-readiness-a651f33d54cbfec8"
+  },
+  "provider_kind": "fixture_only",
+  "model": "confirmation-fixture",
+  "result": "succeeded",
+  "authority_status": "probe_trace_only"
+}

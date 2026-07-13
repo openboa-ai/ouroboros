@@ -1,0 +1,30 @@
+{
+  "record_kind": "order_request",
+  "version": 1,
+  "order_request_id": "order-request-1bab59fb1d6e07ca",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-6247749464192266"
+  },
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "stage_binding_ref": {
+    "record_kind": "stage_binding",
+    "id": "stage-binding-paper-ab9bd829e4fd66a5"
+  },
+  "intent_kind": "place_order",
+  "market_scope": "external_trading_api_fixture",
+  "side": "buy",
+  "order_type": "limit",
+  "quantity": "0.001",
+  "limit_price": "60000",
+  "status": "proposed",
+  "created_at": "2026-07-10T00:03:27.000Z",
+  "authority_status": "not_submitted"
+}

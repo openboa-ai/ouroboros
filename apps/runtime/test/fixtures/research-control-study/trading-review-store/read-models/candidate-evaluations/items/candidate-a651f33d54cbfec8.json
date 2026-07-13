@@ -1,0 +1,153 @@
+{
+  "has_runs": true,
+  "latest_run": {
+    "run_id": "evaluation-run-a651f33d54cbfec8",
+    "status": "created",
+    "stage": "backtest",
+    "profile": "backtest",
+    "execution_mode": "host_local",
+    "trace_ref": {
+      "record_kind": "trace_placeholder",
+      "id": "trace-confirmation"
+    },
+    "authority_status": "not_counted",
+    "created_at": "2026-07-10T00:00:00.000Z",
+    "error_state": null
+  },
+  "latest_comparison_set": {
+    "comparison_set_id": "evaluation-comparison-set-a651f33d54cbfec8",
+    "stage_binding_ref": {
+      "record_kind": "stage_binding",
+      "id": "stage-binding-backtest-a651f33d54cbfec8"
+    },
+    "evaluation_run_refs": [
+      {
+        "record_kind": "evaluation_run_record",
+        "id": "evaluation-run-a651f33d54cbfec8"
+      }
+    ],
+    "comparability_status": "not_evaluated",
+    "comparability_reason": "no_external_evaluator",
+    "authority_status": "not_counted",
+    "created_at": "2026-07-10T00:00:00.000Z"
+  },
+  "latest_sealing_decision": {
+    "sealing_decision_id": "evidence-sealing-decision-a651f33d54cbfec8",
+    "evaluation_comparison_set_ref": {
+      "record_kind": "evaluation_comparison_set",
+      "id": "evaluation-comparison-set-a651f33d54cbfec8"
+    },
+    "evaluation_run_refs": [
+      {
+        "record_kind": "evaluation_run_record",
+        "id": "evaluation-run-a651f33d54cbfec8"
+      }
+    ],
+    "evidence_disposition": "not_counted",
+    "disposition_reason": "no_external_evaluator",
+    "authority_status": "not_counted",
+    "created_at": "2026-07-10T00:00:00.000Z"
+  },
+  "trace": {
+    "state": "linked",
+    "trace_ref": {
+      "record_kind": "trace_placeholder",
+      "id": "trace-confirmation"
+    },
+    "authority_status": "not_counted",
+    "provider_output_artifact_refs": [],
+    "debug_artifact_refs": []
+  },
+  "evidence_classifications": [
+    {
+      "classification_id": "evidence-classification-175a7c101fc88636",
+      "classified_ref": {
+        "record_kind": "evaluation_run_record",
+        "id": "evaluation-run-a651f33d54cbfec8"
+      },
+      "classification_kind": "non_counted_evidence",
+      "classification_status": "not_counted",
+      "classification_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "sealed_by_decision_ref": {
+        "record_kind": "evidence_sealing_decision",
+        "id": "evidence-sealing-decision-a651f33d54cbfec8"
+      },
+      "created_at": "2026-07-10T00:00:00.000Z"
+    },
+    {
+      "classification_id": "evidence-classification-1c33f2dc7a927557",
+      "classified_ref": {
+        "record_kind": "evaluation_run_record",
+        "id": "evaluation-run-a651f33d54cbfec8"
+      },
+      "classification_kind": "candidate_evidence",
+      "classification_status": "candidate",
+      "classification_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    },
+    {
+      "classification_id": "evidence-classification-375b3b7a8b119aea",
+      "classified_ref": {
+        "record_kind": "trace_placeholder",
+        "id": "trace-confirmation"
+      },
+      "classification_kind": "trace_debug_material",
+      "classification_status": "trace_only",
+      "classification_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    },
+    {
+      "classification_id": "evidence-classification-3ae314d697f4e885",
+      "classified_ref": {
+        "record_kind": "evidence_sealing_decision",
+        "id": "evidence-sealing-decision-a651f33d54cbfec8"
+      },
+      "classification_kind": "sealed_decision",
+      "classification_status": "sealed",
+      "classification_reason": "no_external_evaluator",
+      "authority_status": "not_counted",
+      "sealed_by_decision_ref": {
+        "record_kind": "evidence_sealing_decision",
+        "id": "evidence-sealing-decision-a651f33d54cbfec8"
+      },
+      "created_at": "2026-07-10T00:00:00.000Z"
+    }
+  ],
+  "counted_evidence": {
+    "counted": false,
+    "evidence_disposition": "not_counted",
+    "disposition_reason": "no_external_evaluator",
+    "authority_status": "not_counted"
+  },
+  "error_state": null,
+  "run": {
+    "ref": {
+      "record_kind": "evaluation_run_record",
+      "id": "evaluation-run-a651f33d54cbfec8"
+    },
+    "label": "Evaluation run",
+    "status": "created",
+    "authority_status": "not_counted"
+  },
+  "comparison_set": {
+    "ref": {
+      "record_kind": "evaluation_comparison_set",
+      "id": "evaluation-comparison-set-a651f33d54cbfec8"
+    },
+    "label": "Evaluation comparison set",
+    "status": "not_evaluated",
+    "authority_status": "not_counted"
+  },
+  "sealing_decision": {
+    "ref": {
+      "record_kind": "evidence_sealing_decision",
+      "id": "evidence-sealing-decision-a651f33d54cbfec8"
+    },
+    "label": "Evidence sealing decision",
+    "status": "not_counted",
+    "authority_status": "not_counted"
+  }
+}

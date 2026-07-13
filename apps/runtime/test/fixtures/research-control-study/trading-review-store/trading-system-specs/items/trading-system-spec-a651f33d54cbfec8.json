@@ -1,0 +1,12 @@
+{
+  "record_kind": "trading_system_spec",
+  "version": 1,
+  "trading_system_spec_id": "trading-system-spec-a651f33d54cbfec8",
+  "summary": "Trade BTCUSDT through paper-only Gateway authority.",
+  "market": "Binance USD-M Futures",
+  "instrument": "BTCUSDT",
+  "supported_stage_binding_profiles": [
+    "backtest",
+    "paper"
+  ]
+}

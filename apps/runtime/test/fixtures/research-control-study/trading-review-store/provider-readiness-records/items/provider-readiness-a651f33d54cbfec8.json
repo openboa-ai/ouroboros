@@ -1,0 +1,10 @@
+{
+  "record_kind": "provider_readiness_record",
+  "version": 1,
+  "provider_readiness_record_id": "provider-readiness-a651f33d54cbfec8",
+  "provider_kind": "fixture_only",
+  "model": "confirmation-fixture",
+  "invocation_surface": "vitest",
+  "readiness_status": "active_verified",
+  "authority_status": "readiness_only"
+}

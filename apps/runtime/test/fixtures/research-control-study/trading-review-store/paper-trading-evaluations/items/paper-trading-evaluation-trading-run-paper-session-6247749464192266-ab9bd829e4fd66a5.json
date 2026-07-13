@@ -1,0 +1,95 @@
+{
+  "record_kind": "paper_trading_evaluation",
+  "version": 1,
+  "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-6247749464192266-ab9bd829e4fd66a5",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-6247749464192266"
+  },
+  "paper_trading_evaluation_commitment_ref": {
+    "record_kind": "paper_trading_evaluation_commitment",
+    "id": "paper-trading-evaluation-commitment-trading-run-paper-session-6247749464192266-ab9bd829e4fd66a5"
+  },
+  "status": "stopped",
+  "interval_ms": 60000,
+  "observation_count": 2,
+  "started_at": "2026-07-10T00:03:26.000Z",
+  "latest_score": {
+    "revenue_usdt": 0.1,
+    "cost_usdt": 0.048,
+    "net_revenue_usdt": 0.052,
+    "net_return_pct": 0.00052
+  },
+  "paper_account_snapshot": {
+    "wallet_balance_usdt": "9999.952000000001",
+    "available_balance_usdt": "9998.850000000002",
+    "equity_usdt": "10000.052000000001",
+    "realized_pnl_usdt": "0",
+    "unrealized_pnl_usdt": "0.1",
+    "fee_paid_usdt": "0.024",
+    "slippage_paid_usdt": "0.018",
+    "funding_paid_usdt": "0.006",
+    "margin_reserved_usdt": "1.202",
+    "position": {
+      "symbol": "BTCUSDT",
+      "quantity": "0.001",
+      "side": "long",
+      "average_entry_price": "60000",
+      "mark_price": "60100",
+      "notional_usdt": "60.1"
+    },
+    "open_order_count": 0,
+    "authority_status": "not_live"
+  },
+  "open_orders": [],
+  "processed_trading_system_event_ids": [
+    "confirmation-order-trading-run-paper-session-6247749464192266"
+  ],
+  "processed_public_trade_ids": [
+    "aggTrade:2026-07-10T00:04:29.000Z"
+  ],
+  "authority_status": "not_live",
+  "last_observed_at": "2026-07-10T00:04:29.000Z",
+  "latest_public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:04:28.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:04:29.000Z",
+    "agg_trades": [
+      {
+        "trade_id": "aggTrade:2026-07-10T00:04:29.000Z",
+        "price": "60000",
+        "quantity": "0.001",
+        "trade_time": "2026-07-10T00:04:28.999Z",
+        "is_buyer_maker": false
+      }
+    ],
+    "authority_status": "read_only"
+  },
+  "latest_fill": {
+    "fill_id": "paper-fill-paper-order-confirmation-order-trading-run-paper-session-6247749464192266-aggTrade-2026-07-10T00-04-29-000Z",
+    "order_id": "paper-order-confirmation-order-trading-run-paper-session-6247749464192266",
+    "fill_status": "filled",
+    "fill_price": "60000",
+    "fill_quantity": "0.001",
+    "fee_usdt": "0.024",
+    "slippage_usdt": "0.018",
+    "funding_usdt": "0.006",
+    "trade_time": "2026-07-10T00:04:28.999Z",
+    "source_trade_id": "aggTrade:2026-07-10T00:04:29.000Z"
+  },
+  "stopped_at": "2026-07-10T00:04:32.000Z"
+}

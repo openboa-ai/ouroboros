@@ -1,0 +1,103 @@
+{
+  "record_kind": "paper_trading_observation",
+  "version": 1,
+  "paper_trading_observation_id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-747c3f18779a639c-9841-26918dcf10a86e22-0001",
+  "paper_trading_evaluation_ref": {
+    "record_kind": "paper_trading_evaluation",
+    "id": "paper-trading-evaluation-trading-run-paper-session-747c3f18779a639c-984103c5dd6fc7e9"
+  },
+  "paper_trading_evaluation_commitment_ref": {
+    "record_kind": "paper_trading_evaluation_commitment",
+    "id": "paper-trading-evaluation-commitment-trading-run-paper-session-747c3f18779a639c-984103c5dd6fc7e9"
+  },
+  "paper_trading_comparison_tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-470cd6771318c052"
+  },
+  "paper_trading_comparison_tick_digest": "sha256:c8ad4b4d6375e4eaa43ed994fa732e08f4a3f0d2fabf65ac902a4785964ec5e7",
+  "paper_trading_comparison_checkpoint_attempt_ref": {
+    "record_kind": "paper_trading_comparison_checkpoint_attempt",
+    "id": "paper-comparison-checkpoint-attempt-e0f854f69491e50cf012"
+  },
+  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:a39f073871f37be4f12da49a7cbde9c199ca06168809345387a2a8a2fe32bbdc",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-747c3f18779a639c"
+  },
+  "sequence": 1,
+  "status": "no_order",
+  "observed_at": "2026-07-10T00:02:18.000Z",
+  "market_snapshot": {
+    "symbol": "BTCUSDT",
+    "price": 60000,
+    "moving_average_fast": 60100,
+    "moving_average_slow": 59900,
+    "volatility": 0.01,
+    "expected_direction": "long",
+    "observed_at": "2026-07-10T00:02:17.998Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "authority_status": "read_only"
+  },
+  "public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:02:17.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:02:18.000Z",
+    "agg_trades": [],
+    "authority_status": "read_only"
+  },
+  "paper_account_snapshot": {
+    "wallet_balance_usdt": "10000",
+    "available_balance_usdt": "10000",
+    "equity_usdt": "10000",
+    "realized_pnl_usdt": "0",
+    "unrealized_pnl_usdt": "0",
+    "fee_paid_usdt": "0",
+    "slippage_paid_usdt": "0",
+    "funding_paid_usdt": "0",
+    "margin_reserved_usdt": "0",
+    "position": {
+      "symbol": "BTCUSDT",
+      "quantity": "0",
+      "side": "flat",
+      "mark_price": "60000",
+      "notional_usdt": "0"
+    },
+    "open_order_count": 0,
+    "authority_status": "not_live"
+  },
+  "open_orders": [],
+  "processed_trading_system_event_ids": [],
+  "processed_public_trade_ids": [],
+  "score_delta": {
+    "revenue_usdt": 0,
+    "cost_usdt": 0,
+    "net_revenue_usdt": 0,
+    "net_return_pct": 0
+  },
+  "cumulative_score": {
+    "revenue_usdt": 0,
+    "cost_usdt": 0,
+    "net_revenue_usdt": 0,
+    "net_return_pct": 0
+  },
+  "authority_status": "not_live"
+}

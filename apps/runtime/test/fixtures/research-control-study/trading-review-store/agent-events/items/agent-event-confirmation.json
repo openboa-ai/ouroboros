@@ -1,0 +1,10 @@
+{
+  "record_kind": "agent_event",
+  "version": 1,
+  "agent_event_id": "agent-event-confirmation",
+  "agent_run_ref": {
+    "record_kind": "agent_run",
+    "id": "agent-run-confirmation"
+  },
+  "status": "provider_output_captured"
+}

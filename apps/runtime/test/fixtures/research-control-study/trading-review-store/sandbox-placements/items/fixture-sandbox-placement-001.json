@@ -1,0 +1,8 @@
+{
+  "record_kind": "sandbox_placement",
+  "version": 1,
+  "sandbox_placement_id": "fixture-sandbox-placement-001",
+  "placement_kind": "fixture_local_placeholder",
+  "tooling_kind": "fixture_only",
+  "authority_status": "not_launched"
+}

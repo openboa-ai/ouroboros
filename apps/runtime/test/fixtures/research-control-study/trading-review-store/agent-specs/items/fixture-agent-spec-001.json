@@ -1,0 +1,7 @@
+{
+  "record_kind": "agent_spec",
+  "version": 1,
+  "agent_spec_id": "fixture-agent-spec-001",
+  "purpose": "candidate_generation_placeholder",
+  "provider_kind": "fixture_only"
+}

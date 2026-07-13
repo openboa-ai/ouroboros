@@ -1,0 +1,90 @@
+{
+  "record_kind": "paper_trading_comparison_preparation",
+  "version": 1,
+  "paper_trading_comparison_preparation_id": "paper-trading-comparison-preparation-80506ef355a15a27",
+  "paper_trading_comparison_commitment_id": "paper-trading-comparison-80506ef355a15a27",
+  "champion": {
+    "role": "champion",
+    "candidate_ref": {
+      "record_kind": "trading_system_candidate",
+      "id": "fixture-candidate-sealed-replay-001"
+    },
+    "candidate_version_ref": {
+      "record_kind": "candidate_version",
+      "id": "fixture-candidate-version-001"
+    },
+    "candidate_version_digest": "sha256:19c5fba48638168c0bb0b6159235d7b94b612769052d5474950fa7510129cf1f",
+    "system_code_ref": {
+      "record_kind": "system_code",
+      "id": "fixture-system-code-clock-python-001"
+    },
+    "system_code_record_digest": "sha256:919ddf23985ea2de38ca576248f7ae01d7510938eddb2feec8aaefa61140e64b",
+    "system_code_artifact_digest": "sha256:fixture-clock-python-artifact-v1",
+    "candidate_admission_decision_ref": {
+      "record_kind": "candidate_admission_decision",
+      "id": "admission-confirmation-champion"
+    },
+    "admission_decision_digest": "sha256:632553cc506f67446f429ae45f1cedae531ef34d8638c419b5b5b2c2f4cf9898"
+  },
+  "challenger": {
+    "role": "challenger",
+    "candidate_ref": {
+      "record_kind": "trading_system_candidate",
+      "id": "candidate-a651f33d54cbfec8"
+    },
+    "candidate_version_ref": {
+      "record_kind": "candidate_version",
+      "id": "candidate-version-a651f33d54cbfec8"
+    },
+    "candidate_version_digest": "sha256:58713041a199538ac434fe81ef9dad2ba8ec6977a1ae11eeffd71af59d758f83",
+    "system_code_ref": {
+      "record_kind": "system_code",
+      "id": "system-code-confirmation-challenger"
+    },
+    "system_code_record_digest": "sha256:4b06c8b3c5a5f10de257d74921cb1beb8b282bb68ced1d408fc0a8360811e962",
+    "system_code_artifact_digest": "sha256:confirmation-challenger",
+    "candidate_admission_decision_ref": {
+      "record_kind": "candidate_admission_decision",
+      "id": "admission-confirmation-challenger"
+    },
+    "admission_decision_digest": "sha256:a1a7bc3ccf3a0b7e3f519da15d5cb999977f6e472fd5dc7cb4685f5798def423"
+  },
+  "champion_selection": {
+    "selection_kind": "bootstrap"
+  },
+  "comparison_policy": {
+    "policy_version": "paper-comparison-v1",
+    "comparison_mode": "bootstrap",
+    "symbol": "BTCUSDT",
+    "interval_ms": 60000,
+    "minimum_observation_count": 2,
+    "minimum_elapsed_ms": 60000,
+    "maximum_observation_count": 2,
+    "maximum_elapsed_ms": 600000,
+    "maximum_start_skew_ms": 5000,
+    "maximum_provider_request_count_per_side": 100,
+    "maximum_retry_count_per_side": 2,
+    "primary_metric": "net_revenue_usdt",
+    "minimum_net_revenue_lift_usdt": 0.01,
+    "required_confirmation_count": 2,
+    "require_non_overlapping_windows": true,
+    "require_both_qualified": true,
+    "release_policy": "sealed_until_adjudication"
+  },
+  "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
+  "paper_policy_identity": {
+    "market_data_policy_version": "binance-public-market-v1",
+    "gateway_policy_version": "paper-gateway-dry-run-v1",
+    "cost_policy_version": "paper-cost-8bps-v1",
+    "funding_policy_version": "paper-funding-engine-v1",
+    "slippage_policy_version": "paper-public-fill-slippage-v1",
+    "fill_policy_version": "paper-public-execution-fill-v1",
+    "risk_policy_version": "paper-risk-validation-v1",
+    "paper_account_policy_version": "fake-paper-account-10000usdt-v1",
+    "decision_event_protocol_version": "trading-system-paper-events-v1",
+    "persistent_state_boundary_version": "paper-engine-checkpoint-v1"
+  },
+  "committed_at": "2026-07-10T00:04:35.000Z",
+  "preparation_digest": "sha256:e078c37e8dda951f1418b0c9810320e5c599a82aab2001744f520a3f596bdf8b",
+  "authority_status": "not_live"
+}

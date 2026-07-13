@@ -1,0 +1,35 @@
+{
+  "record_kind": "trading_system_candidate",
+  "version": 1,
+  "candidate_id": "candidate-a651f33d54cbfec8",
+  "display_name": "Confirmation campaign challenger",
+  "status": "materialized",
+  "active_version_id": "candidate-version-a651f33d54cbfec8",
+  "provenance_refs": [
+    {
+      "record_kind": "agent_run",
+      "id": "agent-run-confirmation"
+    },
+    {
+      "record_kind": "provider_readiness_record",
+      "id": "provider-readiness-a651f33d54cbfec8"
+    },
+    {
+      "record_kind": "candidate_materialization_attempt",
+      "id": "candidate-materialization-attempt-a651f33d54cbfec8"
+    }
+  ],
+  "title": "Confirmation campaign challenger",
+  "system_summary": "Candidate for prospective confirmation windows.",
+  "first_market_scope": "external_trading_api_fixture",
+  "candidate_status": "handoff_ready",
+  "evaluation_handoff_ready": true,
+  "materialized_from_attempt_ref": {
+    "record_kind": "candidate_materialization_attempt",
+    "id": "candidate-materialization-attempt-a651f33d54cbfec8"
+  },
+  "active_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  }
+}

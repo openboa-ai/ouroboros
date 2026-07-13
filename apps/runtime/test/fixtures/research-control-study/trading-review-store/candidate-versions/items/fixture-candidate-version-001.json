@@ -1,0 +1,37 @@
+{
+  "record_kind": "candidate_version",
+  "version": 1,
+  "candidate_version_id": "fixture-candidate-version-001",
+  "candidate_id": "fixture-candidate-sealed-replay-001",
+  "version_label": "fixture-v1",
+  "spec_ref": {
+    "record_kind": "trading_system_spec",
+    "id": "fixture-trading-system-spec-sealed-replay-001"
+  },
+  "program_ref": {
+    "record_kind": "trading_system_program",
+    "id": "fixture-trading-system-program-001"
+  },
+  "capability_package_refs": [
+    {
+      "record_kind": "capability_package",
+      "id": "fixture-capability-package-001"
+    }
+  ],
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "fixture-trading-run-001"
+  },
+  "trace_placeholder_ref": {
+    "record_kind": "trace_placeholder",
+    "id": "fixture-trace-placeholder-001"
+  },
+  "evaluation_run_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "fixture-evaluation-run-001"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  }
+}

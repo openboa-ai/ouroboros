@@ -1,0 +1,57 @@
+{
+  "record_kind": "paper_trading_comparison_confirmation_campaign_outcome",
+  "version": 1,
+  "paper_trading_comparison_confirmation_campaign_outcome_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome",
+  "campaign_ref": {
+    "record_kind": "paper_trading_comparison_confirmation_campaign",
+    "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd"
+  },
+  "campaign_digest": "sha256:ccf5ff9c57864846f68510b91affbe36b33550e1ef2a50fed13ad03a9bccdfbf",
+  "slot_results": [
+    {
+      "slot_index": 1,
+      "paper_trading_comparison_commitment_ref": {
+        "record_kind": "paper_trading_comparison_commitment",
+        "id": "paper-trading-comparison-80506ef355a15a27"
+      },
+      "status": "challenger_improved",
+      "verdict_ref": {
+        "record_kind": "paper_trading_comparison_verdict",
+        "id": "paper-comparison-verdict-b8975c2c559cbd01b96d203aec43dc2d"
+      },
+      "verdict_digest": "sha256:0fdfab19846d8defce1a638e094af3e6635c5b470813836dce373544a781b0b9",
+      "window_started_at": "2026-07-10T00:04:36.000Z",
+      "window_ended_at": "2026-07-10T00:05:38.000Z"
+    },
+    {
+      "slot_index": 2,
+      "paper_trading_comparison_commitment_ref": {
+        "record_kind": "paper_trading_comparison_commitment",
+        "id": "paper-trading-comparison-3ad6e3b0202e249e"
+      },
+      "status": "challenger_improved",
+      "verdict_ref": {
+        "record_kind": "paper_trading_comparison_verdict",
+        "id": "paper-comparison-verdict-06821287d643e214a568d90bb8c36ae3"
+      },
+      "verdict_digest": "sha256:e81e501609342138b2bbd1acde6102e3d33f67332eb088f62153bd949edf1816",
+      "window_started_at": "2026-07-10T00:05:44.000Z",
+      "window_ended_at": "2026-07-10T00:06:46.000Z"
+    }
+  ],
+  "improved_count": 2,
+  "not_improved_count": 0,
+  "ineligible_count": 0,
+  "expired_count": 0,
+  "campaign_outcome": "confirmed_improvement",
+  "promotion_eligibility": "eligible",
+  "next_action": "review_for_trading_promotion",
+  "decision_rule": "all_reserved_windows_must_improve",
+  "release_status": "sealed",
+  "evaluated_at": "2026-07-10T00:06:51.000Z",
+  "outcome_digest": "sha256:8b113bae29a7c95aa001df238aeb7dde570123134b6a53f9be35e33aeb65b4d9",
+  "evaluation_authority": "external_to_trading_systems",
+  "live_exchange_authority": false,
+  "order_submission_authority": false,
+  "authority_status": "not_live"
+}
