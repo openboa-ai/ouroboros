@@ -182,13 +182,9 @@ describe("ResearchWorker memory projection", () => {
     expect(JSON.parse(released.arenaContext)).toEqual({
       ...currentContext,
       latest_findings: memoryContext.latest_findings,
-      finding_clusters: { cluster_count: 1 },
-      research_memory_policy: { memory_mode: "released_memory" }
+      finding_clusters: { cluster_count: 1 }
     });
-    expect(JSON.parse(masked.arenaContext)).toEqual({
-      ...currentContext,
-      research_memory_policy: { memory_mode: "memory_masked" }
-    });
+    expect(JSON.parse(masked.arenaContext)).toEqual(currentContext);
     expect(released.priorCheckpoint).toEqual(priorCheckpoint);
     expect(masked.priorCheckpoint).toBeUndefined();
     expect(released.policy.memory_source_digest).toBe(
@@ -212,6 +208,27 @@ describe("ResearchWorker memory projection", () => {
       "memory_masked_control"
     );
     expect(released.arenaContext).not.toContain("authority_status");
+  });
+
+  it("does not expose the control arm when no memory content differs", () => {
+    const input = {
+      currentContext: {
+        requested_direction: "trend_following",
+        task: "Submit one bounded TradingSystem candidate."
+      },
+      memoryContext: {}
+    };
+    const released = buildResearchWorkerMemoryProjection({
+      ...input,
+      mode: "released_memory"
+    });
+    const masked = buildResearchWorkerMemoryProjection({
+      ...input,
+      mode: "memory_masked"
+    });
+
+    expect(released.arenaContext).toBe(masked.arenaContext);
+    expect(released.arenaContext).not.toMatch(/memory|released|masked|control/i);
   });
 
   it("records no prior checkpoint when none was available", () => {

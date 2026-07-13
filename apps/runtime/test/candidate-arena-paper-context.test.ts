@@ -204,12 +204,9 @@ describe("CandidateArena paper evidence context", () => {
       "current_research_allocation",
       "current_research_selection",
       "requested_direction",
-      "research_memory_policy",
       "task"
     ]);
-    expect(maskedContext.research_memory_policy).toEqual({
-      memory_mode: "memory_masked"
-    });
+    expect(maskedContext).not.toHaveProperty("research_memory_policy");
     for (const key of [
       "research_population_diversity",
       "leaderboard",

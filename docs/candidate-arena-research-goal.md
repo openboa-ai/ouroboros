@@ -139,6 +139,14 @@ create-only publication for one exact same-root winner. Missing prerequisites de
 drift fails before effects. The process-local scheduler then starts the supervisor, waits on a
 bounded interruptible poll after post-catch-up decision reconciliation, and reconstructs each
 runtime from the persisted study condition.
+The first cross-generation-memory control is now executable as an internal
+`ResearchMemoryControlStudy`: six or more fresh same-baseline pairs share one source, managed-agent
+identity, direction schedule, budget, and exact development/sealed opportunity. Treatment and
+masked workers receive opaque alternating side identities and no provider-visible arm label; only
+safe prior Arena memory content differs. Pair outcomes retain every terminal failure or
+interruption and score only external exact repeats. Deterministic fixtures demonstrate protocol and
+restart integrity, not a real-provider memory effect, general candidate quality, or economic
+frontier improvement.
 Before filling an ordinary latest-source study, the same coordinator now creates or resumes one
 `ResearchGeneralizationProtocol`. It precommits two deterministic studies in each public `long`,
 `short`, and `flat` condition block, enforces 24-hour global spacing and a 90-day window, and binds

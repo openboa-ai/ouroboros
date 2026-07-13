@@ -50,6 +50,12 @@ before any planned campaign is stored, and it permits no early stopping.
 `ResearchControlStudyOutcome` aggregates every exact planned campaign outcome once and limits its
 causal scope to same-baseline stochastic repetitions. Supported adaptive effect means only that a
 separate allocation-policy decision may be considered; the outcome cannot replace policy.
+`ResearchMemoryControlStudy` is a separate 6-to-30-pair same-baseline experiment for one narrower
+question: whether released safe Arena memory reduces exact repeated behavior relative to a masked
+projection. Provider-visible context, tick IDs, and workspace sides do not identify the arm;
+source, agent, direction, budget, and evaluator opportunity stay equal. Its pair and study outcomes
+are external exact-repeat evidence only, not candidate quality, prospective economics, or authority
+to change memory policy.
 `ResearchAllocationPolicyDecision` is that separate append-only research-only decision. It reloads
 the exact study and outcome, approves only eligible `adaptive_effect_supported` evidence, binds the
 studied allocation-policy digest, and otherwise records `not_approved` with no effective mode.

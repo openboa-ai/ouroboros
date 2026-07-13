@@ -107,8 +107,8 @@ export function buildResearchWorkerMemoryProjection(input: {
 - [x] **Step 1: Write RED projection tests**
 
   Prove the released projection contains all current and safe memory fields plus the supplied prior
-  checkpoint, while the masked projection contains only current fields and
-  `research_memory_policy: { memory_mode: "memory_masked" }`. Assert both policies bind the same
+  checkpoint, while the masked projection contains only current fields and no provider-visible arm
+  label. Assert both persisted policies bind the same
   non-zero memory source digest/count, opposite dispositions, and different exact context digests.
 
 - [x] **Step 2: Run the projection test and capture RED**
@@ -471,12 +471,14 @@ researchMemoryControlStudyWorkspacePaths(input): {
   cleanup checks and raw stdout/stderr non-persistence. No real-provider evidence is claimed; this
   step requires explicit risk-informed authorization before another external attempt.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
   ```bash
   git add apps/runtime/src/candidate/arena/research-memory-control-study.ts apps/runtime/test/research-memory-control-study.test.ts apps/runtime/src/candidate/arena/research-experiment-baseline.ts packages/application/src/candidate/arena.ts
   git commit -m "feat: run research memory controls"
   ```
+
+  Committed as `209e64f` (`feat: run research memory controls`).
 
 ### Task 6: Adversarial QA And Durable Truth
 
@@ -501,19 +503,27 @@ researchMemoryControlStudyWorkspacePaths(input): {
   outcome-aware omission, asymmetric restart, forged external evidence, context digest mismatch,
   authority widening, and claims stronger than the persisted evidence.
 
-- [ ] **Step 2: Add adversarial tests before fixes**
+  Independent reviewer dispatch was attempted three times, but the subagent platform rejected its
+  inherited unsupported reasoning setting before reading the repo. No independent review is
+  claimed. The main worker completed a fresh adversarial pass; remote PR/Codex review remains
+  required before promotion.
+
+- [x] **Step 2: Add adversarial tests before fixes**
 
   For every actionable finding, first add the narrow failing regression test, observe RED, then make
   the smallest correction and rerun the focused suite.
 
-- [ ] **Step 3: Write canonical documentation**
+  RED/GREEN findings removed provider-visible arm labels, semantic tick/workspace names, systematic
+  treatment-first invocation, and duck-typed sealed-opportunity capability substitution.
+
+- [x] **Step 3: Write canonical documentation**
 
   Add the three canonical nouns, exact information boundary, same-baseline paired protocol,
   external exact-repeat estimand, restart semantics, non-authority, and empirical-claim limitation.
   State explicitly that deterministic fixtures and one Codex pair do not close causal-memory or
   economic-frontier Goal axes.
 
-- [ ] **Step 4: Run complete validation**
+- [x] **Step 4: Run complete validation**
 
   ```bash
   npm test
@@ -525,21 +535,34 @@ researchMemoryControlStudyWorkspacePaths(input): {
   Expected: every test, workspace typecheck, docs/architecture/naming/env/secrets guard, and diff
   check passes.
 
-- [ ] **Step 5: Audit scope and evidence**
+  Final evidence on 2026-07-13: 198 test files passed with 3,216 tests passed and the one opt-in
+  external Codex probe skipped. Every workspace typecheck and `check:repo-guards` passed, including
+  docs, architecture, naming, tracked env, secrets, and diff checks.
+
+- [x] **Step 5: Audit scope and evidence**
 
   Confirm no public route/command, default scheduler, allocation-policy decision, rank,
   qualification, promotion, order, private, or live path changed. Confirm `.superpowers/` remains
   untracked and untouched. Record exact test counts and the real Codex probe disposition below.
 
-- [ ] **Step 6: Commit**
+  Scope audit found no public route/command, default scheduler, allocation-policy decision, rank,
+  qualification, promotion, order, private, or live change. `.superpowers/` remains untouched and
+  untracked. The real Codex probe disposition remains the explicit Step 8 limitation above.
+
+- [x] **Step 6: Commit**
 
   ```bash
   git add AGENTS.md README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/autonomy-model.md docs/naming-taxonomy.md docs/product-quality-design.md research/program.md docs/superpowers/specs/2026-07-13-research-memory-control-study-design.md docs/superpowers/plans/2026-07-13-research-memory-control-study.md
   git commit -m "docs: record research memory controls"
   ```
 
-- [ ] **Step 7: Reassess the broad Goal**
+- [x] **Step 7: Reassess the broad Goal**
 
   Keep the broad Goal open unless an eligible precommitted real-provider multi-pair outcome supports
   the narrow memory effect. Select the next bounded unclosed axis using current repo evidence rather
   than chat memory.
+
+  The broad Goal remains open. Deterministic evidence closes protocol mechanics, blinding,
+  persistence, and restart integrity only. The next bounded axis is an explicitly authorized,
+  precommitted real-provider multi-pair run; no memory-policy or economic claim is eligible before
+  that evidence exists.

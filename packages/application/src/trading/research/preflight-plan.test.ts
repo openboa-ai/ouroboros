@@ -167,6 +167,19 @@ describe("ResearchPreflight evaluator-owned plan", () => {
         typeof createResearchPreflightEvaluationOpportunity
       >
     })).toThrow("research_preflight_plan_input_invalid:evaluation_opportunity");
+
+    const clonedCapability = {
+      descriptor: () => opportunity.descriptor(),
+      developmentSuite: () => opportunity.developmentSuite(),
+      sealedAdmissionSuite: () => opportunity.sealedAdmissionSuite(),
+      rotationCommitmentDigest: () => opportunity.rotationCommitmentDigest()
+    };
+    expect(() => buildResearchPreflightPlan({
+      ...planInput(seed(5)),
+      evaluation_opportunity: clonedCapability as unknown as ReturnType<
+        typeof createResearchPreflightEvaluationOpportunity
+      >
+    })).toThrow("research_preflight_plan_input_invalid:evaluation_opportunity");
   });
 
   it("generates balanced hidden regimes without obvious metadata shortcuts", () => {

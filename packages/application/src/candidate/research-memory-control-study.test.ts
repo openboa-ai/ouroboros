@@ -27,6 +27,18 @@ describe("ResearchMemoryControlStudy decision", () => {
       pair.released_memory_treatment.tick_id,
       pair.memory_masked_control.tick_id
     ])).size).toBe(12);
+    const tickIds = study.pair_plans.flatMap((pair) => [
+      pair.released_memory_treatment.tick_id,
+      pair.memory_masked_control.tick_id
+    ]);
+    expect(tickIds.every((tickId) =>
+      !/(released|masked|treatment|control|memory)/i.test(
+        tickId.replace("research-memory-control-tick-", "")
+      )
+    )).toBe(true);
+    expect(study.pair_plans.map((pair) =>
+      pair.released_memory_treatment.tick_id.endsWith("-side-a")
+    ).filter(Boolean)).toHaveLength(3);
     expect(study.pair_plans.every((pair) =>
       pair.released_memory_treatment.memory_mode === "released_memory" &&
       pair.released_memory_treatment.arm_kind ===

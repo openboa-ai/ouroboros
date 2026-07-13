@@ -59,6 +59,30 @@ export function decideResearchMemoryControlStudy(
     const committedAt = canonicalTime(input?.committedAt);
     const studyId = researchMemoryControlStudyId(idempotencyKey);
     const token = digestHex(idempotencyKey).slice(0, 16);
+    const pairPlans = directions.map((direction, index) => {
+      const pairIndex = index + 1;
+      const sides = researchMemoryControlPairBlindSides(studyId, pairIndex);
+      return {
+        pair_index: pairIndex,
+        research_direction_ref: {
+          record_kind: "research_direction" as const,
+          id: direction.research_direction_id
+        },
+        direction_kind: direction.direction_kind,
+        released_memory_treatment: {
+          arm_kind: "released_memory_treatment" as const,
+          memory_mode: "released_memory" as const,
+          tick_id:
+            `research-memory-control-tick-${token}-${pairIndex}-${sides.releasedMemory}`
+        },
+        memory_masked_control: {
+          arm_kind: "memory_masked_control" as const,
+          memory_mode: "memory_masked" as const,
+          tick_id:
+            `research-memory-control-tick-${token}-${pairIndex}-${sides.memoryMasked}`
+        }
+      };
+    });
     const record: ResearchMemoryControlStudyRecord = {
       record_kind: "research_memory_control_study",
       version: 1,
@@ -72,25 +96,7 @@ export function decideResearchMemoryControlStudy(
       opportunity_protocol: exactOpportunityProtocol(
         input.opportunityProtocol
       ),
-      pair_plans: directions.map((direction, index) => ({
-        pair_index: index + 1,
-        research_direction_ref: {
-          record_kind: "research_direction",
-          id: direction.research_direction_id
-        },
-        direction_kind: direction.direction_kind,
-        released_memory_treatment: {
-          arm_kind: "released_memory_treatment",
-          memory_mode: "released_memory",
-          tick_id:
-            `research-memory-control-tick-${token}-${index + 1}-released`
-        },
-        memory_masked_control: {
-          arm_kind: "memory_masked_control",
-          memory_mode: "memory_masked",
-          tick_id: `research-memory-control-tick-${token}-${index + 1}-masked`
-        }
-      })),
+      pair_plans: pairPlans,
       policy: {
         policy_version: "research_memory_control_study_v1",
         pair_count: directions.length,
@@ -142,6 +148,27 @@ export function researchMemoryControlStudyId(idempotencyKey: string): string {
   return `research-memory-control-study-${digestHex(
     canonicalString(idempotencyKey)
   ).slice(0, 20)}`;
+}
+
+export function researchMemoryControlPairBlindSides(
+  studyId: string,
+  pairIndex: number
+): {
+  releasedMemory: "side-a" | "side-b";
+  memoryMasked: "side-a" | "side-b";
+} {
+  const canonicalStudyId = canonicalString(studyId);
+  if (!Number.isInteger(pairIndex) || pairIndex < 1 || pairIndex > 30) {
+    throw invalidDecision();
+  }
+  const offset = Number.parseInt(digestHex(canonicalStudyId).slice(0, 2), 16) % 2;
+  const releasedMemory = (offset + pairIndex) % 2 === 0
+    ? "side-a" as const
+    : "side-b" as const;
+  return {
+    releasedMemory,
+    memoryMasked: releasedMemory === "side-a" ? "side-b" : "side-a"
+  };
 }
 
 function canonicalDirections(

@@ -102,6 +102,14 @@ campaign outcome exactly once, permits no early stopping, and limits its causal 
 same-baseline stochastic repetitions. A supported adaptive effect grants only eligibility for a
 separate allocation-policy decision; neither record replaces policy, promotes, submits orders, or
 widens private/live authority.
+`ResearchMemoryControlStudy` is the narrower cross-generation-memory inference boundary. It
+precommits 6 to 30 fresh same-baseline pairs with one source, agent identity, direction schedule,
+budget, and exact evaluator opportunity. Worker-facing payloads and opaque tick/workspace side
+identities reveal no treatment/control label; only safe prior Arena memory content differs.
+`ResearchMemoryControlPairOutcome` derives exact-repeat observations from external unchanged-
+artifact or same-suite fingerprint evidence, and `ResearchMemoryControlStudyOutcome` includes every
+planned terminal pair in one exact sign test. Neither record measures candidate quality or paper
+economics, replaces memory policy, promotes, submits orders, or widens private/live authority.
 `createResearchControlStudyRuntime` is the canonical internal study composition. Its executor
 derives progress only from append-only study, campaign, campaign-outcome, and study-outcome records,
 completes at most one planned campaign per advance in fixed order, and adjudicates only after exact
@@ -355,6 +363,9 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchControlCampaignOutcome` | Append-only external adjudication of every precommitted ResearchControlCampaign paper slot against its pre-effect Trading review comparator and one shared policy. Only exact confirmed-improvement ResearchRelease evidence receives discovery credit; one outcome is not causal proof or policy authority. |
 | `ResearchControlStudy` | Append-only pre-effect commitment of 6 to 30 exact ResearchControlCampaign replications under one same-frozen-snapshot condition and one paired exact sign-test policy. It fixes every campaign identity before effects, permits no early stopping, and owns research scheduling authority only. |
 | `ResearchControlStudyOutcome` | Append-only external aggregate over every planned ResearchControlCampaignOutcome. It reports same-baseline stochastic-replication inference and may make a supported effect eligible for a separate policy decision, but cannot replace policy, promote, submit orders, or gain private/live authority. |
+| `ResearchMemoryControlStudy` | Append-only pre-effect commitment of 6 to 30 fresh same-baseline released-memory versus memory-masked pairs. It freezes source, agent, directions, budgets, evaluator opportunity, blinded side identities, and exact analysis before effects; only cross-generation memory visibility may differ. |
+| `ResearchMemoryControlPairOutcome` | Append-only external terminal result for one planned memory pair. It derives an exact-repeat difference only from unchanged-artifact or exact same-suite ResearchBehaviorFingerprint evidence, retains failures and interruptions, and has no quality or downstream authority. |
+| `ResearchMemoryControlStudyOutcome` | Append-only all-pairs exact-sign-test aggregate. A supported result means only that released memory reduced exact repeats under the frozen same-baseline conditions; it is not economic evidence and cannot replace memory policy or grant downstream authority. |
 | `ResearchGeneralizationProtocol` | Append-only pre-effect cross-study commitment that freezes six deterministic ResearchControlStudy slots across two public long, short, and flat condition-block replications, independent source-baseline controls, timing, resource bounds, and equal-weight analysis. It owns research scheduling authority only. |
 | `ResearchGeneralizationOutcome` | Append-only external aggregate over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline inference, preserves missing and harmful evidence, and may only make exact supported evidence eligible for the separate ResearchGeneralizationPolicyDecision. |
 | `ResearchGeneralizationPolicyDecision` | Append-only research-only selection record derived from one exact ResearchGeneralizationProtocol and ResearchGeneralizationOutcome. Version 1 may approve only the frozen adaptive policy digest after eligible supported cross-condition evidence; every other valid outcome is not approved, never selects static control, and grants no evaluation, promotion, order, private, or live authority. |

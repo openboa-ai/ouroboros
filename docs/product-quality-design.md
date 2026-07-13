@@ -596,6 +596,7 @@ element is probably decoration or misplaced behavior.
 | `CandidateArenaResearchAllocation` | Freeze which directions run, why they run, and their bounded concurrency and experiment budgets before worker effects. | Domain record, application allocator, LocalStore, latest-tick read model, and researcher context. | Focus must change actual resources while completed-history exploration prevents entropy collapse. | Longitudinal adaptive-versus-static discovery-yield evidence; do not infer a learned reward model from scheduling scores. |
 | `ResearchPopulationDiversity` | Make recent population coverage and each tick's worker cross-sectional concentration separately visible. | Pure application read-model builder over bounded append-only evidence; shared CandidateArena and next-worker read model. | Rolling coverage must not be mislabeled as current entropy, cross-suite samples must be incomparable, raw fingerprints must stay hidden, and entropy must never become quality or authority. | Add semantic-family classification or policy feedback only through a separately versioned evaluator and controlled causal design. |
 | `ResearchControlCampaign` | Make an Arena policy ablation executable without cross-arm memory, population, or duplicate-baseline contamination. | Domain/application decisions, append-only LocalStore graph, and internal runtime snapshot/arm composition. | Exact baseline and source closure precede effects; both arms have equal maximum bounds; diagnostics never declare a winner; restart cannot replay a completed tick. | Schedule precommitted candidate slots through prospective qualified paper comparisons and add a separately sealed outcome. |
+| `ResearchMemoryControlStudy` | Test whether released safe Arena memory reduces exact repeated behavior relative to a masked projection. | Domain/application study and outcome decisions, append-only LocalStore source graphs, and internal fresh-baseline paired runtime. | Memory visibility must be the only intervention; provider payloads and opaque side identities cannot reveal assignment; every terminal pair remains accounted for; exact repeats come only from external evidence. | Run an explicitly authorized precommitted real-provider multi-pair study before considering any separate memory-policy decision. |
 | `ResearchPreflightCommitment` | Freeze source, worker, allocation, development policy, and one evaluator-owned rotating sealed set before worker effects. | Domain record, in-memory evaluator plan, application use case, and append-only LocalStore graph. | Development feedback must remain useful without becoming admission evidence; raw seed and sealed scenarios stay unavailable to workers. | Durable evaluator-owned recovery only with an explicit design; current process loss deliberately fails closed. |
 | `ResearchWorker` | Generate a candidate inside one direction with repo context and tool limits. | Provider adapter plus application orchestration. | Worker output is material, not proof. | Better prompt context from failed paper evidence, lineage clusters, and protocol violations. |
 | `TradingSystem` | Own its decision cadence and emit bounded paper events. | Candidate runtime and paper event protocol. | It must be able to include code, tools, or internal agents without touching exchange authority. | Richer internal agent/tool loops that still emit only validated `OrderRequest`, `cancel_order`, `hold`, or `no_action` events. |
@@ -941,6 +942,15 @@ latest-ten truncation, suite-transition and intra-tick closure, and real distinc
 readback. This measures concentration but does not establish semantic strategy families,
 directed-worker lift, memory lift, allocation lift, agent leverage, or economic improvement; those
 require equal-bound causal controls.
+
+Current memory-control evidence: `ResearchMemoryControlStudy` precommits 6 to 30 fresh
+same-baseline released/masked pairs, one shared evaluator opportunity, opaque alternating side
+identities, complete terminal accounting, and an exact sign test over externally derived exact
+repeats. Restart tests cover exact replay, both-complete reconstruction, one-sided interruption,
+orphan checkpoint recovery, provider failure, baseline/path drift, and later-pair continuation.
+Deterministic six-pair support demonstrates protocol mechanics only. Without an authorized
+precommitted real-provider multi-pair outcome it establishes neither memory lift nor economic
+frontier improvement and cannot change memory policy.
 
 Current failure-remediation evidence: `PaperTradingFailure` now stays classified across CLI, TUI,
 and Web surfaces as kind, human summary, next action, then raw reason. That order makes the failure

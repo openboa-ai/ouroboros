@@ -27,8 +27,7 @@ const RESEARCH_WORKER_ARENA_CONTEXT_KEYS = new Set([
   "released_campaign_findings",
   "adaptive_direction_focus",
   "finding_clusters",
-  "latest_candidate_admission_rejections",
-  "research_memory_policy"
+  "latest_candidate_admission_rejections"
 ]);
 
 export interface BuildResearchWorkerMemoryProjectionInput {
@@ -65,8 +64,7 @@ export function buildResearchWorkerMemoryProjection(
     ...safeCurrentContext,
     ...(input.mode === "released_memory"
       ? safeMemoryContext
-      : {}),
-    research_memory_policy: { memory_mode: input.mode }
+      : {})
   };
   const arenaContext = sanitizeResearchWorkerArenaContext(
     JSON.stringify(arenaPayload)

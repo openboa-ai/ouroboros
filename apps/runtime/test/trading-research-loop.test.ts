@@ -2339,7 +2339,7 @@ process.exit(17);
     expect(prompts[0]).toContain("choose your own research sequence");
     expect(prompts[0]).toContain("released-finding-safe");
     expect(prompts[0]).toContain(`CandidateArena context:\n${arenaContext}`);
-    expect(prompts[0]).toContain('"memory_mode":"released_memory"');
+    expect(prompts[0]).not.toContain('"memory_mode":"released_memory"');
     expect(prompts[0]).not.toMatch(
       /scenario_id|expected_direction|sealed_suite|provider_requests|command_evidence|private exchange|raw-paper-secret|raw-account-secret|raw-fill-secret|raw-market-secret|raw-path|raw-command-secret|not_promotion_authority/i
     );

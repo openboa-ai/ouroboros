@@ -177,6 +177,13 @@ The next level of detail should improve the autonomous loop without widening aut
   session; confirmation advances one persisted transition at a time and recovers rather than adopts
   unowned attempts. Multi-host fencing, complete real-market prospective evidence, generated or
   tuned policy parameters, and long-duration deployed soak remain future detail.
+- `ResearchMemoryControlStudy` isolates one narrower autonomy question before any memory-policy
+  change: does safe cross-generation Arena memory reduce exact repeated behavior? It runs 6 to 30
+  fresh same-baseline pairs with equal source, agent, direction, budget, and evaluator opportunity;
+  treatment/control labels are absent from provider context and blinded in tick/workspace sides.
+  Every terminal pair remains in the all-pairs exact sign test. A supported fixture or provider
+  outcome grants no automatic memory-policy replacement, candidate rank, paper qualification,
+  promotion, order, private, or live authority.
 - Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
   conformance, and admission are now bound before materialization and generated-candidate paper
   start. Direction readback is compact, and efficiency separates development from sealed counts

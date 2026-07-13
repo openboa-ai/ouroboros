@@ -143,6 +143,14 @@ mean but leave the sign test, and no outcome-aware inclusion or early stopping i
 supported adaptive effect has `same_baseline_stochastic_replication_only` causal scope and grants
 only `eligible_for_separate_policy_decision`. It never mutates allocation policy or creates trading
 authority.
+`ResearchMemoryControlStudy` must exist before either side of every planned pair. Every pair starts
+from two verified copies of one frozen baseline and shares source, agent/model/profile, direction,
+submission bound, development suite, sealed suite, and rotation commitment. Provider context and
+opaque side paths disclose no arm assignment. `ResearchMemoryControlPairOutcome` maps external
+unchanged-artifact or exact same-suite fingerprint evidence to exact-repeat indicators; failures,
+interruptions, missing fingerprints, and malformed graphs stay in the denominator. The study
+outcome runs its precommitted exact sign test only after all pairs close. Support is limited to
+reduced exact repetition under those same-baseline conditions and is not paper or policy evidence.
 `ResearchGeneralizationProtocol` is committed before any of its six deterministic studies. It
 freezes two slots in each public `long`, `short`, and `flat` condition block, exact worker and
 paper/campaign identities, 24-hour global spacing, a 90-day deadline, source reuse constraints, and

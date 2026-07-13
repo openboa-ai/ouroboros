@@ -107,6 +107,13 @@ baseline snapshot, and fixes a two-sided paired exact sign test with no early st
 `ResearchControlStudyOutcome` consumes every planned terminal campaign outcome exactly once. Its
 only causal claim is over same-baseline stochastic repetitions; a supported adaptive effect makes a
 separate policy decision eligible but does not change allocation policy itself.
+`ResearchMemoryControlStudy` separately precommits 6 to 30 fresh same-baseline pairs that differ
+only in whether safe cross-generation Arena memory is visible. Source, managed agent, direction,
+budget, development suite, sealed opportunity, and analysis are frozen; provider-visible tick and
+workspace sides are blinded and carry no arm label. Each `ResearchMemoryControlPairOutcome` uses
+external unchanged-artifact or exact same-suite fingerprint evidence, and the all-pairs outcome may
+claim only reduced exact repetition under that condition. It is neither candidate-quality nor
+paper-economic evidence and has no memory-policy, promotion, order, private, or live authority.
 `ResearchAllocationPolicyDecisionService` now creates that separate append-only research-only
 decision from the exact persisted study graph. Version 1 approves only an eligible
 `adaptive_effect_supported` outcome and binds the exact studied allocation-policy digest;

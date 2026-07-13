@@ -4,6 +4,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   decideResearchMemoryControlStudy,
+  researchMemoryControlPairBlindSides,
   researchMemoryControlStudyId,
   type DecideResearchMemoryControlStudyInput
 } from "@ouroboros/application/candidate/research-memory-control-study";
@@ -195,14 +196,15 @@ export function researchMemoryControlStudyWorkspacePaths(input: {
     baselineRoot: path.join(studyRoot, "baseline-store"),
     sourceArtifactRoot: path.join(studyRoot, "source-artifact"),
     pairRoots: Array.from({ length: input.pairCount }, (_, index) => {
+      const sides = researchMemoryControlPairBlindSides(studyId, index + 1);
       const pairRoot = path.join(
         studyRoot,
         "pairs",
         `pair-${String(index + 1).padStart(2, "0")}`
       );
       return {
-        releasedMemory: path.join(pairRoot, "released-memory"),
-        memoryMasked: path.join(pairRoot, "memory-masked")
+        releasedMemory: path.join(pairRoot, sides.releasedMemory),
+        memoryMasked: path.join(pairRoot, sides.memoryMasked)
       };
     })
   };
@@ -267,33 +269,41 @@ export async function runResearchMemoryControlStudy(
     const states = await Promise.all(arms.map((arm) => plannedArmState(arm)));
     let settled: PromiseSettledResult<CandidateArenaTickOutcome>[] | undefined;
     if (states.every((state) => !state.hasEffect)) {
-      settled = await Promise.allSettled(arms.map((arm) => runTick({
-        store: arm.store,
-        sourceSystemId: study.source.candidate_ref.id,
-        sourceCandidateVersionId: study.source.candidate_version_ref.id,
-        directions: [pairPlan.direction_kind],
-        researchMemoryMode: arm.armKind === "released_memory_treatment"
-          ? "released_memory"
-          : "memory_masked",
-        researchMemoryControlAssignment: {
-          study_ref: {
-            record_kind: "research_memory_control_study",
-            id: study.research_memory_control_study_id
+      const executionArms = [...arms].sort((left, right) =>
+        left.root.localeCompare(right.root)
+      );
+      const executionSettled = await Promise.allSettled(
+        executionArms.map((arm) => runTick({
+          store: arm.store,
+          sourceSystemId: study.source.candidate_ref.id,
+          sourceCandidateVersionId: study.source.candidate_version_ref.id,
+          directions: [pairPlan.direction_kind],
+          researchMemoryMode: arm.armKind === "released_memory_treatment"
+            ? "released_memory"
+            : "memory_masked",
+          researchMemoryControlAssignment: {
+            study_ref: {
+              record_kind: "research_memory_control_study",
+              id: study.research_memory_control_study_id
+            },
+            study_digest: study.study_digest,
+            pair_index: pairPlan.pair_index,
+            arm_kind: arm.armKind
           },
-          study_digest: study.study_digest,
-          pair_index: pairPlan.pair_index,
-          arm_kind: arm.armKind
-        },
-        researchPreflightEvaluationOpportunity: opportunity,
-        tickId: arm.tickId,
-        now: clock.next,
-        repoRoot: prepared.repoRoot,
-        sourceArtifactDir: paths.sourceArtifactRoot,
-        researchAgent: input.researchAgent,
-        agentFactory: input.agentFactory,
-        artifactRunner: input.artifactRunner,
-        replayProviderFactory: input.replayProviderFactory
-      })));
+          researchPreflightEvaluationOpportunity: opportunity,
+          tickId: arm.tickId,
+          now: clock.next,
+          repoRoot: prepared.repoRoot,
+          sourceArtifactDir: paths.sourceArtifactRoot,
+          researchAgent: input.researchAgent,
+          agentFactory: input.agentFactory,
+          artifactRunner: input.artifactRunner,
+          replayProviderFactory: input.replayProviderFactory
+        }))
+      );
+      settled = arms.map((arm) =>
+        executionSettled[executionArms.indexOf(arm)]!
+      );
     } else if (!states.every((state) => state.hasCompleteTick)) {
       const recoveredAt = clock.next();
       await Promise.all(arms.map((arm) =>

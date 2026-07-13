@@ -391,7 +391,8 @@ function researchPreflightEvaluationOpportunityIsValid(
   value: ResearchPreflightEvaluationOpportunityHandle
 ): boolean {
   try {
-    if (!value || typeof value.descriptor !== "function" ||
+    if (!(value instanceof ResearchPreflightEvaluationOpportunityHandle) ||
+      typeof value.descriptor !== "function" ||
       typeof value.developmentSuite !== "function" ||
       typeof value.sealedAdmissionSuite !== "function" ||
       typeof value.rotationCommitmentDigest !== "function") {

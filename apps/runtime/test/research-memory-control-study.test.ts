@@ -149,6 +149,13 @@ describe("ResearchMemoryControlStudy runtime", () => {
       sourceRoot: coordinator.root(),
       pairCount: 6
     });
+    expect(paths.pairRoots.flatMap((roots) => [
+      path.basename(roots.releasedMemory),
+      path.basename(roots.memoryMasked)
+    ]).every((name) => /^side-[ab]$/.test(name))).toBe(true);
+    expect(paths.pairRoots.map((roots) =>
+      path.basename(roots.releasedMemory) === "side-a"
+    ).filter(Boolean)).toHaveLength(3);
     const treatmentStarts: number[] = [];
     const controlStarts: number[] = [];
     for (let index = 0; index < paths.pairRoots.length; index += 1) {
@@ -231,6 +238,9 @@ describe("ResearchMemoryControlStudy runtime", () => {
     expect(treatmentStarts.every((started, index) =>
       Math.abs(started - controlStarts[index]!) <= 5_000
     )).toBe(true);
+    expect(treatmentStarts.filter((started, index) =>
+      started < controlStarts[index]!
+    )).toHaveLength(3);
     expect(treatmentStarts.slice(1).every((started, index) =>
       started > Math.max(treatmentStarts[index]!, controlStarts[index]!)
     )).toBe(true);

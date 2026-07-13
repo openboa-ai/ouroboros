@@ -112,6 +112,13 @@ Store initialization and paper recovery, a bounded interruptible wait considers 
 and shutdown drains the study path before CandidateArena and shared paper sessions. The server
 runtime reconstructs each campaign only from its persisted study condition and revalidates the
 configured research-agent identity.
+The internal `ResearchMemoryControlStudy` composition is independent of that allocation-policy
+study. Domain/application decisions own the pre-effect study, pair, and all-pairs outcome;
+LocalStore validates append-only source graphs; runtime owns bounded baseline copies, opaque
+alternating side paths, one shared evaluator opportunity capability, concurrent initial sides, and
+evidence-derived restart. Worker payloads omit arm mode and assignment labels. Completed or failed
+pairs are never selectively replaced, and the aggregate has exact-repeat inference only, with no
+economic or downstream authority.
 The application `ResearchGeneralizationProtocol` service adds a create-only cross-study commitment
 without widening `ResearchControlStudy` itself. A Gateway `MarketDataPort` capability returns an
 exact closed public kline window; the pure classifier maps that pre-effect evidence into one frozen

@@ -114,11 +114,19 @@ The full safe memory source is canonicalized before projection. Both modes bind:
 - the prior checkpoint reference and digest when one was available;
 - whether that checkpoint was `included`, `masked`, or `none_available`.
 
-When a commitment belongs to a memory control, the policy also binds one optional
+When a commitment belongs to a memory control, the persisted policy also binds one optional
 `control_assignment`: exact study ref/digest, pair index, and `released_memory_treatment` or
 `memory_masked_control` arm kind. Ordinary CandidateArena commitments omit this field. The runtime
 replicates the exact study record into each fresh arm store before allocation, so LocalStore can
 validate the assignment and planned tick locally before accepting preflight evidence.
+
+The persisted mode and assignment are external evidence and never enter the provider-facing Arena
+JSON. Treatment and control tick IDs and physical workspace leaves use opaque `side-a`/`side-b`
+identities with a deterministic balanced cross-pair assignment. This prevents a worker from
+changing behavior because it saw `released`, `masked`, `treatment`, or `control` rather than because
+memory content was present. Initial provider invocation order follows those opaque sides, balancing
+treatment-first and control-first pairs. The preflight policy still hashes the exact provider JSON
+independently.
 
 For `released_memory`, the provider receives the full safe Arena memory and the sanitized prior
 checkpoint. For `memory_masked`, the provider receives neither. Both modes still receive the same
