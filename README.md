@@ -126,8 +126,13 @@ keeps that one-shot supervisor alive under the runtime server: it runs immediate
 waits on an interruptible bounded poll after catch-up, and discovers later commitments without an
 operator command. Each opened runtime reconstructs source, agent identity, campaign bounds, and
 the bound paper protocol from the exact persisted study condition. Shutdown stops this scheduler
-before CandidateArena and paper-session dependencies. This ownership is process-local, not a
-cross-process lease or a public operator command. Study commitment and policy-decision creation
+before CandidateArena and paper-session dependencies. Before opening a pending study, each server
+now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
+LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
+and records released or expired ownership history. A live or liveness-unknown owner remains held;
+takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
+runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
+fencing and PID-namespace claims remain outside. Study commitment and policy-decision creation
 remain separate service actions rather than scheduler side effects; actual replicated study evidence,
 distinct-regime generalization, automatic TradingPromotion, and champion handoff remain outside.
 

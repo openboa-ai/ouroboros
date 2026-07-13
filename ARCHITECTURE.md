@@ -96,7 +96,13 @@ supervisor cycles under `buildServer`: default startup follows Store initializat
 recovery, a bounded interruptible wait discovers later commitments, and shutdown drains the study
 path before CandidateArena and shared paper sessions. The server runtime reconstructs each campaign
 only from its persisted study condition and revalidates the configured research-agent identity.
-Cross-process leases and deployed multi-instance study ownership remain outside this boundary.
+`ResearchControlStudyExecutionLease` is the outer same-host ownership boundary. A filesystem
+adapter under the shared LocalStore root atomically claims the oldest pending study; one renewable
+session guards every executor advance and releases on completion, failure, or shutdown. Active
+snapshots are operational mutable state, while released or confirmed-dead expired snapshots become
+immutable terminal history. Alive or liveness-unknown owners fail closed; takeover requires expiry
+and a confirmed-absent PID on the same host. This is runtime coordination only, not evidence or
+policy authority. Multi-host storage, PID namespaces, and distributed fencing remain outside.
 Application services separately derive `ResearchAllocationPolicyDecision` from one exact persisted
 study and outcome. Only eligible supported same-baseline adaptive evidence can approve the studied
 policy digest; every other valid outcome is not approved and cannot select static control. Before

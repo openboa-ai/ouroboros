@@ -153,8 +153,12 @@ rescans only after exact persisted completion. It does not skip a failed earlier
 policy decision. `ResearchControlStudyScheduler` now runs that one-shot owner immediately under the
 default runtime server, waits on an interruptible bounded poll after catch-up, and rescans later
 commitments. Runtime opening reuses the exact persisted condition and fails before effects on agent
-identity drift. Version 1 remains process-local; cross-process leases are outside the evidence
-contract.
+identity drift. Before runtime opening, `ResearchControlStudyExecutionLease` atomically elects one
+same-host server for one shared LocalStore root. The active owner renews and asserts its exact token
+before every executor advance. Alive or liveness-unknown owners remain held after expiry; takeover
+requires both expiry and a confirmed-absent same-host PID. Release and confirmed-dead takeover write
+terminal owner history. Lease state is excluded from study outcomes, Findings, Lineage, rank,
+allocation, policy decisions, and promotion because it proves coordination, not research quality.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
 contiguous stable-worker link, current and cumulative development submission counts, zero remaining
@@ -494,9 +498,9 @@ The following current surfaces require implementation work before P0 can pass:
   results, and persist one restart-stable confirmed or not-confirmed outcome. A separate internal
   ResearchRelease can materialize causal Finding/Lineage memory, and the explicit operator command
   can move an exactly confirmed challenger into Trading review. Already committed studies now run
-  through the process-local server scheduler, but there is no cross-process lease, automatic study
-  commitment, automatic promotion loop, provider-process adoption after restart, or champion runner
-  handoff.
+  through the server scheduler with same-host shared-LocalStore execution leasing, but there is no
+  multi-host fencing, automatic study commitment, automatic promotion loop, provider-process
+  adoption after restart, or champion runner handoff.
 - ResearchRelease has a server-owned execution path only inside an already committed study. Raw
   sealed outcomes stay unavailable to ResearchWorkers unless that exact append-only release
   succeeds; standalone release and promotion remain explicit, promotion does not imply research

@@ -31,7 +31,7 @@
 - Consumes: `ResearchControlStudyRecord`, `Ref`, and `paperTradingComparisonPersistedRecordDigestInput`.
 - Produces: `ResearchControlStudyExecutionLeaseRecord`, decision/renew/close functions, digest/runtime-shape helpers, and `ResearchControlStudyExecutionLeasePort`.
 
-- [ ] **Step 1: Write failing domain tests**
+- [x] **Step 1: Write failing domain tests**
 
 Cover exact active, renewed, released, and expired records; deterministic ID/digest; authority
 closure; malformed owner/PID/token/time/status pairs; non-active renewal/closure; and non-monotonic
@@ -61,7 +61,7 @@ const released = closeResearchControlStudyExecutionLease({
 expect(researchControlStudyExecutionLeaseHasRuntimeShape(released)).toBe(true);
 ```
 
-- [ ] **Step 2: Run domain tests and verify RED**
+- [x] **Step 2: Run domain tests and verify RED**
 
 Run:
 
@@ -71,7 +71,7 @@ npx vitest run packages/domain/src/research-control-study-execution-lease.test.t
 
 Expected: import failure because the new domain surface does not exist.
 
-- [ ] **Step 3: Implement the exact domain record**
+- [x] **Step 3: Implement the exact domain record**
 
 Add the record and owner interfaces from the design, plus:
 
@@ -109,7 +109,7 @@ lease_duration_ms`, active records without close fields, and terminal records wi
 close reason. Compute the opaque lease ID from study ID plus token without exposing raw token in a
 path requirement.
 
-- [ ] **Step 4: Add the focused application port**
+- [x] **Step 4: Add the focused application port**
 
 Define owner liveness and result types plus:
 
@@ -139,7 +139,7 @@ export interface ResearchControlStudyExecutionLeasePort {
 }
 ```
 
-- [ ] **Step 5: Verify and commit Task 1**
+- [x] **Step 5: Verify and commit Task 1**
 
 Run the focused test and domain/application type checks, then:
 
@@ -161,7 +161,7 @@ git commit -m "feat: define study execution lease"
 - Consumes: Task 1 domain decisions and structural `ResearchControlStudyExecutionLeasePort` contract.
 - Produces: `FileSystemResearchControlStudyExecutionLeaseStore` and same-host owner liveness helper.
 
-- [ ] **Step 1: Write failing adapter race and lifecycle tests**
+- [x] **Step 1: Write failing adapter race and lifecycle tests**
 
 Use two independent adapter instances over one temporary root. Cover:
 
@@ -181,7 +181,7 @@ failure, and transition recovery after these injected crash boundaries:
 - terminal history written before transition removal;
 - new active written while old transition remains.
 
-- [ ] **Step 2: Run adapter tests and verify RED**
+- [x] **Step 2: Run adapter tests and verify RED**
 
 Run:
 
@@ -191,7 +191,7 @@ npx vitest run packages/local-store/test/research-control-study-execution-lease-
 
 Expected: import failure because the filesystem adapter does not exist.
 
-- [ ] **Step 3: Implement layout and atomic claim**
+- [x] **Step 3: Implement layout and atomic claim**
 
 Implement:
 
@@ -215,7 +215,7 @@ Use SHA-256 study path keys, unique temporary record files, atomic `mkdir` and `
 active/transition directories, exact digest reload, and `writeFile(..., { flag: "wx" })` for
 terminal history. Never interpret unreadable data as no lease.
 
-- [ ] **Step 4: Implement confirmed-dead takeover and transition recovery**
+- [x] **Step 4: Implement confirmed-dead takeover and transition recovery**
 
 Acquisition must run this order:
 
@@ -232,7 +232,7 @@ if absent -> rename active to transition, revalidate, archive expired, remove tr
 Default liveness uses `os.hostname()` and `process.kill(pid, 0)`, mapping `ESRCH` to absent,
 success/`EPERM` to alive, and all different-host or ambiguous states to unknown.
 
-- [ ] **Step 5: Verify and commit Task 2**
+- [x] **Step 5: Verify and commit Task 2**
 
 Run the adapter test, LocalStore tests scoped to study records, and local-store typecheck, then:
 
@@ -253,7 +253,7 @@ git commit -m "feat: persist study execution leases"
 - Consumes: Task 1 port and Task 2 adapter-compatible results.
 - Produces: session factory, acquired session lifecycle, stable loss status, and supervisor-facing claim result.
 
-- [ ] **Step 1: Write failing session tests**
+- [x] **Step 1: Write failing session tests**
 
 Use a scripted port and deferred sleep. Cover acquire/held projection, immediate exact guard,
 bounded renewal, duplicate start, interruptible release, guard loss, renewal loss, callback once,
@@ -274,7 +274,7 @@ await claim.session.guard();
 await claim.session.stopAndRelease();
 ```
 
-- [ ] **Step 2: Run session tests and verify RED**
+- [x] **Step 2: Run session tests and verify RED**
 
 Run:
 
@@ -284,7 +284,7 @@ npx vitest run apps/runtime/test/research-control-study-execution-lease-session.
 
 Expected: import failure because the session module does not exist.
 
-- [ ] **Step 3: Implement the session and factory**
+- [x] **Step 3: Implement the session and factory**
 
 Expose:
 
@@ -311,7 +311,7 @@ exact lease after every successful renew/assert. Any mismatch or port failure be
 `research_control_study_execution_lease_lost`, stops renewal, and invokes `onLost` once. Release is
 permitted only from a non-lost exact session and is idempotent after success.
 
-- [ ] **Step 4: Verify and commit Task 3**
+- [x] **Step 4: Verify and commit Task 3**
 
 Run focused tests and runtime typecheck, then:
 
@@ -339,7 +339,7 @@ git commit -m "feat: renew study execution ownership"
 - Consumes: Task 3 lease-session factory and lifecycle.
 - Produces: oldest-study contention, guarded executor advances, renewal-loss halt, and exact release around process execution.
 
-- [ ] **Step 1: Write failing guard and contention tests**
+- [x] **Step 1: Write failing guard and contention tests**
 
 Add runner tests proving `beforeAdvance` runs before every executor call and a guard failure prevents
 that call. Add supervisor tests proving:
@@ -352,7 +352,7 @@ that call. Add supervisor tests proving:
 
 Add scheduler tests proving `contended` enters one bounded wait and retries without failure.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -362,14 +362,14 @@ npx vitest run apps/runtime/test/research-control-study-runner.test.ts apps/runt
 
 Expected: type/assertion failures because guard, lease factory, and `contended` status are absent.
 
-- [ ] **Step 3: Add guarded runner and runtime composition**
+- [x] **Step 3: Add guarded runner and runtime composition**
 
 Extend the runner constructor with optional `beforeAdvance(): Promise<void>` and call it immediately
 before each `executor.advance`. Extend `createResearchControlStudyRuntime` campaign input with the
 guard and pass it to the runner. The server runtime must receive supervisor ownership context and
 forward the exact guard without changing campaign policy.
 
-- [ ] **Step 4: Add lease-aware supervisor lifecycle**
+- [x] **Step 4: Add lease-aware supervisor lifecycle**
 
 Extend supervisor options structurally:
 
@@ -385,13 +385,13 @@ Add `contended` to process status with study ID, reason, and lease expiry but no
 open, start renewal before runner, stop on loss, and call `stopAndRelease` exactly once on every
 terminal path. A held oldest study returns; it never scans the next item.
 
-- [ ] **Step 5: Teach scheduler and server-runtime factory about contention**
+- [x] **Step 5: Teach scheduler and server-runtime factory about contention**
 
 Treat `contended` as a successful zero-completion process cycle followed by the normal poll wait.
 Pass the optional lease-session factory through `createResearchControlStudyServerScheduler`; keep
 the existing discovery implementation as the only queue source.
 
-- [ ] **Step 6: Verify and commit Task 4**
+- [x] **Step 6: Verify and commit Task 4**
 
 Run the focused command, study runtime/process discovery tests, and runtime typecheck, then:
 
@@ -407,6 +407,7 @@ git commit -m "feat: lease research study execution"
 **Files:**
 - Modify: `apps/runtime/src/server.ts`
 - Modify: `apps/runtime/test/server.test.ts`
+- Modify: `AGENTS.md`
 - Modify: `README.md`
 - Modify: `ARCHITECTURE.md`
 - Modify: `docs/project-direction.md`
@@ -420,14 +421,14 @@ git commit -m "feat: lease research study execution"
 - Consumes: verified Task 2 adapter and Task 3 session factory.
 - Produces: default same-host server ownership, explicit DI, canonical docs, and final validation evidence.
 
-- [ ] **Step 1: Write failing server composition tests**
+- [x] **Step 1: Write failing server composition tests**
 
-Add `BuildServerOptions` expectations for injected lease port/session factory, owner identity,
-duration, and renewal interval. Prove one exact owner is reused by the server scheduler, invalid
-policy rejects construction, and scheduler shutdown still precedes paper dependencies. Keep normal
-API tests on the explicit scheduler-disabled path.
+Add `BuildServerOptions` expectations for injected lease port, owner identity, duration, and renewal
+interval. Prove two default server factories sharing one LocalStore root produce one acquired claim,
+prove the default scheduler uses the injected ownership policy, and retain the existing shutdown
+order assertion. Keep normal API tests on the explicit scheduler-disabled path.
 
-- [ ] **Step 2: Run server tests and verify RED**
+- [x] **Step 2: Run server tests and verify RED**
 
 Run:
 
@@ -437,21 +438,21 @@ npx vitest run apps/runtime/test/server.test.ts
 
 Expected: type/assertion failure because server lease composition options do not exist.
 
-- [ ] **Step 3: Compose default lease ownership**
+- [x] **Step 3: Compose default lease ownership**
 
 Create the default adapter with `store.root()`, owner `{ randomUUID(), hostname(), process.pid }`,
 30-second duration, and 10-second renewal. Build the session factory once per server and pass it to
-`createResearchControlStudyServerScheduler`. Support explicit injected port, factory, owner, and
-policy for tests without exposing a public command.
+`createResearchControlStudyServerScheduler`. Support an explicit injected port, owner, and policy
+for tests without exposing a public command.
 
-- [ ] **Step 4: Update durable repo truth**
+- [x] **Step 4: Update durable repo truth**
 
 Record only proven claims: same-host shared-LocalStore exclusion, alive/unknown fail-closed wait,
 confirmed-dead expired takeover, action guard, terminal owner history, and shutdown release. Add the
 canonical taxonomy row. Keep multi-host fencing, PID namespace ambiguity, automatic commitment,
 policy decision, real-market regimes, promotion, handoff, soak, P0, and Goal completion open.
 
-- [ ] **Step 5: Run full verification**
+- [x] **Step 5: Run full verification**
 
 Run:
 
@@ -463,12 +464,17 @@ npm run check:repo-guards
 
 Expected: zero failing tests, zero type errors, and all repository guards green.
 
-- [ ] **Step 6: Promotion review and commit**
+- [x] **Step 6: Promotion review and commit**
 
 Confirm only `.superpowers/` remains untracked, select automatic bounded study commitment as the
 next core-autonomy frontier, and commit:
 
 ```bash
-git add apps/runtime/src/server.ts apps/runtime/test/server.test.ts README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-13-research-control-study-execution-lease-design.md docs/superpowers/plans/2026-07-13-research-control-study-execution-lease.md
-git commit -m "feat: own studies across local processes"
+git add AGENTS.md README.md ARCHITECTURE.md docs/project-direction.md docs/candidate-arena-research-goal.md docs/candidate-arena-evaluation-protocol.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-13-research-control-study-execution-lease-design.md docs/superpowers/plans/2026-07-13-research-control-study-execution-lease.md
+git commit -m "docs: record study execution leasing"
 ```
+
+Verification completed with 177 test files and 2,823 tests passing, all workspace type checks
+passing, and `npm run check:repo-guards` green. Implementation commits are `b382674`, `1e952cb`,
+`e220e3d`, `824e481`, and `57d1949`. The next bounded core-autonomy frontier is automatic,
+policy-bounded `ResearchControlStudy` commitment; multi-host ownership remains separately open.

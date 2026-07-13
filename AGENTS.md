@@ -102,8 +102,13 @@ not a public command or policy application path.
 composition root may start one supervisor for one store; it discovers incomplete studies oldest
 first, opens only one existing study runtime, reloads exact terminal evidence after completion, and
 rescans until caught up. Failure never skips an earlier study, and stop drains the active campaign
-without opening the next study. It persists no process state and does not provide server auto-start,
-long polling, cross-process leases, public commands, or automatic policy decisions.
+without opening the next study. `ResearchControlStudyScheduler` starts this path under the runtime
+server and polls later commitments with an interruptible bound. Before opening a study, one
+renewable `ResearchControlStudyExecutionLease` excludes other same-host servers sharing the
+LocalStore root, guards every executor advance, and releases on terminal paths. Alive or unknown
+owners wait; takeover requires expiry and confirmed absence of the same-host PID. Lease records
+carry runtime-coordination authority only and are never research or policy evidence. Multi-host
+fencing, public commands, and automatic policy decisions remain outside.
 `ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
 an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
 digest; non-supported or underpowered evidence never selects static control. Uncontrolled Arena
@@ -289,6 +294,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchControlStudyOutcome` | Append-only external aggregate over every planned ResearchControlCampaignOutcome. It reports same-baseline stochastic-replication inference and may make a supported effect eligible for a separate policy decision, but cannot replace policy, promote, submit orders, or gain private/live authority. |
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that completes or resumes one exact planned campaign per advance and adjudicates only after every terminal outcome. It persists no parallel progress record and owns no policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through existing runtimes, rescans after each completion, and persists no separate progress or downstream authority. |
+| `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, waits for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and grants runtime coordination only. |
 | `ResearchAllocationPolicyDecision` | Append-only research-only selection record derived separately from one exact ResearchControlStudy and outcome. Version 1 may approve only the studied adaptive policy digest after eligible supported same-baseline evidence; otherwise it records not-approved with no effective mode and never selects static control. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |

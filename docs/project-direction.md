@@ -69,9 +69,13 @@ session factories. `ResearchControlStudyProcessSupervisor` now discovers incompl
 drains one injected runtime at a time, verifies persisted completion, and rescans until caught up.
 `ResearchControlStudyScheduler` now starts that process path by default in `buildServer`, performs
 bounded interruptible polling for later commitments, reconstructs every campaign from the exact
-persisted condition, and stops before shared runtime dependencies. Ownership remains single-process;
-cross-process leasing, real-market replicated outcome evidence, distinct-regime inference, learned
-policy parameters, and automatic study or decision creation remain open.
+persisted condition, and stops before shared runtime dependencies. One renewable
+`ResearchControlStudyExecutionLease` now prevents same-host servers sharing a LocalStore root from
+opening the same pending study. Every executor advance asserts exact ownership; alive or unknown
+owners wait, and only an expired owner with a confirmed-absent same-host PID may be replaced. Lease
+history is operational coordination, never study evidence or policy authority. Multi-host fencing,
+real-market replicated outcome evidence, distinct-regime inference, learned policy parameters, and
+automatic study or decision creation remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.

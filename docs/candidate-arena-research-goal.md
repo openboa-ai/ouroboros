@@ -128,10 +128,15 @@ repository adaptive fallback, while explicit directions and modes always win. De
 discovery uses a single-process, one-shot supervisor that drains incomplete studies oldest first and
 rescans exact evidence. A process-local server scheduler now starts it by default, waits on a bounded
 interruptible poll after catch-up, and reconstructs each runtime from the persisted study condition.
+Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
+same-host servers using the same LocalStore root. Exact ownership is checked before each executor
+advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
+expired lease is replaced only after the same-host PID is confirmed absent. These records coordinate
+effects and do not enter research context, allocation, evaluation, ranking, or promotion.
 Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather
-than adopts unowned attempts. Cross-process leasing, automatic study commitment, real-market and
+than adopts unowned attempts. Multi-host fencing, automatic study commitment, real-market and
 distinct-regime replication, automatic decision creation, and learned policy parameters remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact

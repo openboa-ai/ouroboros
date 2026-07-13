@@ -1,6 +1,6 @@
 # ResearchControlStudy Execution Lease Design
 
-**Status:** Approved for implementation under the standing autonomous Goal mandate
+**Status:** Implemented and verified on `codex/arena-p0-sealed-preflight`
 
 ## Goal
 
@@ -284,3 +284,14 @@ lease port, owner identity, duration, and renewal interval. No public command or
 This closes same-host filesystem-backed cross-process ownership. Multi-host shared storage,
 container PID-namespace ambiguity, distributed fencing, automatic study commitment, automatic
 policy decisions, real-market regime replication, and longitudinal autonomous soak remain open.
+
+## Verification Evidence
+
+- Domain and port: `b382674`
+- Filesystem adapter and recovery: `1e952cb`
+- Renewable runtime session: `e220e3d`
+- Guarded supervisor and scheduler integration: `824e481`
+- Runtime-server composition: `57d1949`
+- Focused lease/server regression: 5 files and 76 tests passed.
+- Full regression: 177 files and 2,823 tests passed.
+- All workspace type checks and `npm run check:repo-guards` passed.
