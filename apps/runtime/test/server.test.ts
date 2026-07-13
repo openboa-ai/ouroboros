@@ -13,6 +13,10 @@ import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/re
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
+import type {
+  ResearchControlStudySchedulerLifecycle,
+  ResearchControlStudySchedulerStatus
+} from "../src/candidate/arena/research-control-study-scheduler";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
@@ -28,8 +32,38 @@ afterEach(async () => {
 function buildRuntimeTestServer(options: Parameters<typeof buildServer>[0]) {
   return buildServer({
     paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+    runResearchControlStudiesOnStart: false,
     ...options
   });
+}
+
+class RecordingStudyScheduler
+implements ResearchControlStudySchedulerLifecycle {
+  startCount = 0;
+  stopCount = 0;
+
+  constructor(private readonly events: string[]) {}
+
+  start(): "started" | "already_running" {
+    this.startCount += 1;
+    this.events.push("scheduler-start");
+    return "started";
+  }
+
+  async stop(): Promise<void> {
+    this.stopCount += 1;
+    this.events.push("scheduler-stop");
+  }
+
+  async drain(): Promise<void> {}
+
+  status(): ResearchControlStudySchedulerStatus {
+    return {
+      status: "idle",
+      cycleCount: 0,
+      completedStudyCount: 0
+    };
+  }
 }
 
 describe("runtime canonical operator API", () => {
@@ -42,6 +76,51 @@ describe("runtime canonical operator API", () => {
     });
     expect(paperTradingApiProviderNetworkOptions({ sandboxHost: "  " })).toEqual({});
     expect(paperTradingApiProviderNetworkOptions({})).toEqual({});
+  });
+
+  it("starts and observes the study scheduler by default, then stops it first", async () => {
+    const lifecycleEvents: string[] = [];
+    const scheduler = new RecordingStudyScheduler(lifecycleEvents);
+    let observed: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyScheduler: scheduler,
+      onResearchControlStudySchedulerCreated(value) {
+        observed = value;
+      },
+      onPaperTradingSessionServiceCreated(service) {
+        const stopAllSessions = service.stopAllSessions.bind(service);
+        service.stopAllSessions = async () => {
+          lifecycleEvents.push("paper-stop");
+          await stopAllSessions();
+        };
+      }
+    });
+
+    expect(scheduler.startCount).toBe(1);
+    expect(observed).toBe(scheduler);
+    await server.close();
+
+    expect(scheduler.stopCount).toBe(1);
+    expect(lifecycleEvents).toEqual([
+      "scheduler-start",
+      "scheduler-stop",
+      "paper-stop"
+    ]);
+  });
+
+  it("supports an explicitly disabled study scheduler start", async () => {
+    const scheduler = new RecordingStudyScheduler([]);
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      researchControlStudyScheduler: scheduler,
+      runResearchControlStudiesOnStart: false
+    });
+
+    expect(scheduler.startCount).toBe(0);
+    await server.close();
+    expect(scheduler.stopCount).toBe(1);
   });
 
   it("serves health, operator state, resource reads, and no removed public routes", async () => {

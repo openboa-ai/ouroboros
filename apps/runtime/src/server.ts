@@ -88,6 +88,12 @@ import {
   PaperTradingSessionService,
   type PaperTradingRecoveryOutcome
 } from "@ouroboros/application/trading/paper/session-service";
+import { createResearchControlStudyArmSessionFactory } from
+  "./candidate/arena/research-control-study-arm-session-factory";
+import { createResearchControlStudyServerScheduler } from
+  "./candidate/arena/research-control-study-server-runtime";
+import type { ResearchControlStudySchedulerLifecycle } from
+  "./candidate/arena/research-control-study-scheduler";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
@@ -124,6 +130,16 @@ export interface BuildServerOptions {
   ) => void | Promise<void>;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
+  researchControlStudyScheduler?: ResearchControlStudySchedulerLifecycle;
+  researchControlStudyPollIntervalMs?: number;
+  researchControlStudyWorkspaceRoot?: string;
+  researchControlStudyArmSessionFactory?: ReturnType<
+    typeof createResearchControlStudyArmSessionFactory
+  >;
+  runResearchControlStudiesOnStart?: boolean;
+  onResearchControlStudySchedulerCreated?: (
+    scheduler: ResearchControlStudySchedulerLifecycle
+  ) => void;
   operatorApiToken?: string | false;
   operatorCorsOrigins?: readonly string[];
 }
@@ -292,6 +308,62 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   ) {
     candidateArenaRunner.setResearchAgent(persistedResearcherProvider.selected_provider);
   }
+  const researchControlStudyArmSessionFactory =
+    options.researchControlStudyArmSessionFactory ??
+    createResearchControlStudyArmSessionFactory({
+      marketData: gatewayMarketDataPort,
+      createSandboxAdapters(context) {
+        return {
+          deterministic_test: new DeterministicSandboxAdapter({
+            allowedArtifactRoots: [
+              path.join(context.root, "candidate-arena-runs")
+            ],
+            allowedCapabilityPolicyIds: [
+              "candidate-arena-paper-system-code"
+            ]
+          }),
+          docker_sandboxes_sbx: new DockerSandboxesSbxSandboxAdapter({
+            workspacePath: context.root
+          })
+        };
+      },
+      createArtifactResolver(context) {
+        return new FileSystemCodeArtifactResolver({ repoRoot: context.root });
+      },
+      intervalMs: paperTradingEvaluationIntervalMs,
+      ...(options.paperTradingSandboxIntervalMs === undefined
+        ? {}
+        : { sandboxIntervalMs: options.paperTradingSandboxIntervalMs }),
+      ...(options.paperTradingApiProviderFactory
+        ? { apiProviderFactory: options.paperTradingApiProviderFactory }
+        : {}),
+      apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
+      logger: console
+    });
+  const researchControlStudyScheduler =
+    options.researchControlStudyScheduler ??
+    createResearchControlStudyServerScheduler({
+      store,
+      marketData: gatewayMarketDataPort,
+      agentFactory: tradingResearchAgentFactory,
+      createArmSessions: researchControlStudyArmSessionFactory,
+      repoRoot: process.cwd(),
+      ...(options.researchControlStudyWorkspaceRoot
+        ? { workspaceRoot: options.researchControlStudyWorkspaceRoot }
+        : {}),
+      ...(options.candidateArenaArtifactRunner
+        ? { artifactRunner: options.candidateArenaArtifactRunner }
+        : {}),
+      ...(options.candidateArenaReplayProviderFactory
+        ? { replayProviderFactory: options.candidateArenaReplayProviderFactory }
+        : {}),
+      ...(options.researchControlStudyPollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: options.researchControlStudyPollIntervalMs })
+    });
+  options.onResearchControlStudySchedulerCreated?.(
+    researchControlStudyScheduler
+  );
 
   const server = Fastify({
     logger: false
@@ -1162,6 +1234,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
   server.addHook("onClose", async () => {
+    await researchControlStudyScheduler.stop();
     await candidateArenaRunner.stopAndDrain();
     await operatorService.drainAutonomousPaperStarts();
     await paperTradingSessionService.stopAllSessions();
@@ -1200,6 +1273,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       getSandboxLogs: getSandboxLogsResource
     })
   ]);
+
+  if (options.runResearchControlStudiesOnStart !== false) {
+    researchControlStudyScheduler.start();
+  }
 
   notifyPaperTradingRecovery(
     options.onPaperTradingRecovery,
