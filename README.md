@@ -139,6 +139,18 @@ exact provenance. The scheduler can then consider a later reviewed source withou
 command. Each opened runtime reconstructs source, agent identity, campaign bounds, and the bound
 paper protocol from the exact persisted study condition. Shutdown stops this scheduler before
 CandidateArena and paper-session dependencies.
+The same default commitment path now first creates or reloads one immutable
+`ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
+Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
+versus 30-close mean classifier opens only a matching `long`, `short`, or `flat` block. The protocol
+precommits two studies per block, 24-hour global spacing, a 90-day deadline, exact ResearchWorker
+and paper/campaign identities, source reuse guards, and equal-weight analysis. After study catch-up,
+`ResearchGeneralizationOutcomeCoordinator` reconciles at most the oldest complete or expired
+protocol before the existing same-baseline policy decision coordinator. The outcome includes all
+six slots and supports generalization only with six eligible non-ties, at least three distinct
+baseline snapshots, exact p-value at most 0.05, positive equal-weight mean, and no harmful block.
+It is external research evidence only and cannot replace allocation policy, promote a candidate,
+submit an order, or grant private/live authority.
 Before opening a pending study, each server
 now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
 LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
@@ -146,9 +158,10 @@ and records released or expired ownership history. A live or liveness-unknown ow
 takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
 runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
 fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
-only; automatic policy decisions own future uncontrolled research allocation only. Distinct-regime
-and forward-time study selection, learned policy, automatic TradingPromotion, and champion handoff
-remain separate and outside this path.
+only; automatic policy decisions own future uncontrolled research allocation only. The prospective
+condition-blocked selection protocol is implemented, while its complete six-study real-market
+evidence, a separate generalization-policy decision, learned policy, automatic TradingPromotion,
+and champion handoff remain separate and outside this path.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
@@ -164,10 +177,10 @@ This isolation and diversity measurement reduce direct evaluator reuse and make 
 concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
 or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
-de-risking sequences, directed-versus-undirected and memory/baseline controls, actually executed
-replicated study evidence across distinct regimes, controlled discovery-yield and long-duration
-restart soak evidence, deployed always-on paper execution, automatic promotion, champion runner handoff, private/live
-authority, P0, and the overall Goal remain open.
+de-risking sequences, directed-versus-undirected and memory/baseline controls, a completed
+six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
+long-duration restart soak evidence, deployed always-on paper execution, automatic promotion,
+champion runner handoff, private/live authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after

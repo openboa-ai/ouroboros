@@ -1,6 +1,20 @@
 # ResearchGeneralizationProtocol Design
 
-Status: approved for autonomous implementation under the active CandidateArena goal.
+Status: implemented and repository-verified on 2026-07-13. Prospective real-market evidence
+collection remains open.
+
+Implementation evidence:
+
+- `e57873e` adds the closed-public-kline classifier and Gateway evidence boundary.
+- `67cf883`, `1b60e86`, and `c1774f8` add create-only protocol commitment, exact study assignment,
+  and automatic prospective slot scheduling.
+- `1af1283` and `8ef9f78` add conservative stratified outcome adjudication and automatic
+  oldest-missing reconciliation.
+- The completed frontier passes 183 Vitest files with 2930 tests, every workspace typecheck, docs,
+  architecture, naming, tracked-env, secret, and diff guards.
+- This verifies protocol mechanics and authority closure. It does not claim that six eligible
+  forward-time studies have completed or that generalization, profitability, promotion eligibility,
+  or live readiness has been established.
 
 ## Goal
 

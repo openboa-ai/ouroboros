@@ -138,6 +138,16 @@ create-only publication for one exact same-root winner. Missing prerequisites de
 drift fails before effects. The process-local scheduler then starts the supervisor, waits on a
 bounded interruptible poll after post-catch-up decision reconciliation, and reconstructs each
 runtime from the persisted study condition.
+Before filling an ordinary latest-source study, the same coordinator now creates or resumes one
+`ResearchGeneralizationProtocol`. It precommits two deterministic studies in each public `long`,
+`short`, and `flat` condition block, enforces 24-hour global spacing and a 90-day window, and binds
+the exact worker, paper/campaign policy, source artifact, and pre-effect classification. The
+Gateway-owned classifier uses only 30 fully closed `BTCUSDT` one-minute klines and cannot be
+overridden by a worker narrative. `ResearchGeneralizationOutcome` preserves all six slots and
+requires complete eligible non-tied evidence, at least three baseline snapshots, exact p-value at
+most 0.05, positive equal-weight block performance, and no harmful block. Automatic reconciliation
+closes one oldest complete or expired protocol after catch-up. This is an implemented external
+validity test boundary, not evidence that real-market generalization has already succeeded.
 Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
 same-host servers using the same LocalStore root. Exact ownership is checked before each executor
 advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
@@ -146,8 +156,8 @@ effects and do not enter research context, allocation, evaluation, ranking, or p
 Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather
-than adopts unowned attempts. Multi-host fencing, real-market and distinct-regime replication,
-forward-time study selection, and learned policy parameters remain open.
+than adopts unowned attempts. Multi-host fencing, completed real-market generalization evidence, a
+separate broad-policy decision, and learned policy parameters remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized
@@ -200,8 +210,8 @@ This does not complete external evaluation, P0, or the Goal. A bounded hidden se
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
 clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
-and AI-agent ablations, executed adaptive/static studies across regimes, deployed always-on paper
-execution, automatic promotion, champion runner handoff,
+and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from real public paths,
+deployed always-on paper execution, automatic promotion, champion runner handoff,
 private/live authority, and the other completion axes remain open.
 
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a

@@ -1,5 +1,12 @@
 # ResearchGeneralizationProtocol Implementation Plan
 
+Status: completed and repository-verified on 2026-07-13. Real-market protocol collection and any
+separate generalization-policy decision remain outside this implementation frontier.
+
+Implementation record: `e57873e`, `67cf883`, `1b60e86`, `c1774f8`, `1af1283`, and `8ef9f78`.
+Final verification passed 183 Vitest files with 2930 tests, all workspace typechecks, and all
+required repository guards.
+
 > Execute autonomously under the active CandidateArena goal. Use TDD for every behavioral step and
 > commit each bounded frontier only after focused verification.
 

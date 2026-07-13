@@ -27,6 +27,8 @@ that pack every axis into one identifier.
 | `ResearchControlCampaignOutcome` | Append-only external terminal observation over every precommitted ResearchControlCampaign paper slot. It binds the pre-effect Trading review comparator, exact confirmation/release closures, and one shared paper policy; only confirmed improvement earns discovery credit, and the record has no causal, replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudy` | Append-only pre-effect replicated experiment commitment over 6 to 30 exact ResearchControlCampaign identities, one same-frozen-snapshot condition, and one paired exact sign-test policy. It permits no outcome-aware inclusion or early stopping and owns research scheduling authority only. |
 | `ResearchControlStudyOutcome` | Append-only external inference over every planned ResearchControlCampaignOutcome. Its causal scope is limited to same-baseline stochastic replications; supported adaptive effect grants only eligibility for a separate allocation-policy decision and no replacement, promotion, order, private, or live authority. |
+| `ResearchGeneralizationProtocol` | Append-only pre-effect cross-study commitment over six deterministic ResearchControlStudy slots: two each for public long, short, and flat condition blocks. It freezes timing, worker, paper/campaign, source-baseline, resource, and equal-weight analysis policy and owns research scheduling authority only. |
+| `ResearchGeneralizationOutcome` | Append-only external inference over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline evidence, including missing, ineligible, tied, duplicated, and harmful results, and grants no policy replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that runs or resumes one exact planned campaign per advance and adjudicates only after full terminal closure. It adds no progress record or policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through one existing runtime at a time, verifies persisted completion, and stores no parallel progress or downstream authority. |
 | `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, fails closed for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and has runtime-coordination authority only. |
@@ -156,6 +158,9 @@ standard term fits. Record that decision in repo docs and tests.
 - Do not treat `ResearchAllocationPolicyDecision.not_approved` as evidence that static control is
   superior or equivalent. Version 1 is one-sided: only eligible supported adaptive evidence may
   approve the exact studied policy digest, and explicit caller intent remains higher priority.
+- Do not treat `ResearchGeneralizationOutcome.generalization_supported` as policy replacement,
+  economic superiority, TradingPromotion eligibility, or live authority. It only permits a
+  separately designed generalization-policy decision to review the exact frozen protocol.
 - Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
   It is read-only generation context for the next ResearchWorker.
 - Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical

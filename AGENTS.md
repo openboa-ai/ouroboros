@@ -117,6 +117,24 @@ LocalStore root, guards every executor advance, and releases on terminal paths. 
 owners wait; takeover requires expiry and confirmed absence of the same-host PID. Lease records
 carry runtime-coordination authority only and are never research or policy evidence. Multi-host
 fencing and public commands remain outside.
+`ResearchGeneralizationProtocol` is the prospective cross-study inference boundary. Before any
+assigned study effect it freezes one exact adaptive policy, ResearchWorker identity, paper and
+campaign policy, six deterministic study slots, two slots each for public `long`, `short`, and
+`flat` condition blocks, a 24-hour global spacing rule, a 90-day collection deadline, and an
+equal-weight stratified analysis. The Gateway classifies only an exact 30-element closed
+`BTCUSDT` one-minute public kline window with the frozen
+`btc_usdt_closed_kline_direction_v1` policy. A study's optional
+`generalization_assignment` binds one matching slot, pre-effect classification, source artifact,
+and exact baseline snapshot without changing historical same-baseline study meaning.
+`ResearchGeneralizationOutcome` externally accounts for all six planned slots at terminal closure
+or expiry. It requires eligible evidence in every block, six non-ties, at least three distinct
+baseline snapshots, an exact two-sided sign-test p-value at most 0.05, a positive equal-weight
+mean, and no non-positive block before reporting `generalization_supported`. Missing, tied,
+ineligible, duplicated, expired, or harmful evidence remains explicit. After successful scheduler
+catch-up, the default outcome coordinator reconciles at most the oldest missing protocol outcome
+before the existing allocation-policy decision reconciliation. Neither record changes policy,
+promotes, submits orders, or gains private/live authority; a supported outcome is only eligible for
+a separately designed generalization-policy decision.
 `ResearchAllocationPolicyDecision` is the separate research-only policy-selection boundary. Only
 an exact eligible `adaptive_effect_supported` study outcome may approve the studied adaptive policy
 digest; non-supported or underpowered evidence never selects static control. Uncontrolled Arena
@@ -305,6 +323,8 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchControlCampaignOutcome` | Append-only external adjudication of every precommitted ResearchControlCampaign paper slot against its pre-effect Trading review comparator and one shared policy. Only exact confirmed-improvement ResearchRelease evidence receives discovery credit; one outcome is not causal proof or policy authority. |
 | `ResearchControlStudy` | Append-only pre-effect commitment of 6 to 30 exact ResearchControlCampaign replications under one same-frozen-snapshot condition and one paired exact sign-test policy. It fixes every campaign identity before effects, permits no early stopping, and owns research scheduling authority only. |
 | `ResearchControlStudyOutcome` | Append-only external aggregate over every planned ResearchControlCampaignOutcome. It reports same-baseline stochastic-replication inference and may make a supported effect eligible for a separate policy decision, but cannot replace policy, promote, submit orders, or gain private/live authority. |
+| `ResearchGeneralizationProtocol` | Append-only pre-effect cross-study commitment that freezes six deterministic ResearchControlStudy slots across two public long, short, and flat condition-block replications, independent source-baseline controls, timing, resource bounds, and equal-weight analysis. It owns research scheduling authority only. |
+| `ResearchGeneralizationOutcome` | Append-only external aggregate over every planned ResearchGeneralizationProtocol slot. It reports prospective condition-blocked cross-baseline inference, preserves missing and harmful evidence, and may only make exact supported evidence eligible for a separately designed generalization-policy decision. |
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that completes or resumes one exact planned campaign per advance and adjudicates only after every terminal outcome. It persists no parallel progress record and owns no policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through existing runtimes, rescans after each completion, and persists no separate progress or downstream authority. |
 | `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, waits for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and grants runtime coordination only. |

@@ -104,6 +104,18 @@ Store initialization and paper recovery, a bounded interruptible wait considers 
 and shutdown drains the study path before CandidateArena and shared paper sessions. The server
 runtime reconstructs each campaign only from its persisted study condition and revalidates the
 configured research-agent identity.
+The application `ResearchGeneralizationProtocol` service adds a create-only cross-study commitment
+without widening `ResearchControlStudy` itself. A Gateway `MarketDataPort` capability returns an
+exact closed public kline window; the pure classifier maps that pre-effect evidence into one frozen
+condition block. The commitment coordinator binds only the earliest matching deterministic slot,
+and LocalStore validates the complete protocol, assignment, source-artifact, baseline, and time
+graph before publication. `ResearchGeneralizationOutcome` is a separate external aggregate with
+equal block weighting and conservative missing/ineligible accounting. Its coordinator enumerates
+the entire persisted source graph, closes at most one complete or expired protocol after scheduler
+catch-up, and runs before same-baseline allocation-policy reconciliation. Adapters fetch public
+evidence; application services classify, schedule, and adjudicate; the runtime composition root only
+wires these ports and lifecycles. No layer converts this evidence into promotion, orders, private
+exchange access, or live authority.
 `ResearchControlStudyExecutionLease` is the outer same-host ownership boundary. A filesystem
 adapter under the shared LocalStore root atomically claims the oldest pending study; one renewable
 session guards every executor advance and releases on completion, failure, or shutdown. Active

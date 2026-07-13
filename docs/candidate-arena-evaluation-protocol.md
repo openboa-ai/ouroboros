@@ -64,6 +64,8 @@ persisted schema names. Any future public or persisted fields require a separate
 | `ResearchControlCampaignOutcome` | No raw paper records; exact refs, digests, slot classifications, and bounded arm rates only | Yes, after every slot is terminal | No retroactive admission | Records released qualification evidence but grants no promotion |
 | `ResearchControlStudy` | Exact planned campaign identities and frozen condition only; no outcomes | No, until every planned outcome closes | No | No |
 | `ResearchControlStudyOutcome` | Aggregate counts, mean difference, exact sign p-value, bounded inference, and refs/digests only | Yes, within same-baseline causal scope | No | No; may only enable a separate policy decision |
+| `ResearchGeneralizationProtocol` | Six exact pre-effect study slots, frozen public condition blocks, timing, source-baseline, resource, and analysis policy | No, until terminal closure or expiry | No | No; research scheduling only |
+| `ResearchGeneralizationOutcome` | Every planned slot, equal-weight block effects, baseline count, exact sign p-value, bounded inference, and refs/digests | Yes, within prospective condition-blocked cross-baseline scope | No | No; may only enable a separately designed generalization-policy decision |
 | `ResearchAllocationPolicyDecision` | Exact study/outcome refs, digests, bounded status, and research-policy authority only | Yes, as future allocation provenance | No | No; never selects promotion or live authority |
 | One-shot sealed admission | No scenario, score, or outcome feedback | Generic closed result only after freeze | Yes, only with exact terminal graph plus passed handoff conformance | No |
 | `PaperTradingHandoffConformance` | Generic status and reason only | Yes | Yes, only when exact passed evidence is bound into admission | No |
@@ -135,6 +137,15 @@ mean but leave the sign test, and no outcome-aware inclusion or early stopping i
 supported adaptive effect has `same_baseline_stochastic_replication_only` causal scope and grants
 only `eligible_for_separate_policy_decision`. It never mutates allocation policy or creates trading
 authority.
+`ResearchGeneralizationProtocol` is committed before any of its six deterministic studies. It
+freezes two slots in each public `long`, `short`, and `flat` condition block, exact worker and
+paper/campaign identities, 24-hour global spacing, a 90-day deadline, source reuse constraints, and
+equal-weight analysis. Only an exact 30-element fully closed `BTCUSDT` one-minute kline window may
+classify a pre-effect slot. `ResearchGeneralizationOutcome` accounts for every planned slot at full
+terminal closure or expiry; it cannot drop unfavorable or missing evidence. Generalization support
+requires six eligible non-ties, at least three distinct baseline snapshots, exact two-sided sign
+p-value at most 0.05, positive equal-weight mean, and no zero-or-negative block. Support grants no
+current policy replacement: it is only eligible for a separately designed decision boundary.
 `ResearchAllocationPolicyDecision` separately reloads that exact graph. Version 1 approves only an
 eligible supported adaptive effect for the exact studied policy digest. Non-supported or
 underpowered evidence records `not_approved` with no effective mode and cannot select static
@@ -168,11 +179,12 @@ The internal `ResearchControlStudyProcessSupervisor` discovers incomplete studie
 study/outcome lists, orders them by commitment time and ID, opens one injected study runtime, and
 rescans only after exact persisted completion. It does not skip a failed earlier study or create a
 policy decision. `ResearchControlStudyScheduler` now runs that one-shot owner immediately under the
-default runtime server, invokes commitment before discovery, invokes bounded policy-decision
-reconciliation after successful catch-up, then waits on an interruptible bounded poll and considers
-later reviewed sources. It does not decide after contention, failure, stop, or invalid supervisor
-state. Runtime opening reuses the exact persisted condition and fails before effects on agent
-identity drift. Before runtime opening,
+default runtime server, invokes commitment before discovery, invokes oldest-missing generalization
+outcome reconciliation and then bounded same-baseline policy-decision reconciliation after
+successful catch-up, then waits on an interruptible bounded poll and considers later reviewed
+sources. It does not reconcile after contention, failure, stop, or invalid supervisor state.
+Runtime opening reuses the exact persisted condition and fails before effects on agent identity
+drift. Before runtime opening,
 `ResearchControlStudyExecutionLease` atomically elects one
 same-host server for one shared LocalStore root. The active owner renews and asserts its exact token
 before every executor advance. Alive or liveness-unknown owners remain held after expiry; takeover
@@ -576,9 +588,12 @@ The following current surfaces require implementation work before P0 can pass:
   superiority, cross-regime generalization, or a learned policy. The default server now owns
   bounded polling, deterministic latest-promotion study commitment, exact persisted-condition
   runtime reconstruction, same-host cross-process execution leasing, and symmetric oldest-first
-  automatic policy-decision reconciliation. Distinct-regime and forward-time study selection,
-  multi-host fencing, and learned policy parameters remain open. The separate one-sided exact
-  adaptive policy decision and future-allocation provenance path are implemented.
+  automatic policy-decision reconciliation. It also owns a prospective six-slot
+  `ResearchGeneralizationProtocol`, public closed-kline block classification, deterministic
+  24-hour-spaced slot assignment, and oldest-first terminal-or-expired outcome reconciliation.
+  Complete eligible real-market protocol evidence, multi-host fencing, and learned policy
+  parameters remain open. The separate one-sided exact adaptive policy decision and
+  future-allocation provenance path are implemented; no broad generalization-policy decision is.
 - Every selected direction now also persists a pre-effect `ResearchPreflightCommitment`, freezes one
   development-selected artifact, and permits one rotating sealed submission. LocalStore rejects
   source/allocation/worker/suite/submission graph drift, adjacent rotation reuse, a second terminal
@@ -604,8 +619,9 @@ The following current surfaces require implementation work before P0 can pass:
   `adaptive_effect_supported` fixture conclusion without mutating policy or promotion state.
   The default server now commits, starts, and drains this study path, polls for later reviewed
   sources, excludes competing same-host processes through renewable leases, and automatically
-  records one oldest missing approved or not-approved research policy decision after catch-up.
-  Real-market and distinct-regime replication, multi-host fencing, production learned allocation,
+  records one oldest missing generalization outcome and approved or not-approved same-baseline
+  research policy decision after catch-up. The prospective condition-blocked protocol mechanics are
+  implemented; complete real-market evidence, multi-host fencing, production learned allocation,
   and external-validity claims remain open.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
   provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
@@ -667,8 +683,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    implemented and validated; read-only paired qualification and sealed single-window adjudication
    are also implemented internally. Arm-local comparison/session composition, candidate-owned
    post-activation cadence, matched-arm synchronization, the bounded campaign runner, and one exact
-   six-replication qualified non-tied fixture protocol study are implemented. Real-market
-   cross-regime evidence and longitudinal deployed soak remain.
+   six-replication qualified non-tied fixture protocol study are implemented. Prospective
+   condition-blocked slot commitment and conservative generalization adjudication are implemented;
+   complete eligible real-market evidence and longitudinal deployed soak remain.
 2. **Implemented:** pre-effect `ResearchPreflightCommitment`, bounded adaptive development,
    development-only artifact selection, one-shot rotating sealed admission, exact terminal graph,
    passed `PaperTradingHandoffConformance`, and admitted-only exact development
@@ -697,8 +714,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    campaign/outcome/final-verdict promotion binding; atomic current-champion
    revalidation; restart-stable replay; promotion-bound readback; and explicit paper-only
    `trading_candidate.promote` composition. The default server deterministically commits one
-   latest-promotion study at a time, executes it under same-host renewable leasing, and reconciles
-   its terminal policy decision without selecting only favorable outcomes; multi-host fencing,
+   latest-promotion study at a time within the active prospective generalization protocol, executes
+   it under same-host renewable leasing, and reconciles terminal generalization outcomes and
+   same-baseline policy decisions without selecting only favorable outcomes; multi-host fencing,
    automatic promotion, and runner handoff remain later frontiers.
 6. **Partial:** released research-feedback and explicit campaign-release findings feed later workers
    while unreleased qualification evidence stays hidden. Persisted bounded adaptive allocation now
@@ -717,6 +735,7 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
    TradingPromotion, arm-local runtime composition, and exact six-replication qualified non-tied
    fixture-study closure are proven. Default automatic commitment, server scheduling, same-host
-   multi-process ownership, and post-catch-up automatic research policy decisions are implemented;
-   real-market cross-regime replication, multi-host fencing, deployed soak evidence, durable worker
+   multi-process ownership, prospective condition-blocked generalization commitment/adjudication,
+   and post-catch-up automatic research policy decisions are implemented; complete eligible
+   real-market generalization evidence, multi-host fencing, deployed soak evidence, durable worker
    process adoption, and full P0 evidence remain.

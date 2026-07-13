@@ -84,8 +84,17 @@ dependencies. One renewable
 opening the same pending study. Every executor advance asserts exact ownership; alive or unknown
 owners wait, and only an expired owner with a confirmed-absent same-host PID may be replaced. Lease
 history is operational coordination, never study evidence or policy authority. Multi-host fencing,
-real-market replicated outcome evidence, distinct-regime and forward-time inference, and learned
-policy parameters remain open.
+real-market replicated outcome evidence, and learned policy parameters remain open.
+`ResearchGeneralizationProtocol` now supplies the prospective boundary that the same-baseline study
+could not: six precommitted slots with two public `long`, `short`, and `flat` condition-block studies,
+24-hour global spacing, a 90-day deadline, frozen worker/paper/campaign policy, and source-baseline
+reuse controls. Gateway-owned closed one-minute kline evidence opens only the earliest exact
+matching slot before effects. `ResearchGeneralizationOutcome` then accounts for every slot with
+equal block weighting, an exact sign test, a three-baseline minimum, and a harmful-block veto. The
+default scheduler reconciles one oldest complete or expired protocol after catch-up and before the
+existing same-baseline policy decision. This implements the forward-time generalization protocol,
+not the real-market result: complete eligible six-study evidence, any broader policy decision,
+economic promotion, and live authority remain open.
 `ResearchWorkerCheckpoint` is the terminal lifecycle record that lets one stable logical worker
 carry a sanitized notebook and closed budget history into a later new commitment without resuming
 an old process or sealed evaluator plan.
