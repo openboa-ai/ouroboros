@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +17,8 @@ import type {
   PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
+import { FixtureTradingResearchAgentAdapter } from
+  "@ouroboros/application/trading/research/agent-adapters";
 import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type { ResearchControlStudyExecutionLeasePort } from
   "@ouroboros/application/ports/research-control-study-execution-lease";
@@ -19,6 +29,7 @@ import {
 } from "@ouroboros/domain";
 import {
   buildServer,
+  createResearchControlStudyServerCommitmentCoordinator,
   createResearchControlStudyServerLeaseSessionFactory,
   paperTradingApiProviderNetworkOptions
 } from "../src/server";
@@ -30,6 +41,11 @@ import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 import { researchControlStudyFixture } from "./helpers/research-control-study";
 
 let tmpDir: string;
+
+const RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE = path.resolve(
+  process.cwd(),
+  "apps/runtime/test/fixtures/research-control-study/trading-review-store"
+);
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-runtime-"));
@@ -131,6 +147,88 @@ describe("runtime canonical operator API", () => {
     expect(scheduler.startCount).toBe(0);
     await server.close();
     expect(scheduler.stopCount).toBe(1);
+  });
+
+  it("runs injected automatic commitment through the default scheduler", async () => {
+    let commitmentCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyCommitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          return {
+            status: "deferred",
+            reason: "no_trading_promotion"
+          } as const;
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      commitmentCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastCommitment: {
+        status: "deferred",
+        reason: "no_trading_promotion"
+      }
+    });
+    await server.close();
+  });
+
+  it("does not commit a study when scheduler startup is disabled", async () => {
+    let commitmentCount = 0;
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      researchControlStudyCommitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          return {
+            status: "deferred",
+            reason: "no_trading_promotion"
+          } as const;
+        }
+      }
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(commitmentCount).toBe(0);
+    await server.close();
+  });
+
+  it("creates the default promotion-bound commitment coordinator", async () => {
+    const fixtureRoot = path.join(tmpDir, "commitment-fixture");
+    await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
+      recursive: true
+    });
+    const store = new LocalStore(fixtureRoot);
+    await store.initialize();
+    const agent = new FixtureTradingResearchAgentAdapter();
+    const coordinator = createResearchControlStudyServerCommitmentCoordinator({
+      store,
+      researchAgentIdentity: () => agent.agent,
+      repoRoot: process.cwd(),
+      now: () => "2026-07-13T00:00:00.000Z"
+    });
+
+    const committed = await coordinator.ensureCommittedStudy();
+    const studies = await store.listResearchControlStudies();
+    expect(studies).toHaveLength(1);
+    expect(committed).toEqual({
+      status: "committed",
+      studyId: studies[0]!.research_control_study_id
+    });
+    await expect(coordinator.ensureCommittedStudy()).resolves.toEqual({
+      status: "existing",
+      studyId: studies[0]!.research_control_study_id
+    });
   });
 
   it("creates one default lease owner across server factories sharing a root", async () => {

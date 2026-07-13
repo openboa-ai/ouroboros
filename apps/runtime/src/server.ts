@@ -60,6 +60,7 @@ import {
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
 import type {
+  ManagedResearchAgent,
   ReplayTradingApiProviderSession,
   TradingArtifactRunnerKind,
   TradingResearchAgentAdapter
@@ -105,6 +106,10 @@ import {
   createResearchControlStudyExecutionLeaseSessionFactory,
   type ResearchControlStudyExecutionLeaseSessionFactory
 } from "./candidate/arena/research-control-study-execution-lease-session";
+import {
+  ResearchControlStudyCommitmentCoordinator,
+  type ResearchControlStudyCommitmentCoordinatorLifecycle
+} from "./candidate/arena/research-control-study-commitment-coordinator";
 import type { ResearchControlStudySchedulerLifecycle } from
   "./candidate/arena/research-control-study-scheduler";
 import { registerCoreControllerRoutes } from "./controllers/core";
@@ -155,6 +160,8 @@ export interface BuildServerOptions {
     ResearchControlStudyExecutionLeaseOwner;
   researchControlStudyExecutionLeaseDurationMs?: number;
   researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
+  researchControlStudyCommitmentCoordinator?:
+    ResearchControlStudyCommitmentCoordinatorLifecycle;
   runResearchControlStudiesOnStart?: boolean;
   onResearchControlStudySchedulerCreated?: (
     scheduler: ResearchControlStudySchedulerLifecycle
@@ -188,6 +195,23 @@ export function createResearchControlStudyServerLeaseSessionFactory(
     ...(input.renewalIntervalMs === undefined
       ? {}
       : { renewalIntervalMs: input.renewalIntervalMs })
+  });
+}
+
+export function createResearchControlStudyServerCommitmentCoordinator(
+  input: {
+    store: LocalStore;
+    researchAgentIdentity:
+      () => ManagedResearchAgent | Promise<ManagedResearchAgent>;
+    repoRoot?: string;
+    now?: () => string;
+  }
+): ResearchControlStudyCommitmentCoordinator {
+  return new ResearchControlStudyCommitmentCoordinator({
+    store: input.store,
+    researchAgentIdentity: input.researchAgentIdentity,
+    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+    ...(input.now ? { now: input.now } : {})
   });
 }
 
@@ -391,6 +415,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     options.researchControlStudyScheduler ??
     createResearchControlStudyServerScheduler({
       store,
+      commitmentCoordinator:
+        options.researchControlStudyCommitmentCoordinator ??
+        createResearchControlStudyServerCommitmentCoordinator({
+          store,
+          researchAgentIdentity: () => tradingResearchAgentFactory(
+            candidateArenaRunner.researchAgent()
+          ).agent,
+          repoRoot: process.cwd()
+        }),
       leaseSessionFactory:
         createResearchControlStudyServerLeaseSessionFactory({
           store,
