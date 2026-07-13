@@ -110,6 +110,25 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     expect(await readLease(historyFile(released))).toEqual(released);
   });
 
+  it("rejects the exact active owner once its lease window expires", async () => {
+    const study = studyFixture();
+    const store = adapter({ token: "lease-a", liveness: "alive" });
+    const acquired = await store.acquire({
+      study,
+      owner: owner("server-a", 101),
+      leaseDurationMs: 30_000
+    });
+    expect(acquired.status).toBe("acquired");
+    if (acquired.status !== "acquired") throw new Error("expected acquired lease");
+
+    now = acquired.lease.expires_at;
+
+    await expect(store.assertOwned({ lease: acquired.lease })).rejects.toMatchObject({
+      code: "research_control_study_execution_lease_ownership_lost"
+    });
+    expect(await readLease(activeLeaseFile(study))).toEqual(acquired.lease);
+  });
+
   it.each([
     ["alive", "owner_alive"],
     ["unknown", "owner_liveness_unknown"]

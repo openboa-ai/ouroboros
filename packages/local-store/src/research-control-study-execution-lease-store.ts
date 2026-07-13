@@ -169,6 +169,9 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     if (!sameLeaseIdentity(active, input.lease)) {
       throw ownershipLost("active lease token or owner does not match");
     }
+    if (Date.parse(this.readNow()) >= Date.parse(active.expires_at)) {
+      throw ownershipLost("active lease has expired");
+    }
     return active;
   }
 
