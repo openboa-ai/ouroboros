@@ -38,7 +38,7 @@ DeterministicSandboxAdapter, LocalStore
 - Produces: `acknowledge_comparison_tick(base_url, market, last_delivery_id) -> str | None` behavior
   and one exact `POST /comparison/tick/ack` per new delivery ID.
 
-- [ ] **Step 1: Write the failing real-provider artifact test**
+- [x] **Step 1: Write the failing real-provider artifact test**
 
 Add a test that starts `startPaperTradingApiProvider` with comparison hooks. The delivery hook must
 return `undefined`, context 1, repeated context 1, and context 2 across the initial market read and
@@ -116,7 +116,7 @@ function comparisonContext(sequence: number) {
 }
 ```
 
-- [ ] **Step 2: Run the artifact test and confirm RED**
+- [x] **Step 2: Run the artifact test and confirm RED**
 
 Run:
 
@@ -127,7 +127,7 @@ npx vitest run apps/runtime/test/clock-artifact.test.ts --reporter=verbose
 Expected: the new test fails because the current fixture makes only its initial provider requests
 and `acknowledged` remains empty.
 
-- [ ] **Step 3: Implement exact-context acknowledgement in the fixture**
+- [x] **Step 3: Implement exact-context acknowledgement in the fixture**
 
 Add validation and deduplication helpers to `clock.py`:
 
@@ -172,7 +172,7 @@ if present, and retain the existing order/hold contents. In `main`, after each n
 read `/market/snapshot` and call the helper before the next heartbeat. Skip the read when no provider
 URL exists or shutdown was requested.
 
-- [ ] **Step 4: Run focused artifact and provider contract tests**
+- [x] **Step 4: Run focused artifact and provider contract tests**
 
 Run:
 
@@ -185,7 +185,7 @@ npx vitest run \
 
 Expected: both files pass; repeated context 1 has one acknowledgement and context 2 has one.
 
-- [ ] **Step 5: Commit the artifact cadence**
+- [x] **Step 5: Commit the artifact cadence**
 
 ```bash
 git add apps/runtime/test/clock-artifact.test.ts fixtures/trading-systems/clock.py
