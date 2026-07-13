@@ -20,7 +20,8 @@ DeterministicSandboxAdapter, LocalStore
 - Post the exact provider-issued `comparison_tick_context` without modification.
 - Deduplicate by non-empty `delivery_ref.id`; do not acknowledge the same delivery twice.
 - Keep all exchange authority `not_live`; no Binance, credential, private, or submission access.
-- Freeze both minimum and maximum observation counts at 2 and the interval/minimum elapsed at 25 ms.
+- Freeze both minimum and maximum observation counts at 2 and the evaluator interval/minimum elapsed
+  at 25 ms; keep the TradingSystem sandbox cadence independently fixed at 1,000 ms.
 - A qualified tie is `source_not_improved`, not candidate improvement or allocation-policy evidence.
 - Do not stage, modify, or remove `.superpowers/`.
 
@@ -310,6 +311,139 @@ git add \
 git commit -m "feat: acknowledge comparison ticks from generated candidates"
 ```
 
+### Task 1C: Arm-local comparison tick attribution wiring
+
+**Files:**
+- Modify: `apps/runtime/test/research-control-campaign-paper-runtime-arm.test.ts`
+- Modify: `apps/runtime/test/research-control-campaign-paper-source-window.test.ts`
+- Modify: `apps/runtime/src/candidate/arena/research-control-campaign-paper-runtime-arm.ts`
+- Modify: `apps/runtime/src/candidate/arena/research-control-campaign-paper-source-window.ts`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+**Interfaces:**
+- Consumes: existing arm Store records and
+  `PaperTradingSessionService.enableComparisonTickAttributionSide`.
+- Produces: `ResearchControlCampaignPaperSourceWindowArm.enableComparisonTickAttribution({
+  activationAttemptId, tickId }): Promise<void>` and matched source-window invocation while both
+  arms wait for tick acknowledgement.
+
+- [ ] **Step 1: Write the failing runtime-arm authority test**
+
+Create an arm with Store getters returning one exact activation attempt and tick. Capture session
+enable calls, invoke `arm.enableComparisonTickAttribution`, and assert two calls in role order:
+
+```ts
+await arm.enableComparisonTickAttribution({
+  activationAttemptId: "attempt-1",
+  tickId: "tick-1"
+});
+expect(calls.map(({ side, authority, tick }) => ({
+  role: side.role,
+  authorityRole: authority.role,
+  operation: authority.operation,
+  tickId: tick.paper_trading_comparison_tick_id
+}))).toEqual([
+  {
+    role: "champion",
+    authorityRole: "champion",
+    operation: "deliver_market_snapshot",
+    tickId: "tick-1"
+  },
+  {
+    role: "challenger",
+    authorityRole: "challenger",
+    operation: "deliver_market_snapshot",
+    tickId: "tick-1"
+  }
+]);
+```
+
+- [ ] **Step 2: Write source-window success and failure RED tests**
+
+Extend the source-window fixture with `waiting_tick_acknowledgements`, empty acknowledged roles, and
+an arm method that records `enable:<arm>:<tick>`. Assert both operations occur for matched waiting
+windows. Add `failAttributionArm: "static_control"` and assert the coordinator rejects with
+`research_control_campaign_paper_source_window_transition_failed`, calls both arm stop operations,
+and leaves no running arm.
+
+- [ ] **Step 3: Run the two focused files and confirm RED**
+
+Run:
+
+```bash
+npx vitest run \
+  apps/runtime/test/research-control-campaign-paper-runtime-arm.test.ts \
+  apps/runtime/test/research-control-campaign-paper-source-window.test.ts \
+  --reporter=verbose
+```
+
+Expected: compilation or behavior fails because the arm operation and source-window invocation do
+not exist.
+
+- [ ] **Step 4: Implement exact arm-local authority construction**
+
+In the runtime-arm factory, reload the attempt and tick, fail on missing or mismatched IDs, then call
+the existing session port for both roles. Build each authority from the persisted attempt and tick:
+
+```ts
+{
+  paper_trading_comparison_activation_ref: {
+    ...attempt.paper_trading_comparison_activation_ref
+  },
+  paper_trading_comparison_activation_digest:
+    attempt.paper_trading_comparison_activation_digest,
+  paper_trading_comparison_activation_attempt_ref: {
+    record_kind: "paper_trading_comparison_activation_attempt",
+    id: attempt.paper_trading_comparison_activation_attempt_id
+  },
+  paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+  role,
+  trading_run_ref: { ...attempt[role].trading_run_ref },
+  tick_ref: {
+    record_kind: "paper_trading_comparison_tick",
+    id: tick.paper_trading_comparison_tick_id
+  },
+  tick_digest: tick.tick_digest,
+  operation: "deliver_market_snapshot"
+}
+```
+
+- [ ] **Step 5: Wire matched waiting windows and fail closed**
+
+After classifying both source snapshots, when every decision has phase
+`waiting_tick_acknowledgements` and transition `none`, invoke each arm's operation with its exact
+source attempt and latest tick ID. On any rejection, stop every source attempt with
+`handoff_cleanup` and throw the existing transition-failed error. Keep ordinary no-op and repeated
+tick transitions unchanged.
+
+- [ ] **Step 6: Run focused arm, source-window, and paper-runtime tests**
+
+Run:
+
+```bash
+npx vitest run \
+  apps/runtime/test/research-control-campaign-paper-runtime-arm.test.ts \
+  apps/runtime/test/research-control-campaign-paper-source-window.test.ts \
+  apps/runtime/test/research-control-campaign-paper-runtime.test.ts \
+  --reporter=verbose
+```
+
+Expected: all focused tests pass, including exact two-role authority and matched failure cleanup.
+
+- [ ] **Step 7: Commit the arm attribution wiring**
+
+```bash
+git add \
+  apps/runtime/test/research-control-campaign-paper-runtime-arm.test.ts \
+  apps/runtime/test/research-control-campaign-paper-source-window.test.ts \
+  apps/runtime/src/candidate/arena/research-control-campaign-paper-runtime-arm.ts \
+  apps/runtime/src/candidate/arena/research-control-campaign-paper-source-window.ts \
+  docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md \
+  docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md
+git commit -m "feat: enable arm-local comparison tick attribution"
+```
+
 ### Task 2: Qualified two-checkpoint prospective study
 
 **Files:**
@@ -317,7 +451,7 @@ git commit -m "feat: acknowledge comparison ticks from generated candidates"
 - Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
 
 **Interfaces:**
-- Consumes: the Task 1 and Task 1B artifact cadences plus existing real arm/session composition.
+- Consumes: the Task 1 and Task 1B artifact cadences plus Task 1C arm-local attribution wiring.
 - Produces: six completed replications containing 12 pair-qualified source verdicts and no policy
   decision.
 
@@ -332,11 +466,12 @@ maximum_observation_count: 2,
 ```
 
 ```ts
-sandboxIntervalMs: 25,
+sandboxIntervalMs: 1_000,
 ```
 
 Keep `maximum_elapsed_ms: 600_000`, provider request limit 100, confirmation count 1, and all
-authority policies unchanged.
+authority policies unchanged. The 1,000 ms TradingSystem cadence preserves 100 seconds of polling
+under the frozen request cap; do not couple it to the evaluator's 25 ms interval.
 
 - [ ] **Step 2: Replace ineligible expectations with qualified-tie expectations**
 

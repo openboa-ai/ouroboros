@@ -35,6 +35,14 @@ both champion processes stopped, while the two generated challengers in replicat
 1,900 heartbeats without a later provider read. The cadence contract must therefore be carried by
 both standalone artifacts.
 
+After both artifacts implemented polling, the next run exposed the owning orchestration gap. Each
+arm persisted checkpoint 1 with `next_action: serve_and_acknowledge_current_tick`, but produced zero
+new delivery or acknowledgement records. The arm composition never called
+`enableComparisonTickAttributionSide`, so the provider correctly returned ordinary market payloads
+forever. A 25 ms candidate cadence then exhausted the 100-request cap; a 1,000 ms cadence delayed
+that symptom but could not create missing authority. The runtime must explicitly enable the current
+tick for both role-bound sessions after the external checkpoint reaches its acknowledgement phase.
+
 ## Alternatives
 
 ### 1. TradingSystem-owned provider polling and acknowledgement
@@ -80,6 +88,27 @@ no-order continuity.
 A malformed context, failed request, or malformed acknowledgement remains a process failure. There
 is no automatic ack, synthetic hold, or evaluator fallback.
 
+## Arm Attribution Wiring
+
+`ResearchControlCampaignPaperRuntimeArm` exposes one arm-local operation:
+
+```ts
+enableComparisonTickAttribution(input: {
+  activationAttemptId: string;
+  tickId: string;
+}): Promise<void>
+```
+
+The operation reloads the exact activation attempt and tick from that arm's Store, builds the
+existing role-bound `PaperTradingComparisonTickIOWriteContext` for champion and challenger, and
+delegates both calls to `PaperTradingSessionService.enableComparisonTickAttributionSide`. It does
+not deliver a snapshot or acknowledge on the candidate's behalf.
+
+When both matched source windows classify as `waiting_tick_acknowledgements`, the source-window
+coordinator invokes this operation for each arm before its no-op window advance. Repeated calls are
+idempotent for the same attempt and tick. If either arm cannot enable exact attribution, the
+coordinator stops both owned runtimes and records the existing source-window transition failure.
+
 ## Prospective Protocol
 
 Keep the same precommitted six replications, real arm-local Stores, real deterministic subprocesses,
@@ -89,8 +118,14 @@ Change only the frozen comparison window needed to test the new cadence:
 - `minimum_observation_count: 2`;
 - `maximum_observation_count: 2`;
 - `minimum_elapsed_ms: 25`;
-- sandbox fixture cadence equal to the 25 ms comparison interval;
+- sandbox TradingSystem cadence of 1,000 ms, independent from the evaluator's 25 ms interval;
 - all other paper, schedule, request-count, authority, and release policies unchanged.
+
+The independent cadence is required by the product model and the frozen request budget. A 25 ms
+candidate poll exposed the missing arm wiring by exhausting the 100-request provider cap;
+1,000 ms preserves 100 seconds of bounded candidate polling while still fitting the 10-second
+observation drain and 600-second outer comparison window. Cadence does not substitute for explicit
+role-bound attribution enablement.
 
 Expected classification is 12 pair-qualified source verdicts. Equal candidates are
 `source_not_improved`, not evidence-ineligible and not an improvement. The six-replication study may
@@ -106,6 +141,12 @@ Artifact contract tests:
 - assert the exact context bodies are acknowledged in order;
 - assert repeated context 1 is not acknowledged twice;
 - retain initial order and heartbeat behavior.
+
+Arm wiring tests:
+
+- prove the runtime-arm factory reloads the exact attempt and tick and enables both role contexts;
+- prove matched waiting source windows enable both arms before retrying;
+- prove one arm enablement failure stops both owned runtimes and fails the transition closed.
 
 Prospective integration:
 
