@@ -2,8 +2,12 @@ import type {
   ResearchControlStudyProcessStatus,
   ResearchControlStudyProcessSupervisor
 } from "./research-control-study-process-supervisor";
+import type {
+  ResearchControlStudyCommitmentCoordinatorLifecycle,
+  ResearchControlStudyCommitmentResult
+} from "./research-control-study-commitment-coordinator";
 
-export type ResearchControlStudySchedulerStatus =
+export type ResearchControlStudySchedulerStatus = (
   | {
       status: "idle" | "running" | "stopping" | "stopped";
       cycleCount: number;
@@ -22,7 +26,10 @@ export type ResearchControlStudySchedulerStatus =
       studyId?: string;
       errorCode: string;
       errorMessage: string;
-    };
+    }
+) & {
+  lastCommitment?: ResearchControlStudyCommitmentResult;
+};
 
 export interface ResearchControlStudySchedulerLifecycle {
   start(): "started" | "already_running";
@@ -63,12 +70,14 @@ implements ResearchControlStudySchedulerLifecycle {
   };
   private cycleCount = 0;
   private completedStudyCount = 0;
+  private lastCommitment?: ResearchControlStudyCommitmentResult;
   private runPromise?: Promise<void>;
   private stopRequested = false;
   private stopSignal = deferredSignal();
 
   constructor(private readonly options: {
     supervisor: SupervisorLifecycle;
+    commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
     pollIntervalMs?: number;
     now?: () => string;
     sleep?: (milliseconds: number) => Promise<void>;
@@ -105,7 +114,10 @@ implements ResearchControlStudySchedulerLifecycle {
   }
 
   status(): ResearchControlStudySchedulerStatus {
-    return structuredClone(this.currentStatus);
+    const status = structuredClone(this.currentStatus);
+    return this.lastCommitment
+      ? { ...status, lastCommitment: structuredClone(this.lastCommitment) }
+      : status;
   }
 
   async drain(): Promise<void> {
@@ -134,6 +146,11 @@ implements ResearchControlStudySchedulerLifecycle {
   private async run(): Promise<void> {
     try {
       while (!this.stopRequested) {
+        if (this.options.commitmentCoordinator) {
+          this.lastCommitment = structuredClone(
+            await this.options.commitmentCoordinator.ensureCommittedStudy()
+          );
+        }
         this.currentStatus = {
           status: "running",
           cycleCount: this.cycleCount,

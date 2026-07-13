@@ -56,6 +56,92 @@ describe("ResearchControlStudyScheduler", () => {
     });
   });
 
+  it("ensures one commitment before every supervisor discovery cycle", async () => {
+    const events: string[] = [];
+    const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
+    const supervisor = new OrderedSupervisor(events);
+    let commitmentCount = 0;
+    const scheduler = new ResearchControlStudyScheduler({
+      commitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          events.push(`commit-${commitmentCount}`);
+          return commitmentCount === 1
+            ? {
+                status: "committed" as const,
+                studyId: "automatic-study-001"
+              }
+            : {
+                status: "existing" as const,
+                studyId: "automatic-study-001"
+              };
+        }
+      },
+      supervisor,
+      pollIntervalMs: 10_000,
+      now: clock.now,
+      sleep: clock.sleep
+    });
+
+    scheduler.start();
+    await clock.waiting();
+    expect(events).toEqual(["commit-1", "supervisor-start-1"]);
+    expect(scheduler.status()).toMatchObject({
+      status: "waiting",
+      lastCommitment: {
+        status: "committed",
+        studyId: "automatic-study-001"
+      }
+    });
+
+    clock.advanceTo("2026-07-13T00:00:10.000Z");
+    await clock.waiting();
+    expect(events).toEqual([
+      "commit-1",
+      "supervisor-start-1",
+      "commit-2",
+      "supervisor-start-2"
+    ]);
+    expect(scheduler.status()).toMatchObject({
+      status: "waiting",
+      lastCommitment: {
+        status: "existing",
+        studyId: "automatic-study-001"
+      }
+    });
+
+    await scheduler.stop();
+  });
+
+  it("fails before discovery when automatic commitment fails", async () => {
+    const supervisor = new ScriptedSupervisor([
+      { status: "caught_up", completedStudyCount: 0 }
+    ]);
+    const error = Object.assign(new Error("injected commitment failure"), {
+      code: "research_control_study_commitment_failed"
+    });
+    const scheduler = new ResearchControlStudyScheduler({
+      commitmentCoordinator: {
+        async ensureCommittedStudy() {
+          throw error;
+        }
+      },
+      supervisor
+    });
+
+    scheduler.start();
+    await scheduler.drain();
+
+    expect(supervisor.startCount).toBe(0);
+    expect(scheduler.status()).toMatchObject({
+      status: "failed",
+      cycleCount: 0,
+      completedStudyCount: 0,
+      errorCode: "research_control_study_commitment_failed",
+      errorMessage: "injected commitment failure"
+    });
+  });
+
   it("returns already_running for duplicate starts", async () => {
     const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
     const scheduler = new ResearchControlStudyScheduler({
@@ -250,6 +336,26 @@ class ScriptedSupervisor {
 
   status(): ResearchControlStudyProcessStatus {
     return structuredClone(this.currentStatus);
+  }
+}
+
+class OrderedSupervisor {
+  private cycleCount = 0;
+
+  constructor(private readonly events: string[]) {}
+
+  start(): "started" {
+    this.cycleCount += 1;
+    this.events.push(`supervisor-start-${this.cycleCount}`);
+    return "started";
+  }
+
+  async drain(): Promise<void> {}
+
+  async stop(): Promise<void> {}
+
+  status(): ResearchControlStudyProcessStatus {
+    return { status: "caught_up", completedStudyCount: 0 };
   }
 }
 

@@ -21,6 +21,8 @@ import { ResearchControlStudyProcessSupervisor } from
   "./research-control-study-process-supervisor";
 import type { ResearchControlStudyExecutionLeaseSessionFactory } from
   "./research-control-study-execution-lease-session";
+import type { ResearchControlStudyCommitmentCoordinatorLifecycle } from
+  "./research-control-study-commitment-coordinator";
 import {
   ResearchControlStudyScheduler,
   type ResearchControlStudySchedulerLifecycle
@@ -64,6 +66,7 @@ export interface CreateResearchControlStudyServerSchedulerInput
   schedulerNow?: () => string;
   schedulerSleep?: (milliseconds: number) => Promise<void>;
   leaseSessionFactory?: ResearchControlStudyExecutionLeaseSessionFactory;
+  commitmentCoordinator?: ResearchControlStudyCommitmentCoordinatorLifecycle;
 }
 
 export async function openResearchControlStudyServerRuntime(
@@ -153,6 +156,9 @@ export function createResearchControlStudyServerScheduler(
   });
   return new ResearchControlStudyScheduler({
     supervisor,
+    ...(input.commitmentCoordinator
+      ? { commitmentCoordinator: input.commitmentCoordinator }
+      : {}),
     ...(input.pollIntervalMs === undefined
       ? {}
       : { pollIntervalMs: input.pollIntervalMs }),

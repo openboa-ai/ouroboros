@@ -226,6 +226,41 @@ describe("ResearchControlStudy server runtime", () => {
       completedStudyCount: 0
     });
   });
+
+  it("passes automatic commitment into the server scheduler cycle", async () => {
+    let commitmentCount = 0;
+    const scheduler = createResearchControlStudyServerScheduler({
+      store: new LocalStore("/tmp/ouroboros-study-commitment-scheduler-store"),
+      marketData: {} as GatewayMarketDataPort,
+      agentFactory: () => agentAdapter(persistedAgent()),
+      createArmSessions: async () => ({}) as never,
+      commitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          return {
+            status: "deferred",
+            reason: "no_trading_promotion"
+          } as const;
+        }
+      },
+      schedulerSleep: () => new Promise(() => undefined)
+    });
+
+    scheduler.start();
+    while (commitmentCount === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await scheduler.stop();
+
+    expect(commitmentCount).toBe(1);
+    expect(scheduler.status()).toMatchObject({
+      status: "stopped",
+      lastCommitment: {
+        status: "deferred",
+        reason: "no_trading_promotion"
+      }
+    });
+  });
 });
 
 function persistedStudy(): ResearchControlStudyRecord {
