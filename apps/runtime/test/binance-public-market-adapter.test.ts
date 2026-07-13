@@ -174,6 +174,92 @@ describe("Binance public market liveness adapter", () => {
     });
   });
 
+  it("reads the exact 30 fully closed public klines before an observation", async () => {
+    const observedAt = "2026-05-16T00:30:30.000Z";
+    const endTime = Date.parse("2026-05-16T00:29:59.999Z");
+    const requests: unknown[] = [];
+    const client = fakeBinancePublicMarketDataClient({
+      klinePayload: closedKlinePayload(endTime)
+    });
+    const original = client.klineCandlestickData.bind(client);
+    client.klineCandlestickData = async (request) => {
+      requests.push(request);
+      return original(request);
+    };
+    const adapter = new BinancePublicMarketSdkAdapter({
+      restBaseUrl: "https://fapi.binance.com/",
+      client,
+      cache: false,
+      webSocket: false
+    });
+
+    const window = await adapter.readPublicKlineWindow({
+      symbol: "BTCUSDT",
+      interval: "1m",
+      limit: 30,
+      observedAt
+    });
+
+    expect(requests).toEqual([{
+      symbol: "BTCUSDT",
+      interval: "1m",
+      limit: 30,
+      endTime
+    }]);
+    expect(window).toMatchObject({
+      symbol: "BTCUSDT",
+      interval: "1m",
+      sample_count: 30,
+      observed_at: observedAt,
+      closed_window_end_at: "2026-05-16T00:29:59.999Z",
+      source: {
+        provider_kind: "binance_production_public_market_data",
+        source_kind: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        endpoint: "/fapi/v1/klines",
+        authority_status: "read_only"
+      },
+      authority_status: "read_only"
+    });
+    expect(window.klines).toHaveLength(30);
+    expect(window.klines[0]).toEqual({
+      open_time: "2026-05-16T00:00:00.000Z",
+      close_time: "2026-05-16T00:00:59.999Z",
+      close_price: "60000"
+    });
+    expect(window.klines[29]?.close_time)
+      .toBe("2026-05-16T00:29:59.999Z");
+  });
+
+  it.each([
+    ["missing sample", (payload: Array<Array<number | string>>) => {
+      payload.pop();
+    }],
+    ["time gap", (payload: Array<Array<number | string>>) => {
+      payload[12]![0] = Number(payload[12]![0]) + 60_000;
+    }],
+    ["future close", (payload: Array<Array<number | string>>) => {
+      payload[29]![6] = Number(payload[29]![6]) + 60_000;
+    }]
+  ])("rejects a public kline window with %s", async (_label, mutate) => {
+    const endTime = Date.parse("2026-05-16T00:29:59.999Z");
+    const payload = closedKlinePayload(endTime);
+    mutate(payload);
+    const adapter = new BinancePublicMarketSdkAdapter({
+      restBaseUrl: "https://fapi.binance.com",
+      client: fakeBinancePublicMarketDataClient({ klinePayload: payload }),
+      cache: false,
+      webSocket: false
+    });
+
+    await expect(adapter.readPublicKlineWindow({
+      symbol: "BTCUSDT",
+      interval: "1m",
+      limit: 30,
+      observedAt: "2026-05-16T00:30:30.000Z"
+    })).rejects.toThrow(/kline window/);
+  });
+
   it("reads public execution snapshots with bookTicker and aggTrade evidence through cache", async () => {
     let now = Date.parse("2026-05-16T00:00:03.000Z");
     const fetchCalls: string[] = [];
@@ -696,7 +782,10 @@ function jsonFetchResponse(payload: unknown) {
   } as Response;
 }
 
-function fakeBinancePublicMarketDataClient(input: { delayMs?: number } = {}) {
+function fakeBinancePublicMarketDataClient(input: {
+  delayMs?: number;
+  klinePayload?: Array<Array<number | string>>;
+} = {}) {
   const calls = {
     checkServerTime: 0,
     exchangeInformation: 0,
@@ -743,10 +832,10 @@ function fakeBinancePublicMarketDataClient(input: { delayMs?: number } = {}) {
         time: 1778889600000
       });
     },
-    async klineCandlestickData() {
+    async klineCandlestickData(_request?: unknown) {
       calls.klineCandlestickData += 1;
       await delay(input.delayMs);
-      return response([
+      return response(input.klinePayload ?? [
         [1778887860000, "64000", "64100", "63900", "64000", "10"],
         [1778887920000, "64100", "64200", "64000", "64100", "10"],
         [1778887980000, "64200", "64300", "64100", "64200", "10"],
@@ -757,6 +846,28 @@ function fakeBinancePublicMarketDataClient(input: { delayMs?: number } = {}) {
     }
   };
   return client as BinancePublicMarketDataClient & { calls: typeof calls };
+}
+
+function closedKlinePayload(endTime: number): Array<Array<number | string>> {
+  const firstOpen = endTime + 1 - 30 * 60_000;
+  return Array.from({ length: 30 }, (_, index) => {
+    const openTime = firstOpen + index * 60_000;
+    const close = String(60_000 + index);
+    return [
+      openTime,
+      close,
+      close,
+      close,
+      close,
+      "1",
+      openTime + 59_999,
+      "1",
+      1,
+      "1",
+      "1",
+      "0"
+    ];
+  });
 }
 
 async function delay(ms = 0): Promise<void> {

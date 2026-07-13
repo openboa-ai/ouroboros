@@ -11,6 +11,7 @@ export * from "./candidate/research-control-campaign-outcome";
 export * from "./candidate/research-control-study";
 export * from "./candidate/research-control-study-outcome";
 export * from "./candidate/research-allocation-policy-decision";
+export * from "./candidate/research-generalization-market-condition";
 export * from "./candidate/evaluation";
 export * from "./candidate/materialization";
 export * from "./controllers/operator";

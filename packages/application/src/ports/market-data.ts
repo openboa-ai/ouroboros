@@ -1,7 +1,8 @@
 import type {
   PaperTradingMarketDataSourceKind,
   PaperTradingPublicExecutionSnapshotSummary,
-  PublicMarketLivenessSurfaceRecord
+  PublicMarketLivenessSurfaceRecord,
+  ResearchGeneralizationPublicKlineWindowInput
 } from "@ouroboros/domain";
 import type { MarketSnapshot } from "../trading/research/types";
 
@@ -19,6 +20,12 @@ export interface GatewayMarketDataPort {
   required_endpoints: readonly string[];
   authority_status: "read_only";
   readMarketSnapshot(input?: { observedAt?: string }): Promise<MarketSnapshot>;
+  readPublicKlineWindow?(input: {
+    symbol: "BTCUSDT";
+    interval: "1m";
+    limit: 30;
+    observedAt: string;
+  }): Promise<ResearchGeneralizationPublicKlineWindowInput>;
   readPublicMarketLivenessSurface(input?: { observedAt?: string }): Promise<PublicMarketLivenessSurfaceRecord>;
   readPublicExecutionSnapshot(input?: { observedAt?: string }): Promise<PaperTradingPublicExecutionSnapshotSummary>;
 }

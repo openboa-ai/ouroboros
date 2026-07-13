@@ -7602,6 +7602,71 @@ export interface ResearchControlStudyCondition {
   condition_digest: string;
 }
 
+export interface ResearchGeneralizationPublicKline {
+  open_time: string;
+  close_time: string;
+  close_price: string;
+}
+
+export interface ResearchGeneralizationPublicMarketSource {
+  provider_kind: "binance_production_public_market_data";
+  source_kind: "binance_production_public_rest";
+  rest_base_url: string;
+  endpoint: "/fapi/v1/klines";
+  authority_status: "read_only";
+}
+
+export interface ResearchGeneralizationPublicKlineWindowInput {
+  symbol: "BTCUSDT";
+  interval: "1m";
+  sample_count: 30;
+  observed_at: string;
+  closed_window_end_at: string;
+  source: ResearchGeneralizationPublicMarketSource;
+  klines: ResearchGeneralizationPublicKline[];
+  authority_status: "read_only";
+}
+
+export interface ResearchGeneralizationPublicKlineWindow
+extends ResearchGeneralizationPublicKlineWindowInput {
+  window_digest: string;
+}
+
+export interface ResearchGeneralizationMarketClassifierPolicy {
+  policy_version: "btc_usdt_closed_kline_direction_v1";
+  symbol: "BTCUSDT";
+  interval: "1m";
+  sample_count: 30;
+  fast_mean_sample_count: 5;
+  slow_mean_sample_count: 30;
+  directional_gap_ratio_threshold: 0.00005;
+  observation_boundary_rule: "last_fully_closed_minute_before_observation";
+  missing_data_rule: "no_condition_block";
+  classifier_digest: string;
+}
+
+export type ResearchGeneralizationMarketConditionBlock =
+  | "long"
+  | "short"
+  | "flat";
+
+export interface ResearchGeneralizationMarketCondition {
+  classifier_policy: ResearchGeneralizationMarketClassifierPolicy;
+  public_kline_window: ResearchGeneralizationPublicKlineWindow;
+  fast_mean: number;
+  slow_mean: number;
+  directional_gap_ratio: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  classified_at: string;
+  classification_digest: string;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "public_evidence_only";
+}
+
 export interface ResearchControlStudyReplication {
   replication_index: number;
   campaign_idempotency_key: string;
@@ -7864,6 +7929,27 @@ export function researchControlStudyConditionDigestInput(
   condition: ResearchControlStudyCondition
 ): string {
   const { condition_digest: _digest, ...payload } = condition;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationPublicKlineWindowDigestInput(
+  window: ResearchGeneralizationPublicKlineWindow
+): string {
+  const { window_digest: _digest, ...payload } = window;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationMarketClassifierPolicyDigestInput(
+  policy: ResearchGeneralizationMarketClassifierPolicy
+): string {
+  const { classifier_digest: _digest, ...payload } = policy;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationMarketConditionDigestInput(
+  condition: ResearchGeneralizationMarketCondition
+): string {
+  const { classification_digest: _digest, ...payload } = condition;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
