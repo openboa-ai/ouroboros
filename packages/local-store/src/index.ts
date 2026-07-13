@@ -109,6 +109,9 @@ import {
   researchControlStudyHasRuntimeShape,
   researchControlStudyOutcomeDigestInput,
   researchControlStudyOutcomeHasRuntimeShape,
+  researchGeneralizationMarketClassifierPolicyDigestInput,
+  researchGeneralizationProtocolDigestInput,
+  researchGeneralizationProtocolHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
   researchWorkerCheckpointDigestInput,
@@ -173,6 +176,7 @@ import type {
   ResearchControlStudyCondition,
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord,
+  ResearchGeneralizationProtocolRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
   ResearchWorkerRecord,
@@ -471,6 +475,15 @@ export type LocalStoreErrorCode =
   | "research_control_study_reload_failed"
   | "research_control_study_campaign_ownership_ambiguous"
   | "research_control_study_campaign_mismatch"
+  | "invalid_research_generalization_protocol_input"
+  | "research_generalization_protocol_allocation_digest_mismatch"
+  | "research_generalization_protocol_paper_digest_mismatch"
+  | "research_generalization_protocol_classifier_digest_mismatch"
+  | "research_generalization_protocol_digest_mismatch"
+  | "research_generalization_protocol_identity_mismatch"
+  | "research_generalization_protocol_conflict"
+  | "research_generalization_protocol_study_already_exists"
+  | "research_generalization_protocol_reload_failed"
   | "invalid_research_control_study_outcome_input"
   | "research_control_study_outcome_digest_mismatch"
   | "research_control_study_outcome_identity_mismatch"
@@ -779,6 +792,7 @@ type Collection =
   | "research-control-campaign-outcomes"
   | "research-control-studies"
   | "research-control-study-outcomes"
+  | "research-generalization-protocols"
   | "research-allocation-policy-decisions"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
@@ -3654,6 +3668,161 @@ export class LocalStore {
       throw new LocalStoreError(
         "candidate_arena_research_allocation_reload_failed",
         "persisted CandidateArena research allocation is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  async recordResearchGeneralizationProtocol(
+    protocol: ResearchGeneralizationProtocolRecord
+  ): Promise<ResearchGeneralizationProtocolRecord> {
+    if (!researchGeneralizationProtocolHasRuntimeShape(protocol)) {
+      throw new LocalStoreError(
+        "invalid_research_generalization_protocol_input",
+        "invalid ResearchGeneralizationProtocol input"
+      );
+    }
+    if (protocol.target_allocation_policy_digest !==
+      comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(
+          protocol.target_allocation_policy
+        )
+      )) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_allocation_digest_mismatch",
+        "ResearchGeneralizationProtocol allocation digest does not match"
+      );
+    }
+    if (protocol.paper_evaluation_protocol.protocol_digest !==
+      comparisonExactRecordDigest(
+        researchControlCampaignPaperEvaluationProtocolDigestInput(
+          protocol.paper_evaluation_protocol
+        )
+      )) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_paper_digest_mismatch",
+        "ResearchGeneralizationProtocol paper protocol digest does not match"
+      );
+    }
+    if (protocol.market_classifier_policy.classifier_digest !==
+      comparisonExactRecordDigest(
+        researchGeneralizationMarketClassifierPolicyDigestInput(
+          protocol.market_classifier_policy
+        )
+      )) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_classifier_digest_mismatch",
+        "ResearchGeneralizationProtocol classifier digest does not match"
+      );
+    }
+    if (protocol.protocol_digest !== comparisonExactRecordDigest(
+      researchGeneralizationProtocolDigestInput(protocol)
+    )) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_digest_mismatch",
+        "ResearchGeneralizationProtocol digest does not match its content"
+      );
+    }
+    if (!researchGeneralizationProtocolHasDeterministicIdentities(protocol)) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_identity_mismatch",
+        "ResearchGeneralizationProtocol identities are not deterministic"
+      );
+    }
+    const existing = await this.getResearchGeneralizationProtocol(
+      protocol.research_generalization_protocol_id
+    );
+    if (existing) {
+      if (!sameJson(existing, protocol)) {
+        throw new LocalStoreError(
+          "research_generalization_protocol_conflict",
+          "ResearchGeneralizationProtocol is append-only"
+        );
+      }
+      return existing;
+    }
+    for (const slot of protocol.study_slots) {
+      if (await this.getResearchControlStudy(slot.study_ref.id)) {
+        throw new LocalStoreError(
+          "research_generalization_protocol_study_already_exists",
+          "ResearchGeneralizationProtocol must precede every planned study"
+        );
+      }
+    }
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-generalization-protocols",
+      protocol.research_generalization_protocol_id
+    ), protocol);
+    if (publication === "exists") {
+      const winner = await this.getResearchGeneralizationProtocol(
+        protocol.research_generalization_protocol_id
+      );
+      if (!winner || !sameJson(winner, protocol)) {
+        throw new LocalStoreError(
+          "research_generalization_protocol_conflict",
+          "ResearchGeneralizationProtocol is append-only"
+        );
+      }
+      return winner;
+    }
+    return protocol;
+  }
+
+  async getResearchGeneralizationProtocol(
+    protocolId: string
+  ): Promise<ResearchGeneralizationProtocolRecord | undefined> {
+    const protocol = await this.readOptionalRecord<unknown>(
+      "research-generalization-protocols",
+      protocolId
+    );
+    return protocol === undefined
+      ? undefined
+      : this.assertPersistedResearchGeneralizationProtocol(protocol);
+  }
+
+  async listResearchGeneralizationProtocols(): Promise<
+    ResearchGeneralizationProtocolRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "research-generalization-protocols"
+    ))
+      .map((protocol) =>
+        this.assertPersistedResearchGeneralizationProtocol(protocol)
+      )
+      .sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_generalization_protocol_id.localeCompare(
+          right.research_generalization_protocol_id
+        )
+      );
+  }
+
+  private assertPersistedResearchGeneralizationProtocol(
+    value: unknown
+  ): ResearchGeneralizationProtocolRecord {
+    if (!researchGeneralizationProtocolHasRuntimeShape(value) ||
+      value.target_allocation_policy_digest !==
+        comparisonExactRecordDigest(
+          paperTradingComparisonPersistedRecordDigestInput(
+            value.target_allocation_policy
+          )
+        ) ||
+      value.paper_evaluation_protocol.protocol_digest !==
+        comparisonExactRecordDigest(
+          researchControlCampaignPaperEvaluationProtocolDigestInput(
+            value.paper_evaluation_protocol
+          )
+        ) || value.market_classifier_policy.classifier_digest !==
+        comparisonExactRecordDigest(
+          researchGeneralizationMarketClassifierPolicyDigestInput(
+            value.market_classifier_policy
+          )
+        ) || value.protocol_digest !== comparisonExactRecordDigest(
+          researchGeneralizationProtocolDigestInput(value)
+        ) || !researchGeneralizationProtocolHasDeterministicIdentities(value)) {
+      throw new LocalStoreError(
+        "research_generalization_protocol_reload_failed",
+        "persisted ResearchGeneralizationProtocol is unreadable or corrupt"
       );
     }
     return value;
@@ -20134,6 +20303,32 @@ function researchControlStudyConditionForCampaign(
 function researchControlCampaignIdForStudyKey(key: string): string {
   const canonical = exactStudyKey(key);
   return `research-control-campaign-${safeStudyId(canonical, 48)}-${
+    createHash("sha256").update(canonical).digest("hex").slice(0, 12)
+  }`;
+}
+
+function researchGeneralizationProtocolHasDeterministicIdentities(
+  protocol: ResearchGeneralizationProtocolRecord
+): boolean {
+  if (protocol.research_generalization_protocol_id !==
+    researchGeneralizationProtocolIdForKey(protocol.idempotency_key)) {
+    return false;
+  }
+  return protocol.study_slots.every((slot) => {
+    const expectedStudyKey = `${protocol.idempotency_key}:${
+      slot.condition_block
+    }:${slot.condition_block_study_index}`;
+    return slot.study_idempotency_key === expectedStudyKey &&
+      slot.study_ref.id === researchControlStudyIdForKey(expectedStudyKey) &&
+      slot.replication_idempotency_keys.every((key, index) =>
+        key === `${expectedStudyKey}:replication:${index + 1}`
+      );
+  });
+}
+
+function researchGeneralizationProtocolIdForKey(key: string): string {
+  const canonical = exactStudyKey(key);
+  return `research-generalization-protocol-${safeStudyId(canonical, 48)}-${
     createHash("sha256").update(canonical).digest("hex").slice(0, 12)
   }`;
 }

@@ -29,6 +29,7 @@ import type {
   ResearchControlCampaignReportRecord,
   ResearchControlStudyRecord,
   ResearchControlStudyOutcomeRecord,
+  ResearchGeneralizationProtocolRecord,
   ResearchAllocationPolicyDecisionRecord,
   ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
@@ -247,6 +248,15 @@ export interface OuroborosStorePort {
   ): Promise<ResearchControlStudyOutcomeRecord | undefined>;
   listResearchControlStudyOutcomes(): Promise<
     ResearchControlStudyOutcomeRecord[]
+  >;
+  recordResearchGeneralizationProtocol(
+    protocol: ResearchGeneralizationProtocolRecord
+  ): Promise<ResearchGeneralizationProtocolRecord>;
+  getResearchGeneralizationProtocol(
+    protocolId: string
+  ): Promise<ResearchGeneralizationProtocolRecord | undefined>;
+  listResearchGeneralizationProtocols(): Promise<
+    ResearchGeneralizationProtocolRecord[]
   >;
   recordResearchAllocationPolicyDecision(
     decision: ResearchAllocationPolicyDecisionRecord

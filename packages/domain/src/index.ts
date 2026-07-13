@@ -7667,6 +7667,87 @@ export interface ResearchGeneralizationMarketCondition {
   authority_status: "public_evidence_only";
 }
 
+export interface ResearchGeneralizationProtocolConditionBlock {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  required_study_count: 2;
+}
+
+export interface ResearchGeneralizationProtocolStudySlot {
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  study_idempotency_key: string;
+  study_ref: Ref;
+  replication_idempotency_keys: string[];
+}
+
+export interface ResearchGeneralizationProtocolTimingPolicy {
+  policy_version: "research_generalization_timing_v1";
+  minimum_study_commitment_interval_ms: 86_400_000;
+  maximum_collection_duration_ms: 7_776_000_000;
+  collection_deadline_at: string;
+  expiry_policy: "close_with_missing_slots";
+}
+
+export interface ResearchGeneralizationProtocolStudyPolicy {
+  policy_version: "research_generalization_study_v1";
+  replication_count_per_study: 6;
+  tick_count_per_arm: 1;
+  maximum_baseline_regular_file_count: 10_000;
+  maximum_baseline_total_bytes: 1_000_000_000;
+  source_baseline_reuse_policy: "unique_within_condition_block";
+}
+
+export interface ResearchGeneralizationProtocolAnalysisPolicy {
+  policy_version: "equal_block_exact_sign_test_v1";
+  primary_estimand:
+    "equal_block_mean_adaptive_minus_static_qualified_discovery_rate";
+  block_weighting: "equal_precommitted_condition_blocks";
+  significance_method: "two_sided_exact_sign_test";
+  alpha: 0.05;
+  minimum_terminal_study_count: 6;
+  minimum_non_tied_study_count: 6;
+  minimum_distinct_baseline_count: 3;
+  tie_policy: "exclude_from_sign_test_include_in_mean";
+  missing_block_policy: "insufficient_generalization_evidence";
+  harmful_block_policy: "non_positive_block_blocks_support";
+}
+
+export interface ResearchGeneralizationProtocolRecord extends BaseRecord {
+  record_kind: "research_generalization_protocol";
+  research_generalization_protocol_id: string;
+  idempotency_key: string;
+  hypothesis:
+    "adaptive_allocation_effect_generalizes_across_baselines_and_market_conditions";
+  target_allocation_policy: CandidateArenaResearchAllocationPolicy;
+  target_allocation_policy_digest: string;
+  research_agent: ResearchControlCampaignAgentIdentity;
+  paper_evaluation_protocol: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  >;
+  campaign_policy: ResearchControlCampaignPolicy;
+  market_classifier_policy: ResearchGeneralizationMarketClassifierPolicy;
+  condition_blocks: [
+    ResearchGeneralizationProtocolConditionBlock,
+    ResearchGeneralizationProtocolConditionBlock,
+    ResearchGeneralizationProtocolConditionBlock
+  ];
+  study_slots: ResearchGeneralizationProtocolStudySlot[];
+  timing_policy: ResearchGeneralizationProtocolTimingPolicy;
+  study_policy: ResearchGeneralizationProtocolStudyPolicy;
+  analysis_policy: ResearchGeneralizationProtocolAnalysisPolicy;
+  committed_at: string;
+  protocol_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
 export interface ResearchControlStudyReplication {
   replication_index: number;
   campaign_idempotency_key: string;
@@ -7953,6 +8034,19 @@ export function researchGeneralizationMarketConditionDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function researchGeneralizationProtocolDigestInput(
+  record: ResearchGeneralizationProtocolRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_protocol_id: _id,
+    protocol_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export function researchControlStudyDigestInput(
   record: ResearchControlStudyRecord
 ): string {
@@ -8149,6 +8243,98 @@ export function researchAllocationPolicyDecisionDigestInput(
     ...payload
   } = record;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationProtocolHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_protocol_id",
+    "idempotency_key",
+    "hypothesis",
+    "target_allocation_policy",
+    "target_allocation_policy_digest",
+    "research_agent",
+    "paper_evaluation_protocol",
+    "campaign_policy",
+    "market_classifier_policy",
+    "condition_blocks",
+    "study_slots",
+    "timing_policy",
+    "study_policy",
+    "analysis_policy",
+    "committed_at",
+    "protocol_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_protocol" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_protocol_id) ||
+    !comparisonString(value.idempotency_key) || value.hypothesis !==
+      "adaptive_allocation_effect_generalizes_across_baselines_and_market_conditions" ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(
+      value.target_allocation_policy
+    ) || !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !researchControlCampaignAgentHasRuntimeShape(value.research_agent) ||
+    !researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
+      value.paper_evaluation_protocol
+    ) || value.paper_evaluation_protocol.protocol_status !== "bound" ||
+    !researchControlCampaignPolicyHasRuntimeShape(value.campaign_policy) ||
+    !researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+      value.market_classifier_policy
+    ) || !researchGeneralizationProtocolConditionBlocksHaveRuntimeShape(
+      value.condition_blocks
+    ) || !Array.isArray(value.study_slots) ||
+    value.study_slots.length !== 6 ||
+    !researchGeneralizationProtocolTimingPolicyHasRuntimeShape(
+      value.timing_policy
+    ) || !researchGeneralizationProtocolStudyPolicyHasRuntimeShape(
+      value.study_policy
+    ) || !researchGeneralizationProtocolAnalysisPolicyHasRuntimeShape(
+      value.analysis_policy
+    ) || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const protocol = value as unknown as ResearchGeneralizationProtocolRecord;
+  if (Date.parse(protocol.timing_policy.collection_deadline_at) !==
+      Date.parse(protocol.committed_at) +
+        protocol.timing_policy.maximum_collection_duration_ms ||
+    protocol.campaign_policy.tick_count_per_arm !==
+      protocol.study_policy.tick_count_per_arm ||
+    protocol.campaign_policy.maximum_baseline_regular_file_count !==
+      protocol.study_policy.maximum_baseline_regular_file_count ||
+    protocol.campaign_policy.maximum_baseline_total_bytes !==
+      protocol.study_policy.maximum_baseline_total_bytes ||
+    !protocol.study_slots.every((slot, index) =>
+      researchGeneralizationProtocolStudySlotHasRuntimeShape(slot, index + 1)
+    )) {
+    return false;
+  }
+  return candidateArenaAllocationStringsUnique(
+    protocol.study_slots.map((slot) => slot.study_idempotency_key)
+  ) && candidateArenaAllocationStringsUnique(
+    protocol.study_slots.map((slot) => slot.study_ref.id)
+  ) && candidateArenaAllocationStringsUnique(
+    protocol.study_slots.flatMap((slot) =>
+      slot.replication_idempotency_keys
+    )
+  );
 }
 
 export function researchControlStudyHasRuntimeShape(
@@ -8468,6 +8654,143 @@ function researchAllocationPolicyDecisionPolicyHasRuntimeShape(
     value.required_policy_decision_eligibility ===
       "eligible_for_separate_policy_decision" &&
     value.application_scope === "future_uncontrolled_candidate_arena_ticks";
+}
+
+function researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationMarketClassifierPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "symbol",
+    "interval",
+    "sample_count",
+    "fast_mean_sample_count",
+    "slow_mean_sample_count",
+    "directional_gap_ratio_threshold",
+    "observation_boundary_rule",
+    "missing_data_rule",
+    "classifier_digest"
+  ]) && value.policy_version === "btc_usdt_closed_kline_direction_v1" &&
+    value.symbol === "BTCUSDT" && value.interval === "1m" &&
+    value.sample_count === 30 && value.fast_mean_sample_count === 5 &&
+    value.slow_mean_sample_count === 30 &&
+    value.directional_gap_ratio_threshold === 0.00005 &&
+    value.observation_boundary_rule ===
+      "last_fully_closed_minute_before_observation" &&
+    value.missing_data_rule === "no_condition_block" &&
+    researchControlCampaignSha256Digest(value.classifier_digest);
+}
+
+function researchGeneralizationProtocolConditionBlocksHaveRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolRecord["condition_blocks"] {
+  const blocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  return Array.isArray(value) && value.length === blocks.length &&
+    value.every((block, index) =>
+      comparisonObject(block) && comparisonHasExactKeys(block, [
+        "condition_block",
+        "required_study_count"
+      ]) && block.condition_block === blocks[index] &&
+      block.required_study_count === 2
+    );
+}
+
+function researchGeneralizationProtocolStudySlotHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is ResearchGeneralizationProtocolStudySlot {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "study_idempotency_key",
+    "study_ref",
+    "replication_idempotency_keys"
+  ]) || value.slot_index !== slotIndex ||
+    !comparisonString(value.study_idempotency_key) ||
+    !comparisonRef(value.study_ref, "research_control_study") ||
+    !Array.isArray(value.replication_idempotency_keys) ||
+    value.replication_idempotency_keys.length !== 6 ||
+    !value.replication_idempotency_keys.every(comparisonString) ||
+    !candidateArenaAllocationStringsUnique(
+      value.replication_idempotency_keys as string[]
+    )) {
+    return false;
+  }
+  const blockIndex = Math.floor((slotIndex - 1) / 2);
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  return value.condition_block === expectedBlocks[blockIndex] &&
+    value.condition_block_study_index === ((slotIndex - 1) % 2) + 1;
+}
+
+function researchGeneralizationProtocolTimingPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolTimingPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "minimum_study_commitment_interval_ms",
+    "maximum_collection_duration_ms",
+    "collection_deadline_at",
+    "expiry_policy"
+  ]) && value.policy_version === "research_generalization_timing_v1" &&
+    value.minimum_study_commitment_interval_ms === 86_400_000 &&
+    value.maximum_collection_duration_ms === 7_776_000_000 &&
+    comparisonIso(value.collection_deadline_at) &&
+    value.expiry_policy === "close_with_missing_slots";
+}
+
+function researchGeneralizationProtocolStudyPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolStudyPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "replication_count_per_study",
+    "tick_count_per_arm",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes",
+    "source_baseline_reuse_policy"
+  ]) && value.policy_version === "research_generalization_study_v1" &&
+    value.replication_count_per_study === 6 &&
+    value.tick_count_per_arm === 1 &&
+    value.maximum_baseline_regular_file_count === 10_000 &&
+    value.maximum_baseline_total_bytes === 1_000_000_000 &&
+    value.source_baseline_reuse_policy === "unique_within_condition_block";
+}
+
+function researchGeneralizationProtocolAnalysisPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolAnalysisPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "primary_estimand",
+    "block_weighting",
+    "significance_method",
+    "alpha",
+    "minimum_terminal_study_count",
+    "minimum_non_tied_study_count",
+    "minimum_distinct_baseline_count",
+    "tie_policy",
+    "missing_block_policy",
+    "harmful_block_policy"
+  ]) && value.policy_version === "equal_block_exact_sign_test_v1" &&
+    value.primary_estimand ===
+      "equal_block_mean_adaptive_minus_static_qualified_discovery_rate" &&
+    value.block_weighting === "equal_precommitted_condition_blocks" &&
+    value.significance_method === "two_sided_exact_sign_test" &&
+    value.alpha === 0.05 && value.minimum_terminal_study_count === 6 &&
+    value.minimum_non_tied_study_count === 6 &&
+    value.minimum_distinct_baseline_count === 3 &&
+    value.tie_policy === "exclude_from_sign_test_include_in_mean" &&
+    value.missing_block_policy === "insufficient_generalization_evidence" &&
+    value.harmful_block_policy === "non_positive_block_blocks_support";
 }
 
 function researchControlStudyConditionHasRuntimeShape(
