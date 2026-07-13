@@ -340,6 +340,7 @@ function resolveRuntimeArmOpener(input: {
 
 export function createResearchControlStudyRuntime(input: {
   store: LocalStore;
+  beforeAdvance?: () => Promise<void>;
   campaign: Omit<
     RunResearchControlCampaignToOutcomeInput,
     "store" | "idempotencyKey"
@@ -356,7 +357,10 @@ export function createResearchControlStudyRuntime(input: {
       return { campaign: result.campaign, outcome: result.outcome };
     }
   });
-  const runner = new ResearchControlStudyRunner({ executor });
+  const runner = new ResearchControlStudyRunner({
+    executor,
+    ...(input.beforeAdvance ? { beforeAdvance: input.beforeAdvance } : {})
+  });
   return { executor, runner };
 }
 

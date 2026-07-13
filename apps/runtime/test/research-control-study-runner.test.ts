@@ -62,6 +62,57 @@ describe("ResearchControlStudyRunner", () => {
     expect(runner.status().status).toBe("completed");
   });
 
+  it("guards immediately before every executor advance", async () => {
+    const events: string[] = [];
+    const steps = [campaignStep(1), completeStep()];
+    const runner = new ResearchControlStudyRunner({
+      beforeAdvance: async () => { events.push("guard"); },
+      executor: {
+        async advance() {
+          events.push("advance");
+          return steps.shift()!;
+        }
+      }
+    });
+
+    runner.start({ studyId: "study-guarded" });
+    await runner.drain();
+
+    expect(events).toEqual(["guard", "advance", "guard", "advance"]);
+    expect(runner.status().status).toBe("completed");
+  });
+
+  it("records guard loss before another executor effect", async () => {
+    const events: string[] = [];
+    let guardCount = 0;
+    const runner = new ResearchControlStudyRunner({
+      beforeAdvance: async () => {
+        guardCount += 1;
+        events.push(`guard-${guardCount}`);
+        if (guardCount === 2) {
+          throw Object.assign(new Error("lease lost"), {
+            code: "research_control_study_execution_lease_lost"
+          });
+        }
+      },
+      executor: {
+        async advance() {
+          events.push("advance");
+          return campaignStep(1);
+        }
+      }
+    });
+
+    runner.start({ studyId: "study-guard-lost" });
+    await runner.drain();
+
+    expect(events).toEqual(["guard-1", "advance", "guard-2"]);
+    expect(runner.status()).toMatchObject({
+      status: "failed",
+      errorCode: "research_control_study_execution_lease_lost"
+    });
+  });
+
   it("rejects a second active study", async () => {
     const pending = deferred<ReturnType<typeof campaignStep>>();
     const runner = new ResearchControlStudyRunner({

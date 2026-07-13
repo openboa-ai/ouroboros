@@ -35,6 +35,7 @@ export class ResearchControlStudyRunner {
 
   constructor(private readonly options: {
     executor: Pick<ResearchControlStudyExecutor, "advance">;
+    beforeAdvance?: () => Promise<void>;
   }) {}
 
   start(input: { studyId: string }): void {
@@ -69,6 +70,14 @@ export class ResearchControlStudyRunner {
     let latestStep: ResearchControlStudyExecutorStep | undefined;
     try {
       while (!this.stopRequested) {
+        await this.options.beforeAdvance?.();
+        if (this.stopRequested) {
+          this.currentStatus = {
+            status: "stopped",
+            ...(latestStep ? { latestStep } : {})
+          };
+          return;
+        }
         latestStep = await this.options.executor.advance({ studyId });
         if (this.stopRequested) {
           this.currentStatus = { status: "stopped", latestStep };

@@ -5,6 +5,10 @@ import type { ResearchControlStudyRunner } from
   "./research-control-study-runner";
 import { discoverResearchControlStudyProcessQueue } from
   "./research-control-study-process-discovery";
+import type {
+  ResearchControlStudyExecutionLeaseSessionFactory,
+  ResearchControlStudyExecutionLeaseSessionError
+} from "./research-control-study-execution-lease-session";
 
 export type ResearchControlStudyProcessStatus =
   | { status: "idle" }
@@ -17,6 +21,13 @@ export type ResearchControlStudyProcessStatus =
   | {
       status: "caught_up";
       completedStudyCount: number;
+    }
+  | {
+      status: "contended";
+      completedStudyCount: number;
+      studyId: string;
+      reason: "owner_alive" | "owner_liveness_unknown" | "transition";
+      leaseExpiresAt: string;
     }
   | {
       status: "stopped";
@@ -68,8 +79,10 @@ export class ResearchControlStudyProcessSupervisor {
 
   constructor(private readonly options: {
     store: ResearchControlStudyProcessStore;
+    leaseSessionFactory?: ResearchControlStudyExecutionLeaseSessionFactory;
     openStudy(
-      study: ResearchControlStudyRecord
+      study: ResearchControlStudyRecord,
+      ownership?: { guard(): Promise<void> }
     ): ResearchControlStudyProcessRuntime |
       Promise<ResearchControlStudyProcessRuntime>;
   }) {}
@@ -126,57 +139,24 @@ export class ResearchControlStudyProcessSupervisor {
           return;
         }
         currentStudyId = study.research_control_study_id;
-        const runtime = await this.openStudy(study);
-        if (this.stopRequested) {
+        const result = await this.runStudy(study, completedStudyCount);
+        if (result.status === "contended") {
           this.currentStatus = {
-            status: "stopped",
-            completedStudyCount,
-            studyId: currentStudyId
-          };
-          return;
-        }
-        this.active = { study, runtime };
-        this.currentStatus = {
-          status: "running",
-          studyId: currentStudyId,
-          completedStudyCount
-        };
-        runtime.runner.start({ studyId: currentStudyId });
-        await runtime.runner.drain();
-        const runnerStatus = runtime.runner.status();
-        this.active = undefined;
-        if (runnerStatus.status === "failed") {
-          this.currentStatus = {
-            status: "failed",
+            status: "contended",
             completedStudyCount,
             studyId: currentStudyId,
-            errorCode: runnerStatus.errorCode,
-            errorMessage: runnerStatus.errorMessage
+            reason: result.reason,
+            leaseExpiresAt: result.leaseExpiresAt
           };
           return;
         }
-        if (this.stopRequested) {
+        if (result.status === "stopped") {
           this.currentStatus = {
             status: "stopped",
             completedStudyCount,
             studyId: currentStudyId
           };
           return;
-        }
-        if (runnerStatus.status !== "completed") {
-          throw new ResearchControlStudyProcessError(
-            "research_control_study_process_runner_invalid",
-            `ResearchControlStudy runner ended as ${runnerStatus.status}.`
-          );
-        }
-        const reloadedQueue = await this.discover();
-        if (reloadedQueue.some((candidate) =>
-          candidate.research_control_study_id === currentStudyId
-        )) {
-          throw new ResearchControlStudyProcessError(
-            "research_control_study_process_persistence_conflict",
-            "Completed ResearchControlStudy remains pending after exact reload."
-          );
         }
         completedStudyCount += 1;
         currentStudyId = undefined;
@@ -193,6 +173,127 @@ export class ResearchControlStudyProcessSupervisor {
     }
   }
 
+  private async runStudy(
+    study: ResearchControlStudyRecord,
+    completedStudyCount: number
+  ): Promise<
+    | { status: "completed" }
+    | { status: "stopped" }
+    | {
+        status: "contended";
+        reason: "owner_alive" | "owner_liveness_unknown" | "transition";
+        leaseExpiresAt: string;
+      }
+  > {
+    const claim = this.options.leaseSessionFactory
+      ? await this.options.leaseSessionFactory.acquire(structuredClone(study))
+      : undefined;
+    if (claim?.status === "held") {
+      return {
+        status: "contended",
+        reason: claim.reason,
+        leaseExpiresAt: claim.lease.expires_at
+      };
+    }
+    const session = claim?.status === "acquired" ? claim.session : undefined;
+    let runtime: ResearchControlStudyProcessRuntime | undefined;
+    let leaseLoss: ResearchControlStudyExecutionLeaseSessionError | undefined;
+    let leaseStopPromise: Promise<void> | undefined;
+    let result: { status: "completed" } | { status: "stopped" } | undefined;
+    let failure: unknown;
+    try {
+      if (session) {
+        const started = session.start((error) => {
+          if (leaseLoss) return;
+          leaseLoss = error;
+          if (runtime) {
+            try {
+              leaseStopPromise = Promise.resolve(runtime.runner.stop())
+                .catch(() => undefined);
+            } catch {
+              leaseStopPromise = Promise.resolve();
+            }
+          }
+        });
+        if (started !== "started") {
+          throw new ResearchControlStudyProcessError(
+            "research_control_study_process_runner_invalid",
+            "ResearchControlStudy lease session was already running."
+          );
+        }
+      }
+      runtime = await this.openStudy(
+        study,
+        session ? { guard: () => session.guard() } : undefined
+      );
+      if (leaseLoss) throw leaseLoss;
+      if (this.stopRequested) {
+        result = { status: "stopped" };
+      } else {
+        this.active = { study, runtime };
+        this.currentStatus = {
+          status: "running",
+          studyId: study.research_control_study_id,
+          completedStudyCount
+        };
+        runtime.runner.start({ studyId: study.research_control_study_id });
+        await runtime.runner.drain();
+        await leaseStopPromise;
+        const runnerStatus = runtime.runner.status();
+        this.active = undefined;
+        if (leaseLoss) throw leaseLoss;
+        if (this.stopRequested) {
+          result = { status: "stopped" };
+        } else if (runnerStatus.status === "failed") {
+          throw runnerFailure(
+            runnerStatus.errorCode,
+            runnerStatus.errorMessage
+          );
+        } else if (runnerStatus.status !== "completed") {
+          throw new ResearchControlStudyProcessError(
+            "research_control_study_process_runner_invalid",
+            `ResearchControlStudy runner ended as ${runnerStatus.status}.`
+          );
+        } else {
+          const reloadedQueue = await this.discover();
+          if (reloadedQueue.some((candidate) =>
+            candidate.research_control_study_id ===
+              study.research_control_study_id
+          )) {
+            throw new ResearchControlStudyProcessError(
+              "research_control_study_process_persistence_conflict",
+              "Completed ResearchControlStudy remains pending after exact reload."
+            );
+          }
+          result = { status: "completed" };
+        }
+      }
+    } catch (error) {
+      failure = error;
+    }
+    this.active = undefined;
+    if (session) {
+      try {
+        await session.stopAndRelease();
+      } catch (error) {
+        if (!failure || stableErrorCode(failure) !==
+            "research_control_study_execution_lease_lost" ||
+          stableErrorCode(error) !==
+            "research_control_study_execution_lease_lost") {
+          failure = error;
+        }
+      }
+    }
+    if (failure) throw failure;
+    if (!result) {
+      throw new ResearchControlStudyProcessError(
+        "research_control_study_process_runner_invalid",
+        "ResearchControlStudy process produced no terminal result."
+      );
+    }
+    return result;
+  }
+
   private async discover(): Promise<ResearchControlStudyRecord[]> {
     const [studies, outcomes] = await Promise.all([
       this.options.store.listResearchControlStudies(),
@@ -202,10 +303,14 @@ export class ResearchControlStudyProcessSupervisor {
   }
 
   private async openStudy(
-    study: ResearchControlStudyRecord
+    study: ResearchControlStudyRecord,
+    ownership?: { guard(): Promise<void> }
   ): Promise<ResearchControlStudyProcessRuntime> {
     try {
-      const runtime = await this.options.openStudy(structuredClone(study));
+      const runtime = await this.options.openStudy(
+        structuredClone(study),
+        ownership ? { guard: ownership.guard } : undefined
+      );
       if (!runtime || !runtime.runner ||
         typeof runtime.runner.start !== "function" ||
         typeof runtime.runner.drain !== "function" ||
@@ -222,6 +327,10 @@ export class ResearchControlStudyProcessSupervisor {
       );
     }
   }
+}
+
+function runnerFailure(code: string, message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
 }
 
 function stableErrorCode(error: unknown): string {

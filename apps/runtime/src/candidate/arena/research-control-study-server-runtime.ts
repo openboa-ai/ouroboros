@@ -19,6 +19,8 @@ import {
 import { LocalStore } from "@ouroboros/local-store";
 import { ResearchControlStudyProcessSupervisor } from
   "./research-control-study-process-supervisor";
+import type { ResearchControlStudyExecutionLeaseSessionFactory } from
+  "./research-control-study-execution-lease-session";
 import {
   ResearchControlStudyScheduler,
   type ResearchControlStudySchedulerLifecycle
@@ -53,6 +55,7 @@ export interface OpenResearchControlStudyServerRuntimeInput {
   artifactRunner?: TradingArtifactRunner;
   replayProviderFactory?: ReplayTradingApiProviderFactory;
   createStudyRuntime?: typeof createResearchControlStudyRuntime;
+  ownership?: { guard(): Promise<void> };
 }
 
 export interface CreateResearchControlStudyServerSchedulerInput
@@ -60,6 +63,7 @@ export interface CreateResearchControlStudyServerSchedulerInput
   pollIntervalMs?: number;
   schedulerNow?: () => string;
   schedulerSleep?: (milliseconds: number) => Promise<void>;
+  leaseSessionFactory?: ResearchControlStudyExecutionLeaseSessionFactory;
 }
 
 export async function openResearchControlStudyServerRuntime(
@@ -92,6 +96,9 @@ export async function openResearchControlStudyServerRuntime(
 
   return createStudyRuntime({
     store: input.store,
+    ...(input.ownership
+      ? { beforeAdvance: () => input.ownership!.guard() }
+      : {}),
     campaign: {
       workspaceRoot: input.workspaceRoot ?? path.join(
         input.store.root(),
@@ -123,12 +130,16 @@ export function createResearchControlStudyServerScheduler(
 ): ResearchControlStudySchedulerLifecycle {
   const supervisor = new ResearchControlStudyProcessSupervisor({
     store: input.store,
-    openStudy: (study) => openResearchControlStudyServerRuntime({
+    ...(input.leaseSessionFactory
+      ? { leaseSessionFactory: input.leaseSessionFactory }
+      : {}),
+    openStudy: (study, ownership) => openResearchControlStudyServerRuntime({
       study,
       store: input.store,
       marketData: input.marketData,
       agentFactory: input.agentFactory,
       createArmSessions: input.createArmSessions,
+      ...(ownership ? { ownership } : {}),
       ...(input.workspaceRoot ? { workspaceRoot: input.workspaceRoot } : {}),
       ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
       ...(input.artifactRunner ? { artifactRunner: input.artifactRunner } : {}),

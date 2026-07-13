@@ -2,12 +2,24 @@ import { describe, expect, it } from "vitest";
 import type { OuroborosStorePort } from
   "@ouroboros/application/ports/store";
 import type {
+  ResearchControlStudyExecutionLeaseRecord,
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord
 } from "@ouroboros/domain";
 import {
+  closeResearchControlStudyExecutionLease,
+  decideResearchControlStudyExecutionLease
+} from "@ouroboros/domain";
+import {
   ResearchControlStudyProcessSupervisor
 } from "../src/candidate/arena/research-control-study-process-supervisor";
+import {
+  ResearchControlStudyExecutionLeaseSessionError,
+  type ResearchControlStudyExecutionLeaseSessionClaim,
+  type ResearchControlStudyExecutionLeaseSessionFactory,
+  type ResearchControlStudyExecutionLeaseSessionLifecycle,
+  type ResearchControlStudyExecutionLeaseSessionStatus
+} from "../src/candidate/arena/research-control-study-execution-lease-session";
 import {
   researchControlStudyFixture,
   researchControlStudyOutcomeFixture
@@ -37,6 +49,101 @@ describe("ResearchControlStudyProcessSupervisor", () => {
     expect(supervisor.status()).toEqual({
       status: "caught_up",
       completedStudyCount: 0
+    });
+  });
+
+  it("returns contention for the oldest study without opening or skipping", async () => {
+    const first = researchControlStudyFixture({
+      suffix: "contended-first",
+      committedAt: "2026-07-12T08:00:00.000Z"
+    });
+    const second = researchControlStudyFixture({
+      suffix: "contended-second",
+      committedAt: "2026-07-12T09:00:00.000Z"
+    });
+    const lease = executionLease(first);
+    const leaseFactory = new ScriptedLeaseFactory({
+      status: "held",
+      lease,
+      reason: "owner_alive"
+    });
+    let openCount = 0;
+    const supervisor = new ResearchControlStudyProcessSupervisor({
+      store: new MutableProcessStore([second, first]).port(),
+      leaseSessionFactory: leaseFactory,
+      openStudy: async () => {
+        openCount += 1;
+        throw new Error("must_not_open");
+      }
+    });
+
+    supervisor.start();
+    await supervisor.drain();
+
+    expect(leaseFactory.studyIds).toEqual([first.research_control_study_id]);
+    expect(openCount).toBe(0);
+    expect(supervisor.status()).toEqual({
+      status: "contended",
+      completedStudyCount: 0,
+      studyId: first.research_control_study_id,
+      reason: "owner_alive",
+      leaseExpiresAt: lease.expires_at
+    });
+  });
+
+  it("starts ownership before runtime effects and releases after exact closure reload", async () => {
+    const study = researchControlStudyFixture({ suffix: "leased-lifecycle" });
+    const store = new MutableProcessStore([study]);
+    const events: string[] = [];
+    const leaseSession = new ScriptedLeaseSession(executionLease(study), events);
+    const supervisor = new ResearchControlStudyProcessSupervisor({
+      store: store.port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }, events),
+      openStudy: async (_study, ownership) => {
+        events.push("open");
+        expect(ownership).toBeDefined();
+        await ownership!.guard();
+        let status: any = { status: "idle" };
+        return {
+          runner: {
+            start() {
+              events.push("runner-start");
+              status = { status: "running", studyId: study.research_control_study_id };
+            },
+            async drain() {
+              const outcome = store.complete(study);
+              events.push("persisted");
+              status = {
+                status: "completed",
+                latestStep: { status: "complete", action: "complete", outcome }
+              };
+            },
+            async stop() { status = { status: "stopped" }; },
+            status: () => structuredClone(status)
+          }
+        };
+      }
+    });
+
+    supervisor.start();
+    await supervisor.drain();
+
+    expect(events).toEqual([
+      "claim",
+      "session-start",
+      "open",
+      "guard",
+      "runner-start",
+      "persisted",
+      "release"
+    ]);
+    expect(leaseSession.releaseCount).toBe(1);
+    expect(supervisor.status()).toEqual({
+      status: "caught_up",
+      completedStudyCount: 1
     });
   });
 
@@ -142,8 +249,13 @@ describe("ResearchControlStudyProcessSupervisor", () => {
     const stopped = deferred<void>();
     let runnerStatus: any = { status: "idle" };
     let stopCount = 0;
+    const leaseSession = new ScriptedLeaseSession(executionLease(first));
     const supervisor = new ResearchControlStudyProcessSupervisor({
       store: store.port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }),
       openStudy: async (study) => {
         opened.push(study.research_control_study_id);
         return {
@@ -170,6 +282,7 @@ describe("ResearchControlStudyProcessSupervisor", () => {
 
     expect(stopCount).toBe(1);
     expect(opened).toEqual([first.research_control_study_id]);
+    expect(leaseSession.releaseCount).toBe(1);
     expect(supervisor.status()).toEqual({
       status: "stopped",
       completedStudyCount: 0,
@@ -182,8 +295,13 @@ describe("ResearchControlStudyProcessSupervisor", () => {
     const second = researchControlStudyFixture({ suffix: "fail-second" });
     const store = new MutableProcessStore([first, second]);
     const opened: string[] = [];
+    const leaseSession = new ScriptedLeaseSession(executionLease(first));
     const supervisor = new ResearchControlStudyProcessSupervisor({
       store: store.port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }),
       openStudy: async (study) => {
         opened.push(study.research_control_study_id);
         return { runner: failedRunner() };
@@ -194,6 +312,7 @@ describe("ResearchControlStudyProcessSupervisor", () => {
     await supervisor.drain();
 
     expect(opened).toEqual([first.research_control_study_id]);
+    expect(leaseSession.releaseCount).toBe(1);
     expect(supervisor.status()).toMatchObject({
       status: "failed",
       studyId: first.research_control_study_id,
@@ -203,8 +322,13 @@ describe("ResearchControlStudyProcessSupervisor", () => {
 
   it("fails closed when runtime opening fails", async () => {
     const study = researchControlStudyFixture({ suffix: "open-failure" });
+    const leaseSession = new ScriptedLeaseSession(executionLease(study));
     const supervisor = new ResearchControlStudyProcessSupervisor({
       store: new MutableProcessStore([study]).port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }),
       openStudy: async () => { throw new Error("missing_runtime_dependency"); }
     });
 
@@ -215,6 +339,92 @@ describe("ResearchControlStudyProcessSupervisor", () => {
       status: "failed",
       studyId: study.research_control_study_id,
       errorCode: "research_control_study_process_open_failed"
+    });
+    expect(leaseSession.releaseCount).toBe(1);
+  });
+
+  it("stops the active runner and fails stably when ownership is lost", async () => {
+    const study = researchControlStudyFixture({ suffix: "lease-loss" });
+    const store = new MutableProcessStore([study]);
+    const leaseSession = new ScriptedLeaseSession(executionLease(study));
+    const started = deferred<void>();
+    const stopped = deferred<void>();
+    let stopCount = 0;
+    let runnerStatus: any = { status: "idle" };
+    const supervisor = new ResearchControlStudyProcessSupervisor({
+      store: store.port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }),
+      openStudy: async () => ({
+        runner: {
+          start() {
+            runnerStatus = { status: "running", studyId: study.research_control_study_id };
+            started.resolve();
+          },
+          async drain() { await stopped.promise; },
+          async stop() {
+            stopCount += 1;
+            runnerStatus = { status: "stopped" };
+            stopped.resolve();
+          },
+          status: () => structuredClone(runnerStatus)
+        }
+      })
+    });
+    supervisor.start();
+    await started.promise;
+
+    const loss = leaseSession.lose();
+    await supervisor.drain();
+
+    expect(stopCount).toBe(1);
+    expect(leaseSession.releaseCount).toBe(1);
+    expect(supervisor.status()).toMatchObject({
+      status: "failed",
+      studyId: study.research_control_study_id,
+      errorCode: loss.code
+    });
+  });
+
+  it("halts before later work when lease release fails", async () => {
+    const first = researchControlStudyFixture({
+      suffix: "release-fail-first",
+      committedAt: "2026-07-12T08:00:00.000Z"
+    });
+    const second = researchControlStudyFixture({
+      suffix: "release-fail-second",
+      committedAt: "2026-07-12T09:00:00.000Z"
+    });
+    const store = new MutableProcessStore([first, second]);
+    const leaseSession = new ScriptedLeaseSession(executionLease(first));
+    leaseSession.releaseError = new ResearchControlStudyExecutionLeaseSessionError(
+      "research_control_study_execution_lease_release_failed",
+      "injected release failure"
+    );
+    const opened: string[] = [];
+    const supervisor = new ResearchControlStudyProcessSupervisor({
+      store: store.port(),
+      leaseSessionFactory: new ScriptedLeaseFactory({
+        status: "acquired",
+        session: leaseSession
+      }),
+      openStudy: async (study) => {
+        opened.push(study.research_control_study_id);
+        return { runner: completingRunner(study, store) };
+      }
+    });
+
+    supervisor.start();
+    await supervisor.drain();
+
+    expect(opened).toEqual([first.research_control_study_id]);
+    expect(leaseSession.releaseCount).toBe(1);
+    expect(supervisor.status()).toMatchObject({
+      status: "failed",
+      studyId: first.research_control_study_id,
+      errorCode: "research_control_study_execution_lease_release_failed"
     });
   });
 
@@ -366,4 +576,108 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((complete) => { resolve = complete; });
   return { promise, resolve };
+}
+
+class ScriptedLeaseFactory
+implements ResearchControlStudyExecutionLeaseSessionFactory {
+  readonly studyIds: string[] = [];
+
+  constructor(
+    private readonly claim: ResearchControlStudyExecutionLeaseSessionClaim,
+    private readonly events?: string[]
+  ) {}
+
+  async acquire(
+    study: ResearchControlStudyRecord
+  ): Promise<ResearchControlStudyExecutionLeaseSessionClaim> {
+    this.studyIds.push(study.research_control_study_id);
+    this.events?.push("claim");
+    return this.claim;
+  }
+}
+
+class ScriptedLeaseSession
+implements ResearchControlStudyExecutionLeaseSessionLifecycle {
+  releaseCount = 0;
+  releaseError?: ResearchControlStudyExecutionLeaseSessionError;
+  private started = false;
+  private callback?: (
+    error: ResearchControlStudyExecutionLeaseSessionError
+  ) => void;
+  private loss?: ResearchControlStudyExecutionLeaseSessionError;
+  private released?: ResearchControlStudyExecutionLeaseRecord;
+
+  constructor(
+    private readonly lease: ResearchControlStudyExecutionLeaseRecord,
+    private readonly events?: string[]
+  ) {}
+
+  start(onLost: (
+    error: ResearchControlStudyExecutionLeaseSessionError
+  ) => void): "started" | "already_running" {
+    if (this.started) return "already_running";
+    this.started = true;
+    this.callback = onLost;
+    this.events?.push("session-start");
+    return "started";
+  }
+
+  async guard(): Promise<void> {
+    this.events?.push("guard");
+    if (this.loss) throw this.loss;
+  }
+
+  async stopAndRelease(): Promise<ResearchControlStudyExecutionLeaseRecord> {
+    this.releaseCount += 1;
+    this.events?.push("release");
+    if (this.loss) throw this.loss;
+    if (this.releaseError) throw this.releaseError;
+    this.released ??= closeResearchControlStudyExecutionLease({
+      lease: this.lease,
+      leaseStatus: "released",
+      closedAt: this.lease.renewed_at
+    });
+    return this.released;
+  }
+
+  status(): ResearchControlStudyExecutionLeaseSessionStatus {
+    if (this.loss) {
+      return {
+        status: "lost",
+        lease: this.lease,
+        errorCode: this.loss.code,
+        errorMessage: this.loss.message
+      };
+    }
+    if (this.released) return { status: "released", lease: this.released };
+    return {
+      status: this.started ? "renewing" : "acquired",
+      lease: this.lease
+    };
+  }
+
+  lose(): ResearchControlStudyExecutionLeaseSessionError {
+    this.loss ??= new ResearchControlStudyExecutionLeaseSessionError(
+      "research_control_study_execution_lease_lost",
+      "injected lease loss"
+    );
+    this.callback?.(this.loss);
+    return this.loss;
+  }
+}
+
+function executionLease(
+  study: ResearchControlStudyRecord
+): ResearchControlStudyExecutionLeaseRecord {
+  return decideResearchControlStudyExecutionLease({
+    study,
+    owner: {
+      server_instance_id: "server-a",
+      host_id: "host-a",
+      process_id: 101
+    },
+    leaseToken: `lease-${study.research_control_study_id}`,
+    leaseDurationMs: 30_000,
+    acquiredAt: "2026-07-13T00:00:00.000Z"
+  });
 }

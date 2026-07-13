@@ -168,7 +168,8 @@ implements ResearchControlStudySchedulerLifecycle {
           };
           return;
         }
-        if (supervisorStatus.status !== "caught_up") {
+        if (supervisorStatus.status !== "caught_up" &&
+          supervisorStatus.status !== "contended") {
           throw new ResearchControlStudySchedulerError(
             "research_control_study_scheduler_supervisor_invalid",
             `ResearchControlStudy supervisor ended as ${supervisorStatus.status}.`

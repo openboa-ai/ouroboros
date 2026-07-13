@@ -42,6 +42,10 @@ describe("ResearchControlStudy server runtime", () => {
       ReplayTradingApiProviderFactory;
     const adapter = agentAdapter(persistedAgent());
     const runtime = {} as ResearchControlStudyRuntime;
+    let guardCount = 0;
+    const ownership = {
+      async guard() { guardCount += 1; }
+    };
     let captured:
       Parameters<typeof createResearchControlStudyRuntime>[0] | undefined;
     let factoryCount = 0;
@@ -59,6 +63,7 @@ describe("ResearchControlStudy server runtime", () => {
       createArmSessions,
       artifactRunner,
       replayProviderFactory,
+      ownership,
       createStudyRuntime(input) {
         captured = input;
         return runtime;
@@ -89,6 +94,9 @@ describe("ResearchControlStudy server runtime", () => {
         replayProviderFactory
       }
     });
+    expect(captured!.beforeAdvance).toBeTypeOf("function");
+    await captured!.beforeAdvance!();
+    expect(guardCount).toBe(1);
     const { protocol_digest: _digest, ...expectedProtocol } =
       study.condition.paper_evaluation_protocol;
     expect(captured!.campaign.paperEvaluationProtocol).toEqual(expectedProtocol);

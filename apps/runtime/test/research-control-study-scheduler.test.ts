@@ -90,6 +90,46 @@ describe("ResearchControlStudyScheduler", () => {
     expect(scheduler.status()).toMatchObject({ status: "stopped" });
   });
 
+  it("waits and retries after oldest-study contention", async () => {
+    const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
+    const supervisor = new ScriptedSupervisor([
+      {
+        status: "contended",
+        completedStudyCount: 0,
+        studyId: "study-contended",
+        reason: "owner_alive",
+        leaseExpiresAt: "2026-07-13T00:00:30.000Z"
+      },
+      { status: "caught_up", completedStudyCount: 0 }
+    ]);
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor,
+      pollIntervalMs: 10_000,
+      now: clock.now,
+      sleep: clock.sleep
+    });
+
+    scheduler.start();
+    await clock.waiting();
+    expect(supervisor.startCount).toBe(1);
+    expect(scheduler.status()).toMatchObject({
+      status: "waiting",
+      cycleCount: 1,
+      completedStudyCount: 0
+    });
+
+    clock.advanceTo("2026-07-13T00:00:10.000Z");
+    await clock.waiting();
+    expect(supervisor.startCount).toBe(2);
+    expect(scheduler.status()).toMatchObject({
+      status: "waiting",
+      cycleCount: 2,
+      completedStudyCount: 0
+    });
+
+    await scheduler.stop();
+  });
+
   it("delegates stop while a supervisor cycle is active", async () => {
     const supervisor = new GatedSupervisor();
     const scheduler = new ResearchControlStudyScheduler({ supervisor });
