@@ -400,7 +400,8 @@ describe("CandidateArena paper evidence context", () => {
       .filter((entry) => entry.evaluation_phase === "sealed_admission");
     expect(terminalEvaluation).toMatchObject({
       submitted_system_code_ref: { id: systemCode.system_code_id },
-      submitted_artifact_digest: systemCode.artifact_digest
+      submitted_artifact_digest: systemCode.artifact_digest,
+      selected_development_submission_sequence: 2
     });
     expect(candidate?.full_cycle_lineage?.evidence?.evaluation_score).toBe(
       terminalEvaluation?.score_summary.total_score
@@ -480,6 +481,49 @@ describe("CandidateArena paper evidence context", () => {
       })
     ]);
     expect(checkpoints[0]?.candidate_admission_decision_ref).toBeUndefined();
+  });
+
+  it("continues the stable ResearchWorker after a completed no-submission checkpoint", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const agent = new AutonomousSessionResearchAgent("finish-unselected");
+    const run = (tickId: string) => runCandidateArenaTick({
+      store,
+      tickId,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => agent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const first = await run("no-submission-continuation-one");
+    const second = await run("no-submission-continuation-two");
+
+    expect(agent.runSessionCount).toBe(2);
+    expect(first.arena.latest_ticks.find((tick) => tick.tick_id === first.tick_id)
+      ?.direction_results[0]).toMatchObject({ status: "no_submission" });
+    expect(second.arena.latest_ticks.find((tick) => tick.tick_id === second.tick_id)
+      ?.direction_results[0]).toMatchObject({ status: "no_submission" });
+    const checkpoints = await store.listResearchWorkerCheckpoints();
+    const firstCheckpoint = checkpoints.find((entry) =>
+      entry.candidate_arena_tick_id === first.tick_id
+    );
+    const secondCheckpoint = checkpoints.find((entry) =>
+      entry.candidate_arena_tick_id === second.tick_id
+    );
+    expect(firstCheckpoint).toMatchObject({
+      terminal_status: "completed",
+      terminal_reason: "finished_without_submission"
+    });
+    expect(secondCheckpoint).toMatchObject({
+      terminal_status: "completed",
+      terminal_reason: "finished_without_submission",
+      previous_checkpoint_ref: {
+        record_kind: "research_worker_checkpoint",
+        id: firstCheckpoint?.research_worker_checkpoint_id
+      }
+    });
   });
 
   it("retains completed development evidence when an autonomous session fails later", async () => {

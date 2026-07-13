@@ -303,6 +303,7 @@ async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
     sealed_admission_suite_digest: commitment.sealed_admission_policy.suite_digest,
     evaluation_phase: "sealed_admission",
     submission_sequence: 1,
+    selected_development_submission_sequence: 1,
     completed_at: "2026-07-12T10:02:00.000Z",
     authority_status: "not_counted"
   };

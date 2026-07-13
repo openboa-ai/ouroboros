@@ -367,6 +367,7 @@ async function persistedAdmissionGraph(
     sealed_admission_suite_digest: graph.commitment.sealed_admission_policy.suite_digest,
     evaluation_phase: "sealed_admission",
     submission_sequence: 1,
+    selected_development_submission_sequence: 1,
     completed_at: at(35),
     authority_status: "not_counted"
   };

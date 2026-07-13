@@ -281,6 +281,37 @@ describe("LocalStore CandidateArenaResearchAllocation", () => {
   });
 
   it.each([
+    ["error", "unexpected failure"],
+    ["net revenue", 12.5],
+    ["paper handoff conformance", {
+      conformance_id: "paper-handoff-conformance-no-submission",
+      status: "passed",
+      reason: "passed",
+      authority_status: "research_only"
+    }]
+  ])("rejects no-submission results carrying contradictory %s evidence", async (
+    _label,
+    contradictoryValue
+  ) => {
+    const allocation = allocationFixture();
+    await store.recordCandidateArenaResearchAllocation(allocation);
+    const tick = tickFixture(allocation);
+    const result = tick.direction_results[0] as any;
+    result.status = "no_submission";
+    result.finding = "ResearchWorker finished without selecting a submission.";
+    delete result.error;
+    if (_label === "error") result.error = contradictoryValue;
+    if (_label === "net revenue") result.net_revenue_usdt = contradictoryValue;
+    if (_label === "paper handoff conformance") {
+      result.paper_handoff_conformance = contradictoryValue;
+    }
+
+    await expect(store.recordCandidateArenaTick(tick)).rejects.toMatchObject({
+      code: "invalid_candidate_arena_tick_input"
+    });
+  });
+
+  it.each([
     ["missing allocation", async (
       _allocation: CandidateArenaResearchAllocationRecord,
       _tick: BoundCandidateArenaTickRecord

@@ -169,8 +169,11 @@ describe("TradingEvaluationResult ResearchPreflight linkage", () => {
   it("accepts historical records without linkage and complete sealed admission linkage", () => {
     const historical = evaluationFixture();
     const sealed = sealedEvaluationFixture();
+    const legacySealed = structuredClone(sealed) as any;
+    delete legacySealed.selected_development_submission_sequence;
 
     expect(tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(historical)).toBe(true);
+    expect(tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(legacySealed)).toBe(true);
     expect(tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(sealed)).toBe(true);
   });
 
@@ -200,7 +203,10 @@ describe("TradingEvaluationResult ResearchPreflight linkage", () => {
     ["development phase", (record: any) => {
       record.evaluation_phase = "development";
     }],
-    ["second submission", (record: any) => { record.submission_sequence = 2; }]
+    ["second sealed submission", (record: any) => { record.submission_sequence = 2; }],
+    ["invalid selected development sequence", (record: any) => {
+      record.selected_development_submission_sequence = 0;
+    }]
   ])("rejects incomplete or invalid %s", (_label, mutate) => {
     const record = sealedEvaluationFixture() as any;
     mutate(record);
@@ -266,8 +272,9 @@ function sealedEvaluationFixture(): TradingEvaluationResultRecord {
     submitted_artifact_digest: digest("submitted-system-code"),
     sealed_admission_suite_digest: digest("sealed-suite"),
     evaluation_phase: "sealed_admission",
-    submission_sequence: 1
-  };
+    submission_sequence: 1,
+    selected_development_submission_sequence: 2
+  } as TradingEvaluationResultRecord;
 }
 
 function evaluationFixture(): TradingEvaluationResultRecord {

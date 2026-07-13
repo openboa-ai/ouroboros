@@ -353,6 +353,95 @@ describe("Trading research research loop MVP", () => {
     });
   });
 
+  it("keeps an in-flight submission snapshot isolated from later workspace mutation", async () => {
+    const runRoot = path.join(tmpDir, "autonomous-in-flight-snapshot");
+    const host = new HostTradingArtifactRunner({ allowHostExecution: true });
+    let markEvaluationStarted!: () => void;
+    let releaseEvaluation!: () => void;
+    const evaluationStarted = new Promise<void>((resolve) => {
+      markEvaluationStarted = resolve;
+    });
+    const evaluationReleased = new Promise<void>((resolve) => {
+      releaseEvaluation = resolve;
+    });
+    let firstRun = true;
+    const runner: TradingArtifactRunner = {
+      kind: "host_process",
+      probePaperHandoff: (input) => host.probePaperHandoff(input),
+      async run(input) {
+        if (firstRun) {
+          firstRun = false;
+          markEvaluationStarted();
+          await evaluationReleased;
+        }
+        return host.run(input);
+      }
+    };
+    const sessionAdapter: ResearchWorkerSessionAdapter = {
+      agent: {
+        id: "managed-agent-in-flight-snapshot",
+        provider: "fixture",
+        model: "in-flight-snapshot-fixture",
+        permission_policy: "fixture_only"
+      },
+      async runSession(input) {
+        const runPath = path.join(input.artifact_dir, "run.py");
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.01",
+            "RISK_FRACTION = 0.02"
+          ),
+          "utf8"
+        );
+        const submitted = input.tools.submitDevelopment({
+          idempotency_key: "in-flight-submit-one",
+          research_note: "Freeze this snapshot before continuing workspace exploration."
+        });
+        await evaluationStarted;
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.02",
+            "RISK_FRACTION = 0.09"
+          ),
+          "utf8"
+        );
+        releaseEvaluation();
+        const completed = await submitted;
+        const selected = await input.tools.selectDevelopment({
+          idempotency_key: "in-flight-select-one",
+          submission_sequence: completed.submission_sequence,
+          reason: "Select the externally frozen snapshot."
+        });
+        return {
+          status: selected.session_status,
+          summary: selected.reason,
+          selected_submission_sequence: selected.submission_sequence,
+          provider_command_count: 1
+        };
+      }
+    };
+
+    const result = await runTradingResearchLoop({
+      run_root: runRoot,
+      session_id: "autonomous-in-flight-snapshot",
+      iterations: 1,
+      session_adapter: sessionAdapter,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: runner
+    });
+
+    expect(await readFile(
+      path.join(result.submitted_artifact_dir!, "run.py"),
+      "utf8"
+    )).toContain("RISK_FRACTION = 0.02");
+    expect(await readFile(
+      path.join(runRoot, "working-artifact", "run.py"),
+      "utf8"
+    )).toContain("RISK_FRACTION = 0.09");
+  });
+
   it("does not claim sealed admission when the worker exits without selecting a submission", async () => {
     const preflightPlan = await fixedPreflightPlan(1);
     const sessionAdapter: ResearchWorkerSessionAdapter = {
@@ -399,6 +488,42 @@ describe("Trading research research loop MVP", () => {
     expect(result.submitted_artifact_digest).toBeUndefined();
     expect(result.sealed_admission).toBeUndefined();
     expect(() => preflightPlan.claimSealedAdmissionSuite()).not.toThrow();
+  });
+
+  it("fails closed when the session adapter reports failure without throwing", async () => {
+    const sessionAdapter: ResearchWorkerSessionAdapter = {
+      agent: {
+        id: "managed-agent-reported-session-failure",
+        provider: "fixture",
+        model: "reported-session-failure-fixture",
+        permission_policy: "fixture_only"
+      },
+      async runSession() {
+        return {
+          status: "failed",
+          summary: "ResearchWorker provider reported terminal failure.",
+          provider_command_count: 1,
+          error: "reported_session_failure"
+        };
+      }
+    };
+
+    await expect(runTradingResearchLoop({
+      run_root: path.join(tmpDir, "reported-session-failure"),
+      session_id: "reported-session-failure",
+      iterations: 1,
+      session_adapter: sessionAdapter,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
+    })).rejects.toThrow("reported_session_failure");
+    expect(await readNotebook(path.join(
+      tmpDir,
+      "reported-session-failure",
+      "notebook.json"
+    ))).toMatchObject({
+      session_status: "failed",
+      entries: []
+    });
   });
 
   it("proves the artifact uses the external TradingApiProvider boundary", async () => {
@@ -1324,13 +1449,15 @@ process.exit(17);
   it("propagates paper handoff infrastructure failure instead of scoring strategy evidence", async () => {
     const runner = controlledPaperHandoffArtifactRunner(["infrastructure_failed"]);
     const runRoot = path.join(tmpDir, "paper-handoff-infrastructure-failure");
+    const preflightPlan = await fixedPreflightPlan(1);
 
     await expect(runTradingResearchLoop({
       run_root: runRoot,
       session_id: "paper-handoff-infrastructure-failure",
       iterations: 1,
       agent_adapter: new NoopTradingResearchAgentAdapter(),
-      artifact_runner: runner
+      artifact_runner: runner,
+      preflight_plan: preflightPlan
     })).rejects.toMatchObject({
       name: "PaperTradingHandoffConformanceInfrastructureError",
       code: "runner_unavailable",
@@ -1338,6 +1465,16 @@ process.exit(17);
     });
     expect(runner.probe_count()).toBe(1);
     expect((await readNotebook(path.join(runRoot, "notebook.json"))).entries).toHaveLength(1);
+
+    await expect(runTradingResearchLoop({
+      run_root: path.join(tmpDir, "paper-handoff-infrastructure-retry"),
+      session_id: "paper-handoff-infrastructure-retry",
+      iterations: 1,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: runner,
+      preflight_plan: preflightPlan
+    })).rejects.toThrow("research_preflight_sealed_submission_already_claimed");
+    expect(runner.probe_count()).toBe(1);
   });
 
   it("restores the frozen submission when the sealed paper probe mutates it", async () => {

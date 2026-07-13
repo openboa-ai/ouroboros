@@ -394,7 +394,7 @@ async function runAutonomousTradingResearchSession(input: {
   });
 
   try {
-    await input.sessionAdapter.runSession({
+    const providerResult = await input.sessionAdapter.runSession({
       artifact_dir: workingArtifactDir,
       program_path: input.programPath,
       notebook_path: input.notebookPath,
@@ -405,6 +405,11 @@ async function runAutonomousTradingResearchSession(input: {
         : {}),
       tools: session
     });
+    if (providerResult.status === "failed") {
+      throw new Error(
+        providerResult.error || providerResult.summary || "research_worker_session_adapter_failed"
+      );
+    }
   } catch (error) {
     input.notebook.session_protocol_version =
       "research_worker_autonomous_session_v1";
@@ -602,15 +607,17 @@ async function writeNotebook(pathname: string, notebook: TradingResearchNotebook
 function sanitizePriorCheckpoint(
   input: TradingResearchPriorCheckpoint
 ): TradingResearchPriorCheckpoint {
+  const completedReason = input?.terminal_reason === "admission_recorded" ||
+    input?.terminal_reason === "finished_without_submission";
   if (!input || typeof input !== "object" ||
     typeof input.research_worker_checkpoint_id !== "string" ||
     input.research_worker_checkpoint_id.length === 0 ||
     (input.terminal_status !== "completed" && input.terminal_status !== "failed_closed") ||
     (input.terminal_reason !== "admission_recorded" &&
+      input.terminal_reason !== "finished_without_submission" &&
       input.terminal_reason !== "execution_failed" &&
       input.terminal_reason !== "restart_recovery") ||
-    (input.terminal_status === "completed") !==
-      (input.terminal_reason === "admission_recorded") ||
+    (input.terminal_status === "completed") !== completedReason ||
     (input.admission_status !== undefined &&
       input.admission_status !== "admitted" &&
       input.admission_status !== "duplicate" &&
@@ -618,6 +625,8 @@ function sanitizePriorCheckpoint(
     (input.admission_reason !== undefined &&
       (typeof input.admission_reason !== "string" || input.admission_reason.length === 0)) ||
     (input.admission_status === undefined) !== (input.admission_reason === undefined) ||
+    (input.terminal_reason === "admission_recorded") !==
+      (input.admission_status !== undefined) ||
     !input.notebook || input.notebook.protocol_version !== "research_worker_notebook_v1" ||
     !Number.isInteger(input.notebook.total_entry_count) ||
     input.notebook.total_entry_count < 0 ||

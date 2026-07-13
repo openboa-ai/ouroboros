@@ -205,14 +205,16 @@ describe("LocalStore ResearchPreflightCommitment", () => {
       (record) => { record.submitted_artifact_digest = digest("other-submitted"); },
       (record) => { record.sealed_admission_suite_digest = digest("other-suite"); },
       (record) => { record.evaluation_phase = "development"; },
-      (record) => { record.submission_sequence = 2; }
+      (record) => { record.submission_sequence = 2; },
+      (record) => { delete record.selected_development_submission_sequence; },
+      (record) => { record.selected_development_submission_sequence = 3; }
     ];
     for (const [index, mutate] of mutations.entries()) {
       const changed = structuredClone(evaluation) as any;
       changed.trading_evaluation_result_id += `-${index}`;
       mutate(changed);
       await expect(store.recordTradingEvaluationResult(changed)).rejects.toMatchObject({
-        code: index >= 5
+        code: index === 5 || index === 6
           ? "invalid_trading_evaluation_result_input"
           : "research_preflight_terminal_graph_mismatch"
       });
@@ -227,6 +229,7 @@ describe("LocalStore ResearchPreflightCommitment", () => {
     delete historical.sealed_admission_suite_digest;
     delete historical.evaluation_phase;
     delete historical.submission_sequence;
+    delete historical.selected_development_submission_sequence;
     await expect(store.recordTradingEvaluationResult(historical)).resolves.toEqual(historical);
   });
 });
@@ -458,6 +461,7 @@ function evaluationFixture(
     sealed_admission_suite_digest: commitment.sealed_admission_policy.suite_digest,
     evaluation_phase: "sealed_admission",
     submission_sequence: 1,
+    selected_development_submission_sequence: 1,
     completed_at: "2026-07-12T10:00:02.000Z",
     authority_status: "not_counted"
   };

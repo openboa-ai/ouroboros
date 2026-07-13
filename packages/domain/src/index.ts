@@ -2380,6 +2380,7 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
   sealed_admission_suite_digest?: string;
   evaluation_phase?: "sealed_admission";
   submission_sequence?: 1;
+  selected_development_submission_sequence?: number;
   disqualification_reason?: TradingEvaluationDisqualificationReason;
   quarantine_reason?: TradingEvaluationQuarantineReason;
   completed_at: string;
@@ -2390,7 +2391,7 @@ export function tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(
   value: unknown
 ): value is TradingEvaluationResultRecord {
   if (!comparisonObject(value)) return false;
-  const keys = [
+  const linkageKeys = [
     "research_preflight_commitment_ref",
     "research_preflight_commitment_digest",
     "submitted_system_code_ref",
@@ -2399,9 +2400,12 @@ export function tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(
     "evaluation_phase",
     "submission_sequence"
   ] as const;
-  const presentCount = keys.filter((key) => Object.hasOwn(value, key)).length;
-  if (presentCount === 0) return true;
-  return presentCount === keys.length &&
+  const presentCount = linkageKeys.filter((key) => Object.hasOwn(value, key)).length;
+  if (presentCount === 0) {
+    return !Object.hasOwn(value, "selected_development_submission_sequence");
+  }
+  const selectedSequence = value.selected_development_submission_sequence;
+  return presentCount === linkageKeys.length &&
     comparisonRef(
       value.research_preflight_commitment_ref,
       "research_preflight_commitment"
@@ -2410,7 +2414,9 @@ export function tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(
     researchPreflightSha256Digest(value.submitted_artifact_digest) &&
     researchPreflightSha256Digest(value.sealed_admission_suite_digest) &&
     value.evaluation_phase === "sealed_admission" &&
-    value.submission_sequence === 1;
+    value.submission_sequence === 1 &&
+    (selectedSequence === undefined ||
+      (Number.isInteger(selectedSequence) && Number(selectedSequence) >= 1));
 }
 
 export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";

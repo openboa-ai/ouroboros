@@ -3318,7 +3318,9 @@ export class LocalStore {
         !evaluation.submitted_artifact_digest ||
         !evaluation.sealed_admission_suite_digest ||
         evaluation.evaluation_phase !== "sealed_admission" ||
-        evaluation.submission_sequence !== 1) {
+        evaluation.submission_sequence !== 1 ||
+        !Number.isInteger(evaluation.selected_development_submission_sequence) ||
+        Number(evaluation.selected_development_submission_sequence) < 1) {
         throw new LocalStoreError(
           "candidate_admission_research_preflight_required",
           "new admitted decisions require a complete sealed ResearchPreflight chain",
@@ -3356,6 +3358,10 @@ export class LocalStore {
         commitment && commitment.sealed_admission_policy.suite_digest !==
           evaluation.sealed_admission_suite_digest
           ? "sealed_admission_suite_digest"
+          : undefined,
+        commitment && Number(evaluation.selected_development_submission_sequence) >
+          commitment.development_policy.submission_limit
+          ? "selected_development_submission_sequence"
           : undefined,
         evaluation.submitted_system_code_ref.id !== decision.system_code_ref.id
           ? "submitted_system_code_ref"
@@ -7908,6 +7914,14 @@ export class LocalStore {
         commitment && commitment.sealed_admission_policy.suite_digest !==
           result.sealed_admission_suite_digest
           ? "sealed_admission_suite_digest"
+          : undefined,
+        !Number.isInteger(result.selected_development_submission_sequence) ||
+          Number(result.selected_development_submission_sequence) < 1
+          ? "selected_development_submission_sequence"
+          : undefined,
+        commitment && Number(result.selected_development_submission_sequence) >
+          commitment.development_policy.submission_limit
+          ? "selected_development_submission_sequence"
           : undefined,
         submittedSystemCode && submittedSystemCode.artifact_digest !==
           result.submitted_artifact_digest
@@ -20168,8 +20182,11 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
           : raw.status === "no_submission"
             ? nonEmpty(raw.finding) &&
               raw.candidate_id === undefined &&
+              raw.error === undefined &&
               raw.admission_decision_id === undefined &&
-              raw.admission_reason === undefined
+              raw.admission_reason === undefined &&
+              raw.net_revenue_usdt === undefined &&
+              raw.paper_handoff_conformance === undefined
             : nonEmpty(raw.finding) &&
             nonEmpty(raw.admission_decision_id) &&
             isCandidateAdmissionReason(raw.admission_reason)

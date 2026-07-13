@@ -1629,7 +1629,9 @@ async function recordArenaResearchRecords(input: {
           sealed_admission_suite_digest:
             input.preflightCommitment.sealed_admission_policy.suite_digest,
           evaluation_phase: "sealed_admission" as const,
-          submission_sequence: 1 as const
+          submission_sequence: 1 as const,
+          selected_development_submission_sequence:
+            input.developmentEntry.iteration
         }
       : {}),
     ...(resultStatus === "accepted"
