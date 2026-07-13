@@ -33,6 +33,9 @@ import type {
   ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord,
   ResearchAllocationPolicyDecisionRecord,
+  ResearchMemoryControlPairOutcomeRecord,
+  ResearchMemoryControlStudyOutcomeRecord,
+  ResearchMemoryControlStudyRecord,
   ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
@@ -79,6 +82,8 @@ import type {
   TradingRunRecord
 } from "@ouroboros/domain";
 import type { SandboxStartResult, SandboxAdapterObservationResult } from "./sandbox";
+import type { DecideResearchMemoryControlPairOutcomeInput } from
+  "../candidate/research-memory-control-study-outcome";
 import { createHash } from "node:crypto";
 
 export type SandboxStartPersistenceInput = Omit<SandboxStartResult, "placement"> & {
@@ -101,6 +106,11 @@ export interface RecordPaperTradingComparisonPairedCheckpointInput {
   outcome: PaperTradingComparisonCheckpointOutcomeRecord;
   champion: PreparedPaperTradingComparisonCheckpointSide;
   challenger: PreparedPaperTradingComparisonCheckpointSide;
+}
+
+export interface ResearchMemoryControlPairOutcomePersistenceInput {
+  outcome: ResearchMemoryControlPairOutcomeRecord;
+  source_graph: DecideResearchMemoryControlPairOutcomeInput;
 }
 
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
@@ -250,6 +260,33 @@ export interface OuroborosStorePort {
   ): Promise<ResearchControlStudyOutcomeRecord | undefined>;
   listResearchControlStudyOutcomes(): Promise<
     ResearchControlStudyOutcomeRecord[]
+  >;
+  recordResearchMemoryControlStudy(
+    study: ResearchMemoryControlStudyRecord
+  ): Promise<ResearchMemoryControlStudyRecord>;
+  getResearchMemoryControlStudy(
+    studyId: string
+  ): Promise<ResearchMemoryControlStudyRecord | undefined>;
+  listResearchMemoryControlStudies(): Promise<
+    ResearchMemoryControlStudyRecord[]
+  >;
+  recordResearchMemoryControlPairOutcome(
+    input: ResearchMemoryControlPairOutcomePersistenceInput
+  ): Promise<ResearchMemoryControlPairOutcomeRecord>;
+  getResearchMemoryControlPairOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord | undefined>;
+  listResearchMemoryControlPairOutcomes(
+    studyId?: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord[]>;
+  recordResearchMemoryControlStudyOutcome(
+    outcome: ResearchMemoryControlStudyOutcomeRecord
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord>;
+  getResearchMemoryControlStudyOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord | undefined>;
+  listResearchMemoryControlStudyOutcomes(): Promise<
+    ResearchMemoryControlStudyOutcomeRecord[]
   >;
   recordResearchGeneralizationProtocol(
     protocol: ResearchGeneralizationProtocolRecord

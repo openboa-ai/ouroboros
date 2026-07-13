@@ -11,6 +11,10 @@ import {
 } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import { decideResearchMemoryControlPairOutcome } from
+  "@ouroboros/application/candidate/research-memory-control-study-outcome";
+import type { ResearchMemoryControlPairOutcomePersistenceInput } from
+  "@ouroboros/application/ports/store";
 import {
   comparePrivateReadinessPostures,
   isCompletePrivateReadinessPostureRecord,
@@ -119,6 +123,12 @@ import {
   researchGeneralizationProtocolDigestInput,
   researchGeneralizationProtocolHasRuntimeShape,
   researchGeneralizationPublicKlineWindowDigestInput,
+  researchMemoryControlPairOutcomeDigestInput,
+  researchMemoryControlPairOutcomeHasRuntimeShape,
+  researchMemoryControlStudyDigestInput,
+  researchMemoryControlStudyHasRuntimeShape,
+  researchMemoryControlStudyOutcomeDigestInput,
+  researchMemoryControlStudyOutcomeHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
   researchWorkerCheckpointDigestInput,
@@ -186,6 +196,9 @@ import type {
   ResearchGeneralizationOutcomeRecord,
   ResearchGeneralizationPolicyDecisionRecord,
   ResearchGeneralizationProtocolRecord,
+  ResearchMemoryControlPairOutcomeRecord,
+  ResearchMemoryControlStudyOutcomeRecord,
+  ResearchMemoryControlStudyRecord,
   ResearchOrchestrationRunRecord,
   ResearchPreflightCommitmentRecord,
   ResearchWorkerRecord,
@@ -511,6 +524,32 @@ export type LocalStoreErrorCode =
   | "research_control_study_outcome_reference_mismatch"
   | "research_control_study_outcome_conflict"
   | "research_control_study_outcome_reload_failed"
+  | "invalid_research_memory_control_study_input"
+  | "research_memory_control_study_digest_mismatch"
+  | "research_memory_control_study_identity_mismatch"
+  | "research_memory_control_study_conflict"
+  | "research_memory_control_study_effect_already_exists"
+  | "research_memory_control_study_effect_graph_corrupt"
+  | "research_memory_control_study_reload_failed"
+  | "research_memory_control_publication_lock_corrupt"
+  | "research_memory_control_publication_lock_unavailable"
+  | "invalid_research_memory_control_pair_outcome_input"
+  | "research_memory_control_pair_outcome_digest_mismatch"
+  | "research_memory_control_pair_outcome_identity_mismatch"
+  | "research_memory_control_pair_outcome_reference_not_found"
+  | "research_memory_control_pair_outcome_reference_mismatch"
+  | "research_memory_control_pair_outcome_source_graph_mismatch"
+  | "research_memory_control_pair_outcome_conflict"
+  | "research_memory_control_pair_outcome_reload_failed"
+  | "invalid_research_memory_control_study_outcome_input"
+  | "research_memory_control_study_outcome_digest_mismatch"
+  | "research_memory_control_study_outcome_identity_mismatch"
+  | "research_memory_control_study_outcome_reference_not_found"
+  | "research_memory_control_study_outcome_reference_mismatch"
+  | "research_memory_control_study_outcome_conflict"
+  | "research_memory_control_study_outcome_reload_failed"
+  | "research_preflight_memory_control_study_not_found"
+  | "research_preflight_memory_control_study_mismatch"
   | "invalid_research_generalization_outcome_input"
   | "research_generalization_outcome_digest_mismatch"
   | "research_generalization_outcome_identity_mismatch"
@@ -826,6 +865,9 @@ type Collection =
   | "research-control-campaign-outcomes"
   | "research-control-studies"
   | "research-control-study-outcomes"
+  | "research-memory-control-studies"
+  | "research-memory-control-pair-outcomes"
+  | "research-memory-control-study-outcomes"
   | "research-generalization-protocols"
   | "research-generalization-outcomes"
   | "research-generalization-policy-decisions"
@@ -837,7 +879,7 @@ interface FixtureItem {
   collection: Collection;
   id: string;
   record: FixtureRecord;
-  itemDir?: "items" | "placeholders";
+  itemDir?: "items" | "placeholders" | "source-graphs";
 }
 
 export interface SandboxObservationInput {
@@ -1417,6 +1459,26 @@ export function createFixtureRecords(): FixtureItem[] {
   ];
 }
 
+interface ResearchMemoryControlPublicationLockOwner {
+  token: string;
+  pid: number;
+  acquired_at: string;
+}
+
+interface ResearchMemoryControlPairSourceGraphRecord {
+  record_kind: "research_memory_control_pair_source_graph";
+  version: 1;
+  research_memory_control_pair_source_graph_id: string;
+  pair_outcome_ref: Ref;
+  pair_outcome_digest: string;
+  source_graph: ResearchMemoryControlPairOutcomePersistenceInput["source_graph"];
+  source_graph_digest: string;
+  authority_status: "research_evidence_only";
+}
+
+const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_ATTEMPTS = 5_000;
+const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS = 2;
+
 export class LocalStore {
   private candidateProjectionSelfHealPromise?: Promise<void>;
   private projectionRebuildQueue: Promise<void> = Promise.resolve();
@@ -1435,6 +1497,17 @@ export class LocalStore {
       () => undefined
     );
     return queued;
+  }
+
+  private async withResearchMemoryControlPublicationTransaction<T>(
+    task: () => Promise<T>
+  ): Promise<T> {
+    const owner = await this.acquireResearchMemoryControlPublicationLock();
+    try {
+      return await task();
+    } finally {
+      await this.releaseResearchMemoryControlPublicationLock(owner);
+    }
   }
 
   private assertPersistedComparisonPreparationShape(
@@ -3609,6 +3682,14 @@ export class LocalStore {
   async recordCandidateArenaResearchAllocation(
     allocation: CandidateArenaResearchAllocationRecord
   ): Promise<CandidateArenaResearchAllocationRecord> {
+    return this.withResearchMemoryControlPublicationTransaction(
+      () => this.recordCandidateArenaResearchAllocationUnlocked(allocation)
+    );
+  }
+
+  private async recordCandidateArenaResearchAllocationUnlocked(
+    allocation: CandidateArenaResearchAllocationRecord
+  ): Promise<CandidateArenaResearchAllocationRecord> {
     if (!candidateArenaResearchAllocationHasRuntimeShape(allocation)) {
       throw new LocalStoreError(
         "invalid_candidate_arena_research_allocation_input",
@@ -4345,6 +4426,735 @@ export class LocalStore {
       );
     }
     return value;
+  }
+
+  async recordResearchMemoryControlStudy(
+    study: ResearchMemoryControlStudyRecord
+  ): Promise<ResearchMemoryControlStudyRecord> {
+    return this.withResearchMemoryControlPublicationTransaction(
+      () => this.recordResearchMemoryControlStudyUnlocked(study)
+    );
+  }
+
+  private async recordResearchMemoryControlStudyUnlocked(
+    study: ResearchMemoryControlStudyRecord
+  ): Promise<ResearchMemoryControlStudyRecord> {
+    if (!researchMemoryControlStudyHasRuntimeShape(study)) {
+      throw new LocalStoreError(
+        "invalid_research_memory_control_study_input",
+        "invalid ResearchMemoryControlStudy input"
+      );
+    }
+    if (study.study_digest !== comparisonExactRecordDigest(
+      researchMemoryControlStudyDigestInput(study)
+    )) {
+      throw new LocalStoreError(
+        "research_memory_control_study_digest_mismatch",
+        "ResearchMemoryControlStudy digest does not match its content"
+      );
+    }
+    if (study.research_memory_control_study_id !==
+      researchMemoryControlStudyIdForKey(study.idempotency_key)) {
+      throw new LocalStoreError(
+        "research_memory_control_study_identity_mismatch",
+        "ResearchMemoryControlStudy identity is not deterministic"
+      );
+    }
+    const existing = await this.getResearchMemoryControlStudy(
+      study.research_memory_control_study_id
+    );
+    if (existing) {
+      if (!sameJson(existing, study)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_conflict",
+          "ResearchMemoryControlStudy is append-only"
+        );
+      }
+      return existing;
+    }
+    await this.assertResearchMemoryControlStudyPrecedesEffects(study);
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-memory-control-studies",
+      study.research_memory_control_study_id
+    ), study);
+    if (publication === "exists") {
+      const winner = await this.getResearchMemoryControlStudy(
+        study.research_memory_control_study_id
+      );
+      if (!winner || !sameJson(winner, study)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_conflict",
+          "ResearchMemoryControlStudy is append-only"
+        );
+      }
+      return winner;
+    }
+    return study;
+  }
+
+  async getResearchMemoryControlStudy(
+    studyId: string
+  ): Promise<ResearchMemoryControlStudyRecord | undefined> {
+    const study = await this.readOptionalRecord<unknown>(
+      "research-memory-control-studies",
+      studyId
+    );
+    return study === undefined
+      ? undefined
+      : this.assertPersistedResearchMemoryControlStudy(study);
+  }
+
+  async listResearchMemoryControlStudies(): Promise<
+    ResearchMemoryControlStudyRecord[]
+  > {
+    return (await this.readCollection<unknown>(
+      "research-memory-control-studies"
+    )).map((study) =>
+      this.assertPersistedResearchMemoryControlStudy(study)
+    ).sort((left, right) =>
+      left.committed_at.localeCompare(right.committed_at) ||
+      left.research_memory_control_study_id.localeCompare(
+        right.research_memory_control_study_id
+      )
+    );
+  }
+
+  private assertPersistedResearchMemoryControlStudy(
+    value: unknown
+  ): ResearchMemoryControlStudyRecord {
+    if (!researchMemoryControlStudyHasRuntimeShape(value) ||
+      value.study_digest !== comparisonExactRecordDigest(
+        researchMemoryControlStudyDigestInput(value)
+      ) || value.research_memory_control_study_id !==
+        researchMemoryControlStudyIdForKey(value.idempotency_key)) {
+      throw new LocalStoreError(
+        "research_memory_control_study_reload_failed",
+        "persisted ResearchMemoryControlStudy is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchMemoryControlStudyPrecedesEffects(
+    study: ResearchMemoryControlStudyRecord
+  ): Promise<void> {
+    const plannedTickIds = new Set(study.pair_plans.flatMap((pair) => [
+      pair.released_memory_treatment.tick_id,
+      pair.memory_masked_control.tick_id
+    ]));
+    const [allocations, preflights, ticks] = await Promise.all([
+      this.readCollection<unknown>("candidate-arena-research-allocations"),
+      this.readCollection<unknown>("research-preflight-commitments"),
+      this.readCollection<unknown>("candidate-arena-ticks")
+    ]);
+    const allocationEffect = allocations.some((value) => {
+      const allocation = this.assertPersistedCandidateArenaResearchAllocation(
+        value
+      );
+      return plannedTickIds.has(allocation.tick_id);
+    });
+    const preflightEffect = preflights.some((value) => {
+      const preflight = this.assertPersistedResearchPreflightCommitment(value);
+      return plannedTickIds.has(preflight.candidate_arena_tick_id);
+    });
+    const tickEffect = ticks.some((tick) => {
+      if (!isCandidateArenaTickRecord(tick)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_effect_graph_corrupt",
+          "CandidateArena tick effect graph is corrupt"
+        );
+      }
+      return plannedTickIds.has(tick.tick_id);
+    });
+    if (allocationEffect || preflightEffect || tickEffect) {
+      throw new LocalStoreError(
+        "research_memory_control_study_effect_already_exists",
+        "ResearchMemoryControlStudy must precede every planned effect"
+      );
+    }
+  }
+
+  async recordResearchMemoryControlPairOutcome(
+    input: ResearchMemoryControlPairOutcomePersistenceInput
+  ): Promise<ResearchMemoryControlPairOutcomeRecord> {
+    const outcome = input?.outcome;
+    if (!researchMemoryControlPairOutcomeHasRuntimeShape(outcome)) {
+      throw new LocalStoreError(
+        "invalid_research_memory_control_pair_outcome_input",
+        "invalid ResearchMemoryControlPairOutcome input"
+      );
+    }
+    if (outcome.pair_outcome_digest !== comparisonExactRecordDigest(
+      researchMemoryControlPairOutcomeDigestInput(outcome)
+    )) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_digest_mismatch",
+        "ResearchMemoryControlPairOutcome digest does not match its content"
+      );
+    }
+    if (outcome.research_memory_control_pair_outcome_id !==
+      researchMemoryControlPairOutcomeIdForPair(
+        outcome.study_ref.id,
+        outcome.pair_index
+      )) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_identity_mismatch",
+        "ResearchMemoryControlPairOutcome identity is not deterministic"
+      );
+    }
+    await this.assertResearchMemoryControlPairOutcomeGraph(outcome);
+    const existing = await this.getResearchMemoryControlPairOutcome(
+      outcome.research_memory_control_pair_outcome_id
+    );
+    if (existing) {
+      if (!sameJson(existing, outcome)) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_conflict",
+          "ResearchMemoryControlPairOutcome is append-only"
+        );
+      }
+      await this.recordResearchMemoryControlPairOutcomeSourceGraph(input);
+      return existing;
+    }
+    await this.recordResearchMemoryControlPairOutcomeSourceGraph(input);
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-memory-control-pair-outcomes",
+      outcome.research_memory_control_pair_outcome_id
+    ), outcome);
+    if (publication === "exists") {
+      const winner = await this.getResearchMemoryControlPairOutcome(
+        outcome.research_memory_control_pair_outcome_id
+      );
+      if (!winner || !sameJson(winner, outcome)) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_conflict",
+          "ResearchMemoryControlPairOutcome is append-only"
+        );
+      }
+      return winner;
+    }
+    return outcome;
+  }
+
+  async getResearchMemoryControlPairOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord | undefined> {
+    const outcomeValue = await this.readOptionalRecord<unknown>(
+      "research-memory-control-pair-outcomes",
+      outcomeId
+    );
+    const persisted = outcomeValue === undefined
+      ? await this.recoverResearchMemoryControlPairOutcomeFromSourceGraph(
+          outcomeId
+        )
+      : this.assertPersistedResearchMemoryControlPairOutcome(outcomeValue);
+    if (!persisted) return undefined;
+    await this.assertResearchMemoryControlPairOutcomeGraph(persisted);
+    await this.assertPersistedResearchMemoryControlPairOutcomeSourceGraph(
+      persisted
+    );
+    return persisted;
+  }
+
+  async listResearchMemoryControlPairOutcomes(
+    studyId?: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord[]> {
+    await this.recoverResearchMemoryControlPairOutcomesFromSourceGraphs();
+    const outcomes = (await this.readCollection<unknown>(
+      "research-memory-control-pair-outcomes"
+    )).map((outcome) =>
+      this.assertPersistedResearchMemoryControlPairOutcome(outcome)
+    );
+    await Promise.all(outcomes.flatMap((outcome) => [
+      this.assertResearchMemoryControlPairOutcomeGraph(outcome),
+      this.assertPersistedResearchMemoryControlPairOutcomeSourceGraph(outcome)
+    ]));
+    return outcomes.filter((outcome) =>
+      !studyId || outcome.study_ref.id === studyId
+    ).sort((left, right) =>
+        left.study_ref.id.localeCompare(right.study_ref.id) ||
+        left.pair_index - right.pair_index ||
+        left.research_memory_control_pair_outcome_id.localeCompare(
+          right.research_memory_control_pair_outcome_id
+        )
+      );
+  }
+
+  private assertPersistedResearchMemoryControlPairOutcome(
+    value: unknown
+  ): ResearchMemoryControlPairOutcomeRecord {
+    if (!researchMemoryControlPairOutcomeHasRuntimeShape(value) ||
+      value.pair_outcome_digest !== comparisonExactRecordDigest(
+        researchMemoryControlPairOutcomeDigestInput(value)
+      ) || value.research_memory_control_pair_outcome_id !==
+        researchMemoryControlPairOutcomeIdForPair(
+          value.study_ref.id,
+          value.pair_index
+        )) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchMemoryControlPairOutcomeGraph(
+    outcome: ResearchMemoryControlPairOutcomeRecord
+  ): Promise<void> {
+    const study = await this.getResearchMemoryControlStudy(
+      outcome.study_ref.id
+    );
+    if (!study) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reference_not_found",
+        "ResearchMemoryControlPairOutcome study was not found"
+      );
+    }
+    if (!researchMemoryControlPairMatchesStudy(outcome, study)) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reference_mismatch",
+        "ResearchMemoryControlPairOutcome does not match its study"
+      );
+    }
+  }
+
+  private async recordResearchMemoryControlPairOutcomeSourceGraph(
+    input: ResearchMemoryControlPairOutcomePersistenceInput
+  ): Promise<void> {
+    const study = await this.getResearchMemoryControlStudy(
+      input.outcome.study_ref.id
+    );
+    if (!study || !sameJson(input.source_graph?.study, study)) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_source_graph_mismatch",
+        "ResearchMemoryControlPairOutcome source study is invalid"
+      );
+    }
+    const record = this.buildResearchMemoryControlPairSourceGraphRecord(input);
+    const existingValue = await this.readOptionalRecord<unknown>(
+      "research-memory-control-pair-outcomes",
+      record.research_memory_control_pair_source_graph_id,
+      "source-graphs"
+    );
+    if (existingValue !== undefined) {
+      let existing: ResearchMemoryControlPairSourceGraphRecord;
+      try {
+        existing = this.assertResearchMemoryControlPairSourceGraphRecord(
+          existingValue,
+          input.outcome
+        );
+      } catch (error) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_source_graph_mismatch",
+          "ResearchMemoryControlPairOutcome source graph conflicts",
+          { cause: error }
+        );
+      }
+      if (!sameJson(existing, record)) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_source_graph_mismatch",
+          "ResearchMemoryControlPairOutcome source graph is append-only"
+        );
+      }
+      return;
+    }
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-memory-control-pair-outcomes",
+      record.research_memory_control_pair_source_graph_id,
+      "source-graphs"
+    ), record);
+    if (publication === "exists") {
+      const winnerValue = await this.readOptionalRecord<unknown>(
+        "research-memory-control-pair-outcomes",
+        record.research_memory_control_pair_source_graph_id,
+        "source-graphs"
+      );
+      let winner: ResearchMemoryControlPairSourceGraphRecord | undefined;
+      try {
+        winner = winnerValue === undefined
+          ? undefined
+          : this.assertResearchMemoryControlPairSourceGraphRecord(
+              winnerValue,
+              input.outcome
+            );
+      } catch (error) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_source_graph_mismatch",
+          "ResearchMemoryControlPairOutcome source graph conflicts",
+          { cause: error }
+        );
+      }
+      if (!winner || !sameJson(winner, record)) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_source_graph_mismatch",
+          "ResearchMemoryControlPairOutcome source graph is append-only"
+        );
+      }
+    }
+  }
+
+  private async assertPersistedResearchMemoryControlPairOutcomeSourceGraph(
+    outcome: ResearchMemoryControlPairOutcomeRecord
+  ): Promise<void> {
+    const sourceGraphId = researchMemoryControlPairSourceGraphId(
+      outcome.research_memory_control_pair_outcome_id
+    );
+    const value = await this.readOptionalRecord<unknown>(
+      "research-memory-control-pair-outcomes",
+      sourceGraphId,
+      "source-graphs"
+    );
+    if (value === undefined) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is missing"
+      );
+    }
+    this.assertResearchMemoryControlPairSourceGraphRecord(value, outcome);
+  }
+
+  private async recoverResearchMemoryControlPairOutcomeFromSourceGraph(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord | undefined> {
+    const sourceGraphId = researchMemoryControlPairSourceGraphId(outcomeId);
+    const value = await this.readOptionalRecord<unknown>(
+      "research-memory-control-pair-outcomes",
+      sourceGraphId,
+      "source-graphs"
+    );
+    if (value === undefined) return undefined;
+    const { outcome } = this.deriveResearchMemoryControlPairSourceGraph(value);
+    if (outcome.research_memory_control_pair_outcome_id !== outcomeId) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source identity is corrupt"
+      );
+    }
+    await this.assertResearchMemoryControlPairOutcomeGraph(outcome);
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-memory-control-pair-outcomes",
+      outcomeId
+    ), outcome);
+    if (publication === "exists") {
+      const winnerValue = await this.readOptionalRecord<unknown>(
+        "research-memory-control-pair-outcomes",
+        outcomeId
+      );
+      const winner = winnerValue === undefined
+        ? undefined
+        : this.assertPersistedResearchMemoryControlPairOutcome(winnerValue);
+      if (!winner || !sameJson(winner, outcome)) {
+        throw new LocalStoreError(
+          "research_memory_control_pair_outcome_reload_failed",
+          "persisted ResearchMemoryControlPairOutcome recovery conflicts"
+        );
+      }
+      return winner;
+    }
+    return outcome;
+  }
+
+  private async recoverResearchMemoryControlPairOutcomesFromSourceGraphs():
+    Promise<void> {
+    const values = await this.readCollection<unknown>(
+      "research-memory-control-pair-outcomes",
+      "source-graphs"
+    );
+    for (const value of values) {
+      const { outcome } = this.deriveResearchMemoryControlPairSourceGraph(value);
+      await this.recoverResearchMemoryControlPairOutcomeFromSourceGraph(
+        outcome.research_memory_control_pair_outcome_id
+      );
+    }
+  }
+
+  private deriveResearchMemoryControlPairSourceGraph(value: unknown): {
+    record: ResearchMemoryControlPairSourceGraphRecord;
+    outcome: ResearchMemoryControlPairOutcomeRecord;
+  } {
+    if (!isPlainObject(value) || !Object.hasOwn(value, "source_graph")) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is corrupt"
+      );
+    }
+    let outcome: ResearchMemoryControlPairOutcomeRecord;
+    try {
+      outcome = decideResearchMemoryControlPairOutcome(
+        value.source_graph as ResearchMemoryControlPairOutcomePersistenceInput[
+          "source_graph"
+        ]
+      );
+    } catch (error) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is invalid",
+        { cause: error }
+      );
+    }
+    return {
+      record: this.assertResearchMemoryControlPairSourceGraphRecord(
+        value,
+        outcome
+      ),
+      outcome
+    };
+  }
+
+  private buildResearchMemoryControlPairSourceGraphRecord(
+    input: ResearchMemoryControlPairOutcomePersistenceInput
+  ): ResearchMemoryControlPairSourceGraphRecord {
+    let sourceGraph: ResearchMemoryControlPairOutcomePersistenceInput[
+      "source_graph"
+    ];
+    let expected: ResearchMemoryControlPairOutcomeRecord;
+    try {
+      sourceGraph = JSON.parse(JSON.stringify(input.source_graph)) as
+        ResearchMemoryControlPairOutcomePersistenceInput["source_graph"];
+      expected = decideResearchMemoryControlPairOutcome(sourceGraph);
+    } catch (error) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_source_graph_mismatch",
+        "ResearchMemoryControlPairOutcome source graph is invalid",
+        { cause: error }
+      );
+    }
+    if (!sameJson(expected, input.outcome)) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_source_graph_mismatch",
+        "ResearchMemoryControlPairOutcome differs from its source graph"
+      );
+    }
+    const record: ResearchMemoryControlPairSourceGraphRecord = {
+      record_kind: "research_memory_control_pair_source_graph",
+      version: 1,
+      research_memory_control_pair_source_graph_id:
+        researchMemoryControlPairSourceGraphId(
+          input.outcome.research_memory_control_pair_outcome_id
+        ),
+      pair_outcome_ref: {
+        record_kind: "research_memory_control_pair_outcome",
+        id: input.outcome.research_memory_control_pair_outcome_id
+      },
+      pair_outcome_digest: input.outcome.pair_outcome_digest,
+      source_graph: sourceGraph,
+      source_graph_digest: "sha256:pending",
+      authority_status: "research_evidence_only"
+    };
+    record.source_graph_digest = comparisonExactRecordDigest(
+      researchMemoryControlPairSourceGraphDigestInput(record)
+    );
+    return record;
+  }
+
+  private assertResearchMemoryControlPairSourceGraphRecord(
+    value: unknown,
+    outcome: ResearchMemoryControlPairOutcomeRecord
+  ): ResearchMemoryControlPairSourceGraphRecord {
+    if (!isPlainObject(value) || !hasOnlyKeys(value, [
+      "record_kind",
+      "version",
+      "research_memory_control_pair_source_graph_id",
+      "pair_outcome_ref",
+      "pair_outcome_digest",
+      "source_graph",
+      "source_graph_digest",
+      "authority_status"
+    ])) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is corrupt"
+      );
+    }
+    const record = value as unknown as ResearchMemoryControlPairSourceGraphRecord;
+    let expected: ResearchMemoryControlPairOutcomeRecord;
+    try {
+      expected = decideResearchMemoryControlPairOutcome(record.source_graph);
+    } catch (error) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is invalid",
+        { cause: error }
+      );
+    }
+    if (record.record_kind !== "research_memory_control_pair_source_graph" ||
+      record.version !== 1 || record.authority_status !==
+        "research_evidence_only" || record.pair_outcome_ref.record_kind !==
+        "research_memory_control_pair_outcome" ||
+      record.pair_outcome_ref.id !==
+        outcome.research_memory_control_pair_outcome_id ||
+      record.pair_outcome_digest !== outcome.pair_outcome_digest ||
+      record.research_memory_control_pair_source_graph_id !==
+        researchMemoryControlPairSourceGraphId(
+          outcome.research_memory_control_pair_outcome_id
+        ) || record.source_graph_digest !== comparisonExactRecordDigest(
+          researchMemoryControlPairSourceGraphDigestInput(record)
+        ) || !sameJson(expected, outcome)) {
+      throw new LocalStoreError(
+        "research_memory_control_pair_outcome_reload_failed",
+        "persisted ResearchMemoryControlPairOutcome source graph is corrupt"
+      );
+    }
+    return record;
+  }
+
+  async recordResearchMemoryControlStudyOutcome(
+    outcome: ResearchMemoryControlStudyOutcomeRecord
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord> {
+    if (!researchMemoryControlStudyOutcomeHasRuntimeShape(outcome)) {
+      throw new LocalStoreError(
+        "invalid_research_memory_control_study_outcome_input",
+        "invalid ResearchMemoryControlStudyOutcome input"
+      );
+    }
+    if (outcome.study_outcome_digest !== comparisonExactRecordDigest(
+      researchMemoryControlStudyOutcomeDigestInput(outcome)
+    )) {
+      throw new LocalStoreError(
+        "research_memory_control_study_outcome_digest_mismatch",
+        "ResearchMemoryControlStudyOutcome digest does not match its content"
+      );
+    }
+    if (outcome.research_memory_control_study_outcome_id !==
+      researchMemoryControlStudyOutcomeIdForStudy(outcome.study_ref.id)) {
+      throw new LocalStoreError(
+        "research_memory_control_study_outcome_identity_mismatch",
+        "ResearchMemoryControlStudyOutcome identity is not deterministic"
+      );
+    }
+    await this.assertResearchMemoryControlStudyOutcomeGraph(outcome);
+    const existing = await this.getResearchMemoryControlStudyOutcome(
+      outcome.research_memory_control_study_outcome_id
+    );
+    if (existing) {
+      if (!sameJson(existing, outcome)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_outcome_conflict",
+          "ResearchMemoryControlStudyOutcome is append-only"
+        );
+      }
+      return existing;
+    }
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
+      "research-memory-control-study-outcomes",
+      outcome.research_memory_control_study_outcome_id
+    ), outcome);
+    if (publication === "exists") {
+      const winner = await this.getResearchMemoryControlStudyOutcome(
+        outcome.research_memory_control_study_outcome_id
+      );
+      if (!winner || !sameJson(winner, outcome)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_outcome_conflict",
+          "ResearchMemoryControlStudyOutcome is append-only"
+        );
+      }
+      return winner;
+    }
+    return outcome;
+  }
+
+  async getResearchMemoryControlStudyOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord | undefined> {
+    const outcome = await this.readOptionalRecord<unknown>(
+      "research-memory-control-study-outcomes",
+      outcomeId
+    );
+    if (outcome === undefined) return undefined;
+    const persisted = this.assertPersistedResearchMemoryControlStudyOutcome(
+      outcome
+    );
+    await this.assertResearchMemoryControlStudyOutcomeGraph(persisted);
+    return persisted;
+  }
+
+  async listResearchMemoryControlStudyOutcomes(): Promise<
+    ResearchMemoryControlStudyOutcomeRecord[]
+  > {
+    const outcomes = (await this.readCollection<unknown>(
+      "research-memory-control-study-outcomes"
+    )).map((outcome) =>
+      this.assertPersistedResearchMemoryControlStudyOutcome(outcome)
+    );
+    await Promise.all(outcomes.map((outcome) =>
+      this.assertResearchMemoryControlStudyOutcomeGraph(outcome)
+    ));
+    return outcomes.sort((left, right) =>
+      left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+      left.research_memory_control_study_outcome_id.localeCompare(
+        right.research_memory_control_study_outcome_id
+      )
+    );
+  }
+
+  private assertPersistedResearchMemoryControlStudyOutcome(
+    value: unknown
+  ): ResearchMemoryControlStudyOutcomeRecord {
+    if (!researchMemoryControlStudyOutcomeHasRuntimeShape(value) ||
+      value.study_outcome_digest !== comparisonExactRecordDigest(
+        researchMemoryControlStudyOutcomeDigestInput(value)
+      ) || value.research_memory_control_study_outcome_id !==
+        researchMemoryControlStudyOutcomeIdForStudy(value.study_ref.id)) {
+      throw new LocalStoreError(
+        "research_memory_control_study_outcome_reload_failed",
+        "persisted ResearchMemoryControlStudyOutcome is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
+  private async assertResearchMemoryControlStudyOutcomeGraph(
+    outcome: ResearchMemoryControlStudyOutcomeRecord
+  ): Promise<void> {
+    const study = await this.getResearchMemoryControlStudy(
+      outcome.study_ref.id
+    );
+    if (!study) {
+      throw new LocalStoreError(
+        "research_memory_control_study_outcome_reference_not_found",
+        "ResearchMemoryControlStudyOutcome study was not found"
+      );
+    }
+    if (outcome.study_digest !== study.study_digest ||
+      outcome.pair_results.length !== study.pair_plans.length) {
+      throw new LocalStoreError(
+        "research_memory_control_study_outcome_reference_mismatch",
+        "ResearchMemoryControlStudyOutcome does not match its study"
+      );
+    }
+    for (let index = 0; index < study.pair_plans.length; index += 1) {
+      const plan = study.pair_plans[index]!;
+      const result = outcome.pair_results[index]!;
+      const pair = await this.getResearchMemoryControlPairOutcome(
+        result.pair_outcome_ref.id
+      );
+      if (!pair) {
+        throw new LocalStoreError(
+          "research_memory_control_study_outcome_reference_not_found",
+          "ResearchMemoryControlStudyOutcome pair graph is incomplete"
+        );
+      }
+      if (result.pair_index !== plan.pair_index ||
+        pair.study_ref.id !== study.research_memory_control_study_id ||
+        pair.study_digest !== study.study_digest ||
+        pair.pair_index !== plan.pair_index ||
+        pair.pair_plan_digest !== comparisonExactRecordDigest(
+          paperTradingComparisonPersistedRecordDigestInput(plan)
+        ) || result.pair_outcome_ref.id !==
+          pair.research_memory_control_pair_outcome_id ||
+        result.pair_outcome_digest !== pair.pair_outcome_digest ||
+        result.eligibility_status !== pair.eligibility_status ||
+        result.ineligibility_reason !== pair.ineligibility_reason ||
+        result.paired_difference !== pair.paired_difference ||
+        Date.parse(pair.terminal_at) > Date.parse(outcome.adjudicated_at)) {
+        throw new LocalStoreError(
+          "research_memory_control_study_outcome_reference_mismatch",
+          "ResearchMemoryControlStudyOutcome pair graph differs from its plan"
+        );
+      }
+    }
   }
 
   async recordResearchGeneralizationOutcome(
@@ -6667,7 +7477,9 @@ export class LocalStore {
     commitment: ResearchPreflightCommitmentRecord
   ): Promise<ResearchPreflightCommitmentRecord> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordResearchPreflightCommitmentUnlocked(commitment)
+      () => this.withResearchMemoryControlPublicationTransaction(
+        () => this.recordResearchPreflightCommitmentUnlocked(commitment)
+      )
     );
   }
 
@@ -7289,6 +8101,129 @@ export class LocalStore {
         }
       );
     }
+    await this.assertResearchMemoryControlPreflightAssignment(
+      commitment,
+      direction,
+      worker,
+      allocation,
+      sourceSystemCode
+    );
+  }
+
+  private async assertResearchMemoryControlPreflightAssignment(
+    commitment: ResearchPreflightCommitmentRecord,
+    direction: ResearchDirectionRecord,
+    worker: ResearchWorkerRecord,
+    allocation: CandidateArenaResearchAllocationRecord,
+    sourceSystemCode: SystemCodeRecord
+  ): Promise<void> {
+    const assignment = commitment.memory_policy?.control_assignment;
+    if (!assignment) return;
+    const study = await this.getResearchMemoryControlStudy(
+      assignment.study_ref.id
+    );
+    if (!study) {
+      throw new LocalStoreError(
+        "research_preflight_memory_control_study_not_found",
+        "ResearchPreflightCommitment memory-control study was not found"
+      );
+    }
+    const pair = study.pair_plans[assignment.pair_index - 1];
+    const arm = pair && assignment.arm_kind === "released_memory_treatment"
+      ? pair.released_memory_treatment
+      : pair?.memory_masked_control;
+    const selection = allocation.selected_directions[0];
+    const expectedProviderKind = study.research_agent.provider === "codex"
+      ? "codex_cli"
+      : study.research_agent.provider === "claude_code"
+      ? "claude_code"
+      : "fixture_only";
+    const mismatchFields = [
+      assignment.study_ref.record_kind !== "research_memory_control_study"
+        ? "study_ref.record_kind"
+        : undefined,
+      assignment.study_digest !== study.study_digest
+        ? "study_digest"
+        : undefined,
+      !pair || pair.pair_index !== assignment.pair_index
+        ? "pair_index"
+        : undefined,
+      !arm || arm.arm_kind !== assignment.arm_kind
+        ? "arm_kind"
+        : undefined,
+      arm && arm.memory_mode !== commitment.memory_policy?.memory_mode
+        ? "memory_mode"
+        : undefined,
+      arm && arm.tick_id !== commitment.candidate_arena_tick_id
+        ? "candidate_arena_tick_id"
+        : undefined,
+      pair && pair.research_direction_ref.id !== direction.research_direction_id
+        ? "research_direction_ref"
+        : undefined,
+      pair && pair.direction_kind !== direction.direction_kind
+        ? "direction_kind"
+        : undefined,
+      worker.agent_profile_id !== study.research_agent_profile_id
+        ? "research_worker.agent_profile_id"
+        : undefined,
+      worker.provider_kind !== expectedProviderKind
+        ? "research_worker.provider_kind"
+        : undefined,
+      worker.model !== study.research_agent.model
+        ? "research_worker.model"
+        : undefined,
+      allocation.allocation_mode !== "explicit" ||
+          allocation.allocation_policy_basis.basis_kind !== "explicit_request"
+        ? "research_allocation.mode"
+        : undefined,
+      allocation.selected_directions.length !== 1 || !selection ||
+          selection.direction_kind !== pair?.direction_kind ||
+          selection.selection_kind !== "explicit" ||
+          selection.experiment_budget !== 1
+        ? "research_allocation.selection"
+        : undefined,
+      sourceSystemCode.system_code_id !== study.source.system_code_ref.id ||
+          sourceSystemCode.artifact_digest !==
+            study.source.system_code_artifact_digest
+        ? "source_system_code"
+        : undefined,
+      commitment.development_policy.suite_version !==
+          study.opportunity_protocol.development_suite_version ||
+          commitment.development_policy.suite_digest !==
+            study.opportunity_protocol.development_suite_digest
+        ? "development_policy"
+        : undefined,
+      commitment.sealed_admission_policy.suite_version !==
+          study.opportunity_protocol.sealed_suite_version ||
+          commitment.sealed_admission_policy.generator_version !==
+            study.opportunity_protocol.sealed_generator_version ||
+          commitment.sealed_admission_policy.rotation_commitment_digest !==
+            study.opportunity_protocol.sealed_rotation_commitment_digest ||
+          commitment.sealed_admission_policy.suite_digest !==
+            study.opportunity_protocol.sealed_suite_digest
+        ? "sealed_admission_policy"
+        : undefined,
+      commitment.memory_policy?.available_memory_item_count === 0
+        ? "memory_policy.available_memory_item_count"
+        : undefined,
+      Date.parse(allocation.allocated_at) <= Date.parse(study.committed_at)
+        ? "allocated_at.before_study"
+        : undefined,
+      Date.parse(commitment.committed_at) <= Date.parse(study.committed_at)
+        ? "committed_at.before_study"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (mismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "research_preflight_memory_control_study_mismatch",
+        "ResearchPreflightCommitment does not match its memory-control study",
+        {
+          research_preflight_commitment_id:
+            commitment.research_preflight_commitment_id,
+          mismatch_fields: mismatchFields
+        }
+      );
+    }
   }
 
   private assertPersistedResearchWorkerCheckpoint(
@@ -7499,6 +8434,14 @@ export class LocalStore {
   }
 
   async recordCandidateArenaTick(tick: CandidateArenaTickRecord): Promise<CandidateArenaTickRecord> {
+    return this.withResearchMemoryControlPublicationTransaction(
+      () => this.recordCandidateArenaTickUnlocked(tick)
+    );
+  }
+
+  private async recordCandidateArenaTickUnlocked(
+    tick: CandidateArenaTickRecord
+  ): Promise<CandidateArenaTickRecord> {
     if (!isCandidateArenaTickRecord(tick)) {
       throw new LocalStoreError(
         "invalid_candidate_arena_tick_input",
@@ -18261,7 +19204,11 @@ export class LocalStore {
     };
   }
 
-  private itemPath(collection: Collection, id: string, itemDir: "items" | "placeholders" = "items"): string {
+  private itemPath(
+    collection: Collection,
+    id: string,
+    itemDir: "items" | "placeholders" | "source-graphs" = "items"
+  ): string {
     return path.join(this.storeRoot, collection, itemDir, storeJsonFileName(id));
   }
 
@@ -18269,14 +19216,18 @@ export class LocalStore {
     return path.join(this.storeRoot, collection, "index.json");
   }
 
-  private async readRecord<T>(collection: Collection, id: string, itemDir: "items" | "placeholders" = "items"): Promise<T> {
+  private async readRecord<T>(
+    collection: Collection,
+    id: string,
+    itemDir: "items" | "placeholders" | "source-graphs" = "items"
+  ): Promise<T> {
     return this.readJson<T>(this.itemPath(collection, id, itemDir));
   }
 
   private async readOptionalRecord<T>(
     collection: Collection,
     id: string,
-    itemDir: "items" | "placeholders" = "items"
+    itemDir: "items" | "placeholders" | "source-graphs" = "items"
   ): Promise<T | undefined> {
     try {
       return await this.readRecord<T>(collection, id, itemDir);
@@ -18288,8 +19239,259 @@ export class LocalStore {
     }
   }
 
-  private async readCollection<T>(collection: Collection): Promise<T[]> {
-    const dir = path.join(this.storeRoot, collection, "items");
+  private researchMemoryControlPublicationLockPaths(): {
+    root: string;
+    active: string;
+    activeOwner: string;
+    transition: string;
+    transitionOwner: string;
+  } {
+    const root = path.join(
+      this.storeRoot,
+      ".locks",
+      "research-memory-control-publication"
+    );
+    const active = path.join(root, "active");
+    const transition = path.join(root, "transition");
+    return {
+      root,
+      active,
+      activeOwner: path.join(active, "owner.json"),
+      transition,
+      transitionOwner: path.join(transition, "owner.json")
+    };
+  }
+
+  private async acquireResearchMemoryControlPublicationLock(): Promise<
+    ResearchMemoryControlPublicationLockOwner
+  > {
+    const paths = this.researchMemoryControlPublicationLockPaths();
+    const owner: ResearchMemoryControlPublicationLockOwner = {
+      token: randomUUID(),
+      pid: process.pid,
+      acquired_at: new Date().toISOString()
+    };
+    await mkdir(paths.root, { recursive: true });
+    await this.cleanupResearchMemoryControlPublicationRetirements(paths);
+    const claim = path.join(paths.root, `claim-${owner.token}`);
+    const claimOwner = path.join(claim, "owner.json");
+    await mkdir(claim);
+    await writeFile(
+      claimOwner,
+      `${JSON.stringify(owner, null, 2)}\n`,
+      "utf8"
+    );
+    try {
+      for (let attempt = 0;
+        attempt < RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_ATTEMPTS;
+        attempt += 1) {
+        await this.recoverResearchMemoryControlPublicationTransition(paths);
+        try {
+          await rename(claim, paths.active);
+          return owner;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
+        }
+        const current = await this
+          .readResearchMemoryControlPublicationLockOwner(paths.activeOwner);
+        if (!current) {
+          if (!await pathExists(paths.active)) continue;
+          throw new LocalStoreError(
+            "research_memory_control_publication_lock_corrupt",
+            "Research memory-control publication lock has no complete owner"
+          );
+        }
+        if (researchMemoryControlPublicationOwnerIsAlive(current)) {
+          await waitForResearchMemoryControlPublicationLock();
+          continue;
+        }
+        await this.transitionStaleResearchMemoryControlPublicationLock(
+          paths,
+          current
+        );
+      }
+      throw new LocalStoreError(
+        "research_memory_control_publication_lock_unavailable",
+        "Research memory-control publication lock did not become available"
+      );
+    } finally {
+      await rm(claim, { recursive: true, force: true });
+    }
+  }
+
+  private async releaseResearchMemoryControlPublicationLock(
+    owner: ResearchMemoryControlPublicationLockOwner
+  ): Promise<void> {
+    const paths = this.researchMemoryControlPublicationLockPaths();
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const current = await this.readResearchMemoryControlPublicationLockOwner(
+        paths.activeOwner
+      );
+      if (current) {
+        if (!sameResearchMemoryControlPublicationLockOwner(current, owner)) {
+          throw new LocalStoreError(
+            "research_memory_control_publication_lock_corrupt",
+            "Research memory-control publication lock ownership changed"
+          );
+        }
+        const retiring = path.join(paths.root, `retiring-${owner.token}`);
+        const retiringOwner = path.join(retiring, "owner.json");
+        try {
+          await rename(paths.active, retiring);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") {
+            await waitForResearchMemoryControlPublicationLock();
+            continue;
+          }
+          if (code === "EEXIST" || code === "ENOTEMPTY") {
+            throw new LocalStoreError(
+              "research_memory_control_publication_lock_corrupt",
+              "Research memory-control retirement identity already exists",
+              { cause: error }
+            );
+          }
+          throw error;
+        }
+        const retiredOwner = await this
+          .readResearchMemoryControlPublicationLockOwner(retiringOwner);
+        if (!retiredOwner || !sameResearchMemoryControlPublicationLockOwner(
+          retiredOwner,
+          owner
+        )) {
+          throw new LocalStoreError(
+            "research_memory_control_publication_lock_corrupt",
+            "Research memory-control retirement changed ownership"
+          );
+        }
+        await rm(retiring, { recursive: true, force: true });
+        return;
+      }
+      const transitioning = await this
+        .readResearchMemoryControlPublicationLockOwner(paths.transitionOwner);
+      if (transitioning && sameResearchMemoryControlPublicationLockOwner(
+        transitioning,
+        owner
+      )) {
+        await this.restoreResearchMemoryControlPublicationTransition(paths);
+        continue;
+      }
+      await waitForResearchMemoryControlPublicationLock();
+    }
+    throw new LocalStoreError(
+      "research_memory_control_publication_lock_corrupt",
+      "Research memory-control publication lock disappeared before release"
+    );
+  }
+
+  private async cleanupResearchMemoryControlPublicationRetirements(
+    paths: ReturnType<LocalStore["researchMemoryControlPublicationLockPaths"]>
+  ): Promise<void> {
+    const entries = await readdir(paths.root);
+    for (const entry of entries.filter((value) =>
+      value.startsWith("retiring-")
+    )) {
+      const retiring = path.join(paths.root, entry);
+      const owner = await this.readResearchMemoryControlPublicationLockOwner(
+        path.join(retiring, "owner.json")
+      );
+      if (!owner || !researchMemoryControlPublicationOwnerIsAlive(owner)) {
+        await rm(retiring, { recursive: true, force: true });
+      }
+    }
+  }
+
+  private async transitionStaleResearchMemoryControlPublicationLock(
+    paths: ReturnType<LocalStore["researchMemoryControlPublicationLockPaths"]>,
+    expected: ResearchMemoryControlPublicationLockOwner
+  ): Promise<void> {
+    try {
+      await rename(paths.active, paths.transition);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EEXIST" || code === "ENOTEMPTY") {
+        return;
+      }
+      throw error;
+    }
+    const moved = await this.readResearchMemoryControlPublicationLockOwner(
+      paths.transitionOwner
+    );
+    const expectedMoved = moved !== undefined &&
+      sameResearchMemoryControlPublicationLockOwner(moved, expected);
+    if (!expectedMoved || (moved &&
+      researchMemoryControlPublicationOwnerIsAlive(moved))) {
+      await this.restoreResearchMemoryControlPublicationTransition(paths);
+      return;
+    }
+    await rm(paths.transition, { recursive: true, force: true });
+  }
+
+  private async recoverResearchMemoryControlPublicationTransition(
+    paths: ReturnType<LocalStore["researchMemoryControlPublicationLockPaths"]>
+  ): Promise<void> {
+    if (!await pathExists(paths.transition)) return;
+    const owner = await this.readResearchMemoryControlPublicationLockOwner(
+      paths.transitionOwner
+    );
+    if (!owner) {
+      if (!await pathExists(paths.transition)) return;
+      throw new LocalStoreError(
+        "research_memory_control_publication_lock_corrupt",
+        "Research memory-control publication transition has no complete owner"
+      );
+    }
+    if (researchMemoryControlPublicationOwnerIsAlive(owner)) {
+      await this.restoreResearchMemoryControlPublicationTransition(paths);
+      return;
+    }
+    await rm(paths.transition, { recursive: true, force: true });
+  }
+
+  private async restoreResearchMemoryControlPublicationTransition(
+    paths: ReturnType<LocalStore["researchMemoryControlPublicationLockPaths"]>
+  ): Promise<void> {
+    try {
+      await rename(paths.transition, paths.active);
+    } catch (error) {
+      if (isMissingFileError(error)) return;
+      throw new LocalStoreError(
+        "research_memory_control_publication_lock_corrupt",
+        "Research memory-control publication transition could not be restored",
+        { cause: error }
+      );
+    }
+  }
+
+  private async readResearchMemoryControlPublicationLockOwner(
+    ownerPath: string
+  ): Promise<ResearchMemoryControlPublicationLockOwner | undefined> {
+    let value: unknown;
+    try {
+      value = JSON.parse(await readFile(ownerPath, "utf8"));
+    } catch (error) {
+      if (isMissingFileError(error) || error instanceof SyntaxError) {
+        return undefined;
+      }
+      throw error;
+    }
+    if (!isPlainObject(value) || typeof value.token !== "string" ||
+      !value.token || !Number.isSafeInteger(value.pid) ||
+      Number(value.pid) <= 0 || !isIsoTimestamp(value.acquired_at)) {
+      throw new LocalStoreError(
+        "research_memory_control_publication_lock_corrupt",
+        "Research memory-control publication lock owner is corrupt"
+      );
+    }
+    return value as unknown as ResearchMemoryControlPublicationLockOwner;
+  }
+
+  private async readCollection<T>(
+    collection: Collection,
+    itemDir: "items" | "placeholders" | "source-graphs" = "items"
+  ): Promise<T[]> {
+    const dir = path.join(this.storeRoot, collection, itemDir);
     let entries: string[];
     try {
       entries = await readdir(dir);
@@ -21217,6 +22419,118 @@ function researchControlStudyOutcomeIdForStudy(studyId: string): string {
   }`;
 }
 
+function researchMemoryControlStudyIdForKey(key: string): string {
+  const canonical = exactStudyKey(key);
+  return `research-memory-control-study-${
+    createHash("sha256").update(canonical).digest("hex").slice(0, 20)
+  }`;
+}
+
+function researchMemoryControlPairOutcomeIdForPair(
+  studyId: string,
+  pairIndex: number
+): string {
+  const key = `${exactStudyKey(studyId)}:${pairIndex}`;
+  return `research-memory-control-pair-outcome-${
+    createHash("sha256").update(key).digest("hex").slice(0, 20)
+  }`;
+}
+
+function researchMemoryControlPairSourceGraphId(
+  pairOutcomeId: string
+): string {
+  return `research-memory-control-pair-source-graph-${
+    createHash("sha256").update(exactStudyKey(pairOutcomeId)).digest("hex")
+      .slice(0, 20)
+  }`;
+}
+
+function researchMemoryControlPairSourceGraphDigestInput(
+  record: ResearchMemoryControlPairSourceGraphRecord
+): string {
+  const { source_graph_digest: _digest, ...payload } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+function researchMemoryControlStudyOutcomeIdForStudy(
+  studyId: string
+): string {
+  return `research-memory-control-study-outcome-${
+    createHash("sha256").update(exactStudyKey(studyId)).digest("hex")
+      .slice(0, 20)
+  }`;
+}
+
+function researchMemoryControlPairMatchesStudy(
+  outcome: ResearchMemoryControlPairOutcomeRecord,
+  study: ResearchMemoryControlStudyRecord
+): boolean {
+  const plan = study.pair_plans[outcome.pair_index - 1];
+  if (!plan || plan.pair_index !== outcome.pair_index ||
+    outcome.study_ref.record_kind !== "research_memory_control_study" ||
+    outcome.study_ref.id !== study.research_memory_control_study_id ||
+    outcome.study_digest !== study.study_digest ||
+    outcome.pair_plan_digest !== comparisonExactRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(plan)
+    ) || outcome.research_direction_ref.record_kind !== "research_direction" ||
+    outcome.research_direction_ref.id !== plan.research_direction_ref.id ||
+    outcome.direction_kind !== plan.direction_kind ||
+    Date.parse(outcome.terminal_at) < Date.parse(study.committed_at)) {
+    return false;
+  }
+  const expectedProviderKind = study.research_agent.provider === "codex"
+    ? "codex_cli"
+    : study.research_agent.provider === "claude_code"
+    ? "claude_code"
+    : "fixture_only";
+  const arms = [
+    [outcome.released_memory, plan.released_memory_treatment],
+    [outcome.memory_masked, plan.memory_masked_control]
+  ] as const;
+  return arms.every(([arm, armPlan]) => {
+    if (arm.arm_kind !== armPlan.arm_kind ||
+      arm.memory_mode !== armPlan.memory_mode ||
+      arm.planned_tick_id !== armPlan.tick_id) {
+      return false;
+    }
+    const malformed = arm.ineligibility_reason === "malformed_evidence_graph";
+    const worker = arm.worker_evidence;
+    const allocation = arm.allocation_evidence;
+    const preflight = arm.preflight_evidence;
+    if (!malformed && (!worker || !allocation || !preflight ||
+      worker.agent_profile_id !== study.research_agent_profile_id ||
+      worker.provider_kind !== expectedProviderKind ||
+      worker.model !== study.research_agent.model ||
+      allocation.direction_kind !== plan.direction_kind ||
+      allocation.allocation_mode !== "explicit" ||
+      allocation.selection_kind !== "explicit" ||
+      allocation.experiment_budget !== 1)) {
+      return false;
+    }
+    if (!preflight) return malformed;
+    const assignment = preflight.memory_policy.control_assignment;
+    const opportunityMatches = preflight.development_suite_version ===
+        study.opportunity_protocol.development_suite_version &&
+      preflight.development_suite_digest ===
+        study.opportunity_protocol.development_suite_digest &&
+      preflight.sealed_suite_version ===
+        study.opportunity_protocol.sealed_suite_version &&
+      preflight.sealed_generator_version ===
+        study.opportunity_protocol.sealed_generator_version &&
+      preflight.sealed_rotation_commitment_digest ===
+        study.opportunity_protocol.sealed_rotation_commitment_digest &&
+      preflight.sealed_suite_digest ===
+        study.opportunity_protocol.sealed_suite_digest;
+    const assignmentMatches = assignment?.study_ref.id ===
+        study.research_memory_control_study_id &&
+      assignment.study_digest === study.study_digest &&
+      assignment.pair_index === plan.pair_index &&
+      assignment.arm_kind === armPlan.arm_kind &&
+      preflight.memory_policy.memory_mode === armPlan.memory_mode;
+    return malformed || (opportunityMatches && assignmentMatches);
+  });
+}
+
 function researchGeneralizationOutcomeIdForProtocol(
   protocolId: string
 ): string {
@@ -21540,4 +22854,34 @@ async function pathExists(targetPath: string): Promise<boolean> {
     }
     throw error;
   }
+}
+
+function sameResearchMemoryControlPublicationLockOwner(
+  left: ResearchMemoryControlPublicationLockOwner,
+  right: ResearchMemoryControlPublicationLockOwner
+): boolean {
+  return left.token === right.token && left.pid === right.pid &&
+    left.acquired_at === right.acquired_at;
+}
+
+function researchMemoryControlPublicationOwnerIsAlive(
+  owner: ResearchMemoryControlPublicationLockOwner
+): boolean {
+  try {
+    process.kill(owner.pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code !== "ESRCH";
+  }
+}
+
+async function waitForResearchMemoryControlPublicationLock(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(
+      resolve,
+      RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS
+    );
+    timer.unref?.();
+  });
 }

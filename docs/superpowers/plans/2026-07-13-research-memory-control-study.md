@@ -322,6 +322,8 @@ researchMemoryControlStudyOutcomeId(studyId: string): string
 **Files:**
 
 - Modify: `packages/application/src/ports/store.ts`
+- Modify: `packages/local-store/package.json`
+- Modify: `package-lock.json`
 - Modify: `packages/local-store/src/index.ts`
 - Create: `packages/local-store/test/research-memory-control-study.test.ts`
 
@@ -334,14 +336,14 @@ researchMemoryControlStudyOutcomeId(studyId: string): string
 - A study-assigned preflight is accepted only when the exact study has already been replicated into
   the arm store and the assignment matches one planned tick, pair, mode, and arm kind.
 
-- [ ] **Step 1: Write RED persistence and adversarial graph tests**
+- [x] **Step 1: Write RED persistence and adversarial graph tests**
 
   Test idempotent exact replay, conflicting replay, malformed digest, study-after-preflight,
   unplanned assigned tick, pair index/tick substitution,
   mode swap, memory-source mismatch, duplicate pair outcome, missing pair, outcome omission, order
   change, post-effect study publication, and every authority flag.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
   ```bash
   npx vitest run packages/local-store/test/research-memory-control-study.test.ts
@@ -349,24 +351,26 @@ researchMemoryControlStudyOutcomeId(studyId: string): string
 
   Expected: FAIL because StorePort and LocalStore methods do not exist.
 
-- [ ] **Step 3: Implement minimal append-only methods and graph checks**
+- [x] **Step 3: Implement minimal append-only methods and graph checks**
 
   Use existing `writeJsonCreateOnly`, runtime-shape guards, canonical digest helpers, deterministic
   collection names, and exact sorting. Do not add generic untyped record persistence.
 
-- [ ] **Step 4: Run GREEN plus adjacent Store tests**
+- [x] **Step 4: Run GREEN plus adjacent Store tests**
 
   ```bash
-  npx vitest run packages/local-store/test/research-memory-control-study.test.ts packages/local-store/test/research-control-study.test.ts packages/local-store/test/research-worker-memory-policy.test.ts
+  npx vitest run packages/local-store/test
+  npx vitest run packages/application/src/candidate/research-memory-control-study.test.ts packages/application/src/candidate/research-memory-control-study-outcome.test.ts packages/application/src/candidate/research-worker-memory.test.ts
   npm run typecheck --workspace @ouroboros/application
   npm run typecheck --workspace @ouroboros/local-store
+  npm run check:repo-guards
   git diff --check
   ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
-  git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/research-memory-control-study.test.ts
+  git add package-lock.json packages/application/src/ports/store.ts packages/local-store/package.json packages/local-store/src/index.ts packages/local-store/test/research-memory-control-study.test.ts docs/superpowers/plans/2026-07-13-research-memory-control-study.md
   git commit -m "feat: persist research memory controls"
   ```
 
