@@ -201,6 +201,25 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       result.value.result.status !== "both_running"
     );
     if (failed) {
+      const results = settled.map((result, index) =>
+        result.status === "rejected"
+          ? {
+              arm_kind: authorized[index]!.armKind,
+              status: "rejected",
+              reason: conciseError(result.reason)
+            }
+          : {
+              arm_kind: result.value.armKind,
+              status: result.value.result.status,
+              outcome_reason: result.value.result.outcome.outcome_reason,
+              champion: summarizeActivationSideResult(
+                result.value.result.championResult
+              ),
+              challenger: summarizeActivationSideResult(
+                result.value.result.challengerResult
+              )
+            }
+      );
       await Promise.allSettled(started.filter(({ result }) =>
         result.status === "both_running"
       ).map(({ armKind, result }) =>
@@ -212,7 +231,8 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       ));
       throw windowError(
         "research_control_campaign_paper_source_window_start_failed",
-        "Matched source comparisons did not both reach running state."
+        "Matched source comparisons did not both reach running state.",
+        { results }
       );
     }
     return started;
@@ -253,6 +273,16 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
       );
       return { transition: "capture_next_tick", steps: [step], terminal: false };
     }
+    if (deferMatchedProgress(decisions)) {
+      return {
+        transition: "none",
+        steps: sources.map((source, index) => projectNoOpWindowStep(
+          source,
+          decisions[index]!
+        )),
+        terminal: false
+      };
+    }
     const transition = uniqueTransition(decisions);
     const terminal = decisions.every((decision) => decision.terminal);
     if (decisions.some((decision) => decision.terminal !== terminal)) {
@@ -282,6 +312,16 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
           "Matched source tick attribution failed and peers were stopped."
         );
       }
+    }
+    if (transition === "none") {
+      return {
+        transition,
+        steps: sources.map((source, index) => noOpWindowStep(
+          source,
+          decisions[index]!
+        )),
+        terminal
+      };
     }
     const frozen = transition === "capture_next_tick"
       ? await this.captureFrozenMarketEvidence()
@@ -428,6 +468,40 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
   }
 }
 
+function noOpWindowStep(
+  source: ResearchControlCampaignPaperWindowSource,
+  decision: PaperTradingComparisonWindowDecision
+): PaperTradingComparisonWindowStep {
+  if (decision.transition !== "none") {
+    throw windowError(
+      "research_control_campaign_paper_source_window_graph_invalid",
+      "Only a classified no-op source window can bypass its driver."
+    );
+  }
+  return projectNoOpWindowStep(source, decision);
+}
+
+function projectNoOpWindowStep(
+  source: ResearchControlCampaignPaperWindowSource,
+  decision: PaperTradingComparisonWindowDecision
+): PaperTradingComparisonWindowStep {
+  return {
+    activation_id: source.activationId,
+    activation_attempt_id: source.activationAttemptId,
+    phase: decision.phase,
+    checkpoint_sequence: decision.checkpoint_sequence,
+    transition: "none",
+    terminal: decision.terminal,
+    ...(decision.next_wake_at
+      ? { next_wake_at: decision.next_wake_at }
+      : {}),
+    ...(decision.stable_error_code
+      ? { stable_error_code: decision.stable_error_code }
+      : {}),
+    authority_status: "not_live"
+  };
+}
+
 function readyBatchSides(
   schedule: ResearchControlCampaignPaperScheduleRecord,
   batch: ResearchControlCampaignPaperStartBatchRecord
@@ -524,10 +598,38 @@ function uniqueTransition(
   if (transitions.size !== 1) {
     throw windowError(
       "research_control_campaign_paper_source_window_graph_invalid",
-      "Matched source windows require the same next transition."
+      "Matched source windows require the same next transition.",
+      { decisions }
     );
   }
   return decisions[0]!.transition;
+}
+
+function deferMatchedProgress(
+  decisions: PaperTradingComparisonWindowDecision[]
+): boolean {
+  if (decisions.length !== 2) return false;
+  const transitions = new Set(decisions.map((decision) => decision.transition));
+  const checkpointSequences = new Set(decisions.map((decision) =>
+    decision.checkpoint_sequence
+  ));
+  if (transitions.size !== 2 || !transitions.has("none") ||
+    checkpointSequences.size !== 1 ||
+    decisions.some((decision) => decision.terminal)) {
+    return false;
+  }
+  const advancing = decisions.find((decision) =>
+    decision.transition !== "none"
+  )!;
+  const waiting = decisions.find((decision) => decision.transition === "none")!;
+  if (advancing.transition === "complete_next_checkpoint") {
+    return advancing.phase === "views_advanced" &&
+      waiting.phase === "views_advanced";
+  }
+  return advancing.transition === "capture_next_tick" &&
+    advancing.phase === "checkpoint_committed" &&
+    (waiting.phase === "waiting_tick_acknowledgements" ||
+      waiting.phase === "checkpoint_committed");
 }
 
 function candidateSlot(
@@ -580,6 +682,23 @@ function conciseError(error: unknown): string {
   return error instanceof Error
     ? `${error.name}:${error.message}`.slice(0, 240)
     : "unknown_error";
+}
+
+function summarizeActivationSideResult(
+  result: PaperTradingComparisonRuntimeActivationResult["championResult"]
+): Record<string, unknown> | undefined {
+  return result
+    ? {
+        operation: result.operation,
+        reason: result.reason,
+        outcome: result.outcome,
+        runtime_lifecycle_status: result.runtime_lifecycle_status,
+        evaluation_status: result.evaluation_status,
+        ...(result.stable_error_code
+          ? { stable_error_code: result.stable_error_code }
+          : {})
+      }
+    : undefined;
 }
 
 function windowError(

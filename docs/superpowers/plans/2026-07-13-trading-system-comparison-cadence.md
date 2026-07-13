@@ -444,6 +444,124 @@ git add \
 git commit -m "feat: enable arm-local comparison tick attribution"
 ```
 
+### Task 1D: Preserve repeated-checkpoint ownership across arm drivers
+
+**Files:**
+- Modify: `apps/runtime/test/research-control-campaign-paper-runtime-arm.test.ts`
+- Modify: `apps/runtime/src/candidate/arena/research-control-campaign-paper-runtime-arm.ts`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+**Interfaces:**
+- Consumes: `PaperTradingComparisonCheckpointCoordinator` in-process open-attempt ownership.
+- Produces: one arm-lifetime checkpoint coordinator shared by every per-transition window driver.
+
+- [x] **Step 1: Capture the ownership loss as RED**
+
+Create two window drivers from one runtime arm and assert their internal checkpoint coordinator is
+the same object. The test must fail against per-driver coordinator construction.
+
+- [x] **Step 2: Hoist checkpoint ownership to the arm lifetime**
+
+Construct `PaperTradingComparisonCheckpointCoordinator` once beside the arm's activation runtime.
+Keep `PaperTradingComparisonTickCoordinator` driver-local so frozen repeated-tick market evidence
+is still scoped to the exact transition.
+
+- [x] **Step 3: Run focused ownership and source-window regressions**
+
+Run the runtime-arm, source-window, and paper-runtime tests. Then rerun the real prospective study;
+the second checkpoint must complete instead of failing with
+`paper_trading_comparison_checkpoint_not_owned`.
+
+- [x] **Step 4: Commit the ownership composition fix**
+
+Stage only the runtime arm, its focused test, and these design/plan updates, then commit:
+
+```bash
+git commit -m "fix: preserve paper checkpoint ownership"
+```
+
+### Task 1E: Make matched no-op window decisions deterministic
+
+**Files:**
+- Modify: `apps/runtime/test/research-control-campaign-paper-source-window.test.ts`
+- Modify: `apps/runtime/src/candidate/arena/research-control-campaign-paper-source-window.ts`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+- [x] **Step 1: Capture the acknowledgement TOCTOU as RED**
+
+Assert that matched `waiting_tick_acknowledgements` enables both arm sessions but invokes no
+window driver. The current implementation fails because it invokes both drivers after selecting
+`none`.
+
+- [x] **Step 2: Return exact no-op steps from the classified snapshots**
+
+After attribution enablement, return one step per source from the already validated decision when
+the selected transition is `none`. Preserve phase, checkpoint sequence, terminal state, wake time,
+stable error code, IDs, and `not_live` authority.
+
+- [x] **Step 3: Verify race-free cadence and commit with Task 1D**
+
+Run focused source-window/runtime tests and the six-replication prospective study. Commit the
+ownership and no-op fixes together only after the real study reaches its next stable outcome.
+
+### Task 1F: Isolate long sandbox runtime identities
+
+**Files:**
+- Modify: `apps/runtime/test/sandboxes.test.ts`
+- Modify: `packages/adapters/src/sandbox/adapter.ts`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+- [x] **Step 1: Reproduce truncated runtime-file collision**
+
+Start two long-running deterministic sandboxes whose IDs differ only after the 80-character safe
+prefix. Assert their start evidence IDs differ and each log contains only its own instance ID. The
+current adapter fails with cross-process log contents.
+
+- [x] **Step 2: Use the full-ID digest in runtime identity keys**
+
+Share one hash-suffixed runtime key across log, heartbeat, and PID filenames. Use the same key for
+persisted sandbox log, heartbeat, and command evidence when a safe slug truncates; preserve current
+short IDs.
+
+- [x] **Step 3: Verify sandbox isolation and prospective qualification**
+
+Run the focused sandbox test, all sandbox tests, focused source/runtime tests, and the prospective
+study. No side may observe its peer's OrderRequest or fail acknowledgement attribution.
+
+### Task 1G: Synchronize matched arm progress
+
+**Files:**
+- Modify: `apps/runtime/test/research-control-campaign-paper-source-window.test.ts`
+- Modify: `apps/runtime/src/candidate/arena/research-control-campaign-paper-source-window.ts`
+- Modify: `docs/superpowers/specs/2026-07-13-trading-system-comparison-cadence-design.md`
+- Modify: `docs/superpowers/plans/2026-07-13-trading-system-comparison-cadence.md`
+
+- [x] **Step 1: Reproduce partial open-checkpoint readiness**
+
+Classify one matched arm as `views_advanced/complete_next_checkpoint` and its peer as
+`views_advanced/none` at the same checkpoint sequence. Assert that neither driver advances and both
+steps remain nonterminal no-ops.
+
+- [x] **Step 2: Reproduce partial next-tick readiness**
+
+Classify one arm as `checkpoint_committed/capture_next_tick` and its peer as
+`waiting_tick_acknowledgements/none` at the same checkpoint sequence. Assert that no shared market
+read or driver advance occurs.
+
+- [x] **Step 3: Implement the bounded matched-progress barrier**
+
+Defer only the two reproduced nonterminal transition pairs with equal checkpoint sequence. Preserve
+the existing partial repeated-tick recovery and reject every other transition or sequence
+divergence as an invalid graph.
+
+- [x] **Step 4: Stress the comparison/session regression set**
+
+Run the 12-file, 191-test comparison/session/study regression set repeatedly under the repository's
+four-worker bound. Require at least six consecutive clean runs after both barriers are present.
+
 ### Task 2: Qualified two-checkpoint prospective study
 
 **Files:**
@@ -455,7 +573,7 @@ git commit -m "feat: enable arm-local comparison tick attribution"
 - Produces: six completed replications containing 12 pair-qualified source verdicts and no policy
   decision.
 
-- [ ] **Step 1: Freeze the two-checkpoint protocol**
+- [x] **Step 1: Freeze the two-checkpoint protocol**
 
 Change `boundProtocol` and the sandbox fixture cadence:
 
@@ -473,7 +591,7 @@ Keep `maximum_elapsed_ms: 600_000`, provider request limit 100, confirmation cou
 authority policies unchanged. The 1,000 ms TradingSystem cadence preserves 100 seconds of polling
 under the frozen request cap; do not couple it to the evaluator's 25 ms interval.
 
-- [ ] **Step 2: Replace ineligible expectations with qualified-tie expectations**
+- [x] **Step 2: Replace ineligible expectations with qualified-tie expectations**
 
 Assert exact source verdict closure:
 
@@ -493,7 +611,7 @@ Retain the exact six ties, zero non-ties, p-value 1,
 `insufficient_non_tied_replications`, no allocation decision, unchanged promotion, symmetric
 provider/sandbox lifecycle, and effect-free restart assertions.
 
-- [ ] **Step 3: Run the real-arm integration**
+- [x] **Step 3: Run the real-arm integration**
 
 Run:
 
@@ -507,7 +625,7 @@ Expected: one test passes with 12 `source_not_improved` terminal slots and empty
 reasons. If it fails, classify the first stable product or fixture boundary; do not weaken
 qualification or fabricate an acknowledgement.
 
-- [ ] **Step 4: Run the comparison/session regression set**
+- [x] **Step 4: Run the comparison/session regression set**
 
 Run:
 

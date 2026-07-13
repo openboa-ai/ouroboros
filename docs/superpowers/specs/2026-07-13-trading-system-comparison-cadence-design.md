@@ -109,6 +109,65 @@ coordinator invokes this operation for each arm before its no-op window advance.
 idempotent for the same attempt and tick. If either arm cannot enable exact attribution, the
 coordinator stops both owned runtimes and records the existing source-window transition failure.
 
+## Checkpoint Ownership Composition
+
+`PaperTradingComparisonCheckpointCoordinator` owns the in-process open-attempt token created by
+`beginNext` and required by `completeNext`. It is therefore an arm-lifetime coordinator, not a
+window-driver-lifetime helper. Recreating it for every source-window advance preserves Store
+records but loses the non-transferable ownership token and correctly fails with
+`paper_trading_comparison_checkpoint_not_owned`.
+
+The runtime arm composes one checkpoint coordinator beside its activation owner and shares it
+across every window driver created for that arm. Tick coordinators remain driver-local because a
+repeated tick must use the exact frozen market-data view and clock supplied for that transition.
+Different arms still receive different checkpoint coordinators and cannot share ownership.
+
+## No-op Window Determinism
+
+The matched source-window coordinator classifies an exact pair of snapshots before selecting a
+transition. A `none` decision is returned directly as an immutable no-op step; it is not delegated
+to a driver that reloads mutable Store state. Candidate acknowledgements can arrive between those
+operations, so reclassification would create a TOCTOU race where a driver built with a no-read
+market port unexpectedly selects `capture_next_tick`.
+
+This short-circuit does not delay or synthesize a candidate decision. The next executor iteration
+reloads acknowledgements and selects the newly eligible transition. Mutating transitions continue
+through the real driver, with one shared frozen market snapshot for matched repeated ticks.
+
+## Matched Arm Progress Barrier
+
+Candidate acknowledgements arrive independently in each arm even though the source comparison is
+advanced as one matched pair. Two normal intermediate states can therefore expose different local
+transitions for the same checkpoint sequence:
+
+- one arm is ready to `capture_next_tick` while its peer still reports nonterminal `none` in
+  `waiting_tick_acknowledgements` or `checkpoint_committed`;
+- one open checkpoint is ready to `complete_next_checkpoint` while its peer still reports
+  nonterminal `none` in `views_advanced`.
+
+The source-window coordinator treats only those exact two-arm combinations as a synchronization
+barrier. It projects both already classified decisions as immutable `none` steps and reloads on the
+next executor iteration. It does not capture a tick, complete a checkpoint, read market data, or
+advance either driver until both arms select the same mutating transition.
+
+Both decisions must be nonterminal and carry the same checkpoint sequence. Partial repeated-tick
+persistence remains governed by its separate contiguous recovery rule. Any other transition,
+terminal-state, or sequence divergence remains a graph error and fails closed.
+
+## Sandbox Runtime Identity
+
+`safeRuntimeId` is a bounded path/display slug, not a complete process identity. Comparison sandbox
+IDs share a long activation-attempt prefix and place the role/run discriminator after that prefix;
+truncating at 80 characters therefore mapped champion and challenger to the same log and heartbeat
+files. Their Store evidence then contained cross-role OrderRequests and made repeated checkpoint
+attribution timing-dependent.
+
+Every runtime file key includes a digest of the full instance ID, as PID files already do. Persisted
+sandbox log, runtime heartbeat, and command-evidence IDs use the same collision-resistant identity
+when the bounded slug would truncate. Short existing IDs retain their current readable identity.
+The adapter must prove two long same-prefix sessions have isolated file contents and distinct
+evidence IDs.
+
 ## Prospective Protocol
 
 Keep the same precommitted six replications, real arm-local Stores, real deterministic subprocesses,
@@ -147,6 +206,9 @@ Arm wiring tests:
 - prove the runtime-arm factory reloads the exact attempt and tick and enables both role contexts;
 - prove matched waiting source windows enable both arms before retrying;
 - prove one arm enablement failure stops both owned runtimes and fails the transition closed.
+- prove successive drivers from one arm share checkpoint ownership while separate arms do not.
+- prove a ready next-tick capture waits for its acknowledgement-lagging peer without a market read;
+- prove a ready open checkpoint waits for its acknowledgement-lagging peer without driver advance.
 
 Prospective integration:
 

@@ -72,6 +72,12 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
     activations: runtime,
     now
   });
+  const checkpoints = new PaperTradingComparisonCheckpointCoordinator({
+    store: input.store,
+    sessions: input.sessions,
+    activations: runtime,
+    now
+  });
   const createWindowDriver: ResearchControlCampaignPaperRuntimeArm[
     "createWindowDriver"
   ] = (driverInput) => {
@@ -79,12 +85,6 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
       store: input.store,
       comparisons,
       marketData: driverInput.marketData,
-      activations: runtime,
-      now: driverInput.now
-    });
-    const checkpoints = new PaperTradingComparisonCheckpointCoordinator({
-      store: input.store,
-      sessions: input.sessions,
       activations: runtime,
       now: driverInput.now
     });

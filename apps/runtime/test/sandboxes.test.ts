@@ -280,6 +280,61 @@ describe("sandbox API", () => {
     expect(path.basename(first)).not.toBe(path.basename(second));
   });
 
+  it("isolates runtime files for long sandbox ids with the same prefix", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode(
+      "fixture-system-code-clock-python-001"
+    );
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const sharedPrefix = `sandbox-${"same-prefix-".repeat(8)}`;
+    const firstId = `${sharedPrefix}first`;
+    const secondId = `${sharedPrefix}second`;
+    const first = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: firstId,
+      sandbox_name: "ouro-long-prefix-first",
+      runtime_ref: { record_kind: "trading_run", id: "first-run" },
+      sandbox_placement_id: "sandbox-placement-long-prefix-first",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+    const second = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: secondId,
+      sandbox_name: "ouro-long-prefix-second",
+      runtime_ref: { record_kind: "trading_run", id: "second-run" },
+      sandbox_placement_id: "sandbox-placement-long-prefix-second",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(first.logs?.[0]?.sandbox_log_id).not.toBe(
+        second.logs?.[0]?.sandbox_log_id
+      );
+      expect(first.command_evidence[0]?.sandbox_command_evidence_id).not.toBe(
+        second.command_evidence[0]?.sandbox_command_evidence_id
+      );
+      await sleep(30);
+      const firstLogs = await adapter.getArtifactInstanceLogs(first.instance);
+      const secondLogs = await adapter.getArtifactInstanceLogs(second.instance);
+      const firstText = firstLogs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+      const secondText = secondLogs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+
+      expect(firstText).toContain(firstId);
+      expect(firstText).not.toContain(secondId);
+      expect(secondText).toContain(secondId);
+      expect(secondText).not.toContain(firstId);
+    } finally {
+      await Promise.allSettled([
+        adapter.stopArtifactInstance(first.instance),
+        adapter.stopArtifactInstance(second.instance)
+      ]);
+    }
+  });
+
   it("marks a generated long-running paper session as failed when it exits before startup logs", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

@@ -19,7 +19,6 @@ import type {
 } from "@ouroboros/domain";
 import {
   ResearchControlCampaignPaperSourceWindowCoordinator,
-  ResearchControlCampaignPaperSourceWindowError,
   type ResearchControlCampaignPaperSourceWindowArm
 } from "../src/candidate/arena/research-control-campaign-paper-source-window";
 
@@ -53,7 +52,15 @@ describe("ResearchControlCampaign matched source window", () => {
     await expect(fixture.coordinator.startSourceBatch({
       schedule: fixture.schedule,
       batch: fixture.batch
-    })).rejects.toBeInstanceOf(ResearchControlCampaignPaperSourceWindowError);
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_paper_source_window_start_failed",
+      details: {
+        results: [
+          { arm_kind: "adaptive_treatment", status: "both_running" },
+          { arm_kind: "static_control", status: "stopped_cleanly" }
+        ]
+      }
+    });
 
     expect(fixture.operations).toContain("stop:adaptive_treatment");
     expect(fixture.running.size).toBe(0);
@@ -128,6 +135,64 @@ describe("ResearchControlCampaign matched source window", () => {
       "enable:adaptive_treatment:adaptive_treatment-tick-1",
       "enable:static_control:static_control-tick-1"
     ]);
+    expect(fixture.operations.filter((operation) =>
+      operation.startsWith("advance:")
+    )).toEqual([]);
+  });
+
+  it("waits for both matched checkpoints before completing either one", async () => {
+    const fixture = sourceWindowFixture({
+      initialPhases: {
+        adaptive_treatment: "views_advanced_ready",
+        static_control: "views_advanced_waiting"
+      }
+    });
+
+    const result = await fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    });
+
+    expect(result).toMatchObject({
+      transition: "none",
+      terminal: false,
+      steps: [
+        { phase: "views_advanced", transition: "none" },
+        { phase: "views_advanced", transition: "none" }
+      ]
+    });
+    expect(fixture.operations.filter((operation) =>
+      operation.startsWith("advance:")
+    )).toEqual([]);
+  });
+
+  it("waits for both matched arms before capturing the next tick", async () => {
+    const fixture = sourceWindowFixture({
+      initialPhases: {
+        adaptive_treatment: "checkpoint_committed",
+        static_control: "waiting_tick_acknowledgements"
+      }
+    });
+
+    const result = await fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    });
+
+    expect(result).toMatchObject({
+      transition: "none",
+      terminal: false,
+      steps: [
+        { phase: "checkpoint_committed", transition: "none" },
+        { phase: "waiting_tick_acknowledgements", transition: "none" }
+      ]
+    });
+    expect(fixture.sourceReads).toEqual({ market: 0, execution: 0 });
+    expect(fixture.operations.filter((operation) =>
+      operation.startsWith("advance:")
+    )).toEqual([]);
   });
 
   it("stops both matched runtimes when one arm cannot enable tick attribution", async () => {
@@ -213,7 +278,9 @@ describe("ResearchControlCampaign matched source window", () => {
 type WindowPhase =
   | "checkpoint_committed"
   | "next_tick_captured"
-  | "waiting_tick_acknowledgements";
+  | "waiting_tick_acknowledgements"
+  | "views_advanced_ready"
+  | "views_advanced_waiting";
 
 class WindowStore {
   ticks: PaperTradingComparisonTickRecord[] = [];
@@ -330,6 +397,7 @@ function sourceWindowFixture(options: {
       createWindowDriver({ marketData, now }) {
         return {
           async advance(input) {
+            operations.push(`advance:${armKind}`);
             const before = classifyPaperTradingComparisonWindow(
               windowFacts(phases[armKind])
             );
@@ -425,9 +493,12 @@ function windowSnapshot(
   armKind: ResearchControlCampaignArmKind,
   phase: WindowPhase
 ) {
+  const hasSecondTick = phase === "next_tick_captured" ||
+    phase === "views_advanced_ready" ||
+    phase === "views_advanced_waiting";
   return {
     facts: windowFacts(phase),
-    latest_tick_id: phase === "next_tick_captured"
+    latest_tick_id: hasSecondTick
       ? `${armKind}-tick-2`
       : `${armKind}-tick-1`
   };
@@ -435,8 +506,11 @@ function windowSnapshot(
 
 function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
   const nextTick = phase === "next_tick_captured";
+  const openCheckpoint = phase === "views_advanced_ready" ||
+    phase === "views_advanced_waiting";
   const waitingForAcknowledgements =
-    phase === "waiting_tick_acknowledgements";
+    phase === "waiting_tick_acknowledgements" ||
+    phase === "views_advanced_waiting";
   return {
     owned: true,
     now: "2026-07-12T10:00:02.000Z",
@@ -444,14 +518,17 @@ function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
     interval_ms: 1_000,
     maximum_observation_count: 3,
     maximum_elapsed_ms: 10_000,
-    tick_count: nextTick ? 2 : 1,
-    latest_tick_observed_at: nextTick
+    tick_count: nextTick || openCheckpoint ? 2 : 1,
+    latest_tick_observed_at: nextTick || openCheckpoint
       ? "2026-07-12T10:00:02.000Z"
       : "2026-07-12T10:00:00.500Z",
-    checkpoint_attempt_count: 1,
+    checkpoint_attempt_count: openCheckpoint ? 2 : 1,
     paired_checkpoint_count: 1,
-    latest_checkpoint_status: "paired",
+    latest_checkpoint_status: openCheckpoint ? "open" : "paired",
     latest_checkpoint_has_failed_side: false,
+    ...(openCheckpoint
+      ? { latest_checkpoint_deadline_at: "2026-07-12T10:00:12.000Z" }
+      : {}),
     latest_tick_acknowledged_roles: waitingForAcknowledgements
       ? []
       : ["champion", "challenger"],

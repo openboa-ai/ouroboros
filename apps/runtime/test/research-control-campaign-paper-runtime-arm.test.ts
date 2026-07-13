@@ -86,6 +86,25 @@ describe("ResearchControlCampaign paper runtime arm factory", () => {
     expect(first.windowReader).not.toBe(second.windowReader);
   });
 
+  it("preserves checkpoint ownership across drivers in one arm", () => {
+    const arm = createResearchControlCampaignPaperRuntimeArm({
+      store: {} as OuroborosStorePort,
+      sessions: {} as ResearchControlCampaignPaperRuntimeArmSessions,
+      marketData: marketDataPort()
+    });
+
+    const first = arm.createWindowDriver({
+      marketData: marketDataPort(),
+      now: () => "2026-07-12T10:00:00.000Z"
+    });
+    const second = arm.createWindowDriver({
+      marketData: marketDataPort(),
+      now: () => "2026-07-12T10:00:01.000Z"
+    });
+
+    expect(checkpointOwner(first)).toBe(checkpointOwner(second));
+  });
+
   it("enables both role-bound sessions for the exact persisted tick", async () => {
     const attempt = activationAttempt();
     const tick = comparisonTick();
@@ -175,6 +194,12 @@ function runtimeOwner(value: object): unknown {
   return (value as {
     options?: { activations?: unknown };
   }).options?.activations;
+}
+
+function checkpointOwner(value: object): unknown {
+  return (value as {
+    options?: { checkpoints?: unknown };
+  }).options?.checkpoints;
 }
 
 function marketDataPort(): GatewayMarketDataPort {
