@@ -71,13 +71,13 @@ Vitest, LocalStore-backed CandidateArena integration.
 - Modify: `packages/application/src/candidate/arena.ts`
 - Modify: CandidateArena fixture tests using injected adapters
 
-- [ ] Write RED tests for one-session fixture sequencing, aggregate-feedback adaptation, early
+- [x] Write RED tests for one-session fixture sequencing, aggregate-feedback adaptation, early
   selection, direction-specific selection, and a non-highest-score selection control.
-- [ ] Implement fixture and directional fixture sessions through the tool port.
-- [ ] Keep an explicitly labeled bounded legacy wrapper only where compatibility tests require it;
+- [x] Implement fixture and directional fixture sessions through the tool port.
+- [x] Keep an explicitly labeled bounded legacy wrapper only where compatibility tests require it;
   default fixture behavior must use the new contract.
-- [ ] Run research-loop and CandidateArena focused suites plus typechecks.
-- [ ] Commit as `feat: adapt fixture research sessions`.
+- [x] Run research-loop and CandidateArena focused suites plus typechecks.
+- [x] Commit as `feat: adapt fixture research sessions`.
 
 ### Task 4: Codex Loopback Tool Adapter
 

@@ -161,6 +161,12 @@ describe("Trading research research loop MVP", () => {
     });
 
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
+    expect(result.session_status).toBe("selected");
+    expect(result.selected_development_submission).toBe(1);
+    expect(result.entries.map((entry) => entry.selected_for_sealed_submission)).toEqual([
+      true,
+      false
+    ]);
     expect(result.best_score).toBe(1);
     expect(result.best_artifact_dir).toContain("kept-artifact");
     expect(result.submitted_artifact_dir).toContain("submitted-artifact");
@@ -187,12 +193,16 @@ describe("Trading research research loop MVP", () => {
 
     const notebook = await readNotebook(result.notebook_path);
     expect(notebook.entries).toHaveLength(2);
+    expect(notebook).toMatchObject({
+      session_protocol_version: "research_worker_autonomous_session_v1",
+      session_status: "selected",
+      selected_development_submission: 1
+    });
     expect(notebook.entries[0]).toMatchObject({
       iteration: 1,
       decision: "keep",
       score: 1,
       agent_status: "edited",
-      agent_changed_paths: ["run.py"],
       evaluation: {
         status: "accepted",
         risk_decision: "valid_order_request"
@@ -1627,7 +1637,14 @@ process.exit(17);
     });
 
     const scenarioOutputRoots = ["scenario-001", "scenario-002"].map((scenarioSlot) =>
-      path.join(tmpDir, "sbx-session", "iterations", "001", "run", scenarioSlot)
+      path.join(
+        tmpDir,
+        "sbx-session",
+        "development-submissions",
+        "001",
+        "run",
+        scenarioSlot
+      )
     );
     const sealedScenarioOutputRoots = Array.from({ length: 6 }, (_, index) =>
       path.join(
@@ -1647,7 +1664,13 @@ process.exit(17);
         "paper-handoff-conformance"
       )
     ];
-    await expect(readdir(path.join(tmpDir, "sbx-session", "iterations", "001", "run")))
+    await expect(readdir(path.join(
+      tmpDir,
+      "sbx-session",
+      "development-submissions",
+      "001",
+      "run"
+    )))
       .resolves.toEqual(["replay-set.json"]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
@@ -1869,7 +1892,7 @@ process.exit(17);
             path.join(
               tmpDir,
               "sbx-create-failed-session",
-              "iterations",
+              "development-submissions",
               "001",
               "run",
               "scenario-001",

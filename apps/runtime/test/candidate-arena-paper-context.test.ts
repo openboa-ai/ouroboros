@@ -7,6 +7,8 @@ import {
   recoverIncompleteResearchWorkerCheckpoints,
   runCandidateArenaTick
 } from "@ouroboros/application/candidate/arena";
+import { researchWorkerNotebookPath } from
+  "@ouroboros/application/candidate/research-worker-lifecycle";
 import {
   CandidateArenaResearchAllocationService,
   CandidateArenaResearchAllocationServiceError,
@@ -308,6 +310,29 @@ describe("CandidateArena paper evidence context", () => {
       if (!systemCode || systemCode.artifact_kind !== "python_file") {
         throw new Error(`directional SystemCode missing: ${result.direction_kind}`);
       }
+      const researchDirection = (await store.listResearchDirections()).find((entry) =>
+        entry.direction_kind === direction
+      );
+      const worker = (await store.listResearchWorkers()).find((entry) =>
+        entry.research_direction_ref.id === researchDirection?.research_direction_id
+      );
+      if (!worker) throw new Error(`directional ResearchWorker missing: ${direction}`);
+      const notebook = JSON.parse(await readFile(researchWorkerNotebookPath(
+        store,
+        worker,
+        outcome.tick_id
+      ), "utf8")) as {
+        session_protocol_version?: string;
+        session_status?: string;
+        selected_development_submission?: number;
+        entries?: Array<{ selected_for_sealed_submission?: boolean }>;
+      };
+      expect(notebook).toMatchObject({
+        session_protocol_version: "research_worker_autonomous_session_v1",
+        session_status: "selected",
+        selected_development_submission: 1
+      });
+      expect(notebook.entries?.[0]?.selected_for_sealed_submission).toBe(true);
       sourceByDirection.set(
         direction,
         await readFile(systemCode.artifact_path, "utf8")

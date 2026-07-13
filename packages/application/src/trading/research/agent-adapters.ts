@@ -7,6 +7,9 @@ import type {
   AgentEditInput,
   AgentEditResult,
   ManagedResearchAgent,
+  ResearchWorkerSessionAdapter,
+  ResearchWorkerSessionInput,
+  ResearchWorkerSessionResult,
   TradingResearchAgentAdapter
 } from "./types";
 
@@ -148,13 +151,27 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
   }
 }
 
-export class FixtureTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+export interface FixtureTradingResearchAgentOptions {
+  early_selection_score?: number;
+}
+
+export class FixtureTradingResearchAgentAdapter
+implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   readonly agent: ManagedResearchAgent = {
     id: "managed-agent-fixture-trading-research",
     provider: "fixture",
     model: "scripted-fixture",
     permission_policy: "fixture_only"
   };
+  private readonly earlySelectionScore?: number;
+
+  constructor(options: FixtureTradingResearchAgentOptions = {}) {
+    if (options.early_selection_score !== undefined &&
+      !Number.isFinite(options.early_selection_score)) {
+      throw new Error("fixture_research_early_selection_score_invalid");
+    }
+    this.earlySelectionScore = options.early_selection_score;
+  }
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     const runPath = path.join(input.artifact_dir, "run.py");
@@ -166,6 +183,82 @@ export class FixtureTradingResearchAgentAdapter implements TradingResearchAgentA
       status: "edited",
       summary: `Fixture agent set RISK_FRACTION to ${nextRisk}.`,
       changed_paths: ["run.py"]
+    };
+  }
+
+  async runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult> {
+    let providerCommandCount = 0;
+    let bestAccepted: { submission_sequence: number; score: number } | undefined;
+    for (let iteration = 1; iteration <= input.submission_limit; iteration += 1) {
+      const edit = await this.improveArtifact({
+        agent: this.agent,
+        artifact_dir: input.artifact_dir,
+        program_path: input.program_path,
+        notebook_path: input.notebook_path,
+        iteration,
+        previous_best_score: bestAccepted?.score,
+        arena_context: input.arena_context
+      });
+      providerCommandCount += 1;
+      if (edit.status === "failed") {
+        throw new Error(edit.error ?? edit.summary);
+      }
+      const submitted = await input.tools.submitDevelopment({
+        idempotency_key: `fixture-development-${iteration}`,
+        research_note: edit.summary
+      });
+      if (submitted.feedback.status === "accepted" &&
+        (!bestAccepted || submitted.feedback.score > bestAccepted.score)) {
+        bestAccepted = {
+          submission_sequence: submitted.submission_sequence,
+          score: submitted.feedback.score
+        };
+      }
+      if (bestAccepted && this.earlySelectionScore !== undefined &&
+        bestAccepted.score >= this.earlySelectionScore) {
+        return this.selectFixtureSubmission(
+          input,
+          bestAccepted,
+          providerCommandCount,
+          "Fixture selected early after aggregate development feedback met its threshold."
+        );
+      }
+    }
+    if (bestAccepted) {
+      return this.selectFixtureSubmission(
+        input,
+        bestAccepted,
+        providerCommandCount,
+        "Fixture selected its highest accepted aggregate development result."
+      );
+    }
+    const finished = await input.tools.finishWithoutSubmission({
+      idempotency_key: "fixture-finish-without-accepted-submission",
+      reason: "Fixture found no accepted development submission."
+    });
+    return {
+      status: finished.session_status,
+      summary: finished.reason,
+      provider_command_count: providerCommandCount
+    };
+  }
+
+  private async selectFixtureSubmission(
+    input: ResearchWorkerSessionInput,
+    selected: { submission_sequence: number; score: number },
+    providerCommandCount: number,
+    reason: string
+  ): Promise<ResearchWorkerSessionResult> {
+    const selection = await input.tools.selectDevelopment({
+      idempotency_key: `fixture-select-${selected.submission_sequence}`,
+      submission_sequence: selected.submission_sequence,
+      reason
+    });
+    return {
+      status: selection.session_status,
+      summary: selection.reason,
+      selected_submission_sequence: selection.submission_sequence,
+      provider_command_count: providerCommandCount
     };
   }
 }

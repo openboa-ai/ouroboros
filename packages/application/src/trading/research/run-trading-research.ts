@@ -56,6 +56,7 @@ export interface RunTradingResearchLoopInput {
   run_root?: string;
   notebook_path?: string;
   session_id?: string;
+  /** Compatibility path for bounded one-edit adapters that do not expose runSession. */
   agent_adapter?: TradingResearchAgentAdapter;
   session_adapter?: ResearchWorkerSessionAdapter;
   artifact_runner?: TradingArtifactRunner;
@@ -82,6 +83,7 @@ export async function runTradingResearchLoop(
   const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter({
     timeout_ms: input.agent_timeout_ms
   });
+  const sessionAdapter = input.session_adapter ?? sessionCapableAdapter(adapter);
   const artifactRunner = input.artifact_runner ?? artifactRunnerFor(input.artifact_runner_kind);
   const notebookPath = input.notebook_path ?? path.join(runRoot, "notebook.json");
   const bestDir = path.join(runRoot, "best");
@@ -109,7 +111,7 @@ export async function runTradingResearchLoop(
   const notebook: TradingResearchNotebook = {
     session_id: sessionId,
     mode,
-    agent: input.session_adapter?.agent ?? adapter.agent,
+    agent: sessionAdapter?.agent ?? adapter.agent,
     program_path: programPath,
     ...(input.prior_checkpoint
       ? { prior_checkpoint: sanitizePriorCheckpoint(input.prior_checkpoint) }
@@ -118,9 +120,10 @@ export async function runTradingResearchLoop(
   };
   await writeNotebook(notebookPath, notebook);
 
-  if (input.session_adapter) {
+  if (sessionAdapter) {
     return runAutonomousTradingResearchSession({
       input,
+      sessionAdapter,
       sessionId,
       runRoot,
       programPath,
@@ -293,9 +296,8 @@ export async function runTradingResearchLoop(
 }
 
 async function runAutonomousTradingResearchSession(input: {
-  input: RunTradingResearchLoopInput & {
-    session_adapter?: ResearchWorkerSessionAdapter;
-  };
+  input: RunTradingResearchLoopInput;
+  sessionAdapter: ResearchWorkerSessionAdapter;
   sessionId: string;
   runRoot: string;
   programPath: string;
@@ -309,10 +311,6 @@ async function runAutonomousTradingResearchSession(input: {
   preflightPlan: ResearchPreflightPlanHandle;
   artifactRunner: TradingArtifactRunner | undefined;
 }): Promise<TradingResearchLoopResult> {
-  const sessionAdapter = input.input.session_adapter;
-  if (!sessionAdapter) {
-    throw new Error("research_worker_session_adapter_missing");
-  }
   const workingArtifactDir = path.join(input.runRoot, "working-artifact");
   await rm(workingArtifactDir, { recursive: true, force: true });
   await cp(input.seedDir, workingArtifactDir, { recursive: true });
@@ -396,7 +394,7 @@ async function runAutonomousTradingResearchSession(input: {
   });
 
   try {
-    await sessionAdapter.runSession({
+    await input.sessionAdapter.runSession({
       artifact_dir: workingArtifactDir,
       program_path: input.programPath,
       notebook_path: input.notebookPath,
@@ -490,6 +488,16 @@ async function runAutonomousTradingResearchSession(input: {
     sealed_admission: sealedAdmission,
     entries: input.notebook.entries
   };
+}
+
+function sessionCapableAdapter(
+  adapter: TradingResearchAgentAdapter
+): ResearchWorkerSessionAdapter | undefined {
+  const candidate = adapter as TradingResearchAgentAdapter &
+    Partial<ResearchWorkerSessionAdapter>;
+  return typeof candidate.runSession === "function"
+    ? candidate as TradingResearchAgentAdapter & ResearchWorkerSessionAdapter
+    : undefined;
 }
 
 async function developmentSnapshotDigest(root: string): Promise<string> {
