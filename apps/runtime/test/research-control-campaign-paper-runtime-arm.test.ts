@@ -21,6 +21,10 @@ import { PaperTradingComparisonWindowDriver } from
   "@ouroboros/application/trading/paper/comparison-window-driver";
 import { LocalStorePaperTradingComparisonWindowStateReader } from
   "@ouroboros/application/trading/paper/comparison-window-reader";
+import type {
+  PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonTickRecord
+} from "@ouroboros/domain";
 import {
   createResearchControlCampaignPaperRuntimeArm,
   type ResearchControlCampaignPaperRuntimeArmSessions
@@ -81,7 +85,91 @@ describe("ResearchControlCampaign paper runtime arm factory", () => {
     expect(first.runtime).not.toBe(second.runtime);
     expect(first.windowReader).not.toBe(second.windowReader);
   });
+
+  it("enables both role-bound sessions for the exact persisted tick", async () => {
+    const attempt = activationAttempt();
+    const tick = comparisonTick();
+    const calls: Array<Parameters<
+      ResearchControlCampaignPaperRuntimeArmSessions[
+        "enableComparisonTickAttributionSide"
+      ]
+    >[0]> = [];
+    const store = {
+      async getPaperTradingComparisonActivationAttempt(id: string) {
+        return id === attempt.paper_trading_comparison_activation_attempt_id
+          ? structuredClone(attempt)
+          : undefined;
+      },
+      async getPaperTradingComparisonTick(id: string) {
+        return id === tick.paper_trading_comparison_tick_id
+          ? structuredClone(tick)
+          : undefined;
+      }
+    } as OuroborosStorePort;
+    const sessions = {
+      async enableComparisonTickAttributionSide(input: typeof calls[number]) {
+        calls.push(structuredClone(input));
+      }
+    } as ResearchControlCampaignPaperRuntimeArmSessions;
+    const arm = createResearchControlCampaignPaperRuntimeArm({
+      store,
+      sessions,
+      marketData: marketDataPort()
+    });
+
+    await arm.enableComparisonTickAttribution({
+      activationAttemptId: attempt.paper_trading_comparison_activation_attempt_id,
+      tickId: tick.paper_trading_comparison_tick_id
+    });
+
+    expect(calls.map(({ side, authority, tick: servedTick }) => ({
+      role: side.role,
+      authorityRole: authority.role,
+      operation: authority.operation,
+      tickId: servedTick.paper_trading_comparison_tick_id
+    }))).toEqual([
+      {
+        role: "champion",
+        authorityRole: "champion",
+        operation: "deliver_market_snapshot",
+        tickId: "tick-1"
+      },
+      {
+        role: "challenger",
+        authorityRole: "challenger",
+        operation: "deliver_market_snapshot",
+        tickId: "tick-1"
+      }
+    ]);
+  });
 });
+
+function activationAttempt(): PaperTradingComparisonActivationAttemptRecord {
+  return {
+    paper_trading_comparison_activation_attempt_id: "attempt-1",
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation",
+      id: "activation-1"
+    },
+    paper_trading_comparison_activation_digest: "sha256:activation-1",
+    attempt_digest: "sha256:attempt-1",
+    champion: {
+      role: "champion",
+      trading_run_ref: { record_kind: "trading_run", id: "champion-run" }
+    },
+    challenger: {
+      role: "challenger",
+      trading_run_ref: { record_kind: "trading_run", id: "challenger-run" }
+    }
+  } as PaperTradingComparisonActivationAttemptRecord;
+}
+
+function comparisonTick(): PaperTradingComparisonTickRecord {
+  return {
+    paper_trading_comparison_tick_id: "tick-1",
+    tick_digest: "sha256:tick-1"
+  } as PaperTradingComparisonTickRecord;
+}
 
 function runtimeOwner(value: object): unknown {
   return (value as {

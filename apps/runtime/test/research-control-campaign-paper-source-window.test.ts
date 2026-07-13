@@ -107,6 +107,55 @@ describe("ResearchControlCampaign matched source window", () => {
     );
   });
 
+  it("enables both matched arm sessions while the current tick awaits acknowledgement", async () => {
+    const fixture = sourceWindowFixture({
+      initialPhases: {
+        adaptive_treatment: "waiting_tick_acknowledgements",
+        static_control: "waiting_tick_acknowledgements"
+      }
+    });
+
+    const result = await fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    });
+
+    expect(result.transition).toBe("none");
+    expect(fixture.operations.filter((operation) =>
+      operation.startsWith("enable:")
+    )).toEqual([
+      "enable:adaptive_treatment:adaptive_treatment-tick-1",
+      "enable:static_control:static_control-tick-1"
+    ]);
+  });
+
+  it("stops both matched runtimes when one arm cannot enable tick attribution", async () => {
+    const fixture = sourceWindowFixture({
+      failAttributionArm: "static_control",
+      initialPhases: {
+        adaptive_treatment: "waiting_tick_acknowledgements",
+        static_control: "waiting_tick_acknowledgements"
+      }
+    });
+
+    await expect(fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_paper_source_window_transition_failed"
+    });
+
+    expect(fixture.operations).toEqual(expect.arrayContaining([
+      "enable:adaptive_treatment:adaptive_treatment-tick-1",
+      "enable:static_control:static_control-tick-1",
+      "stop:adaptive_treatment",
+      "stop:static_control"
+    ]));
+    expect(fixture.running.size).toBe(0);
+  });
+
   it("stops both active runtimes when one window transition fails", async () => {
     const fixture = sourceWindowFixture({ failWindowArm: "static_control" });
     await fixture.coordinator.startSourceBatch({
@@ -161,7 +210,10 @@ describe("ResearchControlCampaign matched source window", () => {
   });
 });
 
-type WindowPhase = "checkpoint_committed" | "next_tick_captured";
+type WindowPhase =
+  | "checkpoint_committed"
+  | "next_tick_captured"
+  | "waiting_tick_acknowledgements";
 
 class WindowStore {
   ticks: PaperTradingComparisonTickRecord[] = [];
@@ -210,6 +262,7 @@ class WindowStore {
 function sourceWindowFixture(options: {
   failStartArm?: ResearchControlCampaignArmKind;
   failWindowArm?: ResearchControlCampaignArmKind;
+  failAttributionArm?: ResearchControlCampaignArmKind;
   sourceReadsFail?: boolean;
   initialPhases?: Record<ResearchControlCampaignArmKind, WindowPhase>;
 } = {}) {
@@ -261,6 +314,12 @@ function sourceWindowFixture(options: {
           operations.push(`stop:${armKind}`);
           running.delete(armKind);
           return runtimeResult(armKind, "stopped_cleanly");
+        }
+      },
+      async enableComparisonTickAttribution(input) {
+        operations.push(`enable:${armKind}:${input.tickId}`);
+        if (options.failAttributionArm === armKind) {
+          throw new Error("injected_attribution_failure");
         }
       },
       windowReader: {
@@ -376,6 +435,8 @@ function windowSnapshot(
 
 function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
   const nextTick = phase === "next_tick_captured";
+  const waitingForAcknowledgements =
+    phase === "waiting_tick_acknowledgements";
   return {
     owned: true,
     now: "2026-07-12T10:00:02.000Z",
@@ -391,7 +452,9 @@ function windowFacts(phase: WindowPhase): PaperTradingComparisonWindowFacts {
     paired_checkpoint_count: 1,
     latest_checkpoint_status: "paired",
     latest_checkpoint_has_failed_side: false,
-    latest_tick_acknowledged_roles: ["champion", "challenger"],
+    latest_tick_acknowledged_roles: waitingForAcknowledgements
+      ? []
+      : ["champion", "challenger"],
     activation_status: "both_running"
   };
 }

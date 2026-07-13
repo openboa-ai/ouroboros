@@ -30,6 +30,11 @@ import { PaperTradingComparisonWindowDriver } from
   "@ouroboros/application/trading/paper/comparison-window-driver";
 import { LocalStorePaperTradingComparisonWindowStateReader } from
   "@ouroboros/application/trading/paper/comparison-window-reader";
+import type {
+  PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonTickIOWriteContext,
+  PaperTradingComparisonTickRecord
+} from "@ouroboros/domain";
 import { ResearchControlCampaignPaperComparisonAdvancer } from
   "./research-control-campaign-paper-comparison-advancer";
 import type { ResearchControlCampaignPaperRuntimeArm } from
@@ -90,6 +95,32 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
       activations: runtime
     });
   };
+  const enableComparisonTickAttribution:
+    ResearchControlCampaignPaperRuntimeArm[
+      "enableComparisonTickAttribution"
+    ] = async ({ activationAttemptId, tickId }) => {
+    const [attempt, tick] = await Promise.all([
+      input.store.getPaperTradingComparisonActivationAttempt(
+        activationAttemptId
+      ),
+      input.store.getPaperTradingComparisonTick(tickId)
+    ]);
+    if (!attempt ||
+      attempt.paper_trading_comparison_activation_attempt_id !==
+        activationAttemptId ||
+      !tick || tick.paper_trading_comparison_tick_id !== tickId) {
+      throw new Error(
+        "research_control_campaign_paper_tick_attribution_graph_invalid"
+      );
+    }
+    await Promise.all((["champion", "challenger"] as const).map((role) =>
+      input.sessions.enableComparisonTickAttributionSide({
+        side: attempt[role],
+        authority: tickAttributionAuthority(attempt, role, tick),
+        tick
+      })
+    ));
+  };
   const qualifications = new PaperTradingComparisonQualificationService({
     store: input.store,
     windowReader
@@ -136,6 +167,7 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
     activations,
     runtime,
     windowReader,
+    enableComparisonTickAttribution,
     createWindowDriver,
     verdicts,
     campaigns,
@@ -143,5 +175,32 @@ export function createResearchControlCampaignPaperRuntimeArm(input: {
     advanceComparison: (advanceInput) =>
       comparisonAdvancer.advance(advanceInput),
     releases
+  };
+}
+
+function tickAttributionAuthority(
+  attempt: PaperTradingComparisonActivationAttemptRecord,
+  role: "champion" | "challenger",
+  tick: PaperTradingComparisonTickRecord
+): PaperTradingComparisonTickIOWriteContext {
+  return {
+    paper_trading_comparison_activation_ref: {
+      ...attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+    role,
+    trading_run_ref: { ...attempt[role].trading_run_ref },
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: tick.tick_digest,
+    operation: "deliver_market_snapshot"
   };
 }

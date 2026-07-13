@@ -328,7 +328,7 @@ git commit -m "feat: acknowledge comparison ticks from generated candidates"
   activationAttemptId, tickId }): Promise<void>` and matched source-window invocation while both
   arms wait for tick acknowledgement.
 
-- [ ] **Step 1: Write the failing runtime-arm authority test**
+- [x] **Step 1: Write the failing runtime-arm authority test**
 
 Create an arm with Store getters returning one exact activation attempt and tick. Capture session
 enable calls, invoke `arm.enableComparisonTickAttribution`, and assert two calls in role order:
@@ -359,7 +359,7 @@ expect(calls.map(({ side, authority, tick }) => ({
 ]);
 ```
 
-- [ ] **Step 2: Write source-window success and failure RED tests**
+- [x] **Step 2: Write source-window success and failure RED tests**
 
 Extend the source-window fixture with `waiting_tick_acknowledgements`, empty acknowledged roles, and
 an arm method that records `enable:<arm>:<tick>`. Assert both operations occur for matched waiting
@@ -367,7 +367,7 @@ windows. Add `failAttributionArm: "static_control"` and assert the coordinator r
 `research_control_campaign_paper_source_window_transition_failed`, calls both arm stop operations,
 and leaves no running arm.
 
-- [ ] **Step 3: Run the two focused files and confirm RED**
+- [x] **Step 3: Run the two focused files and confirm RED**
 
 Run:
 
@@ -381,7 +381,7 @@ npx vitest run \
 Expected: compilation or behavior fails because the arm operation and source-window invocation do
 not exist.
 
-- [ ] **Step 4: Implement exact arm-local authority construction**
+- [x] **Step 4: Implement exact arm-local authority construction**
 
 In the runtime-arm factory, reload the attempt and tick, fail on missing or mismatched IDs, then call
 the existing session port for both roles. Build each authority from the persisted attempt and tick:
@@ -409,7 +409,7 @@ the existing session port for both roles. Build each authority from the persiste
 }
 ```
 
-- [ ] **Step 5: Wire matched waiting windows and fail closed**
+- [x] **Step 5: Wire matched waiting windows and fail closed**
 
 After classifying both source snapshots, when every decision has phase
 `waiting_tick_acknowledgements` and transition `none`, invoke each arm's operation with its exact
@@ -417,7 +417,7 @@ source attempt and latest tick ID. On any rejection, stop every source attempt w
 `handoff_cleanup` and throw the existing transition-failed error. Keep ordinary no-op and repeated
 tick transitions unchanged.
 
-- [ ] **Step 6: Run focused arm, source-window, and paper-runtime tests**
+- [x] **Step 6: Run focused arm, source-window, and paper-runtime tests**
 
 Run:
 
@@ -431,7 +431,7 @@ npx vitest run \
 
 Expected: all focused tests pass, including exact two-role authority and matched failure cleanup.
 
-- [ ] **Step 7: Commit the arm attribution wiring**
+- [x] **Step 7: Commit the arm attribution wiring**
 
 ```bash
 git add \

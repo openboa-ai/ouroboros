@@ -81,6 +81,10 @@ export interface ResearchControlCampaignPaperSourceWindowArm {
     "recoverIncompleteActivations" | "start" | "stopOwnedAttempt"
   >;
   windowReader: PaperTradingComparisonWindowStateReader;
+  enableComparisonTickAttribution(input: {
+    activationAttemptId: string;
+    tickId: string;
+  }): Promise<void>;
   createWindowDriver: ResearchControlCampaignPaperWindowDriverFactory;
   verdicts: Pick<PaperTradingComparisonVerdictService, "evaluate">;
 }
@@ -256,6 +260,28 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
         "research_control_campaign_paper_source_window_graph_invalid",
         "Matched source window terminal states diverged."
       );
+    }
+    if (transition === "none" && decisions.every((decision) =>
+      decision.phase === "waiting_tick_acknowledgements"
+    )) {
+      const enabled = await Promise.allSettled(snapshots.map(({ source, snapshot }) =>
+        this.options.arms[source.armKind].enableComparisonTickAttribution({
+          activationAttemptId: source.activationAttemptId,
+          tickId: snapshot.latest_tick_id
+        })
+      ));
+      if (enabled.some((result) => result.status === "rejected")) {
+        await Promise.allSettled(sources.map((source) =>
+          this.options.arms[source.armKind].runtime.stopOwnedAttempt({
+            attemptId: source.activationAttemptId,
+            reason: "handoff_cleanup"
+          })
+        ));
+        throw windowError(
+          "research_control_campaign_paper_source_window_transition_failed",
+          "Matched source tick attribution failed and peers were stopped."
+        );
+      }
     }
     const frozen = transition === "capture_next_tick"
       ? await this.captureFrozenMarketEvidence()

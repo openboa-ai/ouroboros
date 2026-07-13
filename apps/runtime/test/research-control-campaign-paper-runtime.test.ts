@@ -153,6 +153,7 @@ function runtimeArm(store: RuntimeStore): ResearchControlCampaignPaperRuntimeArm
       stopOwnedAttempt: unavailable
     },
     windowReader: { load: unavailable },
+    enableComparisonTickAttribution: unavailable,
     createWindowDriver: () => ({ advance: unavailable }),
     verdicts: { evaluate: unavailable },
     campaigns: { precommit: unavailable, settle: unavailable },
