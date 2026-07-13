@@ -24,6 +24,7 @@ import type {
   AgentEditInput,
   ArtifactRunResult,
   ReplayTradingScenario,
+  ResearchWorkerSessionAdapter,
   TradingResearchPriorCheckpoint
 } from "@ouroboros/application/trading/research/types";
 import {
@@ -234,6 +235,156 @@ describe("Trading research research loop MVP", () => {
       "paper-handoff-heartbeat.jsonl",
       "paper-handoff-output.jsonl"
     ]);
+  });
+
+  it("seals the worker-selected immutable submission instead of the score frontier or current workspace", async () => {
+    const runRoot = path.join(tmpDir, "autonomous-selected-session");
+    const feedbackSurfaces: string[] = [];
+    const sessionAdapter: ResearchWorkerSessionAdapter = {
+      agent: {
+        id: "managed-agent-autonomous-selection",
+        provider: "fixture",
+        model: "autonomous-selection-fixture",
+        permission_policy: "fixture_only"
+      },
+      async runSession(input) {
+        const runPath = path.join(input.artifact_dir, "run.py");
+        const source = await readFile(runPath, "utf8");
+        await writeFile(
+          runPath,
+          source.replace("RISK_FRACTION = 0.01", "RISK_FRACTION = 0.02"),
+          "utf8"
+        );
+        const first = await input.tools.submitDevelopment({
+          idempotency_key: "autonomous-submit-one",
+          research_note: "Establish the bounded directional candidate."
+        });
+        feedbackSurfaces.push(JSON.stringify(first.feedback));
+
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.02",
+            "RISK_FRACTION = 0.10"
+          ),
+          "utf8"
+        );
+        const second = await input.tools.submitDevelopment({
+          idempotency_key: "autonomous-submit-two",
+          research_note: "Probe the higher-risk hypothesis before selecting it explicitly."
+        });
+        feedbackSurfaces.push(JSON.stringify(second.feedback));
+        expect(first.feedback.score).toBeGreaterThan(second.feedback.score);
+        await input.tools.selectDevelopment({
+          idempotency_key: "autonomous-select-two",
+          submission_sequence: second.submission_sequence,
+          reason: "Select the hypothesis despite its lower development score."
+        });
+
+        await writeFile(
+          runPath,
+          (await readFile(runPath, "utf8")).replace(
+            "RISK_FRACTION = 0.10",
+            "RISK_FRACTION = 0.03"
+          ),
+          "utf8"
+        );
+        return {
+          status: "selected",
+          summary: "Selected the second immutable development submission.",
+          selected_submission_sequence: second.submission_sequence,
+          provider_command_count: 1
+        };
+      }
+    };
+
+    const result = await runTradingResearchLoop({
+      run_root: runRoot,
+      session_id: "autonomous-selected-session",
+      iterations: 2,
+      session_adapter: sessionAdapter,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
+    });
+
+    expect(result.session_status).toBe("selected");
+    expect(result.selected_development_submission).toBe(2);
+    expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
+    expect(result.best_score).toBe(1);
+    expect(result.entries.map((entry) => entry.selected_for_sealed_submission)).toEqual([
+      false,
+      true
+    ]);
+    expect(await readFile(
+      path.join(result.submitted_artifact_dir!, "run.py"),
+      "utf8"
+    )).toContain("RISK_FRACTION = 0.10");
+    expect(await readFile(
+      path.join(runRoot, "working-artifact", "run.py"),
+      "utf8"
+    )).toContain("RISK_FRACTION = 0.03");
+    expect(result.sealed_admission).toMatchObject({
+      artifact_digest: result.submitted_artifact_digest,
+      submission_sequence: 1,
+      evaluation: { status: "disqualified" }
+    });
+    expect(feedbackSurfaces.join("\n")).not.toMatch(
+      /scenario_results|scenario_id|expected_direction|paper_handoff|provider_requests|command_evidence/i
+    );
+    const notebook = await readNotebook(result.notebook_path);
+    expect(notebook).toMatchObject({
+      session_protocol_version: "research_worker_autonomous_session_v1",
+      session_status: "selected",
+      selected_development_submission: 2
+    });
+  });
+
+  it("does not claim sealed admission when the worker exits without selecting a submission", async () => {
+    const preflightPlan = await fixedPreflightPlan(1);
+    const sessionAdapter: ResearchWorkerSessionAdapter = {
+      agent: {
+        id: "managed-agent-autonomous-no-selection",
+        provider: "fixture",
+        model: "autonomous-no-selection-fixture",
+        permission_policy: "fixture_only"
+      },
+      async runSession(input) {
+        const runPath = path.join(input.artifact_dir, "run.py");
+        const source = await readFile(runPath, "utf8");
+        await writeFile(
+          runPath,
+          source.replace("RISK_FRACTION = 0.01", "RISK_FRACTION = 0.02"),
+          "utf8"
+        );
+        await input.tools.submitDevelopment({
+          idempotency_key: "unselected-development-submission",
+          research_note: "Evaluate once, then leave without final selection."
+        });
+        return {
+          status: "finished_without_submission",
+          summary: "No development submission was selected.",
+          provider_command_count: 1
+        };
+      }
+    };
+
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "autonomous-no-selection"),
+      session_id: "autonomous-no-selection",
+      iterations: 1,
+      session_adapter: sessionAdapter,
+      agent_adapter: new NoopTradingResearchAgentAdapter(),
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true }),
+      preflight_plan: preflightPlan
+    });
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.session_status).toBe("finished_without_submission");
+    expect(result.selected_development_submission).toBeUndefined();
+    expect(result.submitted_artifact_dir).toBeUndefined();
+    expect(result.submitted_artifact_digest).toBeUndefined();
+    expect(result.sealed_admission).toBeUndefined();
+    expect(() => preflightPlan.claimSealedAdmissionSuite()).not.toThrow();
   });
 
   it("proves the artifact uses the external TradingApiProvider boundary", async () => {

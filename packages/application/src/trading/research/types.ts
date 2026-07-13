@@ -425,6 +425,7 @@ export interface TradingResearchNotebookEntry {
   started_at: string;
   completed_at: string;
   evaluation: TradingEvaluationResult;
+  selected_for_sealed_submission?: boolean;
 }
 
 export interface TradingResearchNotebook {
@@ -435,6 +436,9 @@ export interface TradingResearchNotebook {
   prior_checkpoint?: TradingResearchPriorCheckpoint;
   best_score?: number;
   best_artifact_dir?: string;
+  session_protocol_version?: "research_worker_autonomous_session_v1";
+  session_status?: Exclude<ResearchWorkerSessionStatus, "open">;
+  selected_development_submission?: number;
   entries: TradingResearchNotebookEntry[];
 }
 
@@ -454,6 +458,8 @@ export interface TradingResearchLoopResult {
   research_preflight_commitment: ResearchPreflightCommitmentRecord;
   best_score?: number;
   best_artifact_dir?: string;
+  session_status?: Exclude<ResearchWorkerSessionStatus, "open">;
+  selected_development_submission?: number;
   submitted_artifact_dir?: string;
   submitted_artifact_digest?: string;
   sealed_admission?: {

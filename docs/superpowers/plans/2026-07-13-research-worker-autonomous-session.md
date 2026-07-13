@@ -52,15 +52,15 @@ Vitest, LocalStore-backed CandidateArena integration.
 - Modify: `packages/application/src/trading/research/types.ts`
 - Modify: `apps/runtime/test/trading-research-loop.test.ts`
 
-- [ ] Write RED tests proving explicit tool submission snapshots immutable artifact bytes and
+- [x] Write RED tests proving explicit tool submission snapshots immutable artifact bytes and
   selection, not highest score or current workspace state, chooses sealed input.
-- [ ] Move development evaluation behind the tool callback; keep aggregate feedback and external
+- [x] Move development evaluation behind the tool callback; keep aggregate feedback and external
   evidence separation.
-- [ ] Record exact session status and selected sequence in the tick-local notebook/result while
+- [x] Record exact session status and selected sequence in the tick-local notebook/result while
   preserving bounded checkpoint compatibility.
-- [ ] Prove no selection leaves the sealed suite unclaimed and produces no submitted artifact.
-- [ ] Run the complete trading research loop suite and application/runtime typechecks.
-- [ ] Commit as `feat: run bounded autonomous research sessions`.
+- [x] Prove no selection leaves the sealed suite unclaimed and produces no submitted artifact.
+- [x] Run the complete trading research loop suite and application/runtime typechecks.
+- [x] Commit as `feat: run bounded autonomous research sessions`.
 
 ### Task 3: Deterministic Fixture Session
 

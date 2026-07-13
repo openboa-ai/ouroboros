@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CodexTradingResearchAgentAdapter } from "./agent-adapters";
@@ -16,6 +16,7 @@ import {
 } from "./replay-set-runner";
 import type { ReplayTradingApiProviderFactory } from "./replay-set-runner";
 import { sealSingleFileTradingArtifactClosure } from "./artifact-closure";
+import { ResearchWorkerDevelopmentSession } from "./research-worker-session";
 import {
   buildResearchPreflightPlan,
   generateResearchPreflightEvaluatorSeed,
@@ -29,6 +30,7 @@ import {
 } from "./runtime-config";
 import type {
   TradingArtifactRunnerKind,
+  ResearchWorkerSessionAdapter,
   TradingResearchAgentAdapter,
   TradingResearchLoopResult,
   TradingResearchMode,
@@ -55,6 +57,7 @@ export interface RunTradingResearchLoopInput {
   notebook_path?: string;
   session_id?: string;
   agent_adapter?: TradingResearchAgentAdapter;
+  session_adapter?: ResearchWorkerSessionAdapter;
   artifact_runner?: TradingArtifactRunner;
   artifact_runner_kind?: TradingArtifactRunnerKind;
   replay_provider_factory?: ReplayTradingApiProviderFactory;
@@ -106,7 +109,7 @@ export async function runTradingResearchLoop(
   const notebook: TradingResearchNotebook = {
     session_id: sessionId,
     mode,
-    agent: adapter.agent,
+    agent: input.session_adapter?.agent ?? adapter.agent,
     program_path: programPath,
     ...(input.prior_checkpoint
       ? { prior_checkpoint: sanitizePriorCheckpoint(input.prior_checkpoint) }
@@ -114,6 +117,24 @@ export async function runTradingResearchLoop(
     entries: []
   };
   await writeNotebook(notebookPath, notebook);
+
+  if (input.session_adapter) {
+    return runAutonomousTradingResearchSession({
+      input,
+      sessionId,
+      runRoot,
+      programPath,
+      iterations,
+      notebookPath,
+      notebook,
+      frozenManifest,
+      seedDir,
+      bestDir,
+      developmentSuite,
+      preflightPlan,
+      artifactRunner
+    });
+  }
 
   let bestScore = Number.NEGATIVE_INFINITY;
   let bestArtifactDir: string | undefined;
@@ -269,6 +290,241 @@ export async function runTradingResearchLoop(
     sealed_admission: sealedAdmission,
     entries: notebook.entries
   };
+}
+
+async function runAutonomousTradingResearchSession(input: {
+  input: RunTradingResearchLoopInput & {
+    session_adapter?: ResearchWorkerSessionAdapter;
+  };
+  sessionId: string;
+  runRoot: string;
+  programPath: string;
+  iterations: number;
+  notebookPath: string;
+  notebook: TradingResearchNotebook;
+  frozenManifest: Awaited<ReturnType<typeof readTradingSystemManifest>>;
+  seedDir: string;
+  bestDir: string;
+  developmentSuite: ReturnType<ResearchPreflightPlanHandle["evaluatorDevelopmentSuite"]>;
+  preflightPlan: ResearchPreflightPlanHandle;
+  artifactRunner: TradingArtifactRunner | undefined;
+}): Promise<TradingResearchLoopResult> {
+  const sessionAdapter = input.input.session_adapter;
+  if (!sessionAdapter) {
+    throw new Error("research_worker_session_adapter_missing");
+  }
+  const workingArtifactDir = path.join(input.runRoot, "working-artifact");
+  await rm(workingArtifactDir, { recursive: true, force: true });
+  await cp(input.seedDir, workingArtifactDir, { recursive: true });
+
+  let previousSnapshotDigest = await developmentSnapshotDigest(workingArtifactDir);
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestArtifactDir: string | undefined;
+  const session = new ResearchWorkerDevelopmentSession({
+    submissionLimit: input.iterations,
+    evaluate: async (request) => {
+      const startedAt = new Date().toISOString();
+      const submissionRoot = path.join(
+        input.runRoot,
+        "development-submissions",
+        String(request.submission_sequence).padStart(3, "0")
+      );
+      const artifactDir = path.join(submissionRoot, "artifact");
+      const outputDir = path.join(submissionRoot, "run");
+      await rm(submissionRoot, { recursive: true, force: true });
+      await mkdir(submissionRoot, { recursive: true });
+      await cp(workingArtifactDir, artifactDir, { recursive: true });
+      const artifactDigest = await developmentSnapshotDigest(artifactDir);
+      const replaySet = await runTradingDevelopmentReplaySet({
+        artifact_dir: artifactDir,
+        manifest: input.frozenManifest,
+        output_dir: outputDir,
+        scenarios: input.developmentSuite.scenarios,
+        artifact_runner: input.artifactRunner,
+        replay_provider_factory: input.input.replay_provider_factory
+      });
+      const evaluation = replaySet.evaluation;
+      const crashed = replaySet.scenario_results.some((result) =>
+        result.run_status === "crashed"
+      );
+      const decision = crashed
+        ? "crash" as const
+        : evaluation.status === "accepted" && evaluation.score > bestScore
+          ? "keep" as const
+          : "discard" as const;
+      if (decision === "keep") {
+        bestScore = evaluation.score;
+        bestArtifactDir = path.join(submissionRoot, "kept-artifact");
+        await rm(bestArtifactDir, { recursive: true, force: true });
+        await cp(artifactDir, bestArtifactDir, { recursive: true });
+        await rm(input.bestDir, { recursive: true, force: true });
+        await cp(bestArtifactDir, input.bestDir, { recursive: true });
+      }
+      const completedAt = new Date().toISOString();
+      const entry: TradingResearchNotebookEntry = {
+        iteration: request.submission_sequence,
+        decision,
+        score: evaluation.score,
+        summary: evaluation.summary,
+        agent_status: artifactDigest === previousSnapshotDigest
+          ? "no_change"
+          : "edited",
+        agent_summary: request.research_note,
+        artifact_dir: artifactDir,
+        events_path: replaySet.events_path,
+        started_at: startedAt,
+        completed_at: completedAt,
+        evaluation
+      };
+      previousSnapshotDigest = artifactDigest;
+      input.notebook.entries.push(entry);
+      input.notebook.best_score = Number.isFinite(bestScore) ? bestScore : undefined;
+      input.notebook.best_artifact_dir = bestArtifactDir;
+      input.notebook.session_protocol_version =
+        "research_worker_autonomous_session_v1";
+      await writeNotebook(input.notebookPath, input.notebook);
+      return {
+        submission_sequence: request.submission_sequence,
+        artifact_dir: artifactDir,
+        artifact_digest: artifactDigest,
+        started_at: startedAt,
+        completed_at: completedAt,
+        evaluation,
+        feedback: toResearchPreflightFeedback(evaluation)
+      };
+    }
+  });
+
+  try {
+    await sessionAdapter.runSession({
+      artifact_dir: workingArtifactDir,
+      program_path: input.programPath,
+      notebook_path: input.notebookPath,
+      submission_limit: input.iterations,
+      timeout_ms: input.input.agent_timeout_ms ?? 120_000,
+      ...(input.input.arena_context
+        ? { arena_context: input.input.arena_context }
+        : {}),
+      tools: session
+    });
+  } catch (error) {
+    input.notebook.session_protocol_version =
+      "research_worker_autonomous_session_v1";
+    input.notebook.session_status = "failed";
+    await writeNotebook(input.notebookPath, input.notebook);
+    throw error;
+  }
+
+  const terminal = session.closeAfterProviderExit();
+  const selected = session.selectedSubmission();
+  input.notebook.session_protocol_version =
+    "research_worker_autonomous_session_v1";
+  input.notebook.session_status = terminal.session_status;
+  if (selected) {
+    input.notebook.selected_development_submission =
+      selected.submission_sequence;
+  }
+  input.notebook.entries = input.notebook.entries.map((entry) => ({
+    ...entry,
+    selected_for_sealed_submission:
+      selected?.submission_sequence === entry.iteration
+  }));
+  await writeNotebook(input.notebookPath, input.notebook);
+
+  let submittedArtifactDir: string | undefined;
+  let submittedArtifactDigest: string | undefined;
+  let sealedAdmission: TradingResearchLoopResult["sealed_admission"];
+  if (selected) {
+    submittedArtifactDir = path.join(input.runRoot, "submitted-artifact");
+    await rm(submittedArtifactDir, { recursive: true, force: true });
+    await cp(selected.artifact_dir, submittedArtifactDir, { recursive: true });
+    const submittedArtifact = await sealSingleFileTradingArtifactClosure(
+      submittedArtifactDir,
+      input.frozenManifest
+    );
+    submittedArtifactDigest = submittedArtifact.closure_digest;
+    const sealedSuite = input.preflightPlan.claimSealedAdmissionSuite();
+    if (sealedSuite.suite_digest !==
+      input.preflightPlan.commitment.sealed_admission_policy.suite_digest) {
+      throw new Error("research_preflight_sealed_suite_mismatch");
+    }
+    const sealed = await runTradingSealedAdmission({
+      artifact_dir: submittedArtifactDir,
+      manifest: input.frozenManifest,
+      output_dir: path.join(input.runRoot, "sealed-admission"),
+      scenarios: sealedSuite.scenarios,
+      artifact_runner: input.artifactRunner,
+      replay_provider_factory: input.input.replay_provider_factory
+    });
+    const conformanceDigest = sealed.evaluation.paper_handoff_conformance
+      ?.system_code_artifact_digest;
+    if (conformanceDigest !== undefined &&
+      conformanceDigest !== submittedArtifactDigest) {
+      throw new Error("research_preflight_sealed_artifact_mismatch");
+    }
+    sealedAdmission = {
+      commitment_id:
+        input.preflightPlan.commitment.research_preflight_commitment_id,
+      commitment_digest: input.preflightPlan.commitment.commitment_digest,
+      suite_digest: sealedSuite.suite_digest,
+      submission_sequence: 1,
+      artifact_digest: submittedArtifactDigest,
+      events_path: sealed.events_path,
+      evaluation: sealed.evaluation
+    };
+  }
+
+  return {
+    session_id: input.sessionId,
+    run_root: input.runRoot,
+    notebook_path: input.notebookPath,
+    research_preflight_commitment: input.preflightPlan.commitment,
+    best_score: Number.isFinite(bestScore) ? bestScore : undefined,
+    best_artifact_dir: bestArtifactDir,
+    session_status: terminal.session_status,
+    ...(selected
+      ? { selected_development_submission: selected.submission_sequence }
+      : {}),
+    submitted_artifact_dir: submittedArtifactDir,
+    submitted_artifact_digest: submittedArtifactDigest,
+    sealed_admission: sealedAdmission,
+    entries: input.notebook.entries
+  };
+}
+
+async function developmentSnapshotDigest(root: string): Promise<string> {
+  const hash = createHash("sha256");
+  await appendDirectoryDigest(hash, path.resolve(root), "");
+  return `sha256:${hash.digest("hex")}`;
+}
+
+async function appendDirectoryDigest(
+  hash: ReturnType<typeof createHash>,
+  root: string,
+  relativeDirectory: string
+): Promise<void> {
+  const current = relativeDirectory
+    ? path.join(root, relativeDirectory)
+    : root;
+  const entries = (await readdir(current, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    const relativePath = relativeDirectory
+      ? path.posix.join(relativeDirectory.split(path.sep).join("/"), entry.name)
+      : entry.name;
+    if (entry.isDirectory()) {
+      hash.update(`directory\0${relativePath}\0`);
+      await appendDirectoryDigest(hash, root, relativePath);
+      continue;
+    }
+    if (entry.isFile()) {
+      hash.update(`file\0${relativePath}\0`);
+      hash.update(await readFile(path.join(root, relativePath)));
+      hash.update("\0");
+      continue;
+    }
+    hash.update(`unsupported\0${relativePath}\0`);
+  }
 }
 
 function buildStandalonePreflightPlan(input: {
