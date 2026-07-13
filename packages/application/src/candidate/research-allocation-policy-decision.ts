@@ -139,6 +139,162 @@ export class ResearchAllocationPolicyDecisionService {
   }
 }
 
+export type ResearchAllocationPolicyDecisionCoordinationResult =
+  | {
+      status: "ensured";
+      decisionId: string;
+      studyOutcomeId: string;
+      decisionStatus: "approved" | "not_approved";
+    }
+  | {
+      status: "up_to_date";
+      terminalOutcomeCount: number;
+    };
+
+export interface ResearchAllocationPolicyDecisionCoordinatorLifecycle {
+  ensureNextDecision(): Promise<
+    ResearchAllocationPolicyDecisionCoordinationResult
+  >;
+}
+
+export class ResearchAllocationPolicyDecisionCoordinatorError extends Error {
+  readonly code = "research_allocation_policy_decision_coordination_failed";
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ResearchAllocationPolicyDecisionCoordinatorError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export class ResearchAllocationPolicyDecisionCoordinator
+implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
+  private readonly now: () => string;
+
+  constructor(private readonly options: {
+    store: OuroborosStorePort;
+    now?: () => string;
+  }) {
+    this.now = options.now ?? (() => new Date().toISOString());
+  }
+
+  async ensureNextDecision(): Promise<
+    ResearchAllocationPolicyDecisionCoordinationResult
+  > {
+    try {
+      return await this.reconcile();
+    } catch (error) {
+      if (error instanceof ResearchAllocationPolicyDecisionCoordinatorError) {
+        throw error;
+      }
+      throw coordinationFailed(
+        "ResearchAllocationPolicyDecision automatic reconciliation failed closed.",
+        error
+      );
+    }
+  }
+
+  private async reconcile(): Promise<
+    ResearchAllocationPolicyDecisionCoordinationResult
+  > {
+    const [studies, outcomes, decisions] = await Promise.all([
+      this.options.store.listResearchControlStudies(),
+      this.options.store.listResearchControlStudyOutcomes(),
+      this.options.store.listResearchAllocationPolicyDecisions()
+    ]);
+    const studiesById = uniqueBy(
+      studies,
+      (study) => study.research_control_study_id,
+      "ResearchControlStudy list contains duplicate identities."
+    );
+    const outcomesById = uniqueBy(
+      outcomes,
+      (outcome) => outcome.research_control_study_outcome_id,
+      "ResearchControlStudyOutcome list contains duplicate identities."
+    );
+    const decisionsByOutcomeId = uniqueBy(
+      decisions,
+      (decision) => decision.study_outcome_ref.id,
+      "ResearchAllocationPolicyDecision list contains duplicate outcome refs."
+    );
+    for (const decision of decisions) {
+      if (!outcomesById.has(decision.study_outcome_ref.id)) {
+        throw coordinationFailed(
+          "ResearchAllocationPolicyDecision references an absent study outcome."
+        );
+      }
+    }
+
+    const orderedOutcomes = [...outcomes].sort((left, right) =>
+      left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+      left.research_control_study_outcome_id.localeCompare(
+        right.research_control_study_outcome_id
+      )
+    );
+    for (const outcome of orderedOutcomes) {
+      const study = studiesById.get(outcome.study_ref.id);
+      if (!study) {
+        throw coordinationFailed(
+          "ResearchControlStudyOutcome references an absent study."
+        );
+      }
+      const existing = decisionsByOutcomeId.get(
+        outcome.research_control_study_outcome_id
+      );
+      if (existing) {
+        const reloaded = await new ResearchAllocationPolicyDecisionService({
+          store: this.options.store
+        }).decide({ study, outcome });
+        if (!isDeepStrictEqual(reloaded, existing)) {
+          throw coordinationFailed(
+            "ResearchAllocationPolicyDecision differs from exact reconciliation."
+          );
+        }
+        continue;
+      }
+
+      const decidedAt = this.nextDecisionTime(outcome.adjudicated_at);
+      const decision = await new ResearchAllocationPolicyDecisionService({
+        store: this.options.store,
+        now: () => decidedAt
+      }).decide({ study, outcome });
+      return {
+        status: "ensured",
+        decisionId: decision.research_allocation_policy_decision_id,
+        studyOutcomeId: outcome.research_control_study_outcome_id,
+        decisionStatus: decision.decision_status
+      };
+    }
+    return {
+      status: "up_to_date",
+      terminalOutcomeCount: outcomes.length
+    };
+  }
+
+  private nextDecisionTime(adjudicatedAt: string): string {
+    const now = canonicalTime(this.now());
+    const adjudicated = canonicalTime(adjudicatedAt);
+    const nowEpoch = Date.parse(now);
+    const adjudicatedEpoch = Date.parse(adjudicated);
+    if (nowEpoch < adjudicatedEpoch) {
+      throw coordinationFailed(
+        "ResearchAllocationPolicyDecision clock precedes study adjudication."
+      );
+    }
+    if (nowEpoch > adjudicatedEpoch) return now;
+    try {
+      const next = new Date(nowEpoch + 1).toISOString();
+      if (Date.parse(next) <= adjudicatedEpoch) throw new RangeError();
+      return next;
+    } catch (error) {
+      throw coordinationFailed(
+        "ResearchAllocationPolicyDecision clock cannot advance after adjudication.",
+        error
+      );
+    }
+  }
+}
+
 export function decideResearchAllocationPolicyDecision(
   input: DecideResearchAllocationPolicyDecisionInput
 ): ResearchAllocationPolicyDecisionRecord {
@@ -280,4 +436,28 @@ function pendingDigest(): string {
 
 function invalidDecision(): ResearchAllocationPolicyDecisionError {
   return new ResearchAllocationPolicyDecisionError();
+}
+
+function uniqueBy<T>(
+  values: T[],
+  key: (value: T) => string,
+  duplicateMessage: string
+): Map<string, T> {
+  const result = new Map<string, T>();
+  for (const value of values) {
+    const id = key(value);
+    if (result.has(id)) throw coordinationFailed(duplicateMessage);
+    result.set(id, value);
+  }
+  return result;
+}
+
+function coordinationFailed(
+  message: string,
+  cause?: unknown
+): ResearchAllocationPolicyDecisionCoordinatorError {
+  return new ResearchAllocationPolicyDecisionCoordinatorError(
+    message,
+    cause === undefined ? undefined : { cause }
+  );
 }

@@ -99,7 +99,7 @@ git commit -m "fix: reconcile policy decision races"
 - Produces: `ResearchAllocationPolicyDecisionCoordinator.ensureNextDecision()` and bounded
   `ensured | up_to_date` operational status.
 
-- [ ] **Step 1: Write failing reconciliation tests**
+- [x] **Step 1: Write failing reconciliation tests**
 
 Cover empty evidence, supported approval, unsupported/underpowered not-approved decisions,
 oldest-first missing selection after validating existing decisions, one-write-per-call, orphan and
@@ -108,7 +108,7 @@ graph failures, equal-millisecond ordering, clock regression, and exact replay.
 Use the existing allocation resolver to prove an automatically ensured approval becomes the next
 uncontrolled tick's `research_allocation_policy_decision` basis.
 
-- [ ] **Step 2: Run the application test and verify RED**
+- [x] **Step 2: Run the application test and verify RED**
 
 ```bash
 npx vitest run packages/application/src/candidate/research-allocation-policy-decision.test.ts
@@ -116,7 +116,7 @@ npx vitest run packages/application/src/candidate/research-allocation-policy-dec
 
 Expected: coordinator exports are absent.
 
-- [ ] **Step 3: Implement bounded exact reconciliation**
+- [x] **Step 3: Implement bounded exact reconciliation**
 
 Add:
 
@@ -147,7 +147,7 @@ ensure only the oldest missing outcome. Wrap failures in a stable
 For `decided_at`, use exact `now` when later, add one millisecond only when equal, and reject earlier
 or invalid clocks.
 
-- [ ] **Step 4: Verify and commit Task 2**
+- [x] **Step 4: Verify and commit Task 2**
 
 ```bash
 npx vitest run packages/application/src/candidate/research-allocation-policy-decision.test.ts packages/application/src/candidate/research-allocation.test.ts

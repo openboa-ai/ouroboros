@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   paperTradingComparisonPersistedRecordDigestInput,
+  researchAllocationPolicyDecisionDigestInput,
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   researchControlStudyOutcomeDigestInput,
   type ResearchAllocationPolicyDecisionRecord,
@@ -10,12 +11,15 @@ import {
   type ResearchControlStudyRecord
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
+import { resolveCandidateArenaResearchAllocationPolicy } from
+  "./research-allocation";
 import { decideResearchControlStudy } from "./research-control-study";
 import { researchControlStudyOutcomeId } from
   "./research-control-study-outcome";
 import {
   decideResearchAllocationPolicyDecision,
   ResearchAllocationPolicyDecisionError,
+  ResearchAllocationPolicyDecisionCoordinator,
   ResearchAllocationPolicyDecisionService
 } from "./research-allocation-policy-decision";
 
@@ -147,6 +151,209 @@ describe("ResearchAllocationPolicyDecision application", () => {
       code: "research_allocation_policy_decision_persistence_conflict"
     });
   });
+
+  it("reports an empty terminal outcome set as up to date", async () => {
+    const store = new PolicyDecisionCoordinatorStore([]);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:00.000Z"
+    });
+
+    await expect(coordinator.ensureNextDecision()).resolves.toEqual({
+      status: "up_to_date",
+      terminalOutcomeCount: 0
+    });
+    expect(store.recordCount).toBe(0);
+  });
+
+  it.each([
+    ["supported", [1, 1, 1, 1, 1, 1], "approved"],
+    ["unsupported", [-1, -1, -1, -1, -1, -1], "not_approved"],
+    ["underpowered", [1, 1, 1, 1, 1, 0], "not_approved"]
+  ] as const)("ensures a %s terminal outcome symmetrically", async (
+    token,
+    differences,
+    decisionStatus
+  ) => {
+    const graph = studyGraph([...differences], `coordinator-${token}`);
+    const store = new PolicyDecisionCoordinatorStore([graph]);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:00.000Z"
+    });
+
+    const result = await coordinator.ensureNextDecision();
+
+    expect(result).toEqual({
+      status: "ensured",
+      decisionId:
+        store.decisions[0]!.research_allocation_policy_decision_id,
+      studyOutcomeId: graph.outcome.research_control_study_outcome_id,
+      decisionStatus
+    });
+    expect(store.decisions).toHaveLength(1);
+    expect(store.decisions[0]).toMatchObject({
+      decision_status: decisionStatus,
+      effective_default_mode: decisionStatus === "approved"
+        ? "adaptive_default"
+        : null,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false
+    });
+  });
+
+  it("validates existing evidence and ensures only the oldest missing decision", async () => {
+    const first = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-first");
+    const second = studyGraph([-1, -1, -1, -1, -1, -1], "coordinator-second");
+    second.outcome.adjudicated_at = "2026-07-12T12:00:01.000Z";
+    resealOutcome(second.outcome);
+    const firstDecision = decideResearchAllocationPolicyDecision({
+      ...first,
+      decidedAt: "2026-07-12T12:30:00.000Z"
+    });
+    const store = new PolicyDecisionCoordinatorStore([second, first]);
+    store.decisions.push(firstDecision);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:00.000Z"
+    });
+
+    await expect(coordinator.ensureNextDecision()).resolves.toMatchObject({
+      status: "ensured",
+      studyOutcomeId: second.outcome.research_control_study_outcome_id,
+      decisionStatus: "not_approved"
+    });
+    expect(store.recordCount).toBe(1);
+    expect(store.decisions).toHaveLength(2);
+    await expect(coordinator.ensureNextDecision()).resolves.toEqual({
+      status: "up_to_date",
+      terminalOutcomeCount: 2
+    });
+    expect(store.recordCount).toBe(1);
+  });
+
+  it("creates at most one oldest missing decision per call", async () => {
+    const first = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-bounded-first");
+    const second = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-bounded-second");
+    second.outcome.adjudicated_at = "2026-07-12T12:00:01.000Z";
+    resealOutcome(second.outcome);
+    const store = new PolicyDecisionCoordinatorStore([second, first]);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:00.000Z"
+    });
+
+    await expect(coordinator.ensureNextDecision()).resolves.toMatchObject({
+      status: "ensured",
+      studyOutcomeId: first.outcome.research_control_study_outcome_id
+    });
+    expect(store.decisions).toHaveLength(1);
+    await expect(coordinator.ensureNextDecision()).resolves.toMatchObject({
+      status: "ensured",
+      studyOutcomeId: second.outcome.research_control_study_outcome_id
+    });
+    expect(store.decisions).toHaveLength(2);
+  });
+
+  it("orders an immediate decision strictly after the study outcome", async () => {
+    const graph = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-equal-clock");
+    const store = new PolicyDecisionCoordinatorStore([graph]);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => graph.outcome.adjudicated_at
+    });
+
+    await coordinator.ensureNextDecision();
+
+    expect(store.decisions[0]!.decided_at).toBe(
+      "2026-07-12T12:00:00.001Z"
+    );
+  });
+
+  it("fails closed for orphan decisions, missing studies, and clock regression", async () => {
+    const graph = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-invalid");
+    const decision = decideResearchAllocationPolicyDecision({
+      ...graph,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+    const orphanStore = new PolicyDecisionCoordinatorStore([]);
+    orphanStore.decisions.push(decision);
+    await expect(new ResearchAllocationPolicyDecisionCoordinator({
+      store: orphanStore as unknown as OuroborosStorePort
+    }).ensureNextDecision()).rejects.toMatchObject({
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+
+    const missingStudyStore = new PolicyDecisionCoordinatorStore([graph]);
+    missingStudyStore.studies = [];
+    await expect(new ResearchAllocationPolicyDecisionCoordinator({
+      store: missingStudyStore as unknown as OuroborosStorePort
+    }).ensureNextDecision()).rejects.toMatchObject({
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+
+    const regressedClockStore = new PolicyDecisionCoordinatorStore([graph]);
+    await expect(new ResearchAllocationPolicyDecisionCoordinator({
+      store: regressedClockStore as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T11:59:59.999Z"
+    }).ensureNextDecision()).rejects.toMatchObject({
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+    expect(regressedClockStore.decisions).toEqual([]);
+  });
+
+  it("fails closed for an existing decision that conflicts with its outcome", async () => {
+    const graph = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-conflict");
+    const conflicting = decideResearchAllocationPolicyDecision({
+      ...graph,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+    conflicting.decision_status = "not_approved";
+    conflicting.decision_reason = "study_outcome_not_eligible";
+    conflicting.effective_default_mode = null;
+    resealDecision(conflicting);
+    const store = new PolicyDecisionCoordinatorStore([graph]);
+    store.decisions.push(conflicting);
+
+    await expect(new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort
+    }).ensureNextDecision()).rejects.toMatchObject({
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+    expect(store.recordCount).toBe(0);
+  });
+
+  it("makes an ensured approval available to uncontrolled allocation", async () => {
+    const graph = studyGraph(
+      [1, 1, 1, 1, 1, 1],
+      "coordinator-allocation"
+    );
+    const store = new PolicyDecisionCoordinatorStore([graph]);
+    const coordinator = new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:00.000Z"
+    });
+
+    await coordinator.ensureNextDecision();
+    const decision = store.decisions[0]!;
+
+    await expect(resolveCandidateArenaResearchAllocationPolicy({
+      store: store as unknown as OuroborosStorePort
+    })).resolves.toEqual({
+      allocationMode: "adaptive_default",
+      allocationPolicyBasis: {
+        basis_kind: "research_allocation_policy_decision",
+        policy_decision_ref: {
+          record_kind: "research_allocation_policy_decision",
+          id: decision.research_allocation_policy_decision_id
+        },
+        policy_decision_digest: decision.policy_decision_digest,
+        study_outcome_ref: { ...decision.study_outcome_ref },
+        study_outcome_digest: decision.study_outcome_digest
+      }
+    });
+  });
 });
 
 interface StudyGraph {
@@ -202,14 +409,67 @@ class PolicyDecisionStore {
   }
 }
 
-function studyGraph(differences: number[]): Omit<StudyGraph, "decidedAt"> {
+class PolicyDecisionCoordinatorStore {
+  studies: ResearchControlStudyRecord[];
+  outcomes: ResearchControlStudyOutcomeRecord[];
+  decisions: ResearchAllocationPolicyDecisionRecord[] = [];
+  recordCount = 0;
+
+  constructor(graphs: Array<Omit<StudyGraph, "decidedAt">>) {
+    this.studies = graphs.map((graph) => structuredClone(graph.study));
+    this.outcomes = graphs.map((graph) => structuredClone(graph.outcome));
+  }
+
+  async listResearchControlStudies() {
+    return structuredClone(this.studies);
+  }
+
+  async listResearchControlStudyOutcomes() {
+    return structuredClone(this.outcomes);
+  }
+
+  async listResearchAllocationPolicyDecisions() {
+    return structuredClone(this.decisions);
+  }
+
+  async getResearchControlStudy(id: string) {
+    return structuredClone(this.studies.find((study) =>
+      study.research_control_study_id === id
+    ));
+  }
+
+  async getResearchControlStudyOutcome(id: string) {
+    return structuredClone(this.outcomes.find((outcome) =>
+      outcome.research_control_study_outcome_id === id
+    ));
+  }
+
+  async getResearchAllocationPolicyDecision(id: string) {
+    return structuredClone(this.decisions.find((decision) =>
+      decision.research_allocation_policy_decision_id === id
+    ));
+  }
+
+  async recordResearchAllocationPolicyDecision(
+    decision: ResearchAllocationPolicyDecisionRecord
+  ) {
+    this.recordCount += 1;
+    this.decisions.push(structuredClone(decision));
+    return structuredClone(decision);
+  }
+}
+
+function studyGraph(
+  differences: number[],
+  token = "policy-decision"
+): Omit<StudyGraph, "decidedAt"> {
   const condition = studyCondition();
   const study = decideResearchControlStudy({
-    idempotencyKey: "policy-decision-study",
+    idempotencyKey: `${token}-study`,
     baselineSnapshotDigest: digest("1"),
     condition,
     replicationIdempotencyKeys: differences.map((_, index) =>
-      `policy-decision-replication-${index + 1}`
+      `${token}-replication-${index + 1}`
     ),
     committedAt: "2026-07-12T09:00:00.000Z"
   });
@@ -401,6 +661,14 @@ function boundPaperProtocol() {
 function resealOutcome(outcome: ResearchControlStudyOutcomeRecord): void {
   outcome.study_outcome_digest = exactDigest(
     researchControlStudyOutcomeDigestInput(outcome)
+  );
+}
+
+function resealDecision(
+  decision: ResearchAllocationPolicyDecisionRecord
+): void {
+  decision.policy_decision_digest = exactDigest(
+    researchAllocationPolicyDecisionDigestInput(decision)
   );
 }
 
