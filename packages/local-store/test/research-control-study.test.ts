@@ -374,6 +374,87 @@ describe("LocalStore ResearchControlStudy", () => {
       .toEqual(decision);
   });
 
+  it("publishes one exact policy decision across independent stores", async () => {
+    const sharedRoot = path.join(root, "policy-decision-exact-race");
+    const graph = terminalStudyGraph();
+    const studyOutcome = decideResearchControlStudyOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-12T12:00:00.000Z"
+    });
+    const left = new PolicyDecisionGraphStore(
+      sharedRoot,
+      graph,
+      studyOutcome
+    );
+    const right = new PolicyDecisionGraphStore(
+      sharedRoot,
+      graph,
+      studyOutcome
+    );
+    await left.initialize();
+    await right.initialize();
+    const decision = decideResearchAllocationPolicyDecision({
+      study: graph.study,
+      outcome: studyOutcome,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+
+    await expect(Promise.all([
+      left.recordResearchAllocationPolicyDecision(decision),
+      right.recordResearchAllocationPolicyDecision(structuredClone(decision))
+    ])).resolves.toEqual([decision, decision]);
+    await expect(left.listResearchAllocationPolicyDecisions())
+      .resolves.toEqual([decision]);
+  });
+
+  it("publishes one winner for concurrent policy decision timestamps", async () => {
+    const sharedRoot = path.join(root, "policy-decision-conflict-race");
+    const graph = terminalStudyGraph();
+    const studyOutcome = decideResearchControlStudyOutcome({
+      ...graph,
+      adjudicatedAt: "2026-07-12T12:00:00.000Z"
+    });
+    const left = new PolicyDecisionGraphStore(
+      sharedRoot,
+      graph,
+      studyOutcome
+    );
+    const right = new PolicyDecisionGraphStore(
+      sharedRoot,
+      graph,
+      studyOutcome
+    );
+    await left.initialize();
+    await right.initialize();
+    const first = decideResearchAllocationPolicyDecision({
+      study: graph.study,
+      outcome: studyOutcome,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+    const second = decideResearchAllocationPolicyDecision({
+      study: graph.study,
+      outcome: studyOutcome,
+      decidedAt: "2026-07-12T13:00:01.000Z"
+    });
+
+    const settled = await Promise.allSettled([
+      left.recordResearchAllocationPolicyDecision(first),
+      right.recordResearchAllocationPolicyDecision(second)
+    ]);
+    const fulfilled = settled.filter((result) => result.status === "fulfilled");
+    const rejected = settled.filter((result) => result.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      reason: { code: "research_allocation_policy_decision_conflict" }
+    });
+    await expect(left.listResearchAllocationPolicyDecisions()).resolves.toEqual([
+      (fulfilled[0] as PromiseFulfilledResult<
+        ResearchAllocationPolicyDecisionRecord
+      >).value
+    ]);
+  });
+
   it("rejects policy decision conflicts and source graph drift", async () => {
     const graph = terminalStudyGraph();
     const studyOutcome = decideResearchControlStudyOutcome({

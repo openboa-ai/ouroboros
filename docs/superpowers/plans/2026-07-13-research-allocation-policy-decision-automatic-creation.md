@@ -47,7 +47,7 @@ Fastify lifecycle, Vitest.
 - Consumes: one fully validated ResearchAllocationPolicyDecision and deterministic final path.
 - Produces: create-only LocalStore publication and service-level exact-winner recovery.
 
-- [ ] **Step 1: Write failing cross-instance and service-race tests**
+- [x] **Step 1: Write failing cross-instance and service-race tests**
 
 Add LocalStore tests using two independent stores over one root. Exact concurrent bytes must return
 one record. Two valid decisions differing only in `decided_at` must yield one direct-store winner and
@@ -56,7 +56,7 @@ one `research_allocation_policy_decision_conflict` without overwrite.
 Add an application service test whose first write loses to an already published semantic winner
 with a different valid timestamp. The service must return that winner after exact re-derivation.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/research-control-study.test.ts packages/application/src/candidate/research-allocation-policy-decision.test.ts
@@ -65,18 +65,18 @@ npx vitest run packages/local-store/test/research-control-study.test.ts packages
 Expected: direct-store publication can overwrite or race through a shared temp path, and the
 service rejects rather than accepting the exact winner.
 
-- [ ] **Step 3: Reuse complete create-only publication**
+- [x] **Step 3: Reuse complete create-only publication**
 
 Replace the decision family's final `writeJson` with `writeJsonCreateOnly`. On `exists`, reload and
 return only exact bytes; otherwise throw the existing append-only conflict.
 
-- [ ] **Step 4: Reconcile a concurrent semantic winner in the service**
+- [x] **Step 4: Reconcile a concurrent semantic winner in the service**
 
 When persistence throws or substitutes bytes, reload the deterministic ID. Re-derive using the
 winner's `decided_at` and return only exact semantic equality. Otherwise keep
 `research_allocation_policy_decision_persistence_conflict`.
 
-- [ ] **Step 5: Verify and commit Task 1**
+- [x] **Step 5: Verify and commit Task 1**
 
 ```bash
 npx vitest run packages/local-store/test/research-control-study.test.ts packages/application/src/candidate/research-allocation-policy-decision.test.ts

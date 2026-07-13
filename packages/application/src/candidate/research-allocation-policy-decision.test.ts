@@ -109,6 +109,23 @@ describe("ResearchAllocationPolicyDecision application", () => {
     expect(store.decisions).toEqual([first]);
   });
 
+  it("accepts an exact concurrent winner with its original decision time", async () => {
+    const graph = studyGraph([1, 1, 1, 1, 1, 1]);
+    const store = new PolicyDecisionStore(graph);
+    const winner = decideResearchAllocationPolicyDecision({
+      ...graph,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+    store.concurrentWinner = winner;
+    const service = new ResearchAllocationPolicyDecisionService({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T13:00:01.000Z"
+    });
+
+    await expect(service.decide(graph)).resolves.toEqual(winner);
+    expect(store.decisions).toEqual([winner]);
+  });
+
   it("rejects missing source graph and persistence substitution", async () => {
     const graph = studyGraph([1, 1, 1, 1, 1, 1]);
     const missing = new PolicyDecisionStore(graph);
@@ -143,6 +160,7 @@ class PolicyDecisionStore {
   outcome?: ResearchControlStudyOutcomeRecord;
   decisions: ResearchAllocationPolicyDecisionRecord[] = [];
   substitutePersistence = false;
+  concurrentWinner?: ResearchAllocationPolicyDecisionRecord;
 
   constructor(graph: Omit<StudyGraph, "decidedAt">) {
     this.study = structuredClone(graph.study);
@@ -170,6 +188,13 @@ class PolicyDecisionStore {
   async recordResearchAllocationPolicyDecision(
     decision: ResearchAllocationPolicyDecisionRecord
   ) {
+    if (this.concurrentWinner) {
+      this.decisions.push(structuredClone(this.concurrentWinner));
+      this.concurrentWinner = undefined;
+      throw Object.assign(new Error("concurrent policy decision winner"), {
+        code: "research_allocation_policy_decision_conflict"
+      });
+    }
     const recorded = structuredClone(decision);
     if (this.substitutePersistence) recorded.decision_status = "not_approved";
     this.decisions.push(recorded);

@@ -100,16 +100,42 @@ export class ResearchAllocationPolicyDecisionService {
       ...input,
       decidedAt: this.now()
     });
-    const recorded = await this.options.store
-      .recordResearchAllocationPolicyDecision(decision);
-    if (!researchAllocationPolicyDecisionHasRuntimeShape(recorded) ||
-      !isDeepStrictEqual(recorded, decision)) {
-      throw new ResearchAllocationPolicyDecisionServiceError(
-        "research_allocation_policy_decision_persistence_conflict",
-        "Store did not preserve exact ResearchAllocationPolicyDecision."
-      );
+    let recorded: ResearchAllocationPolicyDecisionRecord;
+    try {
+      recorded = await this.options.store
+        .recordResearchAllocationPolicyDecision(decision);
+    } catch {
+      return this.reloadExactWinner(input, decisionId);
     }
-    return recorded;
+    if (researchAllocationPolicyDecisionHasRuntimeShape(recorded) &&
+      isDeepStrictEqual(recorded, decision)) {
+      return recorded;
+    }
+    return this.reloadExactWinner(input, decisionId);
+  }
+
+  private async reloadExactWinner(
+    input: ResearchAllocationPolicyDecisionRequest,
+    decisionId: string
+  ): Promise<ResearchAllocationPolicyDecisionRecord> {
+    const winner = await this.options.store
+      .getResearchAllocationPolicyDecision(decisionId);
+    if (winner && researchAllocationPolicyDecisionHasRuntimeShape(winner)) {
+      let expected: ResearchAllocationPolicyDecisionRecord | undefined;
+      try {
+        expected = decideResearchAllocationPolicyDecision({
+          ...input,
+          decidedAt: winner.decided_at
+        });
+      } catch {
+        expected = undefined;
+      }
+      if (expected && isDeepStrictEqual(winner, expected)) return winner;
+    }
+    throw new ResearchAllocationPolicyDecisionServiceError(
+      "research_allocation_policy_decision_persistence_conflict",
+      "Store did not preserve exact ResearchAllocationPolicyDecision."
+    );
   }
 }
 

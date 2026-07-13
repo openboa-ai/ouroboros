@@ -4015,10 +4015,22 @@ export class LocalStore {
       }
       return existing;
     }
-    await this.writeJson(this.itemPath(
+    const publication = await this.writeJsonCreateOnly(this.itemPath(
       "research-allocation-policy-decisions",
       decision.research_allocation_policy_decision_id
     ), decision);
+    if (publication === "exists") {
+      const winner = await this.getResearchAllocationPolicyDecision(
+        decision.research_allocation_policy_decision_id
+      );
+      if (!winner || !sameJson(winner, decision)) {
+        throw new LocalStoreError(
+          "research_allocation_policy_decision_conflict",
+          "ResearchAllocationPolicyDecision is append-only"
+        );
+      }
+      return winner;
+    }
     return decision;
   }
 
