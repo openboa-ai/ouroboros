@@ -211,14 +211,14 @@ git commit -m "feat: emit fixture decisions before tick acknowledgement"
 **Files:**
 - Modify: `apps/runtime/test/generated-trading-system-artifact.test.ts`
 - Modify: `artifacts/trading-system/run.py`
-- Test: `apps/runtime/test/research-control-campaign.test.ts`
+- Test: `apps/runtime/test/candidate-arena-paper-context.test.ts`
 
 **Interfaces:**
 - Consumes: the same context parser and event contract proven by Task 2.
 - Produces: candidate-specific sequence-2+ `TradingSystemDecision` events that retain directional
   edits made by `DirectionalFixtureTradingResearchAgentAdapter`.
 
-- [ ] **Step 1: Write the failing generated-artifact cadence test**
+- [x] **Step 1: Write the failing generated-artifact cadence test**
 
 Require context 2 to produce an attributed event before acknowledgement, using event ID
 `generated-comparison-cadence:order-request:0002`. Require the request order for context 2 to be:
@@ -232,7 +232,7 @@ POST /comparison/tick/ack
 
 Assert only the final POST occurs after the attributed line is visible.
 
-- [ ] **Step 2: Run the generated artifact test and verify RED**
+- [x] **Step 2: Run the generated artifact test and verify RED**
 
 Run:
 
@@ -242,19 +242,19 @@ npx vitest run apps/runtime/test/generated-trading-system-artifact.test.ts
 
 Expected: no sequence-2 decision exists and account/validation requests are absent.
 
-- [ ] **Step 3: Implement generated candidate post-activation decisions**
+- [x] **Step 3: Implement generated candidate post-activation decisions**
 
 Apply the Task 2 sequencing to `run_paper`. Reuse `build_order_request` and
 `paper_event_from_intent`, but accept tick sequence and delivery attribution so IDs are stable and
 candidate-specific edits continue to control side, risk, and hold behavior. Append before ack.
 
-- [ ] **Step 4: Prove directional edits still affect post-activation behavior**
+- [x] **Step 4: Prove directional edits still affect post-activation behavior**
 
 Add or extend the arena test to materialize trend-following and mean-reversion artifacts from the
 same source and inspect their `run.py` behavior contract. On an upward signal, require the generated
 sequence-2 decisions to be `buy` and `sell` respectively; funding-aware behavior must remain hold.
 
-- [ ] **Step 5: Verify and commit Task 3**
+- [x] **Step 5: Verify and commit Task 3**
 
 Run:
 
@@ -262,7 +262,7 @@ Run:
 npx vitest run \
   apps/runtime/test/generated-trading-system-artifact.test.ts \
   apps/runtime/test/clock-artifact.test.ts \
-  apps/runtime/test/research-control-campaign.test.ts
+  apps/runtime/test/candidate-arena-paper-context.test.ts
 npm run typecheck
 git diff --check
 ```
@@ -272,7 +272,7 @@ Expected: focused tests and all workspace typechecks pass. Commit:
 ```bash
 git add artifacts/trading-system/run.py \
   apps/runtime/test/generated-trading-system-artifact.test.ts \
-  apps/runtime/test/research-control-campaign.test.ts
+  apps/runtime/test/candidate-arena-paper-context.test.ts
 git commit -m "feat: emit generated decisions before tick acknowledgement"
 ```
 

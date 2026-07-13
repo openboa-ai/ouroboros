@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -74,6 +76,9 @@ describe("generated TradingSystem artifact", () => {
     const contexts = [comparisonContext(1), comparisonContext(2)];
     const deliveries = [undefined, contexts[0], contexts[0], contexts[1]];
     const acknowledged: unknown[] = [];
+    const acknowledgementLogSnapshots: unknown[][] = [];
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-generated-cadence-"));
+    const logFile = path.join(tmpDir, "generated-comparison-cadence.log");
     let deliveryIndex = 0;
     const provider = await startPaperTradingApiProvider(
       createGatewayRuntimeBinding({ marketData: fakeGatewayMarketDataPort() }),
@@ -82,6 +87,10 @@ describe("generated TradingSystem artifact", () => {
           deliver: async () => deliveries[deliveryIndex++],
           acknowledge: async ({ context }) => {
             acknowledged.push(context);
+            const log = await readFile(logFile, "utf8").catch(() => "");
+            acknowledgementLogSnapshots.push(log.trim()
+              ? log.trim().split("\n").map((line) => JSON.parse(line))
+              : []);
             const sequence = (context as { tick_sequence: number }).tick_sequence;
             return {
               acknowledgement_ref: {
@@ -105,7 +114,9 @@ describe("generated TradingSystem artifact", () => {
           "--ticks",
           "4",
           "--interval-ms",
-          "1"
+          "1",
+          "--log-file",
+          logFile
         ],
         {
           env: {
@@ -116,6 +127,32 @@ describe("generated TradingSystem artifact", () => {
       );
 
       expect(acknowledged).toEqual(contexts);
+      const lines = (await readFile(logFile, "utf8")).trim().split("\n")
+        .map((line) => JSON.parse(line));
+      const decisions = lines.filter((line) =>
+        line.event === "order_request" || line.event === "hold");
+      expect(decisions).toMatchObject([
+        {
+          event_id: "generated-comparison-cadence:order-request:0001"
+        },
+        {
+          event_id: "generated-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        }
+      ]);
+      expect(acknowledgementLogSnapshots[0]).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event_id: "generated-comparison-cadence:order-request:0002"
+        })
+      ]));
+      expect(acknowledgementLogSnapshots[1]).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event_id: "generated-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        })
+      ]));
       expect(provider.requests().map(({ method, path }) => `${method} ${path}`))
         .toEqual([
           "GET /market/snapshot",
@@ -125,10 +162,13 @@ describe("generated TradingSystem artifact", () => {
           "POST /comparison/tick/ack",
           "GET /market/snapshot",
           "GET /market/snapshot",
+          "GET /account/state",
+          "POST /orders/validate",
           "POST /comparison/tick/ack"
         ]);
     } finally {
       await provider.close();
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 });

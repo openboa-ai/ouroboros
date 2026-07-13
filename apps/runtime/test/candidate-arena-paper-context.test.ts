@@ -277,6 +277,63 @@ describe("CandidateArena paper evidence context", () => {
     }
   });
 
+  it("preserves directional decisions in post-activation generated SystemCode", async () => {
+    const sourceByDirection = new Map<string, string>();
+    for (const direction of [
+      "trend_following",
+      "mean_reversion",
+      "funding_aware_risk"
+    ] as const) {
+      const store = new LocalStore(path.join(tmpDir, direction));
+      await store.initialize();
+      const outcome = await runCandidateArenaTick({
+        store,
+        tickId: `post-activation-${direction}`,
+        directions: [direction],
+        researchAgent: "fixture",
+        agentFactory: () => new CapturingResearchAgent([]),
+        artifactRunner: networklessReplayArtifactRunner(),
+        replayProviderFactory: networklessReplayTradingApiProvider
+      });
+      const result = outcome.arena.latest_ticks.find((entry) =>
+        entry.tick_id === outcome.tick_id)?.direction_results[0];
+      if (!result || result.status !== "created" || !result.candidate_id) {
+        throw new Error(`directional candidate missing: ${JSON.stringify(result)}`);
+      }
+      const candidate = await store.getCandidate(result.candidate_id);
+      const systemCodeId = candidate?.system_code?.ref?.id;
+      const systemCode = systemCodeId
+        ? await store.getSystemCode(systemCodeId)
+        : undefined;
+      if (!systemCode || systemCode.artifact_kind !== "python_file") {
+        throw new Error(`directional SystemCode missing: ${result.direction_kind}`);
+      }
+      sourceByDirection.set(
+        direction,
+        await readFile(systemCode.artifact_path, "utf8")
+      );
+    }
+
+    const trend = sourceByDirection.get("trend_following") ?? "";
+    const meanReversion = sourceByDirection.get("mean_reversion") ?? "";
+    const fundingAware = sourceByDirection.get("funding_aware_risk") ?? "";
+    for (const source of sourceByDirection.values()) {
+      expect(source).toContain("comparison_tick_delivery_ref");
+      expect(source).toContain("paper_decision_from_market");
+      expect(source).toContain("last_delivery_id = acknowledge_comparison_tick");
+    }
+    expect(trend).toMatch(
+      /"side": "buy",[\s\S]+fast average is above slow average with bounded account risk/
+    );
+    expect(meanReversion).toMatch(
+      /"side": "sell",[\s\S]+mean reversion candidate shorts the long trend replay with bounded risk/
+    );
+    expect(fundingAware).toContain("if True:");
+    expect(fundingAware).toContain(
+      "funding-aware candidate holds until net carry clears cost"
+    );
+  });
+
   it("rejects arena SystemCode entrypoints that escape the artifact directory", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
