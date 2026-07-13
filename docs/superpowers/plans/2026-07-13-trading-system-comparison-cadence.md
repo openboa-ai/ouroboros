@@ -205,14 +205,14 @@ git commit -m "feat: acknowledge comparison ticks from TradingSystem"
 - Produces: every sealed candidate copied from `artifacts/trading-system/run.py` can consume a
   post-activation tick instead of emitting heartbeats forever.
 
-- [ ] **Step 1: Record the isolated runtime evidence**
+- [x] **Step 1: Record the isolated runtime evidence**
 
 Record in the design that the first two-checkpoint run reached replication 1, stopped the clock
 champions, and left the adaptive/static generated `submitted-artifact/run.py` processes alive past
 1,900 heartbeats with no later provider request. This establishes that the generated template, not
 the runner or provider limit, is the remaining boundary.
 
-- [ ] **Step 2: Write the failing generated-artifact provider test**
+- [x] **Step 2: Write the failing generated-artifact provider test**
 
 Extend `generated-trading-system-artifact.test.ts` with the real provider imports and the same two
 context helper used by the clock contract:
@@ -265,7 +265,7 @@ it("acknowledges each new comparison tick once on generated candidate cadence", 
 Also assert the exact request sequence from Task 1 so a repeated context cannot create a second
 acknowledgement.
 
-- [ ] **Step 3: Run the generated-artifact test and confirm RED**
+- [x] **Step 3: Run the generated-artifact test and confirm RED**
 
 Run:
 
@@ -276,7 +276,7 @@ npx vitest run apps/runtime/test/generated-trading-system-artifact.test.ts --rep
 Expected: the new test fails with an empty acknowledgement list because `run_paper` performs no
 provider read after its initial decision.
 
-- [ ] **Step 4: Implement the standalone generated-candidate contract**
+- [x] **Step 4: Implement the standalone generated-candidate contract**
 
 Add the exact `acknowledge_comparison_tick` validation and delivery-ID deduplication from Task 1 to
 `artifacts/trading-system/run.py`. In valid paper mode, acknowledge an initial context if present.
@@ -284,7 +284,7 @@ After each non-terminal sleep, read `/market/snapshot` and acknowledge a new con
 heartbeat. Rejected fixture mode remains provider-free. Do not import repository code because the
 generated artifact closure must remain exactly `manifest.json` plus `run.py`.
 
-- [ ] **Step 5: Run both artifact contract tests**
+- [x] **Step 5: Run both artifact contract tests**
 
 Run:
 
@@ -299,7 +299,7 @@ npx vitest run \
 Expected: all tests pass and both executable artifact families acknowledge context 1 and context 2
 exactly once.
 
-- [ ] **Step 6: Commit the completed artifact contract**
+- [x] **Step 6: Commit the completed artifact contract**
 
 ```bash
 git add \

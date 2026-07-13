@@ -39,6 +39,37 @@ def post_json(base_url, path, payload):
         return json.loads(response.read().decode("utf-8"))
 
 
+def acknowledge_comparison_tick(base_url, market, last_delivery_id):
+    context = market.get("comparison_tick_context")
+    if context is None:
+        return last_delivery_id
+    if not isinstance(context, dict):
+        raise RuntimeError("comparison tick context is not an object")
+    delivery_ref = context.get("delivery_ref")
+    if not isinstance(delivery_ref, dict):
+        raise RuntimeError("comparison tick delivery ref is not an object")
+    delivery_id = delivery_ref.get("id")
+    if not isinstance(delivery_id, str) or not delivery_id.strip():
+        raise RuntimeError("comparison tick delivery id is invalid")
+    if delivery_id == last_delivery_id:
+        return last_delivery_id
+
+    acknowledgement = post_json(base_url, "/comparison/tick/ack", context)
+    acknowledgement_ref = acknowledgement.get("acknowledgement_ref")
+    acknowledgement_digest = acknowledgement.get("acknowledgement_digest")
+    if (
+        not isinstance(acknowledgement_ref, dict)
+        or acknowledgement_ref.get("record_kind")
+        != "paper_trading_comparison_tick_acknowledgement"
+        or not isinstance(acknowledgement_ref.get("id"), str)
+        or not acknowledgement_ref["id"]
+        or not isinstance(acknowledgement_digest, str)
+        or not acknowledgement_digest
+    ):
+        raise RuntimeError("comparison tick acknowledgement is invalid")
+    return delivery_id
+
+
 def append_event(events_path, event):
     event.setdefault("at", utc_now())
     with open(events_path, "a", encoding="utf-8") as handle:
@@ -141,12 +172,19 @@ def run_paper(args):
         raise SystemExit("--instance-id is required when --output-events is not set")
     log_path = Path(args.log_file) if args.log_file else None
     heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
+    base_url = ""
+    last_delivery_id = None
     if args.paper_order_request == "rejected":
         intent = build_rejected_order_request()
         validation = {"reason": "explicit_rejected_paper_order_request"}
     else:
         base_url = os.environ["TRADING_API_BASE_URL"]
         market = get_json(base_url, "/market/snapshot")
+        last_delivery_id = acknowledge_comparison_tick(
+            base_url,
+            market,
+            last_delivery_id,
+        )
         account = get_json(base_url, "/account/state")
         intent = build_order_request(market, account)
         validation = post_json(base_url, "/orders/validate", intent)
@@ -163,6 +201,14 @@ def run_paper(args):
         if args.ticks and tick >= args.ticks:
             break
         time.sleep(args.interval_ms / 1000)
+        if STOP_REQUESTED or not base_url:
+            continue
+        market = get_json(base_url, "/market/snapshot")
+        last_delivery_id = acknowledge_comparison_tick(
+            base_url,
+            market,
+            last_delivery_id,
+        )
     append_line(json.dumps({
         "event": "runtime_stopped",
         "instance_id": args.instance_id,

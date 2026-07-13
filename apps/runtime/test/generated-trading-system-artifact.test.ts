@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import {
+  createGatewayRuntimeBinding,
+  startPaperTradingApiProvider
+} from "@ouroboros/application/trading/gateway/runtime-binding";
 import { parseTradingSystemPaperEventLine } from "@ouroboros/application/trading/paper/events";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFile);
 const artifactPath = path.resolve("artifacts/trading-system/run.py");
@@ -64,4 +69,82 @@ describe("generated TradingSystem artifact", () => {
       }
     });
   });
+
+  it("acknowledges each new comparison tick once on generated candidate cadence", async () => {
+    const contexts = [comparisonContext(1), comparisonContext(2)];
+    const deliveries = [undefined, contexts[0], contexts[0], contexts[1]];
+    const acknowledged: unknown[] = [];
+    let deliveryIndex = 0;
+    const provider = await startPaperTradingApiProvider(
+      createGatewayRuntimeBinding({ marketData: fakeGatewayMarketDataPort() }),
+      {
+        comparison_tick_hooks: {
+          deliver: async () => deliveries[deliveryIndex++],
+          acknowledge: async ({ context }) => {
+            acknowledged.push(context);
+            const sequence = (context as { tick_sequence: number }).tick_sequence;
+            return {
+              acknowledgement_ref: {
+                record_kind: "paper_trading_comparison_tick_acknowledgement",
+                id: `generated-artifact-ack-${sequence}`
+              },
+              acknowledgement_digest: `sha256:generated-artifact-ack-${sequence}`
+            };
+          }
+        }
+      }
+    );
+
+    try {
+      await execFileAsync(
+        "python3",
+        [
+          artifactPath,
+          "--instance-id",
+          "generated-comparison-cadence",
+          "--ticks",
+          "4",
+          "--interval-ms",
+          "1"
+        ],
+        {
+          env: {
+            ...process.env,
+            TRADING_API_BASE_URL: provider.base_url
+          }
+        }
+      );
+
+      expect(acknowledged).toEqual(contexts);
+      expect(provider.requests().map(({ method, path }) => `${method} ${path}`))
+        .toEqual([
+          "GET /market/snapshot",
+          "GET /account/state",
+          "POST /orders/validate",
+          "GET /market/snapshot",
+          "POST /comparison/tick/ack",
+          "GET /market/snapshot",
+          "GET /market/snapshot",
+          "POST /comparison/tick/ack"
+        ]);
+    } finally {
+      await provider.close();
+    }
+  });
 });
+
+function comparisonContext(sequence: number) {
+  return {
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick" as const,
+      id: `generated-artifact-tick-${sequence}`
+    },
+    tick_digest: `sha256:generated-artifact-tick-${sequence}`,
+    tick_sequence: sequence,
+    delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery" as const,
+      id: `generated-artifact-delivery-${sequence}`
+    },
+    delivery_digest: `sha256:generated-artifact-delivery-${sequence}`
+  };
+}
