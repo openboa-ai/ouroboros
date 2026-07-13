@@ -110,6 +110,12 @@ The full safe memory source is canonicalized before projection. Both modes bind:
 - the prior checkpoint reference and digest when one was available;
 - whether that checkpoint was `included`, `masked`, or `none_available`.
 
+When a commitment belongs to a memory control, the policy also binds one optional
+`control_assignment`: exact study ref/digest, pair index, and `released_memory_treatment` or
+`memory_masked_control` arm kind. Ordinary CandidateArena commitments omit this field. The runtime
+replicates the exact study record into each fresh arm store before allocation, so LocalStore can
+validate the assignment and planned tick locally before accepting preflight evidence.
+
 For `released_memory`, the provider receives the full safe Arena memory and the sanitized prior
 checkpoint. For `memory_masked`, the provider receives neither. Both modes still receive the same
 research program, source artifact, current direction, current selection, submission limit, local
@@ -161,12 +167,14 @@ For each pair, the runtime:
 1. verifies the study and the frozen baseline;
 2. creates fresh treatment and control stores through temporary roots and atomic rename;
 3. verifies both copies against the exact baseline snapshot;
-4. runs the two planned CandidateArena ticks concurrently with identical source, agent, direction,
+4. replicates the exact study commitment into both arm stores and binds the planned pair/arm
+   assignment before any allocation or preflight effect;
+5. runs the two planned CandidateArena ticks concurrently with identical source, agent, direction,
    explicit allocation, and maximum budget;
-5. applies only the planned memory mode to each side;
-6. loads exact tick, preflight, checkpoint, admission, and behavior evidence from each arm store;
-7. records one immutable `ResearchMemoryControlPairOutcome` in the coordinator store;
-8. removes no evidence and starts the next pair only after the prior pair is terminal.
+6. applies only the planned memory mode to each side;
+7. loads exact tick, preflight, checkpoint, admission, and behavior evidence from each arm store;
+8. records one immutable `ResearchMemoryControlPairOutcome` in the coordinator store;
+9. removes no evidence and starts the next pair only after the prior pair is terminal.
 
 The study runtime does not adopt a provider process, tool server, sandbox, or unfinished worker
 session after restart.
@@ -291,7 +299,7 @@ frontier.
 2. A masked provider receives the same current task, direction, source, agent, and budget as its
    paired treatment but no Arena memory or prior checkpoint.
 3. Both pair commitments bind the same non-zero memory source digest/count and opposite exact modes
-   before provider effects.
+   plus exact study/pair/arm assignments before provider effects.
 4. A study commits 6 to 30 deterministic pairs before any planned allocation, preflight, or tick.
 5. Every pair starts from fresh verified copies of one exact baseline and runs initial sides
    concurrently.
