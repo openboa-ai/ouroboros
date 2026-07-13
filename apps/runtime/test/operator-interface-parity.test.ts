@@ -223,6 +223,7 @@ function fixtureOperator(): OperatorReadModel {
         active_protocol: null,
         latest_outcome: null,
         latest_policy_decision: null,
+        effective_policy_decision: null,
         authority_status: "not_promotion_authority"
       },
       research_population_diversity: {

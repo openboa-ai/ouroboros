@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import type {
   GatewayRuntimeBinding,
@@ -20,12 +20,22 @@ import type { ReplayTradingApiProviderSession } from "@ouroboros/application/tra
 import { FixtureTradingResearchAgentAdapter } from
   "@ouroboros/application/trading/research/agent-adapters";
 import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import { decideCandidateArenaResearchAllocation } from
+  "@ouroboros/application/candidate/research-allocation";
 import type { ResearchControlStudyExecutionLeasePort } from
   "@ouroboros/application/ports/research-control-study-execution-lease";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   decideResearchControlStudyExecutionLease,
-  OUROBOROS_COMMAND_KINDS
+  OUROBOROS_COMMAND_KINDS,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchGeneralizationPolicyDecisionDigestInput,
+  type CandidateArenaResearchAllocationRecord,
+  type CandidateArenaTickRecord,
+  type ResearchGeneralizationOutcomeRecord,
+  type ResearchGeneralizationPolicyDecisionRecord,
+  type ResearchGeneralizationProtocolRecord
 } from "@ouroboros/domain";
 import {
   buildServer,
@@ -901,6 +911,74 @@ describe("runtime canonical operator API", () => {
       expect(JSON.stringify(projection)).not.toContain("public_kline_window");
       expect(JSON.stringify(projection)).not.toContain("protocol_digest");
       expect(JSON.stringify(projection)).not.toContain("study_ref");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("projects exact effective policy application without duplicate arena reads", async () => {
+    const fixture = researchGeneralizationApplicationFixture();
+    const store = new LocalStore(tmpDir);
+    vi.spyOn(store, "listResearchGeneralizationProtocols")
+      .mockResolvedValue([fixture.protocol]);
+    vi.spyOn(store, "listResearchControlStudies").mockResolvedValue([]);
+    vi.spyOn(store, "listResearchControlStudyOutcomes").mockResolvedValue([]);
+    vi.spyOn(store, "listResearchGeneralizationOutcomes")
+      .mockResolvedValue([fixture.outcome]);
+    vi.spyOn(store, "listResearchGeneralizationPolicyDecisions")
+      .mockResolvedValue([fixture.decision]);
+    const allocationReads = vi.spyOn(
+      store,
+      "listCandidateArenaResearchAllocations"
+    ).mockResolvedValue([fixture.allocation]);
+    const tickReads = vi.spyOn(store, "listCandidateArenaTicks")
+      .mockResolvedValue([fixture.tick]);
+    const server = await buildRuntimeTestServer({ store });
+    allocationReads.mockClear();
+    tickReads.mockClear();
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(response.statusCode).toBe(200);
+      const projection = response.json().operator.candidate_arena
+        .research_generalization;
+      expect(projection).toMatchObject({
+        latest_policy_decision: {
+          research_generalization_policy_decision_id:
+            fixture.decision.research_generalization_policy_decision_id,
+          decision_status: "approved"
+        },
+        effective_policy_decision: {
+          research_generalization_policy_decision_id:
+            fixture.decision.research_generalization_policy_decision_id,
+          effective_default_mode: "adaptive_default",
+          application: {
+            application_status: "completed_tick",
+            allocation_count: 1,
+            completed_tick_count: 1,
+            latest_allocation: {
+              candidate_arena_research_allocation_id:
+                fixture.allocation.candidate_arena_research_allocation_id,
+              tick_id: fixture.tick.tick_id,
+              allocated_at: fixture.allocation.allocated_at,
+              completed_at: fixture.tick.completed_at
+            }
+          },
+          research_policy_selection_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "research_policy_only"
+        },
+        authority_status: "not_promotion_authority"
+      });
+      expect(JSON.stringify(projection)).not.toContain("allocation_digest");
+      expect(allocationReads).toHaveBeenCalledTimes(1);
+      expect(tickReads).toHaveBeenCalledTimes(1);
     } finally {
       await server.close();
     }
@@ -2590,6 +2668,169 @@ async function listFiles(root: string): Promise<string[]> {
     }
   }
   return files.sort();
+}
+
+function researchGeneralizationApplicationFixture(): {
+  protocol: ResearchGeneralizationProtocolRecord;
+  outcome: ResearchGeneralizationOutcomeRecord;
+  decision: ResearchGeneralizationPolicyDecisionRecord;
+  allocation: CandidateArenaResearchAllocationRecord;
+  tick: CandidateArenaTickRecord;
+} {
+  const protocolId = "research-generalization-protocol-http-application";
+  const protocolDigest = serverTestDigest("1");
+  const policyDigest = serverTestExactDigest(
+    paperTradingComparisonPersistedRecordDigestInput(
+      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+    )
+  );
+  const blocks = ["long", "short", "flat"] as const;
+  const protocol = {
+    record_kind: "research_generalization_protocol",
+    version: 1,
+    research_generalization_protocol_id: protocolId,
+    committed_at: "2026-07-01T00:00:00.000Z",
+    protocol_digest: protocolDigest,
+    target_allocation_policy_digest: policyDigest,
+    condition_blocks: blocks.map((conditionBlock) => ({
+      condition_block: conditionBlock,
+      required_study_count: 2
+    })),
+    study_slots: blocks.flatMap((conditionBlock, blockIndex) =>
+      [1, 2].map((conditionIndex) => {
+        const slotIndex = blockIndex * 2 + conditionIndex;
+        return {
+          slot_index: slotIndex,
+          condition_block: conditionBlock,
+          condition_block_study_index: conditionIndex,
+          study_ref: {
+            record_kind: "research_control_study",
+            id: `${protocolId}-study-${slotIndex}`
+          },
+          study_idempotency_key: `${protocolId}-study-key-${slotIndex}`
+        };
+      })
+    ),
+    timing_policy: {
+      collection_deadline_at: "2026-09-29T00:00:00.000Z"
+    }
+  } as unknown as ResearchGeneralizationProtocolRecord;
+  const outcome: ResearchGeneralizationOutcomeRecord = {
+    record_kind: "research_generalization_outcome",
+    version: 1,
+    research_generalization_outcome_id:
+      "research-generalization-outcome-http-application",
+    protocol_ref: {
+      record_kind: "research_generalization_protocol",
+      id: protocolId
+    },
+    protocol_digest: protocolDigest,
+    target_allocation_policy_digest: policyDigest,
+    planned_study_count: 6,
+    completed_study_count: 6,
+    non_tied_study_count: 6,
+    tied_study_count: 0,
+    missing_study_count: 0,
+    ineligible_study_count: 0,
+    distinct_baseline_count: 4,
+    equal_weight_mean_rate_difference: 0.5,
+    exact_sign_test_p_value: 0.03125,
+    harmful_condition_blocks: [],
+    inference_status: "generalization_supported",
+    policy_decision_eligibility:
+      "eligible_for_separate_generalization_policy_decision",
+    next_action: "review_broad_research_allocation_policy",
+    adjudicated_at: "2026-07-10T00:00:00.000Z",
+    outcome_digest: serverTestDigest("2"),
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  } as unknown as ResearchGeneralizationOutcomeRecord;
+  const decision: ResearchGeneralizationPolicyDecisionRecord = {
+    record_kind: "research_generalization_policy_decision",
+    version: 1,
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-http-application",
+    protocol_ref: { ...outcome.protocol_ref },
+    protocol_digest: protocolDigest,
+    generalization_outcome_ref: {
+      record_kind: "research_generalization_outcome",
+      id: outcome.research_generalization_outcome_id
+    },
+    generalization_outcome_digest: outcome.outcome_digest,
+    target_allocation_policy_digest: policyDigest,
+    decision_policy: {
+      policy_version: "generalization_supported_adaptive_v1",
+      target_allocation_mode: "adaptive_default",
+      required_inference_status: "generalization_supported",
+      required_causal_scope:
+        "pre_effect_market_condition_blocked_cross_baseline_study_effects",
+      required_policy_decision_eligibility:
+        "eligible_for_separate_generalization_policy_decision",
+      application_scope: "future_uncontrolled_candidate_arena_ticks"
+    },
+    decision_status: "approved",
+    decision_reason: "supported_cross_condition_adaptive_effect",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-07-10T00:00:01.000Z",
+    policy_decision_digest: serverTestDigest("0"),
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+  decision.policy_decision_digest = serverTestExactDigest(
+    researchGeneralizationPolicyDecisionDigestInput(decision)
+  );
+  const allocation = decideCandidateArenaResearchAllocation({
+    tickId: "http-generalized-policy-tick",
+    allocatedAt: "2026-07-10T00:00:02.000Z",
+    allocationMode: "adaptive_default",
+    allocationPolicyBasis: {
+      basis_kind: "research_generalization_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_generalization_policy_decision",
+        id: decision.research_generalization_policy_decision_id
+      },
+      policy_decision_digest: decision.policy_decision_digest,
+      generalization_outcome_ref: { ...decision.generalization_outcome_ref },
+      generalization_outcome_digest: decision.generalization_outcome_digest
+    },
+    findingClusters: [],
+    latestTicks: [],
+    priorAllocations: [],
+    completedTickIds: []
+  });
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: "candidate-arena-tick-http-generalized-policy",
+    tick_id: allocation.tick_id,
+    started_at: "2026-07-10T00:00:03.000Z",
+    completed_at: "2026-07-10T00:00:04.000Z",
+    status: "completed",
+    created_candidate_refs: [],
+    direction_results: [],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+  return { protocol, outcome, decision, allocation, tick };
+}
+
+function serverTestExactDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function serverTestDigest(character: string): string {
+  return `sha256:${character.repeat(64)}`;
 }
 
 function restoreEnv(key: string, value: string | undefined): void {

@@ -1,11 +1,19 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type {
-  ResearchControlStudyOutcomeRecord,
-  ResearchControlStudyRecord,
-  ResearchGeneralizationOutcomeRecord,
-  ResearchGeneralizationPolicyDecisionRecord,
-  ResearchGeneralizationProtocolRecord
+import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  candidateArenaResearchAllocationDigestInput,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchGeneralizationPolicyDecisionDigestInput,
+  type CandidateArenaResearchAllocationRecord,
+  type CandidateArenaTickRecord,
+  type ResearchControlStudyOutcomeRecord,
+  type ResearchControlStudyRecord,
+  type ResearchGeneralizationOutcomeRecord,
+  type ResearchGeneralizationPolicyDecisionRecord,
+  type ResearchGeneralizationProtocolRecord
 } from "@ouroboros/domain";
+import { decideCandidateArenaResearchAllocation } from "./research-allocation";
 import {
   buildResearchGeneralizationReadModel,
   ResearchGeneralizationReadModelError
@@ -18,7 +26,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toEqual({
       status: "not_started",
       protocol_count: 0,
@@ -26,6 +36,7 @@ describe("ResearchGeneralizationReadModel", () => {
       active_protocol: null,
       latest_outcome: null,
       latest_policy_decision: null,
+      effective_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -39,7 +50,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [shortStudy, longStudy],
       studyOutcomes: [studyOutcome(longStudy)],
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     });
 
     expect(readModel).toEqual({
@@ -80,6 +93,7 @@ describe("ResearchGeneralizationReadModel", () => {
       },
       latest_outcome: null,
       latest_policy_decision: null,
+      effective_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -95,7 +109,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies,
       studyOutcomes: studies.map(studyOutcome),
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toMatchObject({
       status: "awaiting_outcome",
       active_protocol: {
@@ -118,7 +134,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies,
       studyOutcomes: studies.slice(0, 4).map(studyOutcome),
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toMatchObject({
       status: "collecting",
       active_protocol: {
@@ -151,7 +169,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [oldOutcome, latestOutcome],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toEqual({
       status: "closed",
       protocol_count: 2,
@@ -183,6 +203,7 @@ describe("ResearchGeneralizationReadModel", () => {
         authority_status: "not_live"
       },
       latest_policy_decision: null,
+      effective_policy_decision: null,
       authority_status: "not_promotion_authority"
     });
   });
@@ -208,7 +229,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [outcome],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     });
 
     expect(readModel).toMatchObject({
@@ -259,7 +282,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [latestOutcome, oldOutcome],
-      decisions: [oldDecision, latestDecision]
+      decisions: [oldDecision, latestDecision],
+      allocations: [],
+      ticks: []
     }).latest_policy_decision).toEqual({
       research_generalization_policy_decision_id:
         latestDecision.research_generalization_policy_decision_id,
@@ -305,7 +330,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [outcome],
-      decisions: [decision]
+      decisions: [decision],
+      allocations: [],
+      ticks: []
     })).toMatchObject({
       status: "collecting",
       active_protocol: {
@@ -322,6 +349,198 @@ describe("ResearchGeneralizationReadModel", () => {
         decision_status: "approved"
       }
     });
+  });
+
+  it("separates the latest decision from the effective approved policy", () => {
+    const approved = effectivePolicyGraph(
+      "effective-approved",
+      "2026-05-01T00:00:00.000Z",
+      "2026-06-01T00:00:00.000Z",
+      "2026-06-01T00:00:01.000Z",
+      "generalization_supported"
+    );
+    const negative = effectivePolicyGraph(
+      "effective-negative",
+      "2026-06-02T00:00:00.000Z",
+      "2026-07-01T00:00:00.000Z",
+      "2026-07-01T00:00:01.000Z",
+      "generalization_not_supported"
+    );
+
+    const readModel = buildResearchGeneralizationReadModel({
+      protocols: [negative.protocol, approved.protocol],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [negative.outcome, approved.outcome],
+      decisions: [negative.decision, approved.decision],
+      allocations: [],
+      ticks: []
+    });
+
+    expect(readModel.latest_policy_decision).toMatchObject({
+      research_generalization_policy_decision_id:
+        negative.decision.research_generalization_policy_decision_id,
+      decision_status: "not_approved"
+    });
+    expect(readModel.effective_policy_decision).toEqual({
+      research_generalization_policy_decision_id:
+        approved.decision.research_generalization_policy_decision_id,
+      research_generalization_protocol_id:
+        approved.protocol.research_generalization_protocol_id,
+      research_generalization_outcome_id:
+        approved.outcome.research_generalization_outcome_id,
+      effective_default_mode: "adaptive_default",
+      decided_at: "2026-06-01T00:00:01.000Z",
+      application: {
+        application_status: "awaiting_allocation",
+        allocation_count: 0,
+        completed_tick_count: 0,
+        latest_allocation: null
+      },
+      research_policy_selection_authority: true,
+      evaluation_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "research_policy_only"
+    });
+  });
+
+  it("projects allocation and exact completed-tick application evidence", () => {
+    const graph = effectivePolicyGraph(
+      "application",
+      "2026-05-01T00:00:00.000Z",
+      "2026-06-01T00:00:00.000Z",
+      "2026-06-01T00:00:01.000Z",
+      "generalization_supported"
+    );
+    const completedAllocation = generalizedAllocation(
+      graph.decision,
+      "tick-application-1",
+      "2026-06-01T00:00:02.000Z"
+    );
+    const latestAllocation = generalizedAllocation(
+      graph.decision,
+      "tick-application-2",
+      "2026-06-01T00:00:03.000Z"
+    );
+    const tick = completedTick(
+      completedAllocation,
+      "2026-06-01T00:00:04.000Z",
+      "2026-06-01T00:00:05.000Z"
+    );
+
+    const readModel = buildResearchGeneralizationReadModel({
+      protocols: [graph.protocol],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [graph.outcome],
+      decisions: [graph.decision],
+      allocations: [latestAllocation, completedAllocation],
+      ticks: [tick]
+    });
+
+    expect(readModel.effective_policy_decision?.application).toEqual({
+      application_status: "completed_tick",
+      allocation_count: 2,
+      completed_tick_count: 1,
+      latest_allocation: {
+        candidate_arena_research_allocation_id:
+          latestAllocation.candidate_arena_research_allocation_id,
+        tick_id: latestAllocation.tick_id,
+        allocated_at: latestAllocation.allocated_at,
+        completed_at: null
+      }
+    });
+
+    readModel.effective_policy_decision!.application.latest_allocation!
+      .tick_id = "mutated";
+    expect(latestAllocation.tick_id).toBe("tick-application-2");
+  });
+
+  it("reports allocated before any exact tick closes", () => {
+    const graph = completedApplicationGraph("allocated");
+
+    expect(buildResearchGeneralizationReadModel({
+      ...graph.input,
+      ticks: []
+    }).effective_policy_decision?.application).toMatchObject({
+      application_status: "allocated",
+      allocation_count: 1,
+      completed_tick_count: 0,
+      latest_allocation: { completed_at: null }
+    });
+  });
+
+  it.each([
+    ["duplicate allocation identity", (graph: CompletedApplicationGraph) => {
+      graph.input.allocations.push(graph.allocation);
+    }],
+    ["orphan decision ref", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocation_policy_basis.policy_decision_ref.id =
+        "absent-decision";
+      resealAllocation(graph.allocation);
+    }],
+    ["decision digest mismatch", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocation_policy_basis.policy_decision_digest =
+        digest("f");
+      resealAllocation(graph.allocation);
+    }],
+    ["outcome ref mismatch", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocation_policy_basis.generalization_outcome_ref.id =
+        "absent-outcome";
+      resealAllocation(graph.allocation);
+    }],
+    ["non-adaptive mode", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocation_mode = "static_control";
+      resealAllocation(graph.allocation);
+    }],
+    ["policy drift", (graph: CompletedApplicationGraph) => {
+      graph.allocation.policy.concurrency_limit = 3 as 2;
+      resealAllocation(graph.allocation);
+    }],
+    ["pre-decision allocation", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocated_at = graph.decision.decided_at;
+      resealAllocation(graph.allocation);
+    }],
+    ["allocation digest mismatch", (graph: CompletedApplicationGraph) => {
+      graph.allocation.allocation_digest = digest("e");
+    }],
+    ["orphan tick allocation ref", (graph: CompletedApplicationGraph) => {
+      graph.tick.research_allocation_ref!.id = "absent-allocation";
+    }],
+    ["tick allocation digest mismatch", (graph: CompletedApplicationGraph) => {
+      graph.tick.research_allocation_digest = digest("d");
+    }],
+    ["tick identity mismatch", (graph: CompletedApplicationGraph) => {
+      graph.tick.tick_id = "other-tick";
+    }],
+    ["failed tick", (graph: CompletedApplicationGraph) => {
+      graph.tick.status = "failed";
+    }],
+    ["pre-allocation tick", (graph: CompletedApplicationGraph) => {
+      graph.tick.started_at = "2026-06-01T00:00:01.999Z";
+    }],
+    ["completion time inversion", (graph: CompletedApplicationGraph) => {
+      graph.tick.completed_at = "2026-06-01T00:00:02.999Z";
+    }],
+    ["duplicate allocation consumption", (graph: CompletedApplicationGraph) => {
+      graph.input.ticks.push({
+        ...graph.tick,
+        candidate_arena_tick_id: "candidate-arena-tick-duplicate"
+      });
+    }]
+  ])("fails closed for corrupt policy application graph: %s", (
+    _label,
+    mutate
+  ) => {
+    const graph = completedApplicationGraph(`invalid-${_label}`);
+    mutate(graph);
+
+    expect(() => buildResearchGeneralizationReadModel(graph.input))
+      .toThrowError(expect.objectContaining({
+        code: "research_generalization_read_model_graph_invalid"
+      }));
   });
 
   it.each([
@@ -373,7 +592,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [outcome],
-      decisions: [decision]
+      decisions: [decision],
+      allocations: [],
+      ticks: []
     })).toThrowError(expect.objectContaining({
       code: "research_generalization_read_model_graph_invalid"
     }));
@@ -389,14 +610,18 @@ describe("ResearchGeneralizationReadModel", () => {
       studies,
       studyOutcomes: studies.slice(0, 3).map(studyOutcome),
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     });
     const reverse = buildResearchGeneralizationReadModel({
       protocols: [protocol],
       studies: [...studies].reverse(),
       studyOutcomes: studies.slice(0, 3).map(studyOutcome).reverse(),
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     });
 
     expect(reverse).toEqual(forward);
@@ -466,7 +691,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [outcome],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toThrowError(expect.objectContaining({
       code: "research_generalization_read_model_graph_invalid"
     }));
@@ -482,7 +709,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     })).toThrowError(expect.objectContaining({
       code: "research_generalization_read_model_graph_invalid"
     }));
@@ -501,7 +730,9 @@ describe("ResearchGeneralizationReadModel", () => {
       studies: [],
       studyOutcomes: [],
       outcomes: [outcome],
-      decisions: []
+      decisions: [],
+      allocations: [],
+      ticks: []
     });
 
     readModel.latest_outcome!.harmful_condition_blocks.push("long");
@@ -519,6 +750,8 @@ interface Graph {
   studyOutcomes: ResearchControlStudyOutcomeRecord[];
   outcomes: ResearchGeneralizationOutcomeRecord[];
   decisions: ResearchGeneralizationPolicyDecisionRecord[];
+  allocations: CandidateArenaResearchAllocationRecord[];
+  ticks: CandidateArenaTickRecord[];
 }
 
 function activeGraph(): Graph {
@@ -529,7 +762,9 @@ function activeGraph(): Graph {
     studies: [study],
     studyOutcomes: [studyOutcome(study)],
     outcomes: [],
-    decisions: []
+    decisions: [],
+    allocations: [],
+    ticks: []
   };
 }
 
@@ -665,7 +900,7 @@ function generalizationPolicyDecision(
   decidedAt: string
 ): ResearchGeneralizationPolicyDecisionRecord {
   const approved = outcome.inference_status === "generalization_supported";
-  return {
+  const decision: ResearchGeneralizationPolicyDecisionRecord = {
     record_kind: "research_generalization_policy_decision",
     version: 1,
     research_generalization_policy_decision_id:
@@ -684,17 +919,177 @@ function generalizationPolicyDecision(
     generalization_outcome_digest: outcome.outcome_digest,
     target_allocation_policy_digest:
       protocol.target_allocation_policy_digest,
+    decision_policy: {
+      policy_version: "generalization_supported_adaptive_v1",
+      target_allocation_mode: "adaptive_default",
+      required_inference_status: "generalization_supported",
+      required_causal_scope:
+        "pre_effect_market_condition_blocked_cross_baseline_study_effects",
+      required_policy_decision_eligibility:
+        "eligible_for_separate_generalization_policy_decision",
+      application_scope: "future_uncontrolled_candidate_arena_ticks"
+    },
     decision_status: approved ? "approved" : "not_approved",
     decision_reason: approved
       ? "supported_cross_condition_adaptive_effect"
       : "generalization_outcome_not_eligible",
     effective_default_mode: approved ? "adaptive_default" : null,
     decided_at: decidedAt,
+    policy_decision_digest: digest("0"),
     research_policy_selection_authority: true,
     evaluation_authority: false,
     promotion_authority: false,
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "research_policy_only"
-  } as ResearchGeneralizationPolicyDecisionRecord;
+  };
+  decision.policy_decision_digest = canonicalDigest(
+    researchGeneralizationPolicyDecisionDigestInput(decision)
+  );
+  return decision;
+}
+
+interface EffectivePolicyGraph {
+  protocol: ResearchGeneralizationProtocolRecord;
+  outcome: ResearchGeneralizationOutcomeRecord;
+  decision: ResearchGeneralizationPolicyDecisionRecord;
+}
+
+type GeneralizationAllocationRecord = CandidateArenaResearchAllocationRecord & {
+  allocation_policy_basis: Extract<
+    CandidateArenaResearchAllocationRecord["allocation_policy_basis"],
+    { basis_kind: "research_generalization_policy_decision" }
+  >;
+};
+
+interface CompletedApplicationGraph extends EffectivePolicyGraph {
+  allocation: GeneralizationAllocationRecord;
+  tick: CandidateArenaTickRecord;
+  input: Graph;
+}
+
+function effectivePolicyGraph(
+  suffix: string,
+  committedAt: string,
+  adjudicatedAt: string,
+  decidedAt: string,
+  inferenceStatus: ResearchGeneralizationOutcomeRecord["inference_status"]
+): EffectivePolicyGraph {
+  const protocol = protocolFixture(suffix, committedAt);
+  protocol.target_allocation_policy_digest = currentPolicyDigest();
+  const outcome = generalizationOutcome(
+    protocol,
+    adjudicatedAt,
+    inferenceStatus
+  );
+  const decision = generalizationPolicyDecision(protocol, outcome, decidedAt);
+  return { protocol, outcome, decision };
+}
+
+function generalizedAllocation(
+  decision: ResearchGeneralizationPolicyDecisionRecord,
+  tickId: string,
+  allocatedAt: string
+): GeneralizationAllocationRecord {
+  return decideCandidateArenaResearchAllocation({
+    tickId,
+    allocatedAt,
+    allocationMode: "adaptive_default",
+    allocationPolicyBasis: {
+      basis_kind: "research_generalization_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_generalization_policy_decision",
+        id: decision.research_generalization_policy_decision_id
+      },
+      policy_decision_digest: decision.policy_decision_digest,
+      generalization_outcome_ref: {
+        ...decision.generalization_outcome_ref
+      },
+      generalization_outcome_digest:
+        decision.generalization_outcome_digest
+    },
+    findingClusters: [],
+    latestTicks: [],
+    priorAllocations: [],
+    completedTickIds: []
+  }) as GeneralizationAllocationRecord;
+}
+
+function completedTick(
+  allocation: CandidateArenaResearchAllocationRecord,
+  startedAt: string,
+  completedAt: string
+): CandidateArenaTickRecord {
+  return {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: `candidate-arena-tick-${allocation.tick_id}`,
+    tick_id: allocation.tick_id,
+    started_at: startedAt,
+    completed_at: completedAt,
+    status: "completed",
+    created_candidate_refs: [],
+    direction_results: [],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+}
+
+function completedApplicationGraph(suffix: string): CompletedApplicationGraph {
+  const safeSuffix = suffix.replaceAll(" ", "-");
+  const graph = effectivePolicyGraph(
+    safeSuffix,
+    "2026-05-01T00:00:00.000Z",
+    "2026-06-01T00:00:00.000Z",
+    "2026-06-01T00:00:01.000Z",
+    "generalization_supported"
+  );
+  const allocation = generalizedAllocation(
+    graph.decision,
+    `tick-${safeSuffix}`,
+    "2026-06-01T00:00:02.000Z"
+  );
+  const tick = completedTick(
+    allocation,
+    "2026-06-01T00:00:03.000Z",
+    "2026-06-01T00:00:04.000Z"
+  );
+  return {
+    ...graph,
+    allocation,
+    tick,
+    input: {
+      protocols: [graph.protocol],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [graph.outcome],
+      decisions: [graph.decision],
+      allocations: [allocation],
+      ticks: [tick]
+    }
+  };
+}
+
+function resealAllocation(allocation: CandidateArenaResearchAllocationRecord) {
+  allocation.allocation_digest = canonicalDigest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
+}
+
+function currentPolicyDigest(): string {
+  return canonicalDigest(paperTradingComparisonPersistedRecordDigestInput(
+    CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+  ));
+}
+
+function canonicalDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function digest(character: string): string {
+  return `sha256:${character.repeat(64)}`;
 }

@@ -542,6 +542,10 @@ export async function buildCandidateArenaReadModel(
       right.tick_id.localeCompare(left.tick_id)
     )
     .slice(0, 10);
+  const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
+      "function"
+    ? await store.listCandidateArenaResearchAllocations()
+    : [];
   const [
     directions,
     commitments,
@@ -561,12 +565,8 @@ export async function buildCandidateArenaReadModel(
     typeof store.listCandidateAdmissionDecisions === "function"
       ? store.listCandidateAdmissionDecisions()
       : Promise.resolve([]),
-    arenaResearchGeneralization(store)
+    arenaResearchGeneralization(store, allocationRecords, tickRecords)
   ]);
-  const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
-      "function"
-    ? await store.listCandidateArenaResearchAllocations()
-    : [];
   const allocationsById = new Map(allocationRecords.map((allocation) => [
     allocation.candidate_arena_research_allocation_id,
     allocation
@@ -644,7 +644,9 @@ export async function buildCandidateArenaReadModel(
 }
 
 async function arenaResearchGeneralization(
-  store: OuroborosStorePort
+  store: OuroborosStorePort,
+  allocations: CandidateArenaResearchAllocationRecord[],
+  ticks: CandidateArenaTickRecord[]
 ): Promise<CandidateArenaReadModel["research_generalization"]> {
   const methods = [
     store.listResearchGeneralizationProtocols,
@@ -662,7 +664,9 @@ async function arenaResearchGeneralization(
       studies: [],
       studyOutcomes: [],
       outcomes: [],
-      decisions: []
+      decisions: [],
+      allocations,
+      ticks
     });
   }
   if (availableCount !== methods.length) {
@@ -683,7 +687,9 @@ async function arenaResearchGeneralization(
     studies,
     studyOutcomes,
     outcomes,
-    decisions
+    decisions,
+    allocations,
+    ticks
   });
 }
 

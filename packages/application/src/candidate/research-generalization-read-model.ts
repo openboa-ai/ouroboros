@@ -1,4 +1,13 @@
-import type {
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  candidateArenaResearchAllocationDigestInput,
+  candidateArenaResearchAllocationHasRuntimeShape,
+  researchGeneralizationPolicyDecisionDigestInput,
+  researchGeneralizationPolicyDecisionHasRuntimeShape,
+  type CandidateArenaResearchAllocationRecord,
+  type CandidateArenaTickRecord,
   ResearchControlStudyOutcomeRecord,
   ResearchControlStudyRecord,
   ResearchGeneralizationActiveProtocolReadModel,
@@ -8,6 +17,8 @@ import type {
   ResearchGeneralizationProtocolStudySlot,
   ResearchGeneralizationReadModel
 } from "@ouroboros/domain";
+import { selectEffectiveResearchGeneralizationPolicyDecision } from
+  "./research-allocation";
 
 export interface BuildResearchGeneralizationReadModelInput {
   protocols: ResearchGeneralizationProtocolRecord[];
@@ -15,6 +26,8 @@ export interface BuildResearchGeneralizationReadModelInput {
   studyOutcomes: ResearchControlStudyOutcomeRecord[];
   outcomes: ResearchGeneralizationOutcomeRecord[];
   decisions: ResearchGeneralizationPolicyDecisionRecord[];
+  allocations: CandidateArenaResearchAllocationRecord[];
+  ticks: CandidateArenaTickRecord[];
 }
 
 export class ResearchGeneralizationReadModelError extends Error {
@@ -48,7 +61,8 @@ function projectResearchGeneralization(
 ): ResearchGeneralizationReadModel {
   if (!Array.isArray(input?.protocols) || !Array.isArray(input.studies) ||
     !Array.isArray(input.studyOutcomes) || !Array.isArray(input.outcomes) ||
-    !Array.isArray(input.decisions)) {
+    !Array.isArray(input.decisions) || !Array.isArray(input.allocations) ||
+    !Array.isArray(input.ticks)) {
     throw graphInvalid("ResearchGeneralization read-model arrays are required.");
   }
   const protocolsById = uniqueBy(
@@ -81,7 +95,7 @@ function projectResearchGeneralization(
     (outcome) => outcome.protocol_ref.id,
     "ResearchGeneralizationOutcome protocol refs must be unique."
   );
-  uniqueBy(
+  const decisionsById = uniqueBy(
     input.decisions,
     (decision) => decision.research_generalization_policy_decision_id,
     "ResearchGeneralizationPolicyDecision identities must be unique."
@@ -90,6 +104,26 @@ function projectResearchGeneralization(
     input.decisions,
     (decision) => decision.generalization_outcome_ref.id,
     "ResearchGeneralizationPolicyDecision outcome refs must be unique."
+  );
+  const allocationsById = uniqueBy(
+    input.allocations,
+    (allocation) => allocation.candidate_arena_research_allocation_id,
+    "CandidateArenaResearchAllocation identities must be unique."
+  );
+  uniqueBy(
+    input.allocations,
+    (allocation) => allocation.tick_id,
+    "CandidateArenaResearchAllocation tick identities must be unique."
+  );
+  uniqueBy(
+    input.ticks,
+    (tick) => tick.candidate_arena_tick_id,
+    "CandidateArenaTick identities must be unique."
+  );
+  uniqueBy(
+    input.ticks,
+    (tick) => tick.tick_id,
+    "CandidateArenaTick tick identities must be unique."
   );
 
   for (const outcome of input.studyOutcomes) {
@@ -120,7 +154,11 @@ function projectResearchGeneralization(
     const outcome = outcomesById.get(
       decision.generalization_outcome_ref.id
     );
-    if (!protocol || !outcome) {
+    if (!protocol || !outcome ||
+      !researchGeneralizationPolicyDecisionHasRuntimeShape(decision) ||
+      decision.policy_decision_digest !== canonicalDigest(
+        researchGeneralizationPolicyDecisionDigestInput(decision)
+      )) {
       throw graphInvalid(
         "ResearchGeneralizationPolicyDecision references absent evidence."
       );
@@ -155,6 +193,92 @@ function projectResearchGeneralization(
         "ResearchGeneralizationPolicyDecision differs from its evidence."
       );
     }
+  }
+
+  const generalizedAllocations: CandidateArenaResearchAllocationRecord[] = [];
+  for (const allocation of input.allocations) {
+    const basis = allocation.allocation_policy_basis;
+    if (basis?.basis_kind !==
+      "research_generalization_policy_decision") continue;
+    if (!candidateArenaResearchAllocationHasRuntimeShape(allocation) ||
+      allocation.allocation_digest !== canonicalDigest(
+        candidateArenaResearchAllocationDigestInput(allocation)
+      )) {
+      throw graphInvalid(
+        "CandidateArenaResearchAllocation application evidence is invalid."
+      );
+    }
+    const decision = decisionsById.get(basis.policy_decision_ref.id);
+    const outcome = outcomesById.get(basis.generalization_outcome_ref.id);
+    const effectiveAtAllocation =
+      selectEffectiveResearchGeneralizationPolicyDecision(
+        input.decisions.filter((candidate) =>
+          Date.parse(candidate.decided_at) < Date.parse(allocation.allocated_at)
+        )
+      );
+    if (!decision || !outcome || !effectiveAtAllocation ||
+      effectiveAtAllocation.research_generalization_policy_decision_id !==
+        decision.research_generalization_policy_decision_id ||
+      basis.policy_decision_digest !== decision.policy_decision_digest ||
+      basis.generalization_outcome_ref.id !==
+        decision.generalization_outcome_ref.id ||
+      basis.generalization_outcome_digest !==
+        decision.generalization_outcome_digest ||
+      basis.generalization_outcome_digest !== outcome.outcome_digest ||
+      allocation.allocation_mode !== "adaptive_default" ||
+      !isDeepStrictEqual(
+        allocation.policy,
+        CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+      ) || Date.parse(decision.decided_at) >=
+        Date.parse(allocation.allocated_at)) {
+      throw graphInvalid(
+        "CandidateArenaResearchAllocation differs from its policy decision."
+      );
+    }
+    generalizedAllocations.push(allocation);
+  }
+
+  const generalizedAllocationIds = new Set(generalizedAllocations.map(
+    (allocation) => allocation.candidate_arena_research_allocation_id
+  ));
+  const completedTickByAllocationId = new Map<string, CandidateArenaTickRecord>();
+  for (const tick of input.ticks) {
+    const ref = tick.research_allocation_ref;
+    const digest = tick.research_allocation_digest;
+    if ((ref === undefined) !== (digest === undefined)) {
+      throw graphInvalid(
+        "CandidateArenaTick allocation evidence must be complete."
+      );
+    }
+    if (!ref) continue;
+    if (ref.record_kind !== "candidate_arena_research_allocation") {
+      throw graphInvalid(
+        "CandidateArenaTick allocation ref kind is invalid."
+      );
+    }
+    const allocation = allocationsById.get(ref.id);
+    if (!allocation) {
+      throw graphInvalid(
+        "CandidateArenaTick references an absent research allocation."
+      );
+    }
+    if (!generalizedAllocationIds.has(ref.id)) continue;
+    if (completedTickByAllocationId.has(ref.id) ||
+      digest !== allocation.allocation_digest ||
+      tick.record_kind !== "candidate_arena_tick" || tick.version !== 1 ||
+      tick.tick_id !== allocation.tick_id ||
+      (tick.status !== "completed" &&
+        tick.status !== "completed_with_errors") ||
+      tick.authority_status !== "not_live" ||
+      !canonicalIsoTime(tick.started_at) ||
+      !canonicalIsoTime(tick.completed_at) ||
+      Date.parse(allocation.allocated_at) > Date.parse(tick.started_at) ||
+      Date.parse(tick.started_at) > Date.parse(tick.completed_at)) {
+      throw graphInvalid(
+        "CandidateArenaTick differs from its generalized allocation."
+      );
+    }
+    completedTickByAllocationId.set(ref.id, tick);
   }
 
   const slotsByKey = protocolSlots(input.protocols);
@@ -201,6 +325,8 @@ function projectResearchGeneralization(
       left.research_generalization_policy_decision_id
     )
   )[0];
+  const effectiveDecision =
+    selectEffectiveResearchGeneralizationPolicyDecision(input.decisions);
   const activeProtocol = orderedActive[0]
     ? projectActiveProtocol(
         orderedActive[0],
@@ -219,6 +345,13 @@ function projectResearchGeneralization(
     latest_outcome: latestOutcome ? projectLatestOutcome(latestOutcome) : null,
     latest_policy_decision: latestDecision
       ? projectLatestPolicyDecision(latestDecision)
+      : null,
+    effective_policy_decision: effectiveDecision
+      ? projectEffectivePolicyDecision(
+          effectiveDecision,
+          generalizedAllocations,
+          completedTickByAllocationId
+        )
       : null,
     authority_status: "not_promotion_authority"
   };
@@ -369,6 +502,71 @@ function projectLatestPolicyDecision(
   };
 }
 
+function projectEffectivePolicyDecision(
+  decision: ResearchGeneralizationPolicyDecisionRecord,
+  generalizedAllocations: CandidateArenaResearchAllocationRecord[],
+  completedTickByAllocationId: Map<string, CandidateArenaTickRecord>
+): NonNullable<ResearchGeneralizationReadModel[
+  "effective_policy_decision"
+]> {
+  const allocations = generalizedAllocations.filter((allocation) => {
+    const basis = allocation.allocation_policy_basis;
+    return basis.basis_kind ===
+        "research_generalization_policy_decision" &&
+      basis.policy_decision_ref.id ===
+        decision.research_generalization_policy_decision_id;
+  }).sort((left, right) =>
+    right.allocated_at.localeCompare(left.allocated_at) ||
+    right.candidate_arena_research_allocation_id.localeCompare(
+      left.candidate_arena_research_allocation_id
+    )
+  );
+  const completedTickCount = allocations.filter((allocation) =>
+    completedTickByAllocationId.has(
+      allocation.candidate_arena_research_allocation_id
+    )
+  ).length;
+  const latestAllocation = allocations[0];
+  const latestTick = latestAllocation
+    ? completedTickByAllocationId.get(
+        latestAllocation.candidate_arena_research_allocation_id
+      )
+    : undefined;
+  return {
+    research_generalization_policy_decision_id:
+      decision.research_generalization_policy_decision_id,
+    research_generalization_protocol_id: decision.protocol_ref.id,
+    research_generalization_outcome_id:
+      decision.generalization_outcome_ref.id,
+    effective_default_mode: "adaptive_default",
+    decided_at: decision.decided_at,
+    application: {
+      application_status: completedTickCount > 0
+        ? "completed_tick"
+        : allocations.length > 0
+          ? "allocated"
+          : "awaiting_allocation",
+      allocation_count: allocations.length,
+      completed_tick_count: completedTickCount,
+      latest_allocation: latestAllocation
+        ? {
+            candidate_arena_research_allocation_id:
+              latestAllocation.candidate_arena_research_allocation_id,
+            tick_id: latestAllocation.tick_id,
+            allocated_at: latestAllocation.allocated_at,
+            completed_at: latestTick?.completed_at ?? null
+          }
+        : null
+    },
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+}
+
 function uniqueBy<T>(
   values: T[],
   identity: (value: T) => string,
@@ -393,4 +591,14 @@ function graphInvalid(
     message,
     cause === undefined ? undefined : { cause }
   );
+}
+
+function canonicalDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function canonicalIsoTime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }

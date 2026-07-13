@@ -11336,6 +11336,41 @@ export interface ResearchGeneralizationLatestPolicyDecisionReadModel {
   authority_status: "research_policy_only";
 }
 
+export type ResearchGeneralizationPolicyApplicationStatus =
+  | "awaiting_allocation"
+  | "allocated"
+  | "completed_tick";
+
+export interface ResearchGeneralizationPolicyApplicationLatestAllocationReadModel {
+  candidate_arena_research_allocation_id: string;
+  tick_id: string;
+  allocated_at: string;
+  completed_at: string | null;
+}
+
+export interface ResearchGeneralizationPolicyApplicationReadModel {
+  application_status: ResearchGeneralizationPolicyApplicationStatus;
+  allocation_count: number;
+  completed_tick_count: number;
+  latest_allocation:
+    ResearchGeneralizationPolicyApplicationLatestAllocationReadModel | null;
+}
+
+export interface ResearchGeneralizationEffectivePolicyDecisionReadModel {
+  research_generalization_policy_decision_id: string;
+  research_generalization_protocol_id: string;
+  research_generalization_outcome_id: string;
+  effective_default_mode: "adaptive_default";
+  decided_at: string;
+  application: ResearchGeneralizationPolicyApplicationReadModel;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
 export interface ResearchGeneralizationReadModel {
   status: ResearchGeneralizationReadModelStatus;
   protocol_count: number;
@@ -11344,6 +11379,8 @@ export interface ResearchGeneralizationReadModel {
   latest_outcome: ResearchGeneralizationLatestOutcomeReadModel | null;
   latest_policy_decision:
     ResearchGeneralizationLatestPolicyDecisionReadModel | null;
+  effective_policy_decision:
+    ResearchGeneralizationEffectivePolicyDecisionReadModel | null;
   authority_status: "not_promotion_authority";
 }
 

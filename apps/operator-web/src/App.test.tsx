@@ -6191,6 +6191,7 @@ const fixtureCandidateArena: CandidateArenaReadModel = {
     active_protocol: null,
     latest_outcome: null,
     latest_policy_decision: null,
+    effective_policy_decision: null,
     authority_status: "not_promotion_authority"
   },
   research_population_diversity: {
@@ -7221,6 +7222,7 @@ function fixtureResearchGeneralizationReadModel():
       live_exchange_authority: false,
       authority_status: "research_policy_only"
     },
+    effective_policy_decision: null,
     authority_status: "not_promotion_authority"
   };
 }
