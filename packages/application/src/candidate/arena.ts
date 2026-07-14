@@ -1519,7 +1519,7 @@ function arenaMaterializationInput(input: {
       suffix
     ].join(":"),
     provider: {
-      provider_kind: input.agent.provider === "codex" ? "codex_cli" : "fixture_only",
+      provider_kind: researchWorkerProviderKind(input.agent),
       model: input.agent.model ?? input.agent.provider,
       invocation_surface: "candidate_arena",
       agent_run_id: `agent-run-${suffix}`,

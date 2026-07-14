@@ -115,6 +115,38 @@ describe("runtime canonical operator API", () => {
     expect(paperTradingApiProviderNetworkOptions({})).toEqual({});
   });
 
+  it("resolves repo-relative paper artifacts from the runtime workspace cwd", async () => {
+    const repoRoot = process.cwd();
+    let server: Awaited<ReturnType<typeof buildServer>> | undefined;
+    process.chdir(path.join(repoRoot, "apps/runtime"));
+    try {
+      server = await buildRuntimeTestServer({
+        store: new LocalStore(tmpDir),
+        marketDataPort: fakeGatewayMarketDataPort()
+      });
+
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json()).toMatchObject({
+        command: {
+          command_kind: "trading_run.start",
+          status: "succeeded"
+        }
+      });
+    } finally {
+      await server?.close();
+      process.chdir(repoRoot);
+    }
+  });
+
   it("starts and observes the study scheduler by default, then stops it first", async () => {
     const lifecycleEvents: string[] = [];
     const scheduler = new RecordingStudyScheduler(lifecycleEvents);
@@ -438,7 +470,7 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
-  it("creates the default promotion-bound commitment coordinator", async () => {
+  it("creates the default promotion-bound coordinator from the runtime workspace cwd", async () => {
     const fixtureRoot = path.join(tmpDir, "commitment-fixture");
     await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
       recursive: true
@@ -448,33 +480,38 @@ describe("runtime canonical operator API", () => {
     const agent = new FixtureTradingResearchAgentAdapter();
     const marketData = fakeGatewayMarketDataPort();
     let now = Date.parse("2026-07-13T00:00:00.000Z");
-    const coordinator = createResearchControlStudyServerCommitmentCoordinator({
-      store,
-      researchAgentIdentity: () => agent.agent,
-      marketData,
-      repoRoot: process.cwd(),
-      now: () => {
-        const value = new Date(now).toISOString();
-        now += 1_000;
-        return value;
-      }
-    });
+    const repoRoot = process.cwd();
+    process.chdir(path.join(repoRoot, "apps/runtime"));
+    try {
+      const coordinator = createResearchControlStudyServerCommitmentCoordinator({
+        store,
+        researchAgentIdentity: () => agent.agent,
+        marketData,
+        now: () => {
+          const value = new Date(now).toISOString();
+          now += 1_000;
+          return value;
+        }
+      });
 
-    await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
-      status: "protocol_committed"
-    });
-    const committed = await coordinator.ensureCommittedStudy();
-    const studies = await store.listResearchControlStudies();
-    expect(studies).toHaveLength(1);
-    expect(committed).toEqual({
-      status: "committed",
-      studyId: studies[0]!.research_control_study_id
-    });
-    await expect(coordinator.ensureCommittedStudy()).resolves.toEqual({
-      status: "deferred",
-      reason: "pending_study_exists",
-      pendingStudyId: studies[0]!.research_control_study_id
-    });
+      await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
+        status: "protocol_committed"
+      });
+      const committed = await coordinator.ensureCommittedStudy();
+      const studies = await store.listResearchControlStudies();
+      expect(studies).toHaveLength(1);
+      expect(committed).toEqual({
+        status: "committed",
+        studyId: studies[0]!.research_control_study_id
+      });
+      await expect(coordinator.ensureCommittedStudy()).resolves.toEqual({
+        status: "deferred",
+        reason: "pending_study_exists",
+        pendingStudyId: studies[0]!.research_control_study_id
+      });
+    } finally {
+      process.chdir(repoRoot);
+    }
   });
 
   it("creates one default lease owner across server factories sharing a root", async () => {
@@ -793,7 +830,7 @@ describe("runtime canonical operator API", () => {
         }
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode, response.body).toBe(200);
       expect(response.json()).toMatchObject({
         result: {
           run: {

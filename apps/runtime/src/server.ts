@@ -1,6 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { hostname } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -128,10 +129,16 @@ import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
 
+const RUNTIME_REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../.."
+);
+
 export { paperTradingApiProviderNetworkOptions };
 
 export interface BuildServerOptions {
   store?: LocalStore;
+  repoRoot?: string;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   sandboxAdapters?: Partial<Record<SandboxAdapterKind, SandboxAdapter>>;
   replayRunRoot?: string;
@@ -230,7 +237,7 @@ export function createResearchControlStudyServerCommitmentCoordinator(
     store: input.store,
     researchAgentIdentity: input.researchAgentIdentity,
     marketData: input.marketData,
-    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
+    repoRoot: path.resolve(input.repoRoot ?? RUNTIME_REPO_ROOT),
     ...(input.now ? { now: input.now } : {})
   });
 }
@@ -363,6 +370,7 @@ interface RuntimeControllerResponse {
 
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const store = options.store ?? new LocalStore();
+  const repoRoot = path.resolve(options.repoRoot ?? RUNTIME_REPO_ROOT);
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
@@ -403,7 +411,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   };
   const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
   const paperTradingArtifactResolver = options.paperTradingArtifactResolver
-    ?? new FileSystemCodeArtifactResolver({ repoRoot: process.cwd() });
+    ?? new FileSystemCodeArtifactResolver({ repoRoot });
   const paperTradingSessionService = new PaperTradingSessionService({
     store,
     sandboxAdapters,
@@ -479,7 +487,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             candidateArenaRunner.researchAgent()
           ).agent,
           marketData: gatewayMarketDataPort,
-          repoRoot: process.cwd()
+          repoRoot
         }),
       generalizationOutcomeCoordinator:
         options.researchGeneralizationOutcomeCoordinator ??
@@ -518,7 +526,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       marketData: gatewayMarketDataPort,
       agentFactory: tradingResearchAgentFactory,
       createArmSessions: researchControlStudyArmSessionFactory,
-      repoRoot: process.cwd(),
+      repoRoot,
       ...(options.researchControlStudyWorkspaceRoot
         ? { workspaceRoot: options.researchControlStudyWorkspaceRoot }
         : {}),

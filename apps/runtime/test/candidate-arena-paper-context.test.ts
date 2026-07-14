@@ -317,6 +317,39 @@ describe("CandidateArena paper evidence context", () => {
       capture.notebook.prior_checkpoint === undefined)).toBe(true);
   });
 
+  it("preserves Claude provenance in candidate materialization", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const materializeCandidate = store.materializeCandidate.bind(store);
+    let materializedProvider: string | undefined;
+    store.materializeCandidate = async (input) => {
+      materializedProvider = input.provider.provider_kind;
+      return materializeCandidate(input);
+    };
+    const delegate = new CapturingResearchAgent([]);
+    const claudeAgent: TradingResearchAgentAdapter = {
+      agent: {
+        id: "managed-agent-claude-candidate-arena",
+        provider: "claude_code",
+        model: "claude-candidate-arena",
+        permission_policy: "artifact_workspace_only"
+      },
+      improveArtifact: (input) => delegate.improveArtifact(input)
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => claudeAgent,
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    expect(materializedProvider).toBe("claude_code");
+  });
+
   it("records generated SystemCode paths as absolute when the store root is relative", async () => {
     const repoRoot = process.cwd();
     const previousCwd = process.cwd();
