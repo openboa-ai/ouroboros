@@ -12,6 +12,7 @@ import {
   type ResearchPreflightCommitmentRecord
 } from "@ouroboros/domain";
 import { researchDevelopmentReplayScenarios } from "./replay-trading-api-provider";
+import { tradingResearchOrderRequestFrom } from "./provider-protocol";
 import type { TradingScenarioEvaluationResult } from "./types";
 
 export type ResearchBehaviorFingerprintUnavailableReason =
@@ -144,15 +145,8 @@ function effectiveDecision(
   if (!request) {
     unavailable("effective_decision_missing");
   }
-  const body = request.body;
-  const allowedFields = new Set(["symbol", "side", "quantity", "order_type", "reason"]);
-  if (!plainObject(body) ||
-    Object.keys(body).some((key) => !allowedFields.has(key)) ||
-    body.symbol !== "BTCUSDT" ||
-    (body.side !== "buy" && body.side !== "sell" && body.side !== "hold") ||
-    typeof body.quantity !== "number" || !Number.isFinite(body.quantity) ||
-    (body.order_type !== "market" && body.order_type !== "limit" && body.order_type !== "none") ||
-    (body.reason !== undefined && typeof body.reason !== "string")) {
+  const body = tradingResearchOrderRequestFrom(request.body);
+  if (!body || body.symbol !== "BTCUSDT") {
     unavailable("effective_decision_invalid");
   }
   const isHold = body.side === "hold" && body.order_type === "none" &&
@@ -173,11 +167,6 @@ function effectiveDecision(
 
 function unavailable(reason: ResearchBehaviorFingerprintUnavailableReason): never {
   throw new ResearchBehaviorFingerprintUnavailableError(reason);
-}
-
-function plainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
 function isRef(value: Ref, recordKind: string): boolean {

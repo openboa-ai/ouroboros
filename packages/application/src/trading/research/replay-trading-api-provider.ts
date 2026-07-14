@@ -1,7 +1,6 @@
 import http from "node:http";
 import type {
   MarketSnapshot,
-  OrderRequest,
   OrderValidationResult,
   ReplayTradingApiProviderSession,
   ReplayTradingCandidateInput,
@@ -10,6 +9,7 @@ import type {
   TradingApiMarketSnapshot,
   TradingProviderRequestLog
 } from "./types";
+import { tradingResearchOrderRequestFrom } from "./provider-protocol";
 
 const MAX_REPLAY_PROVIDER_BODY_BYTES = 64 * 1024;
 
@@ -181,7 +181,7 @@ export function validateOrderRequest(
   market: TradingApiMarketSnapshot,
   account: TradingApiAccountState
 ): OrderValidationResult {
-  const intent = isOrderRequest(body) ? body : undefined;
+  const intent = tradingResearchOrderRequestFrom(body);
   if (!intent || intent.symbol !== market.symbol) {
     return {
       accepted: false,
@@ -227,23 +227,6 @@ export function validateOrderRequest(
     notional: round(notional),
     risk_fraction: round(riskFraction)
   };
-}
-
-function isOrderRequest(value: unknown): value is OrderRequest {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const allowedFields = new Set(["symbol", "side", "quantity", "order_type", "reason"]);
-  if (Object.keys(value).some((key) => !allowedFields.has(key))) {
-    return false;
-  }
-  const candidate = value as Partial<OrderRequest>;
-  return (
-    typeof candidate.symbol === "string" &&
-    ["buy", "sell", "hold"].includes(String(candidate.side)) &&
-    typeof candidate.quantity === "number" &&
-    ["market", "limit", "none"].includes(String(candidate.order_type))
-  );
 }
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {

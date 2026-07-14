@@ -240,6 +240,7 @@ def paper_order_payload(
             "side": side,
             "quantity": float(quantity),
             "order_type": "limit",
+            "limit_price": limit_price,
             "reason": "runtime_api_market_driven_order",
         }
         validation = post_provider_json(provider_base_url, "/orders/validate", provider_order)

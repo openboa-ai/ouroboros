@@ -10,7 +10,8 @@ import type { TradingEvaluationDisqualificationReason } from "@ouroboros/domain"
 import { validateOrderRequest } from "./replay-trading-api-provider";
 import {
   isConformantTradingResearchProviderRequest,
-  isDeclaredTradingResearchProviderEndpoint
+  isDeclaredTradingResearchProviderEndpoint,
+  tradingResearchOrderRequestFrom
 } from "./provider-protocol";
 
 const ZERO_PROFIT_LOSS: TradingProfitLoss = {
@@ -49,14 +50,14 @@ export function evaluateTradingRun(
     );
   }
 
-  const orderIntent = orderRequestFrom(
+  const orderIntent = tradingResearchOrderRequestFrom(
     latestPayload<Record<string, unknown>>(run.events, "order_request"),
     true
   );
   const validationRequest = [...run.provider_requests]
     .reverse()
     .find((request) => request.method === "POST" && request.path === "/orders/validate");
-  const submittedOrder = orderRequestFrom(validationRequest?.body);
+  const submittedOrder = tradingResearchOrderRequestFrom(validationRequest?.body);
   const usedProviderBoundary = requiredProviderRequestsPresent(run);
 
   if (!orderIntent) {
@@ -260,38 +261,12 @@ function requiredProviderRequestsPresent(run: ArtifactRunResult): boolean {
   ));
 }
 
-function orderRequestFrom(value: unknown, allowAdditionalFields = false): OrderRequest | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const allowedFields = new Set(["symbol", "side", "quantity", "order_type", "reason"]);
-  if (!allowAdditionalFields && Object.keys(value).some((key) => !allowedFields.has(key))) {
-    return undefined;
-  }
-  const input = value as Partial<OrderRequest>;
-  if (
-    typeof input.symbol !== "string" ||
-    (input.side !== "buy" && input.side !== "sell" && input.side !== "hold") ||
-    typeof input.quantity !== "number" ||
-    (input.order_type !== "market" && input.order_type !== "limit" && input.order_type !== "none") ||
-    (input.reason !== undefined && typeof input.reason !== "string")
-  ) {
-    return undefined;
-  }
-  return {
-    symbol: input.symbol,
-    side: input.side,
-    quantity: input.quantity,
-    order_type: input.order_type,
-    ...(input.reason === undefined ? {} : { reason: input.reason })
-  };
-}
-
 function sameOrderRequest(left: OrderRequest, right: OrderRequest): boolean {
   return left.symbol === right.symbol &&
     left.side === right.side &&
     Object.is(left.quantity, right.quantity) &&
     left.order_type === right.order_type &&
+    left.limit_price === right.limit_price &&
     left.reason === right.reason;
 }
 

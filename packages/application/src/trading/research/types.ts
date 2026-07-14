@@ -119,6 +119,7 @@ export interface OrderRequest {
   side: "buy" | "sell" | "hold";
   quantity: number;
   order_type: "market" | "limit" | "none";
+  limit_price?: string;
   reason?: string;
 }
 

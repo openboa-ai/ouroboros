@@ -709,7 +709,11 @@ Only the frozen development winner runs the one-shot sealed set and bounded host
 target-protocol probe. Every decision must use the external market and account reads; only an
 emitted `OrderRequest` requires `/orders/validate`. An externally parsed `hold` or `no_action`
 remains valid no-order continuity without synthesizing an order, while any validation request that
-is emitted must still match the decision exactly. LocalStore binds commitment, submitted
+is emitted must still match the decision exactly, including a positive decimal-string
+`limit_price` for a limit order. ResearchPreflight binds that price as protocol identity but does
+not claim a limit fill: its v1 behavior fingerprint remains the declared four-field development
+key and its score continues to use the replay market snapshot. Prospective paper Gateway/Ledger
+evidence owns actual limit-fill authority. LocalStore binds commitment, submitted
 SystemCode, terminal evaluation, ExperimentRun, evaluation task, conformance, and admission;
 materialization requires the complete
 passed graph, and generated-candidate paper start revalidates it before effects. Rejection creates

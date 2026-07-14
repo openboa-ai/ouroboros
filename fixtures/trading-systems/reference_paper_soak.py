@@ -143,6 +143,7 @@ def order_event(args: argparse.Namespace, tick: int, market: dict[str, object], 
         "side": side,
         "quantity": float(quantity),
         "order_type": "limit",
+        "limit_price": limit_price,
         "reason": "reference paper soak bounded order",
     })
     if validation.get("accepted") is not True:

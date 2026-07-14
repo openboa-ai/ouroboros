@@ -963,6 +963,50 @@ process.exit(17);
     });
   });
 
+  it("accepts an exact limit price through external replay validation", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const limitOrder = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      quantity: 0.001,
+      orderType: "limit",
+      limitPrice: "60000"
+    });
+
+    expect(evaluateTradingRun(limitOrder, scenario)).toMatchObject({
+      status: "accepted",
+      risk_decision: "valid_order_request"
+    });
+  });
+
+  it("rejects a limit price that differs from the provider submission", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const mismatchedLimitOrder = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      quantity: 0.001,
+      orderType: "limit",
+      limitPrice: "60000",
+      providerBody: {
+        symbol: "BTCUSDT",
+        side: "buy",
+        quantity: 0.001,
+        order_type: "limit",
+        limit_price: "60001",
+        reason: "costed replay setup"
+      }
+    });
+
+    expect(evaluateTradingRun(mismatchedLimitOrder, scenario)).toMatchObject({
+      status: "disqualified",
+      disqualification_reason: "runtime_self_report_only"
+    });
+  });
+
   it("allows trace-only order event metadata while keeping the provider body exact", () => {
     const scenario = defaultReplayTradingScenarioSet[0];
     const run = replayRunForOrder({
@@ -2548,6 +2592,7 @@ function replayRunForOrder(input: {
   validationReason: string;
   quantity?: number;
   orderType?: "market" | "limit" | "none";
+  limitPrice?: string;
   providerBody?: unknown;
 }): ArtifactRunResult {
   const order = {
@@ -2555,7 +2600,8 @@ function replayRunForOrder(input: {
     side: input.side,
     quantity: input.quantity ?? 1,
     order_type: input.orderType ?? "market" as const,
-    reason: "costed replay setup"
+    reason: "costed replay setup",
+    ...(input.limitPrice === undefined ? {} : { limit_price: input.limitPrice })
   };
   return {
     status: "completed",

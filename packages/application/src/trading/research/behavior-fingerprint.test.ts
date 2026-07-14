@@ -94,6 +94,23 @@ describe("ResearchBehaviorFingerprint derivation", () => {
     expect(changedQuantity.fingerprint_digest).not.toBe(baseline.fingerprint_digest);
   });
 
+  it("derives the version-one decision key from a valid limit order", () => {
+    const record = deriveResearchBehaviorFingerprint(derivationInput([
+      scenarioResult("trend_long", limitBuyDecision(0.02, "60000", "limit")),
+      scenarioResult("range_flat", holdDecision("limit control"))
+    ]));
+
+    expect(record.observations[1]).toEqual({
+      scenario_id: "trend_long",
+      decision: {
+        symbol: "BTCUSDT",
+        side: "buy",
+        quantity: 0.02,
+        order_type: "limit"
+      }
+    });
+  });
+
   it("binds one canonical record to the exact commitment and frozen SystemCode", () => {
     const input = derivationInput([
       scenarioResult("trend_long", buyDecision(0.02, "canonical")),
@@ -255,6 +272,21 @@ function providerRequest(
 
 function buyDecision(quantity: number, reason: string): Record<string, unknown> {
   return { symbol: "BTCUSDT", side: "buy", quantity, order_type: "market", reason };
+}
+
+function limitBuyDecision(
+  quantity: number,
+  limitPrice: string,
+  reason: string
+): Record<string, unknown> {
+  return {
+    symbol: "BTCUSDT",
+    side: "buy",
+    quantity,
+    order_type: "limit",
+    limit_price: limitPrice,
+    reason
+  };
 }
 
 function sellDecision(quantity: number, reason: string): Record<string, unknown> {
