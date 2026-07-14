@@ -80,6 +80,8 @@ describe("ResearchControlStudy server runtime", () => {
           "research-control-study-workspaces"
         ),
         sourceCandidateId: study.condition.source.candidate_ref.id,
+        expectedTradingPromotionId:
+          study.condition.paper_comparator.trading_promotion_ref.id,
         researchAgent: study.condition.research_agent.provider,
         researchAgentIdentity: persistedAgent(),
         tickCountPerArm: study.condition.campaign_policy.tick_count_per_arm,

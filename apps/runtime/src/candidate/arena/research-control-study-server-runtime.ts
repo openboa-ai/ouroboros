@@ -120,6 +120,8 @@ export async function openResearchControlStudyServerRuntime(
         "research-control-study-workspaces"
       ),
       sourceCandidateId: condition.source.candidate_ref.id,
+      expectedTradingPromotionId:
+        condition.paper_comparator.trading_promotion_ref.id,
       researchAgent: provider,
       researchAgentIdentity: structuredClone(configuredAgent.agent),
       agentFactory,
