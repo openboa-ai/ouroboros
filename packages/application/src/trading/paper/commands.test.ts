@@ -115,6 +115,34 @@ describe("PaperTradingCommandService handoff conformance", () => {
     });
   });
 
+  it("schedules an active session before returning already_running", async () => {
+    const graph = testGraph();
+    const effects = effectSpies();
+    const evaluation = { status: "running" } as never;
+    effects.active.mockReturnValue(true);
+    effects.prepare.mockResolvedValueOnce({ evaluation } as never);
+    const service = commandService(graph, effects, {
+      getLatestPaperTradingEvaluationForTradingRun: vi.fn(async () => evaluation),
+      getTradingRun: vi.fn(async () => undefined)
+    });
+
+    await expect(service.start(graph.candidate.candidate_id, {
+      runtime_environment: "paper",
+      paper_order_request: "valid"
+    })).resolves.toMatchObject({
+      statusCode: 200,
+      body: {
+        status: "already_running",
+        paper_trading_evaluation: evaluation,
+        runner_status: "running"
+      }
+    });
+    expect(effects.schedule).toHaveBeenCalledOnce();
+    expect(effects.schedule).toHaveBeenCalledWith(graph.candidate.runtime.ref.id);
+    expect(effects.activate).not.toHaveBeenCalled();
+    expect(effects.observe).not.toHaveBeenCalled();
+  });
+
   it("rejects generated artifact closure drift before paper session effects", async () => {
     const graph = testGraph();
     const effects = effectSpies();
@@ -164,7 +192,7 @@ function commandService(
     ...overrides
   } as unknown as OuroborosStorePort;
   const sessions = {
-    active: vi.fn(() => false),
+    active: effects.active,
     prepare: effects.prepare,
     activate: effects.activate,
     observe: effects.observe,
@@ -183,6 +211,7 @@ function commandService(
 
 function effectSpies() {
   return {
+    active: vi.fn(() => false),
     prepare: vi.fn(),
     activate: vi.fn(),
     observe: vi.fn(),

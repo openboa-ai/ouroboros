@@ -151,6 +151,7 @@ export class PaperTradingCommandService {
         clock: "scheduled"
       });
       if (wasActive) {
+        await this.sessions.schedule(tradingRunId);
         return {
           statusCode: 200,
           body: {
