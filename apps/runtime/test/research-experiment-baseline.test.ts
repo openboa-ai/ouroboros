@@ -61,6 +61,38 @@ describe("ResearchExperiment baseline", () => {
   });
 
   it.each([
+    "research_control_campaign_evidence_only",
+    "research_experiment_evidence_only"
+  ] as const)("ignores study execution leases under %s", async (exclusionPolicy) => {
+    const root = path.join(tmpDir, exclusionPolicy);
+    await mkdir(root, { recursive: true });
+    await writeFile(path.join(root, "state.json"), "before\n", "utf8");
+    const expected = await captureResearchExperimentBaseline({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      exclusionPolicy
+    });
+
+    const leasePath = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "active",
+      "study.lock",
+      "lease.json"
+    );
+    await mkdir(path.dirname(leasePath), { recursive: true });
+    await writeFile(leasePath, "runtime lease\n", "utf8");
+
+    await expect(verifyResearchExperimentBaseline({
+      root,
+      expected,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    })).resolves.toBeUndefined();
+  });
+
+  it.each([
     ["empty", async (_root: string) => undefined,
       "research_experiment_baseline_empty"],
     ["temporary file", async (root: string) => {
@@ -201,6 +233,7 @@ async function writeBaselineFixture(
   }
   for (const collection of [
     "research-control-campaigns",
+    "research-control-study-execution-leases",
     "research-control-study-outcomes",
     "research-memory-control-studies",
     "research-memory-control-pair-outcomes",

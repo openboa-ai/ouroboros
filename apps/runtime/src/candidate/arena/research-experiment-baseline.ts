@@ -25,6 +25,7 @@ const RESEARCH_CONTROL_EVIDENCE_COLLECTIONS = new Set([
   "research-control-campaign-paper-slot-outcomes",
   "research-control-campaign-outcomes",
   "research-control-studies",
+  "research-control-study-execution-leases",
   "research-control-study-outcomes"
 ]);
 
