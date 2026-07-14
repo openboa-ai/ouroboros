@@ -139,11 +139,18 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
       const committedAt = exactTime(
         (this.options.now ?? (() => new Date().toISOString()))()
       );
-      const [studies, outcomes, promotion, protocols] = await Promise.all([
+      const [
+        studies,
+        outcomes,
+        promotion,
+        protocols,
+        generalizationOutcomes
+      ] = await Promise.all([
         this.options.store.listResearchControlStudies(),
         this.options.store.listResearchControlStudyOutcomes(),
         this.options.store.getLatestTradingPromotion(),
-        this.options.store.listResearchGeneralizationProtocols()
+        this.options.store.listResearchGeneralizationProtocols(),
+        this.options.store.listResearchGeneralizationOutcomes()
       ]);
       if (!promotion) {
         return { status: "deferred", reason: "no_trading_promotion" };
@@ -169,7 +176,13 @@ implements ResearchControlStudyCommitmentCoordinatorLifecycle {
           protocolIntent.protocolId
       );
       if (!protocol) {
+        const closedProtocolIds = new Set(generalizationOutcomes.map((outcome) =>
+          outcome.protocol_ref.id
+        ));
         const active = protocols.find((candidate) =>
+          !closedProtocolIds.has(
+            candidate.research_generalization_protocol_id
+          ) &&
           Date.parse(candidate.timing_policy.collection_deadline_at) >=
             Date.parse(committedAt)
         );

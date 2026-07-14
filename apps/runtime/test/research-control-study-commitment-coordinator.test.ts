@@ -1,9 +1,11 @@
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureTradingResearchAgentAdapter } from
   "@ouroboros/application/trading/research/agent-adapters";
+import type { ManagedResearchAgent } from
+  "@ouroboros/application/trading/research/types";
 import type { GatewayMarketDataPort } from
   "@ouroboros/application/ports/market-data";
 import { LocalStore } from "@ouroboros/local-store";
@@ -156,6 +158,38 @@ describe("ResearchControlStudyCommitmentCoordinator", () => {
       pendingStudyId: study.research_control_study_id
     });
     await expect(store.listResearchControlStudies()).resolves.toEqual([study]);
+  });
+
+  it("allows a new protocol after an outcome closes the active protocol", async () => {
+    const store = await tradingReviewStore("closed-protocol");
+    const initial = await coordinatorFor(store).ensureCommittedStudy();
+
+    expect(initial).toMatchObject({ status: "protocol_committed" });
+    if (initial.status !== "protocol_committed") {
+      throw new Error("expected initial protocol commitment");
+    }
+    const closedOutcome = {
+      protocol_ref: {
+        record_kind: "research_generalization_protocol" as const,
+        id: initial.protocolId
+      }
+    } as Awaited<ReturnType<
+      LocalStore["listResearchGeneralizationOutcomes"]
+    >>[number];
+    vi.spyOn(store, "listResearchGeneralizationOutcomes")
+      .mockResolvedValue([closedOutcome]);
+    const nextAgent = {
+      ...new FixtureTradingResearchAgentAdapter().agent,
+      model: "scripted-fixture-next-protocol"
+    };
+
+    await expect(coordinatorFor(store, {
+      researchAgentIdentity: () => nextAgent
+    }).ensureCommittedStudy()).resolves.toMatchObject({
+      status: "protocol_committed"
+    });
+    await expect(store.listResearchGeneralizationProtocols())
+      .resolves.toHaveLength(2);
   });
 
   it("defers a new automatic intent while any study is incomplete", async () => {
@@ -355,13 +389,15 @@ describe("ResearchControlStudyCommitmentCoordinator", () => {
       commitStudy?: typeof commitResearchControlStudyRuntime;
       now?: () => string;
       marketData?: Pick<GatewayMarketDataPort, "readPublicKlineWindow">;
+      researchAgentIdentity?:
+        () => ManagedResearchAgent | Promise<ManagedResearchAgent>;
     } = {}
   ): ResearchControlStudyCommitmentCoordinator {
     const clock = advancingClock();
     return new ResearchControlStudyCommitmentCoordinator({
       store,
-      researchAgentIdentity: () =>
-        new FixtureTradingResearchAgentAdapter().agent,
+      researchAgentIdentity: options.researchAgentIdentity ?? (() =>
+        new FixtureTradingResearchAgentAdapter().agent),
       marketData: options.marketData === undefined &&
           Object.prototype.hasOwnProperty.call(options, "marketData")
         ? undefined
