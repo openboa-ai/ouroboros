@@ -871,6 +871,40 @@ describe("PaperTradingSessionService", () => {
     expect(fixture.effects).toMatchObject({ providerCloses: 1, sandboxStops: 1 });
   });
 
+  it("closes active comparison resources during service shutdown", async () => {
+    const fixture = await authorizedComparisonSessionFixture("shutdown-cleanup");
+    await fixture.service.startComparisonSide({
+      side: fixture.side,
+      authority: fixture.startAuthority,
+      marketData: fixture.fixedMarketData,
+      deadlineAt: fixture.attempt.start_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+
+    await fixture.service.stopAllSessions();
+
+    await expect(fixture.service.inspectComparisonSide({
+      side: fixture.side,
+      authority: fixture.stopAuthority
+    })).resolves.toMatchObject({
+      runtime_lifecycle_status: "stopped",
+      evaluation_status: "stopped",
+      sandbox_lifecycle_status: "stopped",
+      provider_session_active: false
+    });
+    expect(fixture.effects).toMatchObject({
+      providerCloses: 1,
+      sandboxStops: 1
+    });
+
+    await fixture.service.stopAllSessions();
+    expect(fixture.effects).toMatchObject({
+      providerCloses: 1,
+      sandboxStops: 1
+    });
+  });
+
   it("prepares one authorized first-checkpoint side without economic Store writes", async () => {
     const fixture = await authorizedComparisonSessionFixture("checkpoint-prepare", {
       checkpointLogLines: [checkpointOrderEventLine()]

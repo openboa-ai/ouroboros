@@ -131,6 +131,12 @@ interface EnabledPaperTradingComparisonTickAttribution {
   checkpointProviderRequestCount: number;
 }
 
+interface ActivePaperTradingComparisonSession {
+  side: PaperTradingComparisonActivationSide;
+  startAuthority: PaperTradingComparisonRuntimeWriteContext;
+  cleanupTimeoutMs: number;
+}
+
 interface AdvancedPaperTradingComparisonCheckpointView {
   authority: PaperTradingComparisonCheckpointWriteContext & {
     operation: "advance_tick_view";
@@ -183,6 +189,8 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
   private readonly advancedComparisonCheckpointViews =
     new Map<string, AdvancedPaperTradingComparisonCheckpointView>();
   private readonly comparisonTransientCleanupFailures = new Map<string, string>();
+  private readonly activeComparisonSessions =
+    new Map<string, ActivePaperTradingComparisonSession>();
   private readonly activeSessions = new Set<string>();
   private readonly runner: PaperTradingEvaluationRunner;
   private readonly intervalMs: number;
@@ -586,6 +594,11 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         "Paper comparison session has unresolved transient sandbox cleanup."
       );
     }
+    this.activeComparisonSessions.set(sessionKey, {
+      side: structuredClone(input.side),
+      startAuthority: structuredClone(input.authority),
+      cleanupTimeoutMs: loaded.attempt.activation_policy.cleanup_timeout_ms
+    });
     try {
       const tradingApiBaseUrl = await this.ensureComparisonApiProviderSession({
         sessionKey,
@@ -690,6 +703,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         authority: input.authority
       });
       this.assertComparisonDeadline(input.deadlineAt);
+      this.activeComparisonSessions.delete(sessionKey);
       return status;
     }
 
@@ -750,6 +764,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       authority: input.authority
     });
     this.assertComparisonDeadline(input.deadlineAt);
+    this.activeComparisonSessions.delete(sessionKey);
     return status;
   }
 
@@ -1573,6 +1588,29 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         this.stopLinkedSandbox(tradingRunId)
       ]);
     }
+    await Promise.allSettled(
+      [...this.activeComparisonSessions.entries()].map(async ([sessionKey, session]) => {
+        const deadlineAt = new Date(Date.now() + session.cleanupTimeoutMs).toISOString();
+        try {
+          await this.stopComparisonSide({
+            side: structuredClone(session.side),
+            authority: {
+              ...structuredClone(session.startAuthority),
+              operation: "stop"
+            },
+            deadlineAt,
+            reason: "handoff_cleanup"
+          });
+        } catch {
+          await this.closeComparisonApiProviderSession(sessionKey).catch(() => undefined);
+        }
+      })
+    );
+    await Promise.allSettled(
+      [...this.comparisonApiProviderSessions.keys()].map((sessionKey) =>
+        this.closeComparisonApiProviderSession(sessionKey)
+      )
+    );
     await this.runner.drain();
   }
 
