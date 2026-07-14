@@ -196,6 +196,22 @@ describe("LocalStore PaperTradingHandoffConformance", () => {
         .rejects.toMatchObject({ code: mutation.code });
     }
   });
+
+  it("rejects a preflight-bound admission when its evaluation omits sealed linkage", async () => {
+    const graph = await persistedGraph(store, { omitEvaluationPreflightLinkage: true });
+    const conformance = conformanceFixture(graph.systemCode, graph.experiment);
+    await store.recordPaperTradingHandoffConformance(conformance);
+    const admission = boundAdmission(graph.admission, conformance);
+    admission.research_preflight_commitment_ref = {
+      record_kind: "research_preflight_commitment",
+      id: graph.commitment.research_preflight_commitment_id
+    };
+    admission.research_preflight_commitment_digest = graph.commitment.commitment_digest;
+
+    await expect(store.recordCandidateAdmissionDecision(admission)).rejects.toMatchObject({
+      code: "candidate_admission_research_preflight_required"
+    });
+  });
 });
 
 interface PersistedGraph {
@@ -207,7 +223,10 @@ interface PersistedGraph {
   admission: CandidateAdmissionDecisionRecord;
 }
 
-async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
+async function persistedGraph(
+  store: LocalStore,
+  options: { omitEvaluationPreflightLinkage?: boolean } = {}
+): Promise<PersistedGraph> {
   const sourceSystemCode = systemCodeFixture(
     "paper-handoff-source-system-code",
     digest("paper-handoff-source")
@@ -307,6 +326,16 @@ async function persistedGraph(store: LocalStore): Promise<PersistedGraph> {
     completed_at: "2026-07-12T10:02:00.000Z",
     authority_status: "not_counted"
   };
+  if (options.omitEvaluationPreflightLinkage) {
+    delete evaluation.research_preflight_commitment_ref;
+    delete evaluation.research_preflight_commitment_digest;
+    delete evaluation.submitted_system_code_ref;
+    delete evaluation.submitted_artifact_digest;
+    delete evaluation.sealed_admission_suite_digest;
+    delete evaluation.evaluation_phase;
+    delete evaluation.submission_sequence;
+    delete evaluation.selected_development_submission_sequence;
+  }
   const finding: ResearchFindingRecord = {
     record_kind: "research_finding",
     version: 1,

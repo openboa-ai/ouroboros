@@ -3384,7 +3384,7 @@ export class LocalStore {
       );
     }
     if (decision.status === "admitted" &&
-      evaluation.research_preflight_commitment_ref) {
+      (preflightCommitment || evaluation.research_preflight_commitment_ref)) {
       if (!conformance ||
         !decision.paper_trading_handoff_conformance_ref ||
         !decision.paper_trading_handoff_conformance_digest ||
