@@ -156,7 +156,7 @@ function soakExecutor(state: ReturnType<typeof soakState>) {
     }),
     projectNextAction: () => current()?.action ?? { action: "complete" },
     actions: {
-      expireUnopenedSourceSlot: () => crashAfter(() => undefined),
+      expireUnstartedSourceSlot: () => crashAfter(() => undefined),
       prepareSourceBatch: () => crashAfter(() =>
         sequenceRecords(state.commitments, "commitment")
       ),

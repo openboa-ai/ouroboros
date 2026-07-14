@@ -200,7 +200,7 @@ describe("ResearchControlCampaign paper source batch coordinator", () => {
     const exactDeadline = sourceBatchFixture({
       now: "2026-07-12T10:00:01.000Z"
     });
-    await expect(exactDeadline.coordinator.expireUnopenedSourceSlot({
+    await expect(exactDeadline.coordinator.expireUnstartedSourceSlot({
       schedule: exactDeadline.schedule,
       armKind: "adaptive_treatment",
       sequence: 1
@@ -209,7 +209,7 @@ describe("ResearchControlCampaign paper source batch coordinator", () => {
     const expired = sourceBatchFixture({
       now: "2026-07-12T10:00:01.001Z"
     });
-    const outcome = await expired.coordinator.expireUnopenedSourceSlot({
+    const outcome = await expired.coordinator.expireUnstartedSourceSlot({
       schedule: expired.schedule,
       armKind: "adaptive_treatment",
       sequence: 1
@@ -225,6 +225,46 @@ describe("ResearchControlCampaign paper source batch coordinator", () => {
       operation.startsWith("source:") || operation.startsWith("tick:") ||
       operation.startsWith("runtime:")
     )).toBe(false);
+  });
+
+  it("expires a prepared source that never captured its first tick", async () => {
+    const fixture = sourceBatchFixture({
+      now: "2026-07-12T10:00:01.001Z"
+    });
+    fixture.armStores[0].preparation = preparationRecord("adaptive_treatment");
+    fixture.armStores[0].commitment = commitmentRecord("adaptive_treatment");
+
+    const outcome = await fixture.coordinator.expireUnstartedSourceSlot({
+      schedule: fixture.schedule,
+      armKind: "adaptive_treatment",
+      sequence: 1
+    });
+
+    expect(outcome.terminal_evidence).toMatchObject({
+      evidence_kind: "source_slot_expired",
+      terminal_status: "paper_slot_expired"
+    });
+    expect(fixture.armStores[0].ticks).toEqual([]);
+  });
+
+  it("does not expire a source after its first tick exists", async () => {
+    const fixture = sourceBatchFixture({
+      now: "2026-07-12T10:00:01.001Z"
+    });
+    const preparation = preparationRecord("adaptive_treatment");
+    const commitment = commitmentRecord("adaptive_treatment");
+    fixture.armStores[0].preparation = preparation;
+    fixture.armStores[0].commitment = commitment;
+    fixture.armStores[0].ticks.push(tickRecord(
+      commitment,
+      "2026-07-12T10:00:00.500Z"
+    ));
+
+    await expect(fixture.coordinator.expireUnstartedSourceSlot({
+      schedule: fixture.schedule,
+      armKind: "adaptive_treatment",
+      sequence: 1
+    })).rejects.toBeInstanceOf(ResearchControlCampaignPaperSourceBatchError);
   });
 });
 

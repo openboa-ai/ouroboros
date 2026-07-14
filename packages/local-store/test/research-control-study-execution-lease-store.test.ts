@@ -53,6 +53,22 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     expect(await readLease(activeLeaseFile(study))).toEqual(acquired.lease);
   });
 
+  it("recovers an empty active claim left by an interrupted publisher", async () => {
+    const study = studyFixture();
+    await mkdir(activeDir(study), { recursive: true });
+
+    const result = await adapter({ token: "lease-a", liveness: "alive" })
+      .acquire({
+        study,
+        owner: owner("server-a", 101),
+        leaseDurationMs: 30_000
+      });
+
+    expect(result).toMatchObject({ status: "acquired" });
+    if (result.status !== "acquired") throw new Error("expected acquired lease");
+    expect(await readLease(activeLeaseFile(study))).toEqual(result.lease);
+  });
+
   it("renews and asserts only the exact active owner, then archives release", async () => {
     const study = studyFixture();
     const store = adapter({ tokens: ["lease-a", "lease-b"], liveness: "alive" });

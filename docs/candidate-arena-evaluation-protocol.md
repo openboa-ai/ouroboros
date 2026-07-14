@@ -220,8 +220,10 @@ drift. Before runtime opening,
 same-host server for one shared LocalStore root. The active owner renews and asserts its exact token
 before every executor advance. Alive or liveness-unknown owners remain held after expiry; takeover
 requires both expiry and a confirmed-absent same-host PID. Release and confirmed-dead takeover write
-terminal owner history. Lease state is excluded from study outcomes, Findings, Lineage, rank,
-allocation, policy decisions, and promotion because it proves coordination, not research quality.
+terminal owner history. New claims publish a populated lock directory atomically; an interrupted
+empty claim can be removed before a new owner is elected. Lease state is excluded from study
+outcomes, Findings, Lineage, rank, allocation, policy decisions, and promotion because it proves
+coordination, not research quality.
 
 `ResearchWorkerCheckpoint` is separate from evaluator state. It closes one exact commitment with a
 contiguous stable-worker link, current and cumulative development submission counts, zero remaining

@@ -3,6 +3,7 @@ import {
   access,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile
@@ -107,7 +108,8 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
       const active = await this.readOptionalLeaseDirectory(
         paths.activeDir,
         paths.activeFile,
-        "active"
+        "active",
+        "recover_empty_claim"
       );
       if (!active) {
         const claimed = await this.tryClaim(input, paths);
@@ -276,18 +278,20 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     } catch (error) {
       throw invalidInput("lease token or acquisition decision is invalid", error);
     }
+    const preparedDir = `${paths.activeDir}.claim-${process.pid}-${randomUUID()}`;
+    const preparedFile = path.join(preparedDir, "lease.json");
+    await mkdir(preparedDir);
     try {
-      await mkdir(paths.activeDir);
-    } catch (error) {
-      if (isExistingPathError(error)) return undefined;
-      throw error;
-    }
-    try {
-      await this.writeAtomicLease(paths.activeFile, lease);
+      await this.writeAtomicLease(preparedFile, lease);
+      try {
+        await rename(preparedDir, paths.activeDir);
+      } catch (error) {
+        if (isExistingPathError(error)) return undefined;
+        throw error;
+      }
       return lease;
-    } catch (error) {
-      await rm(paths.activeDir, { recursive: true, force: true });
-      throw error;
+    } finally {
+      await rm(preparedDir, { recursive: true, force: true });
     }
   }
 
@@ -305,7 +309,8 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     const active = await this.readOptionalLeaseDirectory(
       paths.activeDir,
       paths.activeFile,
-      "active"
+      "active",
+      "recover_empty_claim"
     );
     const history = await this.readOptionalHistory(transition);
     if (history) {
@@ -454,7 +459,9 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
   private async readOptionalLeaseDirectory(
     directory: string,
     file: string,
-    expectedStatus: "active"
+    expectedStatus: "active",
+    incompleteClaimPolicy: "fail_closed" | "recover_empty_claim" =
+      "fail_closed"
   ): Promise<ResearchControlStudyExecutionLeaseRecord | undefined> {
     for (let attempt = 0; attempt < MAX_INCOMPLETE_CLAIM_READS; attempt += 1) {
       try {
@@ -473,7 +480,35 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
         await waitForClaimWrite();
       }
     }
+    if (incompleteClaimPolicy === "recover_empty_claim" &&
+      await this.recoverEmptyClaimDirectory(directory)) {
+      return undefined;
+    }
     throw corruptState("lease lock directory has no readable record");
+  }
+
+  private async recoverEmptyClaimDirectory(directory: string): Promise<boolean> {
+    const abandoned = `${directory}.incomplete-${process.pid}-${randomUUID()}`;
+    try {
+      await rename(directory, abandoned);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return true;
+      throw error;
+    }
+    const entries = await readdir(abandoned);
+    if (entries.length === 0) {
+      await rm(abandoned, { recursive: true, force: true });
+      return true;
+    }
+    try {
+      await rename(abandoned, directory);
+    } catch (error) {
+      throw corruptState(
+        "incomplete lease claim changed while recovery was attempted",
+        error
+      );
+    }
+    return false;
   }
 
   private async readOptionalHistory(

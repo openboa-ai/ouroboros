@@ -52,8 +52,8 @@ type ActionOf<Kind extends ResearchControlCampaignPaperNextAction["action"]> =
   Extract<ResearchControlCampaignPaperNextAction, { action: Kind }>;
 
 export interface ResearchControlCampaignPaperExecutorActions {
-  expireUnopenedSourceSlot(
-    action: ActionOf<"expire_unopened_source_slot">,
+  expireUnstartedSourceSlot(
+    action: ActionOf<"expire_unstarted_source_slot">,
     context: ResearchControlCampaignPaperExecutorContext
   ): Promise<unknown>;
   prepareSourceBatch(
@@ -166,8 +166,8 @@ export class ResearchControlCampaignPaperExecutor {
     const context = { ...graph, evidence };
     try {
       switch (action.action) {
-        case "expire_unopened_source_slot":
-          await this.options.actions.expireUnopenedSourceSlot(action, context);
+        case "expire_unstarted_source_slot":
+          await this.options.actions.expireUnstartedSourceSlot(action, context);
           break;
         case "prepare_source_batch":
           await this.options.actions.prepareSourceBatch(action, context);

@@ -338,7 +338,7 @@ terminal, and conflicting evidence.
 ```ts
 export type ResearchControlCampaignPaperNextAction =
   | { action: "wait_until"; sequence: number; wakeAt: string }
-  | { action: "expire_unopened_source_slot"; armKind: ResearchControlCampaignArmKind; sequence: number }
+  | { action: "expire_unstarted_source_slot"; armKind: ResearchControlCampaignArmKind; sequence: number }
   | { action: "prepare_source_batch"; sequence: number }
   | { action: "capture_source_start_batch"; sequence: number }
   | { action: "authorize_source_batch"; sequence: number }

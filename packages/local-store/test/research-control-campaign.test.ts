@@ -21,12 +21,14 @@ import {
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignOutcomeRecord,
   type ResearchControlCampaignPaperScheduleRecord,
+  type ResearchControlCampaignPaperScheduleSlot,
   type ResearchControlCampaignPaperStartBatchRecord,
   type ResearchControlCampaignRecord,
   type ResearchControlCampaignReportRecord,
   type ResearchPopulationDiversityReadModel,
   type PaperTradingComparisonCommitmentRecord,
   type PaperTradingComparisonConfirmationCampaignRecord,
+  type PaperTradingComparisonPreparationRecord,
   type PaperTradingComparisonVerdictRecord,
   type PaperTradingComparisonSide,
   type PaperTradingComparisonTickRecord,
@@ -669,7 +671,7 @@ describe("LocalStore ResearchControlCampaign", () => {
       .toEqual(outcome);
   });
 
-  it("rejects source expiry before its deadline or after preparation", async () => {
+  it("rejects source expiry before its deadline or with corrupt preparation state", async () => {
     const fixture = await persistScheduleSourceGraph(root, store, {
       adaptiveCandidate: true
     });
@@ -708,6 +710,48 @@ describe("LocalStore ResearchControlCampaign", () => {
       .rejects.toMatchObject({
         code: "research_control_campaign_paper_slot_outcome_evidence_graph_invalid"
       });
+  });
+
+  it("accepts source expiry after preparation when no first tick exists", async () => {
+    const fixture = await persistScheduleSourceGraph(root, store, {
+      adaptiveCandidate: true
+    });
+    await store.recordResearchControlCampaignPaperSchedule(fixture.schedule);
+    const slot = fixture.schedule.arms[0].slots[0]!;
+    if (slot.slot_status !== "candidate_scheduled") {
+      throw new Error("fixture_expected_candidate_schedule_slot");
+    }
+    const preparedStore = new SourceExpiryEvidenceStore(root, slot, false);
+    const expired = sourceSlotExpiryOutcome(
+      fixture.schedule,
+      "2026-07-12T10:41:01.000Z"
+    );
+
+    await expect(preparedStore.recordResearchControlCampaignPaperSlotOutcome(
+      expired
+    )).resolves.toEqual(expired);
+  });
+
+  it("rejects source expiry after a first tick exists", async () => {
+    const fixture = await persistScheduleSourceGraph(root, store, {
+      adaptiveCandidate: true
+    });
+    await store.recordResearchControlCampaignPaperSchedule(fixture.schedule);
+    const slot = fixture.schedule.arms[0].slots[0]!;
+    if (slot.slot_status !== "candidate_scheduled") {
+      throw new Error("fixture_expected_candidate_schedule_slot");
+    }
+    const startedStore = new SourceExpiryEvidenceStore(root, slot, true);
+    const expired = sourceSlotExpiryOutcome(
+      fixture.schedule,
+      "2026-07-12T10:41:01.000Z"
+    );
+
+    await expect(startedStore.recordResearchControlCampaignPaperSlotOutcome(
+      expired
+    )).rejects.toMatchObject({
+      code: "research_control_campaign_paper_slot_outcome_evidence_graph_invalid"
+    });
   });
 
   it("rejects absent source verdict evidence and corrupt slot outcome reload", async () => {
@@ -1824,6 +1868,68 @@ class ConfirmationDeadlineStore extends LocalStore {
       return structuredClone(this.researchRelease);
     }
     return super.getPaperTradingComparisonResearchRelease(releaseId);
+  }
+}
+
+class SourceExpiryEvidenceStore extends LocalStore {
+  constructor(
+    root: string,
+    private readonly slot: Extract<
+      ResearchControlCampaignPaperScheduleSlot,
+      { slot_status: "candidate_scheduled" }
+    >,
+    private readonly hasFirstTick: boolean
+  ) {
+    super(root);
+  }
+
+  override async getPaperTradingComparisonPreparation(
+    preparationId: string
+  ): Promise<PaperTradingComparisonPreparationRecord | undefined> {
+    return preparationId === this.slot.source_preparation_id
+      ? {
+          record_kind: "paper_trading_comparison_preparation",
+          paper_trading_comparison_preparation_id:
+            this.slot.source_preparation_id,
+          paper_trading_comparison_commitment_id:
+            this.slot.source_comparison_commitment_id
+        } as PaperTradingComparisonPreparationRecord
+      : super.getPaperTradingComparisonPreparation(preparationId);
+  }
+
+  override async getPaperTradingComparisonCommitment(
+    commitmentId: string
+  ): Promise<PaperTradingComparisonCommitmentRecord | undefined> {
+    return commitmentId === this.slot.source_comparison_commitment_id
+      ? {
+          record_kind: "paper_trading_comparison_commitment",
+          paper_trading_comparison_commitment_id:
+            this.slot.source_comparison_commitment_id,
+          preparation_ref: {
+            record_kind: "paper_trading_comparison_preparation",
+            id: this.slot.source_preparation_id
+          },
+          commitment_digest: digest("f")
+        } as PaperTradingComparisonCommitmentRecord
+      : super.getPaperTradingComparisonCommitment(commitmentId);
+  }
+
+  override async listPaperTradingComparisonTicks(
+    commitmentId: string
+  ): Promise<PaperTradingComparisonTickRecord[]> {
+    if (!this.hasFirstTick ||
+      commitmentId !== this.slot.source_comparison_commitment_id) {
+      return super.listPaperTradingComparisonTicks(commitmentId);
+    }
+    return [{
+      record_kind: "paper_trading_comparison_tick",
+      paper_trading_comparison_tick_id: "prepared-source-first-tick",
+      paper_trading_comparison_commitment_ref: {
+        record_kind: "paper_trading_comparison_commitment",
+        id: commitmentId
+      },
+      sequence: 1
+    } as PaperTradingComparisonTickRecord];
   }
 }
 

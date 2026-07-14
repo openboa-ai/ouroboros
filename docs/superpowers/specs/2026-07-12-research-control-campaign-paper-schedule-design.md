@@ -257,7 +257,7 @@ Source-verdict mapping is exact:
 | `challenger_improved` | Precommit and run the existing confirmation campaign | determined by confirmation ResearchRelease |
 | `challenger_not_improved` | Do not create a confirmation campaign | `source_not_improved` |
 | `comparison_ineligible` | Do not create a confirmation campaign | `evidence_ineligible` |
-| no source start by deadline | No comparison preparation may exist | `paper_slot_expired` |
+| no source start by deadline | No first tick or source start batch may exist; inert partial preparation may remain | `paper_slot_expired` |
 
 An improved source verdict must precommit its confirmation campaign no later than the scheduled
 confirmation deadline. Missing that deadline closes the slot as `paper_slot_expired`; a later
@@ -299,7 +299,8 @@ cursor.
 - Terminal source verdict: create exactly one source terminal slot outcome or precommit the exact
   confirmation campaign.
 - Terminal confirmation release: create exactly one confirmation terminal slot outcome.
-- Missed unopened deadline: record expiry without starting effects.
+- Missed source-start deadline: record expiry without starting effects, including both sides of a
+  partially prepared pair.
 - Existing exact slot outcome: replay.
 - Conflicting evidence or ambiguous release: fail closed.
 - All slot outcomes terminal: invoke the existing campaign outcome collector.

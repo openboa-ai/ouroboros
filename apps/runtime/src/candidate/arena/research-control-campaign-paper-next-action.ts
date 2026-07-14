@@ -22,7 +22,7 @@ import type {
 export type ResearchControlCampaignPaperNextAction =
   | { action: "wait_until"; sequence: number; wakeAt: string }
   | {
-      action: "expire_unopened_source_slot";
+      action: "expire_unstarted_source_slot";
       armKind: ResearchControlCampaignArmKind;
       sequence: number;
     }
@@ -140,28 +140,35 @@ export function projectResearchControlCampaignPaperNextAction(
   const applicableStartAt = applicableStart(input.schedule, graph, currentSequence);
 
   if (!batch) {
-    const preparedStates = states.filter(({ evidence }) => evidence.preparation);
-    const missingPreparation = openStates.filter(({ evidence }) =>
-      !evidence.preparation
+    const incompleteSources = openStates.filter(({ evidence }) =>
+      !evidence.preparation || !evidence.commitment
     );
-    if (missingPreparation.length > 0) {
-      const expired = missingPreparation.find(({ slot }) =>
+    if (incompleteSources.length > 0) {
+      const expired = incompleteSources.find(({ slot }) =>
         Date.parse(input.now) > Date.parse(applicableStartAt) +
           slot.maximum_source_start_delay_ms
       );
-      if (expired && preparedStates.length === 0) {
+      if (expired) {
         return {
-          action: "expire_unopened_source_slot",
+          action: "expire_unstarted_source_slot",
           armKind: expired.armKind,
           sequence: currentSequence
         };
       }
       return { action: "prepare_source_batch", sequence: currentSequence };
     }
-    if (openStates.some(({ evidence }) => !evidence.commitment)) {
-      return { action: "prepare_source_batch", sequence: currentSequence };
-    }
     if (states.some(({ evidence }) => evidence.slotOutcome)) {
+      const expiredPeer = openStates.find(({ slot }) =>
+        Date.parse(input.now) > Date.parse(applicableStartAt) +
+          slot.maximum_source_start_delay_ms
+      );
+      if (expiredPeer) {
+        return {
+          action: "expire_unstarted_source_slot",
+          armKind: expiredPeer.armKind,
+          sequence: currentSequence
+        };
+      }
       throw invalidGraph(
         "A prepared source cannot form a batch after its paired slot expired."
       );

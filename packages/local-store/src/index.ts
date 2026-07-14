@@ -6785,10 +6785,20 @@ export class LocalStore {
   ): Promise<void> {
     const evidence = outcome.terminal_evidence;
     if (evidence.evidence_kind === "source_slot_expired") {
-      const [preparation, commitment, applicableStartMs] = await Promise.all([
+      const [preparation, commitment, ticks, startBatch, applicableStartMs] =
+        await Promise.all([
         this.getPaperTradingComparisonPreparation(outcome.source_preparation_id),
         this.getPaperTradingComparisonCommitment(
           outcome.source_comparison_commitment_id
+        ),
+        this.listPaperTradingComparisonTicks(
+          outcome.source_comparison_commitment_id
+        ),
+        this.getResearchControlCampaignPaperStartBatch(
+          researchControlCampaignPaperStartBatchIdFor(
+            schedule,
+            outcome.sequence
+          )
         ),
         this.researchControlCampaignPaperSlotApplicableStartMs(
           schedule,
@@ -6799,8 +6809,22 @@ export class LocalStore {
         candidate.slot_status === "candidate_scheduled" &&
         candidate.source_preparation_id === outcome.source_preparation_id
       );
-      if (!slot || slot.slot_status !== "candidate_scheduled" || preparation ||
-        commitment || Date.parse(outcome.terminal_at) <
+      const preparationMismatch = preparation && slot?.slot_status ===
+        "candidate_scheduled" && (
+        preparation.paper_trading_comparison_preparation_id !==
+          slot.source_preparation_id ||
+        preparation.paper_trading_comparison_commitment_id !==
+          slot.source_comparison_commitment_id
+      );
+      const commitmentMismatch = commitment && (!preparation ||
+        slot?.slot_status !== "candidate_scheduled" ||
+        commitment.paper_trading_comparison_commitment_id !==
+          slot.source_comparison_commitment_id ||
+        commitment.preparation_ref.id !== slot.source_preparation_id
+      );
+      if (!slot || slot.slot_status !== "candidate_scheduled" ||
+        preparationMismatch || commitmentMismatch || ticks.length > 0 ||
+        startBatch || Date.parse(outcome.terminal_at) <
           applicableStartMs + slot.maximum_source_start_delay_ms) {
         throw new LocalStoreError(
           "research_control_campaign_paper_slot_outcome_evidence_graph_invalid",

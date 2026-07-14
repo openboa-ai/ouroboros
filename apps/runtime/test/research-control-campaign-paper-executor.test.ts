@@ -30,7 +30,7 @@ describe("ResearchControlCampaign paper executor", () => {
   });
 
   it.each([
-    [{ action: "expire_unopened_source_slot", armKind: "adaptive_treatment", sequence: 1 }],
+    [{ action: "expire_unstarted_source_slot", armKind: "adaptive_treatment", sequence: 1 }],
     [{ action: "capture_source_start_batch", sequence: 1 }],
     [{ action: "authorize_source_batch", sequence: 1 }],
     [{ action: "start_source_batch", sequence: 1 }],
@@ -168,8 +168,8 @@ function executorHarness(input: {
     }),
     projectNextAction: () => input.action,
     actions: {
-      expireUnopenedSourceSlot: () => actionHandler(
-        "expire_unopened_source_slot"
+      expireUnstartedSourceSlot: () => actionHandler(
+        "expire_unstarted_source_slot"
       ),
       prepareSourceBatch: () => actionHandler("prepare_source_batch"),
       captureSourceStartBatch: () => actionHandler(

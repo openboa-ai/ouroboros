@@ -41,7 +41,47 @@ describe("ResearchControlCampaign paper next-action projector", () => {
 
   it("expires an unopened source slot only after its deadline", () => {
     expect(project({ now: AFTER_DEADLINE })).toEqual({
-      action: "expire_unopened_source_slot",
+      action: "expire_unstarted_source_slot",
+      armKind: "adaptive_treatment",
+      sequence: 1
+    });
+  });
+
+  it("expires the missing arm after a partial paired preparation misses its deadline", () => {
+    expect(project({
+      schedule: scheduleFixture({
+        candidateArms: ["adaptive_treatment", "static_control"]
+      }),
+      now: AFTER_DEADLINE,
+      slots: [sourceEvidence({
+        preparation: preparationRecord(),
+        commitment: commitmentRecord()
+      })]
+    })).toEqual({
+      action: "expire_unstarted_source_slot",
+      armKind: "static_control",
+      sequence: 1
+    });
+  });
+
+  it("expires the prepared peer after the missing arm closes", () => {
+    expect(project({
+      schedule: scheduleFixture({
+        candidateArms: ["adaptive_treatment", "static_control"]
+      }),
+      now: AFTER_DEADLINE,
+      slots: [
+        sourceEvidence({
+          preparation: preparationRecord(),
+          commitment: commitmentRecord()
+        }),
+        sourceEvidence({
+          armKind: "static_control",
+          slotOutcome: staticSlotOutcomeRecord()
+        })
+      ]
+    })).toEqual({
+      action: "expire_unstarted_source_slot",
       armKind: "adaptive_treatment",
       sequence: 1
     });
@@ -692,6 +732,14 @@ function slotOutcomeRecord(): ResearchControlCampaignPaperSlotOutcomeRecord {
     sequence: 1,
     terminal_at: "2026-07-12T10:00:03.000Z"
   } as ResearchControlCampaignPaperSlotOutcomeRecord;
+}
+
+function staticSlotOutcomeRecord(): ResearchControlCampaignPaperSlotOutcomeRecord {
+  return {
+    ...slotOutcomeRecord(),
+    research_control_campaign_paper_slot_outcome_id: "static-slot-outcome-001",
+    arm_kind: "static_control"
+  };
 }
 
 function outcomeRecord(): ResearchControlCampaignOutcomeRecord {

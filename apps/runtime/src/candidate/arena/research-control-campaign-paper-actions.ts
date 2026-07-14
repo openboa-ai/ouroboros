@@ -15,7 +15,7 @@ export function createResearchControlCampaignPaperExecutorActions(input: {
     ResearchControlCampaignPaperSourceBatchCoordinator,
     | "prepare"
     | "captureStartBatch"
-    | "expireUnopenedSourceSlot"
+    | "expireUnstartedSourceSlot"
     | "recordStartIneligibleSlotOutcome"
   >;
   sourceWindow: Pick<
@@ -37,8 +37,8 @@ export function createResearchControlCampaignPaperExecutorActions(input: {
   ): Promise<ResearchControlCampaignOutcomeRecord>;
 }): ResearchControlCampaignPaperExecutorActions {
   return {
-    expireUnopenedSourceSlot(action, context) {
-      return input.sourceBatch.expireUnopenedSourceSlot({
+    expireUnstartedSourceSlot(action, context) {
+      return input.sourceBatch.expireUnstartedSourceSlot({
         schedule: context.schedule,
         armKind: action.armKind,
         sequence: action.sequence

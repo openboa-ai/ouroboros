@@ -352,7 +352,7 @@ export class ResearchControlCampaignPaperSourceBatchCoordinator {
     return this.recordAndReplicateSlotOutcome(input.armKind, outcome);
   }
 
-  async expireUnopenedSourceSlot(input: {
+  async expireUnstartedSourceSlot(input: {
     schedule: ResearchControlCampaignPaperScheduleRecord;
     armKind: ResearchControlCampaignArmKind;
     sequence: number;
@@ -367,22 +367,41 @@ export class ResearchControlCampaignPaperSourceBatchCoordinator {
       );
     }
     const arm = this.options.arms[input.armKind];
-    const [preparation, commitment, applicableStartAt] = await Promise.all([
+    const [preparation, commitment, ticks, startBatch, applicableStartAt] =
+      await Promise.all([
       arm.store.getPaperTradingComparisonPreparation(
         candidate.slot.source_preparation_id
       ),
       arm.store.getPaperTradingComparisonCommitment(
         candidate.slot.source_comparison_commitment_id
       ),
+      arm.store.listPaperTradingComparisonTicks(
+        candidate.slot.source_comparison_commitment_id
+      ),
+      arm.store.getResearchControlCampaignPaperStartBatch(
+        researchControlCampaignPaperStartBatchId(input.schedule, input.sequence)
+      ),
       this.sourceApplicableStartAt(input.schedule, input.sequence)
     ]);
     const expiredAt = exactTime(this.now());
     const deadline = Date.parse(applicableStartAt) +
       candidate.slot.maximum_source_start_delay_ms;
-    if (preparation || commitment || Date.parse(expiredAt) <= deadline) {
+    const preparationMismatch = preparation && (
+      preparation.paper_trading_comparison_preparation_id !==
+        candidate.slot.source_preparation_id ||
+      preparation.paper_trading_comparison_commitment_id !==
+        candidate.slot.source_comparison_commitment_id
+    );
+    const commitmentMismatch = commitment && (!preparation ||
+      commitment.paper_trading_comparison_commitment_id !==
+        candidate.slot.source_comparison_commitment_id ||
+      commitment.preparation_ref.id !== candidate.slot.source_preparation_id
+    );
+    if (preparationMismatch || commitmentMismatch || ticks.length > 0 ||
+      startBatch || Date.parse(expiredAt) <= deadline) {
       throw sourceError(
         "research_control_campaign_paper_source_batch_graph_invalid",
-        "Source slot is opened or its missed-start deadline has not elapsed."
+        "Source slot started, differs from its schedule, or has not missed its deadline."
       );
     }
     const outcome = this.decideSlotOutcome({

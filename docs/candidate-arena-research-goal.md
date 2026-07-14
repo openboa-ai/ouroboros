@@ -173,8 +173,10 @@ succeeded.
 Before opening a study, a renewable `ResearchControlStudyExecutionLease` atomically excludes other
 same-host servers using the same LocalStore root. Exact ownership is checked before each executor
 advance and released on terminal paths. Alive or liveness-unknown owners cannot be displaced; an
-expired lease is replaced only after the same-host PID is confirmed absent. These records coordinate
-effects and do not enter research context, allocation, evaluation, ranking, or promotion.
+expired lease is replaced only after the same-host PID is confirmed absent. A claim publishes one
+complete lock directory atomically, and an interrupted empty claim is recoverable rather than a
+permanent study blocker. These records coordinate effects and do not enter research context,
+allocation, evaluation, ranking, or promotion.
 Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather

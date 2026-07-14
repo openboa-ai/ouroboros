@@ -154,7 +154,7 @@ returns one stable action:
 
 ```text
 wait_until
-expire_unopened_source_slot
+expire_unstarted_source_slot
 prepare_source_batch
 capture_source_start_batch
 authorize_source_batch
@@ -253,9 +253,11 @@ There is no mutable cursor.
 - Existing confirmation campaigns, outcomes, releases, slot outcomes, and campaign outcomes replay.
 - Conflicting same-ID evidence fails closed.
 
-The executor records source expiry only when no preparation or commitment exists. It records
-confirmation precommit expiry only when no confirmation campaign exists. It never deletes evidence
-to make a retry possible.
+The executor records source expiry only when no first tick or source start batch exists. Preparation
+and commitment are inert, so a partially prepared pair that misses its frozen deadline closes the
+incomplete slot first and then its prepared peer without starting market or runtime effects. It
+records confirmation precommit expiry only when no confirmation campaign exists. It never deletes
+evidence to make a retry possible.
 
 ## Error Handling
 
