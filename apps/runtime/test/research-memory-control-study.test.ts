@@ -277,6 +277,40 @@ describe("ResearchMemoryControlStudy runtime", () => {
     expect(replayProbe.callCount).toBe(0);
   });
 
+  it("resumes from the frozen baseline and source after the coordinator advances", async () => {
+    const coordinator = await initializedStore("coordinator-frozen-resume");
+    const workspaceRoot = path.join(temporaryRoot, "workspace-frozen-resume");
+    const idempotencyKey = "memory-control-runtime-frozen-resume-001";
+    const first = await runResearchMemoryControlStudy(runtimeInput({
+      coordinator,
+      workspaceRoot,
+      idempotencyKey,
+      probe: memorySensitiveProbe()
+    }));
+    const sourceSystemCode = await coordinator.getSystemCode(
+      first.study.source.system_code_ref.id
+    );
+    if (!sourceSystemCode) {
+      throw new Error("frozen source SystemCode was not found");
+    }
+    await coordinator.recordSystemCode({
+      ...structuredClone(sourceSystemCode),
+      system_code_id: "system-code-unrelated-after-memory-control-study"
+    });
+    const resumeProbe = memorySensitiveProbe();
+
+    const resumed = await runResearchMemoryControlStudy(runtimeInput({
+      coordinator,
+      workspaceRoot,
+      idempotencyKey,
+      probe: resumeProbe,
+      repoRoot: path.join(temporaryRoot, "unavailable-resume-repo")
+    }));
+
+    expect(resumed).toEqual(first);
+    expect(resumeProbe.callCount).toBe(0);
+  });
+
   it("reconstructs a missing pair outcome from two complete arm ticks", async () => {
     const coordinator = await initializedStore("coordinator-reconstruct");
     const workspaceRoot = path.join(temporaryRoot, "workspace-reconstruct");
@@ -505,7 +539,7 @@ describe("ResearchMemoryControlStudy runtime", () => {
     );
   });
 
-  it("fails closed when the coordinator baseline mutates after preparation", async () => {
+  it("fails closed when the frozen baseline copy mutates after preparation", async () => {
     const coordinator = await initializedStore("coordinator-baseline-drift");
     const workspaceRoot = path.join(temporaryRoot, "workspace-baseline-drift");
     const input = runtimeInput({
@@ -514,9 +548,15 @@ describe("ResearchMemoryControlStudy runtime", () => {
       idempotencyKey: "memory-control-runtime-baseline-drift-001",
       probe: memorySensitiveProbe()
     });
-    await prepareResearchMemoryControlStudy(input);
+    const study = await prepareResearchMemoryControlStudy(input);
+    const paths = researchMemoryControlStudyWorkspacePaths({
+      workspaceRoot,
+      studyId: study.research_memory_control_study_id,
+      sourceRoot: coordinator.root(),
+      pairCount: study.pair_plans.length
+    });
     await writeFile(
-      path.join(coordinator.root(), "synthetic-baseline-drift.json"),
+      path.join(paths.baselineRoot, "synthetic-baseline-drift.json"),
       "{}\n",
       "utf8"
     );
@@ -807,6 +847,7 @@ function runtimeInput(input: {
   workspaceRoot: string;
   idempotencyKey: string;
   probe: MemorySensitiveProbe;
+  repoRoot?: string;
   runTick?: (
     input: RunCandidateArenaTickInput
   ) => Promise<CandidateArenaTickOutcome>;
@@ -823,6 +864,7 @@ function runtimeInput(input: {
     artifactRunner: networklessResearchPreflightArtifactRunner(),
     replayProviderFactory: networklessResearchPreflightProvider,
     now: monotonicClock("2026-07-13T00:00:00.000Z"),
+    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
     ...(input.runTick ? { runTick: input.runTick } : {})
   };
 }

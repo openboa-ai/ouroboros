@@ -389,16 +389,6 @@ async function prepareResearchMemoryControlRuntime(
         input.researchAgentIdentity,
         preparationAt
       );
-  const baseline = await captureResearchExperimentBaseline({
-    root: input.store.root(),
-    maximumRegularFileCount: maximumFileCount,
-    maximumTotalBytes: maximumBytes
-  });
-  const resolvedSource = await resolveResearchExperimentSource({
-    store: input.store,
-    candidateId: sourceCandidateId,
-    repoRoot
-  });
   const studyId = researchMemoryControlStudyId(input.idempotencyKey);
   const paths = researchMemoryControlStudyWorkspacePaths({
     workspaceRoot: input.workspaceRoot,
@@ -406,19 +396,36 @@ async function prepareResearchMemoryControlRuntime(
     sourceRoot: input.store.root(),
     pairCount: input.directions.length
   });
-  if (pathsOverlap(paths.studyRoot, resolvedSource.artifactDirectory)) {
-    throw runtimeError(
-      "research_memory_control_study_workspace_overlaps_source",
+  const baseline = existing?.baseline ?? await captureResearchExperimentBaseline({
+    root: input.store.root(),
+    maximumRegularFileCount: maximumFileCount,
+    maximumTotalBytes: maximumBytes
+  });
+  const resolvedSource = existing
+    ? {
+        source: existing.source,
+        artifactDirectory: paths.sourceArtifactRoot
+      }
+    : await resolveResearchExperimentSource({
+        store: input.store,
+        candidateId: sourceCandidateId,
+        repoRoot
+      });
+  if (!existing) {
+    if (pathsOverlap(paths.studyRoot, resolvedSource.artifactDirectory)) {
+      throw runtimeError(
+        "research_memory_control_study_workspace_overlaps_source",
+        "ResearchMemoryControlStudy workspace must not overlap its source artifact."
+      );
+    }
+    await assertPhysicalPathsDisjoint(
+      paths.studyRoot,
+      resolvedSource.artifactDirectory,
       "ResearchMemoryControlStudy workspace must not overlap its source artifact."
     );
   }
-  await assertPhysicalPathsDisjoint(
-    paths.studyRoot,
-    resolvedSource.artifactDirectory,
-    "ResearchMemoryControlStudy workspace must not overlap its source artifact."
-  );
   await ensureResearchExperimentStoreCopy({
-    sourceRoot: input.store.root(),
+    sourceRoot: existing ? paths.baselineRoot : input.store.root(),
     destinationRoot: paths.baselineRoot,
     expected: baseline,
     maximumRegularFileCount: maximumFileCount,
