@@ -254,6 +254,10 @@ describe("ResearchAllocationPolicyDecision application", () => {
       studyOutcomeId: second.outcome.research_control_study_outcome_id
     });
     expect(store.decisions).toHaveLength(2);
+    expect(store.decisions.map((decision) => decision.decided_at)).toEqual([
+      "2026-07-12T13:00:00.000Z",
+      "2026-07-12T13:00:00.001Z"
+    ]);
   });
 
   it("orders an immediate decision strictly after the study outcome", async () => {

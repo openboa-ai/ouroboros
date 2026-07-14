@@ -224,6 +224,36 @@ describe("ResearchGeneralizationPolicyDecision application", () => {
     });
   });
 
+  it("advances decisions past prior policy timestamps", async () => {
+    const first = generalizationGraph("supported", "coordinator-bounded-first");
+    const second = generalizationGraph("supported", "coordinator-bounded-second");
+    second.outcome.adjudicated_at = "2026-07-20T00:00:00.001Z";
+    resealOutcome(second.outcome);
+    const store = new GeneralizationPolicyDecisionCoordinatorStore([
+      second,
+      first
+    ]);
+    const coordinator = new ResearchGeneralizationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-20T00:00:01.000Z"
+    });
+
+    await expect(coordinator.ensureNextDecision()).resolves.toMatchObject({
+      status: "ensured",
+      generalizationOutcomeId:
+        first.outcome.research_generalization_outcome_id
+    });
+    await expect(coordinator.ensureNextDecision()).resolves.toMatchObject({
+      status: "ensured",
+      generalizationOutcomeId:
+        second.outcome.research_generalization_outcome_id
+    });
+    expect(store.decisions.map((decision) => decision.decided_at)).toEqual([
+      "2026-07-20T00:00:01.000Z",
+      "2026-07-20T00:00:01.001Z"
+    ]);
+  });
+
   it("orders equal-time decisions one millisecond after adjudication", async () => {
     const graph = generalizationGraph("supported", "coordinator-equal");
     const store = new GeneralizationPolicyDecisionCoordinatorStore([graph]);

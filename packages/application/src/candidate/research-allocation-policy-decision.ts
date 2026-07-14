@@ -224,6 +224,15 @@ implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
         );
       }
     }
+    const latestDecisionAt = decisions.reduce<string | undefined>(
+      (latest, decision) => {
+        const decidedAt = canonicalTime(decision.decided_at);
+        return !latest || Date.parse(decidedAt) > Date.parse(latest)
+          ? decidedAt
+          : latest;
+      },
+      undefined
+    );
 
     const orderedOutcomes = [...outcomes].sort((left, right) =>
       left.adjudicated_at.localeCompare(right.adjudicated_at) ||
@@ -253,7 +262,10 @@ implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
         continue;
       }
 
-      const decidedAt = this.nextDecisionTime(outcome.adjudicated_at);
+      const decidedAt = this.nextDecisionTime(
+        outcome.adjudicated_at,
+        latestDecisionAt
+      );
       const decision = await new ResearchAllocationPolicyDecisionService({
         store: this.options.store,
         now: () => decidedAt
@@ -271,7 +283,10 @@ implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
     };
   }
 
-  private nextDecisionTime(adjudicatedAt: string): string {
+  private nextDecisionTime(
+    adjudicatedAt: string,
+    latestDecisionAt: string | undefined
+  ): string {
     const now = canonicalTime(this.now());
     const adjudicated = canonicalTime(adjudicatedAt);
     const nowEpoch = Date.parse(now);
@@ -281,14 +296,18 @@ implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
         "ResearchAllocationPolicyDecision clock precedes study adjudication."
       );
     }
-    if (nowEpoch > adjudicatedEpoch) return now;
+    const latestDecisionEpoch = latestDecisionAt
+      ? Date.parse(canonicalTime(latestDecisionAt))
+      : Number.NEGATIVE_INFINITY;
+    const lowerBoundEpoch = Math.max(adjudicatedEpoch, latestDecisionEpoch);
+    if (nowEpoch > lowerBoundEpoch) return now;
     try {
-      const next = new Date(nowEpoch + 1).toISOString();
-      if (Date.parse(next) <= adjudicatedEpoch) throw new RangeError();
+      const next = new Date(lowerBoundEpoch + 1).toISOString();
+      if (Date.parse(next) <= lowerBoundEpoch) throw new RangeError();
       return next;
     } catch (error) {
       throw coordinationFailed(
-        "ResearchAllocationPolicyDecision clock cannot advance after adjudication.",
+        "ResearchAllocationPolicyDecision clock cannot advance after prior evidence.",
         error
       );
     }
