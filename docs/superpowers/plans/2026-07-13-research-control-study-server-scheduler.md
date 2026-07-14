@@ -155,9 +155,9 @@ expect(captured).toMatchObject({
 ```
 
 Assert `protocol_digest` is absent, artifact/replay adapters are forwarded, the workspace default is
-`path.join(store.root(), "research-control-study-workspaces")`, and provider/model/permission or
-identity-digest drift throws `research_control_study_server_runtime_agent_mismatch` before
-`createStudyRuntime` is called.
+`${path.resolve(store.root())}-research-control-study-workspaces` and does not overlap the source
+store, and provider/model/permission or identity-digest drift throws
+`research_control_study_server_runtime_agent_mismatch` before `createStudyRuntime` is called.
 
 - [x] **Step 2: Run the reconstruction test and verify RED**
 

@@ -115,10 +115,8 @@ export async function openResearchControlStudyServerRuntime(
       ? { beforeAdvance: () => input.ownership!.guard() }
       : {}),
     campaign: {
-      workspaceRoot: input.workspaceRoot ?? path.join(
-        input.store.root(),
-        "research-control-study-workspaces"
-      ),
+      workspaceRoot: input.workspaceRoot ??
+        `${path.resolve(input.store.root())}-research-control-study-workspaces`,
       sourceCandidateId: condition.source.candidate_ref.id,
       expectedTradingPromotionId:
         condition.paper_comparator.trading_promotion_ref.id,

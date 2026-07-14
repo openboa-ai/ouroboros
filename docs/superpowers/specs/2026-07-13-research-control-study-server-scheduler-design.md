@@ -90,7 +90,8 @@ Add a server composition factory that opens one study runtime from the exact per
    compact provider/model/permission identity to match the persisted identity digest;
 3. use `condition.campaign_policy` for tick count and baseline file/byte bounds;
 4. remove only the derived protocol digest and reuse the exact bound paper-evaluation protocol;
-5. use one deterministic workspace root below the primary store root;
+5. use one deterministic workspace root outside the primary store root, defaulting to a sibling
+   derived from the absolute store path;
 6. reuse the server's research artifact runner and replay-provider factory;
 7. create each arm's `PaperTradingSessionService` against that arm's exact copied `LocalStore`,
    public `MarketDataPort`, artifact resolver, provider factory, and isolated sandbox-adapter

@@ -22,6 +22,8 @@ import {
   createResearchControlStudyRuntime,
   type ResearchControlStudyRuntime
 } from "../src/candidate/arena/research-control-study-runtime";
+import { researchControlCampaignWorkspacePaths } from
+  "../src/candidate/arena/research-control-campaign";
 import {
   createResearchControlStudyServerScheduler,
   openResearchControlStudyServerRuntime
@@ -49,6 +51,8 @@ describe("ResearchControlStudy server runtime", () => {
     let captured:
       Parameters<typeof createResearchControlStudyRuntime>[0] | undefined;
     let factoryCount = 0;
+    const expectedWorkspaceRoot =
+      `${path.resolve(store.root())}-research-control-study-workspaces`;
 
     const opened = await openResearchControlStudyServerRuntime({
       study,
@@ -75,10 +79,7 @@ describe("ResearchControlStudy server runtime", () => {
     expect(captured).toMatchObject({
       store,
       campaign: {
-        workspaceRoot: path.join(
-          store.root(),
-          "research-control-study-workspaces"
-        ),
+        workspaceRoot: expectedWorkspaceRoot,
         sourceCandidateId: study.condition.source.candidate_ref.id,
         expectedTradingPromotionId:
           study.condition.paper_comparator.trading_promotion_ref.id,
@@ -104,6 +105,11 @@ describe("ResearchControlStudy server runtime", () => {
     expect(captured!.campaign.paperEvaluationProtocol).toEqual(expectedProtocol);
     expect("protocol_digest" in
       captured!.campaign.paperEvaluationProtocol!).toBe(false);
+    expect(() => researchControlCampaignWorkspacePaths({
+      workspaceRoot: captured!.campaign.workspaceRoot,
+      campaignId: "server-runtime-campaign",
+      sourceRoot: store.root()
+    })).not.toThrow();
 
     expect(captured!.campaign.agentFactory("fixture")).toBe(adapter);
     expect(factoryCount).toBe(2);
