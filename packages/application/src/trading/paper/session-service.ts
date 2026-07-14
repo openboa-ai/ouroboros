@@ -247,22 +247,6 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     }
 
     const binding = this.gatewayBinding();
-    const systemCodeId = candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
-    const systemCode = await this.options.store.getSystemCode(systemCodeId);
-    if (!systemCode) {
-      throw new PaperTradingSessionError("system_code_not_found", `system code ${systemCodeId} not found`);
-    }
-    let resolvedArtifactDigest: string;
-    try {
-      resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(systemCode);
-    } catch (error) {
-      throw new PaperTradingSessionError(
-        "system_code_artifact_unreadable",
-        error instanceof Error ? error.message : "SystemCode artifact could not be resolved.",
-        { system_code_id: systemCodeId }
-      );
-    }
-
     const runRef = { record_kind: "trading_run", id: input.tradingRunId };
     const [exactCommitment, exactEvaluation, allCommitments, allEvaluations] = await Promise.all([
       this.options.store.getPaperTradingEvaluationCommitment(commitmentId),
@@ -315,10 +299,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
           "Paper session preparation only reuses an exact inert evaluation."
         );
       }
-      const resolved = await this.verifyExisting(candidate, exactEvaluation, binding, {
-        systemCode,
-        resolvedArtifactDigest
-      });
+      const resolved = await this.verifyExisting(candidate, exactEvaluation, binding);
       const verification = resolved.verification;
       if (verification.status !== "verified") {
         const invalidated = await this.persistInvalidation(candidate, exactEvaluation, verification);
@@ -335,6 +316,22 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         verification,
         clock: input.clock
       };
+    }
+
+    const systemCodeId = candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
+    const systemCode = await this.options.store.getSystemCode(systemCodeId);
+    if (!systemCode) {
+      throw new PaperTradingSessionError("system_code_not_found", `system code ${systemCodeId} not found`);
+    }
+    let resolvedArtifactDigest: string;
+    try {
+      resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(systemCode);
+    } catch (error) {
+      throw new PaperTradingSessionError(
+        "system_code_artifact_unreadable",
+        error instanceof Error ? error.message : "SystemCode artifact could not be resolved.",
+        { system_code_id: systemCodeId }
+      );
     }
 
     const commitment = exactCommitment ?? createPaperTradingEvaluationCommitment({

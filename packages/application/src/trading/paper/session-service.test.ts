@@ -41,6 +41,7 @@ import type {
   OuroborosStorePort,
   PreparedPaperTradingComparisonCheckpointSide
 } from "../../ports/store";
+import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-artifact";
 import type { SandboxStartInput } from "../../ports/sandbox";
 import { initialPaperTradingEngineState, paperTradingScoreFromAccount } from "./engine";
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
@@ -277,6 +278,57 @@ describe("PaperTradingSessionService", () => {
     expect(effects).toEqual(effectsBefore);
     await expect(store.listPaperTradingEvaluations()).resolves.toEqual(evaluationsBefore);
     await service.stop(run.trading_run_id);
+  });
+
+  it("invalidates a running evaluation when its artifact becomes unreadable on recovery", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "session-running-unreadable-artifact-recovery",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback",
+      created_at: "2026-07-10T00:00:00.000Z"
+    });
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const service = activatableResearchSessionService(store, effects);
+    const prepared = await service.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: run.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await service.activate(prepared);
+    await service.stopAllSessions();
+    const recovery = activatableResearchSessionService(
+      store,
+      effects,
+      undefined,
+      {
+        async resolveArtifactDigest() {
+          throw new Error("artifact disappeared");
+        }
+      }
+    );
+
+    await expect(recovery.recoverRunningEvaluations()).resolves.toEqual([{
+      tradingRunId: run.trading_run_id,
+      status: "invalidated",
+      reason: "resolved_artifact_digest_mismatch"
+    }]);
+    const invalidated = await store.getLatestPaperTradingEvaluationForTradingRun(
+      run.trading_run_id
+    );
+    expect(invalidated).toMatchObject({
+      status: "invalidated",
+      invalidation_reason: "resolved_artifact_digest_mismatch"
+    });
+    expect(invalidated?.next_observation_at).toBeUndefined();
   });
 
   it.each(["running", "stopped", "failed", "invalidated"] as const)(
@@ -3055,17 +3107,18 @@ function stoppedEvaluationCountingStore(
 function activatableResearchSessionService(
   store: OuroborosStorePort,
   effects: { providerStarts: number; sandboxStarts: number; marketReads: number },
-  runner?: PaperTradingEvaluationRunner
+  runner?: PaperTradingEvaluationRunner,
+  artifactResolver: SystemCodeArtifactResolverPort = {
+    async resolveArtifactDigest() {
+      return "sha256:session-service-fixture";
+    }
+  }
 ): PaperTradingSessionService {
   return new PaperTradingSessionService({
     store,
     runner,
     intervalMs: 60_000,
-    artifactResolver: {
-      async resolveArtifactDigest() {
-        return "sha256:session-service-fixture";
-      }
-    },
+    artifactResolver,
     sandboxAdapters: {
       deterministic_test: {
         async startArtifactInstance(input: SandboxStartInput) {

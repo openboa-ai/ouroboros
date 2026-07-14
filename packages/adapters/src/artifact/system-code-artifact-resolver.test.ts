@@ -82,6 +82,25 @@ describe("FileSystemCodeArtifactResolver", () => {
       .rejects.toThrow("generated_system_code_artifact_closure_invalid");
   });
 
+  it("resolves a generated artifact from the closure root when its entrypoint is nested", async () => {
+    const artifactDir = path.join(tmpDir, "generated-nested");
+    const scriptDir = path.join(artifactDir, "src");
+    const script = path.join(scriptDir, "run.py");
+    await mkdir(scriptDir, { recursive: true });
+    await writeFile(script, "print('nested generated')\n", "utf8");
+    await writeFile(path.join(artifactDir, "manifest.json"), `${JSON.stringify({
+      id: "generated-nested",
+      name: "Nested Generated",
+      entrypoint: ["python3", "src/run.py"],
+      editable_paths: ["src/run.py"],
+      api_contract: "trading_api_provider_v1"
+    }, null, 2)}\n`, "utf8");
+    const resolver = new FileSystemCodeArtifactResolver({ repoRoot: tmpDir });
+
+    await expect(resolver.resolveArtifactDigest(generatedPythonSystemCode(script)))
+      .resolves.toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
   it("rejects generated artifact manifest drift before resolving paper bytes", async () => {
     const artifactDir = path.join(tmpDir, "manifest-drift");
     const script = await writeGeneratedArtifact(artifactDir);
