@@ -8593,6 +8593,7 @@ export class LocalStore {
         promotionId
       );
       if (record === undefined) return undefined;
+      if (isLegacyTradingPromotionRecord(record)) return undefined;
       this.assertPersistedTradingPromotion(record);
       return record;
     } catch (error) {
@@ -8616,9 +8617,10 @@ export class LocalStore {
   private async listTradingPromotions(): Promise<TradingPromotionRecord[]> {
     try {
       return (await this.readCollection<unknown>("trading-promotions"))
-        .map((record) => {
+        .flatMap((record) => {
+          if (isLegacyTradingPromotionRecord(record)) return [];
           this.assertPersistedTradingPromotion(record);
-          return record;
+          return [record];
         });
     } catch (error) {
       if (error instanceof LocalStoreError &&
@@ -21690,6 +21692,23 @@ function isRef(value: unknown, recordKind?: string): value is Ref {
     nonEmpty(candidate.id) &&
     (recordKind === undefined || candidate.record_kind === recordKind)
   );
+}
+
+// Pre-comparison promotions remain readable but carry no current promotion authority.
+function isLegacyTradingPromotionRecord(
+  value: unknown
+): value is Omit<TradingPromotionRecord, "comparison_confirmation"> {
+  return isPlainObject(value) && !("comparison_confirmation" in value) &&
+    value.record_kind === "trading_promotion" && value.version === 1 &&
+    nonEmpty(value.trading_promotion_id) &&
+    value.status === "promoted_for_trading_review" &&
+    isRef(value.candidate_ref, "trading_system_candidate") &&
+    isRef(value.candidate_version_ref, "candidate_version") &&
+    isRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    isIsoTimestamp(value.promoted_at) &&
+    (value.promoted_by_command_ref === undefined ||
+      isRef(value.promoted_by_command_ref)) &&
+    value.authority_status === "not_live";
 }
 
 function isPaperTradingEvaluationCommitmentRecord(

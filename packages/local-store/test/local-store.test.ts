@@ -4259,6 +4259,41 @@ describe("LocalStore", () => {
     )).toHaveLength(1);
   });
 
+  it("treats a pre-comparison TradingPromotion as inactive compatibility data", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const legacyPromotion = {
+      record_kind: "trading_promotion",
+      version: 1,
+      trading_promotion_id: "legacy-trading-promotion",
+      status: "promoted_for_trading_review",
+      candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: "legacy-candidate"
+      },
+      candidate_version_ref: {
+        record_kind: "candidate_version",
+        id: "legacy-candidate-version"
+      },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: "legacy-paper-evaluation"
+      },
+      promoted_at: "2026-07-01T00:00:00.000Z",
+      authority_status: "not_live"
+    } as const;
+    await overwriteComparisonFixtureRecord(
+      store,
+      "trading-promotions",
+      legacyPromotion.trading_promotion_id,
+      legacyPromotion
+    );
+
+    await expect(store.getTradingPromotion(legacyPromotion.trading_promotion_id))
+      .resolves.toBeUndefined();
+    await expect(store.getLatestTradingPromotion()).resolves.toBeUndefined();
+  });
+
   it.each([
     ["campaign digest", (fixture: Awaited<ReturnType<
       typeof storedComparisonBackedTradingPromotionFixture
