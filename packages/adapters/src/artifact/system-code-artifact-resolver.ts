@@ -5,29 +5,44 @@ import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/port
 import { sealSingleFileTradingArtifactClosure } from "@ouroboros/application/trading/research/artifact-closure";
 import type { TradingSystemManifest } from "@ouroboros/application/trading/research/types";
 import type { SystemCodeRecord } from "@ouroboros/domain";
+import { rebaseCandidateArenaArtifactPath } from "./candidate-arena-artifact-path";
 
 export interface FileSystemCodeArtifactResolverOptions {
   repoRoot: string;
+  generatedArtifactRoot?: string;
 }
 
 export class FileSystemCodeArtifactResolver implements SystemCodeArtifactResolverPort {
   private readonly repoRoot: string;
+  private readonly generatedArtifactRoot?: string;
 
   constructor(options: FileSystemCodeArtifactResolverOptions) {
     this.repoRoot = path.resolve(options.repoRoot);
+    this.generatedArtifactRoot = options.generatedArtifactRoot
+      ? path.resolve(options.generatedArtifactRoot)
+      : undefined;
   }
 
   async resolveArtifactDigest(systemCode: SystemCodeRecord): Promise<string> {
     if (systemCode.artifact_kind === "container_image") {
       return immutableContainerDigest(systemCode.image_ref);
     }
-    const artifactPath = path.isAbsolute(systemCode.artifact_path)
-      ? path.normalize(systemCode.artifact_path)
-      : path.resolve(this.repoRoot, systemCode.artifact_path);
-    if (systemCode.capability_policy_ref && [
+    const generatedArtifact = systemCode.capability_policy_ref && [
       "candidate-arena-paper-system-code",
       "candidate-arena-research-source"
-    ].includes(systemCode.capability_policy_ref.id)) {
+    ].includes(systemCode.capability_policy_ref.id);
+    const artifactPath = generatedArtifact && this.generatedArtifactRoot
+      ? rebaseCandidateArenaArtifactPath(
+          systemCode.artifact_path,
+          this.generatedArtifactRoot
+        )
+      : path.isAbsolute(systemCode.artifact_path)
+        ? path.normalize(systemCode.artifact_path)
+        : path.resolve(this.repoRoot, systemCode.artifact_path);
+    if (!artifactPath) {
+      throw new Error("generated_system_code_artifact_closure_invalid");
+    }
+    if (generatedArtifact) {
       return resolveGeneratedArtifactClosureDigest(systemCode, artifactPath);
     }
     const bytes = await readFile(artifactPath);
@@ -36,12 +51,16 @@ export class FileSystemCodeArtifactResolver implements SystemCodeArtifactResolve
 }
 
 async function resolveGeneratedArtifactClosureDigest(
-  systemCode: SystemCodeRecord,
+  systemCode: Extract<SystemCodeRecord, { artifact_kind: "python_file" }>,
   artifactPath: string
 ): Promise<string> {
   try {
     const { root, manifest } = await findGeneratedArtifactClosure(artifactPath);
-    if (path.resolve(root, systemCode.entrypoint[1]!) !== artifactPath) {
+    const persistedEntrypoint = systemCode.entrypoint[1]!;
+    const entrypointMatchesArtifact = path.isAbsolute(persistedEntrypoint)
+      ? path.normalize(persistedEntrypoint) === path.normalize(systemCode.artifact_path)
+      : path.resolve(root, persistedEntrypoint) === artifactPath;
+    if (!entrypointMatchesArtifact) {
       throw new Error("persisted entrypoint does not resolve to the generated artifact");
     }
     const sealed = await sealSingleFileTradingArtifactClosure(root, manifest);

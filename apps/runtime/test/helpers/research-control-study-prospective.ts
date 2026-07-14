@@ -303,8 +303,11 @@ export function createProspectivePaperHarness(input: {
   return {
     tracker,
     createSandboxAdapters,
-    createArtifactResolver: () =>
-      new FileSystemCodeArtifactResolver({ repoRoot: input.repoRoot }),
+    createArtifactResolver: (context) =>
+      new FileSystemCodeArtifactResolver({
+        repoRoot: input.repoRoot,
+        generatedArtifactRoot: path.join(context.root, "candidate-arena-runs")
+      }),
     apiProviderFactory,
     async cleanup() {
       await Promise.allSettled([...providers].map((provider) =>

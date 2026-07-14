@@ -463,7 +463,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         };
       },
       createArtifactResolver(context) {
-        return new FileSystemCodeArtifactResolver({ repoRoot: context.root });
+        return new FileSystemCodeArtifactResolver({
+          repoRoot,
+          generatedArtifactRoot: path.join(context.root, "candidate-arena-runs")
+        });
       },
       intervalMs: paperTradingEvaluationIntervalMs,
       ...(options.paperTradingSandboxIntervalMs === undefined

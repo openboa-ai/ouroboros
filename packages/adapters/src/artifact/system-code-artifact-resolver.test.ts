@@ -101,6 +101,42 @@ describe("FileSystemCodeArtifactResolver", () => {
       .resolves.toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
+  it("resolves a copied generated artifact from the configured arm root", async () => {
+    const sourceArtifactRoot = path.join(tmpDir, "source", "candidate-arena-runs");
+    const armArtifactRoot = path.join(tmpDir, "arm", "candidate-arena-runs");
+    const relativeArtifactDir = path.join("arena-tick-1", "candidate-1");
+    const sourceScript = await writeGeneratedArtifact(
+      path.join(sourceArtifactRoot, relativeArtifactDir),
+      "print('mutable source')\n"
+    );
+    const armScript = await writeGeneratedArtifact(
+      path.join(armArtifactRoot, relativeArtifactDir),
+      "print('frozen arm copy')\n"
+    );
+    const sourceSystemCode = generatedPythonSystemCode(sourceScript);
+    const sourceResolver = new FileSystemCodeArtifactResolver({ repoRoot: tmpDir });
+    const armResolver = new FileSystemCodeArtifactResolver({
+      repoRoot: tmpDir,
+      generatedArtifactRoot: armArtifactRoot
+    });
+    const expectedArmDigest = await sourceResolver.resolveArtifactDigest(
+      generatedPythonSystemCode(armScript)
+    );
+    const sourceDigest = await sourceResolver.resolveArtifactDigest(sourceSystemCode);
+
+    await expect(armResolver.resolveArtifactDigest(sourceSystemCode))
+      .resolves.toBe(expectedArmDigest);
+    expect(expectedArmDigest).not.toBe(sourceDigest);
+    await expect(armResolver.resolveArtifactDigest({
+      ...sourceSystemCode,
+      entrypoint: ["python3", `${sourceScript}.different`]
+    })).rejects.toThrow("generated_system_code_artifact_closure_invalid");
+
+    await rm(path.join(tmpDir, "source"), { recursive: true, force: true });
+    await expect(armResolver.resolveArtifactDigest(sourceSystemCode))
+      .resolves.toBe(expectedArmDigest);
+  });
+
   it("rejects generated artifact manifest drift before resolving paper bytes", async () => {
     const artifactDir = path.join(tmpDir, "manifest-drift");
     const script = await writeGeneratedArtifact(artifactDir);
@@ -120,10 +156,13 @@ describe("FileSystemCodeArtifactResolver", () => {
   });
 });
 
-async function writeGeneratedArtifact(root: string): Promise<string> {
+async function writeGeneratedArtifact(
+  root: string,
+  source = "print('generated')\n"
+): Promise<string> {
   await mkdir(root, { recursive: true });
   const script = path.join(root, "run.py");
-  await writeFile(script, "print('generated')\n", "utf8");
+  await writeFile(script, source, "utf8");
   await writeFile(path.join(root, "manifest.json"), `${JSON.stringify({
     id: "generated",
     name: "Generated",

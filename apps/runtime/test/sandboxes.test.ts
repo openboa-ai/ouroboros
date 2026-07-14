@@ -624,6 +624,63 @@ describe("sandbox API", () => {
     });
   });
 
+  it("executes a copied generated SystemCode from the arm artifact root", async () => {
+    const sourceArtifactRoot = path.join(tmpDir, "source", "candidate-arena-runs");
+    const armArtifactRoot = path.join(tmpDir, "arm", "candidate-arena-runs");
+    const relativeArtifactPath = path.join("arena-tick-1", "candidate-1", "run.py");
+    const sourceArtifactPath = path.join(sourceArtifactRoot, relativeArtifactPath);
+    const armArtifactPath = path.join(armArtifactRoot, relativeArtifactPath);
+    const source = generatedPaperArtifact();
+    await mkdir(path.dirname(sourceArtifactPath), { recursive: true });
+    await mkdir(path.dirname(armArtifactPath), { recursive: true });
+    await writeFile(sourceArtifactPath, source, "utf8");
+    await writeFile(armArtifactPath, source, "utf8");
+    await chmod(armArtifactPath, 0o755);
+    await rm(path.join(tmpDir, "source"), { recursive: true, force: true });
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [armArtifactRoot],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        record_kind: "system_code",
+        version: 1,
+        system_code_id: "system-code-copied-arm-artifact",
+        artifact_kind: "python_file",
+        artifact_path: sourceArtifactPath,
+        artifact_digest: `sha256:${createHash("sha256").update(source).digest("hex")}`,
+        runtime_kind: "python",
+        entrypoint: ["python3", sourceArtifactPath],
+        declared_output_contract: {
+          contract_kind: "opaque_runtime_boundary",
+          declared_output_kinds: ["runtime_log", "runtime_heartbeat", "order_request"]
+        },
+        secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        provenance_refs: [{ record_kind: "trace_placeholder", id: "trace-copied-arm" }],
+        status: "registered",
+        created_at: "2026-05-21T00:00:00.000Z",
+        authority_status: "not_live"
+      },
+      instance_id: "sandbox-copied-arm-artifact",
+      sandbox_name: "ouro-copied-arm-artifact",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-copied-arm-artifact",
+      created_at: "2026-05-21T00:00:00.000Z",
+      test_ticks: 1,
+      interval_ms: 1
+    });
+
+    expect(started.instance.lifecycle_status).toBe("stopped");
+    expect(started.command_evidence[0]).toMatchObject({
+      exit_code: 0,
+      command: expect.arrayContaining(["python3", armArtifactPath])
+    });
+  });
+
   it("executes generated paper SystemCode stored under a relative runtime dev-store root", async () => {
     const runtimeCwd = path.join(tmpDir, "apps/runtime");
     const relativeStoreRoot = path.join(".ouroboros", "dev-store");

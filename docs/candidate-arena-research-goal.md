@@ -180,8 +180,11 @@ allocation, evaluation, ranking, or promotion.
 Each copied arm can be opened as an exact LocalStore with its own paper-session service and composed
 into the existing comparison, qualification, confirmation, and release protocol. Confirmation
 advances one persisted transition at a time and propagates exact wake times; restart stops rather
-than adopts unowned attempts. Multi-host fencing, completed real-market generalization evidence,
-generated or tuned policy parameters, and causal discovery-yield proof remain open.
+than adopts unowned attempts. Persisted generated SystemCode identity remains unchanged across the
+copy, while artifact resolution and sandbox execution rebase its `candidate-arena-runs` suffix into
+the arm-owned artifact root and never fall back to the source Store's absolute path. Multi-host
+fencing, completed real-market generalization evidence, generated or tuned policy parameters, and
+causal discovery-yield proof remain open.
 
 Current partial implementation evidence also covers logical ResearchWorker continuity. One exact
 direction/provider/model/managed-profile identity owns a stable workspace and a new sanitized

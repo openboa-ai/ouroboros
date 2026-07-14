@@ -15,6 +15,8 @@ import type {
   SandboxLifecycleStatus,
   SandboxRecord
 } from "@ouroboros/domain";
+import { rebaseCandidateArenaArtifactPath } from
+  "../artifact/candidate-arena-artifact-path";
 import { safeId } from "../safe-id";
 
 let commandEvidenceSequence = 0;
@@ -1124,7 +1126,14 @@ function resolvePythonScriptPathCandidates(
   allowedArtifactRoots: readonly string[] = []
 ): string[] {
   if (path.isAbsolute(scriptPath)) {
-    return [path.normalize(scriptPath)];
+    const normalized = path.normalize(scriptPath);
+    return [...new Set([
+      ...allowedArtifactRoots.flatMap((root) => {
+        const rebased = rebaseCandidateArenaArtifactPath(normalized, root);
+        return rebased ? [rebased] : [];
+      }),
+      normalized
+    ])];
   }
   const candidates = allowedArtifactRoots.some((root) =>
     !path.isAbsolute(root) && isRelativePathWithin(scriptPath, root)
