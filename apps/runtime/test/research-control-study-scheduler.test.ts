@@ -550,6 +550,44 @@ describe("ResearchControlStudyScheduler", () => {
     });
   });
 
+  it("does not start a supervisor after stop is requested during commitment", async () => {
+    const commitment = deferred<{
+      status: "existing";
+      studyId: string;
+    }>();
+    const supervisor = new ScriptedSupervisor([
+      { status: "caught_up", completedStudyCount: 0 }
+    ]);
+    const scheduler = new ResearchControlStudyScheduler({
+      commitmentCoordinator: {
+        async ensureCommittedStudy() {
+          return commitment.promise;
+        }
+      },
+      supervisor
+    });
+
+    scheduler.start();
+    const stopping = scheduler.stop();
+    commitment.resolve({
+      status: "existing",
+      studyId: "research-control-study-committed"
+    });
+    await stopping;
+
+    expect(supervisor.startCount).toBe(0);
+    expect(supervisor.stopCount).toBe(0);
+    expect(scheduler.status()).toEqual({
+      status: "stopped",
+      cycleCount: 0,
+      completedStudyCount: 0,
+      lastCommitment: {
+        status: "existing",
+        studyId: "research-control-study-committed"
+      }
+    });
+  });
+
   it("halts on supervisor failure without polling again", async () => {
     const supervisor = new ScriptedSupervisor([{
       status: "failed",

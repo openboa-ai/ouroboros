@@ -199,6 +199,10 @@ implements ResearchControlStudySchedulerLifecycle {
             await this.options.commitmentCoordinator.ensureCommittedStudy()
           );
         }
+        if (this.stopRequested) {
+          this.markStopped();
+          return;
+        }
         this.currentStatus = {
           status: "running",
           cycleCount: this.cycleCount,
