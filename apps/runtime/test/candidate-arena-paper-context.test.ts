@@ -2788,12 +2788,7 @@ describe("CandidateArena paper evidence context", () => {
   it("persists research allocation before effects and bounds default concurrency", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
-    const probe: AllocationExecutionProbe = {
-      active: 0,
-      maximumActive: 0,
-      calls: [],
-      visibleAllocationIds: []
-    };
+    const probe = createAllocationExecutionProbe();
 
     const outcome = await runCandidateArenaTick({
       store,
@@ -3738,7 +3733,45 @@ type AllocationExecutionProbe = {
   maximumActive: number;
   calls: string[];
   visibleAllocationIds: Array<string | undefined>;
+  firstPairReady: Promise<void>;
+  releaseFirstPair: () => void;
 };
+
+function createAllocationExecutionProbe(): AllocationExecutionProbe {
+  let releaseFirstPair = () => {};
+  const firstPairReady = new Promise<void>((resolve) => {
+    releaseFirstPair = resolve;
+  });
+  return {
+    active: 0,
+    maximumActive: 0,
+    calls: [],
+    visibleAllocationIds: [],
+    firstPairReady,
+    releaseFirstPair
+  };
+}
+
+async function waitForAllocationProbePair(
+  probe: AllocationExecutionProbe
+): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      probe.firstPairReady,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("allocation_probe_concurrency_timeout")),
+          1_000
+        );
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 class AllocationProbeResearchAgent implements TradingResearchAgentAdapter {
   readonly agent: ManagedResearchAgent = {
@@ -3758,18 +3791,21 @@ class AllocationProbeResearchAgent implements TradingResearchAgentAdapter {
       requested_direction?: string;
     };
     const direction = context.requested_direction ?? "missing";
-    this.probe.active += 1;
-    this.probe.maximumActive = Math.max(
-      this.probe.maximumActive,
-      this.probe.active
-    );
     this.probe.calls.push(`${direction}:${input.iteration}`);
     this.probe.visibleAllocationIds.push(
       (await this.store.listCandidateArenaResearchAllocations())[0]
         ?.candidate_arena_research_allocation_id
     );
+    this.probe.active += 1;
+    this.probe.maximumActive = Math.max(
+      this.probe.maximumActive,
+      this.probe.active
+    );
+    if (this.probe.active === 2) {
+      this.probe.releaseFirstPair();
+    }
     try {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await waitForAllocationProbePair(this.probe);
       const runPath = path.join(input.artifact_dir, "run.py");
       const source = await readFile(runPath, "utf8");
       await writeFile(
