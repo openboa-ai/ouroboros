@@ -98,6 +98,23 @@ describe("PaperTradingCommandService handoff conformance", () => {
     expect(effects.prepare).toHaveBeenCalledOnce();
   });
 
+  it("passes an omitted paper order request as valid to session activation", async () => {
+    const graph = testGraph();
+    const effects = effectSpies();
+    const prepared = { evaluation: {} } as never;
+    effects.prepare.mockResolvedValueOnce(prepared);
+    effects.activate.mockRejectedValueOnce(new Error("activation_observed"));
+    const service = commandService(graph, effects);
+
+    await expect(service.start(graph.candidate.candidate_id, {
+      runtime_environment: "paper"
+    })).rejects.toThrow("activation_observed");
+    expect(effects.activate).toHaveBeenCalledWith(prepared, {
+      paperOrderRequest: "valid",
+      restartFailedEventIds: []
+    });
+  });
+
   it("rejects generated artifact closure drift before paper session effects", async () => {
     const graph = testGraph();
     const effects = effectSpies();

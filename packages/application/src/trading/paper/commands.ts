@@ -88,7 +88,8 @@ export class PaperTradingCommandService {
         }
       };
     }
-    if (!startPaperOrderRequest(body)) {
+    const paperOrderRequest = startPaperOrderRequest(body);
+    if (!paperOrderRequest) {
       return {
         statusCode: 400,
         body: { error: "invalid_paper_order_request", allowed_values: ["valid", "rejected"] }
@@ -161,7 +162,7 @@ export class PaperTradingCommandService {
         };
       }
       await this.sessions.activate(prepared, {
-        paperOrderRequest: body?.paper_order_request,
+        paperOrderRequest,
         restartFailedEventIds: restartFailedPaperTradingEvaluationProcessedEventIds({
           candidate,
           evaluation: existingEvaluation
