@@ -2944,6 +2944,18 @@ export type PaperTradingComparisonActivationNextAction =
   | "recover_cleanup"
   | "checkpoint_handoff_complete";
 
+export interface PaperTradingComparisonWindowClosureEvidence {
+  protocol_version: "paper_trading_comparison_window_closure_v1";
+  requested_at: string;
+  tick_count: number;
+  checkpoint_attempt_count: number;
+  paired_checkpoint_count: number;
+  latest_tick_ref: Ref;
+  latest_tick_observed_at: string;
+  latest_checkpoint_attempt_ref?: Ref;
+  latest_checkpoint_outcome_ref?: Ref;
+}
+
 export interface PaperTradingComparisonActivationOutcomeRecord extends BaseRecord {
   record_kind: "paper_trading_comparison_activation_outcome";
   paper_trading_comparison_activation_outcome_id: string;
@@ -2957,6 +2969,7 @@ export interface PaperTradingComparisonActivationOutcomeRecord extends BaseRecor
   outcome_reason: PaperTradingComparisonActivationOutcomeReason;
   champion_latest_result_ref?: Ref;
   challenger_latest_result_ref?: Ref;
+  window_closure?: PaperTradingComparisonWindowClosureEvidence;
   next_action: PaperTradingComparisonActivationNextAction;
   completed_at: string;
   outcome_digest: string;
@@ -3121,6 +3134,7 @@ export type PaperTradingComparisonQualificationStatus =
 export type PaperTradingComparisonQualificationReason =
   | "comparison_window_not_stopped_cleanly"
   | "comparison_window_not_completed_normally"
+  | "comparison_frozen_window_boundary_not_reached"
   | "comparison_checkpoint_incomplete"
   | "comparison_minimum_observation_count_not_met"
   | "comparison_minimum_elapsed_not_met"
@@ -3724,6 +3738,7 @@ function comparisonPolicyIdentity(value: unknown): boolean {
 const PAPER_TRADING_COMPARISON_QUALIFICATION_REASONS = new Set<string>([
   "comparison_window_not_stopped_cleanly",
   "comparison_window_not_completed_normally",
+  "comparison_frozen_window_boundary_not_reached",
   "comparison_checkpoint_incomplete",
   "comparison_minimum_observation_count_not_met",
   "comparison_minimum_elapsed_not_met",
@@ -5009,6 +5024,55 @@ export function paperTradingComparisonActivationSideResultHasRuntimeShape(
   return true;
 }
 
+export function paperTradingComparisonWindowClosureEvidenceHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonWindowClosureEvidence {
+  if (!comparisonObject(value)) return false;
+  const expectedKeys = [
+    "protocol_version",
+    "requested_at",
+    "tick_count",
+    "checkpoint_attempt_count",
+    "paired_checkpoint_count",
+    "latest_tick_ref",
+    "latest_tick_observed_at",
+    ...(value.latest_checkpoint_attempt_ref === undefined
+      ? []
+      : ["latest_checkpoint_attempt_ref"]),
+    ...(value.latest_checkpoint_outcome_ref === undefined
+      ? []
+      : ["latest_checkpoint_outcome_ref"])
+  ];
+  if (!comparisonHasExactKeys(value, expectedKeys) ||
+    value.protocol_version !== "paper_trading_comparison_window_closure_v1" ||
+    !comparisonIso(value.requested_at) ||
+    !comparisonPositive(value.tick_count) ||
+    !comparisonNonNegative(value.checkpoint_attempt_count) ||
+    !comparisonNonNegative(value.paired_checkpoint_count) ||
+    value.checkpoint_attempt_count > value.tick_count ||
+    value.paired_checkpoint_count > value.checkpoint_attempt_count ||
+    !comparisonRef(value.latest_tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonIso(value.latest_tick_observed_at) ||
+    Date.parse(value.latest_tick_observed_at) > Date.parse(value.requested_at)) {
+    return false;
+  }
+  if (value.checkpoint_attempt_count === 0) {
+    return value.latest_checkpoint_attempt_ref === undefined &&
+      value.latest_checkpoint_outcome_ref === undefined;
+  }
+  if (!comparisonRef(
+    value.latest_checkpoint_attempt_ref,
+    "paper_trading_comparison_checkpoint_attempt"
+  )) return false;
+  if (value.latest_checkpoint_outcome_ref !== undefined &&
+    !comparisonRef(
+      value.latest_checkpoint_outcome_ref,
+      "paper_trading_comparison_checkpoint_outcome"
+    )) return false;
+  return value.paired_checkpoint_count !== value.checkpoint_attempt_count ||
+    value.latest_checkpoint_outcome_ref !== undefined;
+}
+
 export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
   value: unknown
 ): value is PaperTradingComparisonActivationOutcomeRecord {
@@ -5053,6 +5117,10 @@ export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
         value.challenger_latest_result_ref,
         "paper_trading_comparison_activation_side_result"
       )) ||
+    (value.window_closure !== undefined &&
+      !paperTradingComparisonWindowClosureEvidenceHasRuntimeShape(
+        value.window_closure
+      )) ||
     ![
       "capture_first_paired_checkpoint",
       "retry_activation",
@@ -5076,6 +5144,11 @@ export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
   ) {
     return false;
   }
+  if (value.window_closure !== undefined &&
+    (value.outcome_status !== "stopped_cleanly" ||
+      value.outcome_reason !== "handoff_cleanup" ||
+      Date.parse(value.window_closure.requested_at) >
+        Date.parse(value.completed_at))) return false;
   const previousOutcomeValid = value.outcome_sequence === 1
     ? value.previous_outcome_ref === undefined
     : comparisonRef(

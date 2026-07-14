@@ -169,7 +169,7 @@ function ineligiblePair(): PaperTradingComparisonQualificationResult {
   return {
     ...qualifiedPair(),
     qualification_status: "not_qualified",
-    qualification_reasons: ["comparison_minimum_observation_count_not_met"],
+    qualification_reasons: ["comparison_frozen_window_boundary_not_reached"],
     checkpoint_count: 2,
     champion: sideQualification("collecting_evidence"),
     challenger: sideQualification("collecting_evidence")

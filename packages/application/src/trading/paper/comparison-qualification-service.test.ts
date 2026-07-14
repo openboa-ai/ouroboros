@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   CandidateInspectReadModel,
   LedgerReadModel,
@@ -6,6 +7,7 @@ import type {
   PaperTradingObservationRecord,
   Ref
 } from "@ouroboros/domain";
+import { paperTradingComparisonActivationSideResultDigestInput } from "@ouroboros/domain";
 import { describe, expect, it } from "vitest";
 import type { OuroborosStorePort } from "../../ports/store";
 import { paperTradingEvaluationCommitmentDigest } from "./commitment";
@@ -51,6 +53,127 @@ describe("paired paper comparison qualification service", () => {
     expect(harness.calls).toContain("store.getCandidateForTradingRun:champion-run");
     expect(harness.calls).toContain("store.getCandidateForTradingRun:challenger-run");
     expect(harness.graph).toEqual(before);
+  });
+
+  it("rejects a clean stop before the frozen maximum window boundary", async () => {
+    const graph = qualificationGraph();
+    graph.comparison.comparison_policy.maximum_observation_count = 10;
+    graph.comparison.comparison_policy.maximum_elapsed_ms = 600_000;
+    graph.snapshot.facts.maximum_observation_count = 10;
+    graph.snapshot.facts.maximum_elapsed_ms = 600_000;
+    const harness = qualificationHarness(graph);
+
+    await expect(harness.service.assess(validInput())).resolves.toMatchObject({
+      qualification_status: "not_qualified",
+      qualification_reasons: ["comparison_frozen_window_boundary_not_reached"],
+      checkpoint_count: 3,
+      authority_status: "not_verdict"
+    });
+  });
+
+  it("does not qualify a legacy clean stop without sealed closure evidence", async () => {
+    const graph = qualificationGraph();
+    delete graph.activationOutcomes.at(-1)!.window_closure;
+
+    await expect(qualificationHarness(graph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_status: "not_qualified",
+        qualification_reasons: ["comparison_checkpoint_incomplete"]
+      });
+  });
+
+  it("does not let cleanup latency satisfy the frozen elapsed boundary", async () => {
+    const graph = qualificationGraph();
+    graph.comparison.comparison_policy.maximum_observation_count = 10;
+    graph.comparison.comparison_policy.maximum_elapsed_ms = 180_000;
+    graph.snapshot.facts.maximum_observation_count = 10;
+    graph.snapshot.facts.maximum_elapsed_ms = 180_000;
+    graph.activationOutcomes.at(-1)!.completed_at = "2026-07-12T00:03:00.001Z";
+    graph.activationOutcomes.at(-1)!.window_closure.requested_at =
+      "2026-07-12T00:02:59.999Z";
+    for (const result of graph.activationSideResults) {
+      result.effect_started_at = "2026-07-12T00:02:59.999Z";
+      result.effect_completed_at = "2026-07-12T00:03:00.001Z";
+      result.side_result_digest = digestSideResult(result);
+    }
+    const harness = qualificationHarness(graph);
+
+    await expect(harness.service.assess(validInput())).resolves.toMatchObject({
+      qualification_status: "not_qualified",
+      qualification_reasons: ["comparison_frozen_window_boundary_not_reached"]
+    });
+  });
+
+  it("does not let activation queue latency satisfy the frozen elapsed boundary", async () => {
+    const graph = qualificationGraph();
+    graph.comparison.comparison_policy.maximum_observation_count = 10;
+    graph.comparison.comparison_policy.maximum_elapsed_ms = 180_000;
+    graph.snapshot.facts.maximum_observation_count = 10;
+    graph.snapshot.facts.maximum_elapsed_ms = 180_000;
+    graph.activationOutcomes.at(-1)!.window_closure.requested_at =
+      "2026-07-12T00:02:59.999Z";
+    graph.activationOutcomes.at(-1)!.completed_at = "2026-07-12T00:03:00.002Z";
+    for (const result of graph.activationSideResults) {
+      result.effect_started_at = "2026-07-12T00:03:00.001Z";
+      result.effect_completed_at = "2026-07-12T00:03:00.002Z";
+      result.side_result_digest = digestSideResult(result);
+    }
+
+    await expect(qualificationHarness(graph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_status: "not_qualified",
+        qualification_reasons: ["comparison_frozen_window_boundary_not_reached"]
+      });
+  });
+
+  it("rejects a stopped graph with one unpaired captured tick", async () => {
+    const graph = qualificationGraph();
+    graph.comparison.comparison_policy.maximum_observation_count = 10;
+    graph.comparison.comparison_policy.maximum_elapsed_ms = 180_000;
+    graph.snapshot.facts.maximum_observation_count = 10;
+    graph.snapshot.facts.maximum_elapsed_ms = 180_000;
+    graph.snapshot.facts.tick_count = 4;
+    graph.snapshot.facts.latest_tick_observed_at = "2026-07-12T00:02:30.000Z";
+    graph.snapshot.latest_tick_id = "tick-4";
+    graph.activationOutcomes.at(-1)!.window_closure.requested_at =
+      "2026-07-12T00:03:00.001Z";
+    graph.activationOutcomes.at(-1)!.completed_at = "2026-07-12T00:03:00.002Z";
+    for (const result of graph.activationSideResults) {
+      result.effect_started_at = "2026-07-12T00:03:00.001Z";
+      result.effect_completed_at = "2026-07-12T00:03:00.002Z";
+      result.side_result_digest = digestSideResult(result);
+    }
+
+    await expect(qualificationHarness(graph).service.assess(validInput()))
+      .resolves.toMatchObject({
+        qualification_status: "not_qualified",
+        qualification_reasons: ["comparison_checkpoint_incomplete"]
+      });
+  });
+
+  it.each([
+    ["digest drift", (graph: ReturnType<typeof qualificationGraph>) => {
+      graph.activationSideResults[0]!.side_result_digest = "sha256:drift";
+    }],
+    ["failed stop", (graph: ReturnType<typeof qualificationGraph>) => {
+      const result = graph.activationSideResults[0]!;
+      result.outcome = "failed";
+      result.runtime_lifecycle_status = "running";
+      result.evaluation_status = "running";
+      result.stable_error_code = "cleanup_failed";
+      result.side_result_digest = digestSideResult(result);
+    }]
+  ])("fails closed on %s in final handoff stop evidence", async (_label, mutate) => {
+    const graph = qualificationGraph();
+    mutate(graph);
+
+    await expect(qualificationHarness(graph).service.assess(validInput()))
+      .rejects.toMatchObject({
+        code: "paper_trading_comparison_qualification_graph_invalid",
+        details: {
+          cause_code: "paper_trading_comparison_qualification_graph_inconsistent"
+        }
+      });
   });
 
   it("retains the reader cause code when the shared graph gate rejects", async () => {
@@ -154,6 +277,7 @@ describe("paired paper comparison qualification service", () => {
     await expect(harness.service.assess(validInput())).resolves.toMatchObject({
       qualification_status: "not_qualified",
       qualification_reasons: [
+        "comparison_frozen_window_boundary_not_reached",
         "comparison_checkpoint_incomplete",
         "comparison_minimum_observation_count_not_met",
         "champion_not_qualified",
@@ -218,6 +342,11 @@ function qualificationHarness(graph = qualificationGraph()) {
     listPaperTradingComparisonActivationOutcomes: read(
       "listPaperTradingComparisonActivationOutcomes",
       () => graph.activationOutcomes
+    ),
+    getPaperTradingComparisonActivationSideResult: read(
+      "getPaperTradingComparisonActivationSideResult",
+      (id: string) => graph.activationSideResults.find((result) =>
+        result.paper_trading_comparison_activation_side_result_id === id)
     ),
     listPaperTradingComparisonCheckpointAttempts: read(
       "listPaperTradingComparisonCheckpointAttempts",
@@ -339,6 +468,44 @@ function qualificationGraph() {
     attempted_at: "2026-07-12T00:00:00.000Z",
     attempt_digest: "sha256:attempt"
   } as any;
+  const activationSideResults = (["champion", "challenger"] as const).map((role) => {
+    const side = role === "champion" ? champion : challenger;
+    const result = {
+      record_kind: "paper_trading_comparison_activation_side_result",
+      version: 1,
+      paper_trading_comparison_activation_side_result_id: `${role}-stop-result`,
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: activationAttempt.paper_trading_comparison_activation_attempt_id
+      },
+      paper_trading_comparison_activation_attempt_digest:
+        activationAttempt.attempt_digest,
+      paper_trading_comparison_activation_ref: {
+        record_kind: "paper_trading_comparison_activation",
+        id: activation.paper_trading_comparison_activation_id
+      },
+      paper_trading_comparison_activation_digest: activation.activation_digest,
+      role,
+      operation_sequence: 2,
+      operation: "stop",
+      reason: "handoff_cleanup",
+      outcome: "succeeded",
+      trading_run_ref: { record_kind: "trading_run", id: side.runId },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: side.evaluation.paper_trading_evaluation_id
+      },
+      runtime_lifecycle_status: "stopped",
+      evaluation_status: "stopped",
+      provider_request_count: 3,
+      effect_started_at: "2026-07-12T00:03:00.000Z",
+      effect_completed_at: "2026-07-12T00:03:00.000Z",
+      side_result_digest: "",
+      authority_status: "not_live"
+    } as any;
+    result.side_result_digest = digestSideResult(result);
+    return result;
+  });
   const activationOutcomes = [
     {
       paper_trading_comparison_activation_outcome_id: "activation-outcome-running",
@@ -348,7 +515,8 @@ function qualificationGraph() {
       },
       outcome_sequence: 1,
       outcome_status: "both_running",
-      outcome_reason: "started_within_policy"
+      outcome_reason: "started_within_policy",
+      completed_at: "2026-07-12T00:00:00.001Z"
     },
     {
       paper_trading_comparison_activation_outcome_id: "activation-outcome-stopped",
@@ -358,7 +526,36 @@ function qualificationGraph() {
       },
       outcome_sequence: 2,
       outcome_status: "stopped_cleanly",
-      outcome_reason: "handoff_cleanup"
+      outcome_reason: "handoff_cleanup",
+      window_closure: {
+        protocol_version: "paper_trading_comparison_window_closure_v1",
+        requested_at: "2026-07-12T00:03:00.000Z",
+        tick_count: 3,
+        checkpoint_attempt_count: 3,
+        paired_checkpoint_count: 3,
+        latest_tick_ref: {
+          record_kind: "paper_trading_comparison_tick",
+          id: "tick-3"
+        },
+        latest_tick_observed_at: "2026-07-12T00:02:00.000Z",
+        latest_checkpoint_attempt_ref: {
+          record_kind: "paper_trading_comparison_checkpoint_attempt",
+          id: "checkpoint-attempt-3"
+        },
+        latest_checkpoint_outcome_ref: {
+          record_kind: "paper_trading_comparison_checkpoint_outcome",
+          id: "checkpoint-outcome-3"
+        }
+      },
+      champion_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: activationSideResults[0]!.paper_trading_comparison_activation_side_result_id
+      },
+      challenger_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: activationSideResults[1]!.paper_trading_comparison_activation_side_result_id
+      },
+      completed_at: "2026-07-12T00:03:00.000Z"
     }
   ] as any[];
   const checkpointAttempts = [1, 2, 3].map((sequence) => ({
@@ -372,6 +569,7 @@ function qualificationGraph() {
       id: comparison.paper_trading_comparison_commitment_id
     },
     checkpoint_sequence: sequence,
+    attempted_at: `2026-07-12T00:0${sequence - 1}:00.001Z`,
     champion: { role: "champion", trading_run_ref: { record_kind: "trading_run", id: champion.runId } },
     challenger: { role: "challenger", trading_run_ref: { record_kind: "trading_run", id: challenger.runId } }
   })) as any[];
@@ -384,6 +582,7 @@ function qualificationGraph() {
     checkpoint_sequence: index + 1,
     outcome_status: "paired",
     outcome_reason: "paired_checkpoint_recorded",
+    completed_at: `2026-07-12T00:0${index}:00.002Z`,
     champion: {
       role: "champion",
       ledger_chain_refs: index === 0 ? ledgerRefs("champion") : []
@@ -416,11 +615,18 @@ function qualificationGraph() {
     comparison,
     activation,
     activationAttempt,
+    activationSideResults,
     activationOutcomes,
     checkpointAttempts,
     checkpointOutcomes,
     snapshot
   };
+}
+
+function digestSideResult(value: Record<string, unknown>): string {
+  return `sha256:${createHash("sha256")
+    .update(paperTradingComparisonActivationSideResultDigestInput(value as any))
+    .digest("hex")}`;
 }
 
 function qualificationSide(role: "champion" | "challenger", withLedger: boolean) {

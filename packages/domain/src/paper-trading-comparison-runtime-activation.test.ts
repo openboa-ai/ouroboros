@@ -146,6 +146,26 @@ describe("paper comparison runtime activation domain", () => {
       ...outcome,
       completed_at: "2026-07-11T00:00:04.000Z"
     })).not.toBe(paperTradingComparisonActivationOutcomeDigestInput(outcome));
+    const handoff = {
+      ...outcome,
+      outcome_sequence: 2,
+      previous_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: outcome.paper_trading_comparison_activation_outcome_id
+      },
+      outcome_status: "stopped_cleanly" as const,
+      outcome_reason: "handoff_cleanup" as const,
+      window_closure: validWindowClosure(),
+      next_action: "checkpoint_handoff_complete" as const,
+      completed_at: "2026-07-11T00:03:01.000Z"
+    };
+    expect(paperTradingComparisonActivationOutcomeDigestInput({
+      ...handoff,
+      window_closure: {
+        ...handoff.window_closure,
+        requested_at: "2026-07-11T00:03:00.001Z"
+      }
+    })).not.toBe(paperTradingComparisonActivationOutcomeDigestInput(handoff));
   });
 
   it("accepts one complete attempt, side result, outcome, and runtime write context", () => {
@@ -284,6 +304,20 @@ describe("paper comparison runtime activation domain", () => {
       outcome_status: "stopped_cleanly",
       outcome_reason: "handoff_cleanup",
       next_action: "checkpoint_handoff_complete"
+    })],
+    ["checkpoint handoff with sealed window closure", () => ({
+      ...validOutcome(),
+      paper_trading_comparison_activation_outcome_id: "outcome-2",
+      outcome_sequence: 2,
+      previous_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: "outcome-1"
+      },
+      outcome_status: "stopped_cleanly",
+      outcome_reason: "handoff_cleanup",
+      window_closure: validWindowClosure(),
+      next_action: "checkpoint_handoff_complete",
+      completed_at: "2026-07-11T00:03:01.000Z"
     })]
   ])("accepts valid activation outcome combination: %s", (_label, build) => {
     expect(paperTradingComparisonActivationOutcomeHasRuntimeShape(build())).toBe(true);
@@ -298,6 +332,32 @@ describe("paper comparison runtime activation domain", () => {
     ["running duplicate side", (record: any) => { record.challenger_latest_result_ref = record.champion_latest_result_ref; }],
     ["stopped capture action", (record: any) => { record.outcome_status = "stopped_cleanly"; record.outcome_reason = "start_failed"; }],
     ["handoff retry action", (record: any) => { record.outcome_status = "stopped_cleanly"; record.outcome_reason = "handoff_cleanup"; record.next_action = "retry_activation"; }],
+    ["closure on non-handoff", (record: any) => { record.window_closure = validWindowClosure(); }],
+    ["closure after completion", (record: any) => {
+      record.outcome_status = "stopped_cleanly";
+      record.outcome_reason = "handoff_cleanup";
+      record.next_action = "checkpoint_handoff_complete";
+      record.window_closure = validWindowClosure();
+      record.completed_at = "2026-07-11T00:02:59.999Z";
+    }],
+    ["closure with unpaired overflow", (record: any) => {
+      record.outcome_status = "stopped_cleanly";
+      record.outcome_reason = "handoff_cleanup";
+      record.next_action = "checkpoint_handoff_complete";
+      record.window_closure = {
+        ...validWindowClosure(),
+        paired_checkpoint_count: 4
+      };
+      record.completed_at = "2026-07-11T00:03:01.000Z";
+    }],
+    ["complete closure without outcome ref", (record: any) => {
+      record.outcome_status = "stopped_cleanly";
+      record.outcome_reason = "handoff_cleanup";
+      record.next_action = "checkpoint_handoff_complete";
+      record.window_closure = validWindowClosure();
+      delete record.window_closure.latest_checkpoint_outcome_ref;
+      record.completed_at = "2026-07-11T00:03:01.000Z";
+    }],
     ["cleanup retry action", (record: any) => { record.outcome_status = "cleanup_required"; record.outcome_reason = "cleanup_failed"; }],
     ["non-ISO completion", (record: any) => { record.completed_at = "bad"; }],
     ["live authority", (record: any) => { record.live_exchange_authority = true; }]
@@ -427,6 +487,29 @@ function validOutcome(): PaperTradingComparisonActivationOutcomeRecord {
     live_exchange_authority: false,
     order_submission_authority: false,
     authority_status: "not_live"
+  };
+}
+
+function validWindowClosure() {
+  return {
+    protocol_version: "paper_trading_comparison_window_closure_v1" as const,
+    requested_at: "2026-07-11T00:03:00.000Z",
+    tick_count: 3,
+    checkpoint_attempt_count: 3,
+    paired_checkpoint_count: 3,
+    latest_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: "tick-3"
+    },
+    latest_tick_observed_at: "2026-07-11T00:02:00.000Z",
+    latest_checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: "checkpoint-attempt-3"
+    },
+    latest_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: "checkpoint-outcome-3"
+    }
   };
 }
 

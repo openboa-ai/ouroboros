@@ -7,6 +7,7 @@ import type {
   Ref
 } from "@ouroboros/domain";
 import type { PaperTradingComparisonWindowPhase } from "./comparison-window-state";
+import { paperTradingComparisonFrozenWindowBoundaryReached } from "./comparison-window-state";
 
 export type {
   PaperTradingComparisonQualificationReason,
@@ -32,8 +33,12 @@ export interface PaperTradingComparisonQualificationDecisionInput {
   checkpointOutcomesComplete: boolean;
   minimumObservationCount: number;
   minimumElapsedMs: number;
+  intervalMs: number;
+  maximumObservationCount: number;
+  maximumElapsedMs: number;
   activationAttemptedAt: string;
   latestTickObservedAt: string;
+  windowClosureRequestedAt: string;
   champion: PaperTradingComparisonQualificationSideInput;
   challenger: PaperTradingComparisonQualificationSideInput;
 }
@@ -49,6 +54,17 @@ export function decidePaperTradingComparisonQualification(
   }
   if (input.finalOutcomeReason !== "handoff_cleanup") {
     reasons.push("comparison_window_not_completed_normally");
+  }
+  if (!paperTradingComparisonFrozenWindowBoundaryReached({
+    activation_attempted_at: input.activationAttemptedAt,
+    boundary_observed_at: input.windowClosureRequestedAt,
+    interval_ms: input.intervalMs,
+    maximum_observation_count: input.maximumObservationCount,
+    maximum_elapsed_ms: input.maximumElapsedMs,
+    paired_checkpoint_count: input.checkpointCount,
+    latest_tick_observed_at: input.latestTickObservedAt
+  })) {
+    reasons.push("comparison_frozen_window_boundary_not_reached");
   }
   if (!input.checkpointOutcomesComplete) {
     reasons.push("comparison_checkpoint_incomplete");

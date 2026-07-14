@@ -13,8 +13,10 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { decideResearchMemoryControlPairOutcome } from
   "@ouroboros/application/candidate/research-memory-control-study-outcome";
-import type { ResearchMemoryControlPairOutcomePersistenceInput } from
-  "@ouroboros/application/ports/store";
+import type {
+  PaperTradingComparisonWindowClosureGraphSnapshot,
+  ResearchMemoryControlPairOutcomePersistenceInput
+} from "@ouroboros/application/ports/store";
 import {
   comparePrivateReadinessPostures,
   isCompletePrivateReadinessPostureRecord,
@@ -14420,6 +14422,41 @@ export class LocalStore {
         "persisted paper trading comparison checkpoint outcome collection is unreadable or corrupt"
       );
     }
+  }
+
+  async snapshotPaperTradingComparisonWindowClosureGraph(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonWindowClosureGraphSnapshot> {
+    return this.withComparisonEvidenceWriteTransaction(async () => {
+      const activationAttempt = await this.getPaperTradingComparisonActivationAttempt(
+        activationAttemptId
+      );
+      if (!activationAttempt) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_activation_attempt_reload_failed",
+          "paper comparison window closure activation attempt was not found"
+        );
+      }
+      const [activationOutcomes, ticks, checkpointAttempts] = await Promise.all([
+        this.listPaperTradingComparisonActivationOutcomes(activationAttemptId),
+        this.listPaperTradingComparisonTicks(
+          activationAttempt.paper_trading_comparison_commitment_ref.id
+        ),
+        this.listPaperTradingComparisonCheckpointAttempts(activationAttemptId)
+      ]);
+      const checkpointOutcomes = (await Promise.all(checkpointAttempts.map((attempt) =>
+        this.listPaperTradingComparisonCheckpointOutcomes(
+          attempt.paper_trading_comparison_checkpoint_attempt_id
+        )
+      ))).flat();
+      return {
+        activation_attempt: activationAttempt,
+        activation_outcomes: activationOutcomes,
+        ticks,
+        checkpoint_attempts: checkpointAttempts,
+        checkpoint_outcomes: checkpointOutcomes
+      };
+    });
   }
 
   async recordPaperTradingComparisonVerdict(

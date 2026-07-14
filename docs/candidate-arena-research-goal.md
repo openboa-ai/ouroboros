@@ -250,6 +250,16 @@ paths,
 deployed always-on paper execution, automatic promotion, champion runner handoff,
 private/live authority, and the other completion axes remain open.
 
+Frozen paper-comparison qualification now closes one concrete outcome-aware early-stop path. It
+requires maximum observation count, maximum elapsed time, or next-cadence exhaustion according to
+the precommitted policy, using a Store-linearized closure-graph snapshot and digest-covered handoff
+request timestamp rather than timestamp-filtered later reads, activation-queue delay, stop-effect
+start, or cleanup completion. Qualification also requires one paired checkpoint for every captured
+tick and an exact match between the sealed closure and the terminal reader graph; a later evidence
+commit therefore fails closed. A minimum-qualified but early clean stop becomes
+`comparison_ineligible` and cannot reach promotion. This is direct window-integrity evidence, not
+proof against every evaluator side channel or window-selection strategy.
+
 The exact horizon, risk limits, confidence rule, regime coverage, and resource budget belong to a
 versioned evaluation policy. They must be declared before a run rather than chosen after results are
 visible.

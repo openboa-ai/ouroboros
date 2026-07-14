@@ -1,9 +1,12 @@
 # CandidateArena Research Evidence Program Design
 
 **Status:** The listener-capable six-replication protocol run now closes and restarts exactly through
-real arm/session composition with two post-activation checkpoints. All 12 fixture slots are
-pair-qualified negative source verdicts, but the study contains six ties and zero non-tied
-replications. Qualified discovery and the Gate 1 adaptive-effect claim remain unsupported.
+real arm/session composition with three paired checkpoints per source comparison and one required
+adaptive confirmation. All 12 fixture slots are pair-qualified: six adaptive slots close as
+`qualified_improvement`, six static slots close as `source_not_improved`, and the study records six
+non-ties, mean rate difference 1, exact sign-test p-value 0.03125, and the bounded
+`adaptive_effect_supported` fixture conclusion. This calibrates Gate 1 mechanics under one frozen
+deterministic condition; real-market superiority and external validity remain unsupported.
 
 ## Goal
 
@@ -61,17 +64,19 @@ The current `ResearchControlStudy` remains the first causal gate. Before impleme
 
 A listener-capable six-replication fixture study now proves the current provider/session lifecycle
 mechanics can execute in the required environment with candidate-owned post-activation cadence. All
-campaign denominators close; provider starts/closes and sandbox starts/stops are each 24/24; restart
-adds no effects; and promotion and allocation-policy state remain unchanged. The 12 source slots
-close as `source_not_improved`, with empty pair, champion, and challenger qualification reasons.
+campaign denominators close; provider starts/closes and sandbox starts/stops are each 36/36; restart
+adds no effects; and promotion and allocation-policy state remain unchanged. Each adaptive
+mean-reversion source improves under the frozen falling-price fixture and reproduces once in its
+precommitted confirmation slot. Each equal-bound static trend-following source closes as
+`source_not_improved`. Pair, champion, and challenger qualification reasons are empty throughout.
 
-The study has six ties, zero non-ties, mean rate difference 0, exact sign-test p-value 1,
-`insufficient_non_tied_replications`, and no policy decision. This validates a qualified comparison
-denominator and the external cadence/acknowledgement path. It does not establish candidate
-superiority, adaptive-allocation effect, profitability, condition generalization, economic
-durability, deployment readiness, or live authority. Gate 1 therefore next requires a separately
-precommitted candidate/control condition with distinct post-activation behavior that can produce
-qualified non-tied evidence; the current null result must remain unchanged.
+The study has six non-ties, mean rate difference 1, exact sign-test p-value 0.03125,
+`adaptive_effect_supported`, and eligibility only for a separate research-policy decision. This
+validates the qualified comparison denominator, external cadence/acknowledgement path, and the
+protocol's ability to detect a known fixture effect. It does not establish real-market candidate
+superiority, profitability, condition generalization, economic durability, deployment readiness,
+or live authority. Gate 1's earlier all-tie null run remains historical calibration evidence rather
+than the current implementation status.
 
 ## Gate 2: Baseline And Market-Condition Generalization
 
@@ -213,19 +218,20 @@ it leaves the broader adaptive claim unsupported.
    current real arm factory; classify all denominators and lifecycle effects.
 2. **Complete:** prove candidate-owned post-activation decision cadence and pair-qualified terminal
    comparison without synthesizing a Gateway decision.
-3. **Complete with a retained null result:** rerun the precommitted same-baseline fixture study and
-   preserve six qualified ties, zero non-ties, and no policy decision.
-4. Precommit and prove one distinct post-activation candidate/control behavior under a frozen market
-   path so the evaluator can observe a qualified non-tied outcome without outcome-aware redesign.
-5. Commit a new bounded Gate 1 study before effects and adjudicate every planned replication,
-   including negative, tied, failed, and ineligible outcomes.
-6. Freeze a coarse public market-condition classifier and stratified analysis policy only after a
-   credibly adjudicated Gate 1 study has sufficient non-tied evidence.
-7. Implement a separate multi-study generalization record after review of steps 1 to 6.
-8. Run direction assignment, memory, and researcher-baseline factorials as separate bounded
-   protocols.
-9. Consider broader allocation-policy approval only after generalization evidence; keep
-   TradingPromotion and live authority separate.
+3. **Complete as retained calibration:** preserve the earlier six-tie null result without relabeling
+   it as the current effect study.
+4. **Complete for one deterministic fixture:** precommit distinct post-activation adaptive/control
+   behavior and produce qualified non-tied evidence without outcome-aware redesign.
+5. **Complete for the same fixture:** adjudicate all six planned replications, including every
+   adaptive positive and static negative denominator.
+6. **Complete mechanically, evidence open:** freeze a coarse public market-condition classifier and
+   stratified prospective generalization policy; complete eligible real-public blocks remain open.
+7. **Complete mechanically, evidence open:** persist multi-study generalization outcomes and
+   conservative policy decisions without claiming external validity.
+8. **Partial:** memory/no-memory protocol mechanics and fixture controls exist; directed/undirected
+   and managed-agent/non-agent factorials remain open, as does real-provider causal evidence.
+9. **Partial:** an approval-only allocation-policy bridge exists, but broader adoption is not
+   justified; TradingPromotion and live authority remain separate.
 
 ## Non-Goals
 

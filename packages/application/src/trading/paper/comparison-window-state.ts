@@ -44,6 +44,16 @@ export interface PaperTradingComparisonWindowDecision {
   stable_error_code?: string;
 }
 
+export interface PaperTradingComparisonFrozenWindowBoundaryFacts {
+  activation_attempted_at: string;
+  boundary_observed_at: string;
+  interval_ms: number;
+  maximum_observation_count: number;
+  maximum_elapsed_ms: number;
+  paired_checkpoint_count: number;
+  latest_tick_observed_at: string;
+}
+
 export class PaperTradingComparisonWindowStateError extends Error {
   readonly code = "paper_trading_comparison_window_graph_invalid";
 
@@ -147,9 +157,15 @@ export function classifyPaperTradingComparisonWindow(
     facts.latest_tick_observed_at,
     facts.interval_ms
   );
-  if (facts.paired_checkpoint_count >= facts.maximum_observation_count ||
-    Date.parse(facts.now) > Date.parse(windowDeadlineAt) ||
-    Date.parse(nextCadenceAt) > Date.parse(windowDeadlineAt)) {
+  if (paperTradingComparisonFrozenWindowBoundaryReached({
+    activation_attempted_at: facts.activation_attempted_at,
+    boundary_observed_at: facts.now,
+    interval_ms: facts.interval_ms,
+    maximum_observation_count: facts.maximum_observation_count,
+    maximum_elapsed_ms: facts.maximum_elapsed_ms,
+    paired_checkpoint_count: facts.paired_checkpoint_count,
+    latest_tick_observed_at: facts.latest_tick_observed_at
+  })) {
     return decision("checkpoint_committed", "stop_window", false);
   }
   if (!hasBothAcknowledgements(facts)) {
@@ -161,6 +177,28 @@ export function classifyPaperTradingComparisonWindow(
     });
   }
   return decision("checkpoint_committed", "capture_next_tick", false);
+}
+
+export function paperTradingComparisonFrozenWindowBoundaryReached(
+  facts: PaperTradingComparisonFrozenWindowBoundaryFacts
+): boolean {
+  const attemptedAt = Date.parse(facts.activation_attempted_at);
+  const boundaryObservedAt = Date.parse(facts.boundary_observed_at);
+  const latestTickObservedAt = Date.parse(facts.latest_tick_observed_at);
+  if (!Number.isFinite(attemptedAt) || !Number.isFinite(boundaryObservedAt) ||
+    !Number.isFinite(latestTickObservedAt) ||
+    !Number.isInteger(facts.interval_ms) || facts.interval_ms <= 0 ||
+    !Number.isInteger(facts.maximum_observation_count) ||
+    facts.maximum_observation_count <= 0 ||
+    !Number.isInteger(facts.maximum_elapsed_ms) || facts.maximum_elapsed_ms <= 0 ||
+    !Number.isInteger(facts.paired_checkpoint_count) ||
+    facts.paired_checkpoint_count < 0) {
+    return false;
+  }
+  const windowDeadlineAt = attemptedAt + facts.maximum_elapsed_ms;
+  return facts.paired_checkpoint_count >= facts.maximum_observation_count ||
+    boundaryObservedAt > windowDeadlineAt ||
+    latestTickObservedAt + facts.interval_ms > windowDeadlineAt;
 }
 
 function assertValidFacts(facts: PaperTradingComparisonWindowFacts): void {

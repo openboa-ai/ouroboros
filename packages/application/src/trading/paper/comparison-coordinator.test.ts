@@ -741,7 +741,10 @@ describe("PaperTradingComparisonCoordinator", () => {
       checkpoints: windowCheckpoints,
       activations: runtime
     });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({
+      now: Date.parse(driverNow),
+      toFake: ["setTimeout", "clearTimeout", "Date"]
+    });
     const windowRunner = new PaperTradingComparisonWindowRunner({ driver });
     const windowRunnerInput = {
       activationId: authorized.activation.paper_trading_comparison_activation_id,

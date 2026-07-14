@@ -124,6 +124,75 @@ describe("PaperTradingComparisonRuntimeActivationCoordinator", () => {
     )).toBe(false);
   });
 
+  it("binds handoff closure to request-time state before queued cleanup starts", async () => {
+    let current = "2026-07-11T00:00:02.000Z";
+    const closureCaptureGate = deferred<void>();
+    const fixture = runtimeActivationFixture({
+      now: () => current,
+      closureCaptureGate: closureCaptureGate.promise
+    });
+    const running = await fixture.coordinator.start(fixture.input);
+    current = "2026-07-11T00:02:59.999Z";
+
+    const pending = fixture.coordinator.stopOwnedAttempt({
+      attemptId: running.attempt.paper_trading_comparison_activation_attempt_id,
+      reason: "handoff_cleanup"
+    });
+    current = "2026-07-11T00:03:00.001Z";
+    closureCaptureGate.resolve();
+    const stopped = await pending;
+
+    expect(stopped.outcome).toMatchObject({
+      window_closure: {
+        protocol_version: "paper_trading_comparison_window_closure_v1",
+        requested_at: "2026-07-11T00:02:59.999Z",
+        tick_count: 1,
+        checkpoint_attempt_count: 0,
+        paired_checkpoint_count: 0,
+        latest_tick_ref: {
+          record_kind: "paper_trading_comparison_tick",
+          id: fixture.tick.paper_trading_comparison_tick_id
+        },
+        latest_tick_observed_at: fixture.tick.observed_at
+      }
+    });
+    expect(fixture.results.filter((result) => result.operation === "stop")
+      .every((result) => result.effect_started_at ===
+        "2026-07-11T00:03:00.001Z")).toBe(true);
+  });
+
+  it("does not absorb evidence committed after the closure snapshot", async () => {
+    let current = "2026-07-11T00:00:02.000Z";
+    const closureCaptureGate = deferred<void>();
+    const fixture = runtimeActivationFixture({
+      now: () => current,
+      closureCaptureGate: closureCaptureGate.promise
+    });
+    const running = await fixture.coordinator.start(fixture.input);
+    current = "2026-07-11T00:02:59.999Z";
+
+    const pending = fixture.coordinator.stopOwnedAttempt({
+      attemptId: running.attempt.paper_trading_comparison_activation_attempt_id,
+      reason: "handoff_cleanup"
+    });
+    fixture.ticks.push(nextTick(
+      fixture.tick,
+      "paper-comparison-runtime-tick-002",
+      "2026-07-11T00:02:00.000Z"
+    ));
+    current = "2026-07-11T00:03:00.001Z";
+    closureCaptureGate.resolve();
+    const stopped = await pending;
+
+    expect(fixture.store.snapshotPaperTradingComparisonWindowClosureGraph)
+      .toHaveBeenCalledTimes(1);
+    expect(stopped.outcome.window_closure).toMatchObject({
+      requested_at: "2026-07-11T00:02:59.999Z",
+      tick_count: 1,
+      latest_tick_ref: { id: fixture.tick.paper_trading_comparison_tick_id }
+    });
+  });
+
   it("stops both sides and records stopped-cleanly after a one-sided start failure", async () => {
     const fixture = runtimeActivationFixture({ startFailureRole: "challenger" });
 
@@ -501,11 +570,13 @@ interface RuntimeActivationFixtureOptions {
   };
   onBothStarting?: () => void;
   outcomeWriteFailure?: boolean;
+  closureCaptureGate?: Promise<void>;
 }
 
 function runtimeActivationFixture(options: RuntimeActivationFixtureOptions = {}) {
   const source = fixedMarketData();
   const tick = validTick(source);
+  const ticks = [tick];
   const activation = validActivation(tick);
   const now = options.now ?? (() => "2026-07-11T00:00:02.000Z");
   const sandboxBaseTime = now();
@@ -544,12 +615,34 @@ function runtimeActivationFixture(options: RuntimeActivationFixtureOptions = {})
     listPaperTradingComparisonActivations: vi.fn(async () => [structuredClone(activation)]),
     getPaperTradingComparisonTick: vi.fn(async (id: string) =>
       id === tick.paper_trading_comparison_tick_id ? structuredClone(tick) : undefined),
-    listPaperTradingComparisonTicks: vi.fn(async () => [structuredClone(tick)]),
+    listPaperTradingComparisonTicks: vi.fn(async () => structuredClone(ticks)),
     getPaperTradingComparisonActivationAttempt: vi.fn(async (id: string) =>
       structuredClone(attempts.find((record) =>
         record.paper_trading_comparison_activation_attempt_id === id
       ))),
     listPaperTradingComparisonActivationAttempts: vi.fn(async () => structuredClone(attempts)),
+    listPaperTradingComparisonCheckpointAttempts: vi.fn(async () => {
+      await options.closureCaptureGate;
+      return [];
+    }),
+    listPaperTradingComparisonCheckpointOutcomes: vi.fn(async () => []),
+    snapshotPaperTradingComparisonWindowClosureGraph: vi.fn(async (
+      attemptId: string
+    ) => {
+      const snapshot = {
+        activation_attempt: structuredClone(attempts.find((record) =>
+          record.paper_trading_comparison_activation_attempt_id === attemptId
+        )),
+        activation_outcomes: structuredClone(outcomes.filter((record) =>
+          record.paper_trading_comparison_activation_attempt_ref.id === attemptId
+        )),
+        ticks: structuredClone(ticks),
+        checkpoint_attempts: [],
+        checkpoint_outcomes: []
+      };
+      await options.closureCaptureGate;
+      return snapshot;
+    }),
     recordPaperTradingComparisonActivationAttempt: vi.fn(async (
       attempt: PaperTradingComparisonActivationAttemptRecord
     ) => {
@@ -719,6 +812,7 @@ function runtimeActivationFixture(options: RuntimeActivationFixtureOptions = {})
   return {
     source,
     tick,
+    ticks,
     activation,
     attempts,
     results,
@@ -868,6 +962,35 @@ function validTick(source: GatewayMarketDataPort): PaperTradingComparisonTickRec
     observed_at: "2026-07-11T00:00:01.000Z",
     tick_digest: "",
     authority_status: "not_live"
+  };
+  return { ...tick, tick_digest: digest(paperTradingComparisonTickDigestInput(tick)) };
+}
+
+function nextTick(
+  previous: PaperTradingComparisonTickRecord,
+  id: string,
+  observedAt: string
+): PaperTradingComparisonTickRecord {
+  const tick: PaperTradingComparisonTickRecord = {
+    ...structuredClone(previous),
+    paper_trading_comparison_tick_id: id,
+    sequence: previous.sequence + 1,
+    previous_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: previous.paper_trading_comparison_tick_id
+    },
+    previous_tick_digest: previous.tick_digest,
+    market_snapshot: {
+      ...previous.market_snapshot,
+      observed_at: observedAt
+    },
+    public_execution_snapshot: {
+      ...previous.public_execution_snapshot,
+      observed_at: observedAt,
+      stream_marker: `${previous.public_execution_snapshot.stream_marker}-next`
+    },
+    observed_at: observedAt,
+    tick_digest: ""
   };
   return { ...tick, tick_digest: digest(paperTradingComparisonTickDigestInput(tick)) };
 }

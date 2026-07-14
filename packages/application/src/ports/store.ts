@@ -108,6 +108,14 @@ export interface RecordPaperTradingComparisonPairedCheckpointInput {
   challenger: PreparedPaperTradingComparisonCheckpointSide;
 }
 
+export interface PaperTradingComparisonWindowClosureGraphSnapshot {
+  activation_attempt: PaperTradingComparisonActivationAttemptRecord;
+  activation_outcomes: PaperTradingComparisonActivationOutcomeRecord[];
+  ticks: PaperTradingComparisonTickRecord[];
+  checkpoint_attempts: PaperTradingComparisonCheckpointAttemptRecord[];
+  checkpoint_outcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+}
+
 export interface ResearchMemoryControlPairOutcomePersistenceInput {
   outcome: ResearchMemoryControlPairOutcomeRecord;
   source_graph: DecideResearchMemoryControlPairOutcomeInput;
@@ -552,6 +560,10 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonCheckpointOutcomes(
     checkpointAttemptId: string
   ): Promise<PaperTradingComparisonCheckpointOutcomeRecord[]>;
+  /** Linearizes one durable graph read with all paper-comparison evidence writes. */
+  snapshotPaperTradingComparisonWindowClosureGraph(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonWindowClosureGraphSnapshot>;
   previewLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
   recordPaperTradingComparisonPairedCheckpoint(
     input: RecordPaperTradingComparisonPairedCheckpointInput

@@ -7493,6 +7493,34 @@ describe("LocalStore", () => {
       ]);
     });
 
+    it("linearizes a window closure snapshot before a later paired commit", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const input = await validPairedCheckpointTransactionInput(store, fixture, attempt);
+
+      const snapshotPromise = store.snapshotPaperTradingComparisonWindowClosureGraph(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      );
+      const commitPromise = store.recordPaperTradingComparisonPairedCheckpoint(input);
+      const [snapshot, committed] = await Promise.all([
+        snapshotPromise,
+        commitPromise
+      ]);
+
+      expect(snapshot.activation_attempt).toEqual(fixture.attempt);
+      expect(snapshot.checkpoint_attempts).toEqual([attempt]);
+      expect(snapshot.checkpoint_outcomes).toEqual([]);
+      expect(committed).toEqual(input.outcome);
+      await expect(store.snapshotPaperTradingComparisonWindowClosureGraph(
+        fixture.attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toMatchObject({
+        checkpoint_outcomes: [input.outcome]
+      });
+    });
+
     it("keeps exact stop authority open after a paired checkpoint commit", async () => {
       const store = new LocalStore(tmpDir);
       await store.initialize();

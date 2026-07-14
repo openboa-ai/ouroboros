@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import {
+  paperTradingComparisonActivationSideResultDigestInput,
+  paperTradingComparisonActivationSideResultHasRuntimeShape,
   paperTradingComparisonRefsEqual,
+  paperTradingComparisonWindowClosureEvidenceHasRuntimeShape,
   type PaperTradingComparisonActivationAttemptRecord,
   type PaperTradingComparisonActivationOutcomeRecord,
   type PaperTradingComparisonActivationRecord,
+  type PaperTradingComparisonActivationSideResultRecord,
   type PaperTradingComparisonCheckpointAttemptRecord,
   type PaperTradingComparisonCheckpointOutcomeRecord,
   type PaperTradingComparisonCommitmentRecord,
@@ -104,7 +109,8 @@ export class PaperTradingComparisonQualificationService {
       outcomesByAttempt,
       snapshot
     );
-    const [champion, challenger] = await Promise.all([
+    const finalOutcome = activationOutcomes.at(-1)!;
+    const [champion, challenger, windowClosure] = await Promise.all([
       this.loadSide(
         "champion",
         activationAttempt,
@@ -118,9 +124,17 @@ export class PaperTradingComparisonQualificationService {
         comparison,
         checkpointEvidence.expectedRefs.challenger,
         checkpointEvidence.pairedCount
-      )
+      ),
+      loadWindowClosureAssessment({
+        store: this.options.store,
+        activation,
+        activationAttempt,
+        finalOutcome,
+        checkpointAttempts,
+        latestCheckpointOutcome: checkpointEvidence.latestOutcome,
+        snapshot
+      })
     ]);
-    const finalOutcome = activationOutcomes.at(-1)!;
     return decidePaperTradingComparisonQualification({
       comparisonId: comparison.paper_trading_comparison_commitment_id,
       activationId: activation.paper_trading_comparison_activation_id,
@@ -129,12 +143,19 @@ export class PaperTradingComparisonQualificationService {
       windowPhase: classifyPaperTradingComparisonWindow(snapshot.facts).phase,
       finalOutcomeReason: finalOutcome.outcome_reason,
       checkpointCount: checkpointEvidence.pairedCount,
-      checkpointOutcomesComplete: checkpointEvidence.complete,
+      checkpointOutcomesComplete: checkpointEvidence.complete &&
+        windowClosure.stateMatches &&
+        checkpointEvidence.pairedCount === snapshot.facts.tick_count,
       minimumObservationCount:
         comparison.comparison_policy.minimum_observation_count,
       minimumElapsedMs: comparison.comparison_policy.minimum_elapsed_ms,
+      intervalMs: comparison.comparison_policy.interval_ms,
+      maximumObservationCount:
+        comparison.comparison_policy.maximum_observation_count,
+      maximumElapsedMs: comparison.comparison_policy.maximum_elapsed_ms,
       activationAttemptedAt: activationAttempt.attempted_at,
       latestTickObservedAt: snapshot.facts.latest_tick_observed_at,
+      windowClosureRequestedAt: windowClosure.requestedAt,
       champion,
       challenger
     });
@@ -194,6 +215,119 @@ export class PaperTradingComparisonQualificationService {
       ledger: candidate?.ledger
     };
   }
+}
+
+async function loadWindowClosureAssessment(input: {
+  store: OuroborosStorePort;
+  activation: PaperTradingComparisonActivationRecord;
+  activationAttempt: PaperTradingComparisonActivationAttemptRecord;
+  finalOutcome: PaperTradingComparisonActivationOutcomeRecord;
+  checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[];
+  latestCheckpointOutcome?: PaperTradingComparisonCheckpointOutcomeRecord;
+  snapshot: PaperTradingComparisonWindowSnapshot;
+}): Promise<{ requestedAt: string; stateMatches: boolean }> {
+  if (input.finalOutcome.outcome_reason !== "handoff_cleanup") {
+    return {
+      requestedAt: input.activationAttempt.attempted_at,
+      stateMatches: false
+    };
+  }
+  const championRef = input.finalOutcome.champion_latest_result_ref;
+  const challengerRef = input.finalOutcome.challenger_latest_result_ref;
+  if (!championRef || !challengerRef) throw graphInconsistent();
+  const results = await Promise.all([
+    input.store.getPaperTradingComparisonActivationSideResult(championRef.id),
+    input.store.getPaperTradingComparisonActivationSideResult(challengerRef.id)
+  ]);
+  const roles = ["champion", "challenger"] as const;
+  const validatedResults: PaperTradingComparisonActivationSideResultRecord[] = [];
+  for (const [index, role] of roles.entries()) {
+    const result = results[index];
+    if (!paperTradingComparisonActivationSideResultHasRuntimeShape(result) ||
+      result.paper_trading_comparison_activation_side_result_id !==
+        (role === "champion" ? championRef.id : challengerRef.id) ||
+      result.side_result_digest !== canonicalDigest(
+        paperTradingComparisonActivationSideResultDigestInput(result)
+      ) ||
+      result.paper_trading_comparison_activation_attempt_ref.id !==
+        input.activationAttempt.paper_trading_comparison_activation_attempt_id ||
+      result.paper_trading_comparison_activation_attempt_digest !==
+        input.activationAttempt.attempt_digest ||
+      result.paper_trading_comparison_activation_ref.id !==
+        input.activation.paper_trading_comparison_activation_id ||
+      result.paper_trading_comparison_activation_digest !==
+        input.activation.activation_digest ||
+      result.role !== role || result.operation !== "stop" ||
+      result.reason !== "handoff_cleanup" ||
+      (result.outcome !== "succeeded" && result.outcome !== "not_running") ||
+      !paperTradingComparisonRefsEqual(
+        result.trading_run_ref,
+        input.activationAttempt[role].trading_run_ref
+      ) || !paperTradingComparisonRefsEqual(
+        result.paper_trading_evaluation_ref,
+        input.activationAttempt[role].paper_trading_evaluation_ref
+      ) || Date.parse(result.effect_completed_at) >
+        Date.parse(input.finalOutcome.completed_at)) {
+      throw graphInconsistent();
+    }
+    validatedResults.push(result);
+  }
+  const windowClosure = input.finalOutcome.window_closure;
+  if (windowClosure === undefined) {
+    return {
+      requestedAt: input.activationAttempt.attempted_at,
+      stateMatches: false
+    };
+  }
+  if (!paperTradingComparisonWindowClosureEvidenceHasRuntimeShape(windowClosure)) {
+    throw graphInconsistent();
+  }
+  const requestedTime = Date.parse(windowClosure.requested_at);
+  const earliestEffectStart = Math.min(...validatedResults.map((result) =>
+    Date.parse(result.effect_started_at)
+  ));
+  if (requestedTime < Date.parse(input.activationAttempt.attempted_at) ||
+    requestedTime > earliestEffectStart) throw graphInconsistent();
+
+  const latestCheckpointAttempt = input.checkpointAttempts.at(-1);
+  const latestAttemptObservedByRequest = latestCheckpointAttempt === undefined ||
+    exactIsoTimestamp(latestCheckpointAttempt.attempted_at) &&
+      Date.parse(latestCheckpointAttempt.attempted_at) <= requestedTime;
+  const latestOutcomeObservedByRequest = input.latestCheckpointOutcome === undefined ||
+    exactIsoTimestamp(input.latestCheckpointOutcome.completed_at) &&
+      Date.parse(input.latestCheckpointOutcome.completed_at) <= requestedTime;
+  const stateMatches = windowClosure.tick_count === input.snapshot.facts.tick_count &&
+    windowClosure.checkpoint_attempt_count ===
+      input.snapshot.facts.checkpoint_attempt_count &&
+    windowClosure.checkpoint_attempt_count === input.checkpointAttempts.length &&
+    windowClosure.paired_checkpoint_count ===
+      input.snapshot.facts.paired_checkpoint_count &&
+    windowClosure.latest_tick_ref.id === input.snapshot.latest_tick_id &&
+    windowClosure.latest_tick_observed_at ===
+      input.snapshot.facts.latest_tick_observed_at &&
+    optionalRefMatches(
+      windowClosure.latest_checkpoint_attempt_ref,
+      latestCheckpointAttempt?.paper_trading_comparison_checkpoint_attempt_id
+    ) && optionalRefMatches(
+      windowClosure.latest_checkpoint_outcome_ref,
+      input.latestCheckpointOutcome
+        ?.paper_trading_comparison_checkpoint_outcome_id
+    ) && latestAttemptObservedByRequest && latestOutcomeObservedByRequest;
+  return { requestedAt: windowClosure.requested_at, stateMatches };
+}
+
+function optionalRefMatches(value: Ref | undefined, id: string | undefined): boolean {
+  return value === undefined ? id === undefined : value.id === id;
+}
+
+function exactIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
+function canonicalDigest(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
 }
 
 function validateSharedGraph(input: {
@@ -257,10 +391,12 @@ function validateCheckpointOutcomes(
   complete: boolean;
   pairedCount: number;
   expectedRefs: Record<"champion" | "challenger", Ref[]>;
+  latestOutcome?: PaperTradingComparisonCheckpointOutcomeRecord;
 } {
   const expectedRefs = { champion: [] as Ref[], challenger: [] as Ref[] };
   let pairedCount = 0;
   let latestStatus: "open" | "paired" | "incomplete" | undefined;
+  let latestOutcome: PaperTradingComparisonCheckpointOutcomeRecord | undefined;
   for (let index = 0; index < attempts.length; index += 1) {
     const attempt = attempts[index]!;
     const values = valuesByAttempt[index];
@@ -269,6 +405,7 @@ function validateCheckpointOutcomes(
     if (!outcome) {
       if (index !== attempts.length - 1) throw graphInconsistent();
       latestStatus = "open";
+      latestOutcome = undefined;
       continue;
     }
     if (outcome.checkpoint_attempt_ref.id !==
@@ -277,6 +414,7 @@ function validateCheckpointOutcomes(
       throw graphInconsistent();
     }
     latestStatus = outcome.outcome_status;
+    latestOutcome = outcome;
     if (outcome.outcome_status === "paired") {
       if (outcome.champion?.role !== "champion" ||
         outcome.challenger?.role !== "challenger" ||
@@ -302,7 +440,8 @@ function validateCheckpointOutcomes(
   return {
     complete: attempts.length > 0 && pairedCount === attempts.length,
     pairedCount,
-    expectedRefs
+    expectedRefs,
+    ...(latestOutcome ? { latestOutcome } : {})
   };
 }
 

@@ -71,12 +71,51 @@ describe("paired paper comparison qualification decision", () => {
     const countInput = qualificationInput();
     countInput.checkpointCount = 2;
     expect(decidePaperTradingComparisonQualification(countInput).qualification_reasons)
-      .toEqual(["comparison_minimum_observation_count_not_met"]);
+      .toEqual([
+        "comparison_frozen_window_boundary_not_reached",
+        "comparison_minimum_observation_count_not_met"
+      ]);
 
     const elapsedInput = qualificationInput();
     elapsedInput.latestTickObservedAt = "2026-07-12T00:01:59.999Z";
     expect(decidePaperTradingComparisonQualification(elapsedInput).qualification_reasons)
       .toEqual(["comparison_minimum_elapsed_not_met"]);
+  });
+
+  it("requires a frozen maximum window boundary before qualification", () => {
+    const earlyStop = qualificationInput();
+    earlyStop.maximumObservationCount = 10;
+    earlyStop.maximumElapsedMs = 600_000;
+    expect(decidePaperTradingComparisonQualification(earlyStop).qualification_reasons)
+      .toEqual(["comparison_frozen_window_boundary_not_reached"]);
+
+    const maximumCount = qualificationInput();
+    expect(decidePaperTradingComparisonQualification(maximumCount).qualification_reasons)
+      .toEqual([]);
+
+    const maximumElapsed = qualificationInput();
+    maximumElapsed.maximumObservationCount = 10;
+    maximumElapsed.minimumElapsedMs = 60_000;
+    maximumElapsed.maximumElapsedMs = 120_000;
+    maximumElapsed.latestTickObservedAt = "2026-07-12T00:01:00.000Z";
+    maximumElapsed.windowClosureRequestedAt = "2026-07-12T00:02:00.001Z";
+    expect(decidePaperTradingComparisonQualification(maximumElapsed).qualification_reasons)
+      .toEqual([]);
+
+    const cadenceExhausted = qualificationInput();
+    cadenceExhausted.maximumObservationCount = 10;
+    cadenceExhausted.maximumElapsedMs = 150_000;
+    cadenceExhausted.windowClosureRequestedAt = "2026-07-12T00:02:00.000Z";
+    expect(decidePaperTradingComparisonQualification(cadenceExhausted).qualification_reasons)
+      .toEqual([]);
+
+    const cleanupCrossesDeadline = qualificationInput();
+    cleanupCrossesDeadline.maximumObservationCount = 10;
+    cleanupCrossesDeadline.maximumElapsedMs = 180_000;
+    cleanupCrossesDeadline.windowClosureRequestedAt = "2026-07-12T00:02:59.999Z";
+    expect(decidePaperTradingComparisonQualification(cleanupCrossesDeadline)
+      .qualification_reasons)
+      .toEqual(["comparison_frozen_window_boundary_not_reached"]);
   });
 
   it("preserves and gates every canonical side qualification status", () => {
@@ -186,6 +225,7 @@ describe("paired paper comparison qualification decision", () => {
     expect(decidePaperTradingComparisonQualification(input).qualification_reasons).toEqual([
       "comparison_window_not_stopped_cleanly",
       "comparison_window_not_completed_normally",
+      "comparison_frozen_window_boundary_not_reached",
       "comparison_checkpoint_incomplete",
       "comparison_minimum_observation_count_not_met",
       "comparison_minimum_elapsed_not_met",
@@ -221,8 +261,12 @@ function qualificationInput(): PaperTradingComparisonQualificationDecisionInput 
     checkpointOutcomesComplete: true,
     minimumObservationCount: 3,
     minimumElapsedMs: 120_000,
+    intervalMs: 60_000,
+    maximumObservationCount: 3,
+    maximumElapsedMs: 300_000,
     activationAttemptedAt: "2026-07-12T00:00:00.000Z",
     latestTickObservedAt: "2026-07-12T00:02:00.000Z",
+    windowClosureRequestedAt: "2026-07-12T00:03:00.000Z",
     champion: qualificationSide("champion"),
     challenger: qualificationSide("challenger")
   };

@@ -446,6 +446,22 @@ process-resume path is composed for this runner. Qualification, adjudication, Re
 explicit TradingPromotion remain separate boundaries; the promotion command consumes sealed
 evidence without composing, starting, stopping, or adopting this runner.
 
+Qualification independently replays the same score-free maximum-count, maximum-elapsed, and
+next-cadence boundary from the frozen comparison policy. At the clean-handoff API boundary, the
+runtime captures one `window_closure.requested_at` and immediately requests one Store-linearized
+closure-graph snapshot before it enters the activation queue. The snapshot shares the current
+LocalStore evidence-write queue with tick, checkpoint-attempt, checkpoint-outcome, and paired
+checkpoint transactions; it does not reconstruct request-time visibility from record timestamps.
+The final handoff outcome digest binds the snapshot's tick, checkpoint-attempt, paired-checkpoint,
+and latest-reference state. Qualification requires the closure to match the final reader-validated
+graph exactly, requires every captured tick to have one paired checkpoint, and requires the closure
+request to precede both exact stop effects. Evidence committed after the snapshot makes the final
+graph differ and therefore fails closed. Stop-side `effect_started_at` and cleanup completion remain
+lifecycle evidence; neither can extend the research window. Meeting only the minimum
+observation/elapsed gates, or crossing the deadline in queue or cleanup latency, adds
+`comparison_frozen_window_boundary_not_reached`; the verdict is `comparison_ineligible` without
+economic fields and cannot enter confirmation or promotion.
+
 ## Evaluator Information Barrier
 
 The evaluator and its durable logs live outside ResearchWorker and candidate sandboxes.
@@ -668,8 +684,13 @@ The following current surfaces require implementation work before P0 can pass:
   condition-blocked protocol and approval-only policy bridge are implemented; complete real-market
   evidence, multi-host fencing, production learned allocation, and external-validity claims remain
   open.
-- The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
-  provider-identity ineligibility, and approximate or cross-suite behavior clustering is incomplete.
+- One concrete outcome-aware window-selection path is closed: a handoff requested before every
+  frozen maximum boundary cannot qualify, even if activation-queue delay or cleanup finishes after
+  the elapsed deadline. The Store-linearized closure graph is outcome-digest-covered, must equal
+  the terminal reader graph, and must contain one paired checkpoint for every captured tick.
+  The full adversarial matrix for score probing, evaluator side channels, other window
+  cherry-picking paths, provider-identity ineligibility, and approximate or cross-suite behavior
+  clustering remains incomplete.
 
 The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
@@ -751,8 +772,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    provider-request caps; acknowledgement-required sequence-N preparation; recoverable atomic
    paired LocalStore bundles through sequence 3; one-step graph reconstruction; non-overlapping
    process-local scheduling; frozen maximum-bound stopping; symmetric cleanup; conservative restart
-   recovery; read-only clean-stop, canonical-side, shared-minimum, and exact-run Ledger
-   qualification; append-only positive, negative, and ineligible verdicts; deterministic
+   recovery; read-only clean-stop, earliest exact stop-start maximum-bound replay, canonical-side,
+   shared-minimum, and exact-run Ledger qualification; append-only positive, negative, and
+   ineligible verdicts; deterministic
    precommitted confirmation slots; strict sequence, non-overlap, and deadline gates; all-result
    confirmed/not-confirmed aggregation; restart-stable exact replay; campaign-bound pair release;
    deterministic positive, non-reproduced, ineligible, and expired ResearchRelease classification;
