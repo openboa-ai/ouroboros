@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   access,
+  link,
   mkdir,
   readFile,
   readdir,
@@ -421,14 +422,26 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     }
     const file = this.historyFile(terminal.research_control_study_execution_lease_id);
     await mkdir(path.dirname(file), { recursive: true });
+    const prepared = path.join(
+      path.dirname(file),
+      `.lease-history-${process.pid}-${randomUUID()}.tmp`
+    );
     try {
-      await writeFile(file, serialize(terminal), { encoding: "utf8", flag: "wx" });
-    } catch (error) {
-      if (!isErrno(error, "EEXIST")) throw error;
-      const existing = await this.readHistoryFile(file);
-      if (!isDeepStrictEqual(existing, terminal)) {
-        throw corruptState("terminal lease history is immutable");
+      await writeFile(prepared, serialize(terminal), {
+        encoding: "utf8",
+        flag: "wx"
+      });
+      try {
+        await link(prepared, file);
+      } catch (error) {
+        if (!isErrno(error, "EEXIST")) throw error;
+        const existing = await this.readHistoryFile(file);
+        if (!isDeepStrictEqual(existing, terminal)) {
+          throw corruptState("terminal lease history is immutable");
+        }
       }
+    } finally {
+      await rm(prepared, { force: true });
     }
   }
 
