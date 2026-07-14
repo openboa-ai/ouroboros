@@ -501,7 +501,7 @@ export async function runCandidateArenaTick(
   await input.store.recordCandidateArenaTick(candidateArenaTickRecord({
     tickId,
     startedAt,
-    completedAt: new Date().toISOString(),
+    completedAt: candidateArenaNow(input.now),
     sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
     directionResults,

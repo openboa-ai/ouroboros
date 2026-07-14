@@ -588,6 +588,102 @@ describe("ResearchControlStudyScheduler", () => {
     });
   });
 
+  it.each([
+    {
+      stopDuring: "generalization-outcome" as const,
+      expectedEvents: ["generalization-outcome"]
+    },
+    {
+      stopDuring: "generalization-policy-decision" as const,
+      expectedEvents: [
+        "generalization-outcome",
+        "generalization-policy-decision"
+      ]
+    },
+    {
+      stopDuring: "allocation-policy-decision" as const,
+      expectedEvents: [
+        "generalization-outcome",
+        "generalization-policy-decision",
+        "allocation-policy-decision"
+      ]
+    }
+  ])("stops after an in-flight $stopDuring effect", async ({
+    stopDuring,
+    expectedEvents
+  }) => {
+    const effectStarted = deferred<void>();
+    const effectRelease = deferred<void>();
+    const events: string[] = [];
+    let sleepCount = 0;
+    const recordEffect = async (
+      effect: "generalization-outcome" |
+        "generalization-policy-decision" |
+        "allocation-policy-decision"
+    ): Promise<void> => {
+      events.push(effect);
+      if (effect !== stopDuring) return;
+      effectStarted.resolve();
+      await effectRelease.promise;
+    };
+    const supervisor = new ScriptedSupervisor([
+      { status: "caught_up", completedStudyCount: 1 }
+    ]);
+    const scheduler = new ResearchControlStudyScheduler({
+      supervisor,
+      generalizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          await recordEffect("generalization-outcome");
+          return {
+            status: "ensured" as const,
+            outcomeId: "research-generalization-outcome-stop",
+            protocolId: "research-generalization-protocol-stop",
+            inferenceStatus: "generalization_supported" as const
+          };
+        }
+      },
+      generalizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          await recordEffect("generalization-policy-decision");
+          return {
+            status: "ensured" as const,
+            decisionId: "research-generalization-policy-decision-stop",
+            generalizationOutcomeId: "research-generalization-outcome-stop",
+            decisionStatus: "approved" as const
+          };
+        }
+      },
+      policyDecisionCoordinator: {
+        async ensureNextDecision() {
+          await recordEffect("allocation-policy-decision");
+          return {
+            status: "ensured" as const,
+            decisionId: "research-allocation-policy-decision-stop",
+            studyOutcomeId: "research-control-study-outcome-stop",
+            decisionStatus: "approved" as const
+          };
+        }
+      },
+      sleep: async () => {
+        sleepCount += 1;
+      }
+    });
+
+    scheduler.start();
+    await effectStarted.promise;
+    const stopping = scheduler.stop();
+    effectRelease.resolve();
+    await stopping;
+
+    expect(events).toEqual(expectedEvents);
+    expect(sleepCount).toBe(0);
+    expect(scheduler.status()).toMatchObject({
+      status: "stopped",
+      cycleCount: 1,
+      completedStudyCount: 1
+    });
+  });
+
   it("halts on supervisor failure without polling again", async () => {
     const supervisor = new ScriptedSupervisor([{
       status: "failed",

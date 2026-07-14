@@ -66,6 +66,29 @@ afterEach(async () => {
 });
 
 describe("CandidateArena paper evidence context", () => {
+  it("uses the injected clock for both tick boundaries", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const now = "2035-07-12T10:00:00.000Z";
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "injected-clock-boundaries",
+      now: () => now,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.arena.latest_ticks).toContainEqual(expect.objectContaining({
+      tick_id: "injected-clock-boundaries",
+      started_at: now,
+      completed_at: now
+    }));
+  });
+
   it("reuses one stable worker workspace and sanitized notebook across new tick commitments", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

@@ -254,6 +254,10 @@ implements ResearchControlStudySchedulerLifecycle {
             await this.options.generalizationOutcomeCoordinator
               .ensureNextOutcome()
           );
+          if (this.stopRequested) {
+            this.markStopped();
+            return;
+          }
         }
         if (supervisorStatus.status === "caught_up" &&
           this.options.generalizationPolicyDecisionCoordinator) {
@@ -261,12 +265,20 @@ implements ResearchControlStudySchedulerLifecycle {
             await this.options.generalizationPolicyDecisionCoordinator
               .ensureNextDecision()
           );
+          if (this.stopRequested) {
+            this.markStopped();
+            return;
+          }
         }
         if (supervisorStatus.status === "caught_up" &&
           this.options.policyDecisionCoordinator) {
           this.lastPolicyDecision = structuredClone(
             await this.options.policyDecisionCoordinator.ensureNextDecision()
           );
+          if (this.stopRequested) {
+            this.markStopped();
+            return;
+          }
         }
 
         const nextPollAt = this.nextPollAt();
