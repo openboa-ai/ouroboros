@@ -239,6 +239,7 @@ describe("LocalStore ResearchMemoryControlStudy graph", () => {
     await writeFile(path.join(staleActive, "owner.json"), JSON.stringify({
       token: "stale-owner",
       pid: 99_999_999,
+      process_start_marker: "stale-process-incarnation",
       acquired_at: "2026-07-13T04:00:00.000Z"
     }));
     const staleStore = new LocalStore(staleRoot);
@@ -277,6 +278,29 @@ describe("LocalStore ResearchMemoryControlStudy graph", () => {
       code: "research_memory_control_publication_lock_corrupt"
     });
   });
+
+  it("retires a publication lock after its pid is reused", async () => {
+    const reusedRoot = path.join(root, "reused-pid-lock-owner");
+    const reusedActive = path.join(
+      reusedRoot,
+      ".locks",
+      "research-memory-control-publication",
+      "active"
+    );
+    await mkdir(reusedActive, { recursive: true });
+    await writeFile(path.join(reusedActive, "owner.json"), JSON.stringify({
+      token: "reused-pid-owner",
+      pid: process.pid,
+      process_start_marker: "different-process-incarnation",
+      acquired_at: "2026-07-13T04:00:00.000Z"
+    }));
+    const reusedStore = new LocalStore(reusedRoot);
+    await reusedStore.initialize();
+    const study = studyFixture("reused-pid-lock-owner");
+
+    await expect(reusedStore.recordResearchMemoryControlStudy(study))
+      .resolves.toEqual(study);
+  }, 15_000);
 
   it("fails closed when the tick effect collection is corrupt", async () => {
     const study = studyFixture();

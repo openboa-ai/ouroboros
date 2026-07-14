@@ -151,6 +151,9 @@ unchanged-artifact or exact same-suite fingerprint evidence to exact-repeat indi
 interruptions, missing fingerprints, and malformed graphs stay in the denominator. The study
 outcome runs its precommitted exact sign test only after all pairs close. Support is limited to
 reduced exact repetition under those same-baseline conditions and is not paper or policy evidence.
+Same-root memory-study and allocation publication serializes through an atomic lock owner that
+binds token, PID, process-start marker, and acquisition time. Recovery retires an owner only when
+the PID is absent or its process-start marker proves PID reuse; unreadable identity remains held.
 `ResearchGeneralizationProtocol` is committed before any of its six deterministic studies. It
 freezes two slots in each public `long`, `short`, and `flat` condition block, exact worker and
 paper/campaign identities, 24-hour global spacing, a 90-day deadline, source reuse constraints, and

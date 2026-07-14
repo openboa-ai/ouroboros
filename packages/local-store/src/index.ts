@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   access,
   link,
@@ -1465,6 +1466,7 @@ export function createFixtureRecords(): FixtureItem[] {
 interface ResearchMemoryControlPublicationLockOwner {
   token: string;
   pid: number;
+  process_start_marker: string;
   acquired_at: string;
 }
 
@@ -19363,9 +19365,11 @@ export class LocalStore {
     ResearchMemoryControlPublicationLockOwner
   > {
     const paths = this.researchMemoryControlPublicationLockPaths();
+    const processStartMarker = await currentProcessStartMarker();
     const owner: ResearchMemoryControlPublicationLockOwner = {
       token: randomUUID(),
       pid: process.pid,
+      process_start_marker: processStartMarker,
       acquired_at: new Date().toISOString()
     };
     await mkdir(paths.root, { recursive: true });
@@ -19399,7 +19403,7 @@ export class LocalStore {
             "Research memory-control publication lock has no complete owner"
           );
         }
-        if (researchMemoryControlPublicationOwnerIsAlive(current)) {
+        if (await researchMemoryControlPublicationOwnerIsAlive(current)) {
           await waitForResearchMemoryControlPublicationLock();
           continue;
         }
@@ -19493,7 +19497,7 @@ export class LocalStore {
       const owner = await this.readResearchMemoryControlPublicationLockOwner(
         path.join(retiring, "owner.json")
       );
-      if (!owner || !researchMemoryControlPublicationOwnerIsAlive(owner)) {
+      if (!owner || !await researchMemoryControlPublicationOwnerIsAlive(owner)) {
         await rm(retiring, { recursive: true, force: true });
       }
     }
@@ -19518,7 +19522,7 @@ export class LocalStore {
     const expectedMoved = moved !== undefined &&
       sameResearchMemoryControlPublicationLockOwner(moved, expected);
     if (!expectedMoved || (moved &&
-      researchMemoryControlPublicationOwnerIsAlive(moved))) {
+      await researchMemoryControlPublicationOwnerIsAlive(moved))) {
       await this.restoreResearchMemoryControlPublicationTransition(paths);
       return;
     }
@@ -19539,7 +19543,7 @@ export class LocalStore {
         "Research memory-control publication transition has no complete owner"
       );
     }
-    if (researchMemoryControlPublicationOwnerIsAlive(owner)) {
+    if (await researchMemoryControlPublicationOwnerIsAlive(owner)) {
       await this.restoreResearchMemoryControlPublicationTransition(paths);
       return;
     }
@@ -19575,7 +19579,8 @@ export class LocalStore {
     }
     if (!isPlainObject(value) || typeof value.token !== "string" ||
       !value.token || !Number.isSafeInteger(value.pid) ||
-      Number(value.pid) <= 0 || !isIsoTimestamp(value.acquired_at)) {
+      Number(value.pid) <= 0 || !nonEmpty(value.process_start_marker) ||
+      !isIsoTimestamp(value.acquired_at)) {
       throw new LocalStoreError(
         "research_memory_control_publication_lock_corrupt",
         "Research memory-control publication lock owner is corrupt"
@@ -22993,19 +22998,88 @@ function sameResearchMemoryControlPublicationLockOwner(
   right: ResearchMemoryControlPublicationLockOwner
 ): boolean {
   return left.token === right.token && left.pid === right.pid &&
+    left.process_start_marker === right.process_start_marker &&
     left.acquired_at === right.acquired_at;
 }
 
-function researchMemoryControlPublicationOwnerIsAlive(
+async function researchMemoryControlPublicationOwnerIsAlive(
   owner: ResearchMemoryControlPublicationLockOwner
-): boolean {
+): Promise<boolean> {
   try {
     process.kill(owner.pid, 0);
-    return true;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    return code !== "ESRCH";
+    if (code === "ESRCH") return false;
+    return true;
   }
+  const marker = owner.pid === process.pid
+    ? await currentProcessStartMarker()
+    : await processStartMarker(owner.pid);
+  return marker === undefined || marker === owner.process_start_marker;
+}
+
+let currentProcessStartMarkerPromise: Promise<string> | undefined;
+
+function currentProcessStartMarker(): Promise<string> {
+  currentProcessStartMarkerPromise ??= processStartMarker(process.pid).then(
+    (marker) => marker ?? currentProcessFallbackStartMarker()
+  );
+  return currentProcessStartMarkerPromise;
+}
+
+function currentProcessFallbackStartMarker(): string {
+  const startedAtMs = Date.now() - (process.uptime() * 1_000);
+  return `epoch-second:${Math.floor(startedAtMs / 1_000)}`;
+}
+
+async function processStartMarker(pid: number): Promise<string | undefined> {
+  if (process.platform === "linux") {
+    const linuxMarker = await linuxProcessStartMarker(pid);
+    if (linuxMarker) return linuxMarker;
+  }
+  return posixProcessStartMarker(pid);
+}
+
+async function linuxProcessStartMarker(pid: number): Promise<string | undefined> {
+  try {
+    const [statText, bootIdText] = await Promise.all([
+      readFile(`/proc/${pid}/stat`, "utf8"),
+      readFile("/proc/sys/kernel/random/boot_id", "utf8")
+    ]);
+    const commandEnd = statText.lastIndexOf(")");
+    if (commandEnd < 0) return undefined;
+    const fieldsAfterCommand = statText.slice(commandEnd + 1).trim().split(/\s+/);
+    const startTicks = fieldsAfterCommand[19];
+    const bootId = bootIdText.trim();
+    if (!bootId || !startTicks || !/^\d+$/.test(startTicks)) return undefined;
+    return `linux:${bootId}:${startTicks}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function posixProcessStartMarker(pid: number): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        "/bin/ps",
+        ["-p", String(pid), "-o", "lstart="],
+        { encoding: "utf8", timeout: 1_000, maxBuffer: 16_384 },
+        (error, stdout) => {
+          if (error) {
+            resolve(undefined);
+            return;
+          }
+          const startedAtMs = Date.parse(stdout.trim().replace(/\s+/g, " "));
+          resolve(Number.isFinite(startedAtMs)
+            ? `epoch-second:${Math.floor(startedAtMs / 1_000)}`
+            : undefined);
+        }
+      );
+    } catch {
+      resolve(undefined);
+    }
+  });
 }
 
 async function waitForResearchMemoryControlPublicationLock(): Promise<void> {
