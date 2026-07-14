@@ -1,5 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -1706,6 +1708,40 @@ process.exit(17);
     }
   });
 
+  it("uses an OS-selected sidecar port when the legacy deterministic port is occupied", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-dynamic-sidecar-port");
+    const commandLog = path.join(tmpDir, "sbx-dynamic-sidecar-port.log");
+    const artifactDir = path.join(tmpDir, "dynamic-sidecar-port-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, {
+      recursive: true
+    });
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const occupied = await occupyLegacySandboxProviderPort(tmpDir);
+    const provider = await startReplayTradingApiProvider();
+
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-dynamic-sidecar-port",
+        commandTimeoutMs: 5_000
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: occupied.outputDir
+      });
+
+      expect(run.status, run.stderr).toBe("completed");
+    } finally {
+      await provider.close();
+      await closeServer(occupied.server, occupied.sockets);
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
+  });
+
   it("runs replay scenarios through an explicit sbx artifact runner adapter", async () => {
     const fakeSbx = path.join(tmpDir, "sbx");
     const commandLog = path.join(tmpDir, "sbx-commands.log");
@@ -1834,7 +1870,9 @@ process.exit(17);
     expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(9);
     expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(9);
     expect(commands.join("\n")).toContain("replay-provider-runner.py --sidecar-script");
-    expect(commands.join("\n")).toContain("--provider-base-url http://127.0.0.1:");
+    expect(commands.join("\n")).toContain("--ready-file ");
+    expect(commands.join("\n")).toContain("replay-provider-ready.txt");
+    expect(commands.join("\n")).not.toContain("--provider-base-url");
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
@@ -2720,6 +2758,44 @@ await appendFile(
   "utf8"
 );
 `;
+}
+
+async function occupyLegacySandboxProviderPort(root: string): Promise<{
+  outputDir: string;
+  server: Server;
+  sockets: Set<Socket>;
+}> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const outputDir = path.join(root, `legacy-sidecar-port-${attempt}`);
+    const digest = createHash("sha256").update(outputDir).digest("hex").slice(0, 8);
+    const port = 30_000 + (Number.parseInt(digest, 16) % 20_000);
+    const sockets = new Set<Socket>();
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+      socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n");
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      return { outputDir, server, sockets };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
+    }
+  }
+  throw new Error("unable to reserve a legacy sandbox provider port");
+}
+
+async function closeServer(server: Server, sockets: Set<Socket>): Promise<void> {
+  for (const socket of sockets) socket.destroy();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }
 
 function fakeSbxTradingScript(): string {

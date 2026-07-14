@@ -255,7 +255,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         throw new Error("Trading artifact manifest entrypoint is empty");
       }
       const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
-      const providerBaseUrl = sidecar?.baseUrl ?? input.provider.sandbox_base_url ?? input.provider.base_url;
+      const providerBaseUrl = input.provider.sandbox_base_url ??
+        input.provider.base_url;
       const execResult = await this.runSbxCommand(
         sidecar
           ? [
@@ -274,10 +275,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               sidecar.requestsPath,
               "--host",
               "127.0.0.1",
-              "--port",
-              String(sidecar.port),
-              "--provider-base-url",
-              providerBaseUrl,
+              "--ready-file",
+              sidecar.readyPath,
               "--output-events",
               eventsPath,
               "--",
@@ -386,8 +385,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         );
       } else {
         const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
-        const providerBaseUrl = sidecar?.baseUrl ??
-          input.provider.sandbox_base_url ??
+        const providerBaseUrl = input.provider.sandbox_base_url ??
           input.provider.base_url;
         const artifactCommand = [command, ...args, ...paperHandoffProbeArguments(input, paths)];
         execResult = await this.runSbxCommand(
@@ -408,10 +406,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
                 sidecar.requestsPath,
                 "--host",
                 "127.0.0.1",
-                "--port",
-                String(sidecar.port),
-                "--provider-base-url",
-                providerBaseUrl,
+                "--ready-file",
+                sidecar.readyPath,
                 "--paper-handoff",
                 "--",
                 ...artifactCommand
@@ -545,23 +541,25 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     if (this.replayProviderTransport !== "sandbox_sidecar") {
       return undefined;
     }
-    const port = sandboxProviderPort(input.output_dir);
     const outputRoot = safeAbsoluteRoot(sandboxWorkspaceRoot);
     const scriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-sidecar.py"], "sidecar_script");
     const runnerScriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-runner.py"], "sidecar_runner");
     const scenarioPath = resolvePathInsideRoot(outputRoot, ["replay-provider-scenario.json"], "sidecar_scenario");
     const requestsPath = resolvePathInsideRoot(outputRoot, ["provider-requests.jsonl"], "sidecar_requests");
+    const readyPath = resolvePathInsideRoot(outputRoot, ["replay-provider-ready.txt"], "sidecar_ready");
     await writeFile(scriptPath, sandboxReplayProviderScript(), "utf8");
     await writeFile(runnerScriptPath, sandboxReplayProviderRunnerScript(), "utf8");
     await writeFile(scenarioPath, `${JSON.stringify(input.provider.candidate_input, null, 2)}\n`, "utf8");
-    await rm(requestsPath, { force: true });
+    await Promise.all([
+      rm(requestsPath, { force: true }),
+      rm(readyPath, { force: true })
+    ]);
     return {
-      baseUrl: `http://127.0.0.1:${port}`,
-      port,
       scriptPath,
       runnerScriptPath,
       scenarioPath,
-      requestsPath
+      requestsPath,
+      readyPath
     };
   }
 
@@ -577,12 +575,11 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
 }
 
 interface SandboxReplayProviderSidecar {
-  baseUrl: string;
-  port: number;
   scriptPath: string;
   runnerScriptPath: string;
   scenarioPath: string;
   requestsPath: string;
+  readyPath: string;
 }
 
 interface SandboxExecutionWorkspace {
@@ -868,11 +865,6 @@ function safePathSegment(value: string): string {
   return normalized.slice(start, end) || "empty";
 }
 
-function sandboxProviderPort(outputDir: string): number {
-  const digest = createHash("sha256").update(outputDir).digest("hex").slice(0, 8);
-  return 30_000 + (Number.parseInt(digest, 16) % 20_000);
-}
-
 function safeAbsoluteRoot(rootPath: string): string {
   return path.resolve(rootPath);
 }
@@ -910,8 +902,7 @@ def parse_args():
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--requests", required=True)
     parser.add_argument("--host", required=True)
-    parser.add_argument("--port", required=True)
-    parser.add_argument("--provider-base-url", required=True)
+    parser.add_argument("--ready-file", required=True)
     parser.add_argument("--output-events")
     parser.add_argument("--paper-handoff", action="store_true")
     parser.add_argument("artifact_command", nargs=argparse.REMAINDER)
@@ -935,6 +926,19 @@ def wait_for_sidecar(base_url):
     return False
 
 
+def wait_for_ready_file(ready_file):
+    for _ in range(20):
+        try:
+            with open(ready_file, "r", encoding="utf-8") as handle:
+                base_url = handle.read().strip()
+            if base_url:
+                return base_url
+        except FileNotFoundError:
+            pass
+        time.sleep(0.1)
+    return None
+
+
 def main():
     args = parse_args()
     provider = subprocess.Popen([
@@ -947,13 +951,16 @@ def main():
         "--host",
         args.host,
         "--port",
-        args.port,
+        "0",
+        "--ready-file",
+        args.ready_file,
     ])
     try:
-        if not wait_for_sidecar(args.provider_base_url):
+        provider_base_url = wait_for_ready_file(args.ready_file)
+        if not provider_base_url or not wait_for_sidecar(provider_base_url):
             return 70
         env = os.environ.copy()
-        env["TRADING_API_BASE_URL"] = args.provider_base_url
+        env["TRADING_API_BASE_URL"] = provider_base_url
         artifact_command = [*args.artifact_command]
         if not args.paper_handoff:
             if not args.output_events:
@@ -972,6 +979,10 @@ def main():
         except subprocess.TimeoutExpired:
             provider.kill()
             provider.wait()
+        try:
+            os.remove(args.ready_file)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
@@ -983,6 +994,7 @@ function sandboxReplayProviderScript(): string {
   return `#!/usr/bin/env python3
 import argparse
 import json
+import os
 from socketserver import TCPServer
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1111,6 +1123,13 @@ def make_handler(scenario, requests_path):
     return ReplayProviderHandler
 
 
+def publish_ready_file(ready_file, base_url):
+    temporary = f"{ready_file}.{os.getpid()}.tmp"
+    with open(temporary, "x", encoding="utf-8") as handle:
+        handle.write(base_url + "\\n")
+    os.replace(temporary, ready_file)
+
+
 class ReplayThreadingHTTPServer(ThreadingHTTPServer):
     def server_bind(self):
         TCPServer.server_bind(self)
@@ -1124,12 +1143,17 @@ def main():
     parser.add_argument("--requests", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--ready-file", required=True)
     args = parser.parse_args()
 
     with open(args.scenario, "r", encoding="utf-8") as handle:
         scenario = json.load(handle)
 
     server = ReplayThreadingHTTPServer((args.host, args.port), make_handler(scenario, args.requests))
+    publish_ready_file(
+        args.ready_file,
+        f"http://{args.host}:{server.server_port}",
+    )
     server.serve_forever()
 
 
