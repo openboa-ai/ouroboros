@@ -389,6 +389,7 @@ export type LocalStoreErrorCode =
   | "sandbox_reload_failed"
   | "invalid_research_finding_input"
   | "invalid_candidate_admission_decision_input"
+  | "candidate_admission_decision_reload_failed"
   | "invalid_artifact_lineage_input"
   | "invalid_improvement_proposal_input"
   | "invalid_research_orchestration_run_input"
@@ -3107,10 +3108,42 @@ export class LocalStore {
   private async recordCandidateAdmissionDecisionUnlocked(
     decision: CandidateAdmissionDecisionRecord
   ): Promise<CandidateAdmissionDecisionRecord> {
+    await this.assertCandidateAdmissionDecisionIntegrity(
+      decision,
+      "invalid_candidate_admission_decision_input"
+    );
+    const identity = await this.assertExactAuthorityIdentity({
+      collection: "candidate-admission-decisions",
+      id: decision.candidate_admission_decision_id,
+      recordKind: "candidate_admission_decision",
+      next: decision,
+      digestInput: paperTradingComparisonAdmissionDecisionDigestInput
+    });
+    if (identity === "exact_replay") {
+      return decision;
+    }
+    await this.writeJson(
+      this.itemPath(
+        "candidate-admission-decisions",
+        decision.candidate_admission_decision_id
+      ),
+      decision
+    );
+    return decision;
+  }
+
+  private async assertCandidateAdmissionDecisionIntegrity(
+    decision: CandidateAdmissionDecisionRecord,
+    invalidShapeErrorCode:
+      | "invalid_candidate_admission_decision_input"
+      | "candidate_admission_decision_reload_failed"
+  ): Promise<void> {
     if (!isCandidateAdmissionDecisionRecord(decision)) {
       throw new LocalStoreError(
-        "invalid_candidate_admission_decision_input",
-        "invalid candidate admission decision input",
+        invalidShapeErrorCode,
+        invalidShapeErrorCode === "candidate_admission_decision_reload_failed"
+          ? "persisted candidate admission decision has invalid runtime shape"
+          : "invalid candidate admission decision input",
         {
           candidate_admission_decision_id:
             (decision as Partial<CandidateAdmissionDecisionRecord> | undefined)
@@ -3477,33 +3510,22 @@ export class LocalStore {
       behaviorFingerprint,
       matchingBehaviorFingerprint
     });
-    const identity = await this.assertExactAuthorityIdentity({
-      collection: "candidate-admission-decisions",
-      id: decision.candidate_admission_decision_id,
-      recordKind: "candidate_admission_decision",
-      next: decision,
-      digestInput: paperTradingComparisonAdmissionDecisionDigestInput
-    });
-    if (identity === "exact_replay") {
-      return decision;
-    }
-    await this.writeJson(
-      this.itemPath(
-        "candidate-admission-decisions",
-        decision.candidate_admission_decision_id
-      ),
-      decision
-    );
-    return decision;
   }
 
   async getCandidateAdmissionDecision(
     decisionId: string
   ): Promise<CandidateAdmissionDecisionRecord | undefined> {
-    return this.readOptionalRecord<CandidateAdmissionDecisionRecord>(
+    const decision = await this.readOptionalRecord<CandidateAdmissionDecisionRecord>(
       "candidate-admission-decisions",
       decisionId
     );
+    if (decision) {
+      await this.assertCandidateAdmissionDecisionIntegrity(
+        decision,
+        "candidate_admission_decision_reload_failed"
+      );
+    }
+    return decision;
   }
 
   async recordPaperTradingHandoffConformance(
@@ -3638,11 +3660,15 @@ export class LocalStore {
   }
 
   async listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]> {
-    return (
-      await this.readCollection<CandidateAdmissionDecisionRecord>(
-        "candidate-admission-decisions"
-      )
-    ).sort(compareCandidateAdmissionDecisions);
+    const decisions = await this.readCollection<CandidateAdmissionDecisionRecord>(
+      "candidate-admission-decisions"
+    );
+    await Promise.all(decisions.map((decision) =>
+      this.assertCandidateAdmissionDecisionIntegrity(
+        decision,
+        "candidate_admission_decision_reload_failed"
+      )));
+    return decisions.sort(compareCandidateAdmissionDecisions);
   }
 
   async recordResearchFinding(finding: ResearchFindingRecord): Promise<ResearchFindingRecord> {
@@ -7907,6 +7933,8 @@ export class LocalStore {
     const admittedByFingerprintId = new Map(priorAdmissions
       .filter((admission) =>
         isCandidateAdmissionDecisionRecord(admission) &&
+        admission.candidate_admission_decision_id !==
+          input.decision.candidate_admission_decision_id &&
         admission.status === "admitted" &&
         admission.research_behavior_fingerprint_ref
       )

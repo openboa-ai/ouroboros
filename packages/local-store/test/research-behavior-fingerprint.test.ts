@@ -133,6 +133,21 @@ describe("LocalStore ResearchBehaviorFingerprint", () => {
     });
   });
 
+  it("reloads a distinct admission without treating itself as a prior duplicate", async () => {
+    const graph = await persistedAdmissionGraph(store, "reload-distinct", 0);
+    await store.recordResearchBehaviorFingerprint(graph.fingerprint);
+    const admission = behaviorAdmission(graph, "distinct");
+    await store.recordCandidateAdmissionDecision(admission);
+
+    const restarted = new LocalStore(storeRoot);
+    await expect(restarted.getCandidateAdmissionDecision(
+      admission.candidate_admission_decision_id
+    )).resolves.toEqual(admission);
+    await expect(restarted.listCandidateAdmissionDecisions()).resolves.toEqual([
+      admission
+    ]);
+  });
+
   it("uses only an earlier admitted exact match as the duplicate baseline", async () => {
     const orphan = await persistedAdmissionGraph(store, "orphan", 0);
     await store.recordResearchBehaviorFingerprint(orphan.fingerprint);

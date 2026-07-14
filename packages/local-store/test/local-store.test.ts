@@ -2786,6 +2786,70 @@ describe("LocalStore", () => {
     ]);
   });
 
+  it.each(["get", "list"] as const)(
+    "fails closed when %s reloads a malformed persisted candidate admission decision",
+    async (readPath) => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const records = validCandidateAdmissionRecords();
+
+      await store.recordSystemCode(validCandidateAdmissionSourceSystemCode());
+      await store.recordExperimentRun(records.experiment);
+      await store.recordTradingEvaluationResult(records.evaluation);
+      await store.recordResearchFinding(records.finding);
+      await store.recordCandidateAdmissionDecision(records.admission);
+      await writeStoreJson(
+        { ...records.admission, authority_status: "live" },
+        "candidate-admission-decisions",
+        "items",
+        `${records.admission.candidate_admission_decision_id}.json`
+      );
+
+      const reloadedStore = new LocalStore(tmpDir);
+      const read = readPath === "get"
+        ? reloadedStore.getCandidateAdmissionDecision(
+            records.admission.candidate_admission_decision_id
+          )
+        : reloadedStore.listCandidateAdmissionDecisions();
+      await expectStoreError(read, "candidate_admission_decision_reload_failed");
+    }
+  );
+
+  it.each(["get", "list"] as const)(
+    "fails closed when %s reloads a candidate admission with a dangling reference",
+    async (readPath) => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const records = validCandidateAdmissionRecords();
+
+      await store.recordSystemCode(validCandidateAdmissionSourceSystemCode());
+      await store.recordExperimentRun(records.experiment);
+      await store.recordTradingEvaluationResult(records.evaluation);
+      await store.recordResearchFinding(records.finding);
+      await store.recordCandidateAdmissionDecision(records.admission);
+      await writeStoreJson(
+        {
+          ...records.admission,
+          research_finding_ref: {
+            record_kind: "research_finding",
+            id: "missing-research-finding"
+          }
+        },
+        "candidate-admission-decisions",
+        "items",
+        `${records.admission.candidate_admission_decision_id}.json`
+      );
+
+      const reloadedStore = new LocalStore(tmpDir);
+      const read = readPath === "get"
+        ? reloadedStore.getCandidateAdmissionDecision(
+            records.admission.candidate_admission_decision_id
+          )
+        : reloadedStore.listCandidateAdmissionDecisions();
+      await expectStoreError(read, "candidate_admission_reference_not_found");
+    }
+  );
+
   it("rejects inconsistent or dangling candidate admission decisions", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
