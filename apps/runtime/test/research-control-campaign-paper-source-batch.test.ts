@@ -154,6 +154,38 @@ describe("ResearchControlCampaign paper source batch coordinator", () => {
     );
   });
 
+  it("does not backfill a missing peer tick after the source deadline", async () => {
+    const fixture = sourceBatchFixture({
+      now: "2026-07-12T10:00:01.001Z",
+      sourceReadsFail: true
+    });
+    await fixture.coordinator.prepare({
+      campaign: fixture.campaign,
+      schedule: fixture.schedule,
+      sequence: 1
+    });
+    const persisted = tickRecord(
+      fixture.armStores[0]!.commitment!,
+      "2026-07-12T10:00:00.500Z"
+    );
+    fixture.armStores[0]!.ticks.push(persisted);
+
+    const batch = await fixture.coordinator.captureStartBatch({
+      campaign: fixture.campaign,
+      schedule: fixture.schedule,
+      sequence: 1
+    });
+
+    expect(batch).toMatchObject({
+      batch_status: "ineligible",
+      ineligible_reason: "first_tick_incomplete"
+    });
+    expect(fixture.operations).not.toContain("source:market");
+    expect(fixture.operations).not.toContain("source:execution");
+    expect(fixture.armStores[0]!.ticks).toEqual([persisted]);
+    expect(fixture.armStores[1]!.ticks).toEqual([]);
+  });
+
   it("closes a no-tick batch after deadline without reading market data", async () => {
     const fixture = sourceBatchFixture({
       now: "2026-07-12T10:00:01.001Z",

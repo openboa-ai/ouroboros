@@ -237,6 +237,8 @@ export class ResearchControlCampaignPaperSourceBatchCoordinator {
       context.slots
     );
     const evaluatedAt = exactTime(this.now());
+    const sourceStartWindowOpen = Date.parse(evaluatedAt) <=
+      Date.parse(sourceStartDeadlineAt);
     const persistedTicks = sources.flatMap((source) =>
       source.firstTick ? [source.firstTick] : []
     );
@@ -259,11 +261,11 @@ export class ResearchControlCampaignPaperSourceBatchCoordinator {
           );
         }
       }
-    } else if (Date.parse(evaluatedAt) <= Date.parse(sourceStartDeadlineAt)) {
+    } else if (sourceStartWindowOpen) {
       frozen = await this.captureFrozenMarketEvidence(evaluatedAt);
     }
 
-    if (frozen) {
+    if (frozen && sourceStartWindowOpen) {
       const missing = sources.filter((source) => !source.firstTick);
       const captured = await Promise.all(missing.map(async (source) => {
         const arm = this.options.arms[source.armKind];
