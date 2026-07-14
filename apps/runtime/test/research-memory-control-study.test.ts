@@ -566,6 +566,43 @@ describe("ResearchMemoryControlStudy runtime", () => {
     });
   });
 
+  it.each([
+    RESEARCH_AGENT,
+    {
+      id: "managed-agent-fixture-trading-research",
+      provider: "fixture" as const,
+      model: "scripted-fixture",
+      permission_policy: "fixture_only" as const
+    }
+  ])(
+    "rejects a Claude runtime attributed to a $provider identity",
+    async (researchAgentIdentity) => {
+      const coordinator = await initializedStore(
+        `coordinator-claude-${researchAgentIdentity.provider}-mismatch`
+      );
+      const input = runtimeInput({
+        coordinator,
+        workspaceRoot: path.join(
+          temporaryRoot,
+          `workspace-claude-${researchAgentIdentity.provider}-mismatch`
+        ),
+        idempotencyKey:
+          `memory-control-runtime-claude-${researchAgentIdentity.provider}-mismatch-001`,
+        probe: memorySensitiveProbe()
+      });
+
+      await expect(runResearchMemoryControlStudy({
+        ...input,
+        researchAgent: "claude_code" as never,
+        researchAgentIdentity
+      })).rejects.toMatchObject({
+        code: "research_memory_control_study_agent_identity_mismatch"
+      });
+      await expect(coordinator.listResearchMemoryControlStudies())
+        .resolves.toEqual([]);
+    }
+  );
+
   it("fails closed when a study-only arm root mutates before resume", async () => {
     const coordinator = await initializedStore("coordinator-arm-drift");
     const workspaceRoot = path.join(temporaryRoot, "workspace-arm-drift");

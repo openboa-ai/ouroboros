@@ -1005,8 +1005,7 @@ function assertRuntimeAgentIdentity(
   identity: ManagedResearchAgent & { model: string }
 ): void {
   assertAgentIdentity(identity);
-  if ((runtimeAgent === "codex" && identity.provider !== "codex") ||
-    (runtimeAgent === "fixture" && identity.provider !== "fixture")) {
+  if (runtimeAgent !== identity.provider) {
     throw runtimeError(
       "research_memory_control_study_agent_identity_mismatch",
       "ResearchMemoryControlStudy runtime agent differs from frozen identity."
