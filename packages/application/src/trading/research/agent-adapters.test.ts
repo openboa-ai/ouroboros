@@ -112,7 +112,8 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
     await chmod(executablePath, 0o755);
     const adapter = new CodexTradingResearchAgentAdapter({
       command: executablePath,
-      timeout_ms: 75,
+      // Leave enough startup time for the fixture to spawn its descendant under full-suite load.
+      timeout_ms: 1_000,
       env: {
         TEST_PID_PATH: pidPath,
         TEST_ORPHAN_MARKER_PATH: orphanMarkerPath
@@ -133,7 +134,7 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
         failure_reason: "codex_timed_out"
       });
       pids = JSON.parse(await readFile(pidPath, "utf8")) as number[];
-      await delay(400);
+      await delay(2_500);
       await expect(access(orphanMarkerPath)).rejects.toMatchObject({ code: "ENOENT" });
       for (const pid of pids) {
         expect(processExists(pid)).toBe(false);
@@ -182,7 +183,7 @@ const { spawn } = require("node:child_process");
 const descendant = spawn(process.execPath, ["-e", [
   "const fs = require('node:fs');",
   "process.on('SIGTERM', () => {});",
-  "setTimeout(() => fs.writeFileSync(process.env.TEST_ORPHAN_MARKER_PATH, 'orphan'), 300);",
+  "setTimeout(() => fs.writeFileSync(process.env.TEST_ORPHAN_MARKER_PATH, 'orphan'), 2000);",
   "setInterval(() => {}, 1000);"
 ].join("")], { env: process.env, stdio: "ignore" });
 fs.writeFileSync(process.env.TEST_PID_PATH, JSON.stringify([process.pid, descendant.pid]));
