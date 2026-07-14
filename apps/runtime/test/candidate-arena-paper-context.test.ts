@@ -1776,6 +1776,65 @@ describe("CandidateArena paper evidence context", () => {
     ]);
   });
 
+  it.each([
+    [
+      "handoff payload smuggling",
+      paperHandoffPayloadSmugglingArtifactRunner,
+      "provider_protocol_violation"
+    ],
+    [
+      "handoff hidden evaluator output",
+      paperHandoffHiddenFieldArtifactRunner,
+      "hidden_evaluator_field"
+    ]
+  ] as const)("quarantines %s as causal anti-hacking memory", async (
+    _label,
+    artifactRunnerFactory,
+    conformanceReason
+  ) => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let materializationCount = 0;
+    const materializeCandidate = store.materializeCandidate.bind(store);
+    store.materializeCandidate = async (input) => {
+      materializationCount += 1;
+      return materializeCandidate(input);
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: artifactRunnerFactory(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(materializationCount).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        status: "quarantined",
+        admission_reason: "paper_handoff_conformance_failed",
+        paper_handoff_conformance: expect.objectContaining({
+          status: "rejected",
+          reason: conformanceReason
+        })
+      })
+    ]);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "anti_hacking_case",
+        summary: expect.stringContaining(
+          `PaperTradingHandoffConformance (${conformanceReason})`
+        )
+      })
+    ]);
+    expect((await store.listCandidates()).filter((candidate) =>
+      candidate.status === "materialized"
+    )).toEqual([]);
+  });
+
   it("records paper handoff infrastructure failure as a failed direction without strategy evidence", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -4583,6 +4642,44 @@ function paperRejectedReplayArtifactRunner(): TradingArtifactRunner {
           JSON.parse(line).event !== "runtime_heartbeat"
         )
       };
+    }
+  };
+}
+
+function paperHandoffPayloadSmugglingArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    ...runner,
+    async probePaperHandoff(input) {
+      const probe = passingPaperHandoffProbe(input);
+      const validationRequest = probe.provider_requests.find((request) =>
+        request.method === "POST" && request.path === "/orders/validate"
+      );
+      if (!validationRequest || !validationRequest.body ||
+        typeof validationRequest.body !== "object" ||
+        Array.isArray(validationRequest.body)) {
+        throw new Error("paper handoff validation request fixture missing");
+      }
+      validationRequest.body = {
+        ...validationRequest.body,
+        undeclared_payload: true
+      };
+      return probe;
+    }
+  };
+}
+
+function paperHandoffHiddenFieldArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    ...runner,
+    async probePaperHandoff(input) {
+      const probe = passingPaperHandoffProbe(input);
+      probe.output_lines.push(JSON.stringify({
+        event: "diagnostic",
+        expectedDirection: "long"
+      }));
+      return probe;
     }
   };
 }

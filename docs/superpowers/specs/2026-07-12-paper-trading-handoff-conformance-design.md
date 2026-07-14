@@ -1,6 +1,7 @@
 # Paper Trading Handoff Conformance Design
 
-**Status:** Implemented and verified as external paper handoff conformance
+**Status:** Implemented and verified as external paper handoff conformance, including strict
+provider-request envelope validation and causal anti-hacking Finding attribution
 
 ## Goal
 
@@ -119,6 +120,15 @@ no-order decision does call validation, that request must still match the decisi
 declared provider routes are allowed. The candidate must emit exactly one accepted paper decision
 event, at least one matching heartbeat, and one matching bounded stop event. The external parser
 reuses the production `paper_trading_event_protocol_v1` event contract.
+
+Route allowlisting alone is insufficient. Candidate-authored GET bodies are rejected, and an
+`/orders/validate` body may contain only declared order-bearing fields plus optional trace rationale
+with valid primitive shapes before its order identity can match an emitted decision. Field-name
+checks normalize casing and separators,
+so camelCase, snake_case, kebab-case, and punctuation variants of evaluator-only or candidate-score
+fields share one classification. Private/live payload detection precedes generic schema rejection
+so the durable reason remains authority-specific. Server-owned provider request logs, not candidate
+claims, supply this transcript.
 
 Host and `sbx` runners return the same result shape. Runner availability, sandbox creation, and
 provider startup failures throw an infrastructure-classified error. Candidate exit, timeout after
@@ -271,3 +281,8 @@ This frontier is complete only when current code and tests prove:
 After conformance is verified, reassess evaluator side-channel coverage versus durable long-lived
 ResearchWorker workspace/recovery ownership. Select the gap that most directly blocks bounded,
 recoverable autonomous frontier discovery from current evidence.
+
+The strict transcript closes request-body smuggling and field-name aliasing only. It does not prove
+that a host or sandbox process cannot make an unobserved direct egress request, prevent adaptive
+cross-commitment probing, close every covert output channel, or establish full P0 reward-hacking
+resistance.

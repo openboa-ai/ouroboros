@@ -218,6 +218,15 @@ count, generic terminal status/reason, and authority-free phase cost counts. Gen
 paper start revalidates the graph before effects. Rejected sealed evidence remains causal memory;
 infrastructure failure remains platform-attributed without fabricated terminal evidence.
 
+Current P0 hardening also validates the provider transcript as an exact external protocol rather
+than trusting a declared route alone. Candidate-authored GET bodies and undeclared order-validation
+fields fail closed; evaluator-only and self-reported fields are normalized across casing and
+separator variants; private/live payloads preserve their authority-specific rejection; and a
+handoff-only adversarial rejection creates no candidate while persisting as an `anti_hacking_case`
+Finding attributed to `PaperTradingHandoffConformance`. This closes request-envelope smuggling and
+field-name aliasing, not unobserved direct process egress, cross-commitment probing, covert output,
+or the full adversarial matrix.
+
 Current partial implementation evidence also covers exact development behavior identity. One
 `ResearchBehaviorFingerprint` binds the frozen SystemCode and commitment to sorted normalized
 effective orders over the complete canonical development suite. Only a prior admitted exact match

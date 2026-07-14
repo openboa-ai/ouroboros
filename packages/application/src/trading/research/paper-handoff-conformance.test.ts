@@ -114,11 +114,26 @@ describe("paper handoff conformance evaluator", () => {
     ["validation body mismatch", "provider_protocol_violation", (probe: any) => {
       probe.provider_requests[2].body.side = "sell";
     }],
+    ["validation payload smuggling", "provider_protocol_violation", (probe: any) => {
+      probe.provider_requests[2].body.undeclared_payload = true;
+    }],
+    ["provider read payload smuggling", "provider_protocol_violation", (probe: any) => {
+      probe.provider_requests[0].body = { undeclared_payload: true };
+    }],
     ["hidden evaluator field", "hidden_evaluator_field", (probe: any) => {
       probe.output_lines.push(JSON.stringify({ event: "diagnostic", expected_direction: "long" }));
     }],
+    ["aliased hidden evaluator field", "hidden_evaluator_field", (probe: any) => {
+      probe.output_lines.push(JSON.stringify({ event: "diagnostic", expectedDirection: "long" }));
+    }],
     ["candidate profit claim", "candidate_self_report", (probe: any) => {
       probe.output_lines.push(JSON.stringify({ event: "diagnostic", net_revenue_usdt: 999 }));
+    }],
+    ["aliased candidate profit claim", "candidate_self_report", (probe: any) => {
+      probe.output_lines.push(JSON.stringify({ event: "diagnostic", netRevenueUsdt: 999 }));
+    }],
+    ["private provider payload", "private_or_live_authority", (probe: any) => {
+      probe.provider_requests[2].body.apiKey = "forbidden";
     }],
     ["private field", "private_or_live_authority", (probe: any) => {
       probe.output_lines.push(JSON.stringify({ event: "diagnostic", api_key: "forbidden" }));

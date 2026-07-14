@@ -3,12 +3,16 @@ import type {
   PaperTradingHandoffConformanceStatus
 } from "@ouroboros/domain";
 import { parseTradingSystemPaperEventLine } from "../paper/events";
-import { tradingResearchEvaluatorBoundaryViolation } from "./evaluator";
+import { tradingResearchEvaluatorPayloadViolation } from "./evaluator";
 import type {
   TradingArtifactPaperHandoffProbeResult,
   TradingProviderRequestLog,
   TradingSystemEvent
 } from "./types";
+import {
+  isConformantTradingResearchProviderRequest,
+  isDeclaredTradingResearchProviderEndpoint
+} from "./provider-protocol";
 
 export const PAPER_TRADING_HANDOFF_CONFORMANCE_MAX_PROVIDER_REQUESTS = 8;
 
@@ -63,11 +67,13 @@ export function evaluatePaperTradingHandoffProbe(
   if (probe.provider_requests.length > PAPER_TRADING_HANDOFF_CONFORMANCE_MAX_PROVIDER_REQUESTS) {
     return rejected("provider_request_limit_exceeded", base);
   }
-  if (probe.provider_requests.some((request) => !isDeclaredProviderRequest(request))) {
+  if (probe.provider_requests.some((request) =>
+    !isDeclaredTradingResearchProviderEndpoint(request)
+  )) {
     return rejected("provider_protocol_violation", base);
   }
 
-  const boundaryViolation = tradingResearchEvaluatorBoundaryViolation({
+  const boundaryViolation = tradingResearchEvaluatorPayloadViolation({
     events: jsonEvents,
     provider_requests: probe.provider_requests
   });
@@ -80,6 +86,11 @@ export function evaluatePaperTradingHandoffProbe(
   if (jsonEvents.some(hasPrivateOrLiveAuthority) ||
     probe.provider_requests.some((request) => hasPrivateOrLiveAuthority(request.body))) {
     return rejected("private_or_live_authority", base);
+  }
+  if (probe.provider_requests.some((request) =>
+    !isConformantTradingResearchProviderRequest(request)
+  )) {
+    return rejected("provider_protocol_violation", base);
   }
   if (!requiredProviderRequestsComplete(
     probe.provider_requests,
@@ -262,14 +273,10 @@ function requiredProviderRequestsComplete(
     requiredRequests.push(["POST", "/orders/validate"]);
   }
   return requiredRequests.every(([method, path]) => requests.some((request) =>
-    request.method === method && request.path === path && request.response_status === 200
+    request.method === method && request.path === path &&
+    request.response_status === 200 &&
+    isConformantTradingResearchProviderRequest(request)
   ));
-}
-
-function isDeclaredProviderRequest(request: TradingProviderRequestLog): boolean {
-  return (request.method === "GET" && request.path === "/market/snapshot") ||
-    (request.method === "GET" && request.path === "/account/state") ||
-    (request.method === "POST" && request.path === "/orders/validate");
 }
 
 function parseJsonEvent(line: string): TradingSystemEvent[] {

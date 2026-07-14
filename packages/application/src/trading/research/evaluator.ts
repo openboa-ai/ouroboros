@@ -8,6 +8,10 @@ import type {
 } from "./types";
 import type { TradingEvaluationDisqualificationReason } from "@ouroboros/domain";
 import { validateOrderRequest } from "./replay-trading-api-provider";
+import {
+  isConformantTradingResearchProviderRequest,
+  isDeclaredTradingResearchProviderEndpoint
+} from "./provider-protocol";
 
 const ZERO_PROFIT_LOSS: TradingProfitLoss = {
   revenue_usdt: 0,
@@ -153,15 +157,29 @@ function disqualifiedResult(
 export function tradingResearchEvaluatorBoundaryViolation(
   run: Pick<ArtifactRunResult, "events" | "provider_requests">
 ): TradingEvaluationDisqualificationReason | undefined {
-  const unexpectedRequest = run.provider_requests.some((request) => !(
-    (request.method === "GET" && request.path === "/market/snapshot") ||
-    (request.method === "GET" && request.path === "/account/state") ||
-    (request.method === "POST" && request.path === "/orders/validate")
-  ));
+  const unexpectedRequest = run.provider_requests.some((request) =>
+    !isDeclaredTradingResearchProviderEndpoint(request)
+  );
   if (unexpectedRequest) {
     return "data_leakage";
   }
 
+  const payloadViolation = tradingResearchEvaluatorPayloadViolation(run);
+  if (payloadViolation) {
+    return payloadViolation;
+  }
+
+  if (run.provider_requests.some((request) =>
+    !isConformantTradingResearchProviderRequest(request)
+  )) {
+    return "runtime_self_report_only";
+  }
+  return undefined;
+}
+
+export function tradingResearchEvaluatorPayloadViolation(
+  run: Pick<ArtifactRunResult, "events" | "provider_requests">
+): "lookahead_leakage" | "runtime_self_report_only" | undefined {
   for (const request of run.provider_requests) {
     const keys = nestedKeys(request.body);
     if (keys.some((key) => LOOKAHEAD_FIELD_NAMES.has(key))) {
@@ -185,22 +203,33 @@ export function tradingResearchEvaluatorBoundaryViolation(
 }
 
 const LOOKAHEAD_FIELD_NAMES = new Set([
-  "expected_direction",
+  "expecteddirection",
+  "expectedanswer",
+  "evaluatoroutcome",
+  "futureevent",
+  "futureprice",
   "outcome",
-  "exit_price",
-  "fee_bps",
-  "slippage_bps",
-  "funding_bps"
+  "exitprice",
+  "feebps",
+  "fundingbps",
+  "rotationseed",
+  "scenarioid",
+  "scenarioresult",
+  "scenarioresults",
+  "sealedseed",
+  "sealedsuitedigest",
+  "slippagebps",
+  "targetriskfraction"
 ]);
 
 const CANDIDATE_SELF_REPORT_FIELD_NAMES = new Set([
-  "profit_loss",
-  "revenue_usdt",
-  "cost_usdt",
-  "net_revenue_usdt",
-  "net_return_pct",
-  "evaluation_score",
-  "disqualification_reason"
+  "costusdt",
+  "disqualificationreason",
+  "evaluationscore",
+  "netreturnpct",
+  "netrevenueusdt",
+  "profitloss",
+  "revenueusdt"
 ]);
 
 function nestedKeys(value: unknown): string[] {
@@ -210,7 +239,13 @@ function nestedKeys(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.flatMap(nestedKeys);
   }
-  return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) => [key, ...nestedKeys(nested)]);
+  return Object.entries(value as Record<string, unknown>).flatMap(
+    ([key, nested]) => [normalizeBoundaryFieldName(key), ...nestedKeys(nested)]
+  );
+}
+
+function normalizeBoundaryFieldName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function requiredProviderRequestsPresent(run: ArtifactRunResult): boolean {
@@ -219,7 +254,9 @@ function requiredProviderRequestsPresent(run: ArtifactRunResult): boolean {
     ["GET", "/account/state"],
     ["POST", "/orders/validate"]
   ].every(([method, path]) => run.provider_requests.some((request) =>
-    request.method === method && request.path === path && request.response_status === 200
+    request.method === method && request.path === path &&
+    request.response_status === 200 &&
+    isConformantTradingResearchProviderRequest(request)
   ));
 }
 

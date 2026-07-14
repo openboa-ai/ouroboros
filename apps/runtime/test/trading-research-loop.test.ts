@@ -767,7 +767,10 @@ process.exit(17);
       exit_code: 0,
       events: [
         { event: "market_snapshot", ...toReplayTradingCandidateInput(scenario).market },
-        { event: "account_state", ...scenario.account },
+        {
+          event: "account_state",
+          ...toReplayTradingCandidateInput(scenario).account
+        },
         {
           event: "order_request",
           symbol: "BTCUSDT",
@@ -1056,6 +1059,29 @@ process.exit(17);
       disqualification_reason: "runtime_self_report_only"
     });
   });
+
+  it.each([
+    ["expectedDirection", "long", "lookahead_leakage"],
+    ["netRevenueUsdt", 999, "runtime_self_report_only"]
+  ] as const)(
+    "normalizes the %s adversarial field before evaluator classification",
+    (field, value, disqualificationReason) => {
+      const scenario = defaultReplayTradingScenarioSet[0];
+      const run = replayRunForOrder({
+        scenario,
+        side: "buy",
+        accepted: true,
+        validationReason: "risk_limits_passed"
+      });
+      run.events.push({ event: "candidate_diagnostic", [field]: value });
+
+      expect(evaluateTradingRun(run, scenario)).toMatchObject({
+        status: "disqualified",
+        score: 0,
+        disqualification_reason: disqualificationReason
+      });
+    }
+  );
 
   it("preserves a leakage reason when an earlier scenario has an ordinary risk rejection", async () => {
     const artifactDir = path.join(tmpDir, "mixed-disqualification-artifact");
@@ -2542,7 +2568,10 @@ function replayRunForOrder(input: {
     exit_code: 0,
     events: [
       { event: "market_snapshot", ...toReplayTradingCandidateInput(input.scenario).market },
-      { event: "account_state", ...input.scenario.account },
+      {
+        event: "account_state",
+        ...toReplayTradingCandidateInput(input.scenario).account
+      },
       {
         event: "order_request",
         ...order

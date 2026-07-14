@@ -688,9 +688,16 @@ The following current surfaces require implementation work before P0 can pass:
   frozen maximum boundary cannot qualify, even if activation-queue delay or cleanup finishes after
   the elapsed deadline. The Store-linearized closure graph is outcome-digest-covered, must equal
   the terminal reader graph, and must contain one paired checkpoint for every captured tick.
+  One provider-transcript smuggling path is also closed: declared GET requests cannot carry a
+  candidate-authored body, order validation accepts only the exact declared request envelope,
+  evaluator/self-report field matching is casing- and separator-insensitive, and private/live
+  payloads retain their specific rejection. A handoff-only adversarial rejection creates no
+  candidate and persists as an `anti_hacking_case` Finding under the handoff boundary that observed
+  it.
   The full adversarial matrix for score probing, evaluator side channels, other window
-  cherry-picking paths, provider-identity ineligibility, and approximate or cross-suite behavior
-  clustering remains incomplete.
+  cherry-picking paths, unobserved direct process egress, cross-commitment probing,
+  provider-identity ineligibility, and approximate or cross-suite behavior clustering remains
+  incomplete.
 
 The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
@@ -760,9 +767,11 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    revalidates the same persisted graph before effects.
 3. **Partial:** worker surfaces exclude sealed seed/scenarios/outcomes and paper-handoff fixtures
    reject bounded protocol, provider, self-report, hidden-field, private/live, and timeout
-   violations. Exact same-suite behavior duplicates are isolated, while cross-commitment probing,
-   broader evaluator side channels, window cherry-picking, and approximate behavior clustering
-   remain. Query bounds alone are not a reward-hacking proof.
+   violations. Provider request envelopes are now structurally exact, hidden/self-report aliases
+   normalize before classification, and handoff-only attacks persist as anti-hacking memory. Exact
+   same-suite behavior duplicates are isolated, while cross-commitment probing, unobserved direct
+   process egress, broader evaluator side channels, window cherry-picking, and approximate behavior
+   clustering remain. Query bounds alone are not a reward-hacking proof.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

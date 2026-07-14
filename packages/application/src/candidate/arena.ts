@@ -2008,16 +2008,22 @@ function arenaFindingForAdmission(
       summary: "Candidate behavior fingerprint was unavailable; admission quarantined before population materialization."
     };
   }
-  if (admission.reason === "paper_handoff_conformance_failed") {
+  if (isAntiHackingPaperHandoff(entry)) {
     return {
-      finding_kind: "failure_analysis",
-      summary: `Candidate failed PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason ?? "unknown"}).`
+      finding_kind: "anti_hacking_case",
+      summary: `Candidate violated PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason}).`
     };
   }
   if (isAntiHackingEvaluation(entry)) {
     return {
       finding_kind: "anti_hacking_case",
       summary: `Candidate violated the sealed ResearchPreflight boundary (${entry.evaluation.disqualification_reason}): ${entry.evaluation.summary}`
+    };
+  }
+  if (admission.reason === "paper_handoff_conformance_failed") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `Candidate failed PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason ?? "unknown"}).`
     };
   }
   if (admission.status === "quarantined") {
@@ -2041,6 +2047,15 @@ function isAntiHackingEvaluation(entry: TradingResearchNotebookEntry): boolean {
   return entry.evaluation.disqualification_reason === "data_leakage" ||
     entry.evaluation.disqualification_reason === "lookahead_leakage" ||
     entry.evaluation.disqualification_reason === "runtime_self_report_only";
+}
+
+function isAntiHackingPaperHandoff(entry: TradingResearchNotebookEntry): boolean {
+  const reason = entry.evaluation.paper_handoff_conformance?.reason;
+  return reason === "provider_protocol_violation" ||
+    reason === "provider_request_limit_exceeded" ||
+    reason === "hidden_evaluator_field" ||
+    reason === "candidate_self_report" ||
+    reason === "private_or_live_authority";
 }
 
 async function arenaContext(
