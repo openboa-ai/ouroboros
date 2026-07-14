@@ -491,7 +491,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(runner.active(qualificationRun.trading_run_id)).toBe(false);
   });
 
-  it("fails closed before effects when TradingRun and commitment purposes disagree", async () => {
+  it("fails closed and terminalizes recovery when persisted purposes disagree", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await requireFixtureCandidate(store);
@@ -520,7 +520,6 @@ describe("multi-run paper TradingSystem sessions", () => {
       status: "running",
       next_observation_at: "2026-07-10T02:40:03.000Z"
     });
-    const stateBeforeRecovery = await persistedRunState(store, researchRun.trading_run_id);
     const sandbox = runKeyedSandboxHarness();
     const providers = runKeyedProviderHarness();
     const runner = new PaperTradingEvaluationRunner();
@@ -547,8 +546,12 @@ describe("multi-run paper TradingSystem sessions", () => {
       status: "failed",
       error: "PaperTradingSession recovery purpose does not match the persisted commitment."
     }]));
-    expect(await persistedRunState(store, researchRun.trading_run_id))
-      .toEqual(stateBeforeRecovery);
+    const failedEvaluation = await requireEvaluation(store, researchRun.trading_run_id);
+    expect(failedEvaluation.status).toBe("failed");
+    expect(failedEvaluation.latest_failure_reason).toBe(
+      "PaperTradingSession recovery purpose does not match the persisted commitment."
+    );
+    expect(failedEvaluation.next_observation_at).toBeUndefined();
     expect(artifactResolutions).toBe(0);
     expect(providers.starts()).toBe(0);
     expect(sandbox.totalStarts()).toBe(0);
@@ -719,7 +722,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     }
   });
 
-  it("continues after one recovery failure and invalidates only a still-running mismatched run", async () => {
+  it("persists one recovery failure and continues recovering healthy runs", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await requireFixtureCandidate(store);
@@ -828,6 +831,14 @@ describe("multi-run paper TradingSystem sessions", () => {
     } finally {
       await recoveryServer.close();
     }
+    const failedEvaluationBeforeMismatch = structuredClone(
+      await requireEvaluation(store, failingRun.trading_run_id)
+    );
+    expect(failedEvaluationBeforeMismatch.status).toBe("failed");
+    expect(failedEvaluationBeforeMismatch.latest_failure_reason).toBe(
+      `sandbox start failed for ${failingRun.trading_run_id}`
+    );
+    expect(failedEvaluationBeforeMismatch.next_observation_at).toBeUndefined();
     const stoppedHealthyBeforeMismatch = structuredClone(
       await requireEvaluation(store, healthyRun.trading_run_id)
     );
@@ -850,8 +861,8 @@ describe("multi-run paper TradingSystem sessions", () => {
       { tradingRunId: defaultRunId, status: "skipped", reason: "evaluation_not_running" },
       {
         tradingRunId: failingRun.trading_run_id,
-        status: "invalidated",
-        reason: "resolved_artifact_digest_mismatch"
+        status: "skipped",
+        reason: "evaluation_not_running"
       },
       {
         tradingRunId: healthyRun.trading_run_id,
@@ -864,10 +875,8 @@ describe("multi-run paper TradingSystem sessions", () => {
         reason: "evaluation_not_running"
       }
     ]));
-    expect(await requireEvaluation(store, failingRun.trading_run_id)).toMatchObject({
-      status: "invalidated",
-      invalidation_reason: "resolved_artifact_digest_mismatch"
-    });
+    expect(await requireEvaluation(store, failingRun.trading_run_id))
+      .toEqual(failedEvaluationBeforeMismatch);
     expect(await requireEvaluation(store, defaultRunId)).toEqual(stoppedDefaultBeforeRecovery);
     expect(await requireEvaluation(store, healthyRun.trading_run_id)).toEqual(stoppedHealthyBeforeMismatch);
     expect(await requireEvaluation(store, qualificationRun.trading_run_id))

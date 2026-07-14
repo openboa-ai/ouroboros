@@ -1612,10 +1612,13 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
           commitmentEvidencePurpose &&
           runEvidencePurpose !== commitmentEvidencePurpose
         ) {
+          const error =
+            "PaperTradingSession recovery purpose does not match the persisted commitment.";
+          await this.persistRecoveryFailure(evaluation, error);
           outcomes.push({
             tradingRunId,
             status: "failed",
-            error: "PaperTradingSession recovery purpose does not match the persisted commitment."
+            error
           });
           continue;
         }
@@ -1663,15 +1666,35 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
             continue;
           }
         }
-        await this.stopTerminalSession(tradingRunId).catch(() => undefined);
+        const recoveryError = error instanceof Error ? error.message : String(error);
+        await this.persistRecoveryFailure(evaluation, recoveryError);
         outcomes.push({
           tradingRunId,
           status: "failed",
-          error: error instanceof Error ? error.message : String(error)
+          error: recoveryError
         });
       }
     }
     return outcomes;
+  }
+
+  private async persistRecoveryFailure(
+    evaluation: PaperTradingEvaluationRecord,
+    failureReason: string
+  ): Promise<void> {
+    const tradingRunId = evaluation.trading_run_ref.id;
+    await this.stopTerminalSession(tradingRunId).catch(() => undefined);
+    const latest = await this.options.store
+      .getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+    await this.options.store.recordPaperTradingEvaluation({
+      ...latest,
+      status: "failed",
+      next_observation_at: undefined,
+      latest_failure_reason: failureReason
+    });
   }
 
   private gatewayBinding(marketData: GatewayMarketDataPort = this.options.marketData): GatewayRuntimeBinding {
