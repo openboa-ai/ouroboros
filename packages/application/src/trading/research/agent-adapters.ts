@@ -2,11 +2,21 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { sanitizeResearchWorkerArenaContext } from
+  "../../candidate/research-worker-memory";
+import {
+  createResearchWorkerToolClient,
+  startResearchWorkerToolServer,
+  type ResearchWorkerToolServerHandle
+} from "./research-worker-tool-server";
 import type {
   AgentEditFailureReason,
   AgentEditInput,
   AgentEditResult,
   ManagedResearchAgent,
+  ResearchWorkerSessionAdapter,
+  ResearchWorkerSessionInput,
+  ResearchWorkerSessionResult,
   TradingResearchAgentAdapter
 } from "./types";
 
@@ -22,6 +32,16 @@ type ExecFileRunner = (
   }
 ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
 
+const CODEX_RESEARCH_PERMISSION_PROFILE = "ouroboros-research-worker";
+const CODEX_RESEARCH_SHELL_ENVIRONMENT_CONFIG =
+  "shell_environment_policy.include_only=[" +
+  "\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\"," +
+  "\"SystemRoot\",\"COMSPEC\",\"PATHEXT\"," +
+  "\"OUROBOROS_RESEARCH_TOOL_BASE_URL\"," +
+  "\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\"," +
+  "\"OUROBOROS_RESEARCH_TOOL_TOKEN\"," +
+  "\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]";
+
 export interface CodexTradingResearchAgentOptions {
   model?: string;
   command?: string;
@@ -31,7 +51,8 @@ export interface CodexTradingResearchAgentOptions {
   execFile?: ExecFileRunner;
 }
 
-export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+export class CodexTradingResearchAgentAdapter
+implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   readonly agent: ManagedResearchAgent;
   private readonly command: string;
   private readonly timeoutMs: number;
@@ -99,28 +120,169 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
     }
   }
 
+  async runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult> {
+    const client = await createResearchWorkerToolClient();
+    let server: ResearchWorkerToolServerHandle | undefined;
+    try {
+      server = await startResearchWorkerToolServer(input.tools);
+      const command = this.buildCommandForArtifact(input.artifact_dir, server);
+      const prompt = await this.buildSessionPrompt(input);
+      await this.execFile(this.command, command, {
+        cwd: input.artifact_dir,
+        timeout: Math.min(this.timeoutMs, input.timeout_ms),
+        maxBuffer: 10 * 1024 * 1024,
+        stdin: prompt,
+        env: {
+          ...this.env,
+          OUROBOROS_RESEARCH_TOOL_BASE_URL:
+            server.transport === "loopback_tcp" ? server.base_url : undefined,
+          OUROBOROS_RESEARCH_TOOL_SOCKET_PATH:
+            server.transport === "unix_socket" ? server.socket_path : undefined,
+          OUROBOROS_RESEARCH_TOOL_TOKEN: server.authorization_token,
+          OUROBOROS_RESEARCH_TOOL_CLIENT: client.client_path
+        }
+      });
+      const status = await input.tools.status();
+      if (status.session_status === "selected" &&
+        status.selected_submission_sequence !== null) {
+        return {
+          status: "selected",
+          summary: "Codex explicitly selected a completed development submission.",
+          selected_submission_sequence: status.selected_submission_sequence,
+          provider_command_count: 1
+        };
+      }
+      if (status.session_status === "failed") {
+        throw new Error("research_worker_codex_session_failed");
+      }
+      return {
+        status: "finished_without_submission",
+        summary: status.session_status === "finished_without_submission"
+          ? "Codex explicitly finished without a development selection."
+          : "Codex exited without a terminal tool action.",
+        provider_command_count: 1
+      };
+    } finally {
+      try {
+        await server?.close();
+      } finally {
+        await client.close();
+      }
+    }
+  }
+
   buildCommand(input: AgentEditInput): string[] {
+    return this.buildCommandForArtifact(input.artifact_dir);
+  }
+
+  private buildCommandForArtifact(
+    artifactDir: string,
+    researchToolServer?: ResearchWorkerToolServerHandle
+  ): string[] {
     const command = [
       "exec",
+      "--ignore-user-config",
+      "--strict-config",
+      "--ephemeral",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "web_search=\"disabled\"",
+      "-c",
+      "features.apps=false",
+      "-c",
+      "features.plugins=false",
+      "-c",
+      "features.remote_plugin=false",
+      "-c",
+      "features.multi_agent=false",
+      "-c",
+      "features.browser_use=false",
+      "-c",
+      "features.browser_use_external=false",
+      "-c",
+      "features.computer_use=false",
+      "-c",
+      "features.in_app_browser=false",
+      "-c",
+      "features.image_generation=false",
+      "-c",
+      "features.chronicle=false",
+      "-c",
+      "features.workspace_dependencies=false",
+      "-c",
+      "features.hooks=false",
+      "-c",
+      "features.goals=false",
       "-c",
       `model_reasoning_effort="${this.reasoningEffort}"`,
+      "-c",
+      "shell_environment_policy.inherit=\"all\"",
+      "-c",
+      "shell_environment_policy.ignore_default_excludes=true",
+      "-c",
+      CODEX_RESEARCH_SHELL_ENVIRONMENT_CONFIG,
       "--cd",
-      input.artifact_dir,
-      "--sandbox",
-      "workspace-write",
-      "--skip-git-repo-check",
-      "-"
+      artifactDir
     ];
     if (this.agent.model) {
-      command.splice(5, 0, "--model", this.agent.model);
+      command.push("--model", this.agent.model);
     }
+    if (researchToolServer) {
+      const networkConfig = codexResearchNetworkConfig(researchToolServer);
+      command.push(
+        "-c",
+        `default_permissions="${CODEX_RESEARCH_PERMISSION_PROFILE}"`,
+        "-c",
+        networkConfig.permission,
+        "-c",
+        networkConfig.proxy
+      );
+    } else {
+      command.push("--sandbox", "workspace-write");
+    }
+    command.push("--skip-git-repo-check", "-");
     return command;
+  }
+
+  private async buildSessionPrompt(input: ResearchWorkerSessionInput): Promise<string> {
+    const program = await readFile(input.program_path, "utf8");
+    const notebook = summarizeNotebook(await readFile(input.notebook_path, "utf8"));
+    const arenaContext = sanitizeResearchWorkerArenaContext(input.arena_context);
+    return [
+      "You are one autonomous Ouroboros ResearchWorker session inside a bounded TradingSystem artifact workspace.",
+      "Read the broad research direction and released prior findings, then choose your own research sequence.",
+      "You may inspect and edit only the current artifact workspace and run bounded local checks when useful.",
+      "External development Evaluation is available only through the generated tool client.",
+      "Do not infer hidden evaluator cases, seek credentials, or add live trading authority.",
+      "The artifact must keep using the external TradingApiProvider through TRADING_API_BASE_URL.",
+      `You may submit at most ${input.submission_limit} development snapshots during this session.`,
+      "A submission is an immutable snapshot; later edits do not change it.",
+      "Development feedback is aggregate evidence, not final trading or promotion authority.",
+      "Explicitly select one completed submission or explicitly finish without a selection before exiting.",
+      "Do not assume the highest development score must be selected.",
+      "Use these commands with a fresh bounded idempotency key for each new action:",
+      "node \"$OUROBOROS_RESEARCH_TOOL_CLIENT\" status",
+      "node \"$OUROBOROS_RESEARCH_TOOL_CLIENT\" submit '{\"idempotency_key\":\"...\",\"research_note\":\"...\"}'",
+      "node \"$OUROBOROS_RESEARCH_TOOL_CLIENT\" select '{\"idempotency_key\":\"...\",\"submission_sequence\":1,\"reason\":\"...\"}'",
+      "node \"$OUROBOROS_RESEARCH_TOOL_CLIENT\" finish '{\"idempotency_key\":\"...\",\"reason\":\"...\"}'",
+      "",
+      "Research program:",
+      program,
+      "",
+      "Released notebook context:",
+      notebook,
+      "",
+      "CandidateArena context:",
+      arenaContext ?? "No released CandidateArena context was provided."
+    ].join("\n");
   }
 
   private async buildPrompt(input: AgentEditInput): Promise<string> {
     const program = await readFile(input.program_path, "utf8");
     const notebook = await readFile(input.notebook_path, "utf8");
     const recentNotebook = summarizeNotebook(notebook);
+    const arenaContext = sanitizeResearchWorkerArenaContext(input.arena_context);
     return [
       "You are a Codex managed researcher submitting a new Ouroboros TradingSystem candidate into the Candidate Arena.",
       "Read the compact arena context, the target research direction, and recent failures, then produce one new candidate artifact.",
@@ -132,7 +294,7 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
       "Prefer a small direction-specific change that could improve net revenue after fee, slippage, and funding costs.",
       "If the artifact already matches the requested direction and cannot be improved safely, leave it unchanged and stop.",
       `Iteration: ${input.iteration}`,
-      `Previous best score: ${input.previous_best_score ?? "none"}`,
+      `Previous best development score: ${input.previous_best_score ?? "none"}`,
       "",
       "Research program:",
       program,
@@ -141,20 +303,53 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
       recentNotebook,
       "",
       "Candidate Arena context:",
-      input.arena_context ?? "No arena context provided.",
+      arenaContext ?? "No arena context provided.",
       "",
       "Task: submit one small, testable TradingSystem candidate for the Candidate Arena."
     ].join("\n");
   }
 }
 
-export class FixtureTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+function codexResearchNetworkConfig(
+  server: ResearchWorkerToolServerHandle
+): { permission: string; proxy: string } {
+  const common = server.transport === "unix_socket"
+    ? "domains={}," +
+      `unix_sockets={${JSON.stringify(server.socket_path)}=\"allow\"},` +
+      "allow_local_binding=false,allow_upstream_proxy=false," +
+      "enable_socks5=false,enable_socks5_udp=false"
+    : "domains={\"127.0.0.1\"=\"allow\"}," +
+      "allow_local_binding=true,allow_upstream_proxy=false," +
+      "enable_socks5=false,enable_socks5_udp=false";
+  return {
+    permission:
+      `permissions.${CODEX_RESEARCH_PERMISSION_PROFILE}={` +
+      `extends=\":workspace\",network={enabled=true,mode=\"limited\",${common}}}`,
+    proxy: `features.network_proxy={enabled=true,${common}}`
+  };
+}
+
+export interface FixtureTradingResearchAgentOptions {
+  early_selection_score?: number;
+}
+
+export class FixtureTradingResearchAgentAdapter
+implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   readonly agent: ManagedResearchAgent = {
     id: "managed-agent-fixture-trading-research",
     provider: "fixture",
     model: "scripted-fixture",
     permission_policy: "fixture_only"
   };
+  private readonly earlySelectionScore?: number;
+
+  constructor(options: FixtureTradingResearchAgentOptions = {}) {
+    if (options.early_selection_score !== undefined &&
+      !Number.isFinite(options.early_selection_score)) {
+      throw new Error("fixture_research_early_selection_score_invalid");
+    }
+    this.earlySelectionScore = options.early_selection_score;
+  }
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     const runPath = path.join(input.artifact_dir, "run.py");
@@ -166,6 +361,82 @@ export class FixtureTradingResearchAgentAdapter implements TradingResearchAgentA
       status: "edited",
       summary: `Fixture agent set RISK_FRACTION to ${nextRisk}.`,
       changed_paths: ["run.py"]
+    };
+  }
+
+  async runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult> {
+    let providerCommandCount = 0;
+    let bestAccepted: { submission_sequence: number; score: number } | undefined;
+    for (let iteration = 1; iteration <= input.submission_limit; iteration += 1) {
+      const edit = await this.improveArtifact({
+        agent: this.agent,
+        artifact_dir: input.artifact_dir,
+        program_path: input.program_path,
+        notebook_path: input.notebook_path,
+        iteration,
+        previous_best_score: bestAccepted?.score,
+        arena_context: input.arena_context
+      });
+      providerCommandCount += 1;
+      if (edit.status === "failed") {
+        throw new Error(edit.error ?? edit.summary);
+      }
+      const submitted = await input.tools.submitDevelopment({
+        idempotency_key: `fixture-development-${iteration}`,
+        research_note: edit.summary
+      });
+      if (submitted.feedback.status === "accepted" &&
+        (!bestAccepted || submitted.feedback.score > bestAccepted.score)) {
+        bestAccepted = {
+          submission_sequence: submitted.submission_sequence,
+          score: submitted.feedback.score
+        };
+      }
+      if (bestAccepted && this.earlySelectionScore !== undefined &&
+        bestAccepted.score >= this.earlySelectionScore) {
+        return this.selectFixtureSubmission(
+          input,
+          bestAccepted,
+          providerCommandCount,
+          "Fixture selected early after aggregate development feedback met its threshold."
+        );
+      }
+    }
+    if (bestAccepted) {
+      return this.selectFixtureSubmission(
+        input,
+        bestAccepted,
+        providerCommandCount,
+        "Fixture selected its highest accepted aggregate development result."
+      );
+    }
+    const finished = await input.tools.finishWithoutSubmission({
+      idempotency_key: "fixture-finish-without-accepted-submission",
+      reason: "Fixture found no accepted development submission."
+    });
+    return {
+      status: finished.session_status,
+      summary: finished.reason,
+      provider_command_count: providerCommandCount
+    };
+  }
+
+  private async selectFixtureSubmission(
+    input: ResearchWorkerSessionInput,
+    selected: { submission_sequence: number; score: number },
+    providerCommandCount: number,
+    reason: string
+  ): Promise<ResearchWorkerSessionResult> {
+    const selection = await input.tools.selectDevelopment({
+      idempotency_key: `fixture-select-${selected.submission_sequence}`,
+      submission_sequence: selected.submission_sequence,
+      reason
+    });
+    return {
+      status: selection.session_status,
+      summary: selection.reason,
+      selected_submission_sequence: selection.submission_sequence,
+      provider_command_count: providerCommandCount
     };
   }
 }
@@ -189,30 +460,41 @@ export class NoopTradingResearchAgentAdapter implements TradingResearchAgentAdap
 
 const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) => {
   return new Promise((resolve, reject) => {
+    const processGroup = process.platform !== "win32";
     const child = spawn(file, args, {
       cwd: options.cwd,
       env: managedResearchAgentEnv(options.env),
+      detached: processGroup,
       stdio: ["pipe", "pipe", "pipe"]
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let settled = false;
+    let terminationError: Error | undefined;
     const commandText = `${file} ${args.join(" ")}`;
     const stdoutText = () => Buffer.concat(stdout).toString("utf8");
     const stderrText = () => Buffer.concat(stderr).toString("utf8");
-    const fail = (error: Error) => {
+    const clearCommandTimeout = () => {
       if (timeout) {
         clearTimeout(timeout);
       }
+    };
+    const fail = (error: Error) => {
+      clearCommandTimeout();
       if (!settled) {
         settled = true;
         reject(error);
       }
     };
+    const terminate = (error: Error) => {
+      if (settled || terminationError) return;
+      terminationError = error;
+      clearCommandTimeout();
+      killProcessGroup(child.pid, child.kill.bind(child), processGroup);
+    };
     const timeout = options.timeout
       ? setTimeout(() => {
-          child.kill("SIGTERM");
-          fail(new CodexCommandError(
+          terminate(new CodexCommandError(
             "codex_timed_out",
             `Command timed out after ${options.timeout}ms: ${commandText}\n${stderrText()}${stdoutText()}`,
             stdoutText(),
@@ -222,10 +504,10 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
       : undefined;
 
     child.stdout.on("data", (chunk: Buffer) => {
+      if (terminationError) return;
       stdout.push(chunk);
       if (options.maxBuffer && Buffer.concat(stdout).length > options.maxBuffer) {
-        child.kill("SIGTERM");
-        fail(new CodexCommandError(
+        terminate(new CodexCommandError(
           "codex_cli_failed",
           `stdout exceeded maxBuffer for ${commandText}`,
           stdoutText(),
@@ -234,10 +516,10 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      if (terminationError) return;
       stderr.push(chunk);
       if (options.maxBuffer && Buffer.concat(stderr).length > options.maxBuffer) {
-        child.kill("SIGTERM");
-        fail(new CodexCommandError(
+        terminate(new CodexCommandError(
           "codex_cli_failed",
           `stderr exceeded maxBuffer for ${commandText}`,
           stdoutText(),
@@ -248,14 +530,21 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     child.on("error", (error) => {
       fail(error);
     });
-    child.on("close", (code) => {
-      if (timeout) {
-        clearTimeout(timeout);
+    child.stdin.on("error", (error) => {
+      if ((error as NodeJS.ErrnoException).code !== "EPIPE") {
+        fail(error);
       }
+    });
+    child.on("close", (code) => {
+      clearCommandTimeout();
       if (settled) {
         return;
       }
       settled = true;
+      if (terminationError) {
+        reject(terminationError);
+        return;
+      }
       const finalStdout = stdoutText();
       const finalStderr = stderrText();
       if (code === 0) {
@@ -272,6 +561,22 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     child.stdin.end(options.stdin ?? "");
   });
 };
+
+function killProcessGroup(
+  pid: number | undefined,
+  killChild: (signal?: NodeJS.Signals | number) => boolean,
+  processGroup: boolean
+): void {
+  if (processGroup && pid !== undefined) {
+    try {
+      process.kill(-pid, "SIGKILL");
+      return;
+    } catch {
+      // Fall back to the direct child when the process group already exited or is unavailable.
+    }
+  }
+  killChild("SIGKILL");
+}
 
 function managedResearchAgentEnv(overrides: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -332,9 +637,67 @@ function summarizeNotebook(rawNotebook: string): string {
     const notebook = JSON.parse(rawNotebook) as {
       best_score?: number;
       entries?: Array<{ iteration: number; decision: string; score: number; summary: string }>;
+      prior_checkpoint?: {
+        research_worker_checkpoint_id?: string;
+        terminal_status?: string;
+        terminal_reason?: string;
+        admission_status?: string;
+        admission_reason?: string;
+        notebook?: {
+          total_entry_count?: number;
+          recent_entries?: Array<{
+            sequence: number;
+            candidate_arena_tick_id: string;
+            iteration: number;
+            decision: string;
+            agent_status: string;
+            score: number;
+            summary: string;
+            evaluation_status: string;
+            risk_decision: string;
+            net_revenue_usdt: number;
+          }>;
+        };
+      };
     };
     const entries = (notebook.entries ?? []).slice(-3);
     return JSON.stringify({
+      ...(notebook.prior_checkpoint
+        ? {
+            prior_checkpoint: {
+              research_worker_checkpoint_id:
+                notebook.prior_checkpoint.research_worker_checkpoint_id,
+              terminal_status: notebook.prior_checkpoint.terminal_status,
+              terminal_reason: notebook.prior_checkpoint.terminal_reason,
+              ...(notebook.prior_checkpoint.admission_status &&
+                notebook.prior_checkpoint.admission_reason
+                ? {
+                    admission_status: notebook.prior_checkpoint.admission_status,
+                    admission_reason: notebook.prior_checkpoint.admission_reason
+                  }
+                : {}),
+              notebook: {
+                total_entry_count:
+                  notebook.prior_checkpoint.notebook?.total_entry_count,
+                recent_entries:
+                  (notebook.prior_checkpoint.notebook?.recent_entries ?? [])
+                    .slice(-3)
+                    .map((entry) => ({
+                      sequence: entry.sequence,
+                      candidate_arena_tick_id: entry.candidate_arena_tick_id,
+                      iteration: entry.iteration,
+                      decision: entry.decision,
+                      agent_status: entry.agent_status,
+                      score: entry.score,
+                      summary: entry.summary,
+                      evaluation_status: entry.evaluation_status,
+                      risk_decision: entry.risk_decision,
+                      net_revenue_usdt: entry.net_revenue_usdt
+                    }))
+              }
+            }
+          }
+        : {}),
       best_score: notebook.best_score,
       recent_entries: entries.map((entry) => ({
         iteration: entry.iteration,

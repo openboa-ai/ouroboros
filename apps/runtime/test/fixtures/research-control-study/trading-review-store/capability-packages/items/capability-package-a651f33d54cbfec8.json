@@ -1,0 +1,22 @@
+{
+  "record_kind": "capability_package",
+  "version": 1,
+  "capability_package_id": "capability-package-a651f33d54cbfec8",
+  "summary": "Read-only public market context for paper evaluation.",
+  "manifest_ref": {
+    "record_kind": "capability_manifest",
+    "id": "capability-manifest-a651f33d54cbfec8"
+  },
+  "admission_record_ref": {
+    "record_kind": "capability_package_admission_record",
+    "id": "capability-admission-a651f33d54cbfec8"
+  },
+  "grant_ref": {
+    "record_kind": "capability_grant",
+    "id": "capability-grant-a651f33d54cbfec8"
+  },
+  "mount_record_ref": {
+    "record_kind": "capability_mount_record",
+    "id": "capability-mount-a651f33d54cbfec8"
+  }
+}

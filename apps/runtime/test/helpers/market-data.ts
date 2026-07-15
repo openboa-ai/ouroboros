@@ -1,6 +1,9 @@
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import type { MarketSnapshot } from "@ouroboros/application/trading/research/types";
-import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+import type {
+  PublicMarketLivenessSurfaceRecord,
+  ResearchGeneralizationPublicKlineWindowInput
+} from "@ouroboros/domain";
 
 export function fakeGatewayMarketDataPort(input: {
   price?: number;
@@ -24,7 +27,9 @@ export function fakeGatewayMarketDataPort(input: {
     }>;
   }>;
   failMarketSnapshot?: boolean;
+  failPublicKlineWindow?: boolean;
   failPublicExecutionSnapshot?: boolean;
+  generalizationCondition?: "long" | "short" | "flat";
 } = {}): GatewayMarketDataPort {
   const price = input.price ?? 65_000;
   const observedAt = input.observedAt ?? "2026-05-16T00:00:03.000Z";
@@ -61,6 +66,43 @@ export function fakeGatewayMarketDataPort(input: {
         volatility: snapshot.volatility ?? 0.001,
         expected_direction: snapshot.expected_direction ?? "long",
         observed_at: snapshot.observed_at ?? request.observedAt ?? observedAt
+      };
+    },
+    async readPublicKlineWindow(request): Promise<
+      ResearchGeneralizationPublicKlineWindowInput
+    > {
+      if (input.failPublicKlineWindow) {
+        throw new Error("fake public kline window unavailable");
+      }
+      const observedEpoch = Date.parse(request.observedAt);
+      const end = Math.floor(observedEpoch / 60_000) * 60_000 - 1;
+      const start = end + 1 - 30 * 60_000;
+      const condition = input.generalizationCondition ?? "long";
+      const closes = condition === "long"
+        ? Array.from({ length: 30 }, (_, index) => price + index)
+        : condition === "short"
+          ? Array.from({ length: 30 }, (_, index) => price + 30 - index)
+          : Array.from({ length: 30 }, () => price);
+      return {
+        symbol: request.symbol,
+        interval: request.interval,
+        sample_count: request.limit,
+        observed_at: request.observedAt,
+        closed_window_end_at: new Date(end).toISOString(),
+        source: {
+          provider_kind: "binance_production_public_market_data",
+          source_kind: "binance_production_public_rest",
+          rest_base_url: port.rest_base_url,
+          endpoint: "/fapi/v1/klines",
+          authority_status: "read_only"
+        },
+        klines: closes.map((close, index) => ({
+          open_time: new Date(start + index * 60_000).toISOString(),
+          close_time: new Date(start + (index + 1) * 60_000 - 1)
+            .toISOString(),
+          close_price: String(close)
+        })),
+        authority_status: "read_only"
       };
     },
     async readPublicMarketLivenessSurface(

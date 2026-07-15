@@ -30,7 +30,9 @@ def request_stop(_signum: int, _frame: object) -> None:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,36 +102,135 @@ def decimal_string(value: object, fallback: str) -> str:
     return fallback
 
 
-def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
-    provider_base_url = os.environ.get("TRADING_API_BASE_URL", "").strip()
-    if not provider_base_url:
-        return {
-            "event": "order_request",
-            "event_id": f"{args.instance_id}:order-request:0001",
-            "instance_id": args.instance_id,
-            "symbol": "BTCUSDT",
-            "intent_kind": "place_order",
-            "side": "buy",
-            "order_type": "limit",
-            "quantity": "0" if args.paper_order_request == "rejected" else "0.001",
-            "limit_price": "60000",
-            "authority_status": "trace_only",
-            "at": args.start_at,
-        }
+def comparison_tick_context(
+    market: dict[str, object],
+    last_delivery_id: str | None,
+) -> dict[str, object] | None:
+    context = market.get("comparison_tick_context")
+    if context is None:
+        return None
+    if not isinstance(context, dict):
+        raise RuntimeError("comparison tick context is not an object")
+    delivery_ref = context.get("delivery_ref")
+    delivery_digest = context.get("delivery_digest")
+    tick_sequence = context.get("tick_sequence")
+    if (
+        not isinstance(delivery_ref, dict)
+        or delivery_ref.get("record_kind")
+        != "paper_trading_comparison_tick_delivery"
+    ):
+        raise RuntimeError("comparison tick delivery ref is not an object")
+    delivery_id = delivery_ref.get("id")
+    if (
+        not isinstance(delivery_id, str)
+        or not delivery_id.strip()
+        or not isinstance(delivery_digest, str)
+        or not delivery_digest.startswith("sha256:")
+        or not isinstance(tick_sequence, int)
+        or isinstance(tick_sequence, bool)
+        or tick_sequence < 1
+    ):
+        raise RuntimeError("comparison tick delivery id is invalid")
+    if delivery_id == last_delivery_id:
+        return None
+    return context
 
-    try:
-        market = read_provider_json(provider_base_url, "/market/snapshot")
-        read_provider_json(provider_base_url, "/account/state")
-        direction = market.get("expected_direction")
-        if direction == "flat":
-            return {
-                "event": "hold",
-                "event_id": f"{args.instance_id}:hold:provider-flat-0001",
+
+def acknowledge_comparison_tick(
+    base_url: str,
+    context: dict[str, object],
+) -> str:
+    delivery_ref = context["delivery_ref"]
+    if not isinstance(delivery_ref, dict) or not isinstance(delivery_ref.get("id"), str):
+        raise RuntimeError("comparison tick delivery ref is invalid")
+
+    acknowledgement = post_provider_json(
+        base_url,
+        "/comparison/tick/ack",
+        context,
+    )
+    acknowledgement_ref = acknowledgement.get("acknowledgement_ref")
+    acknowledgement_digest = acknowledgement.get("acknowledgement_digest")
+    if (
+        not isinstance(acknowledgement_ref, dict)
+        or acknowledgement_ref.get("record_kind")
+        != "paper_trading_comparison_tick_acknowledgement"
+        or not isinstance(acknowledgement_ref.get("id"), str)
+        or not acknowledgement_ref["id"]
+        or not isinstance(acknowledgement_digest, str)
+        or not acknowledgement_digest
+    ):
+        raise RuntimeError("comparison tick acknowledgement is invalid")
+    return delivery_ref["id"]
+
+
+def attach_comparison_delivery(
+    event: dict[str, object],
+    context: dict[str, object] | None,
+) -> dict[str, object]:
+    if context is None:
+        return event
+    return {
+        **event,
+        "comparison_tick_delivery_ref": context["delivery_ref"],
+        "comparison_tick_delivery_digest": context["delivery_digest"],
+    }
+
+
+def paper_order_payload(
+    args: argparse.Namespace,
+    provider_base_url: str,
+    *,
+    market: dict[str, object] | None = None,
+    event_sequence: int = 1,
+    context: dict[str, object] | None = None,
+) -> tuple[dict[str, object], dict[str, object] | None]:
+    if not provider_base_url:
+        return (
+            {
+                "event": "order_request",
+                "event_id": f"{args.instance_id}:order-request:{event_sequence:04d}",
                 "instance_id": args.instance_id,
+                "symbol": "BTCUSDT",
+                "intent_kind": "place_order",
+                "side": "buy",
+                "order_type": "limit",
+                "quantity": "0" if args.paper_order_request == "rejected" else "0.001",
+                "limit_price": "60000",
                 "authority_status": "trace_only",
                 "at": args.start_at,
-                "reason": "runtime_api_market_expected_direction_flat",
-            }
+            },
+            market,
+        )
+
+    try:
+        if market is None:
+            market = read_provider_json(provider_base_url, "/market/snapshot")
+        read_provider_json(provider_base_url, "/account/state")
+        fast_average = market.get("moving_average_fast")
+        slow_average = market.get("moving_average_slow")
+        if isinstance(fast_average, (int, float)) and isinstance(slow_average, (int, float)):
+            direction = (
+                "flat"
+                if fast_average == slow_average
+                else "short"
+                if fast_average < slow_average
+                else "long"
+            )
+        else:
+            direction = "unknown"
+        if direction == "flat":
+            return (
+                attach_comparison_delivery({
+                    "event": "hold",
+                    "event_id": f"{args.instance_id}:hold:{event_sequence:04d}",
+                    "instance_id": args.instance_id,
+                    "authority_status": "trace_only",
+                    "at": args.start_at if event_sequence == 1 else utc_now(),
+                    "reason": "runtime_api_market_signal_flat",
+                }, context),
+                market,
+            )
 
         side = "sell" if direction == "short" else "buy"
         quantity = "0" if args.paper_order_request == "rejected" else "0.001"
@@ -139,23 +240,27 @@ def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
             "side": side,
             "quantity": float(quantity),
             "order_type": "limit",
+            "limit_price": limit_price,
             "reason": "runtime_api_market_driven_order",
         }
         validation = post_provider_json(provider_base_url, "/orders/validate", provider_order)
-        return {
-            "event": "order_request",
-            "event_id": f"{args.instance_id}:order-request:0001",
-            "instance_id": args.instance_id,
-            "symbol": "BTCUSDT",
-            "intent_kind": "place_order",
-            "side": side,
-            "order_type": "limit",
-            "quantity": quantity,
-            "limit_price": limit_price,
-            "reason": f"runtime_api_market_expected_direction_{direction or 'unknown'}_validation_{validation.get('reason', 'unknown')}",
-            "authority_status": "trace_only",
-            "at": args.start_at,
-        }
+        return (
+            attach_comparison_delivery({
+                "event": "order_request",
+                "event_id": f"{args.instance_id}:order-request:{event_sequence:04d}",
+                "instance_id": args.instance_id,
+                "symbol": "BTCUSDT",
+                "intent_kind": "place_order",
+                "side": side,
+                "order_type": "limit",
+                "quantity": quantity,
+                "limit_price": limit_price,
+                "reason": f"runtime_api_market_signal_{direction}_validation_{validation.get('reason', 'unknown')}",
+                "authority_status": "trace_only",
+                "at": args.start_at if event_sequence == 1 else utc_now(),
+            }, context),
+            market,
+        )
     except (OSError, error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
         raise RuntimeError(f"paper runtime API unavailable: {exc}") from exc
 
@@ -167,9 +272,19 @@ def main() -> int:
 
     log_path = Path(args.log_file) if args.log_file else None
     heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
+    provider_base_url = os.environ.get("TRADING_API_BASE_URL", "").strip()
     tick = 0
 
-    emit(json.dumps(paper_order_payload(args), sort_keys=True), log_path, heartbeat_path)
+    order_payload, initial_market = paper_order_payload(args, provider_base_url)
+    emit(json.dumps(order_payload, sort_keys=True), log_path, heartbeat_path)
+    last_delivery_id = None
+    if initial_market is not None:
+        initial_context = comparison_tick_context(initial_market, last_delivery_id)
+        if initial_context is not None:
+            last_delivery_id = acknowledge_comparison_tick(
+                provider_base_url,
+                initial_context,
+            )
 
     while not STOP_REQUESTED:
         tick += 1
@@ -185,6 +300,36 @@ def main() -> int:
             break
 
         time.sleep(args.interval_ms / 1000)
+        if STOP_REQUESTED or not provider_base_url:
+            continue
+        try:
+            market = read_provider_json(provider_base_url, "/market/snapshot")
+            context = comparison_tick_context(
+                market,
+                last_delivery_id,
+            )
+            if context is None:
+                continue
+            tick_sequence = context["tick_sequence"]
+            if not isinstance(tick_sequence, int) or isinstance(tick_sequence, bool):
+                raise RuntimeError("comparison tick sequence is invalid")
+            if tick_sequence >= 2:
+                decision, _ = paper_order_payload(
+                    args,
+                    provider_base_url,
+                    market=market,
+                    event_sequence=tick_sequence,
+                    context=context,
+                )
+                emit(json.dumps(decision, sort_keys=True), log_path, heartbeat_path)
+            last_delivery_id = acknowledge_comparison_tick(
+                provider_base_url,
+                context,
+            )
+        except (OSError, error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
+            raise RuntimeError(
+                f"paper runtime API unavailable during cadence: {exc}"
+            ) from exc
 
     shutdown_payload = {
         "event": "runtime_stopped",

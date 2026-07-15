@@ -1,13 +1,20 @@
 # Ouroboros Doctrine
 
 Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
-continuously improving external AI agents to an outcome-gradable trading problem, then forces their
-ideas through `CandidateArena` search, research-time preflight, and selected continuous paper
-trading evaluation.
+continuously improving external AI agents to a trading problem with externally recorded economic
+outcomes, then forces their ideas through `CandidateArena` search, research-time preflight, and
+selected continuous paper trading evaluation.
+
+Trading must be made outcome-gradable under a precommitted evaluation protocol. Raw PnL remains
+economic accounting, not self-sufficient proof of strategy quality.
 
 ```text
 parallel TradingSystem candidates
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded development replay/backtest feedback
+-> frozen one-shot rotating sealed admission
+-> external PaperTradingHandoffConformance
+-> CandidateAdmissionDecision and materialization
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -16,7 +23,9 @@ parallel TradingSystem candidates
 
 Name the boundary plainly: `ResearchPreflight` is replay, backtest, or simulation used while
 creating candidates; `PaperTradingEvaluation` is selected-candidate paper trading over live public
-market data, scored by accumulated `revenue - cost`.
+market data, scored by accumulated `revenue - cost`. `PaperTradingHandoffConformance` sits between
+them as external research-only proof that the exact submitted artifact satisfies the bounded target
+paper event protocol before admission and generated-candidate paper start.
 
 ## Doctrine Tree
 
@@ -27,15 +36,22 @@ market data, scored by accumulated `revenue - cost`.
    - Ouroboros should get better as those agents get better without changing the core loop.
 
 2. Problem Lens
-   - Choose problems that are hard, dynamic, adversarial, and objectively gradable.
+   - Choose problems that are hard, dynamic, adversarial, and externally evaluable.
    - Trading fits because market behavior changes, but candidate output can still be scored by
      `revenue - cost`, `net_revenue_usdt`, return, costs, risk, and continuous paper evidence.
-   - A hard problem with a clear score is where agent hill-climbing can compound.
+   - Trading outcomes are noisy, path-dependent, and non-stationary. A clear economic score only
+     supports agent hill-climbing when the evidence purpose, candidate identity, comparison policy,
+     and prospective window are committed before results are known.
 
 3. Method
    - Generate many candidates, not one best bot.
    - Use replay, backtest, and simulation as research-time tools for candidate creation, sanity
      checks, and preflight rejection.
+   - Commit allocation, source identity, development budget, and an evaluator-owned rotating sealed
+     set before worker effects. Let development feedback guide artifact selection, then freeze one
+     artifact before its only sealed admission submission.
+   - Require exact external paper handoff conformance before a new candidate can claim runnable
+     handoff; do not turn compatibility into economic or qualification evidence.
    - Rank by selected-candidate paper trading performance once a candidate enters the paper
      runtime. Preserve `Finding` records and lineage, then feed that memory into the next
      generation.
@@ -56,6 +72,14 @@ market data, scored by accumulated `revenue - cost`.
    - Researcher cannot grade.
    - Candidate cannot grade itself.
    - Replay/backtest is a research tool, not final evaluation authority.
+   - ResearchWorker-visible notebooks and prompts may contain bounded aggregate development
+     feedback, but not sealed seed, scenarios, outcomes, score deltas, raw events, or evaluator
+     internals. Process loss closes that commitment rather than resampling it.
+   - Replay success cannot self-certify the target paper runtime. Exact submitted-artifact
+     conformance is externally evaluated and revalidated before generated paper effects.
+   - Generated single-file Python SystemCode identity covers its frozen manifest and sole editable
+     entrypoint. Undeclared files, directories, symlinks, or manifest drift cannot remain outside
+     candidate freeze evidence.
    - Continuous paper trading is the evaluation authority for the product loop because living
      TradingSystems may use current market state, news, social data, tools, and internal agents that
      old static data cannot faithfully grade.
@@ -98,7 +122,7 @@ market data, scored by accumulated `revenue - cost`.
 
 | Reference | Doctrine contribution |
 | --- | --- |
-| Anthropic AAR | parallel researchers plus sealed, outcome-gradable evaluation |
+| Anthropic AAR | long-running parallel researchers, broad directions, external evaluation, shared findings and code lineage, plus explicit reward-hacking and holdout pressure |
 | AlphaEvolve | code candidates plus evaluator plus evolutionary improvement |
 | AlphaProof Nexus | unreliable generation made useful by verification and search |
 | Weak-to-strong | stronger capability elicited through scalable evaluation |
@@ -106,6 +130,12 @@ market data, scored by accumulated `revenue - cost`.
 | The New SDLC With Vibe Coding | shift from ad-hoc prompting to agentic engineering through context, skills, harnesses, evals, and human judgment |
 | Codex, Claude Code, Gemini agents | external improving agent labor |
 | Ouroboros | apply the pattern to trading, where continuous paper `revenue - cost` is the score |
+
+These references are design pressure, not transferred proof. In particular, Anthropic AAR supports
+the usefulness of parallel researchers, external evaluation, memory, and adversarial evaluator
+thinking in its studied setting; it does not establish trading profitability, economic
+generalization, evaluator security, or autonomous production readiness for Ouroboros. The repo must
+prove those claims independently with prospective evidence and explicit controls.
 
 ## References
 

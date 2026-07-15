@@ -1,0 +1,93 @@
+{
+  "record_kind": "private_readiness_preflight_surface",
+  "version": 1,
+  "private_readiness_preflight_surface_id": "fixture-binance-btcusdt-private-readiness-preflight-surface-001",
+  "surface_family": "private_readiness_preflight",
+  "venue": "binance_usd_m_futures",
+  "instrument": "BTCUSDT",
+  "product_category": "perpetual_futures",
+  "credential_gate": {
+    "status": "not_configured",
+    "enabled": false,
+    "reason": "no_binance_api_key_configured"
+  },
+  "jurisdiction_gate": {
+    "status": "not_evaluated",
+    "enabled": false,
+    "reason": "operator_jurisdiction_not_recorded"
+  },
+  "operator_approval_gate": {
+    "status": "not_approved",
+    "enabled": false,
+    "reason": "operator_live_private_read_approval_missing"
+  },
+  "private_account_read_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "signed_user_data_account_read_deferred"
+  },
+  "private_position_read_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "signed_user_data_position_read_deferred"
+  },
+  "user_data_stream_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "listen_key_lifecycle_not_enabled"
+  },
+  "listen_key_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "listen_key_creation_forbidden_in_preflight"
+  },
+  "order_submission_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "trade_endpoint_forbidden"
+  },
+  "leverage_or_margin_mutation_gate": {
+    "status": "disabled",
+    "enabled": false,
+    "reason": "account_mutation_forbidden"
+  },
+  "account_information_endpoint": "GET /fapi/v3/account",
+  "user_data_stream_endpoint": "POST /fapi/v1/listenKey",
+  "order_endpoint": "POST /fapi/v1/order",
+  "next_blocked_action": "configure_private_read_credentials",
+  "next_blocked_reason": "credential_and_operator_gates_not_ready",
+  "source_timestamp": "2026-05-16T00:00:00.000Z",
+  "observed_at": "2026-05-16T00:00:03.000Z",
+  "updated_at": "2026-05-16T00:00:03.000Z",
+  "freshness": "stale",
+  "liveness": "degraded",
+  "degraded_reason": "fixture_seed_no_private_authority",
+  "source_kind": "fixture",
+  "source_ref": {
+    "record_kind": "fixture",
+    "id": "binance-btcusdt-private-readiness-preflight"
+  },
+  "transport": {
+    "transport_kind": "official_binance_connector",
+    "repository": "binance/binance-connector-js",
+    "package_name": "@binance/derivatives-trading-usds-futures",
+    "api_family": "derivatives_trading_usds_futures",
+    "supported_endpoints": [
+      "rest_api",
+      "websocket_api",
+      "websocket_streams"
+    ],
+    "production_base_url": "https://fapi.binance.com",
+    "testnet_base_url": "https://demo-fapi.binance.com",
+    "integration_role": "transport_only",
+    "authority_status": "not_live"
+  },
+  "fixture_backed": true,
+  "simulated": true,
+  "no_authority": {
+    "live_exchange": false,
+    "order_submission": false,
+    "credentials": false
+  },
+  "authority_status": "not_live"
+}

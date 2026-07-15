@@ -7,6 +7,7 @@ export type PaperTradingQualificationBlockerSeverity =
   | "failed";
 
 export type PaperTradingQualificationBlockerGroupKind =
+  | "evidence_authority"
   | "evidence_window"
   | "runner_health"
   | "observation_quality"
@@ -25,6 +26,43 @@ export function paperTradingQualificationBlockerGroups(
   qualificationReasons: PaperTradingQualificationReason[]
 ): PaperTradingQualificationBlockerGroup[] {
   const groups: PaperTradingQualificationBlockerGroup[] = [];
+
+  pushReasonGroup(
+    groups,
+    qualificationReasons,
+    "evidence_authority",
+    ["evidence_purpose_not_qualification"],
+    "blocked",
+    "Research-feedback paper evidence is not qualification authority.",
+    "Run a prospective qualification comparison; research-feedback evidence remains research-only."
+  );
+  pushReasonGroup(
+    groups,
+    qualificationReasons,
+    "evidence_authority",
+    ["provider_identity_not_qualification_eligible"],
+    "blocked",
+    "The frozen runtime provider identity is not eligible for qualification.",
+    "Create a new prospective qualification commitment with a verifiable provider identity; this window remains ineligible."
+  );
+  pushReasonGroup(
+    groups,
+    qualificationReasons,
+    "evidence_authority",
+    ["paper_evaluation_commitment_missing"],
+    "blocked",
+    "Paper evidence has no frozen execution commitment and cannot qualify.",
+    "Start a new prospective qualification evaluation with a persisted commitment; uncommitted history remains ineligible."
+  );
+  pushReasonGroup(
+    groups,
+    qualificationReasons,
+    "evidence_authority",
+    ["paper_evaluation_invalidated"],
+    "blocked",
+    "The frozen paper execution identity was invalidated.",
+    "Create a new candidate version and qualification commitment; invalidated evidence cannot resume."
+  );
 
   pushReasonGroup(
     groups,
@@ -48,7 +86,22 @@ export function paperTradingQualificationBlockerGroups(
     groups,
     qualificationReasons,
     "observation_quality",
-    ["failed_observation_ratio_exceeded", "paper_evaluation_failed"],
+    [
+      "paper_observation_chain_incomplete",
+      "paper_score_account_mismatch"
+    ],
+    "blocked",
+    "Paper observation and account evidence do not form a trustworthy chain.",
+    "Preserve the inconsistent evidence for audit and start a new prospective qualification window after repairing persistence or accounting."
+  );
+  pushReasonGroup(
+    groups,
+    qualificationReasons,
+    "observation_quality",
+    [
+      "failed_observation_ratio_exceeded",
+      "paper_evaluation_failed"
+    ],
     qualificationReasons.includes("paper_evaluation_failed") ? "failed" : "blocked",
     "Paper observation quality blocks trust in the score.",
     "Inspect the latest paper failure and fix the runtime or protocol issue before review."

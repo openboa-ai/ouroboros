@@ -1,0 +1,68 @@
+{
+  "record_kind": "trading_run",
+  "version": 1,
+  "trading_run_id": "trading-run-paper-session-3c9bd4d365ecd57b",
+  "stage_binding_profile": "paper",
+  "runtime_lifecycle_status": "stopped",
+  "paper_evidence_purpose": "qualification",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-3c9bd4d365ecd57b"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "hands-environment-paper-session-3c9bd4d365ecd57b"
+  },
+  "memory_surface_ref": {
+    "record_kind": "runtime_memory_surface",
+    "id": "runtime-memory-surface-paper-session-3c9bd4d365ecd57b"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "created_at": "2026-07-10T00:01:09.000Z",
+  "authority_status": "not_live",
+  "sandbox_ref": {
+    "record_kind": "sandbox",
+    "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-bf4936a393f26dfa"
+  },
+  "run_control_command_refs": [
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-2331ee644a4826d4"
+    },
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-d4295e7b86dcd382"
+    }
+  ],
+  "run_control_decision_refs": [
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-2331ee644a4826d4"
+    },
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-d4295e7b86dcd382"
+    }
+  ],
+  "runtime_audit_event_refs": [
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-2331ee644a4826d4"
+    },
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-d4295e7b86dcd382"
+    }
+  ]
+}

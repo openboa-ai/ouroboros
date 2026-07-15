@@ -280,6 +280,61 @@ describe("sandbox API", () => {
     expect(path.basename(first)).not.toBe(path.basename(second));
   });
 
+  it("isolates runtime files for long sandbox ids with the same prefix", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode(
+      "fixture-system-code-clock-python-001"
+    );
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const sharedPrefix = `sandbox-${"same-prefix-".repeat(8)}`;
+    const firstId = `${sharedPrefix}first`;
+    const secondId = `${sharedPrefix}second`;
+    const first = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: firstId,
+      sandbox_name: "ouro-long-prefix-first",
+      runtime_ref: { record_kind: "trading_run", id: "first-run" },
+      sandbox_placement_id: "sandbox-placement-long-prefix-first",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+    const second = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: secondId,
+      sandbox_name: "ouro-long-prefix-second",
+      runtime_ref: { record_kind: "trading_run", id: "second-run" },
+      sandbox_placement_id: "sandbox-placement-long-prefix-second",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(first.logs?.[0]?.sandbox_log_id).not.toBe(
+        second.logs?.[0]?.sandbox_log_id
+      );
+      expect(first.command_evidence[0]?.sandbox_command_evidence_id).not.toBe(
+        second.command_evidence[0]?.sandbox_command_evidence_id
+      );
+      await sleep(30);
+      const firstLogs = await adapter.getArtifactInstanceLogs(first.instance);
+      const secondLogs = await adapter.getArtifactInstanceLogs(second.instance);
+      const firstText = firstLogs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+      const secondText = secondLogs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+
+      expect(firstText).toContain(firstId);
+      expect(firstText).not.toContain(secondId);
+      expect(secondText).toContain(secondId);
+      expect(secondText).not.toContain(firstId);
+    } finally {
+      await Promise.allSettled([
+        adapter.stopArtifactInstance(first.instance),
+        adapter.stopArtifactInstance(second.instance)
+      ]);
+    }
+  });
+
   it("marks a generated long-running paper session as failed when it exits before startup logs", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -566,6 +621,63 @@ describe("sandbox API", () => {
     expect(response.json().sandbox.command_evidence[0]).toMatchObject({
       exit_code: 0,
       command: expect.arrayContaining(["python3", expect.stringContaining("relative-entrypoint/run.py")])
+    });
+  });
+
+  it("executes a copied generated SystemCode from the arm artifact root", async () => {
+    const sourceArtifactRoot = path.join(tmpDir, "source", "candidate-arena-runs");
+    const armArtifactRoot = path.join(tmpDir, "arm", "candidate-arena-runs");
+    const relativeArtifactPath = path.join("arena-tick-1", "candidate-1", "run.py");
+    const sourceArtifactPath = path.join(sourceArtifactRoot, relativeArtifactPath);
+    const armArtifactPath = path.join(armArtifactRoot, relativeArtifactPath);
+    const source = generatedPaperArtifact();
+    await mkdir(path.dirname(sourceArtifactPath), { recursive: true });
+    await mkdir(path.dirname(armArtifactPath), { recursive: true });
+    await writeFile(sourceArtifactPath, source, "utf8");
+    await writeFile(armArtifactPath, source, "utf8");
+    await chmod(armArtifactPath, 0o755);
+    await rm(path.join(tmpDir, "source"), { recursive: true, force: true });
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [armArtifactRoot],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        record_kind: "system_code",
+        version: 1,
+        system_code_id: "system-code-copied-arm-artifact",
+        artifact_kind: "python_file",
+        artifact_path: sourceArtifactPath,
+        artifact_digest: `sha256:${createHash("sha256").update(source).digest("hex")}`,
+        runtime_kind: "python",
+        entrypoint: ["python3", sourceArtifactPath],
+        declared_output_contract: {
+          contract_kind: "opaque_runtime_boundary",
+          declared_output_kinds: ["runtime_log", "runtime_heartbeat", "order_request"]
+        },
+        secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        provenance_refs: [{ record_kind: "trace_placeholder", id: "trace-copied-arm" }],
+        status: "registered",
+        created_at: "2026-05-21T00:00:00.000Z",
+        authority_status: "not_live"
+      },
+      instance_id: "sandbox-copied-arm-artifact",
+      sandbox_name: "ouro-copied-arm-artifact",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-copied-arm-artifact",
+      created_at: "2026-05-21T00:00:00.000Z",
+      test_ticks: 1,
+      interval_ms: 1
+    });
+
+    expect(started.instance.lifecycle_status).toBe("stopped");
+    expect(started.command_evidence[0]).toMatchObject({
+      exit_code: 0,
+      command: expect.arrayContaining(["python3", armArtifactPath])
     });
   });
 

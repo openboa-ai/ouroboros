@@ -1,0 +1,57 @@
+{
+  "record_kind": "paper_trading_comparison_tick",
+  "version": 1,
+  "paper_trading_comparison_tick_id": "paper-trading-comparison-tick-65102d3ec8fe34af",
+  "paper_trading_comparison_commitment_ref": {
+    "record_kind": "paper_trading_comparison_commitment",
+    "id": "paper-trading-comparison-132d03edbe3dfafd"
+  },
+  "paper_trading_comparison_commitment_digest": "sha256:a207a52229385dedeb0a31479cecffa27b7ed4dec03cd286dd3290d15f8a4eb6",
+  "sequence": 2,
+  "previous_tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-cd8a10910eede611"
+  },
+  "previous_tick_digest": "sha256:f89c4e1d76ca269449a9789b8fc387018a04d17b5bc2a202a1096c59f498fed6",
+  "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
+  "market_snapshot": {
+    "symbol": "BTCUSDT",
+    "price": 60100,
+    "moving_average_fast": 60200,
+    "moving_average_slow": 60000,
+    "volatility": 0.01,
+    "expected_direction": "long",
+    "observed_at": "2026-07-10T00:04:28.998Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "authority_status": "read_only"
+  },
+  "public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:04:28.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:04:29.000Z",
+    "agg_trades": [
+      {
+        "trade_id": "aggTrade:2026-07-10T00:04:29.000Z",
+        "price": "60000",
+        "quantity": "0.001",
+        "trade_time": "2026-07-10T00:04:28.999Z",
+        "is_buyer_maker": false
+      }
+    ],
+    "authority_status": "read_only"
+  },
+  "observed_at": "2026-07-10T00:04:29.000Z",
+  "tick_digest": "sha256:3de798a14092fd2a3b9728c4c4912179a71539646cf3a1a089413420ed05bbce",
+  "authority_status": "not_live"
+}

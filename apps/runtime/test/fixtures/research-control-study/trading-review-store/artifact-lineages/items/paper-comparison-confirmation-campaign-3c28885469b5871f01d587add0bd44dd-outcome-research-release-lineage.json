@@ -1,0 +1,29 @@
+{
+  "record_kind": "artifact_lineage",
+  "version": 1,
+  "artifact_lineage_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-lineage",
+  "child_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "parent_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "source_finding_refs": [
+    {
+      "record_kind": "research_finding",
+      "id": "finding-confirmation-challenger"
+    },
+    {
+      "record_kind": "research_finding",
+      "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-finding"
+    }
+  ],
+  "created_by_research_worker_ref": {
+    "record_kind": "research_worker",
+    "id": "worker-challenger"
+  },
+  "created_at": "2026-07-10T00:06:51.001Z",
+  "authority_status": "lineage_only"
+}

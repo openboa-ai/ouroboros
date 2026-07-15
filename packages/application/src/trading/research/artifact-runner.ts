@@ -1,17 +1,20 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
   ArtifactRunResult,
   ReplayTradingApiProviderSession,
+  TradingArtifactPaperHandoffProbeResult,
   TradingArtifactCommandEvidence,
   TradingArtifactRunnerKind,
   TradingProviderRequestLog,
   TradingSystemEvent,
   TradingSystemManifest
 } from "./types";
+import { PaperTradingHandoffConformanceInfrastructureError } from
+  "./paper-handoff-conformance";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,9 +26,17 @@ export interface TradingArtifactRunnerInput {
   timeout_ms?: number;
 }
 
+export interface TradingArtifactPaperHandoffProbeInput extends TradingArtifactRunnerInput {
+  instance_id: string;
+  start_at: string;
+}
+
 export interface TradingArtifactRunner {
   readonly kind: TradingArtifactRunnerKind;
   run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult>;
+  probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult>;
 }
 
 export interface HostTradingArtifactRunnerOptions {
@@ -96,6 +107,80 @@ export class HostTradingArtifactRunner implements TradingArtifactRunner {
       };
     }
   }
+
+  async probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult> {
+    assertHostTradingArtifactRunnerAllowed(this.options);
+    assertPaperHandoffProbeIdentity(input);
+    const paths = await preparePaperHandoffProbePaths(input.output_dir);
+    const [command, ...args] = input.manifest.entrypoint;
+    if (!command) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        "Trading artifact manifest entrypoint is empty"
+      );
+    }
+    const startedAt = new Date().toISOString();
+    const probeArgs = paperHandoffProbeArguments(input, paths);
+    try {
+      const result = await execFileAsync(command, [...args, ...probeArgs], {
+        cwd: input.artifact_dir,
+        timeout: paperHandoffProbeTimeout(input.timeout_ms),
+        maxBuffer: 5 * 1024 * 1024,
+        env: minimalProcessEnv({
+          TRADING_API_BASE_URL: input.provider.base_url
+        })
+      });
+      const completedAt = new Date().toISOString();
+      return {
+        status: "completed",
+        runner_kind: this.kind,
+        artifact_dir: input.artifact_dir,
+        entrypoint: [...input.manifest.entrypoint],
+        instance_id: input.instance_id,
+        started_at: startedAt,
+        completed_at: completedAt,
+        timed_out: false,
+        stdout: result.stdout.toString(),
+        stderr: result.stderr.toString(),
+        exit_code: 0,
+        output_lines: await probeOutputLines(paths.outputPath, result.stdout.toString()),
+        provider_requests: input.provider.requests()
+      };
+    } catch (error) {
+      const processError = error as NodeJS.ErrnoException & {
+        stdout?: Buffer | string;
+        stderr?: Buffer | string;
+        code?: number | string;
+        killed?: boolean;
+        signal?: string;
+      };
+      if (processError.code === "ENOENT") {
+        throw new PaperTradingHandoffConformanceInfrastructureError(
+          "runner_unavailable",
+          processError.message
+        );
+      }
+      const stdout = String(processError.stdout ?? "");
+      return {
+        status: "crashed",
+        runner_kind: this.kind,
+        artifact_dir: input.artifact_dir,
+        entrypoint: [...input.manifest.entrypoint],
+        instance_id: input.instance_id,
+        started_at: startedAt,
+        completed_at: new Date().toISOString(),
+        timed_out: Boolean(processError.killed) || processError.code === "ETIMEDOUT",
+        stdout,
+        stderr: String(processError.stderr ?? ""),
+        exit_code: typeof processError.code === "number" ? processError.code : undefined,
+        output_lines: await probeOutputLines(paths.outputPath, stdout),
+        provider_requests: input.provider.requests(),
+        error: processError.message
+      };
+    }
+  }
 }
 
 export interface DockerSandboxesSbxTradingArtifactRunnerOptions {
@@ -113,7 +198,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
   constructor(private readonly options: DockerSandboxesSbxTradingArtifactRunnerOptions = {}) {}
 
   async run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
-    const eventsPath = await prepareEventsPath(input.output_dir);
+    const sandboxWorkspace = await prepareSandboxWorkspace(input);
+    const eventsPath = await prepareEventsPath(sandboxWorkspace.root);
     const commandEvidence: TradingArtifactCommandEvidence[] = [];
     const sandboxName = this.sandboxName(input);
     const baseResult = {
@@ -146,7 +232,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       "--name",
       sandboxName,
       "shell",
-      this.workspacePath
+      sandboxWorkspace.root
     ]);
     commandEvidence.push(create);
     if (create.exit_code !== 0) {
@@ -168,15 +254,16 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       if (!command) {
         throw new Error("Trading artifact manifest entrypoint is empty");
       }
-      const sidecar = await this.prepareReplayProvider(input);
-      const providerBaseUrl = sidecar?.baseUrl ?? input.provider.sandbox_base_url ?? input.provider.base_url;
+      const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
+      const providerBaseUrl = input.provider.sandbox_base_url ??
+        input.provider.base_url;
       const execResult = await this.runSbxCommand(
         sidecar
           ? [
               this.sbxPath,
               "exec",
               "-w",
-              input.artifact_dir,
+              sandboxWorkspace.artifact_dir,
               sandboxName,
               "python3",
               sidecar.runnerScriptPath,
@@ -188,10 +275,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               sidecar.requestsPath,
               "--host",
               "127.0.0.1",
-              "--port",
-              String(sidecar.port),
-              "--provider-base-url",
-              providerBaseUrl,
+              "--ready-file",
+              sidecar.readyPath,
               "--output-events",
               eventsPath,
               "--",
@@ -202,7 +287,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               this.sbxPath,
               "exec",
               "-w",
-              input.artifact_dir,
+              sandboxWorkspace.artifact_dir,
               sandboxName,
               "env",
               `TRADING_API_BASE_URL=${providerBaseUrl}`,
@@ -252,6 +337,161 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     return runResult;
   }
 
+  async probePaperHandoff(
+    input: TradingArtifactPaperHandoffProbeInput
+  ): Promise<TradingArtifactPaperHandoffProbeResult> {
+    assertPaperHandoffProbeIdentity(input);
+    const sandboxWorkspace = await prepareSandboxWorkspace(input);
+    const paths = await preparePaperHandoffProbePaths(sandboxWorkspace.root);
+    const commandEvidence: TradingArtifactCommandEvidence[] = [];
+    const sandboxName = this.sandboxName(input);
+    const startedAt = new Date().toISOString();
+
+    const version = await this.runSbxCommand([this.sbxPath, "version"]);
+    commandEvidence.push(version);
+    if (version.exit_code !== 0 || !isDockerSandboxesSbxVersion(version.stdout)) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        version.error_message ?? (version.stderr || "docker_sandboxes_sbx_unavailable")
+      );
+    }
+    const create = await this.runSbxCommand([
+      this.sbxPath,
+      "create",
+      "--name",
+      sandboxName,
+      "shell",
+      sandboxWorkspace.root
+    ]);
+    commandEvidence.push(create);
+    if (create.exit_code !== 0) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "sandbox_create_failed",
+        create.error_message ?? (create.stderr || "docker_sandboxes_sbx_create_failed")
+      );
+    }
+
+    let execResult: TradingArtifactCommandEvidence | undefined;
+    let providerRequests: TradingProviderRequestLog[] = [];
+    let infrastructureFailure:
+      | PaperTradingHandoffConformanceInfrastructureError
+      | undefined;
+    try {
+      const [command, ...args] = input.manifest.entrypoint;
+      if (!command) {
+        infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+          "runner_unavailable",
+          "Trading artifact manifest entrypoint is empty"
+        );
+      } else {
+        const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
+        const providerBaseUrl = input.provider.sandbox_base_url ??
+          input.provider.base_url;
+        const artifactCommand = [command, ...args, ...paperHandoffProbeArguments(input, paths)];
+        execResult = await this.runSbxCommand(
+          sidecar
+            ? [
+                this.sbxPath,
+                "exec",
+                "-w",
+                sandboxWorkspace.artifact_dir,
+                sandboxName,
+                "python3",
+                sidecar.runnerScriptPath,
+                "--sidecar-script",
+                sidecar.scriptPath,
+                "--scenario",
+                sidecar.scenarioPath,
+                "--requests",
+                sidecar.requestsPath,
+                "--host",
+                "127.0.0.1",
+                "--ready-file",
+                sidecar.readyPath,
+                "--paper-handoff",
+                "--",
+                ...artifactCommand
+              ]
+            : [
+                this.sbxPath,
+                "exec",
+                "-w",
+                sandboxWorkspace.artifact_dir,
+                sandboxName,
+                "env",
+                `TRADING_API_BASE_URL=${providerBaseUrl}`,
+                ...artifactCommand
+              ],
+          paperHandoffProbeTimeout(input.timeout_ms)
+        );
+        commandEvidence.push(execResult);
+        providerRequests = await this.providerRequests(
+          input.provider,
+          sidecar?.requestsPath
+        );
+        if (sidecar && execResult.exit_code === 70) {
+          infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+            "provider_start_failed",
+            execResult.stderr || "sandbox replay provider failed to start"
+          );
+        }
+      }
+    } catch (error) {
+      infrastructureFailure = error instanceof PaperTradingHandoffConformanceInfrastructureError
+        ? error
+        : new PaperTradingHandoffConformanceInfrastructureError(
+            "provider_start_failed",
+            error instanceof Error ? error.message : String(error)
+          );
+    } finally {
+      const stop = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
+      const remove = await this.runSbxCommand([
+        this.sbxPath,
+        "rm",
+        "--force",
+        sandboxName
+      ]);
+      commandEvidence.push(stop, remove);
+      if (!infrastructureFailure && (stop.exit_code !== 0 || remove.exit_code !== 0)) {
+        infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+          "probe_cleanup_failed",
+          stop.error_message ?? stop.stderr ?? remove.error_message ?? remove.stderr ??
+            "paper handoff sandbox cleanup failed"
+        );
+      }
+    }
+
+    if (infrastructureFailure) {
+      throw infrastructureFailure;
+    }
+    if (!execResult) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "runner_unavailable",
+        "paper handoff probe command was not executed"
+      );
+    }
+    const outputLines = await probeOutputLines(paths.outputPath, execResult.stdout);
+    return {
+      status: execResult.exit_code === 0 ? "completed" : "crashed",
+      runner_kind: this.kind,
+      artifact_dir: input.artifact_dir,
+      entrypoint: [...input.manifest.entrypoint],
+      instance_id: input.instance_id,
+      started_at: startedAt,
+      completed_at: execResult.completed_at,
+      timed_out: execResult.timed_out === true,
+      stdout: execResult.stdout,
+      stderr: execResult.stderr,
+      exit_code: execResult.exit_code ?? undefined,
+      output_lines: outputLines,
+      provider_requests: providerRequests,
+      command_evidence: commandEvidence,
+      ...(execResult.exit_code === 0
+        ? {}
+        : { error: execResult.error_message ?? "docker_sandboxes_sbx_exec_failed" })
+    };
+  }
+
   private sandboxName(input: TradingArtifactRunnerInput): string {
     const prefix = this.options.sandboxNamePrefix ?? "ouro-s10-trading";
     const digest = createHash("sha256")
@@ -287,33 +527,39 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     return configured === "host_url" ? "host_url" : "sandbox_sidecar";
   }
 
-  private runSbxCommand(command: string[]): Promise<TradingArtifactCommandEvidence> {
-    return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  private runSbxCommand(
+    command: string[],
+    timeoutMs = this.commandTimeoutMs
+  ): Promise<TradingArtifactCommandEvidence> {
+    return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
   }
 
   private async prepareReplayProvider(
-    input: TradingArtifactRunnerInput
+    input: TradingArtifactRunnerInput,
+    sandboxWorkspaceRoot: string
   ): Promise<SandboxReplayProviderSidecar | undefined> {
     if (this.replayProviderTransport !== "sandbox_sidecar") {
       return undefined;
     }
-    const port = sandboxProviderPort(input.output_dir);
-    const outputRoot = safeAbsoluteRoot(input.output_dir);
+    const outputRoot = safeAbsoluteRoot(sandboxWorkspaceRoot);
     const scriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-sidecar.py"], "sidecar_script");
     const runnerScriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-runner.py"], "sidecar_runner");
     const scenarioPath = resolvePathInsideRoot(outputRoot, ["replay-provider-scenario.json"], "sidecar_scenario");
     const requestsPath = resolvePathInsideRoot(outputRoot, ["provider-requests.jsonl"], "sidecar_requests");
+    const readyPath = resolvePathInsideRoot(outputRoot, ["replay-provider-ready.txt"], "sidecar_ready");
     await writeFile(scriptPath, sandboxReplayProviderScript(), "utf8");
     await writeFile(runnerScriptPath, sandboxReplayProviderRunnerScript(), "utf8");
-    await writeFile(scenarioPath, `${JSON.stringify(input.provider.scenario, null, 2)}\n`, "utf8");
-    await rm(requestsPath, { force: true });
+    await writeFile(scenarioPath, `${JSON.stringify(input.provider.candidate_input, null, 2)}\n`, "utf8");
+    await Promise.all([
+      rm(requestsPath, { force: true }),
+      rm(readyPath, { force: true })
+    ]);
     return {
-      baseUrl: `http://127.0.0.1:${port}`,
-      port,
       scriptPath,
       runnerScriptPath,
       scenarioPath,
-      requestsPath
+      requestsPath,
+      readyPath
     };
   }
 
@@ -329,12 +575,16 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
 }
 
 interface SandboxReplayProviderSidecar {
-  baseUrl: string;
-  port: number;
   scriptPath: string;
   runnerScriptPath: string;
   scenarioPath: string;
   requestsPath: string;
+  readyPath: string;
+}
+
+interface SandboxExecutionWorkspace {
+  root: string;
+  artifact_dir: string;
 }
 
 export async function runTradingArtifact(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
@@ -359,6 +609,108 @@ async function prepareEventsPath(outputDir: string): Promise<string> {
   const eventsPath = resolvePathInsideRoot(outputRoot, ["events.jsonl"], "events_path");
   await rm(eventsPath, { force: true });
   return eventsPath;
+}
+
+const PAPER_HANDOFF_PROBE_TIMEOUT_MS = 5_000;
+
+interface PaperHandoffProbePaths {
+  outputPath: string;
+  heartbeatPath: string;
+}
+
+async function preparePaperHandoffProbePaths(
+  outputDir: string
+): Promise<PaperHandoffProbePaths> {
+  const outputRoot = safeAbsoluteRoot(outputDir);
+  await mkdir(outputRoot, { recursive: true });
+  const outputPath = resolvePathInsideRoot(
+    outputRoot,
+    ["paper-handoff-output.jsonl"],
+    "paper_handoff_output"
+  );
+  const heartbeatPath = resolvePathInsideRoot(
+    outputRoot,
+    ["paper-handoff-heartbeat.jsonl"],
+    "paper_handoff_heartbeat"
+  );
+  await Promise.all([
+    rm(outputPath, { force: true }),
+    rm(heartbeatPath, { force: true })
+  ]);
+  return { outputPath, heartbeatPath };
+}
+
+function paperHandoffProbeArguments(
+  input: TradingArtifactPaperHandoffProbeInput,
+  paths: PaperHandoffProbePaths
+): string[] {
+  return [
+    "--instance-id",
+    input.instance_id,
+    "--ticks",
+    "1",
+    "--interval-ms",
+    "1",
+    "--start-at",
+    input.start_at,
+    "--paper-order-request",
+    "valid",
+    "--log-file",
+    paths.outputPath,
+    "--heartbeat-file",
+    paths.heartbeatPath
+  ];
+}
+
+function paperHandoffProbeTimeout(requested: number | undefined): number {
+  if (!Number.isFinite(requested) || (requested ?? 0) <= 0) {
+    return PAPER_HANDOFF_PROBE_TIMEOUT_MS;
+  }
+  return Math.min(Math.floor(requested!), PAPER_HANDOFF_PROBE_TIMEOUT_MS);
+}
+
+function assertPaperHandoffProbeIdentity(
+  input: TradingArtifactPaperHandoffProbeInput
+): void {
+  if (!input.instance_id.trim() ||
+    !Number.isFinite(Date.parse(input.start_at)) ||
+    new Date(Date.parse(input.start_at)).toISOString() !== input.start_at) {
+    throw new PaperTradingHandoffConformanceInfrastructureError(
+      "runner_unavailable",
+      "paper handoff probe identity is invalid"
+    );
+  }
+}
+
+async function probeOutputLines(outputPath: string, stdout: string): Promise<string[]> {
+  try {
+    return textLines(await readFile(outputPath, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return textLines(stdout);
+  }
+}
+
+function textLines(value: string): string[] {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+async function prepareSandboxWorkspace(
+  input: TradingArtifactRunnerInput
+): Promise<SandboxExecutionWorkspace> {
+  const outputRoot = safeAbsoluteRoot(input.output_dir);
+  await mkdir(outputRoot, { recursive: true });
+  const root = resolvePathInsideRoot(outputRoot, ["sandbox-workspace"], "sandbox_workspace");
+  await rm(root, { recursive: true, force: true });
+  await mkdir(root, { recursive: true });
+  const artifactDir = resolvePathInsideRoot(root, ["artifact"], "sandbox_artifact_dir");
+  await cp(input.artifact_dir, artifactDir, { recursive: true });
+  return {
+    root,
+    artifact_dir: artifactDir
+  };
 }
 
 async function readEventsIfPresent(eventsPath: string): Promise<TradingSystemEvent[]> {
@@ -501,12 +853,16 @@ function exitCodeFor(error: Error & { code?: unknown }): number | null {
 }
 
 function safePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "empty";
-}
-
-function sandboxProviderPort(outputDir: string): number {
-  const digest = createHash("sha256").update(outputDir).digest("hex").slice(0, 8);
-  return 30_000 + (Number.parseInt(digest, 16) % 20_000);
+  const normalized = value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  let start = 0;
+  while (start < normalized.length && normalized[start] === "-") {
+    start += 1;
+  }
+  let end = normalized.length;
+  while (end > start && normalized[end - 1] === "-") {
+    end -= 1;
+  }
+  return normalized.slice(start, end) || "empty";
 }
 
 function safeAbsoluteRoot(rootPath: string): string {
@@ -546,9 +902,9 @@ def parse_args():
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--requests", required=True)
     parser.add_argument("--host", required=True)
-    parser.add_argument("--port", required=True)
-    parser.add_argument("--provider-base-url", required=True)
-    parser.add_argument("--output-events", required=True)
+    parser.add_argument("--ready-file", required=True)
+    parser.add_argument("--output-events")
+    parser.add_argument("--paper-handoff", action="store_true")
     parser.add_argument("artifact_command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.artifact_command and args.artifact_command[0] == "--":
@@ -570,6 +926,19 @@ def wait_for_sidecar(base_url):
     return False
 
 
+def wait_for_ready_file(ready_file):
+    for _ in range(20):
+        try:
+            with open(ready_file, "r", encoding="utf-8") as handle:
+                base_url = handle.read().strip()
+            if base_url:
+                return base_url
+        except FileNotFoundError:
+            pass
+        time.sleep(0.1)
+    return None
+
+
 def main():
     args = parse_args()
     provider = subprocess.Popen([
@@ -582,15 +951,23 @@ def main():
         "--host",
         args.host,
         "--port",
-        args.port,
+        "0",
+        "--ready-file",
+        args.ready_file,
     ])
     try:
-        if not wait_for_sidecar(args.provider_base_url):
+        provider_base_url = wait_for_ready_file(args.ready_file)
+        if not provider_base_url or not wait_for_sidecar(provider_base_url):
             return 70
         env = os.environ.copy()
-        env["TRADING_API_BASE_URL"] = args.provider_base_url
+        env["TRADING_API_BASE_URL"] = provider_base_url
+        artifact_command = [*args.artifact_command]
+        if not args.paper_handoff:
+            if not args.output_events:
+                return 64
+            artifact_command.extend(["--output-events", args.output_events])
         artifact = subprocess.run(
-            [*args.artifact_command, "--output-events", args.output_events],
+            artifact_command,
             env=env,
             check=False,
         )
@@ -602,6 +979,10 @@ def main():
         except subprocess.TimeoutExpired:
             provider.kill()
             provider.wait()
+        try:
+            os.remove(args.ready_file)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
@@ -613,6 +994,7 @@ function sandboxReplayProviderScript(): string {
   return `#!/usr/bin/env python3
 import argparse
 import json
+import os
 from socketserver import TCPServer
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -741,6 +1123,13 @@ def make_handler(scenario, requests_path):
     return ReplayProviderHandler
 
 
+def publish_ready_file(ready_file, base_url):
+    temporary = f"{ready_file}.{os.getpid()}.tmp"
+    with open(temporary, "x", encoding="utf-8") as handle:
+        handle.write(base_url + "\\n")
+    os.replace(temporary, ready_file)
+
+
 class ReplayThreadingHTTPServer(ThreadingHTTPServer):
     def server_bind(self):
         TCPServer.server_bind(self)
@@ -754,12 +1143,17 @@ def main():
     parser.add_argument("--requests", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--ready-file", required=True)
     args = parser.parse_args()
 
     with open(args.scenario, "r", encoding="utf-8") as handle:
         scenario = json.load(handle)
 
     server = ReplayThreadingHTTPServer((args.host, args.port), make_handler(scenario, args.requests))
+    publish_ready_file(
+        args.ready_file,
+        f"http://{args.host}:{server.server_port}",
+    )
     server.serve_forever()
 
 

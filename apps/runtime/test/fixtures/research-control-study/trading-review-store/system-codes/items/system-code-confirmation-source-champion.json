@@ -1,0 +1,50 @@
+{
+  "record_kind": "system_code",
+  "version": 1,
+  "system_code_id": "system-code-confirmation-source-champion",
+  "artifact_kind": "python_file",
+  "artifact_path": "fixtures/trading-systems/clock.py",
+  "artifact_digest": "sha256:confirmation-source-champion",
+  "artifact_runtime_contract_ref": {
+    "record_kind": "artifact_runtime_contract",
+    "id": "fixture-artifact-runtime-contract-clock-python-001"
+  },
+  "runtime_kind": "python",
+  "entrypoint": [
+    "python3",
+    "fixtures/trading-systems/clock.py"
+  ],
+  "declared_output_contract": {
+    "contract_kind": "opaque_runtime_boundary",
+    "declared_output_kinds": [
+      "program_event",
+      "runtime_log",
+      "runtime_heartbeat",
+      "order_request"
+    ],
+    "event_envelope_ref": {
+      "record_kind": "program_event_contract",
+      "id": "opaque-clock-program-event-v1"
+    },
+    "log_contract_ref": {
+      "record_kind": "runtime_log_contract",
+      "id": "opaque-clock-log-v1"
+    },
+    "heartbeat_contract_ref": {
+      "record_kind": "runtime_heartbeat_contract",
+      "id": "opaque-clock-heartbeat-v1"
+    }
+  },
+  "secret_policy_ref": {
+    "record_kind": "secret_policy",
+    "id": "secret-policy-no-raw-values-v1"
+  },
+  "capability_policy_ref": {
+    "record_kind": "capability_policy",
+    "id": "capability-policy-clock-fixture-v1"
+  },
+  "provenance_refs": [],
+  "status": "registered",
+  "created_at": "2026-07-09T20:51:00.000Z",
+  "authority_status": "not_live"
+}

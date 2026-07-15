@@ -1,0 +1,45 @@
+{
+  "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee",
+  "adapter_kind": "deterministic_test",
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-2543507804b1f58b"
+  },
+  "sandbox_placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-2543507804b1f58b"
+  },
+  "lifecycle_status": "stopped",
+  "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-25435078-challenger",
+  "created_at": "2026-07-10T00:01:12.000Z",
+  "started_at": "2026-07-10T00:01:12.000Z",
+  "stopped_at": "2026-07-10T00:02:15.000Z",
+  "log_refs": [
+    {
+      "record_kind": "sandbox_log",
+      "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee-order-log"
+    }
+  ],
+  "heartbeat_refs": [],
+  "command_evidence_refs": [],
+  "authority_status": "not_live",
+  "logs": [
+    {
+      "log_ref": {
+        "record_kind": "sandbox_log",
+        "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee-order-log"
+      },
+      "lines": [
+        "{\"event\":\"order_request\",\"event_id\":\"confirmation-order-trading-run-paper-session-2543507804b1f58b\",\"instance_id\":\"sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee\",\"at\":\"2026-07-10T00:01:10.000Z\",\"authority_status\":\"trace_only\",\"intent_kind\":\"place_order\",\"symbol\":\"BTCUSDT\",\"side\":\"buy\",\"order_type\":\"limit\",\"quantity\":\"0.001\",\"limit_price\":\"60000\",\"reason\":\"confirmation challenger first checkpoint order\"}"
+      ],
+      "captured_at": "2026-07-10T00:01:13.000Z",
+      "authority_status": "trace_only"
+    }
+  ],
+  "heartbeats": [],
+  "command_evidence": []
+}

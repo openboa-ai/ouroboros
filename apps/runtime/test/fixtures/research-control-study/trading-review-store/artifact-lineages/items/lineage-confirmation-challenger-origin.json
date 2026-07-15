@@ -1,0 +1,25 @@
+{
+  "record_kind": "artifact_lineage",
+  "version": 1,
+  "artifact_lineage_id": "lineage-confirmation-challenger-origin",
+  "child_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "parent_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "source_finding_refs": [
+    {
+      "record_kind": "research_finding",
+      "id": "finding-confirmation-challenger"
+    }
+  ],
+  "created_by_research_worker_ref": {
+    "record_kind": "research_worker",
+    "id": "worker-challenger"
+  },
+  "created_at": "2026-07-09T20:54:00.000Z",
+  "authority_status": "lineage_only"
+}

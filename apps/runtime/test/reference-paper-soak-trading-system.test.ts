@@ -1,16 +1,26 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
+  CandidateAdmissionDecisionRecord,
   CandidateMaterializationInput,
+  ExperimentRunRecord,
   OuroborosCommandKind,
   OuroborosCommandRequest,
   OperatorReadModel,
-  SystemCodeRecord
+  PaperTradingHandoffConformanceRecord,
+  ResearchFindingRecord,
+  SandboxDetailReadModel,
+  SystemCodeRecord,
+  TradingEvaluationResultRecord
+} from "@ouroboros/domain";
+import {
+  decideCandidateAdmission,
+  paperTradingHandoffConformanceDigestInput
 } from "@ouroboros/domain";
 import { parseTradingSystemPaperEventLine } from "@ouroboros/application/trading/paper/events";
 import {
@@ -176,13 +186,14 @@ describe("reference paper soak TradingSystem", () => {
   it("soaks a selected reference TradingSystem through live paper observations, fake fills, PnL, and stop", async () => {
     const store = new LocalStore(tmpDir);
     const candidateId = await registerReferenceCandidate(store);
+    const sandboxAdapter = new DeterministicSandboxAdapter({
+      allowedArtifactRoots: [path.dirname(referenceArtifactPath)],
+      allowedCapabilityPolicyIds: [referenceCapabilityPolicyId]
+    });
     const server = await buildServer({
       store,
       sandboxAdapters: {
-        deterministic_test: new DeterministicSandboxAdapter({
-          allowedArtifactRoots: [path.dirname(referenceArtifactPath)],
-          allowedCapabilityPolicyIds: [referenceCapabilityPolicyId]
-        })
+        deterministic_test: sandboxAdapter
       },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
@@ -240,7 +251,13 @@ describe("reference paper soak TradingSystem", () => {
       expect(started.operator.selected_paper_trading_evaluation.latest_order_request_id).toEqual(expect.any(String));
 
       const tradingRunId = started.operator.selected_paper_trading_evaluation.trading_run_id;
-      await sleep(1_100);
+      const sandbox = started.operator.selected_candidate?.runtime.sandbox;
+      expect(sandbox).toBeDefined();
+      await waitForSandboxEvent(
+        sandboxAdapter,
+        sandbox!,
+        `${sandbox!.sandbox_id}:hold:0002`
+      );
       const held = await postCommand(server, {
         command_kind: "trading_run.observe",
         payload: { trading_run_id: tradingRunId }
@@ -260,7 +277,11 @@ describe("reference paper soak TradingSystem", () => {
         }
       });
 
-      await sleep(1_100);
+      await waitForSandboxEvent(
+        sandboxAdapter,
+        sandbox!,
+        `${sandbox!.sandbox_id}:cancel-order:0003`
+      );
       const canceled = await postCommand(server, {
         command_kind: "trading_run.observe",
         payload: { trading_run_id: tradingRunId }
@@ -287,13 +308,16 @@ describe("reference paper soak TradingSystem", () => {
     } finally {
       await server.close();
     }
-  });
+  }, 15_000);
 });
 
 async function registerReferenceCandidate(store: LocalStore): Promise<string> {
   await store.initialize();
-  const systemCode = referenceSystemCode();
+  const systemCode = await referenceSystemCode();
+  const sourceSystemCode = await referenceSourceSystemCode();
+  await store.recordSystemCode(sourceSystemCode);
   await store.recordSystemCode(systemCode);
+  await recordReferencePaperHandoffEvidence(store, sourceSystemCode, systemCode);
   const outcome = await store.materializeCandidate(referenceCandidateMaterializationInput(systemCode.system_code_id));
   if (outcome.status !== "materialized") {
     throw new Error("expected reference candidate materialization");
@@ -301,14 +325,14 @@ async function registerReferenceCandidate(store: LocalStore): Promise<string> {
   return outcome.candidate.candidate_id;
 }
 
-function referenceSystemCode(): SystemCodeRecord {
+async function referenceSystemCode(): Promise<SystemCodeRecord> {
   return {
     record_kind: "system_code",
     version: 1,
     system_code_id: "reference-system-code-paper-soak-001",
     artifact_kind: "python_file",
     artifact_path: referenceArtifactPath,
-    artifact_digest: `sha256:${createHash("sha256").update(referenceArtifactPath).digest("hex")}`,
+    artifact_digest: await fileDigest(referenceArtifactPath),
     runtime_kind: "python",
     entrypoint: ["python3", referenceArtifactPath],
     declared_output_contract: {
@@ -322,6 +346,167 @@ function referenceSystemCode(): SystemCodeRecord {
     created_at: "2026-05-16T00:00:00.000Z",
     authority_status: "not_live"
   };
+}
+
+async function referenceSourceSystemCode(): Promise<SystemCodeRecord> {
+  const artifactPath = path.resolve("fixtures/trading-systems/clock.py");
+  return {
+    record_kind: "system_code",
+    version: 1,
+    system_code_id: "reference-system-code-paper-soak-source-001",
+    artifact_kind: "python_file",
+    artifact_path: artifactPath,
+    artifact_digest: await fileDigest(artifactPath),
+    runtime_kind: "python",
+    entrypoint: ["python3", artifactPath],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log"]
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+    capability_policy_ref: { record_kind: "capability_policy", id: referenceCapabilityPolicyId },
+    provenance_refs: [{ record_kind: "reference_trading_system", id: "clock-source-v1" }],
+    status: "registered",
+    created_at: "2026-05-15T23:59:00.000Z",
+    authority_status: "not_live"
+  };
+}
+
+async function recordReferencePaperHandoffEvidence(
+  store: LocalStore,
+  sourceSystemCode: SystemCodeRecord,
+  systemCode: SystemCodeRecord
+): Promise<void> {
+  const experiment: ExperimentRunRecord = {
+    record_kind: "experiment_run",
+    version: 1,
+    experiment_run_id: "reference-paper-soak-experiment-001",
+    research_worker_ref: { record_kind: "research_worker", id: "reference-paper-soak-worker" },
+    research_direction_ref: { record_kind: "research_direction", id: "trend_following" },
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    trading_evaluation_task_ref: {
+      record_kind: "trading_evaluation_task",
+      id: "candidate-arena-revenue-cost-v1"
+    },
+    submitted_at: "2026-05-16T00:00:00.000Z",
+    status: "evaluated",
+    authority_status: "not_live"
+  };
+  const evaluation: TradingEvaluationResultRecord = {
+    record_kind: "trading_evaluation_result",
+    version: 1,
+    trading_evaluation_result_id: "reference-paper-soak-evaluation-001",
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_task_ref: { ...experiment.trading_evaluation_task_ref },
+    evaluator_ref: { record_kind: "external_evaluator", id: "reference-paper-soak-evaluator" },
+    result_status: "accepted",
+    evidence_disposition: "not_counted",
+    score_summary: {
+      total_score: 1,
+      oos_score: 1,
+      drawdown_score: 1,
+      turnover_score: 1,
+      cost_survival_score: 1,
+      reproducibility_score: 1,
+      complexity_penalty: 0
+    },
+    metric_refs: [],
+    evaluator_trace_ref: { record_kind: "trace_placeholder", id: "reference-paper-soak-trace" },
+    completed_at: "2026-05-16T00:00:01.000Z",
+    authority_status: "not_counted"
+  };
+  const conformance: PaperTradingHandoffConformanceRecord = {
+    record_kind: "paper_trading_handoff_conformance",
+    version: 1,
+    paper_trading_handoff_conformance_id: "reference-paper-soak-conformance-001",
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_artifact_digest: systemCode.artifact_digest,
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_task_ref: { ...experiment.trading_evaluation_task_ref },
+    protocol_version: "paper_trading_event_protocol_v1",
+    runner_kind: "host_process",
+    status: "passed",
+    reason: "passed",
+    provider_request_count: 3,
+    decision_event_kind: "order_request",
+    heartbeat_count: 1,
+    runtime_stopped: true,
+    started_at: "2026-05-16T00:00:00.000Z",
+    completed_at: "2026-05-16T00:00:01.000Z",
+    evidence_digest: "pending",
+    research_preflight_authority: true,
+    runnable_paper_handoff: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  conformance.evidence_digest = `sha256:${createHash("sha256")
+    .update(paperTradingHandoffConformanceDigestInput(conformance))
+    .digest("hex")}`;
+  const finding: ResearchFindingRecord = {
+    record_kind: "research_finding",
+    version: 1,
+    research_finding_id: "reference-paper-soak-finding-001",
+    research_worker_ref: { ...experiment.research_worker_ref },
+    research_direction_ref: { ...experiment.research_direction_ref },
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: evaluation.trading_evaluation_result_id
+    },
+    finding_kind: "positive_result",
+    summary: "Reference paper soak artifact passed external replay and paper handoff conformance.",
+    supporting_record_refs: [
+      { record_kind: "trading_evaluation_result", id: evaluation.trading_evaluation_result_id },
+      {
+        record_kind: "paper_trading_handoff_conformance",
+        id: conformance.paper_trading_handoff_conformance_id
+      }
+    ],
+    created_at: "2026-05-16T00:00:01.000Z",
+    authority_status: "research_trace_only"
+  };
+  const admissionInput = {
+    research_worker_outcome: "changed",
+    experiment_status: "evaluated",
+    evaluation_status: "accepted",
+    evidence_disposition: "not_counted",
+    paper_handoff_conformance_status: "passed"
+  } as const;
+  const admission: CandidateAdmissionDecisionRecord = {
+    record_kind: "candidate_admission_decision",
+    version: 1,
+    candidate_admission_decision_id: "reference-paper-soak-admission-001",
+    source_system_code_ref: { record_kind: "system_code", id: sourceSystemCode.system_code_id },
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: evaluation.trading_evaluation_result_id
+    },
+    research_finding_ref: { record_kind: "research_finding", id: finding.research_finding_id },
+    source_artifact_digest: sourceSystemCode.artifact_digest,
+    submitted_artifact_digest: systemCode.artifact_digest,
+    paper_trading_handoff_conformance_ref: {
+      record_kind: "paper_trading_handoff_conformance",
+      id: conformance.paper_trading_handoff_conformance_id
+    },
+    paper_trading_handoff_conformance_digest: conformance.evidence_digest,
+    ...admissionInput,
+    ...decideCandidateAdmission(admissionInput),
+    decided_at: "2026-05-16T00:00:02.000Z"
+  };
+
+  await store.recordExperimentRun(experiment);
+  await store.recordPaperTradingHandoffConformance(conformance);
+  await store.recordTradingEvaluationResult(evaluation);
+  await store.recordResearchFinding(finding);
+  await store.recordCandidateAdmissionDecision(admission);
+}
+
+async function fileDigest(pathname: string): Promise<string> {
+  return `sha256:${createHash("sha256").update(await readFile(pathname)).digest("hex")}`;
 }
 
 function referenceCandidateMaterializationInput(systemCodeId: string): CandidateMaterializationInput {
@@ -381,4 +566,27 @@ async function postCommand(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSandboxEvent(
+  adapter: DeterministicSandboxAdapter,
+  sandbox: SandboxDetailReadModel,
+  eventId: string,
+  timeoutMs = 10_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const observations = await adapter.getArtifactInstanceLogs(sandbox);
+    if ((observations.logs ?? []).some((log) => log.lines.some((line) => {
+      try {
+        return (JSON.parse(line) as { event_id?: string }).event_id === eventId;
+      } catch {
+        return false;
+      }
+    }))) {
+      return;
+    }
+    await sleep(25);
+  }
+  throw new Error(`sandbox event ${eventId} was not observed before timeout`);
 }

@@ -1,0 +1,675 @@
+{
+  "record_kind": "local_paper_trading_comparison_checkpoint_transaction",
+  "version": 1,
+  "transaction_id": "paper-comparison-checkpoint-attempt-a9b54bab7244f406c273",
+  "checkpoint_attempt_ref": {
+    "record_kind": "paper_trading_comparison_checkpoint_attempt",
+    "id": "paper-comparison-checkpoint-attempt-a9b54bab7244f406c273"
+  },
+  "checkpoint_attempt_digest": "sha256:2ca313fc174e033a56d55314356d1140511722b2f573cd911fa6a248a1edb6df",
+  "outcome": {
+    "record_kind": "paper_trading_comparison_checkpoint_outcome",
+    "version": 1,
+    "paper_trading_comparison_checkpoint_outcome_id": "paper-comparison-checkpoint-outcome-811407dd810da640bcb6",
+    "checkpoint_attempt_ref": {
+      "record_kind": "paper_trading_comparison_checkpoint_attempt",
+      "id": "paper-comparison-checkpoint-attempt-a9b54bab7244f406c273"
+    },
+    "checkpoint_attempt_digest": "sha256:2ca313fc174e033a56d55314356d1140511722b2f573cd911fa6a248a1edb6df",
+    "tick_ref": {
+      "record_kind": "paper_trading_comparison_tick",
+      "id": "paper-trading-comparison-tick-dd031677e8ed164f"
+    },
+    "tick_digest": "sha256:d5547ff1e87a24fcc3e492db826b75a62a075f22873204b0305283f756026f76",
+    "checkpoint_sequence": 2,
+    "outcome_status": "paired",
+    "outcome_reason": "paired_checkpoint_recorded",
+    "champion": {
+      "role": "champion",
+      "observation_ref": {
+        "record_kind": "paper_trading_observation",
+        "id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-f499909216c8dd21-4d9a-4a0ff8fe54ae689e-0002"
+      },
+      "observation_record_digest": "sha256:8b04fcd7d045685af5c47e0b03cc70142316e274c63d861afb6e30f66928aabc",
+      "evaluation_record_digest": "sha256:f64fd3919150b70a138025da84fd68b9bb6268469ddb048ca3c1ef418367a97a",
+      "ledger_chain_refs": [],
+      "observation_status": "no_order",
+      "consumed_event_count": 0,
+      "provider_request_count_after": 5,
+      "tick_acknowledgement_ref": {
+        "record_kind": "paper_trading_comparison_tick_acknowledgement",
+        "id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-a12fb-f8b11d8e32350d02"
+      },
+      "tick_acknowledgement_digest": "sha256:f51b3fc38e0b2b11a95c11ec45a2fcdc057ad0b470784b03effae2caccc9a0d3"
+    },
+    "challenger": {
+      "role": "challenger",
+      "observation_ref": {
+        "record_kind": "paper_trading_observation",
+        "id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2-5b0abd8728c86e6f-0002"
+      },
+      "observation_record_digest": "sha256:62b5de931c286e54147a2ad80388f88ef7b5a639d3b3292b608aae60c77079d3",
+      "evaluation_record_digest": "sha256:d3762eaf7bb1df896cc2b1162696ef6c49a1e9519d8b753d829968aee5cf4ea6",
+      "ledger_chain_refs": [],
+      "observation_status": "recorded",
+      "consumed_event_count": 0,
+      "provider_request_count_after": 5,
+      "tick_acknowledgement_ref": {
+        "record_kind": "paper_trading_comparison_tick_acknowledgement",
+        "id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-a12fb-6665d0bc6330e326"
+      },
+      "tick_acknowledgement_digest": "sha256:c8c70387240f5407af248d24a88424958ac564ebcd289edb01fc2cc472e237ac"
+    },
+    "next_action": "capture_next_tick",
+    "completed_at": "2026-07-10T00:06:47.000Z",
+    "outcome_digest": "sha256:33f52a2eb5f28423fdffa228316b05cf63cdcf5c382c91543ca3e50e45338a98",
+    "live_exchange_authority": false,
+    "order_submission_authority": false,
+    "authority_status": "not_live"
+  },
+  "champion": {
+    "prepared": {
+      "role": "champion",
+      "ledger_inputs": [],
+      "ledger_outcomes": [],
+      "observation": {
+        "record_kind": "paper_trading_observation",
+        "version": 1,
+        "paper_trading_observation_id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-f499909216c8dd21-4d9a-4a0ff8fe54ae689e-0002",
+        "paper_trading_evaluation_ref": {
+          "record_kind": "paper_trading_evaluation",
+          "id": "paper-trading-evaluation-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db"
+        },
+        "paper_trading_evaluation_commitment_ref": {
+          "record_kind": "paper_trading_evaluation_commitment",
+          "id": "paper-trading-evaluation-commitment-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db"
+        },
+        "paper_trading_comparison_tick_ref": {
+          "record_kind": "paper_trading_comparison_tick",
+          "id": "paper-trading-comparison-tick-dd031677e8ed164f"
+        },
+        "paper_trading_comparison_tick_digest": "sha256:d5547ff1e87a24fcc3e492db826b75a62a075f22873204b0305283f756026f76",
+        "paper_trading_comparison_tick_acknowledgement_ref": {
+          "record_kind": "paper_trading_comparison_tick_acknowledgement",
+          "id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-a12fb-f8b11d8e32350d02"
+        },
+        "paper_trading_comparison_tick_acknowledgement_digest": "sha256:f51b3fc38e0b2b11a95c11ec45a2fcdc057ad0b470784b03effae2caccc9a0d3",
+        "paper_trading_comparison_checkpoint_attempt_ref": {
+          "record_kind": "paper_trading_comparison_checkpoint_attempt",
+          "id": "paper-comparison-checkpoint-attempt-a9b54bab7244f406c273"
+        },
+        "paper_trading_comparison_checkpoint_attempt_digest": "sha256:2ca313fc174e033a56d55314356d1140511722b2f573cd911fa6a248a1edb6df",
+        "candidate_ref": {
+          "record_kind": "trading_system_candidate",
+          "id": "fixture-candidate-sealed-replay-001"
+        },
+        "candidate_version_ref": {
+          "record_kind": "candidate_version",
+          "id": "fixture-candidate-version-001"
+        },
+        "trading_run_ref": {
+          "record_kind": "trading_run",
+          "id": "trading-run-paper-session-f499909216c8dd21"
+        },
+        "sequence": 2,
+        "status": "no_order",
+        "observed_at": "2026-07-10T00:06:46.000Z",
+        "market_snapshot": {
+          "symbol": "BTCUSDT",
+          "price": 60100,
+          "moving_average_fast": 60200,
+          "moving_average_slow": 60000,
+          "volatility": 0.01,
+          "expected_direction": "long",
+          "observed_at": "2026-07-10T00:06:45.998Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "authority_status": "read_only"
+        },
+        "public_execution_snapshot": {
+          "symbol": "BTCUSDT",
+          "observed_at": "2026-07-10T00:06:45.999Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "stream_marker": "confirmation-2026-07-10T00:06:46.000Z",
+          "agg_trades": [
+            {
+              "trade_id": "aggTrade:2026-07-10T00:06:46.000Z",
+              "price": "60000",
+              "quantity": "0.001",
+              "trade_time": "2026-07-10T00:06:45.999Z",
+              "is_buyer_maker": false
+            }
+          ],
+          "authority_status": "read_only"
+        },
+        "paper_account_snapshot": {
+          "wallet_balance_usdt": "10000",
+          "available_balance_usdt": "10000",
+          "equity_usdt": "10000",
+          "realized_pnl_usdt": "0",
+          "unrealized_pnl_usdt": "0",
+          "fee_paid_usdt": "0",
+          "slippage_paid_usdt": "0",
+          "funding_paid_usdt": "0",
+          "margin_reserved_usdt": "0",
+          "position": {
+            "symbol": "BTCUSDT",
+            "quantity": "0",
+            "side": "flat",
+            "mark_price": "60100",
+            "notional_usdt": "0"
+          },
+          "open_order_count": 0,
+          "authority_status": "not_live"
+        },
+        "open_orders": [],
+        "processed_trading_system_event_ids": [],
+        "processed_public_trade_ids": [],
+        "score_delta": {
+          "revenue_usdt": 0,
+          "cost_usdt": 0,
+          "net_revenue_usdt": 0,
+          "net_return_pct": 0
+        },
+        "cumulative_score": {
+          "revenue_usdt": 0,
+          "cost_usdt": 0,
+          "net_revenue_usdt": 0,
+          "net_return_pct": 0
+        },
+        "authority_status": "not_live"
+      },
+      "evaluation": {
+        "record_kind": "paper_trading_evaluation",
+        "version": 1,
+        "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db",
+        "candidate_ref": {
+          "record_kind": "trading_system_candidate",
+          "id": "fixture-candidate-sealed-replay-001"
+        },
+        "candidate_version_ref": {
+          "record_kind": "candidate_version",
+          "id": "fixture-candidate-version-001"
+        },
+        "trading_run_ref": {
+          "record_kind": "trading_run",
+          "id": "trading-run-paper-session-f499909216c8dd21"
+        },
+        "paper_trading_evaluation_commitment_ref": {
+          "record_kind": "paper_trading_evaluation_commitment",
+          "id": "paper-trading-evaluation-commitment-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db"
+        },
+        "status": "running",
+        "interval_ms": 60000,
+        "observation_count": 2,
+        "started_at": "2026-07-10T00:05:43.000Z",
+        "latest_score": {
+          "revenue_usdt": 0,
+          "cost_usdt": 0,
+          "net_revenue_usdt": 0,
+          "net_return_pct": 0
+        },
+        "paper_account_snapshot": {
+          "wallet_balance_usdt": "10000",
+          "available_balance_usdt": "10000",
+          "equity_usdt": "10000",
+          "realized_pnl_usdt": "0",
+          "unrealized_pnl_usdt": "0",
+          "fee_paid_usdt": "0",
+          "slippage_paid_usdt": "0",
+          "funding_paid_usdt": "0",
+          "margin_reserved_usdt": "0",
+          "position": {
+            "symbol": "BTCUSDT",
+            "quantity": "0",
+            "side": "flat",
+            "mark_price": "60100",
+            "notional_usdt": "0"
+          },
+          "open_order_count": 0,
+          "authority_status": "not_live"
+        },
+        "open_orders": [],
+        "processed_trading_system_event_ids": [],
+        "processed_public_trade_ids": [],
+        "authority_status": "not_live",
+        "next_observation_at": "2026-07-10T00:07:46.000Z",
+        "last_observed_at": "2026-07-10T00:06:46.000Z",
+        "latest_public_execution_snapshot": {
+          "symbol": "BTCUSDT",
+          "observed_at": "2026-07-10T00:06:45.999Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "stream_marker": "confirmation-2026-07-10T00:06:46.000Z",
+          "agg_trades": [
+            {
+              "trade_id": "aggTrade:2026-07-10T00:06:46.000Z",
+              "price": "60000",
+              "quantity": "0.001",
+              "trade_time": "2026-07-10T00:06:45.999Z",
+              "is_buyer_maker": false
+            }
+          ],
+          "authority_status": "read_only"
+        }
+      },
+      "consumed_event_count": 0,
+      "provider_request_count_after": 5,
+      "preparation_digest": "sha256:854e233a2484e1a359ebe1aeb124f501969cf1ee4dbd614c1d5309a63cec4b68"
+    },
+    "previous_evaluation": {
+      "record_kind": "paper_trading_evaluation",
+      "version": 1,
+      "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db",
+      "candidate_ref": {
+        "record_kind": "trading_system_candidate",
+        "id": "fixture-candidate-sealed-replay-001"
+      },
+      "candidate_version_ref": {
+        "record_kind": "candidate_version",
+        "id": "fixture-candidate-version-001"
+      },
+      "trading_run_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-f499909216c8dd21"
+      },
+      "paper_trading_evaluation_commitment_ref": {
+        "record_kind": "paper_trading_evaluation_commitment",
+        "id": "paper-trading-evaluation-commitment-trading-run-paper-session-f499909216c8dd21-4d9a77e48b3ea6db"
+      },
+      "status": "running",
+      "interval_ms": 60000,
+      "observation_count": 1,
+      "started_at": "2026-07-10T00:05:43.000Z",
+      "latest_score": {
+        "revenue_usdt": 0,
+        "cost_usdt": 0,
+        "net_revenue_usdt": 0,
+        "net_return_pct": 0
+      },
+      "paper_account_snapshot": {
+        "wallet_balance_usdt": "10000",
+        "available_balance_usdt": "10000",
+        "equity_usdt": "10000",
+        "realized_pnl_usdt": "0",
+        "unrealized_pnl_usdt": "0",
+        "fee_paid_usdt": "0",
+        "slippage_paid_usdt": "0",
+        "funding_paid_usdt": "0",
+        "margin_reserved_usdt": "0",
+        "position": {
+          "symbol": "BTCUSDT",
+          "quantity": "0",
+          "side": "flat",
+          "mark_price": "60000",
+          "notional_usdt": "0"
+        },
+        "open_order_count": 0,
+        "authority_status": "not_live"
+      },
+      "open_orders": [],
+      "processed_trading_system_event_ids": [],
+      "processed_public_trade_ids": [],
+      "authority_status": "not_live",
+      "next_observation_at": "2026-07-10T00:06:44.000Z",
+      "last_observed_at": "2026-07-10T00:05:44.000Z",
+      "latest_public_execution_snapshot": {
+        "symbol": "BTCUSDT",
+        "observed_at": "2026-07-10T00:05:43.999Z",
+        "source_kind": "binance_production_public_rest",
+        "source_priority": "rest_fallback",
+        "freshness": "fresh",
+        "ws_connected": false,
+        "rest_fallback_used": true,
+        "gap_detected": false,
+        "stream_marker": "confirmation-2026-07-10T00:05:44.000Z",
+        "agg_trades": [],
+        "authority_status": "read_only"
+      }
+    },
+    "ledger_plans": []
+  },
+  "challenger": {
+    "prepared": {
+      "role": "challenger",
+      "ledger_inputs": [],
+      "ledger_outcomes": [],
+      "observation": {
+        "record_kind": "paper_trading_observation",
+        "version": 1,
+        "paper_trading_observation_id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2-5b0abd8728c86e6f-0002",
+        "paper_trading_evaluation_ref": {
+          "record_kind": "paper_trading_evaluation",
+          "id": "paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
+        },
+        "paper_trading_evaluation_commitment_ref": {
+          "record_kind": "paper_trading_evaluation_commitment",
+          "id": "paper-trading-evaluation-commitment-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
+        },
+        "paper_trading_comparison_tick_ref": {
+          "record_kind": "paper_trading_comparison_tick",
+          "id": "paper-trading-comparison-tick-dd031677e8ed164f"
+        },
+        "paper_trading_comparison_tick_digest": "sha256:d5547ff1e87a24fcc3e492db826b75a62a075f22873204b0305283f756026f76",
+        "paper_trading_comparison_tick_acknowledgement_ref": {
+          "record_kind": "paper_trading_comparison_tick_acknowledgement",
+          "id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-a12fb-6665d0bc6330e326"
+        },
+        "paper_trading_comparison_tick_acknowledgement_digest": "sha256:c8c70387240f5407af248d24a88424958ac564ebcd289edb01fc2cc472e237ac",
+        "paper_trading_comparison_checkpoint_attempt_ref": {
+          "record_kind": "paper_trading_comparison_checkpoint_attempt",
+          "id": "paper-comparison-checkpoint-attempt-a9b54bab7244f406c273"
+        },
+        "paper_trading_comparison_checkpoint_attempt_digest": "sha256:2ca313fc174e033a56d55314356d1140511722b2f573cd911fa6a248a1edb6df",
+        "candidate_ref": {
+          "record_kind": "trading_system_candidate",
+          "id": "candidate-a651f33d54cbfec8"
+        },
+        "candidate_version_ref": {
+          "record_kind": "candidate_version",
+          "id": "candidate-version-a651f33d54cbfec8"
+        },
+        "trading_run_ref": {
+          "record_kind": "trading_run",
+          "id": "trading-run-paper-session-e93aa57454db1fb1"
+        },
+        "sequence": 2,
+        "status": "recorded",
+        "observed_at": "2026-07-10T00:06:46.000Z",
+        "market_snapshot": {
+          "symbol": "BTCUSDT",
+          "price": 60100,
+          "moving_average_fast": 60200,
+          "moving_average_slow": 60000,
+          "volatility": 0.01,
+          "expected_direction": "long",
+          "observed_at": "2026-07-10T00:06:45.998Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "authority_status": "read_only"
+        },
+        "public_execution_snapshot": {
+          "symbol": "BTCUSDT",
+          "observed_at": "2026-07-10T00:06:45.999Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "stream_marker": "confirmation-2026-07-10T00:06:46.000Z",
+          "agg_trades": [
+            {
+              "trade_id": "aggTrade:2026-07-10T00:06:46.000Z",
+              "price": "60000",
+              "quantity": "0.001",
+              "trade_time": "2026-07-10T00:06:45.999Z",
+              "is_buyer_maker": false
+            }
+          ],
+          "authority_status": "read_only"
+        },
+        "paper_account_snapshot": {
+          "wallet_balance_usdt": "9999.952000000001",
+          "available_balance_usdt": "9998.850000000002",
+          "equity_usdt": "10000.052000000001",
+          "realized_pnl_usdt": "0",
+          "unrealized_pnl_usdt": "0.1",
+          "fee_paid_usdt": "0.024",
+          "slippage_paid_usdt": "0.018",
+          "funding_paid_usdt": "0.006",
+          "margin_reserved_usdt": "1.202",
+          "position": {
+            "symbol": "BTCUSDT",
+            "quantity": "0.001",
+            "side": "long",
+            "average_entry_price": "60000",
+            "mark_price": "60100",
+            "notional_usdt": "60.1"
+          },
+          "open_order_count": 0,
+          "authority_status": "not_live"
+        },
+        "open_orders": [],
+        "latest_fill": {
+          "fill_id": "paper-fill-paper-order-confirmation-order-trading-run-paper-session-e93aa57454db1fb1-aggTrade-2026-07-10T00-06-46-000Z",
+          "order_id": "paper-order-confirmation-order-trading-run-paper-session-e93aa57454db1fb1",
+          "fill_status": "filled",
+          "fill_price": "60000",
+          "fill_quantity": "0.001",
+          "fee_usdt": "0.024",
+          "slippage_usdt": "0.018",
+          "funding_usdt": "0.006",
+          "trade_time": "2026-07-10T00:06:45.999Z",
+          "source_trade_id": "aggTrade:2026-07-10T00:06:46.000Z"
+        },
+        "processed_trading_system_event_ids": [
+          "confirmation-order-trading-run-paper-session-e93aa57454db1fb1"
+        ],
+        "processed_public_trade_ids": [
+          "aggTrade:2026-07-10T00:06:46.000Z"
+        ],
+        "score_delta": {
+          "revenue_usdt": 0.1,
+          "cost_usdt": 0.048,
+          "net_revenue_usdt": 0.052,
+          "net_return_pct": 0.00052
+        },
+        "cumulative_score": {
+          "revenue_usdt": 0.1,
+          "cost_usdt": 0.048,
+          "net_revenue_usdt": 0.052,
+          "net_return_pct": 0.00052
+        },
+        "authority_status": "not_live"
+      },
+      "evaluation": {
+        "record_kind": "paper_trading_evaluation",
+        "version": 1,
+        "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e",
+        "candidate_ref": {
+          "record_kind": "trading_system_candidate",
+          "id": "candidate-a651f33d54cbfec8"
+        },
+        "candidate_version_ref": {
+          "record_kind": "candidate_version",
+          "id": "candidate-version-a651f33d54cbfec8"
+        },
+        "trading_run_ref": {
+          "record_kind": "trading_run",
+          "id": "trading-run-paper-session-e93aa57454db1fb1"
+        },
+        "paper_trading_evaluation_commitment_ref": {
+          "record_kind": "paper_trading_evaluation_commitment",
+          "id": "paper-trading-evaluation-commitment-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
+        },
+        "status": "running",
+        "interval_ms": 60000,
+        "observation_count": 2,
+        "started_at": "2026-07-10T00:05:43.000Z",
+        "latest_score": {
+          "revenue_usdt": 0.1,
+          "cost_usdt": 0.048,
+          "net_revenue_usdt": 0.052,
+          "net_return_pct": 0.00052
+        },
+        "paper_account_snapshot": {
+          "wallet_balance_usdt": "9999.952000000001",
+          "available_balance_usdt": "9998.850000000002",
+          "equity_usdt": "10000.052000000001",
+          "realized_pnl_usdt": "0",
+          "unrealized_pnl_usdt": "0.1",
+          "fee_paid_usdt": "0.024",
+          "slippage_paid_usdt": "0.018",
+          "funding_paid_usdt": "0.006",
+          "margin_reserved_usdt": "1.202",
+          "position": {
+            "symbol": "BTCUSDT",
+            "quantity": "0.001",
+            "side": "long",
+            "average_entry_price": "60000",
+            "mark_price": "60100",
+            "notional_usdt": "60.1"
+          },
+          "open_order_count": 0,
+          "authority_status": "not_live"
+        },
+        "open_orders": [],
+        "processed_trading_system_event_ids": [
+          "confirmation-order-trading-run-paper-session-e93aa57454db1fb1"
+        ],
+        "processed_public_trade_ids": [
+          "aggTrade:2026-07-10T00:06:46.000Z"
+        ],
+        "authority_status": "not_live",
+        "next_observation_at": "2026-07-10T00:07:46.000Z",
+        "last_observed_at": "2026-07-10T00:06:46.000Z",
+        "latest_public_execution_snapshot": {
+          "symbol": "BTCUSDT",
+          "observed_at": "2026-07-10T00:06:45.999Z",
+          "source_kind": "binance_production_public_rest",
+          "source_priority": "rest_fallback",
+          "freshness": "fresh",
+          "ws_connected": false,
+          "rest_fallback_used": true,
+          "gap_detected": false,
+          "stream_marker": "confirmation-2026-07-10T00:06:46.000Z",
+          "agg_trades": [
+            {
+              "trade_id": "aggTrade:2026-07-10T00:06:46.000Z",
+              "price": "60000",
+              "quantity": "0.001",
+              "trade_time": "2026-07-10T00:06:45.999Z",
+              "is_buyer_maker": false
+            }
+          ],
+          "authority_status": "read_only"
+        },
+        "latest_fill": {
+          "fill_id": "paper-fill-paper-order-confirmation-order-trading-run-paper-session-e93aa57454db1fb1-aggTrade-2026-07-10T00-06-46-000Z",
+          "order_id": "paper-order-confirmation-order-trading-run-paper-session-e93aa57454db1fb1",
+          "fill_status": "filled",
+          "fill_price": "60000",
+          "fill_quantity": "0.001",
+          "fee_usdt": "0.024",
+          "slippage_usdt": "0.018",
+          "funding_usdt": "0.006",
+          "trade_time": "2026-07-10T00:06:45.999Z",
+          "source_trade_id": "aggTrade:2026-07-10T00:06:46.000Z"
+        }
+      },
+      "consumed_event_count": 0,
+      "provider_request_count_after": 5,
+      "preparation_digest": "sha256:7629ca3d78cac50bf2c911072e1010358c8ead2b5c56f0c56c3a44df2185eaa4"
+    },
+    "previous_evaluation": {
+      "record_kind": "paper_trading_evaluation",
+      "version": 1,
+      "paper_trading_evaluation_id": "paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e",
+      "candidate_ref": {
+        "record_kind": "trading_system_candidate",
+        "id": "candidate-a651f33d54cbfec8"
+      },
+      "candidate_version_ref": {
+        "record_kind": "candidate_version",
+        "id": "candidate-version-a651f33d54cbfec8"
+      },
+      "trading_run_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-e93aa57454db1fb1"
+      },
+      "paper_trading_evaluation_commitment_ref": {
+        "record_kind": "paper_trading_evaluation_commitment",
+        "id": "paper-trading-evaluation-commitment-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
+      },
+      "status": "running",
+      "interval_ms": 60000,
+      "observation_count": 1,
+      "started_at": "2026-07-10T00:05:43.000Z",
+      "latest_score": {
+        "revenue_usdt": 0,
+        "cost_usdt": 0,
+        "net_revenue_usdt": 0,
+        "net_return_pct": 0
+      },
+      "paper_account_snapshot": {
+        "wallet_balance_usdt": "10000",
+        "available_balance_usdt": "10000",
+        "equity_usdt": "10000",
+        "realized_pnl_usdt": "0",
+        "unrealized_pnl_usdt": "0",
+        "fee_paid_usdt": "0",
+        "slippage_paid_usdt": "0",
+        "funding_paid_usdt": "0",
+        "margin_reserved_usdt": "0",
+        "position": {
+          "symbol": "BTCUSDT",
+          "quantity": "0",
+          "side": "flat",
+          "mark_price": "60000",
+          "notional_usdt": "0"
+        },
+        "open_order_count": 1,
+        "authority_status": "not_live"
+      },
+      "open_orders": [
+        {
+          "order_id": "paper-order-confirmation-order-trading-run-paper-session-e93aa57454db1fb1",
+          "event_id": "confirmation-order-trading-run-paper-session-e93aa57454db1fb1",
+          "side": "buy",
+          "order_type": "limit",
+          "quantity": "0.001",
+          "limit_price": "60000",
+          "status": "open",
+          "cumulative_filled_quantity": "0",
+          "remaining_quantity": "0.001",
+          "created_at": "2026-07-10T00:05:44.000Z",
+          "updated_at": "2026-07-10T00:05:44.000Z",
+          "ledger_ref": {
+            "record_kind": "order_request",
+            "id": "order-request-d8facbf41e509c48"
+          }
+        }
+      ],
+      "processed_trading_system_event_ids": [
+        "confirmation-order-trading-run-paper-session-e93aa57454db1fb1"
+      ],
+      "processed_public_trade_ids": [],
+      "authority_status": "not_live",
+      "next_observation_at": "2026-07-10T00:06:44.000Z",
+      "last_observed_at": "2026-07-10T00:05:44.000Z",
+      "latest_public_execution_snapshot": {
+        "symbol": "BTCUSDT",
+        "observed_at": "2026-07-10T00:05:43.999Z",
+        "source_kind": "binance_production_public_rest",
+        "source_priority": "rest_fallback",
+        "freshness": "fresh",
+        "ws_connected": false,
+        "rest_fallback_used": true,
+        "gap_detected": false,
+        "stream_marker": "confirmation-2026-07-10T00:05:44.000Z",
+        "agg_trades": [],
+        "authority_status": "read_only"
+      }
+    },
+    "ledger_plans": []
+  },
+  "transaction_digest": "sha256:dd995fc40df0c75baf226c8ff43a5ee16bc98c76522a813c851b798243ebba6c"
+}

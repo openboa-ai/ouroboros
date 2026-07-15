@@ -5,14 +5,21 @@ same: generate many `TradingSystem` candidates, evaluate them externally, keep f
 paper trade selected candidates continuously, and let evidence decide what can be promoted.
 Read [Product Quality Design](product-quality-design.md) for the corresponding product-quality
 contract across review packets, UX, eval rubrics, and implementation frontiers.
+Read [CandidateArena And Research Goal](candidate-arena-research-goal.md) and
+[CandidateArena Evaluation Protocol](candidate-arena-evaluation-protocol.md) for the target
+long-running research completion contract and the P0 evidence boundary. Those pages define target
+evidence that current main must still implement; they do not silently redefine current records as
+already conformant.
 
 The reference pressure from
 [*The New SDLC With Vibe Coding*](https://drive.google.com/file/d/1IR7CddF_2FyQo_PdfBNTaEA50EGiVt2r/view)
 is useful because it names the same operating shift Ouroboros is built around: move from ad-hoc
 generation to a production harness where specifications, context, tools, tests, evals, guardrails,
 and human judgment surround agent output.
-Ouroboros applies that pattern to an outcome-gradable trading problem rather than to ordinary app
-development.
+Ouroboros applies that pattern to a trading problem with observable economic outcomes rather than
+to ordinary app development. Because those outcomes are noisy and non-stationary, prospective and
+comparable evaluation is part of the target contract rather than an assumption that raw PnL is a
+stable answer.
 
 ## Autonomy Layers
 
@@ -21,7 +28,7 @@ authority that belongs to a higher layer.
 
 | Layer | Autonomous work | Authority boundary | Evidence |
 | --- | --- | --- | --- |
-| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across `ResearchDirection` lanes; run `ResearchPreflight`; record findings and lineage. | Researchers and providers generate candidates; they do not grade themselves and do not grant trading authority. | `CandidateArenaTick`, `SystemCode`, `Evaluation`, `Finding`, `Lineage`, research leaderboard. |
+| `CandidateArena` research | Generate parallel or iterative `TradingSystem` candidates across stable logical `ResearchWorker` and `ResearchDirection` lanes; run one bounded agent-owned session under a pre-effect commitment; externally snapshot development submissions; require explicit selection or no submission; run one rotating sealed admission and target paper-protocol conformance; record admission, findings, lineage, and terminal worker checkpoint. | Researchers may consume aggregate development feedback and their own sanitized checkpoint notebook, but never sealed seed/scenarios/outcomes, raw paper telemetry, resume old commitment authority, grade themselves, assert runtime compatibility, or grant trading authority. | `CandidateArenaTick`, `ResearchPreflightCommitment`, `ResearchWorkerCheckpoint`, `SystemCode`, sealed terminal `Evaluation`, `PaperTradingHandoffConformance`, `CandidateAdmissionDecision`, `Finding`, `Lineage`, research leaderboard. |
 | Selected paper evaluation | Run the selected `TradingSystem` as a managed paper session; inject `TRADING_API_BASE_URL`; observe emitted events on a schedule; update fake account, fills, score, and Ledger evidence. | `TradingSystem` owns decision cadence; Gateway validates and fake executes; paper observation never invents a trade decision from a refreshed snapshot. | `PaperTradingEvaluation`, observations, public market snapshots, public execution evidence, fake account state, Ledger chain. |
 | Paper qualification | Decide whether accumulated paper evidence is mature enough to trust. | Rank is not readiness. A high paper score can still be collecting evidence or blocked by quality. | `PaperTradingQualification` status, reasons, evidence window, runner state, market/fill quality. |
 | Trading review promotion | Move one qualified paper-backed candidate into Trading review. | Operator or explicit policy decides promotion. `TradingPromotion` remains `not_live`; it does not bind exchange authority. | `TradingPromotion`, `TradingReview`, selected candidate match/mismatch, paper board row, Ledger readback. |
@@ -37,6 +44,20 @@ For Ouroboros, "prototype" and "production" are product states, not UI polish le
 - Prototype or research work lives in `ResearchPreflight`: replay, backtest, fixtures, generated
   code, provider traces, and candidate self-reports. These are useful for search and rejection, but
   they are not final product proof.
+- `ResearchPreflightCommitment` is persisted before worker effects. It separates bounded adaptive
+  development feedback from one evaluator-owned rotating sealed admission submission and stores no
+  raw seed or sealed scenario. Process loss is terminal for that in-memory plan.
+- `ResearchWorkerSession` is one disposable provider runtime under that commitment. It owns a
+  bounded working artifact and session-local tool port; every development submission is copied and
+  evaluated externally, and only an explicit completed sequence can enter sealed admission.
+- `ResearchWorkerCheckpoint` closes each checkpoint-enabled commitment as completed or failed-closed,
+  including completed finish without a selection. It carries only bounded sanitized development
+  notebook and budget history, and reconciles orphans
+  before a later worker effect. It resumes logical context through a new commitment, not a provider
+  process, sandbox, old budget, or evaluator plan.
+- `PaperTradingHandoffConformance` externally checks the exact submitted artifact against the
+  bounded target paper event protocol before admission and generated-candidate paper start. It is
+  runtime compatibility evidence, not economic or qualification evidence.
 - MLP-01 production evidence is selected continuous paper trading: live public Binance market data
   through `MarketDataPort`, fake account, fake execution, Gateway validation, and Ledger readback.
 - Shipping a TradingSystem means moving a qualified paper-backed candidate into Trading review. It
@@ -57,6 +78,7 @@ Ouroboros should treat tests and evals as the contract with autonomous work.
 | Architecture and naming checks | Keep layer dependencies, command names, and product vocabulary aligned with the doctrine. | `npm run check:architecture`, `npm run check:naming`. |
 | Secret and environment checks | Keep local/runtime configuration from leaking authority or credentials into repo truth. | `bash scripts/check-env-files.sh --tracked`, `bash scripts/check-secrets.sh`. |
 | `ResearchPreflight` | Score candidate behavior during creation without pretending it is final product authority. | Candidate replay/backtest/evaluation records and research leaderboard. |
+| `PaperTradingHandoffConformance` | Prove exact submitted-artifact compatibility with the bounded target paper event protocol before materialization. | External host/`sbx` probe, production event parser, persisted digest-bound conformance and admission evidence. |
 | `PaperTradingEvaluation` | Product evaluation authority for selected living systems. | `trading_run.start`, `trading_run.observe`, `trading_run.stop`, paper observations, paper board. |
 | `PaperTradingQualification` | Readiness gate separate from rank. | Qualification policy, board reasons, promotion command gate. |
 
@@ -71,8 +93,10 @@ That harness is repo-owned, reviewed, and versioned.
 
 - Static context: `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `docs/`, naming taxonomy, API
   contract, and validation policy.
-- Dynamic context: `.agents/skills`, selected researcher provider, CandidateArena context,
-  paper-board compaction, selected paper lineage/finding summaries, and recent paper failures.
+- Dynamic context: `.agents/skills`, selected researcher provider, aggregate CandidateArena
+  leaderboard/findings/diversity/allocation/efficiency context, FindingClusters, released campaign
+  findings, and the worker's sanitized prior checkpoint. Raw paper board, observation, account,
+  fill, decision, cadence, and failure telemetry stay outside the open session.
 - Tools and ports: `MarketDataPort`, Sandbox adapters, Gateway runtime API, store ports, provider
   adapters, CLI/TUI/Web command surfaces.
 - Guardrails: command registry authority flags, paper event protocol, qualification policy,
@@ -90,6 +114,11 @@ blaming the model.
 - Provider output is trace and materialization input, not proof.
 - Candidate self-report is not proof.
 - `ResearchPreflight` is search evidence, not final product authority.
+- Replay success cannot claim runnable paper handoff. Exact passed
+  `PaperTradingHandoffConformance` must be externally recorded and revalidated before generated
+  paper effects.
+- Generated single-file Python SystemCode freeze covers the canonical manifest-plus-entrypoint
+  closure. Entrypoint-only hashing cannot authorize undeclared dependency state.
 - Selected continuous `PaperTradingEvaluation` is the MLP-01 product evidence surface.
 - `TradingSystem` owns decision cadence and emits bounded paper events.
 - Paper observation consumes emitted events or records no-order continuity; it does not synthesize
@@ -105,10 +134,74 @@ blaming the model.
 
 The next level of detail should improve the autonomous loop without widening authority:
 
-- Adaptive research direction selection now prioritizes default CandidateArena directions from
-  paper-backed finding clusters, classified paper failures, and low-cost/low-latency
-  `ResearchEfficiency` signals while preserving `not_promotion_authority`; provider-dollar cost
-  remains future detail until adapters expose reliable usage.
+- CandidateArena now persists one `CandidateArenaResearchAllocation` before worker effects. Its
+  adaptive default selects three of five directions, caps focus at two, preserves at least one
+  exploration lane, runs no more than two workers concurrently, and applies two/one focus and
+  exploration experiment budgets within five total iterations. Completed tick-bound allocations
+  drive exploration coverage, while `static_control` provides the equal-bound `2`, `2`, `1`
+  no-evidence comparison. Every allocation also seals whether that policy came from explicit caller
+  intent, the repository fallback, one exact approved `ResearchAllocationPolicyDecision`, or one
+  exact approved `ResearchGeneralizationPolicyDecision`.
+- Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
+  signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost, learned
+  allocation, and durable provider-process/sandbox adoption remain future detail.
+- `ResearchControlCampaign` now freezes one exact LocalStore and research-artifact baseline, then
+  runs independent adaptive and static arm stores under exact tick sequences and equal maximum
+  bounds. Its terminal report contains only research diagnostics and deterministic prospective
+  paper candidate slots; `unadjudicated` is enforced, so no entropy, admission, or preflight result
+  can become a causal winner. A deterministic schedule and bounded paper executor now prepare
+  candidate-bearing arms, seal matched shared snapshots, enforce source and confirmation deadlines,
+  and create one exact terminal slot outcome per candidate. `ResearchControlCampaignOutcome`
+  separately validates those slot outcomes against the pre-effect Trading review comparator and one
+  shared paper policy, then records only a non-causal adaptive/static observation.
+  `ResearchControlStudy` now precommits 6 to 30 exact same-baseline campaigns and a paired exact
+  sign-test policy before any planned campaign exists. Its terminal outcome consumes every planned
+  campaign without early stopping and limits causal scope to stochastic repetitions of that frozen
+  condition. The internal study executor derives progress from exact records and completes one
+  campaign-to-outcome closure per advance with restart recovery and stop-between-campaign semantics.
+  A separate same-baseline policy decision approves only the exact studied adaptive policy after
+  eligible supported evidence; unsupported or underpowered outcomes remain not approved and never
+  imply static superiority. `ResearchGeneralizationProtocol` adds six pre-effect slots across two
+  public long, short, and flat blocks, independent baselines, fixed spacing/deadline, and equal-weight
+  analysis. Its terminal outcome preserves every missing, tied, ineligible, and harmful result. A
+  separate `ResearchGeneralizationPolicyDecision` may approve only that protocol's frozen
+  `adaptive_default` policy digest after exact supported cross-condition evidence. Uncontrolled ticks
+  resolve explicit directions and modes first, then broad approval, same-baseline approval, and the
+  repository fallback. The operator read model preserves chronological latest decision history and
+  separately projects the resolver-effective approval over exact existing allocations and completed
+  ticks as `awaiting_allocation`, `allocated`, or `completed_tick`. This projection observes
+  autonomy; it does not become a new decision, feedback, scheduling, or trading authority. The
+  default server scheduler owns oldest-first study discovery, same-host
+  renewable execution leasing, and post-catch-up outcome, broad-decision, then same-baseline-decision
+  reconciliation. Each campaign arm is composed from its exact LocalStore and arm-local paper
+  session; confirmation advances one persisted transition at a time and recovers rather than adopts
+  unowned attempts. Multi-host fencing, complete real-market prospective evidence, generated or
+  tuned policy parameters, and long-duration deployed soak remain future detail.
+- `ResearchMemoryControlStudy` isolates one narrower autonomy question before any memory-policy
+  change: does safe cross-generation Arena memory reduce exact repeated behavior? It runs 6 to 30
+  fresh same-baseline pairs with equal source, agent, direction, budget, and evaluator opportunity;
+  treatment/control labels are absent from provider context and blinded in tick/workspace sides.
+  Every terminal pair remains in the all-pairs exact sign test. A supported fixture or provider
+  outcome grants no automatic memory-policy replacement, candidate rank, paper qualification,
+  promotion, order, private, or live authority.
+- Exact pre-effect commitment, one-shot sealed terminal result, submitted-artifact paper handoff
+  conformance, and admission are now bound before materialization and generated-candidate paper
+  start. Direction readback is compact, and efficiency separates development from sealed counts
+  without promotion authority. Exact same-suite `ResearchBehaviorFingerprint` comparison now keeps
+  one admitted population slot and preserves duplicate Finding/Lineage without exposing raw
+  observations. Approximate or cross-suite behavior clustering, broader evaluator side channels,
+  long-duration autonomous research quality, restart soak, and economic generalization remain
+  future detail; a query cap is not treated as a reward-hacking proof. The implemented bounded
+  Codex/fixture session supports worker-chosen submission timing, aggregate-feedback adaptation,
+  explicit non-best selection, no submission, immutable in-flight snapshots, and fail-closed fresh
+  restart without adopting provider state.
+- CandidateArena and next-worker context now share `ResearchPopulationDiversity` over the latest
+  ten completed ticks. Top-level distributions measure rolling coverage and `tick_series` preserves
+  each exact worker cross-section newest first. Assigned-direction and exact same-suite behavior
+  entropy remain separate; mixed cohorts expose counts as `incomparable_suites` without unique or
+  entropy claims. This is read-only concentration evidence, not an allocation reward, quality
+  score, rank, gate, or causal proof that directed research, memory, adaptive allocation, or an AI
+  agent improved discovery.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

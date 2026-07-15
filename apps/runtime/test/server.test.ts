@@ -1,20 +1,62 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import type {
   GatewayRuntimeBinding,
   PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
+import { FixtureTradingResearchAgentAdapter } from
+  "@ouroboros/application/trading/research/agent-adapters";
+import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import { decideCandidateArenaResearchAllocation } from
+  "@ouroboros/application/candidate/research-allocation";
+import type { ResearchControlStudyExecutionLeasePort } from
+  "@ouroboros/application/ports/research-control-study-execution-lease";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
-import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
-import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
+import {
+  CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  decideResearchControlStudyExecutionLease,
+  OUROBOROS_COMMAND_KINDS,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchGeneralizationPolicyDecisionDigestInput,
+  type CandidateArenaResearchAllocationRecord,
+  type CandidateArenaTickRecord,
+  type ResearchGeneralizationOutcomeRecord,
+  type ResearchGeneralizationPolicyDecisionRecord,
+  type ResearchGeneralizationProtocolRecord
+} from "@ouroboros/domain";
+import {
+  buildServer,
+  createResearchControlStudyServerCommitmentCoordinator,
+  createResearchControlStudyServerLeaseSessionFactory,
+  createResearchGeneralizationPolicyDecisionServerCoordinator,
+  paperTradingApiProviderNetworkOptions
+} from "../src/server";
+import type {
+  ResearchControlStudySchedulerLifecycle,
+  ResearchControlStudySchedulerStatus
+} from "../src/candidate/arena/research-control-study-scheduler";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
+import { researchControlStudyFixture } from "./helpers/research-control-study";
 
 let tmpDir: string;
+
+const RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE = path.resolve(
+  process.cwd(),
+  "apps/runtime/test/fixtures/research-control-study/trading-review-store"
+);
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-runtime-"));
@@ -24,13 +66,41 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-let paperProviderSequence = 0;
-
 function buildRuntimeTestServer(options: Parameters<typeof buildServer>[0]) {
   return buildServer({
     paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+    runResearchControlStudiesOnStart: false,
     ...options
   });
+}
+
+class RecordingStudyScheduler
+implements ResearchControlStudySchedulerLifecycle {
+  startCount = 0;
+  stopCount = 0;
+
+  constructor(private readonly events: string[]) {}
+
+  start(): "started" | "already_running" {
+    this.startCount += 1;
+    this.events.push("scheduler-start");
+    return "started";
+  }
+
+  async stop(): Promise<void> {
+    this.stopCount += 1;
+    this.events.push("scheduler-stop");
+  }
+
+  async drain(): Promise<void> {}
+
+  status(): ResearchControlStudySchedulerStatus {
+    return {
+      status: "idle",
+      cycleCount: 0,
+      completedStudyCount: 0
+    };
+  }
 }
 
 describe("runtime canonical operator API", () => {
@@ -43,6 +113,511 @@ describe("runtime canonical operator API", () => {
     });
     expect(paperTradingApiProviderNetworkOptions({ sandboxHost: "  " })).toEqual({});
     expect(paperTradingApiProviderNetworkOptions({})).toEqual({});
+  });
+
+  it("resolves repo-relative paper artifacts from the runtime workspace cwd", async () => {
+    const repoRoot = process.cwd();
+    let server: Awaited<ReturnType<typeof buildServer>> | undefined;
+    process.chdir(path.join(repoRoot, "apps/runtime"));
+    try {
+      server = await buildRuntimeTestServer({
+        store: new LocalStore(tmpDir),
+        marketDataPort: fakeGatewayMarketDataPort()
+      });
+
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json()).toMatchObject({
+        command: {
+          command_kind: "trading_run.start",
+          status: "succeeded"
+        }
+      });
+    } finally {
+      await server?.close();
+      process.chdir(repoRoot);
+    }
+  });
+
+  it("starts and observes the study scheduler by default, then stops it first", async () => {
+    const lifecycleEvents: string[] = [];
+    const scheduler = new RecordingStudyScheduler(lifecycleEvents);
+    let policyDecisionCount = 0;
+    let observed: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyScheduler: scheduler,
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          policyDecisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      onResearchControlStudySchedulerCreated(value) {
+        observed = value;
+      },
+      onPaperTradingSessionServiceCreated(service) {
+        const stopAllSessions = service.stopAllSessions.bind(service);
+        service.stopAllSessions = async () => {
+          lifecycleEvents.push("paper-stop");
+          await stopAllSessions();
+        };
+      }
+    });
+
+    expect(scheduler.startCount).toBe(1);
+    expect(policyDecisionCount).toBe(0);
+    expect(observed).toBe(scheduler);
+    await server.close();
+
+    expect(scheduler.stopCount).toBe(1);
+    expect(lifecycleEvents).toEqual([
+      "scheduler-start",
+      "scheduler-stop",
+      "paper-stop"
+    ]);
+  });
+
+  it("supports an explicitly disabled study scheduler start", async () => {
+    const scheduler = new RecordingStudyScheduler([]);
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      researchControlStudyScheduler: scheduler,
+      runResearchControlStudiesOnStart: false
+    });
+
+    expect(scheduler.startCount).toBe(0);
+    await server.close();
+    expect(scheduler.stopCount).toBe(1);
+  });
+
+  it("runs injected automatic commitment through the default scheduler", async () => {
+    let commitmentCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyCommitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          return {
+            status: "deferred",
+            reason: "no_trading_promotion"
+          } as const;
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      commitmentCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastCommitment: {
+        status: "deferred",
+        reason: "no_trading_promotion"
+      }
+    });
+    await server.close();
+  });
+
+  it("runs injected automatic policy decisions through the default scheduler", async () => {
+    let decisionCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      decisionCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("runs injected broad policy decisions through the default scheduler", async () => {
+    let decisionCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchGeneralizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return {
+            status: "up_to_date" as const,
+            generalizationOutcomeCount: 0
+          };
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      decisionCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationPolicyDecision: {
+        status: "up_to_date",
+        generalizationOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("runs injected generalization outcomes through the default scheduler", async () => {
+    let outcomeCount = 0;
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchGeneralizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          outcomeCount += 1;
+          return {
+            status: "up_to_date" as const,
+            protocolCount: 0,
+            outcomeCount: 0
+          };
+        }
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      outcomeCount === 1 && scheduler?.status().status === "waiting"
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationOutcome: {
+        status: "up_to_date",
+        protocolCount: 0,
+        outcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("creates the default automatic generalization outcome coordinator", async () => {
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastGeneralizationOutcome !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationOutcome: {
+        status: "up_to_date",
+        protocolCount: 0,
+        outcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("creates the default automatic policy decision coordinator", async () => {
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastPolicyDecision !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("creates the default automatic broad policy decision coordinator", async () => {
+    const store = new LocalStore(tmpDir);
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const coordinator = createResearchGeneralizationPolicyDecisionServerCoordinator({
+      store
+    });
+    await expect(coordinator.ensureNextDecision()).resolves.toEqual({
+      status: "up_to_date",
+      generalizationOutcomeCount: 0
+    });
+    const server = await buildServer({
+      store,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() =>
+      scheduler?.status().status === "waiting" &&
+      scheduler.status().lastGeneralizationPolicyDecision !== undefined
+    );
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      lastGeneralizationPolicyDecision: {
+        status: "up_to_date",
+        generalizationOutcomeCount: 0
+      }
+    });
+    await server.close();
+  });
+
+  it("does not commit or decide when scheduler startup is disabled", async () => {
+    let commitmentCount = 0;
+    let decisionCount = 0;
+    let generalizationDecisionCount = 0;
+    let outcomeCount = 0;
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      researchControlStudyCommitmentCoordinator: {
+        async ensureCommittedStudy() {
+          commitmentCount += 1;
+          return {
+            status: "deferred",
+            reason: "no_trading_promotion"
+          } as const;
+        }
+      },
+      researchGeneralizationOutcomeCoordinator: {
+        async ensureNextOutcome() {
+          outcomeCount += 1;
+          return {
+            status: "up_to_date" as const,
+            protocolCount: 0,
+            outcomeCount: 0
+          };
+        }
+      },
+      researchGeneralizationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          generalizationDecisionCount += 1;
+          return {
+            status: "up_to_date" as const,
+            generalizationOutcomeCount: 0
+          };
+        }
+      },
+      researchAllocationPolicyDecisionCoordinator: {
+        async ensureNextDecision() {
+          decisionCount += 1;
+          return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
+        }
+      }
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(commitmentCount).toBe(0);
+    expect(outcomeCount).toBe(0);
+    expect(generalizationDecisionCount).toBe(0);
+    expect(decisionCount).toBe(0);
+    await server.close();
+  });
+
+  it("creates the default promotion-bound coordinator from the runtime workspace cwd", async () => {
+    const fixtureRoot = path.join(tmpDir, "commitment-fixture");
+    await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
+      recursive: true
+    });
+    const store = new LocalStore(fixtureRoot);
+    await store.initialize();
+    const agent = new FixtureTradingResearchAgentAdapter();
+    const marketData = fakeGatewayMarketDataPort();
+    let now = Date.parse("2026-07-13T00:00:00.000Z");
+    const repoRoot = process.cwd();
+    process.chdir(path.join(repoRoot, "apps/runtime"));
+    try {
+      const coordinator = createResearchControlStudyServerCommitmentCoordinator({
+        store,
+        researchAgentIdentity: () => agent.agent,
+        marketData,
+        now: () => {
+          const value = new Date(now).toISOString();
+          now += 1_000;
+          return value;
+        }
+      });
+
+      await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
+        status: "protocol_committed"
+      });
+      const committed = await coordinator.ensureCommittedStudy();
+      const studies = await store.listResearchControlStudies();
+      expect(studies).toHaveLength(1);
+      expect(committed).toEqual({
+        status: "committed",
+        studyId: studies[0]!.research_control_study_id
+      });
+      await expect(coordinator.ensureCommittedStudy()).resolves.toEqual({
+        status: "deferred",
+        reason: "pending_study_exists",
+        pendingStudyId: studies[0]!.research_control_study_id
+      });
+    } finally {
+      process.chdir(repoRoot);
+    }
+  });
+
+  it("creates one default lease owner across server factories sharing a root", async () => {
+    const study = researchControlStudyFixture({ suffix: "server-default-lease" });
+    const firstFactory = createResearchControlStudyServerLeaseSessionFactory({
+      store: new LocalStore(tmpDir)
+    });
+    const secondFactory = createResearchControlStudyServerLeaseSessionFactory({
+      store: new LocalStore(tmpDir)
+    });
+
+    const claims = await Promise.all([
+      firstFactory.acquire(study),
+      secondFactory.acquire(study)
+    ]);
+    const acquired = claims.find((claim) => claim.status === "acquired");
+    const held = claims.find((claim) => claim.status === "held");
+
+    expect(acquired?.status).toBe("acquired");
+    expect(held).toMatchObject({ status: "held", reason: "owner_alive" });
+    if (acquired?.status !== "acquired" || held?.status !== "held") {
+      throw new Error("expected one acquired and one held server lease claim");
+    }
+    const acquiredLease = acquired.session.status().lease;
+    expect(acquiredLease.owner).toMatchObject({
+      host_id: os.hostname(),
+      process_id: process.pid
+    });
+    expect(acquiredLease.owner.server_instance_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+    expect(held.lease.owner.server_instance_id).toBe(
+      acquiredLease.owner.server_instance_id
+    );
+    expect(acquiredLease.lease_duration_ms).toBe(30_000);
+    expect(Date.parse(acquiredLease.expires_at) -
+      Date.parse(acquiredLease.acquired_at)).toBe(30_000);
+
+    await acquired.session.stopAndRelease();
+  });
+
+  it("wires injected study lease ownership and policy into the default scheduler", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const study = researchControlStudyFixture({ suffix: "server-injected-lease" });
+    await store.recordResearchControlStudy(study);
+    const owner = {
+      server_instance_id: "server-injected-owner",
+      host_id: "server-injected-host",
+      process_id: 4242,
+      process_start_marker: "server-injected-process-start"
+    } as const;
+    let acquireInput:
+      Parameters<ResearchControlStudyExecutionLeasePort["acquire"]>[0] |
+      undefined;
+    const leasePort: ResearchControlStudyExecutionLeasePort = {
+      async acquire(input) {
+        acquireInput = structuredClone(input);
+        return {
+          status: "held",
+          reason: "owner_alive",
+          lease: decideResearchControlStudyExecutionLease({
+            study: input.study,
+            owner: input.owner,
+            leaseToken: "server-injected-held-token",
+            leaseDurationMs: input.leaseDurationMs,
+            acquiredAt: "2026-07-13T00:00:00.000Z"
+          })
+        };
+      },
+      async renew() {
+        throw new Error("unexpected renew");
+      },
+      async assertOwned() {
+        throw new Error("unexpected ownership assertion");
+      },
+      async release() {
+        throw new Error("unexpected release");
+      }
+    };
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      researchControlStudyExecutionLeasePort: leasePort,
+      researchControlStudyExecutionLeaseOwner: owner,
+      researchControlStudyExecutionLeaseDurationMs: 120,
+      researchControlStudyExecutionLeaseRenewalIntervalMs: 40,
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    await waitFor(() => acquireInput !== undefined);
+    expect(acquireInput).toEqual({
+      study,
+      owner,
+      leaseDurationMs: 120
+    });
+    expect(scheduler?.status()).toMatchObject({
+      status: "waiting",
+      completedStudyCount: 0
+    });
+
+    await server.close();
   });
 
   it("serves health, operator state, resource reads, and no removed public routes", async () => {
@@ -114,6 +689,14 @@ describe("runtime canonical operator API", () => {
           ),
           candidate_arena: {
             runner_status: "stopped",
+            research_generalization: {
+              status: "not_started",
+              protocol_count: 0,
+              outcome_count: 0,
+              active_protocol: null,
+              latest_outcome: null,
+              authority_status: "not_promotion_authority"
+            },
             authority_status: "not_live"
           },
           selected_candidate_id: null,
@@ -248,7 +831,7 @@ describe("runtime canonical operator API", () => {
         }
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode, response.body).toBe(200);
       expect(response.json()).toMatchObject({
         result: {
           run: {
@@ -299,6 +882,146 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("projects active ResearchGeneralizationProtocol progress without raw evidence", async () => {
+    const fixtureRoot = path.join(tmpDir, "generalization-readback-fixture");
+    await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
+      recursive: true
+    });
+    const store = new LocalStore(fixtureRoot);
+    await store.initialize();
+    const agent = new FixtureTradingResearchAgentAdapter();
+    const coordinator = createResearchControlStudyServerCommitmentCoordinator({
+      store,
+      researchAgentIdentity: () => agent.agent,
+      marketData: fakeGatewayMarketDataPort(),
+      repoRoot: process.cwd(),
+      now: () => "2026-07-13T00:00:00.000Z"
+    });
+    await expect(coordinator.ensureCommittedStudy()).resolves.toMatchObject({
+      status: "protocol_committed"
+    });
+    const server = await buildRuntimeTestServer({ store });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(response.statusCode).toBe(200);
+      const projection = response.json().operator.candidate_arena
+        .research_generalization;
+      expect(projection).toMatchObject({
+        status: "collecting",
+        protocol_count: 1,
+        outcome_count: 0,
+        active_protocol: {
+          status: "collecting",
+          planned_study_count: 6,
+          assigned_study_count: 0,
+          terminal_study_count: 0,
+          condition_blocks: [
+            {
+              condition_block: "long",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            },
+            {
+              condition_block: "short",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            },
+            {
+              condition_block: "flat",
+              planned_study_count: 2,
+              assigned_study_count: 0,
+              terminal_study_count: 0
+            }
+          ],
+          next_action: "collect_precommitted_studies",
+          authority_status: "research_only"
+        },
+        latest_outcome: null,
+        latest_policy_decision: null,
+        authority_status: "not_promotion_authority"
+      });
+      expect(JSON.stringify(projection)).not.toContain("public_kline_window");
+      expect(JSON.stringify(projection)).not.toContain("protocol_digest");
+      expect(JSON.stringify(projection)).not.toContain("study_ref");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("projects exact effective policy application without duplicate arena reads", async () => {
+    const fixture = researchGeneralizationApplicationFixture();
+    const store = new LocalStore(tmpDir);
+    vi.spyOn(store, "listResearchGeneralizationProtocols")
+      .mockResolvedValue([fixture.protocol]);
+    vi.spyOn(store, "listResearchControlStudies").mockResolvedValue([]);
+    vi.spyOn(store, "listResearchControlStudyOutcomes").mockResolvedValue([]);
+    vi.spyOn(store, "listResearchGeneralizationOutcomes")
+      .mockResolvedValue([fixture.outcome]);
+    vi.spyOn(store, "listResearchGeneralizationPolicyDecisions")
+      .mockResolvedValue([fixture.decision]);
+    const allocationReads = vi.spyOn(
+      store,
+      "listCandidateArenaResearchAllocations"
+    ).mockResolvedValue([fixture.allocation]);
+    const tickReads = vi.spyOn(store, "listCandidateArenaTicks")
+      .mockResolvedValue([fixture.tick]);
+    const server = await buildRuntimeTestServer({ store });
+    allocationReads.mockClear();
+    tickReads.mockClear();
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(response.statusCode).toBe(200);
+      const projection = response.json().operator.candidate_arena
+        .research_generalization;
+      expect(projection).toMatchObject({
+        latest_policy_decision: {
+          research_generalization_policy_decision_id:
+            fixture.decision.research_generalization_policy_decision_id,
+          decision_status: "approved"
+        },
+        effective_policy_decision: {
+          research_generalization_policy_decision_id:
+            fixture.decision.research_generalization_policy_decision_id,
+          effective_default_mode: "adaptive_default",
+          application: {
+            application_status: "completed_tick",
+            allocation_count: 1,
+            completed_tick_count: 1,
+            latest_allocation: {
+              candidate_arena_research_allocation_id:
+                fixture.allocation.candidate_arena_research_allocation_id,
+              tick_id: fixture.tick.tick_id,
+              allocated_at: fixture.allocation.allocated_at,
+              completed_at: fixture.tick.completed_at
+            }
+          },
+          research_policy_selection_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "research_policy_only"
+        },
+        authority_status: "not_promotion_authority"
+      });
+      expect(JSON.stringify(projection)).not.toContain("allocation_digest");
+      expect(allocationReads).toHaveBeenCalledTimes(1);
+      expect(tickReads).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs user mutations through /api/commands and reflects them in /api/operator", async () => {
     const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
@@ -319,6 +1042,12 @@ describe("runtime canonical operator API", () => {
         },
         operator: {
           candidate_arena: {
+            research_generalization: {
+              status: "not_started",
+              protocol_count: 0,
+              outcome_count: 0,
+              authority_status: "not_promotion_authority"
+            },
             authority_status: "not_live"
           }
         }
@@ -538,6 +1267,7 @@ describe("runtime canonical operator API", () => {
     const observedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
     const observedServer = await buildRuntimeTestServer({
       store,
+      recoverPaperTradingSessionsOnStart: false,
       sandboxAdapters: {
         deterministic_test: observedSandbox.adapter
       },
@@ -629,6 +1359,26 @@ describe("runtime canonical operator API", () => {
       expect(resumedSandbox.starts).toHaveLength(1);
       expect(resumedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
       expect(resumed.json()).toMatchObject({
+        result: { status: "already_running" },
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 1
+          }
+        }
+      });
+
+      const observed = await resumedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: {
+            trading_run_id: resumed.json().operator.selected_paper_trading_evaluation.trading_run_id
+          }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(observed.json()).toMatchObject({
         operator: {
           selected_paper_trading_evaluation: {
             observation_count: 2,
@@ -646,7 +1396,7 @@ describe("runtime canonical operator API", () => {
         }
       });
 
-      const evaluationId = resumed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
         status: string;
         processed_trading_system_event_ids?: string[];
@@ -1581,6 +2331,51 @@ describe("runtime canonical operator API", () => {
       await server.close();
     }
   });
+
+  it("does not mutate an already active paper session when a repeated start changes the fixture", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandbox = recordingDuplicateLogSandboxAdapter(paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    }));
+    const server = await buildRuntimeTestServer({
+      store,
+      sandboxAdapters: { deterministic_test: sandbox.adapter },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID, paper_order_request: "valid" }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(sandbox.starts).toHaveLength(1);
+      const originalSandboxId = sandbox.starts[0]?.instance_id;
+
+      const repeated = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID, paper_order_request: "rejected" }
+        }
+      });
+
+      expect(repeated.statusCode, repeated.body).toBe(200);
+      expect(repeated.json()).toMatchObject({ result: { status: "already_running" } });
+      expect(sandbox.starts).toHaveLength(1);
+      expect(sandbox.starts[0]?.instance_id).toBe(originalSandboxId);
+      expect(sandbox.starts[0]?.paper_order_request).toBe("valid");
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 function paperOrderRequestLine(input: {
@@ -1913,6 +2708,169 @@ async function listFiles(root: string): Promise<string[]> {
   return files.sort();
 }
 
+function researchGeneralizationApplicationFixture(): {
+  protocol: ResearchGeneralizationProtocolRecord;
+  outcome: ResearchGeneralizationOutcomeRecord;
+  decision: ResearchGeneralizationPolicyDecisionRecord;
+  allocation: CandidateArenaResearchAllocationRecord;
+  tick: CandidateArenaTickRecord;
+} {
+  const protocolId = "research-generalization-protocol-http-application";
+  const protocolDigest = serverTestDigest("1");
+  const policyDigest = serverTestExactDigest(
+    paperTradingComparisonPersistedRecordDigestInput(
+      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+    )
+  );
+  const blocks = ["long", "short", "flat"] as const;
+  const protocol = {
+    record_kind: "research_generalization_protocol",
+    version: 1,
+    research_generalization_protocol_id: protocolId,
+    committed_at: "2026-07-01T00:00:00.000Z",
+    protocol_digest: protocolDigest,
+    target_allocation_policy_digest: policyDigest,
+    condition_blocks: blocks.map((conditionBlock) => ({
+      condition_block: conditionBlock,
+      required_study_count: 2
+    })),
+    study_slots: blocks.flatMap((conditionBlock, blockIndex) =>
+      [1, 2].map((conditionIndex) => {
+        const slotIndex = blockIndex * 2 + conditionIndex;
+        return {
+          slot_index: slotIndex,
+          condition_block: conditionBlock,
+          condition_block_study_index: conditionIndex,
+          study_ref: {
+            record_kind: "research_control_study",
+            id: `${protocolId}-study-${slotIndex}`
+          },
+          study_idempotency_key: `${protocolId}-study-key-${slotIndex}`
+        };
+      })
+    ),
+    timing_policy: {
+      collection_deadline_at: "2026-09-29T00:00:00.000Z"
+    }
+  } as unknown as ResearchGeneralizationProtocolRecord;
+  const outcome: ResearchGeneralizationOutcomeRecord = {
+    record_kind: "research_generalization_outcome",
+    version: 1,
+    research_generalization_outcome_id:
+      "research-generalization-outcome-http-application",
+    protocol_ref: {
+      record_kind: "research_generalization_protocol",
+      id: protocolId
+    },
+    protocol_digest: protocolDigest,
+    target_allocation_policy_digest: policyDigest,
+    planned_study_count: 6,
+    completed_study_count: 6,
+    non_tied_study_count: 6,
+    tied_study_count: 0,
+    missing_study_count: 0,
+    ineligible_study_count: 0,
+    distinct_baseline_count: 4,
+    equal_weight_mean_rate_difference: 0.5,
+    exact_sign_test_p_value: 0.03125,
+    harmful_condition_blocks: [],
+    inference_status: "generalization_supported",
+    policy_decision_eligibility:
+      "eligible_for_separate_generalization_policy_decision",
+    next_action: "review_broad_research_allocation_policy",
+    adjudicated_at: "2026-07-10T00:00:00.000Z",
+    outcome_digest: serverTestDigest("2"),
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  } as unknown as ResearchGeneralizationOutcomeRecord;
+  const decision: ResearchGeneralizationPolicyDecisionRecord = {
+    record_kind: "research_generalization_policy_decision",
+    version: 1,
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-http-application",
+    protocol_ref: { ...outcome.protocol_ref },
+    protocol_digest: protocolDigest,
+    generalization_outcome_ref: {
+      record_kind: "research_generalization_outcome",
+      id: outcome.research_generalization_outcome_id
+    },
+    generalization_outcome_digest: outcome.outcome_digest,
+    target_allocation_policy_digest: policyDigest,
+    decision_policy: {
+      policy_version: "generalization_supported_adaptive_v1",
+      target_allocation_mode: "adaptive_default",
+      required_inference_status: "generalization_supported",
+      required_causal_scope:
+        "pre_effect_market_condition_blocked_cross_baseline_study_effects",
+      required_policy_decision_eligibility:
+        "eligible_for_separate_generalization_policy_decision",
+      application_scope: "future_uncontrolled_candidate_arena_ticks"
+    },
+    decision_status: "approved",
+    decision_reason: "supported_cross_condition_adaptive_effect",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-07-10T00:00:01.000Z",
+    policy_decision_digest: serverTestDigest("0"),
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+  decision.policy_decision_digest = serverTestExactDigest(
+    researchGeneralizationPolicyDecisionDigestInput(decision)
+  );
+  const allocation = decideCandidateArenaResearchAllocation({
+    tickId: "http-generalized-policy-tick",
+    allocatedAt: "2026-07-10T00:00:02.000Z",
+    allocationMode: "adaptive_default",
+    allocationPolicyBasis: {
+      basis_kind: "research_generalization_policy_decision",
+      policy_decision_ref: {
+        record_kind: "research_generalization_policy_decision",
+        id: decision.research_generalization_policy_decision_id
+      },
+      policy_decision_digest: decision.policy_decision_digest,
+      generalization_outcome_ref: { ...decision.generalization_outcome_ref },
+      generalization_outcome_digest: decision.generalization_outcome_digest
+    },
+    findingClusters: [],
+    latestTicks: [],
+    priorAllocations: [],
+    completedTickIds: []
+  });
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: "candidate-arena-tick-http-generalized-policy",
+    tick_id: allocation.tick_id,
+    started_at: "2026-07-10T00:00:03.000Z",
+    completed_at: "2026-07-10T00:00:04.000Z",
+    status: "completed",
+    created_candidate_refs: [],
+    direction_results: [],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+  return { protocol, outcome, decision, allocation, tick };
+}
+
+function serverTestExactDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function serverTestDigest(character: string): string {
+  return `sha256:${character.repeat(64)}`;
+}
+
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[key];
@@ -1921,11 +2879,21 @@ function restoreEnv(key: string, value: string | undefined): void {
   }
 }
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("wait_for_timeout");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 async function networklessPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions
 ): Promise<ReplayTradingApiProviderSession> {
-  paperProviderSequence += 1;
   const market = await binding.marketData.readMarketSnapshot();
   const account = options.readAccountState
     ? await options.readAccountState()
@@ -1942,17 +2910,9 @@ async function networklessPaperTradingApiProvider(
     sandbox_base_url: "",
     close: async () => undefined,
     requests: () => [],
-    scenario: {
-      id: `networkless-paper-provider-${paperProviderSequence}`,
-      description: "Networkless paper runtime provider used by runtime controller tests.",
+    candidate_input: toReplayTradingCandidateInput({
       market,
-      account,
-      outcome: {
-        exit_price: market.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account
+    })
   };
 }

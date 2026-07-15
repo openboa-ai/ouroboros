@@ -1,0 +1,16 @@
+{
+  "record_kind": "capability_manifest",
+  "version": 1,
+  "capability_manifest_id": "fixture-capability-manifest-001",
+  "allowed_stages": [
+    "backtest",
+    "paper"
+  ],
+  "declared_permissions": [
+    "read_fixture_market_context"
+  ],
+  "forbidden_contents": [
+    "exchange_credentials",
+    "live_order_authority"
+  ]
+}

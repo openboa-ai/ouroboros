@@ -1,0 +1,44 @@
+{
+  "record_kind": "paper_trading_comparison_tick",
+  "version": 1,
+  "paper_trading_comparison_tick_id": "paper-trading-comparison-tick-6cea95bfefe5c459",
+  "paper_trading_comparison_commitment_ref": {
+    "record_kind": "paper_trading_comparison_commitment",
+    "id": "paper-trading-comparison-80506ef355a15a27"
+  },
+  "paper_trading_comparison_commitment_digest": "sha256:cf1227c6440b39244901e02ef6049abb93206d3dd101e4c10c33142104c6fba8",
+  "sequence": 1,
+  "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
+  "market_snapshot": {
+    "symbol": "BTCUSDT",
+    "price": 60000,
+    "moving_average_fast": 60100,
+    "moving_average_slow": 59900,
+    "volatility": 0.01,
+    "expected_direction": "long",
+    "observed_at": "2026-07-10T00:04:35.998Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "authority_status": "read_only"
+  },
+  "public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:04:35.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:04:36.000Z",
+    "agg_trades": [],
+    "authority_status": "read_only"
+  },
+  "observed_at": "2026-07-10T00:04:36.000Z",
+  "tick_digest": "sha256:68a567cc7d7157b3e2db2a863e65fd315df8d5632c437521b411acce9fae3119",
+  "authority_status": "not_live"
+}

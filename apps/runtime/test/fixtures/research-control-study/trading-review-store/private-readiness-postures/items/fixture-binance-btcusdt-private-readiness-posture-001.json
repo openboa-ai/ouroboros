@@ -1,0 +1,46 @@
+{
+  "record_kind": "private_readiness_posture",
+  "version": 1,
+  "private_readiness_posture_id": "fixture-binance-btcusdt-private-readiness-posture-001",
+  "venue": "binance_usd_m_futures",
+  "instrument": "BTCUSDT",
+  "product_category": "perpetual_futures",
+  "operator_approval_gate": {
+    "status": "not_ready",
+    "reason": "operator_live_private_read_approval_missing"
+  },
+  "jurisdiction_risk_gate": {
+    "status": "review_required",
+    "reason": "operator_jurisdiction_not_recorded"
+  },
+  "live_binding_gate": {
+    "status": "not_ready",
+    "reason": "live_binding_profile_not_configured"
+  },
+  "secret_handling_gate": {
+    "status": "not_ready",
+    "reason": "secret_handling_profile_not_configured"
+  },
+  "stop_behavior_gate": {
+    "status": "not_ready",
+    "reason": "operator_stop_behavior_not_recorded"
+  },
+  "secret_reference_configured": false,
+  "raw_secret_material_present": false,
+  "source_timestamp": "2026-05-16T00:00:00.000Z",
+  "observed_at": "2026-05-16T00:00:04.000Z",
+  "updated_at": "2026-05-16T00:00:04.000Z",
+  "source_kind": "fixture",
+  "source_ref": {
+    "record_kind": "fixture",
+    "id": "binance-btcusdt-private-readiness-posture"
+  },
+  "fixture_backed": true,
+  "simulated": true,
+  "no_authority": {
+    "live_exchange": false,
+    "order_submission": false,
+    "credentials": false
+  },
+  "authority_status": "not_live"
+}

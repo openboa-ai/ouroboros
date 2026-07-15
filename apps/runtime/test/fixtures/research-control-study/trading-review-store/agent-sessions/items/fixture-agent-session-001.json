@@ -1,0 +1,10 @@
+{
+  "record_kind": "agent_session",
+  "version": 1,
+  "agent_session_id": "fixture-agent-session-001",
+  "agent_spec_ref": {
+    "record_kind": "agent_spec",
+    "id": "fixture-agent-spec-001"
+  },
+  "authority_status": "not_executed"
+}

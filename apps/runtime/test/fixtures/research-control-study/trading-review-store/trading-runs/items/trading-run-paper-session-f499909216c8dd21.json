@@ -1,0 +1,68 @@
+{
+  "record_kind": "trading_run",
+  "version": 1,
+  "trading_run_id": "trading-run-paper-session-f499909216c8dd21",
+  "stage_binding_profile": "paper",
+  "runtime_lifecycle_status": "stopped",
+  "paper_evidence_purpose": "qualification",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-f499909216c8dd21"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "hands-environment-paper-session-f499909216c8dd21"
+  },
+  "memory_surface_ref": {
+    "record_kind": "runtime_memory_surface",
+    "id": "runtime-memory-surface-paper-session-f499909216c8dd21"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "created_at": "2026-07-10T00:05:43.000Z",
+  "authority_status": "not_live",
+  "sandbox_ref": {
+    "record_kind": "sandbox",
+    "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-a12fbe1c5ca4d2c84d4-56f962ce8c5848a5"
+  },
+  "run_control_command_refs": [
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-d3d7ac9bb5fed23c"
+    },
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-b3fdf850bf1e6600"
+    }
+  ],
+  "run_control_decision_refs": [
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-d3d7ac9bb5fed23c"
+    },
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-b3fdf850bf1e6600"
+    }
+  ],
+  "runtime_audit_event_refs": [
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-d3d7ac9bb5fed23c"
+    },
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-b3fdf850bf1e6600"
+    }
+  ]
+}

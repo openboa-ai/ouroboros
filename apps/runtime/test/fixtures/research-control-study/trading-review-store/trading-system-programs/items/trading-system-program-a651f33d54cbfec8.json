@@ -1,0 +1,14 @@
+{
+  "record_kind": "trading_system_program",
+  "version": 1,
+  "trading_system_program_id": "trading-system-program-a651f33d54cbfec8",
+  "summary": "Emit bounded TradingSystem paper events.",
+  "manifest_ref": {
+    "record_kind": "program_manifest",
+    "id": "program-manifest-a651f33d54cbfec8"
+  },
+  "validation_record_ref": {
+    "record_kind": "program_validation_record",
+    "id": "program-validation-a651f33d54cbfec8"
+  }
+}

@@ -5,7 +5,8 @@ import {
 } from "@binance/derivatives-trading-usds-futures";
 import type {
   PaperTradingPublicExecutionSnapshotSummary,
-  PublicMarketLivenessSurfaceRecord
+  PublicMarketLivenessSurfaceRecord,
+  ResearchGeneralizationPublicKlineWindowInput
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import { PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS } from "@ouroboros/application/trading/gateway/runtime-binding";
@@ -29,7 +30,12 @@ export interface BinancePublicMarketLivenessClient {
 
 export interface BinancePublicMarketDataClient extends BinancePublicMarketLivenessClient {
   klineCandlestickData(
-    requestParameters: { symbol: "BTCUSDT"; interval: "1m"; limit: 30 }
+    requestParameters: {
+      symbol: "BTCUSDT";
+      interval: "1m";
+      limit: 30;
+      endTime?: number;
+    }
   ): Promise<BinanceRestResponse<BinanceKlineCandlestickPayload>>;
 }
 
@@ -115,6 +121,62 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
           restSnapshot
         })
       : restSnapshot();
+  }
+
+  async readPublicKlineWindow(input: {
+    symbol: "BTCUSDT";
+    interval: "1m";
+    limit: 30;
+    observedAt: string;
+  }): Promise<ResearchGeneralizationPublicKlineWindowInput> {
+    if (input?.symbol !== "BTCUSDT" || input.interval !== "1m" ||
+      input.limit !== 30) {
+      throw new Error("Unsupported Binance public kline-window request.");
+    }
+    const observedAt = exactIso(input.observedAt, "kline observation");
+    const observedEpoch = Date.parse(observedAt);
+    const endTime = Math.floor(observedEpoch / 60_000) * 60_000 - 1;
+    const payload = await this.client.klineCandlestickData({
+      symbol: "BTCUSDT",
+      interval: "1m",
+      limit: 30,
+      endTime
+    }).then((response) => response.data());
+    if (!Array.isArray(payload) || payload.length !== 30) {
+      throw new Error("Binance BTCUSDT kline window did not include 30 samples.");
+    }
+    const firstOpenTime = endTime + 1 - 30 * 60_000;
+    const klines = payload.map((item, index) => {
+      const expectedOpenTime = firstOpenTime + index * 60_000;
+      const openTime = requiredKlineEpochMs(item[0], "kline open time");
+      const closeTime = requiredKlineEpochMs(item[6], "kline close time");
+      const closePrice = item[4];
+      if (openTime !== expectedOpenTime || closeTime !== openTime + 59_999 ||
+        typeof closePrice !== "string" || !closePrice) {
+        throw new Error("Binance BTCUSDT kline window is not exact and contiguous.");
+      }
+      return {
+        open_time: epochMsToIso(openTime),
+        close_time: epochMsToIso(closeTime),
+        close_price: closePrice
+      };
+    });
+    return {
+      symbol: "BTCUSDT",
+      interval: "1m",
+      sample_count: 30,
+      observed_at: observedAt,
+      closed_window_end_at: epochMsToIso(endTime),
+      source: {
+        provider_kind: "binance_production_public_market_data",
+        source_kind: "binance_production_public_rest",
+        rest_base_url: normalizedRestOrigin(this.rest_base_url),
+        endpoint: "/fapi/v1/klines",
+        authority_status: "read_only"
+      },
+      klines,
+      authority_status: "read_only"
+    };
   }
 
   readPublicExecutionSnapshot(
@@ -252,10 +314,17 @@ class CachedBinancePublicMarketDataClient implements BinancePublicMarketDataClie
   }
 
   klineCandlestickData(
-    requestParameters: { symbol: "BTCUSDT"; interval: "1m"; limit: 30 }
+    requestParameters: {
+      symbol: "BTCUSDT";
+      interval: "1m";
+      limit: 30;
+      endTime?: number;
+    }
   ): Promise<BinanceRestResponse<BinanceKlineCandlestickPayload>> {
     return this.cached(
-      `klines:${requestParameters.symbol}:${requestParameters.interval}:${requestParameters.limit}`,
+      `klines:${requestParameters.symbol}:${requestParameters.interval}:${requestParameters.limit}:${
+        requestParameters.endTime ?? "latest"
+      }`,
       this.ttl.klinesTtlMs,
       () => this.client.klineCandlestickData(requestParameters)
     );
@@ -486,7 +555,13 @@ export async function readBinanceBtcUsdtMarketSnapshot({
     moving_average_slow: roundMarketNumber(slowAverage),
     volatility: roundMarketNumber(closeVolatility(closes)),
     expected_direction: expectedDirection(fastAverage, slowAverage),
-    observed_at: epochMsToIso(observedEpochMs)
+    observed_at: epochMsToIso(observedEpochMs),
+    source_kind: "binance_production_public_rest",
+    source_priority: "rest_fallback",
+    freshness: "fresh",
+    ws_connected: false,
+    rest_fallback_used: true,
+    gap_detected: false
   };
 }
 
@@ -599,6 +674,38 @@ function requiredEpochMs(value: number | bigint | undefined, fieldName: string):
 
 function epochMsToIso(epochMs: number): string {
   return new Date(epochMs).toISOString();
+}
+
+function exactIso(value: unknown, fieldName: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`Binance public market response is missing ${fieldName}.`);
+  }
+  const epoch = Date.parse(value);
+  if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== value) {
+    throw new Error(`Binance public market ${fieldName} is invalid.`);
+  }
+  return value;
+}
+
+function requiredKlineEpochMs(
+  value: number | string | undefined,
+  fieldName: string
+): number {
+  const epoch = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(epoch) || epoch < 0) {
+    throw new Error(`Binance public market response is missing ${fieldName}.`);
+  }
+  return epoch;
+}
+
+function normalizedRestOrigin(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password ||
+    url.search || url.hash ||
+    (url.pathname !== "/" && url.pathname !== "")) {
+    throw new Error("Binance public market REST base URL is invalid.");
+  }
+  return url.origin;
 }
 
 function decimalNumber(value: number | string | undefined): number {

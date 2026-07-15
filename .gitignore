@@ -62,6 +62,8 @@ vite.svg
 # Tooling
 .cursorignore
 .cursorindexingignore
+.codex/config.toml
+.worktrees/
 
 # ouroboros local runtime output
 .ouroboros/

@@ -1,20 +1,23 @@
 import React from "react";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
-import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import {
+  validateOrderRequest
+} from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   ReplayTradingApiProviderSession,
-  ReplayTradingScenario,
+  ReplayTradingCandidateInput,
   TradingProviderRequestLog,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
-import type {
-  GatewayRuntimeBinding,
-  PaperTradingApiProviderOptions
+import {
+  startPaperTradingApiProvider,
+  type GatewayRuntimeBinding,
+  type PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { runOuroborosCli } from "@ouroboros/cli";
@@ -25,6 +28,7 @@ import type {
   OuroborosCommandRequest
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import { passingPaperHandoffProbe } from "./helpers/paper-handoff";
 import { OperatorTuiScreen } from "@ouroboros/operator-tui";
 import { buildServer } from "../src/server";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -89,6 +93,9 @@ describe("operator product loop smoke", () => {
         payload: {}
       });
       const leader = tick.operator.candidate_arena.leaderboard[0]!;
+      const conformanceBeforeStart = await store.listPaperTradingHandoffConformances();
+      expect(conformanceBeforeStart.length).toBeGreaterThan(0);
+      expect(conformanceBeforeStart.every((record) => record.status === "passed")).toBe(true);
 
       await postCommand(server, {
         command_kind: "candidate.select",
@@ -98,8 +105,15 @@ describe("operator product loop smoke", () => {
         command_kind: "trading_run.start",
         payload: { candidate_id: leader.candidate_id }
       });
+      const repeated = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: leader.candidate_id }
+      });
 
       expect(started.operator.selected_candidate_id).toBe(leader.candidate_id);
+      expect(repeated.operator.selected_candidate_id).toBe(leader.candidate_id);
+      await expect(store.listPaperTradingHandoffConformances())
+        .resolves.toEqual(conformanceBeforeStart);
       expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
       expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
@@ -583,7 +597,7 @@ describe("operator product loop smoke", () => {
     } finally {
       await server.close();
     }
-  });
+  }, 40_000);
 
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
@@ -672,6 +686,7 @@ describe("operator product loop smoke", () => {
         operator.candidate_arena.runner_status === "running"
         && operator.selected_paper_trading_evaluation.status === "running"
         && operator.selected_paper_trading_evaluation.runner_active
+        && operator.candidate_arena.latest_ticks.some((tick) => tick.tick_id === "tick-2")
         && operator.candidate_arena.latest_ticks.some((tick) =>
           tick.paper_trading_continuation?.status === "started"
         )
@@ -943,6 +958,81 @@ describe("operator product loop smoke", () => {
         command_kind: "arena.stop"
       });
       expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails autonomous continuation on missing admitted conformance without paper effects", async () => {
+    const store = new LocalStore(tmpDir);
+    const getConformance = store.getPaperTradingHandoffConformance.bind(store);
+    store.getPaperTradingHandoffConformance = async (conformanceId) => {
+      await getConformance(conformanceId);
+      return undefined;
+    };
+    let providerStartCount = 0;
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: async (...args) => {
+        providerStartCount += 1;
+        return networklessPaperTradingApiProvider(...args);
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      const baseline = {
+        commitments: (await store.listPaperTradingEvaluationCommitments()).length,
+        evaluations: (await store.listPaperTradingEvaluations()).length,
+        observations: await paperTradingObservationCount(store),
+        sandboxes: (await store.listSandboxes()).length
+      };
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, { command_kind: "arena.start" });
+
+      const operator = await waitForOperator(server, (readModel) =>
+        readModel.candidate_arena.runner_status === "running" &&
+        readModel.candidate_arena.latest_ticks.some((tick) =>
+          tick.paper_trading_continuation?.status === "failed" &&
+          tick.paper_trading_continuation.error === "paper_handoff_conformance_missing"
+        )
+      );
+      const failed = operator.candidate_arena.latest_ticks.find((tick) =>
+        tick.paper_trading_continuation?.error === "paper_handoff_conformance_missing"
+      );
+      expect(failed?.paper_trading_continuation).toMatchObject({
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: expect.any(String),
+        error: "paper_handoff_conformance_missing",
+        authority_status: "not_live"
+      });
+      expect(operator.candidate_arena.runner_status).toBe("running");
+      expect(providerStartCount).toBe(0);
+      expect(await store.listPaperTradingEvaluationCommitments()).toHaveLength(
+        baseline.commitments
+      );
+      expect(await store.listPaperTradingEvaluations()).toHaveLength(baseline.evaluations);
+      expect(await paperTradingObservationCount(store)).toBe(baseline.observations);
+      expect(await store.listSandboxes()).toHaveLength(baseline.sandboxes);
+
+      await postCommand(server, { command_kind: "arena.stop" });
     } finally {
       await server.close();
     }
@@ -1524,7 +1614,7 @@ describe("operator product loop smoke", () => {
           },
           selected_paper_trading_evaluation: {
             status: "running",
-            runner_active: false,
+            runner_active: true,
             observation_count: 2,
             ledger_chain_complete: true,
             latest_decision: {
@@ -1539,16 +1629,14 @@ describe("operator product loop smoke", () => {
           fetch: serverFetch(restartedServer)
         });
         expect(restartedHumanStatus.exitCode, restartedHumanStatus.stderr).toBe(0);
-        expect(restartedHumanStatus.stdout).toContain(
-          "Paper runner: needs resume / persisted running, timer inactive"
-        );
+        expect(restartedHumanStatus.stdout).toContain("Paper runner: active");
         const restartedTui = renderToString(
           <OperatorTuiScreen
             operator={restartedOperatorBody.operator}
             cursor={0}
           />
         );
-        expect(restartedTui).toContain("Paper runner: needs resume / persisted running, timer inactive");
+        expect(restartedTui).toContain("Paper runner: active");
         expect(restartedTui).not.toContain("Runner: needs resume / persisted running, timer inactive");
         const resumed = await restartedServer.inject({
           method: "POST",
@@ -1561,14 +1649,14 @@ describe("operator product loop smoke", () => {
         expect(resumed.statusCode, resumed.body).toBe(200);
         expect(resumed.json()).toMatchObject({
           result: {
-            status: "resumed",
+            status: "already_running",
             runner_status: "running"
           },
           operator: {
             selected_paper_trading_evaluation: {
               status: "running",
               runner_active: true,
-              observation_count: 3,
+              observation_count: 2,
               authority_status: "not_live"
             }
           }
@@ -1672,7 +1760,7 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
 async function waitForOperator(
   server: Awaited<ReturnType<typeof buildServer>>,
   predicate: (operator: OperatorReadModel) => boolean,
-  attempts = 120
+  attempts = 60
 ): Promise<OperatorReadModel> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await server.inject({
@@ -1684,7 +1772,7 @@ async function waitForOperator(
     if (predicate(operator)) {
       return operator;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error("operator did not satisfy expected state before timeout");
 }
@@ -1791,12 +1879,18 @@ function fixedOrderLogSandboxAdapter(orderLine: string, holdLine: string): Sandb
 function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       await mkdir(input.output_dir, { recursive: true });
       const eventsPath = path.join(input.output_dir, "events.jsonl");
-      const market = input.provider.scenario.market;
-      const account = input.provider.scenario.account;
-      const orderRequest = market.expected_direction === "flat"
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
+      const declaredBehavior = await declaredArenaArtifactBehavior(input.artifact_dir);
+      const shouldHold = market.moving_average_fast === market.moving_average_slow ||
+        declaredBehavior.forceHold;
+      const orderRequest = shouldHold
         ? {
             symbol: market.symbol,
             side: "hold" as const,
@@ -1806,8 +1900,14 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
           }
         : {
             symbol: market.symbol,
-            side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
-            quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+            side: declaredBehavior.forceSell ||
+              market.moving_average_fast < market.moving_average_slow
+              ? "sell" as const
+              : "buy" as const,
+            quantity: Number((account.equity * Math.min(
+              declaredBehavior.riskFraction,
+              account.max_risk_fraction
+            ) / market.price).toFixed(8)),
             order_type: "market" as const,
             reason: "networkless smoke runner preserves TradingApiProvider boundary events"
           };
@@ -1833,20 +1933,44 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         stdout: events.map((event) => JSON.stringify(event)).join("\n"),
         stderr: "",
         events,
-        provider_requests: providerBoundaryRequests()
+        provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
   };
+}
+
+async function declaredArenaArtifactBehavior(artifactDir: string): Promise<{
+  riskFraction: number;
+  forceSell: boolean;
+  forceHold: boolean;
+}> {
+  const source = await readFile(path.join(artifactDir, "run.py"), "utf8");
+  const riskFraction = Number(source.match(/RISK_FRACTION = ([0-9.]+)/)?.[1]);
+  return {
+    riskFraction: Number.isFinite(riskFraction) && riskFraction > 0
+      ? riskFraction
+      : 0.02,
+    forceSell: source.includes("mean reversion candidate shorts"),
+    forceHold: source.includes("funding-aware candidate holds")
+  };
+}
+
+async function paperTradingObservationCount(store: LocalStore): Promise<number> {
+  const evaluations = await store.listPaperTradingEvaluations();
+  const observations = await Promise.all(evaluations.map((evaluation) =>
+    store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
+  ));
+  return observations.reduce((count, items) => count + items.length, 0);
 }
 
 function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
   const replayRunner = networklessReplayArtifactRunner();
   return {
     kind: "host_process",
-    async run(input) {
-      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
-      return replayRunner.run(input);
-    }
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
+    run: (input) => replayRunner.run(input)
   };
 }
 
@@ -1868,99 +1992,28 @@ function delayedPaperDirectArenaArtifactRunner(): TradingArtifactRunner & {
     kind: "host_process",
     started,
     release,
+    async probePaperHandoff(input) {
+      return passingPaperHandoffProbe(input);
+    },
     async run(input) {
       markStarted();
       if (!blocked) {
         blocked = true;
         await released;
       }
-      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
       return replayRunner.run(input);
     }
   };
 }
 
-function paperDirectArenaArtifact(): string {
-  return `#!/usr/bin/env python3
-import argparse
-import json
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-
-
-def utc_now():
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def append_line(line, log_path, heartbeat_path=None):
-    print(line, flush=True)
-    if log_path is not None:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\\n")
-    if heartbeat_path is not None:
-        heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
-        heartbeat_path.write_text(line + "\\n", encoding="utf-8")
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--instance-id", required=True)
-parser.add_argument("--ticks", type=int, default=0)
-parser.add_argument("--interval-ms", type=int, default=1000)
-parser.add_argument("--log-file")
-parser.add_argument("--heartbeat-file")
-parser.add_argument("--start-at", required=True)
-parser.add_argument("--paper-order-request", default="valid")
-args = parser.parse_args()
-
-log_path = Path(args.log_file) if args.log_file else None
-heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
-append_line(json.dumps({
-    "event": "order_request",
-    "event_id": f"{args.instance_id}:order-request:0001",
-    "instance_id": args.instance_id,
-    "at": args.start_at,
-    "authority_status": "trace_only",
-    "intent_kind": "place_order",
-    "symbol": "BTCUSDT",
-    "side": "buy",
-    "order_type": "market",
-    "quantity": "0.001",
-    "reason": "paper-direct arena fixture order",
-}, sort_keys=True), log_path)
-
-tick = 0
-while True:
-    tick += 1
-    append_line(json.dumps({
-        "event": "runtime_heartbeat",
-        "instance_id": args.instance_id,
-        "tick": tick,
-        "at": utc_now(),
-    }, sort_keys=True), log_path, heartbeat_path)
-    if args.ticks and tick >= args.ticks:
-        break
-    time.sleep(args.interval_ms / 1000)
-
-append_line(json.dumps({
-    "event": "runtime_stopped",
-    "instance_id": args.instance_id,
-    "tick": tick,
-    "at": utc_now(),
-}, sort_keys=True), log_path)
-`;
-}
-
 async function networklessReplayTradingApiProvider(
-  scenario: ReplayTradingScenario
+  candidateInput: ReplayTradingCandidateInput
 ): Promise<ReplayTradingApiProviderSession> {
-  const requests: TradingProviderRequestLog[] = [];
   return {
-    base_url: `http://replay-provider.test/${scenario.id}`,
+    base_url: "http://replay-provider.test",
     close: async () => undefined,
-    requests: () => [...requests],
-    scenario
+    requests: () => [],
+    candidate_input: candidateInput
   };
 }
 
@@ -1968,35 +2021,7 @@ async function networklessPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions
 ): Promise<ReplayTradingApiProviderSession> {
-  const market = await binding.marketData.readMarketSnapshot();
-  const account = options.readAccountState
-    ? await options.readAccountState()
-    : binding.account.provider_kind === "fake_paper_account"
-      ? binding.account.state
-      : {
-          equity: 10_000,
-          max_position_notional: 350,
-          max_risk_fraction: 0.03,
-          target_risk_fraction: 0.02
-        };
-  return {
-    base_url: "http://paper-runtime.test",
-    sandbox_base_url: "http://paper-runtime.test",
-    close: async () => undefined,
-    requests: () => [],
-    scenario: {
-      id: "networkless-paper-runtime",
-      description: "Networkless paper runtime provider used by operator product-loop smoke.",
-      market,
-      account,
-      outcome: {
-        exit_price: market.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
-  };
+  return startPaperTradingApiProvider(binding, options);
 }
 
 function delayedPaperTradingApiProviderFactory(): {
@@ -2023,19 +2048,20 @@ function delayedPaperTradingApiProviderFactory(): {
   };
 }
 
-function providerBoundaryRequests(): TradingProviderRequestLog[] {
+function providerBoundaryRequests(orderRequest?: unknown): TradingProviderRequestLog[] {
   return [
     providerRequest("GET", "/market/snapshot"),
     providerRequest("GET", "/account/state"),
-    providerRequest("POST", "/orders/validate")
+    providerRequest("POST", "/orders/validate", orderRequest)
   ];
 }
 
-function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+function providerRequest(method: string, requestPath: string, body?: unknown): TradingProviderRequestLog {
   return {
     at: "2026-05-16T00:00:00.000Z",
     method,
     path: requestPath,
+    ...(body === undefined ? {} : { body }),
     response_status: 200
   };
 }

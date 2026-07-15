@@ -1,0 +1,10 @@
+{
+  "record_kind": "program_manifest",
+  "version": 1,
+  "program_manifest_id": "fixture-program-manifest-001",
+  "declared_runtime": "fixture-sandbox-placeholder",
+  "declared_outputs": [
+    "OrderRequest placeholder",
+    "Trace placeholder"
+  ]
+}

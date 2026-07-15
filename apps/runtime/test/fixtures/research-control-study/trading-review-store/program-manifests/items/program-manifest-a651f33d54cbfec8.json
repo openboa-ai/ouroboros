@@ -1,0 +1,11 @@
+{
+  "record_kind": "program_manifest",
+  "version": 1,
+  "program_manifest_id": "program-manifest-a651f33d54cbfec8",
+  "declared_runtime": "python-sandbox-fixture",
+  "declared_outputs": [
+    "OrderRequest",
+    "ProgramEvent",
+    "Trace"
+  ]
+}

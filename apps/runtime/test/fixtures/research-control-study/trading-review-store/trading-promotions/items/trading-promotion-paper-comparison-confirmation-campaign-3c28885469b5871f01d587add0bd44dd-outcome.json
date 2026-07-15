@@ -1,0 +1,38 @@
+{
+  "record_kind": "trading_promotion",
+  "version": 1,
+  "trading_promotion_id": "trading-promotion-paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome",
+  "status": "promoted_for_trading_review",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "paper_trading_evaluation_ref": {
+    "record_kind": "paper_trading_evaluation",
+    "id": "paper-trading-evaluation-trading-run-paper-session-e93aa57454db1fb1-5ab2e6047d6a822e"
+  },
+  "comparison_confirmation": {
+    "basis_kind": "paper_trading_comparison_confirmation",
+    "campaign_ref": {
+      "record_kind": "paper_trading_comparison_confirmation_campaign",
+      "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd"
+    },
+    "campaign_digest": "sha256:a075811ee713b4f69c88adbe19b8599c824de87758d24da23bc9abc2c116c597",
+    "campaign_outcome_ref": {
+      "record_kind": "paper_trading_comparison_confirmation_campaign_outcome",
+      "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome"
+    },
+    "campaign_outcome_digest": "sha256:f77d28b83870ca958849be854971b0388affbdf8fb273fedc5ae21adb2345181",
+    "final_verdict_ref": {
+      "record_kind": "paper_trading_comparison_verdict",
+      "id": "paper-comparison-verdict-06821287d643e214a568d90bb8c36ae3"
+    },
+    "final_verdict_digest": "sha256:55fb30cb98f6f12a8d33fc5d6d52fc7aeeffb77ae81ccde221b7ce9dca672a03"
+  },
+  "promoted_at": "2026-07-10T00:06:51.002Z",
+  "authority_status": "not_live"
+}

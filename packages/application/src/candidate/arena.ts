@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ArtifactLineageRecord,
+  CandidateAdmissionDecision,
+  CandidateAdmissionDecisionRecord,
   CandidateArenaTickDirectionResultReadModel,
   CandidateArenaTickPaperTradingContinuationReadModel,
   CandidateArenaTickRecord,
@@ -14,7 +16,11 @@ import type {
   CandidateArenaFindingClusterMarketRegime,
   CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
+  CandidateArenaResearchAllocationMode,
+  CandidateArenaResearchAllocationRecord,
+  CandidateArenaResearchAllocationSelection,
   CandidateArenaResearchEfficiencyReadModel,
+  CandidateArenaResearchPreflightReadModel,
   CandidateArenaResearcherReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationInput,
@@ -24,25 +30,72 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
   PaperTradingObservationRecord,
-  PaperTradingFailureKind,
+  PaperTradingHandoffConformanceRecord,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
   Ref,
+  ResearchDirectionRecord,
+  ResearchBehaviorFingerprintRecord,
   ResearchDirectionKind,
   ResearchFindingRecord,
+  ResearchPreflightCommitmentRecord,
+  ResearchWorkerMemoryControlAssignment,
+  ResearchWorkerMemoryMode,
+  ResearchWorkerCheckpointTerminalReason,
+  ResearchWorkerRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingProfitLossReadModel
+} from "@ouroboros/domain";
+import {
+  decideCandidateAdmission,
+  deriveCandidateAdmissionResearchWorkerOutcome,
+  paperTradingHandoffConformanceDigestInput,
+  paperTradingComparisonResearchReleaseHasRuntimeShape
 } from "@ouroboros/domain";
 import {
   FIXTURE_CANDIDATE_ID,
   type OuroborosStorePort
 } from "../ports/store";
 import { safeId } from "../safe-id";
+import {
+  DEFAULT_ARENA_DIRECTIONS,
+  CandidateArenaResearchAllocationService,
+  candidateArenaAdaptiveDirectionFocus,
+  candidateArenaResearchEfficiencyBudgetFocus,
+  resolveCandidateArenaResearchAllocationPolicy,
+  toCandidateArenaResearchAllocationReadModel
+} from "./research-allocation";
+import { buildResearchPopulationDiversity } from "./research-population-diversity";
+import { buildResearchWorkerMemoryProjection } from
+  "./research-worker-memory";
+import {
+  buildResearchGeneralizationReadModel,
+  ResearchGeneralizationReadModelError
+} from "./research-generalization-read-model";
+import {
+  closeResearchWorkerCheckpoint,
+  recoverIncompleteResearchWorkerCheckpoints,
+  resolveResearchWorkerLifecycle
+} from "./research-worker-lifecycle";
 import { readTradingSystemManifest } from "../trading/research/artifact-runner";
 import type { TradingArtifactRunner } from "../trading/research/artifact-runner";
+import {
+  assertSingleFileTradingArtifactClosure,
+  sealSingleFileTradingArtifactClosure
+} from "../trading/research/artifact-closure";
 import { FixtureTradingResearchAgentAdapter } from "../trading/research/agent-adapters";
 import { runTradingResearchLoop } from "../trading/research/run-trading-research";
+import {
+  buildResearchPreflightPlan,
+  generateResearchPreflightEvaluatorSeed,
+  type ResearchPreflightEvaluationOpportunityHandle
+} from "../trading/research/preflight-plan";
+import {
+  deriveResearchBehaviorFingerprint,
+  ResearchBehaviorFingerprintUnavailableError
+} from "../trading/research/behavior-fingerprint";
 import type { ReplayTradingApiProviderFactory } from "../trading/research/replay-set-runner";
 import type {
   AgentEditInput,
@@ -50,7 +103,8 @@ import type {
   ManagedResearchAgent,
   TradingEvaluationResult,
   TradingResearchNotebookEntry,
-  TradingResearchAgentAdapter
+  TradingResearchAgentAdapter,
+  TradingSystemManifest
 } from "../trading/research/types";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
 import {
@@ -59,17 +113,16 @@ import {
 } from "../trading/paper/qualification-blockers";
 import { classifyPaperTradingFailure } from "../trading/paper/failures";
 import { paperTradingLearningSummary } from "../trading/paper/learning";
-import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
+import { paperTradingEvaluationCommitmentMatchesEvaluation } from "../trading/paper/commitment";
+import {
+  paperTradingEvidenceIntegrityReasons,
+  qualifyPaperTradingEvaluation
+} from "../trading/paper/qualification";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
-export const DEFAULT_ARENA_DIRECTIONS: ResearchDirectionKind[] = [
-  "trend_following",
-  "mean_reversion",
-  "volatility_regime",
-  "funding_aware_risk",
-  "execution_cost_robustness"
-];
+export { DEFAULT_ARENA_DIRECTIONS } from "./research-allocation";
+export { recoverIncompleteResearchWorkerCheckpoints } from "./research-worker-lifecycle";
 
 const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
   revenue_usdt: 0,
@@ -79,32 +132,60 @@ const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
 };
 const arenaStoreMutationQueues = new WeakMap<OuroborosStorePort, Promise<unknown>>();
 
-type ArenaAdaptiveDirectionFocus = {
+
+type ArenaReleasedCampaignFinding = {
+  release_id: string;
+  candidate_id: string;
   direction_kind: ResearchDirectionKind;
-  source_direction_kind?: ResearchDirectionKind;
-  focus_score: number;
-  focus_reason: string;
+  release_kind: PaperTradingComparisonResearchReleaseRecord["release_kind"];
+  finding_kind: ResearchFindingRecord["finding_kind"];
+  summary: string;
   next_research_focus: string;
+  released_at: string;
   authority_status: "not_promotion_authority";
 };
 
-type PaperLoopLatencySummary = {
-  expected_interval_ms: number;
-  latest_observation_interval_ms?: number;
-  latest_interval_lag_ms?: number;
-  max_interval_lag_ms?: number;
-  observed_interval_count: number;
-  cadence_status: "on_cadence" | "lagging" | "insufficient_history";
-  authority_status: "not_promotion_authority";
-};
+type ArenaDirectionRunOutcome =
+  | {
+      status: "created";
+      candidate: CandidateInspectReadModel;
+      admission: CandidateAdmissionDecisionRecord;
+      conformance: PaperTradingHandoffConformanceRecord;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
+    }
+  | {
+      status: "duplicate" | "quarantined";
+      admission: CandidateAdmissionDecisionRecord;
+      finding: ResearchFindingRecord;
+      conformance?: PaperTradingHandoffConformanceRecord;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
+    }
+  | {
+      status: "no_submission";
+      finding: string;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+      research_preflight: CandidateArenaResearchPreflightReadModel;
+    };
 
 export interface RunCandidateArenaTickInput {
   store: OuroborosStorePort;
   sourceSystemId?: string;
   sourceCandidateVersionId?: string;
   directions?: ResearchDirectionKind[];
+  researchAllocationMode?: Exclude<
+    CandidateArenaResearchAllocationMode,
+    "explicit"
+  >;
+  researchMemoryMode?: ResearchWorkerMemoryMode;
+  researchMemoryControlAssignment?: ResearchWorkerMemoryControlAssignment;
+  researchPreflightEvaluationOpportunity?:
+    ResearchPreflightEvaluationOpportunityHandle;
   tickId?: string;
+  now?: () => string;
   repoRoot?: string;
+  sourceArtifactDir?: string;
   researchAgent: TradingResearchRuntimeAgent;
   agentFactory: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
   artifactRunner?: TradingArtifactRunner;
@@ -285,51 +366,134 @@ export async function runCandidateArenaTick(
   runnerStatus: "running" | "stopped" = "stopped",
   tickCount = 0
 ): Promise<CandidateArenaTickOutcome> {
-  const sourceSelection = await sourceCandidate(input.store, input.sourceSystemId, input.sourceCandidateVersionId);
-  const directions = input.directions ?? await adaptiveDefaultArenaDirections(input.store);
   const tickId = input.tickId ?? `tick-${Date.now()}`;
-  const startedAt = new Date().toISOString();
+  const startedAt = candidateArenaNow(input.now);
+  if (input.directions && input.researchAllocationMode) {
+    throw new Error("candidate_arena_research_allocation_mode_conflict");
+  }
+  await withArenaStoreMutation(input.store, () =>
+    recoverIncompleteResearchWorkerCheckpoints({
+      store: input.store,
+      recovered_at: startedAt
+    })
+  );
+  const sourceSelection = await sourceCandidate(
+    input.store,
+    input.sourceSystemId,
+    input.sourceCandidateVersionId
+  );
+  const priorArena = await buildCandidateArenaReadModel(
+    input.store,
+    "stopped",
+    tickCount
+  );
+  const { allocationMode, allocationPolicyBasis } =
+    await resolveCandidateArenaResearchAllocationPolicy({
+      store: input.store,
+      explicitDirections: input.directions,
+      requestedAllocationMode: input.researchAllocationMode
+    });
+  const allocation = await withArenaStoreMutation(input.store, () =>
+    new CandidateArenaResearchAllocationService({
+      store: input.store,
+      now: () => startedAt
+    }).allocate({
+      tickId,
+      allocationMode,
+      allocationPolicyBasis,
+      explicitDirections: input.directions,
+      findingClusters: priorArena.finding_clusters,
+      latestTicks: priorArena.latest_ticks
+    })
+  );
+  const selections = allocation.selected_directions;
   const createdCandidateIds: string[] = [];
   const directionResults: CandidateArenaTickDirectionResultReadModel[] = [];
 
-  const settledDirections = await Promise.allSettled(
-    directions.map(async (direction) => ({
-      direction,
-      created: await runArenaDirection({
+  const settledDirections = await settleArenaSelections(
+    selections,
+    allocation.policy.concurrency_limit,
+    async (selection) => ({
+      selection,
+      outcome: await runArenaDirection({
         ...input,
         source: sourceSelection.candidate,
-        direction,
-        tickId
+        direction: selection.direction_kind,
+        tickId,
+        allocation,
+        allocationSelection: selection
       })
-    }))
+    })
   );
 
   for (let index = 0; index < settledDirections.length; index += 1) {
-    const direction = directions[index]!;
+    const direction = selections[index]!.direction_kind;
     const settled = settledDirections[index]!;
     if (settled.status === "fulfilled") {
-      const created = settled.value.created.candidate;
-      createdCandidateIds.push(created.candidate_id);
-      const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
-      directionResults.push({
-        direction_kind: direction,
-        status: "created",
-        agent_provider: input.researchAgent,
-        candidate_id: created.candidate_id,
-        finding: findingSummaryForProfitLoss(
-          profitLoss,
-          created.full_cycle_lineage?.evidence?.evaluation_status
-        ),
-        net_revenue_usdt: profitLoss.net_revenue_usdt,
-        research_efficiency: settled.value.created.research_efficiency
-      });
+      const directionOutcome = settled.value.outcome;
+      if (directionOutcome.status === "created") {
+        const created = directionOutcome.candidate;
+        createdCandidateIds.push(created.candidate_id);
+        const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
+        directionResults.push({
+          direction_kind: direction,
+          status: "created",
+          agent_provider: input.researchAgent,
+          candidate_id: created.candidate_id,
+          admission_decision_id:
+            directionOutcome.admission.candidate_admission_decision_id,
+          admission_reason: directionOutcome.admission.reason,
+          paper_handoff_conformance:
+            compactPaperHandoffConformance(directionOutcome.conformance),
+          finding: findingSummaryForProfitLoss(
+            profitLoss,
+            created.full_cycle_lineage?.evidence?.evaluation_status
+          ),
+          net_revenue_usdt: profitLoss.net_revenue_usdt,
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
+        });
+      } else if (directionOutcome.status === "no_submission") {
+        directionResults.push({
+          direction_kind: direction,
+          status: directionOutcome.status,
+          agent_provider: input.researchAgent,
+          finding: directionOutcome.finding,
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
+        });
+      } else {
+        directionResults.push({
+          direction_kind: direction,
+          status: directionOutcome.status,
+          agent_provider: input.researchAgent,
+          finding: directionOutcome.finding.summary,
+          admission_decision_id:
+            directionOutcome.admission.candidate_admission_decision_id,
+          admission_reason: directionOutcome.admission.reason,
+          ...(directionOutcome.conformance
+            ? {
+                paper_handoff_conformance:
+                  compactPaperHandoffConformance(directionOutcome.conformance)
+              }
+            : {}),
+          research_efficiency: directionOutcome.research_efficiency,
+          research_preflight: directionOutcome.research_preflight
+        });
+      }
     } else {
+      const researchPreflight = await failedArenaResearchPreflightReadback(
+        input.store,
+        tickId,
+        direction
+      );
       directionResults.push({
         direction_kind: direction,
         status: "failed",
         agent_provider: input.researchAgent,
         error: conciseError(settled.reason),
-        finding: `${directionLabel(direction)} researcher failed before candidate materialization.`
+        finding: `${directionLabel(direction)} researcher failed before candidate materialization.`,
+        ...(researchPreflight ? { research_preflight: researchPreflight } : {})
       });
     }
   }
@@ -337,11 +501,11 @@ export async function runCandidateArenaTick(
   await input.store.recordCandidateArenaTick(candidateArenaTickRecord({
     tickId,
     startedAt,
-    completedAt: new Date().toISOString(),
+    completedAt: candidateArenaNow(input.now),
     sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
     directionResults,
-    totalDirectionCount: directions.length
+    allocation
   }));
 
   const arena = await buildCandidateArenaReadModel(input.store, runnerStatus, tickCount);
@@ -354,17 +518,82 @@ export async function runCandidateArenaTick(
   };
 }
 
+async function settleArenaSelections<T>(
+  selections: CandidateArenaResearchAllocationSelection[],
+  concurrencyLimit: number,
+  task: (selection: CandidateArenaResearchAllocationSelection) => Promise<T>
+): Promise<PromiseSettledResult<T>[]> {
+  const settled: PromiseSettledResult<T>[] = [];
+  for (let index = 0; index < selections.length; index += concurrencyLimit) {
+    settled.push(...await Promise.allSettled(
+      selections.slice(index, index + concurrencyLimit).map(task)
+    ));
+  }
+  return settled;
+}
+
+function candidateArenaNow(now: (() => string) | undefined): string {
+  const value = now?.() ?? new Date().toISOString();
+  if (!Number.isFinite(Date.parse(value)) ||
+    new Date(Date.parse(value)).toISOString() !== value) {
+    throw new Error("candidate_arena_invalid_clock");
+  }
+  return value;
+}
+
 export async function buildCandidateArenaReadModel(
   store: OuroborosStorePort,
   runnerStatus: "running" | "stopped",
-  tickCount: number
+  tickCount: number,
+  preloadedResearchReleases?: PaperTradingComparisonResearchReleaseRecord[]
 ): Promise<CandidateArenaReadModel> {
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
   );
-  const latestTicks = (await store.listCandidateArenaTicks())
-    .slice(0, 10)
-    .map(toCandidateArenaTickReadModel);
+  const tickRecords = await store.listCandidateArenaTicks();
+  const latestTickRecords = [...tickRecords]
+    .sort((left, right) =>
+      right.completed_at.localeCompare(left.completed_at) ||
+      right.tick_id.localeCompare(left.tick_id)
+    )
+    .slice(0, 10);
+  const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
+      "function"
+    ? await store.listCandidateArenaResearchAllocations()
+    : [];
+  const [
+    directions,
+    commitments,
+    fingerprints,
+    admissions,
+    researchGeneralization
+  ] = await Promise.all([
+    typeof store.listResearchDirections === "function"
+      ? store.listResearchDirections()
+      : Promise.resolve([]),
+    typeof store.listResearchPreflightCommitments === "function"
+      ? store.listResearchPreflightCommitments()
+      : Promise.resolve([]),
+    typeof store.listResearchBehaviorFingerprints === "function"
+      ? store.listResearchBehaviorFingerprints()
+      : Promise.resolve([]),
+    typeof store.listCandidateAdmissionDecisions === "function"
+      ? store.listCandidateAdmissionDecisions()
+      : Promise.resolve([]),
+    arenaResearchGeneralization(store, allocationRecords, tickRecords)
+  ]);
+  const allocationsById = new Map(allocationRecords.map((allocation) => [
+    allocation.candidate_arena_research_allocation_id,
+    allocation
+  ]));
+  const latestTicks = latestTickRecords.map((tick) =>
+    toCandidateArenaTickReadModel(
+      tick,
+      tick.research_allocation_ref
+        ? allocationsById.get(tick.research_allocation_ref.id)
+        : undefined
+    )
+  );
   const entries = candidates
     .filter((candidate): candidate is CandidateInspectReadModel => Boolean(candidate?.full_cycle_lineage?.evidence?.profit_loss))
     .map((candidate) => ({
@@ -383,6 +612,14 @@ export async function buildCandidateArenaReadModel(
     arena_kind: "candidate_arena",
     runner_status: runnerStatus,
     tick_count: tickCount,
+    research_generalization: researchGeneralization,
+    research_population_diversity: buildResearchPopulationDiversity({
+      ticks: latestTickRecords,
+      directions,
+      commitments,
+      fingerprints,
+      admissions
+    }),
     active_researchers: DEFAULT_ARENA_DIRECTIONS.map((direction) => arenaResearcher(direction, latestTicks)),
     leaderboard: entries.map((entry, index) => ({
       rank: index + 1,
@@ -407,12 +644,68 @@ export async function buildCandidateArenaReadModel(
     live_disabled: true,
     authority_status: "not_live"
   };
+  const researchReleases = preloadedResearchReleases ??
+    await arenaPaperTradingComparisonResearchReleases(store);
   const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
   const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
   return {
     ...arena,
-    finding_clusters: arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard)
+    finding_clusters: arenaFindingClusters(
+      paperEvidenceCandidates,
+      paperTradingBoard,
+      researchReleases
+    )
   };
+}
+
+async function arenaResearchGeneralization(
+  store: OuroborosStorePort,
+  allocations: CandidateArenaResearchAllocationRecord[],
+  ticks: CandidateArenaTickRecord[]
+): Promise<CandidateArenaReadModel["research_generalization"]> {
+  const methods = [
+    store.listResearchGeneralizationProtocols,
+    store.listResearchControlStudies,
+    store.listResearchControlStudyOutcomes,
+    store.listResearchGeneralizationOutcomes,
+    store.listResearchGeneralizationPolicyDecisions
+  ];
+  const availableCount = methods.filter((method) =>
+    typeof method === "function"
+  ).length;
+  if (availableCount === 0) {
+    return buildResearchGeneralizationReadModel({
+      protocols: [],
+      studies: [],
+      studyOutcomes: [],
+      outcomes: [],
+      decisions: [],
+      allocations,
+      ticks
+    });
+  }
+  if (availableCount !== methods.length) {
+    throw new ResearchGeneralizationReadModelError(
+      "ResearchGeneralization store read methods must be available together."
+    );
+  }
+  const [protocols, studies, studyOutcomes, outcomes, decisions] =
+    await Promise.all([
+      store.listResearchGeneralizationProtocols(),
+      store.listResearchControlStudies(),
+      store.listResearchControlStudyOutcomes(),
+      store.listResearchGeneralizationOutcomes(),
+      store.listResearchGeneralizationPolicyDecisions()
+    ]);
+  return buildResearchGeneralizationReadModel({
+    protocols,
+    studies,
+    studyOutcomes,
+    outcomes,
+    decisions,
+    allocations,
+    ticks
+  });
 }
 
 async function recordCandidateArenaTickPaperTradingContinuation(
@@ -435,78 +728,282 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
   tickId: string;
-}): Promise<{
-  candidate: CandidateInspectReadModel;
-  research_efficiency: CandidateArenaResearchEfficiencyReadModel;
-}> {
+  allocation: CandidateArenaResearchAllocationRecord;
+  allocationSelection: CandidateArenaResearchAllocationSelection;
+}): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
-  const artifactSourceDir = await sourceResearchArtifactDir({
-    store: input.store,
-    source: input.source,
-    repoRoot
-  });
+  const runRoot = path.join(input.store.root(), "candidate-arena-runs", sessionId);
+  const seedDir = path.join(runRoot, "seed");
+  const artifactSourceDir = input.sourceArtifactDir ??
+    await resolveCandidateArenaSourceArtifactDir({
+      store: input.store,
+      source: input.source,
+      repoRoot
+    });
+  await mkdir(runRoot, { recursive: true });
+  await rm(seedDir, { recursive: true, force: true });
+  await cp(artifactSourceDir, seedDir, { recursive: true });
+  const sourceManifest = await readTradingSystemManifest(seedDir);
+  assertCandidateArenaResearchManifest(sourceManifest);
+  const sourceArtifact = await arenaEntrypointArtifact(seedDir, sourceManifest);
   const adapter = input.researchAgent === "fixture"
     ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
     : input.agentFactory(input.researchAgent);
-  const research = await runTradingResearchLoop({
-    repo_root: repoRoot,
-    artifact_source_dir: artifactSourceDir,
-    run_root: path.join(input.store.root(), "candidate-arena-runs", sessionId),
-    session_id: sessionId,
-    iterations: 1,
-    agent_adapter: adapter,
-    artifact_runner: input.artifactRunner,
-    replay_provider_factory: input.replayProviderFactory,
-    arena_context: await arenaContext(input.store, input.direction)
-  });
-  const entry = research.entries.at(-1);
-  if (!entry) {
-    throw new Error("candidate_arena_missing_research_entry");
-  }
-  const researchEfficiency = researchEfficiencySummary(entry);
-  const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
-  const manifest = await readTradingSystemManifest(artifactDir);
-  return withArenaStoreMutation(input.store, async () => {
-    const systemCode = await recordArenaSystemCode({
+  const requestedCommittedAt = candidateArenaNow(input.now);
+  const memoryMode = input.researchMemoryMode ?? "released_memory";
+  const preflight = await withArenaStoreMutation(input.store, async () => {
+    const lifecycle = await resolveResearchWorkerLifecycle({
       store: input.store,
-      artifactDir,
-      sessionId,
-      manifestEntrypoint: manifest.entrypoint,
-      agent: adapter.agent
-    });
-    const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
-      source: input.source,
-      sourceSystemCodeRef: input.source.system_code?.ref,
-      systemCode,
-      evaluation: entry.evaluation,
-      direction: input.direction,
+      direction_kind: input.direction,
       agent: adapter.agent,
-      sessionId
-    }));
-    if (materialized.status !== "materialized") {
-      throw new Error("candidate_arena_materialization_failed");
-    }
-
-    await recordArenaResearchRecords({
-      store: input.store,
-      candidate: materialized.candidate,
-      source: input.source,
-      direction: input.direction,
-      evaluation: entry.evaluation,
-      systemCode,
-      sessionId
+      provider_kind: researchWorkerProviderKind(adapter.agent),
+      candidate_arena_tick_id: input.tickId,
+      created_at: requestedCommittedAt
     });
-
-    const candidate = await input.store.getCandidate(materialized.candidate.candidate_id);
-    if (!candidate) {
-      throw new Error("candidate_arena_projection_failed");
-    }
-    return {
-      candidate,
-      research_efficiency: researchEfficiency
-    };
+    const committedAt = new Date(Math.max(
+      Date.parse(requestedCommittedAt),
+      Date.parse(lifecycle.previous_checkpoint?.closed_at ??
+        requestedCommittedAt)
+    )).toISOString();
+    const sourceSystemCode = input.researchMemoryControlAssignment
+      ? await exactArenaSourceSystemCode({
+          store: input.store,
+          source: input.source
+        })
+      : await recordArenaSourceSystemCode({
+          store: input.store,
+          source: input.source,
+          artifact: sourceArtifact,
+          sessionId,
+          createdAt: requestedCommittedAt
+        });
+    const context = await arenaContext(
+      input.store,
+      input.direction,
+      input.allocation,
+      input.allocationSelection
+    );
+    const memoryProjection = buildResearchWorkerMemoryProjection({
+      mode: memoryMode,
+      currentContext: context.currentContext,
+      memoryContext: context.memoryContext,
+      ...(lifecycle.previous_checkpoint && lifecycle.prior_checkpoint
+        ? {
+            priorCheckpointRecord: lifecycle.previous_checkpoint,
+            priorCheckpoint: lifecycle.prior_checkpoint,
+            ...(lifecycle.previous_admission
+              ? { priorAdmissionDecision: lifecycle.previous_admission }
+              : {})
+          }
+        : {}),
+      ...(input.researchMemoryControlAssignment
+        ? { controlAssignment: input.researchMemoryControlAssignment }
+        : {})
+    });
+    const plan = buildResearchPreflightPlan({
+      candidate_arena_tick_id: input.tickId,
+      research_direction_ref: ref(
+        "research_direction",
+        lifecycle.direction.research_direction_id
+      ),
+      research_worker_ref: ref(
+        "research_worker",
+        lifecycle.worker.research_worker_id
+      ),
+      research_allocation_ref: ref(
+        "candidate_arena_research_allocation",
+        input.allocation.candidate_arena_research_allocation_id
+      ),
+      research_allocation_digest: input.allocation.allocation_digest,
+      source_system_code_ref: ref(
+        "system_code",
+        sourceSystemCode.system_code_id
+      ),
+      source_artifact_digest: input.researchMemoryControlAssignment
+        ? sourceArtifact.artifactDigest
+        : sourceSystemCode.artifact_digest,
+      memory_policy: memoryProjection.policy,
+      development_submission_limit: input.allocationSelection.experiment_budget,
+      committed_at: committedAt,
+      evaluator_seed: generateResearchPreflightEvaluatorSeed(),
+      ...(input.researchPreflightEvaluationOpportunity
+        ? {
+            evaluation_opportunity:
+              input.researchPreflightEvaluationOpportunity
+          }
+        : {})
+    });
+    await input.store.recordResearchPreflightCommitment(plan.commitment);
+    return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
   });
+  const closeCheckpoint = (terminalReason: Exclude<
+    ResearchWorkerCheckpointTerminalReason,
+    "admission_recorded"
+  >) =>
+    closeResearchWorkerCheckpoint({
+      store: input.store,
+      commitment: preflight.plan.commitment,
+      direction: preflight.direction,
+      worker: preflight.worker,
+      notebook_path: preflight.notebook_path,
+      terminal_reason: terminalReason,
+      closed_at: candidateArenaNow(input.now)
+    });
+  try {
+    const research = await runTradingResearchLoop({
+      repo_root: repoRoot,
+      artifact_source_dir: artifactSourceDir,
+      run_root: runRoot,
+      notebook_path: preflight.notebook_path,
+      session_id: sessionId,
+      iterations: input.allocationSelection.experiment_budget,
+      agent_adapter: adapter,
+      artifact_runner: input.artifactRunner,
+      replay_provider_factory: input.replayProviderFactory,
+      preflight_plan: preflight.plan,
+      prior_checkpoint: preflight.memoryProjection.priorCheckpoint,
+      arena_context: preflight.memoryProjection.arenaContext
+    });
+    const sealedAdmission = research.sealed_admission;
+    const researchEfficiency = researchEfficiencySummary(
+      research.entries,
+      sealedAdmission
+    );
+    const researchPreflight = arenaResearchPreflightReadModel({
+      commitment: preflight.plan.commitment,
+      developmentSubmissionCount: research.entries.length,
+      sealedAdmission
+    });
+    assertArenaResearchPreflightResult({
+      commitment: preflight.plan.commitment,
+      returnedCommitment: research.research_preflight_commitment,
+      sealedAdmission
+    });
+    const autonomousSession = research.session_status !== undefined;
+    if (autonomousSession && research.session_status !== "selected") {
+      if (research.selected_development_submission !== undefined ||
+        research.submitted_artifact_dir !== undefined ||
+        research.submitted_artifact_digest !== undefined ||
+        sealedAdmission !== undefined) {
+        throw new Error("candidate_arena_unselected_submission_evidence_invalid");
+      }
+      await withArenaStoreMutation(input.store, () =>
+        closeCheckpoint("finished_without_submission")
+      );
+      return {
+        status: "no_submission",
+        finding: "ResearchWorker finished without selecting a development submission.",
+        research_efficiency: researchEfficiency,
+        research_preflight: researchPreflight
+      };
+    }
+    const selectedSequence = research.selected_development_submission;
+    const entry = autonomousSession
+      ? selectedSequence === undefined
+        ? undefined
+        : research.entries.find((candidate) => candidate.iteration === selectedSequence)
+      : [...research.entries].reverse().find((candidate) => candidate.decision === "keep") ??
+        research.entries.at(-1);
+    if (!entry || (autonomousSession && (
+      !research.submitted_artifact_dir ||
+      !research.submitted_artifact_digest ||
+      !sealedAdmission
+    ))) {
+      throw new Error("candidate_arena_selected_submission_evidence_missing");
+    }
+    const artifactDir = research.submitted_artifact_dir ?? entry.artifact_dir;
+    const manifest = await readTradingSystemManifest(artifactDir);
+    assertCandidateArenaResearchManifest(manifest);
+    await assertSingleFileTradingArtifactClosure(artifactDir, manifest);
+    return await withArenaStoreMutation(input.store, async () => {
+      const systemCode = await recordArenaSystemCode({
+        store: input.store,
+        artifactDir,
+        sessionId,
+        manifest,
+        agent: adapter.agent
+      });
+      if (sealedAdmission && systemCode.artifact_digest !== sealedAdmission.artifact_digest) {
+        throw new Error("candidate_arena_sealed_artifact_digest_mismatch");
+      }
+      const terminalEntry = sealedAdmission
+        ? { ...entry, evaluation: sealedAdmission.evaluation }
+        : entry;
+      const researchRecords = await recordArenaResearchRecords({
+        store: input.store,
+        source: input.source,
+        direction: input.direction,
+        entry: terminalEntry,
+        developmentEntry: entry,
+        sourceSystemCode: preflight.sourceSystemCode,
+        systemCode,
+        sourceArtifactDigest: sourceArtifact.artifactDigest,
+        sessionId,
+        researchDirection: preflight.direction,
+        researchWorker: preflight.worker,
+        preflightCommitment: preflight.plan.commitment,
+        sealedAdmission
+      });
+      if (!researchRecords.admission.runnable_paper_handoff) {
+        await closeCheckpoint("execution_failed");
+        return {
+          status: researchRecords.admission.status === "duplicate"
+            ? "duplicate"
+            : "quarantined",
+          admission: researchRecords.admission,
+          finding: researchRecords.finding,
+          conformance: researchRecords.conformance,
+          research_efficiency: researchEfficiency,
+          research_preflight: researchPreflight
+        };
+      }
+      if (!researchRecords.conformance ||
+        !sealedAdmission ||
+        researchRecords.conformance.status !== "passed" ||
+        !researchRecords.conformance.runnable_paper_handoff ||
+        researchRecords.admission.paper_trading_handoff_conformance_ref?.id !==
+          researchRecords.conformance.paper_trading_handoff_conformance_id ||
+        researchRecords.admission.paper_trading_handoff_conformance_digest !==
+          researchRecords.conformance.evidence_digest) {
+        throw new Error("candidate_arena_paper_handoff_conformance_binding_invalid");
+      }
+      const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
+        source: input.source,
+        sourceSystemCodeRef: ref(
+          "system_code",
+          preflight.sourceSystemCode.system_code_id
+        ),
+        systemCode,
+        evaluation: terminalEntry.evaluation,
+        direction: input.direction,
+        agent: adapter.agent,
+        sessionId
+      }));
+      if (materialized.status !== "materialized") {
+        throw new Error("candidate_arena_materialization_failed");
+      }
+
+      const candidate = await input.store.getCandidate(materialized.candidate.candidate_id);
+      if (!candidate) {
+        throw new Error("candidate_arena_projection_failed");
+      }
+      await closeCheckpoint("execution_failed");
+      return {
+        status: "created",
+        candidate,
+        admission: researchRecords.admission,
+        conformance: researchRecords.conformance,
+        research_efficiency: researchEfficiency,
+        research_preflight: researchPreflight
+      };
+    });
+  } catch (error) {
+    await withArenaStoreMutation(input.store, () =>
+      closeCheckpoint("execution_failed")
+    );
+    throw error;
+  }
 }
 
 async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => Promise<T>): Promise<T> {
@@ -514,6 +1011,108 @@ async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => 
   const current = previous.catch(() => undefined).then(task);
   arenaStoreMutationQueues.set(store, current.catch(() => undefined));
   return current;
+}
+
+function researchWorkerProviderKind(
+  agent: ManagedResearchAgent
+): NonNullable<ResearchWorkerRecord["provider_kind"]> {
+  if (agent.provider === "codex") return "codex_cli";
+  if (agent.provider === "claude_code") return "claude_code";
+  return "fixture_only";
+}
+
+function assertArenaResearchPreflightResult(input: {
+  commitment: ResearchPreflightCommitmentRecord;
+  returnedCommitment: ResearchPreflightCommitmentRecord;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
+}): void {
+  if (input.returnedCommitment.research_preflight_commitment_id !==
+      input.commitment.research_preflight_commitment_id ||
+    input.returnedCommitment.commitment_digest !== input.commitment.commitment_digest) {
+    throw new Error("candidate_arena_research_preflight_commitment_mismatch");
+  }
+  if (!input.sealedAdmission) return;
+  if (input.sealedAdmission.commitment_id !==
+      input.commitment.research_preflight_commitment_id ||
+    input.sealedAdmission.commitment_digest !== input.commitment.commitment_digest ||
+    input.sealedAdmission.suite_digest !==
+      input.commitment.sealed_admission_policy.suite_digest ||
+    input.sealedAdmission.submission_sequence !== 1) {
+    throw new Error("candidate_arena_sealed_admission_binding_mismatch");
+  }
+}
+
+function arenaResearchPreflightReadModel(input: {
+  commitment: ResearchPreflightCommitmentRecord;
+  developmentSubmissionCount: number;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
+}): CandidateArenaResearchPreflightReadModel {
+  const status = input.sealedAdmission?.evaluation.status;
+  return {
+    commitment_id: input.commitment.research_preflight_commitment_id,
+    development_submission_count: input.developmentSubmissionCount,
+    sealed_terminal_status: status === "accepted"
+      ? "accepted"
+      : status === "disqualified" ? "rejected" : "not_run",
+    reason: status === "accepted"
+      ? "accepted"
+      : status === "disqualified"
+        ? "candidate_rejected"
+        : "no_development_winner",
+    authority_status: "not_promotion_authority"
+  };
+}
+
+async function failedArenaResearchPreflightReadback(
+  store: OuroborosStorePort,
+  tickId: string,
+  direction: ResearchDirectionKind
+): Promise<CandidateArenaResearchPreflightReadModel | undefined> {
+  const commitments = await store.listResearchPreflightCommitments();
+  for (const commitment of commitments) {
+    if (commitment.candidate_arena_tick_id !== tickId) continue;
+    const persistedDirection = await store.getResearchDirection(
+      commitment.research_direction_ref.id
+    );
+    if (persistedDirection?.direction_kind === direction) {
+      const checkpoint = (await store.listResearchWorkerCheckpoints())
+        .find((candidate) =>
+          candidate.research_preflight_commitment_ref.id ===
+            commitment.research_preflight_commitment_id
+        );
+      return {
+        commitment_id: commitment.research_preflight_commitment_id,
+        development_submission_count:
+          checkpoint?.development_budget.recorded_submission_count ??
+          await failedArenaDevelopmentSubmissionCount(store, tickId, direction),
+        sealed_terminal_status: "not_run",
+        reason: "execution_failed",
+        authority_status: "not_promotion_authority"
+      };
+    }
+  }
+  return undefined;
+}
+
+async function failedArenaDevelopmentSubmissionCount(
+  store: OuroborosStorePort,
+  tickId: string,
+  direction: ResearchDirectionKind
+): Promise<number> {
+  const sessionId = `candidate-arena-${safeId(tickId)}-${safeId(direction)}`;
+  try {
+    const notebook = JSON.parse(await readFile(path.join(
+      store.root(),
+      "candidate-arena-runs",
+      sessionId,
+      "notebook.json"
+    ), "utf8")) as { entries?: unknown };
+    return Array.isArray(notebook.entries)
+      ? Math.min(notebook.entries.length, 2)
+      : 0;
+  } catch {
+    return 0;
+  }
 }
 
 class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResearchAgentAdapter {
@@ -543,6 +1142,10 @@ class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResear
 
 function editForDirection(source: string, direction: ResearchDirectionKind): string {
   let next = source;
+  const directionDeclaration = `ARENA_RESEARCH_DIRECTION = "${direction}"`;
+  next = /^ARENA_RESEARCH_DIRECTION = ".*"$/m.test(next)
+    ? next.replace(/^ARENA_RESEARCH_DIRECTION = ".*"$/m, directionDeclaration)
+    : `${next.trimEnd()}\n\n${directionDeclaration}\n`;
   const risk = direction === "volatility_regime" ? "0.005" : "0.02";
   next = next.replace(/RISK_FRACTION = [0-9.]+/, `RISK_FRACTION = ${risk}`);
   if (direction === "mean_reversion") {
@@ -588,7 +1191,7 @@ async function sourceCandidate(
     }
     const leader = await latestEvaluatedArenaLeader(
       store,
-      ineligibleLatestPaperEvaluationCandidateIds(latestPaperEvaluations)
+      await ineligibleLatestPaperEvaluationCandidateIds(store, latestPaperEvaluations)
     );
     if (leader) {
       return {
@@ -637,19 +1240,27 @@ async function latestPaperTradingEvaluationLeader(
   const candidates = await Promise.all(
     [...latestEvaluations.values()]
       .filter(isEligiblePaperTradingEvaluationSource)
-      .map(async (evaluation) => ({
-        evaluation,
-        candidate: await store.getCandidate(evaluation.candidate_ref.id)
-      }))
+      .map(async (evaluation) => {
+        const released = await releasedResearchFeedbackEvidence(store, evaluation);
+        return released
+          ? {
+              evaluation,
+              candidate: await store.getCandidate(evaluation.candidate_ref.id)
+            }
+          : undefined;
+      })
   );
   return candidates
     .filter((entry): entry is {
       candidate: CandidateInspectReadModel;
       evaluation: PaperTradingEvaluationRecord;
-    } =>
-      Boolean(entry.candidate?.system_code?.ref) &&
-      entry.candidate?.candidate_version.candidate_version_id === entry.evaluation.candidate_version_ref.id
-    )
+    } => {
+      if (!entry?.candidate?.system_code?.ref) {
+        return false;
+      }
+      return entry.candidate.candidate_version.candidate_version_id ===
+        entry.evaluation.candidate_version_ref.id;
+    })
     .sort((left, right) =>
       right.evaluation.latest_score.net_revenue_usdt - left.evaluation.latest_score.net_revenue_usdt ||
       right.evaluation.latest_score.net_return_pct - left.evaluation.latest_score.net_return_pct ||
@@ -678,14 +1289,20 @@ function isEligiblePaperTradingEvaluationSource(evaluation: PaperTradingEvaluati
     !evaluation.latest_failure_reason;
 }
 
-function ineligibleLatestPaperEvaluationCandidateIds(
+async function ineligibleLatestPaperEvaluationCandidateIds(
+  store: OuroborosStorePort,
   latestEvaluationByCandidate: Map<string, PaperTradingEvaluationRecord>
-): Set<string> {
-  return new Set(
-    [...latestEvaluationByCandidate.values()]
-      .filter((evaluation) => !isEligiblePaperTradingEvaluationSource(evaluation))
-      .map((evaluation) => evaluation.candidate_ref.id)
+): Promise<Set<string>> {
+  const eligibility = await Promise.all(
+    [...latestEvaluationByCandidate.values()].map(async (evaluation) => ({
+      candidateId: evaluation.candidate_ref.id,
+      eligible: isEligiblePaperTradingEvaluationSource(evaluation) &&
+        Boolean(await releasedResearchFeedbackEvidence(store, evaluation))
+    }))
   );
+  return new Set(eligibility
+    .filter((entry) => !entry.eligible)
+    .map((entry) => entry.candidateId));
 }
 
 function comparePaperTradingEvaluationRecency(
@@ -720,7 +1337,7 @@ async function latestEvaluatedArenaLeader(
     })[0];
 }
 
-async function sourceResearchArtifactDir(input: {
+export async function resolveCandidateArenaSourceArtifactDir(input: {
   store: OuroborosStorePort;
   source: CandidateInspectReadModel;
   repoRoot: string;
@@ -754,22 +1371,19 @@ async function recordArenaSystemCode(input: {
   store: OuroborosStorePort;
   artifactDir: string;
   sessionId: string;
-  manifestEntrypoint: string[];
+  manifest: TradingSystemManifest;
   agent: ManagedResearchAgent;
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
-  const entrypointPath = input.manifestEntrypoint[1] ?? "run.py";
-  const artifactPath = path.resolve(input.artifactDir, entrypointPath);
-  assertArenaEntrypointInsideArtifactDir(input.artifactDir, artifactPath);
-  const digest = await fileDigest(artifactPath);
+  const artifact = await arenaEntrypointArtifact(input.artifactDir, input.manifest);
   return input.store.recordSystemCode({
     record_kind: "system_code",
     version: 1,
-    system_code_id: `system-code-arena-${safeId(input.sessionId)}-${digest.slice(0, 12)}`,
+    system_code_id: `system-code-arena-${safeId(input.sessionId)}-${artifact.digest.slice(0, 12)}`,
     artifact_kind: "python_file",
-    artifact_path: artifactPath,
-    artifact_digest: `sha256:${digest}`,
+    artifact_path: artifact.artifactPath,
+    artifact_digest: artifact.artifactDigest,
     runtime_kind: "python",
-    entrypoint: ["python3", artifactPath],
+    entrypoint: ["python3", artifact.artifactPath],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
       declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
@@ -786,12 +1400,104 @@ async function recordArenaSystemCode(input: {
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
 }
 
-function assertArenaEntrypointInsideArtifactDir(artifactDir: string, artifactPath: string): void {
-  const resolvedArtifactDir = path.resolve(artifactDir);
-  const relativePath = path.relative(resolvedArtifactDir, artifactPath);
-  if (relativePath && (relativePath.startsWith("..") || path.isAbsolute(relativePath))) {
+function assertCandidateArenaResearchManifest(
+  manifest: unknown
+): asserts manifest is TradingSystemManifest {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
+  const candidate = manifest as Partial<TradingSystemManifest>;
+  const entrypoint = candidate.entrypoint;
+  const editablePaths = candidate.editable_paths;
+  if (typeof candidate.id !== "string" || candidate.id.length === 0 ||
+    typeof candidate.name !== "string" || candidate.name.length === 0 ||
+    !Array.isArray(entrypoint) || entrypoint.length !== 2 ||
+    !entrypoint.every((part) => typeof part === "string") ||
+    (entrypoint[0] !== "python" && entrypoint[0] !== "python3") ||
+    !Array.isArray(editablePaths) ||
+    !editablePaths.every((editablePath) => typeof editablePath === "string") ||
+    candidate.api_contract !== "trading_api_provider_v1") {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
+  const entrypointPath = entrypoint[1]!;
+  const normalizedEntrypointPath = path.normalize(entrypointPath);
+  if (path.isAbsolute(entrypointPath) ||
+    normalizedEntrypointPath === ".." ||
+    normalizedEntrypointPath.startsWith(`..${path.sep}`)) {
     throw new Error("candidate_arena_entrypoint_escapes_artifact_dir");
   }
+  if (!entrypointPath || editablePaths.length !== 1 || editablePaths[0] !== entrypointPath) {
+    throw new Error("candidate_arena_research_manifest_invalid");
+  }
+}
+
+async function recordArenaSourceSystemCode(input: {
+  store: OuroborosStorePort;
+  source: CandidateInspectReadModel;
+  artifact: Awaited<ReturnType<typeof arenaEntrypointArtifact>>;
+  sessionId: string;
+  createdAt: string;
+}): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
+  return input.store.recordSystemCode({
+    record_kind: "system_code",
+    version: 1,
+    system_code_id: [
+      "system-code-arena-source",
+      safeId(input.sessionId),
+      input.artifact.digest.slice(0, 12)
+    ].join("-"),
+    artifact_kind: "python_file",
+    artifact_path: input.artifact.artifactPath,
+    artifact_digest: input.artifact.artifactDigest,
+    runtime_kind: "python",
+    entrypoint: ["python3", input.artifact.artifactPath],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "candidate-arena-research-source"
+    },
+    provenance_refs: input.source.system_code?.ref ? [input.source.system_code.ref] : [],
+    status: "registered",
+    created_at: input.createdAt,
+    authority_status: "not_live"
+  }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
+}
+
+async function exactArenaSourceSystemCode(input: {
+  store: OuroborosStorePort;
+  source: CandidateInspectReadModel;
+}): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
+  const sourceSystemCodeId = input.source.system_code?.ref?.id;
+  const sourceSystemCode = sourceSystemCodeId
+    ? await input.store.getSystemCode(sourceSystemCodeId)
+    : undefined;
+  if (!sourceSystemCode || sourceSystemCode.artifact_kind !== "python_file" ||
+    sourceSystemCode.system_code_id !== sourceSystemCodeId) {
+    throw new Error("candidate_arena_preflight_source_system_code_mismatch");
+  }
+  return sourceSystemCode;
+}
+
+async function arenaEntrypointArtifact(
+  artifactDir: string,
+  manifest: TradingSystemManifest
+): Promise<{
+  artifactPath: string;
+  artifactDigest: string;
+  digest: string;
+}> {
+  const sealed = await sealSingleFileTradingArtifactClosure(artifactDir, manifest);
+  const artifactPath = path.resolve(artifactDir, sealed.entrypoint_relative_path);
+  const digest = sealed.closure_digest.slice("sha256:".length);
+  return {
+    artifactPath,
+    artifactDigest: sealed.closure_digest,
+    digest
+  };
 }
 
 function arenaMaterializationInput(input: {
@@ -813,7 +1519,7 @@ function arenaMaterializationInput(input: {
       suffix
     ].join(":"),
     provider: {
-      provider_kind: input.agent.provider === "codex" ? "codex_cli" : "fixture_only",
+      provider_kind: researchWorkerProviderKind(input.agent),
       model: input.agent.model ?? input.agent.provider,
       invocation_surface: "candidate_arena",
       agent_run_id: `agent-run-${suffix}`,
@@ -868,33 +1574,83 @@ function arenaMaterializationInput(input: {
 
 async function recordArenaResearchRecords(input: {
   store: OuroborosStorePort;
-  candidate: CandidateInspectReadModel;
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
-  evaluation: TradingEvaluationResult;
+  entry: TradingResearchNotebookEntry;
+  developmentEntry: TradingResearchNotebookEntry;
+  sourceSystemCode: SystemCodeRecord;
   systemCode: SystemCodeRecord;
+  sourceArtifactDigest: string;
   sessionId: string;
-}): Promise<void> {
+  researchDirection: ResearchDirectionRecord;
+  researchWorker: ResearchWorkerRecord;
+  preflightCommitment: ResearchPreflightCommitmentRecord;
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"];
+}): Promise<{
+  admission: CandidateAdmissionDecisionRecord;
+  conformance?: PaperTradingHandoffConformanceRecord;
+  finding: ResearchFindingRecord;
+  result: TradingEvaluationResultRecord;
+}> {
   const suffix = safeId(input.sessionId);
-  const now = new Date().toISOString();
+  const now = new Date(Math.max(
+    Date.now(),
+    Date.parse(input.preflightCommitment.committed_at)
+  )).toISOString();
+  const researchWorkerOutcome = deriveCandidateAdmissionResearchWorkerOutcome({
+    research_worker_failed: input.entry.agent_status === "failed",
+    source_artifact_digest: input.sourceArtifactDigest,
+    submitted_artifact_digest: input.systemCode.artifact_digest
+  });
+  const behaviorComparison: ArenaResearchBehaviorComparison =
+    researchWorkerOutcome === "changed"
+      ? await arenaResearchBehaviorComparison({
+          store: input.store,
+          developmentEntry: input.developmentEntry,
+          preflightCommitment: input.preflightCommitment,
+          systemCode: input.systemCode,
+          createdAt: now
+        })
+      : {};
+  const evaluation = input.entry.evaluation;
+  const experimentStatus = input.entry.agent_status === "failed" || input.entry.decision === "crash"
+    ? "failed" as const
+    : "evaluated" as const;
   const experiment: ExperimentRunRecord = {
     record_kind: "experiment_run",
     version: 1,
     experiment_run_id: `experiment-run-${suffix}`,
-    research_worker_ref: ref("research_worker", `research-worker-${safeId(input.direction)}`),
-    research_direction_ref: ref("research_direction", `research-direction-${safeId(input.direction)}`),
+    research_worker_ref: ref(
+      "research_worker",
+      input.researchWorker.research_worker_id
+    ),
+    research_direction_ref: ref(
+      "research_direction",
+      input.researchDirection.research_direction_id
+    ),
     system_code_ref: ref("system_code", input.systemCode.system_code_id),
     trading_evaluation_task_ref: ref("trading_evaluation_task", "candidate-arena-revenue-cost-v1"),
     trace_ref: ref("trace_placeholder", `trace-${suffix}`),
-    submitted_at: now,
-    status: "evaluated",
+    submitted_at: input.entry.started_at,
+    status: experimentStatus,
     authority_status: "not_live"
   };
   await input.store.recordExperimentRun(experiment);
 
-  const metricRefs = input.evaluation.metrics.map((metric) =>
+  const conformance = arenaPaperHandoffConformance({
+    entry: input.entry,
+    experiment,
+    systemCode: input.systemCode,
+    suffix
+  });
+  if (input.entry.evaluation.status === "accepted" && !conformance) {
+    throw new Error("candidate_arena_missing_paper_handoff_conformance");
+  }
+
+  const metricRefs = evaluation.metrics.map((metric) =>
     ref("metric_snapshot", `metric-${suffix}-${safeId(metric.name)}`)
   );
+  const resultStatus = evaluation.status === "accepted" ? "accepted" as const : "disqualified" as const;
   const result: TradingEvaluationResultRecord = {
     record_kind: "trading_evaluation_result",
     version: 1,
@@ -902,24 +1658,67 @@ async function recordArenaResearchRecords(input: {
     experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
     trading_evaluation_task_ref: experiment.trading_evaluation_task_ref,
     evaluator_ref: ref("external_evaluator", "candidate-arena-revenue-cost-evaluator-v1"),
-    result_status: input.evaluation.status === "accepted" ? "accepted" : "disqualified",
-    evidence_disposition: "not_counted",
+    result_status: resultStatus,
+    evidence_disposition: resultStatus === "accepted"
+      ? "not_counted"
+      : "quarantined_for_review",
     score_summary: {
-      total_score: input.evaluation.score,
-      oos_score: input.evaluation.score,
-      drawdown_score: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
+      total_score: evaluation.score,
+      oos_score: evaluation.score,
+      drawdown_score: evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
       turnover_score: 1,
-      cost_survival_score: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
+      cost_survival_score: evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
       reproducibility_score: 1,
       complexity_penalty: 0
     },
     metric_refs: metricRefs,
     evaluator_trace_ref: ref("trace_placeholder", `trace-evaluator-${suffix}`),
-    ...(input.evaluation.status === "accepted" ? {} : { disqualification_reason: "unreproducible" as const }),
+    ...(input.sealedAdmission
+      ? {
+          research_preflight_commitment_ref: ref(
+            "research_preflight_commitment",
+            input.preflightCommitment.research_preflight_commitment_id
+          ),
+          research_preflight_commitment_digest:
+            input.preflightCommitment.commitment_digest,
+          submitted_system_code_ref: ref(
+            "system_code",
+            input.systemCode.system_code_id
+          ),
+          submitted_artifact_digest: input.systemCode.artifact_digest,
+          sealed_admission_suite_digest:
+            input.preflightCommitment.sealed_admission_policy.suite_digest,
+          evaluation_phase: "sealed_admission" as const,
+          submission_sequence: 1 as const,
+          selected_development_submission_sequence:
+            input.developmentEntry.iteration
+        }
+      : {}),
+    ...(resultStatus === "accepted"
+      ? {}
+      : { disqualification_reason: arenaDisqualificationReason(input.entry) }),
     completed_at: now,
     authority_status: "not_counted"
   };
   await input.store.recordTradingEvaluationResult(result);
+  if (conformance) {
+    await input.store.recordPaperTradingHandoffConformance(conformance);
+  }
+
+  const admissionInput = {
+    research_worker_outcome: researchWorkerOutcome,
+    experiment_status: experimentStatus,
+    evaluation_status: result.result_status,
+    evidence_disposition: result.evidence_disposition,
+    ...(conformance
+      ? { paper_handoff_conformance_status: conformance.status }
+      : {}),
+    ...(behaviorComparison.status
+      ? { behavior_comparison_status: behaviorComparison.status }
+      : {})
+  } as const;
+  const decision = decideCandidateAdmission(admissionInput);
+  const findingContent = arenaFindingForAdmission(input.entry, decision);
 
   const finding: ResearchFindingRecord = {
     record_kind: "research_finding",
@@ -929,13 +1728,29 @@ async function recordArenaResearchRecords(input: {
     research_direction_ref: experiment.research_direction_ref,
     experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
     trading_evaluation_result_ref: ref("trading_evaluation_result", result.trading_evaluation_result_id),
-    finding_kind: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? "positive_result" : "negative_result",
-    summary: input.evaluation.profit_loss.net_revenue_usdt >= 0
-      ? "Candidate produced non-negative net revenue after costs."
-      : "Candidate remained executable but lost money after costs.",
+    finding_kind: findingContent.finding_kind,
+    summary: findingContent.summary,
     supporting_record_refs: [
       ref("trading_evaluation_result", result.trading_evaluation_result_id),
-      ...metricRefs
+      ...(conformance
+        ? [ref(
+            "paper_trading_handoff_conformance",
+            conformance.paper_trading_handoff_conformance_id
+          )]
+        : []),
+      ...metricRefs,
+      ...(behaviorComparison.fingerprint
+        ? [ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.fingerprint.research_behavior_fingerprint_id
+          )]
+        : []),
+      ...(behaviorComparison.matchingFingerprint
+        ? [ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.matchingFingerprint.research_behavior_fingerprint_id
+          )]
+        : [])
     ],
     created_at: now,
     authority_status: "research_trace_only"
@@ -947,145 +1762,460 @@ async function recordArenaResearchRecords(input: {
     version: 1,
     artifact_lineage_id: `artifact-lineage-${suffix}`,
     child_system_code_ref: ref("system_code", input.systemCode.system_code_id),
-    parent_system_code_ref: input.source.system_code?.ref,
+    parent_system_code_ref: ref(
+      "system_code",
+      input.sourceSystemCode.system_code_id
+    ),
     source_finding_refs: [ref("research_finding", finding.research_finding_id)],
     created_by_research_worker_ref: experiment.research_worker_ref,
     created_at: now,
     authority_status: "lineage_only"
   };
   await input.store.recordArtifactLineage(lineage);
+
+  const admission: CandidateAdmissionDecisionRecord = {
+    record_kind: "candidate_admission_decision",
+    version: 1,
+    candidate_admission_decision_id: `candidate-admission-decision-${suffix}`,
+    research_preflight_commitment_ref: ref(
+      "research_preflight_commitment",
+      input.preflightCommitment.research_preflight_commitment_id
+    ),
+    research_preflight_commitment_digest:
+      input.preflightCommitment.commitment_digest,
+    source_system_code_ref: ref("system_code", input.sourceSystemCode.system_code_id),
+    system_code_ref: ref("system_code", input.systemCode.system_code_id),
+    experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
+    trading_evaluation_result_ref: ref(
+      "trading_evaluation_result",
+      result.trading_evaluation_result_id
+    ),
+    research_finding_ref: ref("research_finding", finding.research_finding_id),
+    source_artifact_digest: input.sourceArtifactDigest,
+    submitted_artifact_digest: input.systemCode.artifact_digest,
+    ...(conformance
+      ? {
+          paper_trading_handoff_conformance_ref: ref(
+            "paper_trading_handoff_conformance",
+            conformance.paper_trading_handoff_conformance_id
+          ),
+          paper_trading_handoff_conformance_digest: conformance.evidence_digest
+        }
+      : {}),
+    ...(behaviorComparison.fingerprint
+      ? {
+          research_behavior_fingerprint_ref: ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.fingerprint.research_behavior_fingerprint_id
+          ),
+          research_behavior_fingerprint_digest:
+            behaviorComparison.fingerprint.fingerprint_digest
+        }
+      : {}),
+    ...(behaviorComparison.matchingFingerprint
+      ? {
+          matching_research_behavior_fingerprint_ref: ref(
+            "research_behavior_fingerprint",
+            behaviorComparison.matchingFingerprint.research_behavior_fingerprint_id
+          ),
+          matching_research_behavior_fingerprint_digest:
+            behaviorComparison.matchingFingerprint.fingerprint_digest
+        }
+      : {}),
+    ...admissionInput,
+    ...decision,
+    decided_at: now
+  };
+  await input.store.recordCandidateAdmissionDecision(admission);
+  return { admission, conformance, finding, result };
 }
 
-async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
-  const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
-  const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
-  const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
-  const findingClusters = arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard);
-  return JSON.stringify({
-    requested_direction: direction,
-    task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
-    leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
-      rank: entry.rank,
-      candidate_id: entry.candidate_id,
-      direction_kind: entry.direction_kind,
-      net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-      net_return_pct: entry.profit_loss.net_return_pct
-    })),
-    negative_findings: arena.leaderboard
-      .filter((entry) => entry.profit_loss.net_revenue_usdt < 0)
-      .slice(0, 5)
-      .map((entry) => ({
+type ArenaResearchBehaviorComparison =
+  | {
+      status?: undefined;
+      fingerprint?: undefined;
+      matchingFingerprint?: undefined;
+    }
+  | {
+      status: "distinct";
+      fingerprint: ResearchBehaviorFingerprintRecord;
+      matchingFingerprint?: undefined;
+    }
+  | {
+      status: "duplicate";
+      fingerprint: ResearchBehaviorFingerprintRecord;
+      matchingFingerprint: ResearchBehaviorFingerprintRecord;
+    }
+  | {
+      status: "unavailable";
+      fingerprint?: undefined;
+      matchingFingerprint?: undefined;
+    };
+
+async function arenaResearchBehaviorComparison(input: {
+  store: OuroborosStorePort;
+  developmentEntry: TradingResearchNotebookEntry;
+  preflightCommitment: ResearchPreflightCommitmentRecord;
+  systemCode: SystemCodeRecord;
+  createdAt: string;
+}): Promise<ArenaResearchBehaviorComparison> {
+  let fingerprint: ResearchBehaviorFingerprintRecord;
+  try {
+    fingerprint = deriveResearchBehaviorFingerprint({
+      commitment: input.preflightCommitment,
+      system_code_ref: ref("system_code", input.systemCode.system_code_id),
+      system_code_artifact_digest: input.systemCode.artifact_digest,
+      scenario_results: input.developmentEntry.evaluation.scenario_results ?? [],
+      created_at: input.createdAt
+    });
+  } catch (error) {
+    if (error instanceof ResearchBehaviorFingerprintUnavailableError) {
+      return { status: "unavailable" };
+    }
+    throw error;
+  }
+  await input.store.recordResearchBehaviorFingerprint(fingerprint);
+  const admittedFingerprintIds = new Set(
+    (await input.store.listCandidateAdmissionDecisions())
+      .filter((admission) => admission.status === "admitted")
+      .map((admission) => admission.research_behavior_fingerprint_ref?.id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const matchingFingerprint = (await input.store.listResearchBehaviorFingerprints())
+    .find((candidate) =>
+      candidate.research_behavior_fingerprint_id !==
+        fingerprint.research_behavior_fingerprint_id &&
+      admittedFingerprintIds.has(candidate.research_behavior_fingerprint_id) &&
+      sameResearchBehaviorFingerprintKey(candidate, fingerprint)
+    );
+  return matchingFingerprint
+    ? { status: "duplicate", fingerprint, matchingFingerprint }
+    : { status: "distinct", fingerprint };
+}
+
+function sameResearchBehaviorFingerprintKey(
+  left: ResearchBehaviorFingerprintRecord,
+  right: ResearchBehaviorFingerprintRecord
+): boolean {
+  return left.protocol_version === right.protocol_version &&
+    left.development_suite_version === right.development_suite_version &&
+    left.development_suite_digest === right.development_suite_digest &&
+    left.fingerprint_digest === right.fingerprint_digest;
+}
+
+function arenaPaperHandoffConformance(input: {
+  entry: TradingResearchNotebookEntry;
+  experiment: ExperimentRunRecord;
+  systemCode: SystemCodeRecord;
+  suffix: string;
+}): PaperTradingHandoffConformanceRecord | undefined {
+  const evidence = input.entry.evaluation.paper_handoff_conformance;
+  if (!evidence) return undefined;
+  if (evidence.system_code_artifact_digest !== input.systemCode.artifact_digest) {
+    throw new Error("candidate_arena_paper_handoff_artifact_digest_mismatch");
+  }
+  const record: PaperTradingHandoffConformanceRecord = {
+    record_kind: "paper_trading_handoff_conformance",
+    version: 1,
+    paper_trading_handoff_conformance_id: `paper-handoff-conformance-${input.suffix}`,
+    system_code_ref: ref("system_code", input.systemCode.system_code_id),
+    system_code_artifact_digest: evidence.system_code_artifact_digest,
+    experiment_run_ref: ref("experiment_run", input.experiment.experiment_run_id),
+    trading_evaluation_task_ref: input.experiment.trading_evaluation_task_ref,
+    protocol_version: evidence.protocol_version,
+    runner_kind: evidence.runner_kind,
+    status: evidence.status,
+    reason: evidence.reason,
+    provider_request_count: evidence.provider_request_count,
+    ...(evidence.decision_event_kind === undefined
+      ? {}
+      : { decision_event_kind: evidence.decision_event_kind }),
+    heartbeat_count: evidence.heartbeat_count,
+    runtime_stopped: evidence.runtime_stopped,
+    started_at: evidence.started_at,
+    completed_at: evidence.completed_at,
+    evidence_digest: "pending",
+    research_preflight_authority: true,
+    runnable_paper_handoff: evidence.runnable_paper_handoff,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  record.evidence_digest = `sha256:${createHash("sha256")
+    .update(paperTradingHandoffConformanceDigestInput(record))
+    .digest("hex")}`;
+  return record;
+}
+
+function compactPaperHandoffConformance(
+  record: PaperTradingHandoffConformanceRecord
+): NonNullable<CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]> {
+  return {
+    conformance_id: record.paper_trading_handoff_conformance_id,
+    status: record.status,
+    reason: record.reason,
+    authority_status: "research_only"
+  };
+}
+
+function arenaDisqualificationReason(
+  entry: TradingResearchNotebookEntry
+): NonNullable<TradingEvaluationResultRecord["disqualification_reason"]> {
+  if (entry.evaluation.disqualification_reason) {
+    return entry.evaluation.disqualification_reason;
+  }
+  if (entry.agent_status === "failed") {
+    return "research_worker_failed";
+  }
+  if (entry.decision === "crash") {
+    return "runtime_crash";
+  }
+  if (entry.evaluation.risk_decision === "invalid_order_request") {
+    return "risk_validation_failed";
+  }
+  if (entry.evaluation.risk_decision === "no_order_request") {
+    return "no_order_request";
+  }
+  return "unreproducible";
+}
+
+function arenaFindingForAdmission(
+  entry: TradingResearchNotebookEntry,
+  admission: CandidateAdmissionDecision
+): Pick<ResearchFindingRecord, "finding_kind" | "summary"> {
+  if (admission.reason === "research_worker_failed") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `ResearchWorker failed before artifact execution: ${entry.summary}`
+    };
+  }
+  if (admission.reason === "no_candidate_change") {
+    return {
+      finding_kind: "duplicate_result",
+      summary: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+    };
+  }
+  if (admission.reason === "behavior_duplicate") {
+    return {
+      finding_kind: "duplicate_result",
+      summary: "ResearchWorker produced behavior already admitted under the exact development protocol; duplicate population entry rejected."
+    };
+  }
+  if (admission.reason === "behavior_fingerprint_unavailable") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: "Candidate behavior fingerprint was unavailable; admission quarantined before population materialization."
+    };
+  }
+  if (isAntiHackingPaperHandoff(entry)) {
+    return {
+      finding_kind: "anti_hacking_case",
+      summary: `Candidate violated PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason}).`
+    };
+  }
+  if (isAntiHackingEvaluation(entry)) {
+    return {
+      finding_kind: "anti_hacking_case",
+      summary: `Candidate violated the sealed ResearchPreflight boundary (${entry.evaluation.disqualification_reason}): ${entry.evaluation.summary}`
+    };
+  }
+  if (admission.reason === "paper_handoff_conformance_failed") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `Candidate failed PaperTradingHandoffConformance (${entry.evaluation.paper_handoff_conformance?.reason ?? "unknown"}).`
+    };
+  }
+  if (admission.status === "quarantined") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `Candidate was quarantined by ResearchPreflight: ${entry.evaluation.summary}`
+    };
+  }
+  return entry.evaluation.profit_loss.net_revenue_usdt >= 0
+    ? {
+        finding_kind: "positive_result",
+        summary: "Candidate produced non-negative net revenue after costs."
+      }
+    : {
+        finding_kind: "negative_result",
+        summary: "Candidate remained executable but lost money after costs."
+      };
+}
+
+function isAntiHackingEvaluation(entry: TradingResearchNotebookEntry): boolean {
+  return entry.evaluation.disqualification_reason === "data_leakage" ||
+    entry.evaluation.disqualification_reason === "lookahead_leakage" ||
+    entry.evaluation.disqualification_reason === "runtime_self_report_only";
+}
+
+function isAntiHackingPaperHandoff(entry: TradingResearchNotebookEntry): boolean {
+  const reason = entry.evaluation.paper_handoff_conformance?.reason;
+  return reason === "provider_protocol_violation" ||
+    reason === "provider_request_limit_exceeded" ||
+    reason === "hidden_evaluator_field" ||
+    reason === "candidate_self_report" ||
+    reason === "private_or_live_authority";
+}
+
+async function arenaContext(
+  store: OuroborosStorePort,
+  direction: ResearchDirectionKind,
+  allocation: CandidateArenaResearchAllocationRecord,
+  allocationSelection: CandidateArenaResearchAllocationSelection
+): Promise<{
+  currentContext: Record<string, unknown>;
+  memoryContext: Record<string, unknown>;
+}> {
+  const researchReleases = await arenaPaperTradingComparisonResearchReleases(store);
+  const arena = await buildCandidateArenaReadModel(
+    store,
+    "stopped",
+    0,
+    researchReleases
+  );
+  const findingClusters = arena.finding_clusters;
+  const allocationReadModel = toCandidateArenaResearchAllocationReadModel(
+    allocation
+  );
+  return {
+    currentContext: {
+      requested_direction: direction,
+      current_research_allocation: {
+        allocation_id: allocationReadModel.allocation_id,
+        tick_id: allocationReadModel.tick_id,
+        allocation_mode: allocationReadModel.allocation_mode,
+        policy: { ...allocationReadModel.policy }
+      },
+      current_research_selection: {
+        direction_kind: allocationSelection.direction_kind,
+        selection_kind: allocationSelection.selection_kind,
+        priority: allocationSelection.priority,
+        experiment_budget: allocationSelection.experiment_budget
+      },
+      task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs."
+    },
+    memoryContext: {
+      research_population_diversity: arena.research_population_diversity,
+      leaderboard: arena.leaderboard.slice(0, 8).map((entry) => ({
+        rank: entry.rank,
         candidate_id: entry.candidate_id,
         direction_kind: entry.direction_kind,
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-        finding: entry.latest_finding
+        net_return_pct: entry.profit_loss.net_return_pct
       })),
-    latest_findings: arena.leaderboard
-      .slice(0, 8)
-      .map((entry) => ({
-        candidate_id: entry.candidate_id,
-        direction_kind: entry.direction_kind,
-        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-        finding: entry.latest_finding
-      })),
-    latest_research_efficiency: arena.latest_ticks
-      .flatMap((tick) => tick.direction_results
-        .filter((result) => result.research_efficiency)
-        .map((result) => ({
-          tick_id: tick.tick_id,
-          direction_kind: result.direction_kind,
-          candidate_id: result.candidate_id,
-          net_revenue_usdt: result.net_revenue_usdt,
-          ...result.research_efficiency
-        })))
-      .slice(0, 8),
-    selected_paper_evidence: paperEvidenceCandidates
-      .filter(({ candidate, paperEvaluation }) => candidate?.ledger?.has_activity || paperEvaluation)
-      .map(({ entry, candidate, paperEvaluation, paperObservations }) => {
-        const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
-        const paperBoardEntry = paperTradingBoard.find((boardEntry) => boardEntry.candidate_id === candidateId);
-        const latestPaperFailureReason = paperObservations.at(-1)?.failure_reason ??
-          paperEvaluation?.latest_failure_reason;
-        return {
-          candidate_id: candidateId,
-          direction_kind: entry?.direction_kind ??
-            candidate?.full_cycle_lineage?.evidence?.direction_kind ??
-            "paper_evidence",
-          net_revenue_usdt: entry?.profit_loss.net_revenue_usdt ??
-            paperEvaluation?.latest_score.net_revenue_usdt ??
-            0,
-          paper_trading_status: paperEvaluation?.status,
-          paper_observation_count: paperEvaluation?.observation_count ?? 0,
-          paper_loop_latency: paperLoopLatencySummary(paperEvaluation, paperObservations),
-          paper_score: paperEvaluation?.latest_score,
-          lineage: arenaPaperEvidenceLineage(candidate, entry),
-          paper_board_learning: paperBoardEntry && paperEvaluation
-            ? paperTradingLearningSummary({
-                rank: paperBoardEntry.rank,
-                profitLoss: paperEvaluation.latest_score,
-                observationCount: paperEvaluation.observation_count,
-                qualificationStatus: paperBoardEntry.qualification_status,
-                qualificationReasons: paperBoardEntry.qualification_reasons,
-                latestFailure: classifyPaperTradingFailure(
-                  paperObservations.at(-1)?.failure_reason ?? paperEvaluation.latest_failure_reason
-                )
-              })
-            : undefined,
-          latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
-          latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
-            paperEvaluation?.latest_public_execution_snapshot,
-          latest_paper_decision: paperObservations.at(-1)?.decision,
-          latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
-            paperEvaluation?.paper_account_snapshot,
-          latest_open_orders: paperObservations.at(-1)?.open_orders ??
-            paperEvaluation?.open_orders,
-          latest_fill: paperObservations.at(-1)?.latest_fill ??
-            paperEvaluation?.latest_fill,
-          latest_paper_failure: latestPaperFailureReason,
-          latest_paper_failure_classification: classifyPaperTradingFailure(latestPaperFailureReason),
-          failed_observations: paperObservations
-            .filter((observation) => observation.status === "failed")
-            .slice(-3)
-            .map((observation) => ({
-              sequence: observation.sequence,
-              observed_at: observation.observed_at,
-              failure_reason: observation.failure_reason,
-              failure: classifyPaperTradingFailure(observation.failure_reason)
-            })),
-          ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
-          ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
-          latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,
-          latest_order_request_side: candidate?.ledger?.latest_order_request?.side,
-          latest_order_request_type: candidate?.ledger?.latest_order_request?.order_type,
-          latest_gateway_outcome: candidate?.ledger?.latest_gateway_result?.decision_outcome,
-          latest_execution_status: candidate?.ledger?.latest_execution_result?.status,
-          trading_run_status: candidate?.trading_run?.lifecycle_status
-            ?? candidate?.runtime.runtime_lifecycle_status
-            ?? "recorded",
-          authority_status: "not_live"
-        };
-    }),
-    paper_trading_board: paperTradingBoard,
-    adaptive_direction_focus: [
-      ...arenaAdaptiveDirectionFocus(findingClusters),
-      ...arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
-    ],
-    finding_clusters: findingClusters,
-    latest_tick_failures: arena.latest_ticks
-      .flatMap((tick) => tick.direction_results
-        .filter((result) => result.status === "failed")
-        .map((result) => ({
-          tick_id: tick.tick_id,
-          direction_kind: result.direction_kind,
-          error: result.error
-        })))
-      .slice(0, 8)
-  });
+      negative_findings: arena.leaderboard
+        .filter((entry) => entry.profit_loss.net_revenue_usdt < 0)
+        .slice(0, 5)
+        .map((entry) => ({
+          candidate_id: entry.candidate_id,
+          direction_kind: entry.direction_kind,
+          net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+          finding: entry.latest_finding
+        })),
+      latest_findings: arena.leaderboard
+        .slice(0, 8)
+        .map((entry) => ({
+          candidate_id: entry.candidate_id,
+          direction_kind: entry.direction_kind,
+          net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+          finding: entry.latest_finding
+        })),
+      latest_research_efficiency: arena.latest_ticks
+        .flatMap((tick) => tick.direction_results
+          .filter((result) => result.research_efficiency)
+          .map((result) => ({
+            tick_id: tick.tick_id,
+            direction_kind: result.direction_kind,
+            status: result.status,
+            candidate_id: result.candidate_id,
+            admission_decision_id: result.admission_decision_id,
+            admission_reason: result.admission_reason,
+            net_revenue_usdt: result.net_revenue_usdt,
+            ...result.research_efficiency
+          })))
+        .slice(0, 8),
+      released_campaign_findings:
+        arenaReleasedCampaignFindings(researchReleases),
+      adaptive_direction_focus: [
+        ...candidateArenaAdaptiveDirectionFocus(findingClusters),
+        ...candidateArenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
+      ],
+      finding_clusters: findingClusters,
+      latest_candidate_admission_rejections: arena.latest_ticks
+        .flatMap((tick) => tick.direction_results
+          .filter((result) => result.status === "duplicate" ||
+            result.status === "quarantined")
+          .map((result) => ({
+            tick_id: tick.tick_id,
+            direction_kind: result.direction_kind,
+            status: result.status,
+            admission_decision_id: result.admission_decision_id,
+            admission_reason: result.admission_reason,
+            finding: result.finding
+          })))
+        .slice(0, 8)
+    }
+  };
+}
+
+async function arenaPaperTradingComparisonResearchReleases(
+  store: OuroborosStorePort
+): Promise<PaperTradingComparisonResearchReleaseRecord[]> {
+  if (typeof store.listPaperTradingComparisonResearchReleases !== "function") {
+    return [];
+  }
+  const releases = await store.listPaperTradingComparisonResearchReleases();
+  return Array.isArray(releases)
+    ? uniquePaperTradingComparisonResearchReleases(releases)
+    : [];
+}
+
+function uniquePaperTradingComparisonResearchReleases(
+  releases: unknown[]
+): PaperTradingComparisonResearchReleaseRecord[] {
+  const byReleaseId = new Map<string, PaperTradingComparisonResearchReleaseRecord>();
+  for (const release of releases) {
+    if (!paperTradingComparisonResearchReleaseHasRuntimeShape(release) ||
+      byReleaseId.has(
+        release.paper_trading_comparison_research_release_id
+      )) {
+      continue;
+    }
+    byReleaseId.set(
+      release.paper_trading_comparison_research_release_id,
+      release
+    );
+  }
+  return [...byReleaseId.values()].sort((left, right) =>
+    right.released_at.localeCompare(left.released_at) ||
+    left.paper_trading_comparison_research_release_id.localeCompare(
+      right.paper_trading_comparison_research_release_id
+    ));
+}
+
+function arenaReleasedCampaignFindings(
+  releases: PaperTradingComparisonResearchReleaseRecord[]
+): ArenaReleasedCampaignFinding[] {
+  return uniquePaperTradingComparisonResearchReleases(releases)
+    .slice(0, 8)
+    .map((release) => ({
+      release_id: release.paper_trading_comparison_research_release_id,
+      candidate_id: release.candidate_ref.id,
+      direction_kind: release.direction_kind,
+      release_kind: release.release_kind,
+      finding_kind: release.finding.finding_kind,
+      summary: release.finding.summary,
+      next_research_focus: release.next_research_focus,
+      released_at: release.released_at,
+      authority_status: "not_promotion_authority"
+    }));
 }
 
 function arenaFindingClusters(
   candidates: Awaited<ReturnType<typeof arenaPaperEvidenceCandidates>>,
-  paperTradingBoard: ReturnType<typeof arenaPaperTradingBoardContext>
+  paperTradingBoard: ReturnType<typeof arenaPaperTradingBoardContext>,
+  researchReleases: PaperTradingComparisonResearchReleaseRecord[] = []
 ): CandidateArenaFindingClusterReadModel[] {
   const paperBoardByCandidateId = new Map(
     paperTradingBoard.flatMap((entry) => entry.candidate_id ? [[entry.candidate_id, entry]] : [])
@@ -1108,15 +2238,19 @@ function arenaFindingClusters(
     );
     const lineage = arenaPaperEvidenceLineage(candidate, entry);
     const directionKind = entry?.direction_kind ?? lineage.direction_kind ?? "other";
-    const blockerGroup = paperBoardEntry?.blocker_groups[0];
-    const topBlocker = paperBoardEntry?.blocker_density.top_blocker ?? blockerGroup?.blockers[0];
+    const researchDiagnosticReasons = arenaResearchDiagnosticReasons(
+      paperEvaluation,
+      paperBoardEntry?.qualification_reasons ?? []
+    );
+    const blockerGroup = paperTradingQualificationBlockerGroups(researchDiagnosticReasons)[0];
+    const topBlocker = researchDiagnosticReasons[0] ?? blockerGroup?.blockers[0];
     const paperLearning = paperBoardEntry && paperEvaluation
       ? paperTradingLearningSummary({
           rank: paperBoardEntry.rank,
           profitLoss: paperEvaluation.latest_score,
           observationCount: paperEvaluation.observation_count,
           qualificationStatus: paperBoardEntry.qualification_status,
-          qualificationReasons: paperBoardEntry.qualification_reasons,
+          qualificationReasons: researchDiagnosticReasons,
           latestFailure
         })
       : undefined;
@@ -1151,6 +2285,32 @@ function arenaFindingClusters(
     });
   }
 
+  for (const release of uniquePaperTradingComparisonResearchReleases(
+    researchReleases
+  )) {
+    const clusterKey = [
+      "released_campaign",
+      release.direction_kind,
+      release.release_kind,
+      "unknown"
+    ].join("|");
+    const existing = clusters.get(clusterKey);
+    if (existing) {
+      if (!existing.candidate_ids.includes(release.candidate_ref.id)) {
+        existing.candidate_ids.push(release.candidate_ref.id);
+      }
+      continue;
+    }
+    clusters.set(clusterKey, {
+      direction_kind: release.direction_kind,
+      market_regime: "unknown",
+      candidate_ids: [release.candidate_ref.id],
+      latest_finding: release.finding.summary,
+      next_research_focus: release.next_research_focus,
+      authority_status: "not_promotion_authority"
+    });
+  }
+
   return [...clusters.values()]
     .map((cluster) => ({
       ...cluster,
@@ -1167,210 +2327,17 @@ function arenaFindingClusters(
     .slice(0, 8);
 }
 
-async function adaptiveDefaultArenaDirections(store: OuroborosStorePort): Promise<ResearchDirectionKind[]> {
-  const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
-  const prioritizedDirections = arenaAdaptiveDirectionFocus(arena.finding_clusters)
-    .map((entry) => entry.direction_kind);
-  const budgetFocusDirections = arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
-    .map((entry) => entry.direction_kind);
-  const expensiveDirections = arenaResearchEfficiencyExpensiveDirections(arena.latest_ticks);
-  const prioritized = uniqueDirections([
-    ...prioritizedDirections,
-    ...budgetFocusDirections
-  ]);
-  return [
-    ...prioritized,
-    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
-      !prioritized.includes(direction) && !expensiveDirections.includes(direction)
-    ),
-    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
-      !prioritized.includes(direction) && expensiveDirections.includes(direction)
-    )
-  ];
-}
-
-function arenaAdaptiveDirectionFocus(
-  findingClusters: CandidateArenaFindingClusterReadModel[]
-): ArenaAdaptiveDirectionFocus[] {
-  const focusByDirection = new Map<ResearchDirectionKind, ArenaAdaptiveDirectionFocus>();
-
-  for (const cluster of findingClusters) {
-    const direction = adaptiveDirectionForCluster(cluster);
-    const focus = adaptiveDirectionFocusFromCluster(direction, cluster);
-    const existing = focusByDirection.get(direction);
-    if (!existing) {
-      focusByDirection.set(direction, focus);
-      continue;
-    }
-    focusByDirection.set(direction, {
-      ...existing,
-      focus_score: existing.focus_score + focus.focus_score,
-      focus_reason: [existing.focus_reason, focus.focus_reason].join(";"),
-      next_research_focus: existing.focus_score >= focus.focus_score
-        ? existing.next_research_focus
-        : focus.next_research_focus
-    });
+function arenaResearchDiagnosticReasons(
+  evaluation: PaperTradingEvaluationRecord | undefined,
+  qualificationReasons: PaperTradingQualificationReason[]
+): PaperTradingQualificationReason[] {
+  if (evaluation?.status === "invalidated") {
+    return ["paper_evaluation_invalidated"];
   }
-
-  return [...focusByDirection.values()]
-    .sort((a, b) =>
-      b.focus_score - a.focus_score ||
-      DEFAULT_ARENA_DIRECTIONS.indexOf(a.direction_kind) - DEFAULT_ARENA_DIRECTIONS.indexOf(b.direction_kind)
-    )
-    .slice(0, DEFAULT_ARENA_DIRECTIONS.length);
-}
-
-function arenaResearchEfficiencyBudgetFocus(
-  latestTicks: CandidateArenaTickReadModel[]
-): ArenaAdaptiveDirectionFocus[] {
-  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
-    .map(([direction, efficiency]) => ({
-      direction,
-      efficiency,
-      focusScore: researchEfficiencyBudgetFocusScore(efficiency)
-    }))
-    .filter((entry) => entry.focusScore > 0)
-    .sort((a, b) =>
-      b.focusScore - a.focusScore ||
-      DEFAULT_ARENA_DIRECTIONS.indexOf(a.direction) - DEFAULT_ARENA_DIRECTIONS.indexOf(b.direction)
-    )
-    .map((entry) => ({
-      direction_kind: entry.direction,
-      focus_score: entry.focusScore,
-      focus_reason: "research_efficiency_budget:low_cost_latency",
-      next_research_focus: "Favor lower-cost ResearchDirection lanes while expensive lanes cool down.",
-      authority_status: "not_promotion_authority"
-    }));
-}
-
-function arenaResearchEfficiencyExpensiveDirections(
-  latestTicks: CandidateArenaTickReadModel[]
-): ResearchDirectionKind[] {
-  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
-    .filter(([, efficiency]) => researchEfficiencyBudgetFocusScore(efficiency) <= 0)
-    .map(([direction]) => direction);
-}
-
-function latestResearchEfficiencyByDirection(
-  latestTicks: CandidateArenaTickReadModel[]
-): Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel> {
-  const latestByDirection = new Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel>();
-  for (const tick of latestTicks) {
-    for (const result of tick.direction_results) {
-      if (
-        !result.research_efficiency ||
-        !isDefaultArenaDirection(result.direction_kind) ||
-        latestByDirection.has(result.direction_kind)
-      ) {
-        continue;
-      }
-      latestByDirection.set(result.direction_kind, result.research_efficiency);
-    }
+  if (evaluation?.status === "failed") {
+    return ["paper_evaluation_failed"];
   }
-  return latestByDirection;
-}
-
-function researchEfficiencyBudgetFocusScore(
-  efficiency: CandidateArenaResearchEfficiencyReadModel
-): number {
-  const effortUnits = efficiency.provider_request_total +
-    (efficiency.runner_command_total * 2) +
-    efficiency.scenario_count +
-    Math.ceil(efficiency.elapsed_ms / 1000);
-  return 26 - effortUnits;
-}
-
-function uniqueDirections(directions: ResearchDirectionKind[]): ResearchDirectionKind[] {
-  return directions.filter((direction, index) => directions.indexOf(direction) === index);
-}
-
-function isDefaultArenaDirection(direction: ResearchDirectionKind): boolean {
-  return DEFAULT_ARENA_DIRECTIONS.includes(direction);
-}
-
-function adaptiveDirectionFocusFromCluster(
-  direction: ResearchDirectionKind,
-  cluster: CandidateArenaFindingClusterReadModel
-): ArenaAdaptiveDirectionFocus {
-  return {
-    direction_kind: direction,
-    source_direction_kind: cluster.direction_kind === direction ? undefined : cluster.direction_kind,
-    focus_score: adaptiveDirectionFocusScore(cluster),
-    focus_reason: [
-      cluster.protocol_failure_kind,
-      cluster.blocker_group_kind,
-      cluster.top_blocker
-    ].filter(Boolean).join(":") || "paper_finding_cluster",
-    next_research_focus: adaptiveDirectionNextResearchFocus(cluster),
-    authority_status: "not_promotion_authority"
-  };
-}
-
-function adaptiveDirectionForCluster(
-  cluster: CandidateArenaFindingClusterReadModel
-): ResearchDirectionKind {
-  if (
-    cluster.protocol_failure_kind === "public_execution_evidence_gap" ||
-    cluster.blocker_group_kind === "fill_provenance" ||
-    cluster.protocol_failure_kind === "trading_system_protocol_error" ||
-    cluster.protocol_failure_kind === "ledger_gap" ||
-    cluster.protocol_failure_kind === "sandbox_or_runner_failure" ||
-    cluster.protocol_failure_kind === "runner_health_loss"
-  ) {
-    return "execution_cost_robustness";
-  }
-  if (cluster.protocol_failure_kind === "risk_rejection") {
-    return "funding_aware_risk";
-  }
-  if (
-    cluster.protocol_failure_kind === "market_data_gap" ||
-    cluster.blocker_group_kind === "market_provenance" ||
-    cluster.market_regime === "volatile"
-  ) {
-    return "volatility_regime";
-  }
-  if (cluster.market_regime === "flat") {
-    return "mean_reversion";
-  }
-  return cluster.direction_kind;
-}
-
-function adaptiveDirectionFocusScore(cluster: CandidateArenaFindingClusterReadModel): number {
-  return (cluster.candidate_count * 10) +
-    (cluster.protocol_failure_kind ? 20 : 0) +
-    (cluster.blocker_group_kind ? 5 : 0) +
-    (cluster.top_blocker ? 2 : 0) +
-    (cluster.market_regime === "volatile" ? 3 : 0);
-}
-
-function adaptiveDirectionNextResearchFocus(cluster: CandidateArenaFindingClusterReadModel): string {
-  if (cluster.protocol_failure_kind) {
-    return nextResearchFocusForFailureKind(cluster.protocol_failure_kind);
-  }
-  return cluster.next_research_focus;
-}
-
-function nextResearchFocusForFailureKind(kind: PaperTradingFailureKind): string {
-  switch (kind) {
-    case "market_data_gap":
-      return "Restore Gateway market data before continuing paper evidence.";
-    case "public_execution_evidence_gap":
-      return "Restore public execution evidence before trusting fills or paper score.";
-    case "trading_system_protocol_error":
-      return "Fix the TradingSystem paper event protocol before retrying observation.";
-    case "risk_rejection":
-      return "Review order sizing, side, and risk limits before continuing paper evidence.";
-    case "sandbox_or_runner_failure":
-      return "Repair or resume the runner before treating paper evidence as current.";
-    case "runner_health_loss":
-      return "Resume paper trading before review.";
-    case "ledger_gap":
-      return "Inspect order, Gateway, and execution records before trusting the observation.";
-    case "authority_boundary_violation":
-      return "Reject or repair the candidate before any further review.";
-    case "unknown_failure":
-      return "Inspect the raw failure reason and add a classifier if this recurs.";
-  }
+  return qualificationReasons.filter((reason) => reason !== "evidence_purpose_not_qualification");
 }
 
 function arenaMarketRegime(
@@ -1465,13 +2432,14 @@ function arenaPaperTradingBoardContext(
 }> {
   return candidates
     .filter(({ paperEvaluation }) => paperEvaluation)
-    .map(({ candidate, entry, paperEvaluation, paperObservations }) => {
+    .map(({ candidate, entry, paperEvaluation, paperCommitment, paperObservations }) => {
       const latestObservation = paperObservations.at(-1);
       const latestMarketSnapshot = latestObservation?.market_snapshot;
       const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
         paperEvaluation?.latest_public_execution_snapshot;
       const qualification = qualifyPaperTradingEvaluation({
         evaluation: paperEvaluation!,
+        commitment: paperCommitment,
         observations: paperObservations,
         runnerActive: false,
         policy: {
@@ -1577,64 +2545,6 @@ function roundPaperBoardContextSignal(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-function paperLoopLatencySummary(
-  paperEvaluation: PaperTradingEvaluationRecord | undefined,
-  paperObservations: Pick<
-    PaperTradingObservationRecord,
-    "paper_trading_observation_id" | "sequence" | "observed_at"
-  >[]
-): PaperLoopLatencySummary | undefined {
-  const expectedIntervalMs = paperEvaluation?.interval_ms;
-  if (
-    !paperEvaluation ||
-    typeof expectedIntervalMs !== "number" ||
-    !Number.isFinite(expectedIntervalMs) ||
-    expectedIntervalMs <= 0
-  ) {
-    return undefined;
-  }
-
-  const orderedObservations = [...paperObservations]
-    .sort((left, right) =>
-      left.sequence - right.sequence ||
-      left.observed_at.localeCompare(right.observed_at) ||
-      left.paper_trading_observation_id.localeCompare(right.paper_trading_observation_id)
-    );
-  const intervals: number[] = [];
-  for (let index = 1; index < orderedObservations.length; index += 1) {
-    const previous = orderedObservations[index - 1]!;
-    const current = orderedObservations[index]!;
-    const intervalMs = elapsedMs(previous.observed_at, current.observed_at);
-    if (intervalMs > 0) {
-      intervals.push(intervalMs);
-    }
-  }
-
-  const expected = Math.max(0, Math.round(expectedIntervalMs));
-  if (intervals.length === 0) {
-    return {
-      expected_interval_ms: expected,
-      observed_interval_count: 0,
-      cadence_status: "insufficient_history",
-      authority_status: "not_promotion_authority"
-    };
-  }
-
-  const intervalLags = intervals.map((interval) => Math.max(0, interval - expected));
-  const latestObservationInterval = intervals.at(-1)!;
-  const latestIntervalLag = intervalLags.at(-1)!;
-  const maxIntervalLag = Math.max(...intervalLags);
-  return {
-    expected_interval_ms: expected,
-    latest_observation_interval_ms: latestObservationInterval,
-    latest_interval_lag_ms: latestIntervalLag,
-    max_interval_lag_ms: maxIntervalLag,
-    observed_interval_count: intervals.length,
-    cadence_status: maxIntervalLag > 0 ? "lagging" : "on_cadence",
-    authority_status: "not_promotion_authority"
-  };
-}
-
 function arenaPaperPromotionGateStatus(
   evaluation: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>> | undefined
 ): "paper_evidence_recorded" | "paper_failed" | "not_evaluated" | undefined {
@@ -1650,6 +2560,36 @@ function arenaPaperPromotionGateStatus(
   return evaluation.observation_count > 0 ? "paper_evidence_recorded" : "not_evaluated";
 }
 
+async function releasedResearchFeedbackEvidence(
+  store: OuroborosStorePort,
+  evaluation: PaperTradingEvaluationRecord
+): Promise<{
+  commitment: NonNullable<Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>>;
+  observations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>;
+} | undefined> {
+  if (evaluation.status === "invalidated" || evaluation.observation_count <= 0) {
+    return undefined;
+  }
+  const commitmentId = evaluation.paper_trading_evaluation_commitment_ref?.id;
+  const commitment = commitmentId
+    ? await store.getPaperTradingEvaluationCommitment(commitmentId)
+    : undefined;
+  if (
+    !commitment ||
+    !paperTradingEvaluationCommitmentMatchesEvaluation(commitment, evaluation) ||
+    commitment.evidence_purpose !== "research_feedback" ||
+    commitment.window_policy.release_policy !== "closed_observation"
+  ) {
+    return undefined;
+  }
+  const observations = await store.listPaperTradingObservations(
+    evaluation.paper_trading_evaluation_id
+  );
+  return paperTradingEvidenceIntegrityReasons({ evaluation, commitment, observations }).length === 0
+    ? { commitment, observations }
+    : undefined;
+}
+
 async function arenaPaperEvidenceCandidates(
   store: OuroborosStorePort,
   arena: CandidateArenaReadModel
@@ -1657,6 +2597,7 @@ async function arenaPaperEvidenceCandidates(
   entry?: CandidateArenaReadModel["leaderboard"][number];
   candidate?: CandidateInspectReadModel;
   paperEvaluation?: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>>;
+  paperCommitment?: Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>;
   paperObservations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>;
 }>> {
   const leaderboardEntries = arena.leaderboard.slice(0, 8);
@@ -1670,7 +2611,7 @@ async function arenaPaperEvidenceCandidates(
     }
     const candidate = await store.getCandidate(summary.candidate_id);
     const paperEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(summary.candidate_id);
-    if (candidate?.ledger?.has_activity || paperEvaluation) {
+    if (candidate && paperEvaluation) {
       candidateIds.add(summary.candidate_id);
     }
   }));
@@ -1680,14 +2621,15 @@ async function arenaPaperEvidenceCandidates(
     const paperEvaluation = candidate
       ? await store.getLatestPaperTradingEvaluationForCandidate(candidate.candidate_id)
       : undefined;
-    const paperObservations = paperEvaluation
-      ? await store.listPaperTradingObservations(paperEvaluation.paper_trading_evaluation_id)
-      : [];
+    const released = paperEvaluation
+      ? await releasedResearchFeedbackEvidence(store, paperEvaluation)
+      : undefined;
     return {
       entry: entriesByCandidateId.get(candidateId),
       candidate,
-      paperEvaluation,
-      paperObservations
+      paperEvaluation: released ? paperEvaluation : undefined,
+      paperCommitment: released?.commitment,
+      paperObservations: released?.observations ?? []
     };
   }));
 }
@@ -1706,24 +2648,61 @@ function arenaResearcher(
   return {
     researcher_id: `research-worker-${safeId(direction)}`,
     direction_kind: direction,
-    status: latestResult?.status === "failed" ? "failed" : "active",
+    status: latestResult?.status === "failed" ||
+      latestResult?.admission_reason === "research_worker_failed"
+      ? "failed"
+      : "active",
     authority_status: "research_only"
   };
 }
 
-function researchEfficiencySummary(entry: TradingResearchNotebookEntry): CandidateArenaResearchEfficiencyReadModel {
-  const scenarioResults = entry.evaluation.scenario_results ?? [];
-  return {
-    provider_request_total: scenarioResults.reduce(
+function researchEfficiencySummary(
+  entries: TradingResearchNotebookEntry[],
+  sealedAdmission: Awaited<ReturnType<typeof runTradingResearchLoop>>["sealed_admission"]
+): CandidateArenaResearchEfficiencyReadModel {
+  const developmentScenarioResults = entries.flatMap(
+    (entry) => entry.evaluation.scenario_results ?? []
+  );
+  const sealedScenarioResults = sealedAdmission?.evaluation.scenario_results ?? [];
+  const paperHandoff = sealedAdmission?.evaluation.paper_handoff_conformance;
+  const development = {
+    submission_count: entries.length,
+    provider_request_total: developmentScenarioResults.reduce(
       (total, result) => total + result.provider_request_count,
       0
     ),
-    runner_command_total: scenarioResults.reduce(
+    runner_command_total: developmentScenarioResults.reduce(
       (total, result) => total + result.runner_command_count,
       0
     ),
-    scenario_count: scenarioResults.length,
-    elapsed_ms: elapsedMs(entry.started_at, entry.completed_at),
+    scenario_count: developmentScenarioResults.length,
+    elapsed_ms: entries.reduce(
+      (total, entry) => total + elapsedMs(entry.started_at, entry.completed_at),
+      0
+    )
+  };
+  const sealed = {
+    submission_count: sealedAdmission ? 1 : 0,
+    provider_request_total: sealedScenarioResults.reduce(
+      (total, result) => total + result.provider_request_count,
+      0
+    ) + (paperHandoff?.provider_request_count ?? 0),
+    runner_command_total: sealedScenarioResults.reduce(
+      (total, result) => total + result.runner_command_count,
+      0
+    ),
+    scenario_count: sealedScenarioResults.length,
+    elapsed_ms: paperHandoff
+      ? elapsedMs(paperHandoff.started_at, paperHandoff.completed_at)
+      : 0
+  };
+  return {
+    provider_request_total: development.provider_request_total,
+    runner_command_total: development.runner_command_total,
+    scenario_count: development.scenario_count,
+    elapsed_ms: development.elapsed_ms,
+    development,
+    sealed_admission: sealed,
     authority_status: "not_promotion_authority"
   };
 }
@@ -1742,9 +2721,9 @@ function candidateArenaTickRecord(input: {
   startedAt: string;
   completedAt: string;
   sourceCandidate: CandidateArenaTickSourceReadModel;
-  totalDirectionCount: number;
   createdCandidateIds: string[];
   directionResults: CandidateArenaTickDirectionResultReadModel[];
+  allocation: CandidateArenaResearchAllocationRecord;
 }): CandidateArenaTickRecord {
   return {
     record_kind: "candidate_arena_tick",
@@ -1753,17 +2732,25 @@ function candidateArenaTickRecord(input: {
     tick_id: input.tickId,
     started_at: input.startedAt,
     completed_at: input.completedAt,
-    status: candidateArenaTickStatus(input.createdCandidateIds.length, input.totalDirectionCount),
+    status: candidateArenaTickStatus(input.directionResults),
     source_candidate: input.sourceCandidate,
     created_candidate_refs: input.createdCandidateIds.map((candidateId) =>
       ref("trading_system_candidate", candidateId)
     ),
     direction_results: input.directionResults,
+    research_allocation_ref: ref(
+      "candidate_arena_research_allocation",
+      input.allocation.candidate_arena_research_allocation_id
+    ),
+    research_allocation_digest: input.allocation.allocation_digest,
     authority_status: "not_live"
   };
 }
 
-function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): CandidateArenaTickReadModel {
+function toCandidateArenaTickReadModel(
+  tick: CandidateArenaTickRecord,
+  allocation?: CandidateArenaResearchAllocationRecord
+): CandidateArenaTickReadModel {
   return {
     tick_id: tick.tick_id,
     started_at: tick.started_at,
@@ -1772,6 +2759,12 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
     ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
     created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
     direction_results: tick.direction_results,
+    ...(allocation
+      ? {
+          research_allocation:
+            toCandidateArenaResearchAllocationReadModel(allocation)
+        }
+      : {}),
     ...(tick.paper_trading_continuation
       ? { paper_trading_continuation: tick.paper_trading_continuation }
       : {}),
@@ -1779,11 +2772,14 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
   };
 }
 
-function candidateArenaTickStatus(createdCount: number, totalDirectionCount: number): CandidateArenaTickStatus {
-  if (createdCount === totalDirectionCount) {
+function candidateArenaTickStatus(
+  directionResults: CandidateArenaTickDirectionResultReadModel[]
+): CandidateArenaTickStatus {
+  const failedCount = directionResults.filter((result) => result.status === "failed").length;
+  if (failedCount === 0) {
     return "completed";
   }
-  return createdCount > 0 ? "completed_with_errors" : "failed";
+  return failedCount < directionResults.length ? "completed_with_errors" : "failed";
 }
 
 function findingSummaryForProfitLoss(
@@ -1807,10 +2803,6 @@ function conciseError(error: unknown): string {
 
 function directionLabel(direction: ResearchDirectionKind): string {
   return direction.replaceAll("_", " ");
-}
-
-async function fileDigest(filePath: string): Promise<string> {
-  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
 function ref(record_kind: string, id: string): Ref {

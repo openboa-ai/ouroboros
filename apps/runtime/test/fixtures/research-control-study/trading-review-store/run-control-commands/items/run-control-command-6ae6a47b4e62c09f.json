@@ -1,0 +1,26 @@
+{
+  "record_kind": "run_control_command",
+  "version": 1,
+  "run_control_command_id": "run-control-command-6ae6a47b4e62c09f",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-b75901aea5755ca4"
+  },
+  "action": "start",
+  "requested_lifecycle_status": "running",
+  "actor_kind": "human_operator",
+  "actor_ref": {
+    "record_kind": "operator",
+    "id": "runtime-activation-coordinator"
+  },
+  "runtime_operating_policy_ref": {
+    "record_kind": "runtime_operating_policy",
+    "id": "runtime-operating-policy-paper-v1"
+  },
+  "idempotency_key": "paper-comparison-run-control:paper-comparison-activation-attempt-deb54f254c95ea63e6878256f4175ded:champion:start",
+  "reason": "operator_request",
+  "reason_summary": "Authorized paper comparison runtime start.",
+  "requested_at": "2026-07-10T00:02:20.000Z",
+  "status": "decided",
+  "authority_status": "control_only"
+}

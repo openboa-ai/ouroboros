@@ -212,7 +212,7 @@ corpus="\n".join(text(p) for p in [Path("AGENTS.md"), Path(".agents/AGENTS.md"),
 for term in ["llm-wiki", "writeback_needed", "project-context", ".agents/skills/AGENTS.md", "superpowers:using-superpowers", "Skill-First Gate"]:
   if term not in corpus: fail("Skill routing terms missing: "+term)
 doctrine_required=[
-  "outcome-gradable",
+  "outcome-gradable under a precommitted evaluation protocol",
   "parallel TradingSystem candidates",
   "continuous paper trading evaluation",
   "revenue - cost",

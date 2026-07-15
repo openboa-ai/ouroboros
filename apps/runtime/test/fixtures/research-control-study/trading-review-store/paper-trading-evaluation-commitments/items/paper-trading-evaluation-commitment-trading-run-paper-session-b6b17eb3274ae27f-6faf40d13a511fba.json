@@ -1,0 +1,92 @@
+{
+  "record_kind": "paper_trading_evaluation_commitment",
+  "version": 1,
+  "paper_trading_evaluation_commitment_id": "paper-trading-evaluation-commitment-trading-run-paper-session-b6b17eb3274ae27f-6faf40d13a511fba",
+  "evidence_purpose": "qualification",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-b6b17eb3274ae27f"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "system_code_artifact_digest": "sha256:confirmation-challenger",
+  "resolved_artifact_digest": "sha256:resolved-system-code-confirmation-challenger",
+  "runtime_identity": {
+    "artifact_kind": "python_file",
+    "runtime_kind": "python",
+    "entrypoint": [
+      "python3",
+      "fixtures/trading-systems/clock.py"
+    ]
+  },
+  "provider_identity": {
+    "runtime_provider_kind": "none",
+    "qualification_eligible": true
+  },
+  "capability_policy_ref": {
+    "record_kind": "capability_policy",
+    "id": "capability-policy-clock-fixture-v1"
+  },
+  "secret_policy_ref": {
+    "record_kind": "secret_policy",
+    "id": "secret-policy-no-raw-values-v1"
+  },
+  "policy_identity": {
+    "market_data_policy_version": "binance-public-market-v1",
+    "gateway_policy_version": "paper-gateway-dry-run-v1",
+    "cost_policy_version": "paper-cost-8bps-v1",
+    "funding_policy_version": "paper-funding-engine-v1",
+    "slippage_policy_version": "paper-public-fill-slippage-v1",
+    "fill_policy_version": "paper-public-execution-fill-v1",
+    "risk_policy_version": "paper-risk-validation-v1",
+    "paper_account_policy_version": "fake-paper-account-10000usdt-v1",
+    "decision_event_protocol_version": "trading-system-paper-events-v1",
+    "persistent_state_boundary_version": "paper-engine-checkpoint-v1"
+  },
+  "data_identity": {
+    "symbol": "BTCUSDT",
+    "market_data_port": "gateway_owned",
+    "allowed_market_data_source": "binance_production_public_hybrid",
+    "market_data_configuration_digest": "sha256:1bb89b0b5f33a09491c07270c9f8d1c6c2916ab788e26cf7dd27c33d83cd1d10",
+    "private_exchange_access": "forbidden",
+    "live_order_access": "forbidden"
+  },
+  "window_policy": {
+    "interval_ms": 60000,
+    "release_policy": "sealed_until_adjudication",
+    "eligibility_policy_version": "paper-evidence-eligibility-v1"
+  },
+  "initial_account_snapshot": {
+    "wallet_balance_usdt": "10000",
+    "available_balance_usdt": "10000",
+    "equity_usdt": "10000",
+    "realized_pnl_usdt": "0",
+    "unrealized_pnl_usdt": "0",
+    "fee_paid_usdt": "0",
+    "slippage_paid_usdt": "0",
+    "funding_paid_usdt": "0",
+    "margin_reserved_usdt": "0",
+    "position": {
+      "symbol": "BTCUSDT",
+      "quantity": "0",
+      "side": "flat",
+      "mark_price": "0",
+      "notional_usdt": "0"
+    },
+    "open_order_count": 0,
+    "authority_status": "not_live"
+  },
+  "committed_at": "2026-07-10T00:04:35.000Z",
+  "commitment_digest": "sha256:4b4a6dca38f2a72338a4fc5bd7bf6f77278f19c720964624b3a0b565f9e6ff88",
+  "authority_status": "not_live"
+}

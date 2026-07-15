@@ -1,0 +1,331 @@
+{
+  "record_kind": "sandbox_index_projection",
+  "version": 1,
+  "sandboxes": [
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-681acaadcd25f651131-7aea39c74bf7364f",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-6071cdf318cb4983"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-6071cdf318cb4983"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-6071cdf3-challenger",
+      "created_at": "2026-07-10T00:00:03.000Z",
+      "started_at": "2026-07-10T00:00:03.000Z",
+      "stopped_at": "2026-07-10T00:01:06.000Z",
+      "log_refs": [
+        {
+          "record_kind": "sandbox_log",
+          "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-681acaadcd25f651131-7aea39c74bf7364f-order-log"
+        }
+      ],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-681acaadcd25f651131-90b8fbf9f89cabb3",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-0daf868c2aa4b45f"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-0daf868c2aa4b45f"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-0daf868c-champion",
+      "created_at": "2026-07-10T00:00:03.000Z",
+      "started_at": "2026-07-10T00:00:03.000Z",
+      "stopped_at": "2026-07-10T00:01:06.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-2543507804b1f58b"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-2543507804b1f58b"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-25435078-challenger",
+      "created_at": "2026-07-10T00:01:12.000Z",
+      "started_at": "2026-07-10T00:01:12.000Z",
+      "stopped_at": "2026-07-10T00:02:15.000Z",
+      "log_refs": [
+        {
+          "record_kind": "sandbox_log",
+          "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee-order-log"
+        }
+      ],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-bf4936a393f26dfa",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-3c9bd4d365ecd57b"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-3c9bd4d365ecd57b"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-3c9bd4d3-champion",
+      "created_at": "2026-07-10T00:01:12.000Z",
+      "started_at": "2026-07-10T00:01:12.000Z",
+      "stopped_at": "2026-07-10T00:02:15.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-deb54f254c95ea63e68-8207c4965c924ef8",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-747c3f18779a639c"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-747c3f18779a639c"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-747c3f18-challenger",
+      "created_at": "2026-07-10T00:02:20.000Z",
+      "started_at": "2026-07-10T00:02:20.000Z",
+      "stopped_at": "2026-07-10T00:03:23.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-deb54f254c95ea63e68-f039dbdd4f344650",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-b75901aea5755ca4"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-b75901aea5755ca4"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-b75901ae-champion",
+      "created_at": "2026-07-10T00:02:20.000Z",
+      "started_at": "2026-07-10T00:02:20.000Z",
+      "stopped_at": "2026-07-10T00:03:23.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-816e4eb6873e6b53201-6a755b1e7c3777d8",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-6247749464192266"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-6247749464192266"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-62477494-challenger",
+      "created_at": "2026-07-10T00:03:29.000Z",
+      "started_at": "2026-07-10T00:03:29.000Z",
+      "stopped_at": "2026-07-10T00:04:32.000Z",
+      "log_refs": [
+        {
+          "record_kind": "sandbox_log",
+          "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-816e4eb6873e6b53201-6a755b1e7c3777d8-order-log"
+        }
+      ],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-816e4eb6873e6b53201-ff5c89f3c0d2d15c",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-c976fa49430dff38"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-c976fa49430dff38"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-c976fa49-champion",
+      "created_at": "2026-07-10T00:03:29.000Z",
+      "started_at": "2026-07-10T00:03:29.000Z",
+      "stopped_at": "2026-07-10T00:04:32.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-bebadc87818ae588",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-5e87124cece6e828"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-5e87124cece6e828"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-5e87124c-champion",
+      "created_at": "2026-07-10T00:04:38.000Z",
+      "started_at": "2026-07-10T00:04:38.000Z",
+      "stopped_at": "2026-07-10T00:05:41.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-b6b17eb3274ae27f"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-b6b17eb3274ae27f"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-b6b17eb3-challenger",
+      "created_at": "2026-07-10T00:04:38.000Z",
+      "started_at": "2026-07-10T00:04:38.000Z",
+      "stopped_at": "2026-07-10T00:05:41.000Z",
+      "log_refs": [
+        {
+          "record_kind": "sandbox_log",
+          "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a-order-log"
+        }
+      ],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-a12fbe1c5ca4d2c84d4-0e065cbe608e5690",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "system-code-confirmation-challenger"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-e93aa57454db1fb1"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-e93aa57454db1fb1"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-e93aa574-challenger",
+      "created_at": "2026-07-10T00:05:46.000Z",
+      "started_at": "2026-07-10T00:05:46.000Z",
+      "stopped_at": "2026-07-10T00:06:49.000Z",
+      "log_refs": [
+        {
+          "record_kind": "sandbox_log",
+          "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-a12fbe1c5ca4d2c84d4-0e065cbe608e5690-order-log"
+        }
+      ],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    },
+    {
+      "sandbox_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-a12fbe1c5ca4d2c84d4-56f962ce8c5848a5",
+      "adapter_kind": "deterministic_test",
+      "system_code_ref": {
+        "record_kind": "system_code",
+        "id": "fixture-system-code-clock-python-001"
+      },
+      "runtime_ref": {
+        "record_kind": "trading_run",
+        "id": "trading-run-paper-session-f499909216c8dd21"
+      },
+      "sandbox_placement_ref": {
+        "record_kind": "sandbox_placement",
+        "id": "sandbox-placement-paper-session-f499909216c8dd21"
+      },
+      "lifecycle_status": "stopped",
+      "sandbox_name": "ouro-paper-comparison-trading-run-paper-session-f4999092-champion",
+      "created_at": "2026-07-10T00:05:46.000Z",
+      "started_at": "2026-07-10T00:05:46.000Z",
+      "stopped_at": "2026-07-10T00:06:49.000Z",
+      "log_refs": [],
+      "heartbeat_refs": [],
+      "command_evidence_refs": [],
+      "authority_status": "not_live"
+    }
+  ]
+}

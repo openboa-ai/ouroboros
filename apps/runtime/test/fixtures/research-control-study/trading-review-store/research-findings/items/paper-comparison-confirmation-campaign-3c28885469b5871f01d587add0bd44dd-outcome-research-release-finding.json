@@ -1,0 +1,47 @@
+{
+  "record_kind": "research_finding",
+  "version": 1,
+  "research_finding_id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome-research-release-finding",
+  "research_worker_ref": {
+    "record_kind": "research_worker",
+    "id": "worker-challenger"
+  },
+  "research_direction_ref": {
+    "record_kind": "research_direction",
+    "id": "direction-challenger"
+  },
+  "experiment_run_ref": {
+    "record_kind": "experiment_run",
+    "id": "experiment-confirmation-challenger"
+  },
+  "trading_evaluation_result_ref": {
+    "record_kind": "trading_evaluation_result",
+    "id": "evaluation-confirmation-challenger"
+  },
+  "finding_kind": "positive_result",
+  "summary": "Paper comparison confirmation campaign paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd: improved=2, not_improved=0, ineligible=0, expired=0; release=confirmed_improvement.",
+  "supporting_record_refs": [
+    {
+      "record_kind": "research_finding",
+      "id": "finding-confirmation-challenger"
+    },
+    {
+      "record_kind": "paper_trading_comparison_confirmation_campaign",
+      "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd"
+    },
+    {
+      "record_kind": "paper_trading_comparison_confirmation_campaign_outcome",
+      "id": "paper-comparison-confirmation-campaign-3c28885469b5871f01d587add0bd44dd-outcome"
+    },
+    {
+      "record_kind": "paper_trading_comparison_verdict",
+      "id": "paper-comparison-verdict-b8975c2c559cbd01b96d203aec43dc2d"
+    },
+    {
+      "record_kind": "paper_trading_comparison_verdict",
+      "id": "paper-comparison-verdict-06821287d643e214a568d90bb8c36ae3"
+    }
+  ],
+  "created_at": "2026-07-10T00:06:51.001Z",
+  "authority_status": "research_trace_only"
+}

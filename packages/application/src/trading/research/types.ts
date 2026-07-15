@@ -1,7 +1,16 @@
 import type {
+  PaperTradingHandoffConformanceReason,
+  PaperTradingHandoffConformanceStatus,
   PaperTradingMarketDataFreshness,
   PaperTradingMarketDataSourceKind,
-  PaperTradingMarketDataSourcePriority
+  PaperTradingMarketDataSourcePriority,
+  PaperTradingComparisonTickContext,
+  Ref,
+  ResearchWorkerCheckpointNotebook,
+  ResearchWorkerCheckpointTerminalReason,
+  ResearchWorkerCheckpointTerminalStatus,
+  ResearchPreflightCommitmentRecord,
+  TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
 
 export type TradingResearchAgentProvider = "codex" | "claude_code" | "fixture";
@@ -78,6 +87,24 @@ export interface MarketSnapshot {
   stream_marker?: string;
 }
 
+export interface PaperTradingApiProviderComparisonTickHooks {
+  deliver(input: {
+    market: MarketSnapshot;
+    provider_request_count: number;
+    delivered_at: string;
+  }): Promise<PaperTradingComparisonTickContext | undefined>;
+  acknowledge(input: {
+    context: unknown;
+    provider_request_count: number;
+    acknowledged_at: string;
+  }): Promise<{
+    acknowledgement_ref: Ref;
+    acknowledgement_digest: string;
+  }>;
+}
+
+export type TradingApiMarketSnapshot = Omit<MarketSnapshot, "expected_direction">;
+
 export interface AccountState {
   equity: number;
   max_position_notional: number;
@@ -85,11 +112,14 @@ export interface AccountState {
   target_risk_fraction: number;
 }
 
+export type TradingApiAccountState = Omit<AccountState, "target_risk_fraction">;
+
 export interface OrderRequest {
   symbol: string;
   side: "buy" | "sell" | "hold";
   quantity: number;
   order_type: "market" | "limit" | "none";
+  limit_price?: string;
   reason?: string;
 }
 
@@ -119,7 +149,12 @@ export interface ReplayTradingApiProviderSession {
   sandbox_base_url?: string;
   close(): Promise<void>;
   requests(): TradingProviderRequestLog[];
-  scenario: ReplayTradingScenario;
+  candidate_input: ReplayTradingCandidateInput;
+}
+
+export interface ReplayTradingCandidateInput {
+  market: TradingApiMarketSnapshot;
+  account: TradingApiAccountState;
 }
 
 export interface ReplayTradingScenario {
@@ -149,6 +184,24 @@ export interface ArtifactRunResult {
   events: TradingSystemEvent[];
   provider_requests: TradingProviderRequestLog[];
   sandbox_name?: string;
+  command_evidence?: TradingArtifactCommandEvidence[];
+  error?: string;
+}
+
+export interface TradingArtifactPaperHandoffProbeResult {
+  status: "completed" | "crashed";
+  runner_kind: TradingArtifactRunnerKind;
+  artifact_dir: string;
+  entrypoint: string[];
+  instance_id: string;
+  started_at: string;
+  completed_at: string;
+  timed_out: boolean;
+  stdout: string;
+  stderr: string;
+  exit_code?: number;
+  output_lines: string[];
+  provider_requests: TradingProviderRequestLog[];
   command_evidence?: TradingArtifactCommandEvidence[];
   error?: string;
 }
@@ -190,6 +243,21 @@ export interface TradingProfitLoss {
   net_return_pct: number;
 }
 
+export interface TradingPaperHandoffConformanceEvidence {
+  protocol_version: "paper_trading_event_protocol_v1";
+  system_code_artifact_digest: string;
+  runner_kind: TradingArtifactRunnerKind;
+  status: PaperTradingHandoffConformanceStatus;
+  reason: PaperTradingHandoffConformanceReason;
+  provider_request_count: number;
+  decision_event_kind?: "order_request" | "hold" | "no_action";
+  heartbeat_count: number;
+  runtime_stopped: boolean;
+  started_at: string;
+  completed_at: string;
+  runnable_paper_handoff: boolean;
+}
+
 export interface TradingEvaluationResult {
   status: TradingEvaluationStatus;
   score: number;
@@ -197,7 +265,130 @@ export interface TradingEvaluationResult {
   summary: string;
   risk_decision: TradingRiskDecision;
   profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
   scenario_results?: TradingScenarioEvaluationResult[];
+  paper_handoff_conformance?: TradingPaperHandoffConformanceEvidence;
+}
+
+export interface ResearchWorkerDevelopmentFeedback {
+  status: TradingEvaluationStatus;
+  score: number;
+  metrics: TradingEvaluationMetric[];
+  summary: string;
+  risk_decision: TradingRiskDecision;
+  profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
+}
+
+export type ResearchWorkerSessionStatus =
+  | "open"
+  | "selected"
+  | "finished_without_submission"
+  | "failed";
+
+export interface ResearchWorkerToolStatus {
+  session_status: ResearchWorkerSessionStatus;
+  submission_limit: number;
+  completed_submission_count: number;
+  remaining_submission_count: number;
+  selected_submission_sequence: number | null;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionInput {
+  idempotency_key: string;
+  research_note: string;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionRequest
+  extends ResearchWorkerDevelopmentSubmissionInput {
+  submission_sequence: number;
+}
+
+export interface ResearchWorkerDevelopmentEvaluationEvidence {
+  submission_sequence: number;
+  artifact_dir: string;
+  artifact_digest: string;
+  started_at: string;
+  completed_at: string;
+  evaluation: TradingEvaluationResult;
+  feedback: ResearchWorkerDevelopmentFeedback;
+}
+
+export interface ResearchWorkerDevelopmentSubmissionResult {
+  session_status: "open";
+  submission_sequence: number;
+  remaining_submission_count: number;
+  feedback: ResearchWorkerDevelopmentFeedback;
+}
+
+export interface ResearchWorkerDevelopmentSelectionInput {
+  idempotency_key: string;
+  submission_sequence: number;
+  reason: string;
+}
+
+export interface ResearchWorkerSelectionResult {
+  session_status: "selected";
+  submission_sequence: number;
+  reason: string;
+}
+
+export interface ResearchWorkerFinishInput {
+  idempotency_key: string;
+  reason: string;
+}
+
+export interface ResearchWorkerFinishResult {
+  session_status: "finished_without_submission";
+  reason: string;
+}
+
+export interface ResearchWorkerToolPort {
+  status(): Promise<ResearchWorkerToolStatus>;
+  submitDevelopment(
+    input: ResearchWorkerDevelopmentSubmissionInput
+  ): Promise<ResearchWorkerDevelopmentSubmissionResult>;
+  selectDevelopment(
+    input: ResearchWorkerDevelopmentSelectionInput
+  ): Promise<ResearchWorkerSelectionResult>;
+  finishWithoutSubmission(
+    input: ResearchWorkerFinishInput
+  ): Promise<ResearchWorkerFinishResult>;
+}
+
+export interface ResearchWorkerSessionInput {
+  artifact_dir: string;
+  program_path: string;
+  notebook_path: string;
+  submission_limit: number;
+  timeout_ms: number;
+  arena_context?: string;
+  tools: ResearchWorkerToolPort;
+}
+
+export type ResearchWorkerSessionResult =
+  | {
+      status: "selected";
+      summary: string;
+      selected_submission_sequence: number;
+      provider_command_count: number;
+    }
+  | {
+      status: "finished_without_submission";
+      summary: string;
+      provider_command_count: number;
+    }
+  | {
+      status: "failed";
+      summary: string;
+      provider_command_count: number;
+      failure_reason?: AgentEditFailureReason;
+      error?: string;
+    };
+
+export interface ResearchWorkerSessionAdapter {
+  readonly agent: ManagedResearchAgent;
+  runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult>;
 }
 
 export interface TradingScenarioEvaluationResult {
@@ -211,10 +402,13 @@ export interface TradingScenarioEvaluationResult {
   summary: string;
   risk_decision: TradingRiskDecision;
   profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
   events_path: string;
   provider_request_count: number;
   runner_command_count: number;
   runner_command_evidence?: TradingArtifactCommandEvidenceSummary[];
+  candidate_events: TradingSystemEvent[];
+  provider_requests: TradingProviderRequestLog[];
 }
 
 export interface TradingResearchNotebookEntry {
@@ -232,6 +426,7 @@ export interface TradingResearchNotebookEntry {
   started_at: string;
   completed_at: string;
   evaluation: TradingEvaluationResult;
+  selected_for_sealed_submission?: boolean;
 }
 
 export interface TradingResearchNotebook {
@@ -239,16 +434,43 @@ export interface TradingResearchNotebook {
   mode: TradingResearchMode;
   agent: ManagedResearchAgent;
   program_path: string;
+  prior_checkpoint?: TradingResearchPriorCheckpoint;
   best_score?: number;
   best_artifact_dir?: string;
+  session_protocol_version?: "research_worker_autonomous_session_v1";
+  session_status?: Exclude<ResearchWorkerSessionStatus, "open">;
+  selected_development_submission?: number;
   entries: TradingResearchNotebookEntry[];
+}
+
+export interface TradingResearchPriorCheckpoint {
+  research_worker_checkpoint_id: string;
+  terminal_status: ResearchWorkerCheckpointTerminalStatus;
+  terminal_reason: ResearchWorkerCheckpointTerminalReason;
+  admission_status?: "admitted" | "duplicate" | "quarantined";
+  admission_reason?: string;
+  notebook: ResearchWorkerCheckpointNotebook;
 }
 
 export interface TradingResearchLoopResult {
   session_id: string;
   run_root: string;
   notebook_path: string;
+  research_preflight_commitment: ResearchPreflightCommitmentRecord;
   best_score?: number;
   best_artifact_dir?: string;
+  session_status?: Exclude<ResearchWorkerSessionStatus, "open">;
+  selected_development_submission?: number;
+  submitted_artifact_dir?: string;
+  submitted_artifact_digest?: string;
+  sealed_admission?: {
+    commitment_id: string;
+    commitment_digest: string;
+    suite_digest: string;
+    submission_sequence: 1;
+    artifact_digest: string;
+    events_path: string;
+    evaluation: TradingEvaluationResult;
+  };
   entries: TradingResearchNotebookEntry[];
 }

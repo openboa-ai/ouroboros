@@ -1,5 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { hostname } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -10,12 +12,22 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
+  ResearchControlStudyExecutionLeaseOwner,
   RunControlAuditInput,
   SandboxAdapterKind,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
-import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
+import type { ResearchControlStudyExecutionLeasePort } from
+  "@ouroboros/application/ports/research-control-study-execution-lease";
+import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
+import {
+  FileSystemResearchControlStudyExecutionLeaseStore,
+  FIXTURE_SYSTEM_CODE_ID,
+  LocalStore,
+  LocalStoreError,
+  currentProcessStartMarker
+} from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
 import type { EvaluationProviderAdapter } from "@ouroboros/application/ports/provider";
@@ -24,6 +36,7 @@ import {
   DockerSandboxesSbxSandboxAdapter,
   type SandboxAdapter
 } from "@ouroboros/adapters/sandbox/adapter";
+import { FileSystemCodeArtifactResolver } from "@ouroboros/adapters/artifact/system-code-artifact-resolver";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
   getCandidateLatestValidationState,
@@ -49,6 +62,7 @@ import {
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
 import type {
+  ManagedResearchAgent,
   ReplayTradingApiProviderSession,
   TradingArtifactRunnerKind,
   TradingResearchAgentAdapter
@@ -66,6 +80,18 @@ import {
   type AgentProfileExecFile
 } from "@ouroboros/application/agent/profiles";
 import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import {
+  ResearchAllocationPolicyDecisionCoordinator,
+  type ResearchAllocationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-allocation-policy-decision";
+import {
+  ResearchGeneralizationOutcomeCoordinator,
+  type ResearchGeneralizationOutcomeCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-generalization-outcome-coordinator";
+import {
+  ResearchGeneralizationPolicyDecisionCoordinator,
+  type ResearchGeneralizationPolicyDecisionCoordinatorLifecycle
+} from "@ouroboros/application/candidate/research-generalization-policy-decision";
 import { createOperatorController } from "@ouroboros/application/controllers/operator";
 import {
   isTradingResearchRuntimeAgent,
@@ -82,14 +108,38 @@ import {
 } from "@ouroboros/application/trading/paper/commands";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
+import {
+  PaperTradingSessionService,
+  type PaperTradingRecoveryOutcome
+} from "@ouroboros/application/trading/paper/session-service";
+import { createResearchControlStudyArmSessionFactory } from
+  "./candidate/arena/research-control-study-arm-session-factory";
+import { createResearchControlStudyServerScheduler } from
+  "./candidate/arena/research-control-study-server-runtime";
+import {
+  createResearchControlStudyExecutionLeaseSessionFactory,
+  type ResearchControlStudyExecutionLeaseSessionFactory
+} from "./candidate/arena/research-control-study-execution-lease-session";
+import {
+  ResearchControlStudyCommitmentCoordinator,
+  type ResearchControlStudyCommitmentCoordinatorLifecycle
+} from "./candidate/arena/research-control-study-commitment-coordinator";
+import type { ResearchControlStudySchedulerLifecycle } from
+  "./candidate/arena/research-control-study-scheduler";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
+
+const RUNTIME_REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../.."
+);
 
 export { paperTradingApiProviderNetworkOptions };
 
 export interface BuildServerOptions {
   store?: LocalStore;
+  repoRoot?: string;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   sandboxAdapters?: Partial<Record<SandboxAdapterKind, SandboxAdapter>>;
   replayRunRoot?: string;
@@ -110,10 +160,124 @@ export interface BuildServerOptions {
     binding: GatewayRuntimeBinding,
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
+  paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
+  recoverPaperTradingSessionsOnStart?: boolean;
+  onPaperTradingSessionServiceCreated?: (service: PaperTradingSessionService) => void;
+  onPaperTradingRecovery?: (
+    outcomes: readonly PaperTradingRecoveryOutcome[]
+  ) => void | Promise<void>;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
+  researchControlStudyScheduler?: ResearchControlStudySchedulerLifecycle;
+  researchControlStudyPollIntervalMs?: number;
+  researchControlStudyWorkspaceRoot?: string;
+  researchControlStudyArmSessionFactory?: ReturnType<
+    typeof createResearchControlStudyArmSessionFactory
+  >;
+  researchControlStudyExecutionLeasePort?:
+    ResearchControlStudyExecutionLeasePort;
+  researchControlStudyExecutionLeaseOwner?:
+    ResearchControlStudyExecutionLeaseOwner;
+  researchControlStudyExecutionLeaseDurationMs?: number;
+  researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
+  researchControlStudyCommitmentCoordinator?:
+    ResearchControlStudyCommitmentCoordinatorLifecycle;
+  researchGeneralizationOutcomeCoordinator?:
+    ResearchGeneralizationOutcomeCoordinatorLifecycle;
+  researchGeneralizationPolicyDecisionCoordinator?:
+    ResearchGeneralizationPolicyDecisionCoordinatorLifecycle;
+  researchAllocationPolicyDecisionCoordinator?:
+    ResearchAllocationPolicyDecisionCoordinatorLifecycle;
+  runResearchControlStudiesOnStart?: boolean;
+  onResearchControlStudySchedulerCreated?: (
+    scheduler: ResearchControlStudySchedulerLifecycle
+  ) => void;
   operatorApiToken?: string | false;
   operatorCorsOrigins?: readonly string[];
+}
+
+export function createResearchControlStudyServerLeaseSessionFactory(
+  input: {
+    store: LocalStore;
+    port?: ResearchControlStudyExecutionLeasePort;
+    owner?: ResearchControlStudyExecutionLeaseOwner;
+    leaseDurationMs?: number;
+    renewalIntervalMs?: number;
+  }
+): ResearchControlStudyExecutionLeaseSessionFactory {
+  return createResearchControlStudyExecutionLeaseSessionFactory({
+    port: input.port ??
+      new FileSystemResearchControlStudyExecutionLeaseStore(
+        input.store.root()
+      ),
+    owner: input.owner ?? {
+      server_instance_id: randomUUID(),
+      host_id: hostname(),
+      process_id: process.pid,
+      process_start_marker: currentProcessStartMarker()
+    },
+    ...(input.leaseDurationMs === undefined
+      ? {}
+      : { leaseDurationMs: input.leaseDurationMs }),
+    ...(input.renewalIntervalMs === undefined
+      ? {}
+      : { renewalIntervalMs: input.renewalIntervalMs })
+  });
+}
+
+export function createResearchControlStudyServerCommitmentCoordinator(
+  input: {
+    store: LocalStore;
+    researchAgentIdentity:
+      () => ManagedResearchAgent | Promise<ManagedResearchAgent>;
+    marketData: GatewayMarketDataPort;
+    repoRoot?: string;
+    now?: () => string;
+  }
+): ResearchControlStudyCommitmentCoordinator {
+  return new ResearchControlStudyCommitmentCoordinator({
+    store: input.store,
+    researchAgentIdentity: input.researchAgentIdentity,
+    marketData: input.marketData,
+    repoRoot: path.resolve(input.repoRoot ?? RUNTIME_REPO_ROOT),
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function createResearchAllocationPolicyDecisionServerCoordinator(
+  input: {
+    store: LocalStore;
+    now?: () => string;
+  }
+): ResearchAllocationPolicyDecisionCoordinator {
+  return new ResearchAllocationPolicyDecisionCoordinator({
+    store: input.store,
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function createResearchGeneralizationOutcomeServerCoordinator(
+  input: {
+    store: LocalStore;
+    now?: () => string;
+  }
+): ResearchGeneralizationOutcomeCoordinator {
+  return new ResearchGeneralizationOutcomeCoordinator({
+    store: input.store,
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function createResearchGeneralizationPolicyDecisionServerCoordinator(
+  input: {
+    store: LocalStore;
+    now?: () => string;
+  }
+): ResearchGeneralizationPolicyDecisionCoordinator {
+  return new ResearchGeneralizationPolicyDecisionCoordinator({
+    store: input.store,
+    ...(input.now ? { now: input.now } : {})
+  });
 }
 
 interface CreateEvaluationRunBody {
@@ -208,6 +372,7 @@ interface RuntimeControllerResponse {
 
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const store = options.store ?? new LocalStore();
+  const repoRoot = path.resolve(options.repoRoot ?? RUNTIME_REPO_ROOT);
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
@@ -247,19 +412,32 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ?? new DockerSandboxesSbxSandboxAdapter()
   };
   const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
-  const paperTradingCommandService = new PaperTradingCommandService({
+  const paperTradingArtifactResolver = options.paperTradingArtifactResolver
+    ?? new FileSystemCodeArtifactResolver({ repoRoot });
+  const paperTradingSessionService = new PaperTradingSessionService({
     store,
     sandboxAdapters,
     marketData: gatewayMarketDataPort,
-    tradingGatewayEnvironment,
     runner: paperTradingEvaluationRunner,
     intervalMs: paperTradingEvaluationIntervalMs,
     sandboxIntervalMs: options.paperTradingSandboxIntervalMs,
     apiProviderFactory: options.paperTradingApiProviderFactory,
+    artifactResolver: paperTradingArtifactResolver,
     apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
     logger: console
   });
+  options.onPaperTradingSessionServiceCreated?.(paperTradingSessionService);
+  const paperTradingCommandService = new PaperTradingCommandService({
+    store,
+    marketData: gatewayMarketDataPort,
+    tradingGatewayEnvironment,
+    sessions: paperTradingSessionService,
+    artifactResolver: paperTradingArtifactResolver
+  });
   await store.initialize();
+  const paperTradingRecoveryOutcomes = options.recoverPaperTradingSessionsOnStart === false
+    ? []
+    : await paperTradingSessionService.recoverRunningEvaluations();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
   if (
     persistedResearcherProvider
@@ -267,6 +445,109 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   ) {
     candidateArenaRunner.setResearchAgent(persistedResearcherProvider.selected_provider);
   }
+  const researchControlStudyArmSessionFactory =
+    options.researchControlStudyArmSessionFactory ??
+    createResearchControlStudyArmSessionFactory({
+      marketData: gatewayMarketDataPort,
+      createSandboxAdapters(context) {
+        return {
+          deterministic_test: new DeterministicSandboxAdapter({
+            allowedArtifactRoots: [
+              path.join(context.root, "candidate-arena-runs")
+            ],
+            allowedCapabilityPolicyIds: [
+              "candidate-arena-paper-system-code"
+            ]
+          }),
+          docker_sandboxes_sbx: new DockerSandboxesSbxSandboxAdapter({
+            workspacePath: context.root
+          })
+        };
+      },
+      createArtifactResolver(context) {
+        return new FileSystemCodeArtifactResolver({
+          repoRoot,
+          generatedArtifactRoot: path.join(context.root, "candidate-arena-runs")
+        });
+      },
+      intervalMs: paperTradingEvaluationIntervalMs,
+      ...(options.paperTradingSandboxIntervalMs === undefined
+        ? {}
+        : { sandboxIntervalMs: options.paperTradingSandboxIntervalMs }),
+      ...(options.paperTradingApiProviderFactory
+        ? { apiProviderFactory: options.paperTradingApiProviderFactory }
+        : {}),
+      apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
+      logger: console
+    });
+  const researchControlStudyScheduler =
+    options.researchControlStudyScheduler ??
+    createResearchControlStudyServerScheduler({
+      store,
+      commitmentCoordinator:
+        options.researchControlStudyCommitmentCoordinator ??
+        createResearchControlStudyServerCommitmentCoordinator({
+          store,
+          researchAgentIdentity: () => tradingResearchAgentFactory(
+            candidateArenaRunner.researchAgent()
+          ).agent,
+          marketData: gatewayMarketDataPort,
+          repoRoot
+        }),
+      generalizationOutcomeCoordinator:
+        options.researchGeneralizationOutcomeCoordinator ??
+        createResearchGeneralizationOutcomeServerCoordinator({ store }),
+      generalizationPolicyDecisionCoordinator:
+        options.researchGeneralizationPolicyDecisionCoordinator ??
+        createResearchGeneralizationPolicyDecisionServerCoordinator({ store }),
+      policyDecisionCoordinator:
+        options.researchAllocationPolicyDecisionCoordinator ??
+        createResearchAllocationPolicyDecisionServerCoordinator({ store }),
+      leaseSessionFactory:
+        createResearchControlStudyServerLeaseSessionFactory({
+          store,
+          ...(options.researchControlStudyExecutionLeasePort
+            ? { port: options.researchControlStudyExecutionLeasePort }
+            : {}),
+          ...(options.researchControlStudyExecutionLeaseOwner
+            ? { owner: options.researchControlStudyExecutionLeaseOwner }
+            : {}),
+          ...(options.researchControlStudyExecutionLeaseDurationMs ===
+              undefined
+            ? {}
+            : {
+                leaseDurationMs:
+                  options.researchControlStudyExecutionLeaseDurationMs
+              }),
+          ...(options
+            .researchControlStudyExecutionLeaseRenewalIntervalMs ===
+              undefined
+            ? {}
+            : {
+                renewalIntervalMs: options
+                  .researchControlStudyExecutionLeaseRenewalIntervalMs
+              })
+        }),
+      marketData: gatewayMarketDataPort,
+      agentFactory: tradingResearchAgentFactory,
+      createArmSessions: researchControlStudyArmSessionFactory,
+      repoRoot,
+      ...(options.researchControlStudyWorkspaceRoot
+        ? { workspaceRoot: options.researchControlStudyWorkspaceRoot }
+        : {}),
+      ...(options.candidateArenaArtifactRunner
+        ? { artifactRunner: options.candidateArenaArtifactRunner }
+        : {}),
+      ...(options.candidateArenaReplayProviderFactory
+        ? { replayProviderFactory: options.candidateArenaReplayProviderFactory }
+        : {}),
+      ...(options.researchControlStudyPollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: options.researchControlStudyPollIntervalMs })
+    });
+  options.onResearchControlStudySchedulerCreated?.(
+    researchControlStudyScheduler
+  );
 
   const server = Fastify({
     logger: false
@@ -1092,7 +1373,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const operatorService = new OperatorService({
     store,
     candidateArenaRunner,
-    paperTradingEvaluationRunner,
+    paperTradingEvaluationRunner: paperTradingSessionService,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
       run: async (candidateId) => paperTradingCommandService.start(candidateId, {})
@@ -1137,9 +1418,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
   server.addHook("onClose", async () => {
+    await researchControlStudyScheduler.stop();
     await candidateArenaRunner.stopAndDrain();
     await operatorService.drainAutonomousPaperStarts();
-    await paperTradingCommandService.stopAllSessions();
+    await paperTradingSessionService.stopAllSessions();
   });
   await operatorService.resumeAutonomousArenaLoop();
   const operatorController = createOperatorController(operatorService);
@@ -1176,7 +1458,31 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     })
   ]);
 
+  if (options.runResearchControlStudiesOnStart !== false) {
+    researchControlStudyScheduler.start();
+  }
+
+  notifyPaperTradingRecovery(
+    options.onPaperTradingRecovery,
+    paperTradingRecoveryOutcomes
+  );
   return server;
+}
+
+function notifyPaperTradingRecovery(
+  observer: BuildServerOptions["onPaperTradingRecovery"],
+  outcomes: readonly PaperTradingRecoveryOutcome[]
+): void {
+  if (!observer) {
+    return;
+  }
+  try {
+    void Promise.resolve(observer(outcomes)).catch((error) => {
+      console.error("PaperTrading recovery observer failed.", error);
+    });
+  } catch (error) {
+    console.error("PaperTrading recovery observer failed.", error);
+  }
 }
 
 function resolveOperatorApiToken(

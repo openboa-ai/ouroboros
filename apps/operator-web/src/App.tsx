@@ -12,6 +12,7 @@ import type {
   ReplayRunEvidenceReadModel,
   ReplayRunMetricReadModel,
   ReplayRunValidationStateReadModel,
+  ResearchGeneralizationReadModel,
   RunControlReadModel,
   SandboxDetailReadModel,
   TradingRunTranscriptReadModel,
@@ -162,6 +163,10 @@ import {
   ResearchFindingClustersSection,
   type ResearchFindingClusterEntry
 } from "@/sections/research/research-finding-clusters-section";
+import {
+  ResearchGeneralizationSection,
+  type ResearchGeneralizationSectionModel
+} from "@/sections/research/research-generalization-section";
 import {
   ResearchPaperLearningSection,
   type ResearchPaperLearningField
@@ -2819,6 +2824,11 @@ export function CandidateDetail({
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
   const paperBoardLearning = tradingReviewPacket?.lineage.paper_board_learning;
+  const researchGeneralization = operator?.candidate_arena.research_generalization
+    ?? candidateArena?.research_generalization;
+  const researchGeneralizationSectionModel = researchGeneralization
+    ? buildResearchGeneralizationSectionModel(researchGeneralization)
+    : undefined;
   const findingClusters = operator?.candidate_arena.finding_clusters ?? candidateArena?.finding_clusters ?? [];
   const tabStateBadges = operatorTabStateBadges(operator);
   const tradingCommandRemediations = (operator?.latest_commands ?? []).flatMap((command) => {
@@ -3409,6 +3419,9 @@ export function CandidateDetail({
           summary={paperBoardLearning.summary}
           fields={paperLearningFields}
         />
+      )}
+      {researchGeneralizationSectionModel && (
+        <ResearchGeneralizationSection model={researchGeneralizationSectionModel} />
       )}
       {researchFindingClusterEntries.length > 0 && (
         <ResearchFindingClustersSection entries={researchFindingClusterEntries} />
@@ -4056,6 +4069,119 @@ function buildOperatorProfitSummary(
       tone: ledger?.chain_complete ? "good" : "neutral"
     }
   ];
+}
+
+function buildResearchGeneralizationSectionModel(
+  generalization: ResearchGeneralizationReadModel
+): ResearchGeneralizationSectionModel {
+  const active = generalization.active_protocol;
+  const latest = generalization.latest_outcome;
+  const latestDecision = generalization.latest_policy_decision;
+  const effectiveDecision = generalization.effective_policy_decision;
+  return {
+    status: generalization.status,
+    protocolCount: String(generalization.protocol_count),
+    outcomeCount: String(generalization.outcome_count),
+    authorityStatus: generalization.authority_status,
+    active: active
+      ? {
+          protocolId: active.research_generalization_protocol_id,
+          committedAt: active.committed_at,
+          collectionDeadlineAt: active.collection_deadline_at,
+          assignedProgress:
+            `${active.assigned_study_count} / ${active.planned_study_count} assigned`,
+          terminalProgress:
+            `${active.terminal_study_count} / ${active.planned_study_count} terminal`,
+          nextAction: active.next_action,
+          authorityStatus: active.authority_status,
+          conditionBlocks: active.condition_blocks.map((block) => ({
+            label: block.condition_block,
+            value:
+              `${block.assigned_study_count} / ${block.planned_study_count} assigned; `
+              + `${block.terminal_study_count} / ${block.planned_study_count} terminal`
+          }))
+        }
+      : null,
+    latest: latest
+      ? {
+          inference: latest.inference_status,
+          adjudicatedAt: latest.adjudicated_at,
+          studyOutcomes:
+            `${latest.completed_study_count} completed / ${latest.missing_study_count} missing / `
+            + `${latest.ineligible_study_count} ineligible`,
+          signEvidence:
+            `${latest.non_tied_study_count} non-tied / ${latest.tied_study_count} tied / `
+            + `p ${latest.exact_sign_test_p_value}`,
+          equalWeightMean: latest.equal_weight_mean_rate_difference === null
+            ? "not available"
+            : String(latest.equal_weight_mean_rate_difference),
+          distinctBaselines: String(latest.distinct_baseline_count),
+          harmfulBlocks: latest.harmful_condition_blocks.join(", ") || "none",
+          policyDecisionEligibility: latest.policy_decision_eligibility,
+          nextAction: latest.next_action,
+          authority:
+            `policy replacement ${latest.policy_replacement_authority}; `
+            + `promotion ${latest.promotion_authority}; `
+            + `order submission ${latest.order_submission_authority}; `
+            + `live exchange ${latest.live_exchange_authority}; ${latest.authority_status}`
+        }
+      : null,
+    latestDecision: latestDecision
+      ? {
+          decisionId: latestDecision.research_generalization_policy_decision_id,
+          protocolId: latestDecision.research_generalization_protocol_id,
+          outcomeId: latestDecision.research_generalization_outcome_id,
+          status: latestDecision.decision_status,
+          reason: latestDecision.decision_reason,
+          effectiveMode: latestDecision.effective_default_mode ?? "none",
+          decidedAt: latestDecision.decided_at,
+          authority:
+            `research policy selection ${latestDecision.research_policy_selection_authority}; `
+            + `evaluation ${latestDecision.evaluation_authority}; `
+            + `promotion ${latestDecision.promotion_authority}; `
+            + `order submission ${latestDecision.order_submission_authority}; `
+            + `live exchange ${latestDecision.live_exchange_authority}; `
+            + latestDecision.authority_status
+        }
+      : null,
+    effectiveDecision: effectiveDecision
+      ? {
+          decisionId:
+            effectiveDecision.research_generalization_policy_decision_id,
+          protocolId: effectiveDecision.research_generalization_protocol_id,
+          outcomeId: effectiveDecision.research_generalization_outcome_id,
+          effectiveMode: effectiveDecision.effective_default_mode,
+          decidedAt: effectiveDecision.decided_at,
+          applicationStatus:
+            effectiveDecision.application.application_status,
+          allocationCount: String(
+            effectiveDecision.application.allocation_count
+          ),
+          completedTickCount: String(
+            effectiveDecision.application.completed_tick_count
+          ),
+          latestAllocation: effectiveDecision.application.latest_allocation
+            ? {
+                allocationId: effectiveDecision.application.latest_allocation
+                  .candidate_arena_research_allocation_id,
+                tickId:
+                  effectiveDecision.application.latest_allocation.tick_id,
+                allocatedAt: effectiveDecision.application.latest_allocation
+                  .allocated_at,
+                completedAt: effectiveDecision.application.latest_allocation
+                  .completed_at ?? "not completed"
+              }
+            : null,
+          authority:
+            `research policy selection ${effectiveDecision.research_policy_selection_authority}; `
+            + `evaluation ${effectiveDecision.evaluation_authority}; `
+            + `promotion ${effectiveDecision.promotion_authority}; `
+            + `order submission ${effectiveDecision.order_submission_authority}; `
+            + `live exchange ${effectiveDecision.live_exchange_authority}; `
+            + effectiveDecision.authority_status
+        }
+      : null
+  };
 }
 
 function findProfitMetric(detail?: ReplayRunDetailReadModel): ReplayRunMetricReadModel | undefined {

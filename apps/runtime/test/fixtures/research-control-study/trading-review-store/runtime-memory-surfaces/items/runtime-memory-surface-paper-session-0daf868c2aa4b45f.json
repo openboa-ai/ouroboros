@@ -1,0 +1,11 @@
+{
+  "record_kind": "runtime_memory_surface",
+  "version": 1,
+  "runtime_memory_surface_id": "runtime-memory-surface-paper-session-0daf868c2aa4b45f",
+  "trust_class": "fixture_context",
+  "access_mode": "read_only",
+  "surface_version": "paper-session-v1",
+  "visibility": "operator_visible",
+  "quarantine_status": "not_quarantined",
+  "authority_status": "not_evidence"
+}

@@ -1,0 +1,33 @@
+{
+  "record_kind": "paper_trading_comparison_tick_acknowledgement",
+  "version": 1,
+  "paper_trading_comparison_tick_acknowledgement_id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-52db8-5914878cf9341db6",
+  "delivery_ref": {
+    "record_kind": "paper_trading_comparison_tick_delivery",
+    "id": "paper-comparison-tick-delivery-paper-comparison-activation-attempt-52db8bc8859855b8b806c7ca74c92123-cha-90e3c5f819c04afa"
+  },
+  "delivery_digest": "sha256:7b0b04988aa4e61a3c61a46bd44c5f7a09645366864842c775646297ffaae556",
+  "paper_trading_comparison_activation_attempt_ref": {
+    "record_kind": "paper_trading_comparison_activation_attempt",
+    "id": "paper-comparison-activation-attempt-52db8bc8859855b8b806c7ca74c92123"
+  },
+  "paper_trading_comparison_activation_attempt_digest": "sha256:76ae5225e9f466d69c59401fa5b20143cd2d1163f5d80841020b136153d9ae85",
+  "role": "challenger",
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-b6b17eb3274ae27f"
+  },
+  "tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-6cea95bfefe5c459"
+  },
+  "tick_digest": "sha256:68a567cc7d7157b3e2db2a863e65fd315df8d5632c437521b411acce9fae3119",
+  "tick_sequence": 1,
+  "provider_request_count_at_acknowledgement": 3,
+  "endpoint": "POST /comparison/tick/ack",
+  "acknowledged_at": "2026-07-10T00:04:39.002Z",
+  "acknowledgement_digest": "sha256:6a535656ee57ae3ddc1d4109f3bcdd544cc25796a310c0633e015ff5893cae96",
+  "live_exchange_authority": false,
+  "order_submission_authority": false,
+  "authority_status": "not_live"
+}

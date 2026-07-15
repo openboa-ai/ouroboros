@@ -6,7 +6,15 @@ Ouroboros is organized around the Candidate Arena trust kernel:
 CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> one bounded ResearchWorkerSession
+-> immutable development submissions and aggregate replay/backtest feedback
+-> explicit selection or no submission
+-> frozen SystemCode and one-shot rotating sealed admission
+-> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
+-> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard, findings, and lineage
 -> selected continuous Paper Trading
 -> Gateway
@@ -14,12 +22,148 @@ CandidateArena
 ```
 
 Canonical naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
+Inside that compact product-facing sequence, the enforced evidence spine inserts
+`PaperTradingHandoffConformance`, `ResearchBehaviorFingerprint`, and
+`CandidateAdmissionDecision` between ResearchPreflight and selected Paper Trading.
 
-Researchers and LLM agents are candidate generators. Replay/backtest is a research tool, not final
-evaluation authority. Continuous paper trading is the evaluation authority for candidate ranking,
-and paper `Gateway`/`Ledger` evidence belongs only to selected Trading Runs, not to every candidate.
+Researchers and LLM agents are candidate generators. Development replay/backtest is an adaptive
+research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
+one `ResearchPreflightCommitment` to the allocation, direction, worker, source SystemCode, bounded
+development suite, and evaluator-owned sealed suite commitment. The worker never receives the raw
+seed, sealed scenarios, or sealed outcome. The application creates one provider-independent
+`ResearchWorkerSession` over a mutable working artifact and an externally owned development
+evaluator. A session-local adapter exposes only status, bounded immutable submission, explicit
+selection, and finish capabilities. Submission effects are serialized and idempotent; aggregate
+feedback returns to the worker, while scenario and sealed evidence remain outside. Selection binds
+one completed development sequence and copied bytes. Current workspace state and development rank
+cannot substitute for selection. No selection leaves the sealed suite unclaimed and produces no
+candidate graph. One selected artifact may be submitted to the sealed set only once. Process loss
+fails that commitment closed rather than resampling. Exact terminal
+commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and
+generated paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
+canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
+undeclared closure state. Continuous paper trading is the product evaluation
+authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs only to selected
+Trading Runs, not to every candidate.
+CandidateArena separately derives an append-only `ResearchBehaviorFingerprint` from normalized
+effective orders on the exact development suite. LocalStore compares only protocol- and
+suite-compatible fingerprints linked from earlier admitted decisions. An exact match keeps its
+Finding and Lineage but receives no population slot; unavailable evidence fails closed. This
+comparison consumes no sealed or paper result and claims no global semantic equivalence.
+`ResearchPopulationDiversity` is a derived CQRS read model over the same latest ten completed
+CandidateArena ticks plus exact commitment, direction, fingerprint, and admission records. It
+reports assigned-direction concentration separately from same-cohort exact behavior concentration.
+Multiple fingerprint protocol/development-suite cohorts fail closed as `incomparable_suites`; no
+cross-cohort unique or entropy value is synthesized. The top-level distributions measure rolling
+population coverage; the required newest-first `tick_series` recomputes the same distributions for
+each exact tick cross-section. A protocol/suite transition can therefore close only the window
+comparison while valid within-tick entropy remains visible. The application builder returns bounded
+aggregate metrics only and has no mutation, scheduling, evaluation, or promotion authority.
+CandidateArena and the next-worker context share that object rather than raw fingerprint evidence.
+The runtime composition root also owns `ResearchControlCampaign`. It snapshots every regular
+LocalStore file except campaign evidence collections, separately seals the actual single-file
+research source, and clones that immutable baseline into independent adaptive and static LocalStore
+roots. Domain/application services own campaign, arm-intent, and research-report decisions;
+LocalStore validates append-only graphs; the runtime alone owns filesystem placement and paired
+execution. Arm ticks and candidates do not enter the primary Arena store. The report is diagnostic
+and remains unadjudicated. A deterministic `ResearchControlCampaignPaperSchedule` freezes every
+report slot before paper effects. Candidate-bearing arm stores retain their own TradingRuns and
+Ledger evidence; a coordinator-owned `ResearchControlCampaignPaperStartBatch` is the compact
+cross-arm witness that paired first and repeated ticks used one shared public market/execution
+snapshot. A bounded runtime executor derives one next action from append-only evidence, runs source
+and strict confirmation windows through existing paper services, and closes every candidate slot
+with one arm-local `ResearchControlCampaignPaperSlotOutcome`. The collector replicates those exact
+slot outcomes to the coordinator and the application adjudicator persists one authority-closed
+`ResearchControlCampaignOutcome`. Existing graph and outcome records replay without reopening
+completed effects. `createResearchControlCampaignPaperRuntime` is the canonical internal factory
+for these coordinators, the evidence loader, executor, and interruptible runner, while
+`runResearchControlCampaign` exposes an optional single-step hook.
+`createResearchControlCampaignPaperRuntimeArm` is the lower composition boundary. It binds one
+arm-local store and session service to the existing comparison, activation, tick, checkpoint,
+qualification, verdict, confirmation, and release services. One activation coordinator owns the
+arm's source and confirmation session attempts. Confirmation execution projects one durable
+transition at a time; a window `next_wake_at` becomes an executor wait step, and restart recovery
+stops an unowned running attempt instead of adopting it.
+Domain and application services also own `ResearchControlStudy`, which precommits 6 to 30 exact
+campaign IDs under one frozen condition and baseline before any planned campaign is stored.
+LocalStore enforces that order and exact graph, while `ResearchControlStudyOutcome` consumes every
+terminal planned campaign outcome under one fixed paired exact sign test. Its causal scope is
+same-baseline stochastic replication only, with no early stopping and no direct policy mutation.
+The runtime `ResearchControlStudyExecutor` derives the earliest legal action from those records,
+composes one campaign through terminal paper outcome per advance, and reloads exact persisted bytes
+before progressing. Its default arm path opens each copied LocalStore root and receives a session
+service bound to that exact store before applying the arm factory; explicit custom arm composition
+remains available. `createResearchControlStudyRuntime` adds a sequential runner without a second
+progress record; restart therefore reconstructs state from the evidence graph.
+`ResearchControlStudyProcessSupervisor` adds the process-level queue without adding another durable
+record. One composition root discovers incomplete studies from exact study/outcome lists, orders
+them by commitment time and ID, opens one injected runtime, verifies persisted completion, and
+rescans until caught up. It fails before later work when discovery, runtime opening, execution, or
+completion persistence is invalid. `ResearchControlStudyCommitmentCoordinator` is the internal
+pre-discovery application component. It derives one deterministic, bounded study from the latest
+exact TradingPromotion, its sealed confirmation campaign, the selected managed-agent identity, and
+repository policy. It retains the campaign's exact numeric, market-data, and paper settings,
+normalizes comparison mode to `champion_challenge`, bounds the queue at one incomplete study, and
+uses LocalStore create-only publication to resolve same-root process races without overwrite. Its
+committed, existing, or deferred result is operational state only; malformed or drifted evidence
+fails closed and it grants no downstream authority. `ResearchControlStudyScheduler` invokes this
+component before each process-local supervisor cycle under `buildServer`: default startup follows
+Store initialization and paper recovery, a bounded interruptible wait considers later promotions,
+and shutdown drains the study path before CandidateArena and shared paper sessions. The server
+runtime reconstructs each campaign only from its persisted study condition and revalidates the
+configured research-agent identity.
+The internal `ResearchMemoryControlStudy` composition is independent of that allocation-policy
+study. Domain/application decisions own the pre-effect study, pair, and all-pairs outcome;
+LocalStore validates append-only source graphs; runtime owns bounded baseline copies, opaque
+alternating side paths, one shared evaluator opportunity capability, concurrent initial sides, and
+evidence-derived restart. Worker payloads omit arm mode and assignment labels. Completed or failed
+pairs are never selectively replaced, and the aggregate has exact-repeat inference only, with no
+economic or downstream authority.
+The application `ResearchGeneralizationProtocol` service adds a create-only cross-study commitment
+without widening `ResearchControlStudy` itself. A Gateway `MarketDataPort` capability returns an
+exact closed public kline window; the pure classifier maps that pre-effect evidence into one frozen
+condition block. The commitment coordinator binds only the earliest matching deterministic slot,
+and LocalStore validates the complete protocol, assignment, source-artifact, baseline, and time
+graph before publication. `ResearchGeneralizationOutcome` is a separate external aggregate with
+equal block weighting and conservative missing/ineligible accounting. Its coordinator enumerates
+the entire persisted source graph, closes at most one complete or expired protocol after scheduler
+catch-up, and runs before same-baseline allocation-policy reconciliation. Adapters fetch public
+evidence; application services classify, schedule, and adjudicate; the runtime composition root only
+wires these ports and lifecycles. No layer converts this evidence into promotion, orders, private
+exchange access, or live authority.
+`ResearchControlStudyExecutionLease` is the outer same-host ownership boundary. A filesystem
+adapter under the shared LocalStore root atomically claims the oldest pending study; one renewable
+session guards every executor advance and releases on completion, failure, or shutdown. Active
+snapshots are operational mutable state, while released or confirmed-dead expired snapshots become
+immutable terminal history. Alive or liveness-unknown owners fail closed; takeover requires expiry
+and a confirmed-absent PID on the same host. This is runtime coordination only, not evidence or
+policy authority. Multi-host storage, PID namespaces, and distributed fencing remain outside.
+Application services separately derive `ResearchAllocationPolicyDecision` from one exact persisted
+study and outcome. Only eligible supported same-baseline adaptive evidence can approve the studied
+policy digest; every other valid outcome is not approved and cannot select static control. Before
+an uncontrolled Arena tick, the allocation resolver chooses explicit caller intent first, then the
+latest approved decision for the current policy digest, then the repository adaptive default.
+`CandidateArenaResearchAllocation` seals the chosen basis before effects, and LocalStore reloads
+and verifies decision/outcome digests and time order. After a successful scheduler catch-up, the
+application `ResearchAllocationPolicyDecisionCoordinator` validates exact existing decisions and
+ensures only the oldest missing terminal outcome. All inference statuses are reconciled
+symmetrically, one per cycle. Equal completion milliseconds advance by one, regressed clocks fail,
+and LocalStore create-only publication plus service re-derivation accepts only an exact same-root
+winner. This grants research-policy selection only; promotion and champion runtime handoff remain
+outside the boundary.
+`ResearchWorker` is a stable logical identity for one direction and exact managed-agent profile,
+not a provider process. Its stable workspace owns per-tick sanitized notebooks. Every new
+commitment still runs isolated candidate bytes and closes through one append-only
+`ResearchWorkerCheckpoint` with a contiguous prior link, bounded cumulative submission accounting,
+zero retry authority, and completed or failed-closed status. Completed means either admission was
+recorded or the worker explicitly finished without selecting a submission. Restart reconciliation
+runs before a new tick effect: it reconstructs a terminal checkpoint from an exact persisted admission or closes
+the orphan as restart recovery. It never adopts a process or recreates evaluator-held sealed state.
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
+
+The separation is an evaluator-isolation control, not a proof of economic generalization or a
+complete reward-hacking defense. Prospective continuous paper comparison remains above it.
 
 Selected Paper Trading is a running `TradingSystem` session, not a snapshot-driven decision helper.
 The TradingSystem owns its decision cadence and emits `OrderRequest`s when its own strategy, tools,
@@ -27,8 +171,8 @@ market subscriptions, internal agent loop, or risk logic says to act. Paper obse
 checkpoint/readback events: refresh market evidence, consume newly emitted orders, record Gateway
 validation and fake execution, or record no-order continuity.
 
-Candidate generation may be parallel across `ResearchWorker` and `ResearchDirection` lanes or
-iterative across ticks. The architecture should preserve candidate population memory: losing
+Candidate generation may be parallel across stable `ResearchWorker` and `ResearchDirection` lanes
+or iterative across new tick commitments. The architecture should preserve candidate population memory: losing
 candidates, failed directions, findings, parent links, and lineage are inputs to the next
 generation.
 
@@ -138,8 +282,11 @@ This file is a compact development map. The canonical architecture contract live
 ## Current Development Boundary
 
 Preserve these separations: Candidate Arena state vs selected Trading Run execution,
-TradingSystem identity vs ResearchPreflight evidence, research-time replay/backtest vs continuous
-paper trading evaluation, TradingRun control vs OrderRequest generation, paper observation
+SystemCode artifact identity vs protocol-scoped behavior identity, TradingSystem identity vs
+ResearchPreflight evidence, research-time replay/backtest vs continuous
+paper trading evaluation, replay score vs exact PaperTradingHandoffConformance, handoff conformance
+vs economic/qualification authority, entrypoint bytes vs complete declared artifact closure,
+TradingRun control vs OrderRequest generation, paper observation
 checkpoint vs TradingSystem decision cadence, provider output as trace material rather than proof,
 and persistence with enough attribution to replay why state exists.
 Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the Sandbox

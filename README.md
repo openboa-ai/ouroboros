@@ -1,13 +1,15 @@
 # Ouroboros
 
 Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
-continuously improving AI agents to a hard, dynamic, outcome-gradable trading problem, then turns
-that external agent progress into parallel `TradingSystem` candidate search.
+continuously improving AI agents to a hard, dynamic trading problem with externally recorded
+economic outcomes, then turns that external agent progress into parallel `TradingSystem` candidate
+search.
 
-AI agents improve over time. Trading is hard, dynamic, adversarial, and objectively scoreable by
-`revenue - cost`, return, costs, risk, and paper evidence. Ouroboros exists to make that combination
-compound: generate many candidates, evaluate externally, keep findings and lineage, and prove only
-the selected candidate.
+AI agents improve over time. Trading is hard, dynamic, and adversarial. `revenue - cost`, return,
+costs, risk, and paper evidence provide objective accounting, but strategy quality remains noisy,
+path-dependent, and non-stationary. Ouroboros exists to make that combination compound: generate
+many candidates, evaluate externally, keep findings and lineage, and prove only the selected
+candidate under a precommitted evidence policy.
 
 ## Core Doctrine
 
@@ -22,7 +24,15 @@ market data with fake account, fake execution, and fake Ledger, and are judged b
 
 ```text
 parallel TradingSystem candidates
--> research-time replay/backtest preflight
+-> pre-effect ResearchPreflightCommitment
+-> bounded agent-owned ResearchWorkerSession
+-> immutable development submissions and aggregate replay/backtest feedback
+-> explicit selection or no submission
+-> frozen artifact and one-shot rotating sealed admission
+-> external PaperTradingHandoffConformance
+-> development-only ResearchBehaviorFingerprint comparison
+-> CandidateAdmissionDecision and materialization
+-> terminal ResearchWorkerCheckpoint
 -> leaderboard
 -> findings and lineage
 -> next generation
@@ -33,6 +43,178 @@ parallel TradingSystem candidates
 `TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
 an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
 evaluated in paper before it earns authority.
+
+Development replay success alone cannot claim runnable paper handoff. Each direction first
+persists a `ResearchPreflightCommitment` that binds allocation, direction, worker, source bytes,
+development budget, and evaluator-owned sealed-suite commitments before worker effects. The worker
+gets one bounded provider session and a session-local tool port. `status`, `submitDevelopment`,
+`selectDevelopment`, and `finishWithoutSubmission` are application capabilities, not public product
+commands. Each development call copies and evaluates an immutable external snapshot and returns
+aggregate feedback only. The worker explicitly selects a completed sequence; the host never falls
+back to the highest development score or current mutable workspace. No selection claims no sealed
+suite and records no submitted SystemCode, Evaluation, Finding, or admission. One selected frozen
+artifact is submitted only once to the rotating sealed set. Its development sequence and exact
+submitted digest remain durably bound while sealed submission sequence one denotes the one-shot
+sealed attempt. Raw evaluator seed and sealed scenarios remain process-local; process
+loss closes that commitment instead of reconstructing or resampling it. Every new admitted candidate
+must then bind the exact commitment, sealed terminal evaluation, submitted `SystemCode`, and one
+external `PaperTradingHandoffConformance`, and a
+generated candidate must revalidate that evidence before paper effects. For generated single-file
+Python candidates, the SystemCode digest covers the frozen manifest plus sole editable entrypoint;
+undeclared files, directories, symlinks, or manifest drift invalidate the closure. This gate proves bounded
+target-protocol compatibility only; it does not add economic score, qualification, promotion,
+order, private, or live authority.
+
+Before population materialization, CandidateArena also derives one `ResearchBehaviorFingerprint`
+from the final externally recorded order decision for every exact development scenario. Different
+SystemCode artifacts with the same protocol, development-suite digest, and normalized decisions
+share one behavioral key. Only a prior admitted fingerprint can exclude a later exact match;
+duplicates retain Finding and Lineage but receive no candidate slot. Missing canonical observations
+quarantine an otherwise admissible submission. This is bounded observational equality on a public
+development suite, not semantic program equivalence or economic evidence, and sealed or paper
+outcomes never enter the fingerprint.
+
+CandidateArena reconstructs `ResearchPopulationDiversity` over the same latest ten completed ticks
+shown in its read model. The top-level distributions measure recent population coverage, while the
+newest-first `tick_series` independently measures each tick's worker cross-section so older
+diversity cannot hide current exact-behavior collapse. Assigned `ResearchDirection` entropy and
+exact observed-behavior entropy remain separate. Behavior is comparable only inside one exact
+fingerprint protocol and development suite; mixed cohorts report `incomparable_suites` and make no
+unique-count or entropy claim. A suite transition between ticks may close the window aggregate
+while preserving valid single-cohort tick measurements. The same bounded object is available to the
+next ResearchWorker without raw fingerprint, observation, scenario, suite-digest, sealed, or paper
+evidence. It is a search diagnostic with no rank, admission, allocation, qualification, promotion,
+order, private, or live authority.
+
+CandidateArena policy can now be exercised through the internal `ResearchControlCampaign` runtime
+composition. It seals one bounded LocalStore baseline plus the actual single-file research artifact,
+then clones independent `adaptive_default` and `static_control` stores and runs their exact tick
+sequences concurrently by sequence. The append-only report records admission, duplicate, failure,
+diversity, and efficiency diagnostics and reserves the first admitted candidate per tick for future
+paper evidence. It deliberately has `unadjudicated` primary outcome and no winner. Before arm
+effects, the campaign also freezes the exact current Trading review comparator or explicit
+unavailability. A bound campaign now commits one deterministic
+`ResearchControlCampaignPaperSchedule`. The internal bounded paper executor can install that graph
+in candidate-bearing arm stores, prepare matched source comparisons, seal shared first-tick market
+and public-execution evidence in a `ResearchControlCampaignPaperStartBatch`, drive source and
+confirmation windows, and close every candidate slot with an exact
+`ResearchControlCampaignPaperSlotOutcome`. The outcome collector consumes those slot outcomes,
+counts every precommitted slot, credits only `qualified_improvement`, and persists one
+authority-closed single-campaign observation in the coordinator.
+`ResearchControlStudy` now precommits 6 to 30 deterministic campaign identities before any planned
+campaign exists, freezes their exact source/agent/comparator/paper/allocation condition on one
+baseline snapshot, and fixes a two-sided paired exact sign test with no early stopping.
+`ResearchControlStudyOutcome` consumes every planned terminal campaign outcome exactly once. Its
+only causal claim is over same-baseline stochastic repetitions; a supported adaptive effect makes a
+separate policy decision eligible but does not change allocation policy itself.
+`ResearchMemoryControlStudy` separately precommits 6 to 30 fresh same-baseline pairs that differ
+only in whether safe cross-generation Arena memory is visible. Source, managed agent, direction,
+budget, development suite, sealed opportunity, and analysis are frozen; provider-visible tick and
+workspace sides are blinded and carry no arm label. Each `ResearchMemoryControlPairOutcome` uses
+external unchanged-artifact or exact same-suite fingerprint evidence, and the all-pairs outcome may
+claim only reduced exact repetition under that condition. It is neither candidate-quality nor
+paper-economic evidence and has no memory-policy, promotion, order, private, or live authority.
+`ResearchAllocationPolicyDecisionService` now creates that separate append-only research-only
+decision from the exact persisted study graph. Version 1 approves only an eligible
+`adaptive_effect_supported` outcome and binds the exact studied allocation-policy digest;
+non-supported or underpowered outcomes remain `not_approved` and never select static control. Each
+future allocation records an explicit-request, repository-default, or approved-decision basis.
+Uncontrolled ticks use the latest applicable exact approval, while caller-specified directions and
+adaptive/static modes always take precedence. LocalStore revalidates decision-backed provenance and
+time order before accepting the pre-effect allocation.
+`createResearchControlCampaignPaperRuntimeArm` composes each arm-local store and paper-session
+service into the existing comparison, activation, checkpoint, qualification, confirmation, and
+release services. Confirmation advances one restart-projectable transition per executor action and
+propagates exact window wake times to the runner instead of polling. Each arm has one runtime
+activation owner, and restart recovery stops rather than adopts an unowned running attempt.
+`createResearchControlCampaignPaperRuntime` then composes the source, confirmation, evidence,
+action, executor, and interruptible runner components, and `runResearchControlCampaign` can invoke
+one injected executor step.
+`createResearchControlStudyRuntime` now binds that campaign lifecycle into a sequential study
+executor and runner. Each advance completes or resumes only the earliest planned campaign, reloads
+its terminal closure, and adjudicates only after all replications; stop drains the active campaign.
+`ResearchControlStudyProcessSupervisor` can now discover incomplete committed studies oldest first,
+open one injected study runtime at a time, reload exact completion, and rescan until caught up.
+Failure does not skip later work, restart derives from append-only evidence, and stop drains the
+active campaign. The campaign-to-outcome runtime can now open root-specific arm stores and build
+those real arm services from an arm-local session factory. `ResearchControlStudyScheduler` now
+keeps that one-shot supervisor alive under the runtime server. Before each discovery cycle, the
+default `ResearchControlStudyCommitmentCoordinator` reloads the latest exact TradingPromotion and
+its sealed confirmation campaign, then creates or accepts one deterministic six-replication,
+one-tick-per-arm study. It preserves the campaign's numeric, market-data, and paper policy and
+normalizes only the comparison mode to `champion_challenge`. No promotion or one already-pending
+study defers; malformed or drifted evidence stops the scheduler before effects. Same-root races use
+create-only publication and accept only the exact deterministic winner. The scheduler then runs the
+supervisor immediately. After successful catch-up, and before its interruptible bounded wait, it
+reconciles the oldest missing generalization outcome, the oldest missing generalization-policy
+decision, and then the oldest missing same-baseline allocation-policy decision. Each coordinator
+creates at most one record per cycle. The same-baseline decision records supported, unsupported,
+and underpowered evidence symmetrically as `approved` or `not_approved`; a non-significant result
+never selects static control. Decision publication is create-only across same-root contenders, and
+an automatic approval is available to the next uncontrolled Arena tick as exact provenance. The
+scheduler can then consider a later reviewed source without an operator command. Each opened
+runtime reconstructs source, agent identity, campaign bounds, and the bound paper protocol from the
+exact persisted study condition. Shutdown stops this scheduler before CandidateArena and
+paper-session dependencies.
+The same default commitment path now first creates or reloads one immutable
+`ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
+Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
+versus 30-close mean classifier opens only a matching `long`, `short`, or `flat` block. The protocol
+precommits two studies per block, 24-hour global spacing, a 90-day deadline, exact ResearchWorker
+and paper/campaign identities, source reuse guards, and equal-weight analysis. After study catch-up,
+`ResearchGeneralizationOutcomeCoordinator` reconciles at most the oldest complete or expired
+protocol before policy decisions. The outcome includes all
+six slots and supports generalization only with six eligible non-ties, at least three distinct
+baseline snapshots, exact p-value at most 0.05, positive equal-weight mean, and no harmful block.
+It is external research evidence only and cannot replace allocation policy, promote a candidate,
+submit an order, or grant private/live authority.
+`ResearchGeneralizationPolicyDecisionService` separately reloads the exact protocol/outcome graph.
+Version 1 approves only the protocol's frozen `adaptive_default` policy digest after an eligible
+`generalization_supported` outcome. Unsupported and insufficient outcomes are persisted as
+`not_approved` with no effective mode and never imply static superiority. Future uncontrolled
+allocations resolve explicit directions, explicit mode, the latest applicable broad approval, the
+latest applicable same-baseline approval, and finally the repository adaptive default, in that
+order. Every selected decision basis is sealed before effects and independently revalidated by
+LocalStore. The shared generalization read model keeps the chronologically latest decision separate
+from the exact approved decision the uncontrolled-allocation resolver currently selects. A newer
+negative decision therefore remains visible without revoking an older applicable approval. The
+effective projection joins existing allocation and completed-tick records as
+`awaiting_allocation`, `allocated`, or `completed_tick`, with exact counts and latest allocation
+evidence. CLI, TUI, and Web render the same authority-closed state without a new record, command,
+worker-feedback path, or trading authority. A production-service integration fixture proves this
+composition and its harmful-block negative control deterministically; it is contract proof, not
+real-market generalization or profitability evidence.
+Before opening a pending study, each server
+now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
+LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
+and records released or expired ownership history. A live or liveness-unknown owner remains held;
+takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
+runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
+fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
+only; automatic policy decisions own future uncontrolled research allocation only. The prospective
+condition-blocked selection protocol and separate approval-only generalization decision are
+implemented, while complete six-study real-market evidence, generated or tuned policy parameters,
+automatic TradingPromotion, and champion handoff remain separate and outside this path.
+
+One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
+managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
+artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
+one append-only `ResearchWorkerCheckpoint`: completed admission, completed finish without a
+submission, or failed-closed execution. It carries zero remaining submission authority, cumulative
+bounded budget accounting, and at most six recent
+development-visible notebook entries. Before a new tick effect, restart recovery closes every
+orphan in commitment order. An already persisted exact admission reconstructs only the terminal
+checkpoint; otherwise the orphan becomes `failed_closed/restart_recovery`. Neither path reruns the
+old worker, artifact, provider, sandbox, budget, evaluator seed, or sealed suite.
+
+This isolation and diversity measurement reduce direct evaluator reuse and make population
+concentration observable; they do not prove that a
+query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
+or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
+long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
+six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
+long-duration restart soak evidence, deployed always-on paper execution, automatic promotion,
+champion runner handoff, private/live authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after
@@ -62,6 +244,9 @@ qualification are deliberately separate: a high paper `net_revenue_usdt` can sti
 `collecting_evidence` or `blocked_by_quality` when the evidence window is too small, the runner is
 inactive, failure ratio is high, market snapshots are missing, or fill-bearing results lack public
 execution evidence.
+CandidateArena rank and next-generation context use development-visible preflight evidence; the
+sealed terminal score is an admission gate and never becomes a leaderboard value or worker
+feedback channel.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.
@@ -73,11 +258,15 @@ root documentation, [docs](docs/project-direction.md), and `.agents` instruction
 product, architecture, naming, API, and operating truth.
 
 Linear is a workflow tool for issues, comments, scratchpads, project coordination, and historical
-progress notes. See [LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
+progress notes. See [Development Workflow](docs/development-workflow.md) and
+[LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
 
 Canonical repo docs:
 
+- [Development Workflow](docs/development-workflow.md)
 - [Project Direction](docs/project-direction.md)
+- [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+- [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
 - [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
 - [Autonomy Model](docs/autonomy-model.md)
 - [Product Quality Design](docs/product-quality-design.md)
@@ -169,17 +358,15 @@ names such as Codex are internal provider settings on managed `AgentProfile` rec
 setup surface is provider-scoped, and the researcher selects one available provider from that
 managed set; product-facing commands stay under the `ouroboros` noun.
 
-Use Linear GraphQL when a task needs Linear workflow writeback:
+Use the installed Linear OAuth Connector when a task needs Linear workflow writeback. The connector
+is an external Codex/plugin capability, not a repository executable or product runtime dependency.
+Load the `linear` skill, read the target before writing, and update the issue's single
+`## Codex Workpad` comment instead of creating duplicate progress notes.
 
-```bash
-npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
-npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
-```
-
-Both commands read `LINEAR_API_KEY` from the environment first, then local `.env`, and never print
-the token. Their implementation lives under [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md)
-because Linear access is agent operating support, not product runtime code. Linear writeback must
-point back to repo truth rather than replacing it.
+Do not use a repo-local `LINEAR_API_KEY`, raw GraphQL command, or local `.env` credential fallback.
+If the OAuth Connector is unavailable, continue repo work that does not depend on Linear mutation
+and leave writeback blocked with exact evidence. Linear writeback must point back to repo truth
+rather than replacing it.
 
 ## Product Boundary
 

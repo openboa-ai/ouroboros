@@ -1,0 +1,14 @@
+{
+  "record_kind": "sandbox_log",
+  "version": 1,
+  "sandbox_log_id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a-order-log",
+  "sandbox_ref": {
+    "record_kind": "sandbox",
+    "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a"
+  },
+  "lines": [
+    "{\"event\":\"order_request\",\"event_id\":\"confirmation-order-trading-run-paper-session-b6b17eb3274ae27f\",\"instance_id\":\"sandbox-paper-comparison-paper-comparison-activation-attempt-52db8bc8859855b8b80-e3a3361cf37e6d4a\",\"at\":\"2026-07-10T00:04:36.000Z\",\"authority_status\":\"trace_only\",\"intent_kind\":\"place_order\",\"symbol\":\"BTCUSDT\",\"side\":\"buy\",\"order_type\":\"limit\",\"quantity\":\"0.001\",\"limit_price\":\"60000\",\"reason\":\"confirmation challenger first checkpoint order\"}"
+  ],
+  "captured_at": "2026-07-10T00:04:39.000Z",
+  "authority_status": "trace_only"
+}

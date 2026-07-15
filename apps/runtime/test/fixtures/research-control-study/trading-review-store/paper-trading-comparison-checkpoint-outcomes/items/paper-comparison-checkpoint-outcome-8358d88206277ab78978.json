@@ -1,0 +1,55 @@
+{
+  "record_kind": "paper_trading_comparison_checkpoint_outcome",
+  "version": 1,
+  "paper_trading_comparison_checkpoint_outcome_id": "paper-comparison-checkpoint-outcome-8358d88206277ab78978",
+  "checkpoint_attempt_ref": {
+    "record_kind": "paper_trading_comparison_checkpoint_attempt",
+    "id": "paper-comparison-checkpoint-attempt-db9f62d851f2fc97767c"
+  },
+  "checkpoint_attempt_digest": "sha256:e9b03a522c602afd9ee15301f606f6e20c4ec6c75529002840a8815b96f9d431",
+  "tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-6cea95bfefe5c459"
+  },
+  "tick_digest": "sha256:68a567cc7d7157b3e2db2a863e65fd315df8d5632c437521b411acce9fae3119",
+  "checkpoint_sequence": 1,
+  "outcome_status": "paired",
+  "outcome_reason": "paired_checkpoint_recorded",
+  "champion": {
+    "role": "champion",
+    "observation_ref": {
+      "record_kind": "paper_trading_observation",
+      "id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-5e87124cece6e828-19df-7a27c626cec429bc-0001"
+    },
+    "observation_record_digest": "sha256:104e967b22fb0d330af7adaee8f5cf145ec9eab37b20a96c5e51ef4c39a735f2",
+    "evaluation_record_digest": "sha256:e1069d8affbcab14d37ad18a26e9ea4a49dc37bcecf2f82445a4ec6ba784a5a1",
+    "ledger_chain_refs": [],
+    "observation_status": "no_order",
+    "consumed_event_count": 0,
+    "provider_request_count_after": 1
+  },
+  "challenger": {
+    "role": "challenger",
+    "observation_ref": {
+      "record_kind": "paper_trading_observation",
+      "id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-b6b17eb3274ae27f-6faf-7b26d9d889f14fc3-0001"
+    },
+    "observation_record_digest": "sha256:1f2ef3341bd5dea764ec74637ae50b1bd95f7f76c7c7d834d5e0f511e0f6162b",
+    "evaluation_record_digest": "sha256:92ab9d0859df1b2d39ec5c33d0de5b3ebcdcc0a30a83e5b2a5803e85a0a6f665",
+    "ledger_chain_refs": [
+      {
+        "record_kind": "ledger_chain",
+        "id": "order-request-1d7f3ebda8f9c464"
+      }
+    ],
+    "observation_status": "recorded",
+    "consumed_event_count": 1,
+    "provider_request_count_after": 1
+  },
+  "next_action": "serve_and_acknowledge_current_tick",
+  "completed_at": "2026-07-10T00:04:39.000Z",
+  "outcome_digest": "sha256:3ca04964221c76d5495d6c2d437cedb37ab48c3dd7c536adcfa85f4e07fe2dd9",
+  "live_exchange_authority": false,
+  "order_submission_authority": false,
+  "authority_status": "not_live"
+}

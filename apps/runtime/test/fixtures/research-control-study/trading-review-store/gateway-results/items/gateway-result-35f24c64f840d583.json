@@ -1,0 +1,21 @@
+{
+  "record_kind": "gateway_result",
+  "version": 1,
+  "gateway_result_id": "gateway-result-35f24c64f840d583",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-6071cdf318cb4983"
+  },
+  "order_request_ref": {
+    "record_kind": "order_request",
+    "id": "order-request-35f24c64f840d583"
+  },
+  "decision_outcome": "dry_run_only",
+  "decision_reason": "dry_run_allowed",
+  "decided_at": "2026-07-10T00:00:01.000Z",
+  "policy_ref": {
+    "record_kind": "runtime_operating_policy",
+    "id": "runtime-operating-policy-paper-v1"
+  },
+  "authority_status": "dry_run_only"
+}

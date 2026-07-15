@@ -15,6 +15,8 @@ import type {
   SandboxLifecycleStatus,
   SandboxRecord
 } from "@ouroboros/domain";
+import { rebaseCandidateArenaArtifactPath } from
+  "../artifact/candidate-arena-artifact-path";
 import { safeId } from "../safe-id";
 
 let commandEvidenceSequence = 0;
@@ -254,7 +256,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         await waitForProcessTreeExit(persistedProcess.pid, 500);
       }
       await removePersistedSandboxProcessFiles(pidFile);
-      const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
+      const lines = await readSandboxLogLines(
+        deterministicSandboxLogFile(instanceId)
+      );
       return {
         lifecycle_status: "stopped",
         stopped_at: stoppedAt,
@@ -297,8 +301,8 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     command: string[],
     placement: SandboxPlacementRecord
   ): Promise<SandboxAdapterStartResult> {
-    const logFile = sandboxLogFile(input.instance_id);
-    const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    const logFile = deterministicSandboxLogFile(input.instance_id);
+    const heartbeatFile = deterministicSandboxHeartbeatFile(input.instance_id);
     const pidFile = sandboxPidFile(input.instance_id);
     await this.stopExistingLongRunningSession(input.instance_id, pidFile);
     await Promise.all([
@@ -404,7 +408,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         startedAt: lifecycleStatus === "running" ? input.created_at : undefined,
         lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
         logRefs: lines.length > 0
-          ? [ref("sandbox_log", `sandbox-log-${safeRuntimeId(input.instance_id)}-start`)]
+          ? [ref(
+              "sandbox_log",
+              `sandbox-log-${sandboxEvidenceRuntimeId(input.instance_id)}-start`
+            )]
           : [],
         heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
         commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
@@ -893,7 +900,7 @@ function runtimeLogRecord(
   return {
     record_kind: "sandbox_log",
     version: 1,
-    sandbox_log_id: `sandbox-log-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
+    sandbox_log_id: `sandbox-log-${sandboxEvidenceRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
     sandbox_ref: ref("sandbox", instanceId),
     lines,
     captured_at: capturedAt,
@@ -910,7 +917,7 @@ function runtimeHeartbeatRecord(
   return {
     record_kind: "runtime_heartbeat",
     version: 1,
-    runtime_heartbeat_id: `runtime-heartbeat-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
+    runtime_heartbeat_id: `runtime-heartbeat-${sandboxEvidenceRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
     sandbox_ref: ref("sandbox", instanceId),
     heartbeat_line: heartbeatLine,
     observed_at: observedAt,
@@ -926,7 +933,7 @@ function commandEvidenceRecord(
   return {
     record_kind: "sandbox_command_evidence",
     version: 1,
-    sandbox_command_evidence_id: `sandbox-command-evidence-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
+    sandbox_command_evidence_id: `sandbox-command-evidence-${sandboxEvidenceRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
     sandbox_ref: ref("sandbox", instanceId),
     command: result.command,
     exit_code: result.exit_code,
@@ -1119,7 +1126,14 @@ function resolvePythonScriptPathCandidates(
   allowedArtifactRoots: readonly string[] = []
 ): string[] {
   if (path.isAbsolute(scriptPath)) {
-    return [path.normalize(scriptPath)];
+    const normalized = path.normalize(scriptPath);
+    return [...new Set([
+      ...allowedArtifactRoots.flatMap((root) => {
+        const rebased = rebaseCandidateArenaArtifactPath(normalized, root);
+        return rebased ? [rebased] : [];
+      }),
+      normalized
+    ])];
   }
   const candidates = allowedArtifactRoots.some((root) =>
     !path.isAbsolute(root) && isRelativePathWithin(scriptPath, root)
@@ -1183,13 +1197,36 @@ function sandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.heartbeat.json`;
 }
 
-function sandboxPidFile(instanceId: string): string {
-  return path.join(REPO_ROOT, ".ouroboros", "sandbox-pids", `${sandboxPidFileKey(instanceId)}.pid`);
+function deterministicSandboxLogFile(instanceId: string): string {
+  return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.jsonl`;
 }
 
-function sandboxPidFileKey(instanceId: string): string {
+function deterministicSandboxHeartbeatFile(instanceId: string): string {
+  return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.heartbeat.json`;
+}
+
+function sandboxPidFile(instanceId: string): string {
+  return path.join(
+    REPO_ROOT,
+    ".ouroboros",
+    "sandbox-pids",
+    `${sandboxRuntimeFileKey(instanceId)}.pid`
+  );
+}
+
+function sandboxRuntimeFileKey(instanceId: string): string {
   const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
   return `${safeRuntimeId(instanceId)}-${digest}`;
+}
+
+function sandboxEvidenceRuntimeId(instanceId: string): string {
+  const bounded = safeRuntimeId(instanceId);
+  const complete = safeId(instanceId, {
+    maxLength: Math.max(80, instanceId.length * 2)
+  });
+  return complete === bounded
+    ? bounded
+    : sandboxRuntimeFileKey(instanceId);
 }
 
 function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {

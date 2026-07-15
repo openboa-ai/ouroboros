@@ -1,0 +1,26 @@
+{
+  "record_kind": "stage_binding",
+  "version": 1,
+  "stage_binding_id": "stage-binding-paper-6faf40d13a511fba",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "stage": "paper",
+  "profile": "paper",
+  "execution_mode": "host_local",
+  "sandbox_placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-b6b17eb3274ae27f"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "hands-environment-paper-session-b6b17eb3274ae27f"
+  },
+  "created_at": "2026-07-10T00:04:36.000Z",
+  "authority_status": "not_live"
+}

@@ -60,6 +60,9 @@ CQRS as the default frame:
 - Domain-Driven Design: durable names follow the CandidateArena taxonomy and authority boundaries.
 - CQRS: mutations use `OuroborosCommand`; read state uses `OperatorReadModel` and related read
   models. Do not hide mutations inside read builders or UI fetch helpers.
+- Derived research diagnostics such as `ResearchPopulationDiversity` must reconstruct append-only
+  evidence through pure application builders, expose aggregate read state only, and carry no
+  scheduling, evaluation, admission, qualification, or promotion authority.
 
 ## Pattern Selection
 

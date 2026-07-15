@@ -1,0 +1,36 @@
+{
+  "record_kind": "candidate_admission_decision",
+  "version": 1,
+  "candidate_admission_decision_id": "admission-confirmation-champion",
+  "source_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-source-champion"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "experiment_run_ref": {
+    "record_kind": "experiment_run",
+    "id": "experiment-confirmation-champion"
+  },
+  "trading_evaluation_result_ref": {
+    "record_kind": "trading_evaluation_result",
+    "id": "evaluation-confirmation-champion"
+  },
+  "research_finding_ref": {
+    "record_kind": "research_finding",
+    "id": "finding-confirmation-champion"
+  },
+  "source_artifact_digest": "sha256:confirmation-source-champion",
+  "submitted_artifact_digest": "sha256:fixture-clock-python-artifact-v1",
+  "research_worker_outcome": "changed",
+  "experiment_status": "evaluated",
+  "evaluation_status": "accepted",
+  "evidence_disposition": "not_counted",
+  "status": "admitted",
+  "reason": "evaluation_accepted",
+  "runnable_paper_handoff": true,
+  "decided_at": "2026-07-09T20:55:00.000Z",
+  "authority_status": "not_live"
+}

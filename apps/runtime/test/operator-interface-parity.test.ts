@@ -216,6 +216,44 @@ function fixtureOperator(): OperatorReadModel {
       arena_kind: "candidate_arena",
       runner_status: "running",
       tick_count: 3,
+      research_generalization: {
+        status: "not_started",
+        protocol_count: 0,
+        outcome_count: 0,
+        active_protocol: null,
+        latest_outcome: null,
+        latest_policy_decision: null,
+        effective_policy_decision: null,
+        authority_status: "not_promotion_authority"
+      },
+      research_population_diversity: {
+        protocol_version: "research_population_diversity_v1",
+        window_tick_count: 0,
+        assigned_directions: {
+          measurement_status: "insufficient_evidence",
+          sample_count: 0,
+          unique_count: 0,
+          entropy_bits: 0,
+          normalized_entropy: 0
+        },
+        observed_behaviors: {
+          measurement_status: "insufficient_evidence",
+          sample_count: 0,
+          unique_count: 0,
+          entropy_bits: 0,
+          normalized_entropy: 0,
+          cohort_count: 0,
+          admitted_submission_count: 0,
+          exact_behavior_duplicate_count: 0,
+          artifact_duplicate_count: 0,
+          unavailable_fingerprint_count: 0
+        },
+        by_direction: [],
+        tick_series: [],
+        evaluation_authority: false,
+        promotion_authority: false,
+        authority_status: "not_promotion_authority"
+      },
       active_researchers: [
         {
           researcher_id: "researcher-trend",

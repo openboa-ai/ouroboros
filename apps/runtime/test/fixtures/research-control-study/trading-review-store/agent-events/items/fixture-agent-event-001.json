@@ -1,0 +1,10 @@
+{
+  "record_kind": "agent_event",
+  "version": 1,
+  "agent_event_id": "fixture-agent-event-001",
+  "agent_run_ref": {
+    "record_kind": "agent_run",
+    "id": "fixture-agent-run-001"
+  },
+  "status": "fixture_placeholder"
+}

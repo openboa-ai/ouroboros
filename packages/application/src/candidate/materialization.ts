@@ -2,14 +2,13 @@ import type { CandidateMaterializationOutcome } from "@ouroboros/domain";
 import type { CandidateGenerationRequest, RuntimeProviderAdapter } from "../ports/provider";
 import type { OuroborosStorePort } from "../ports/store";
 
+/**
+ * @deprecated CandidateArena is the only provider-output-to-materialization path.
+ */
 export async function runCandidateGeneration(
-  store: OuroborosStorePort,
-  providerAdapter: RuntimeProviderAdapter,
-  request: CandidateGenerationRequest
+  _store: OuroborosStorePort,
+  _providerAdapter: RuntimeProviderAdapter,
+  _request: CandidateGenerationRequest
 ): Promise<CandidateMaterializationOutcome> {
-  const providerResult = await providerAdapter.runCandidateGeneration(request);
-  if (providerResult.status === "failed") {
-    return store.recordCandidateMaterializationFailure(providerResult);
-  }
-  return store.materializeCandidate(providerResult.output);
+  throw new Error("candidate_generation_retired_use_candidate_arena");
 }

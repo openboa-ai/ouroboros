@@ -262,11 +262,20 @@ async function writeCandidateBundle(
 function artifactSource(): string {
   return `import { appendFile } from "node:fs/promises";
 
-const outputIndex = process.argv.indexOf("--output-events");
-if (outputIndex === -1 || !process.argv[outputIndex + 1]) {
-  throw new Error("missing --output-events");
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
 }
-const outputEvents = process.argv[outputIndex + 1];
+
+const logFile = argValue("--log-file");
+const outputEvents = argValue("--output-events") ?? logFile;
+if (!outputEvents) {
+  throw new Error("missing --output-events or --log-file");
+}
+const paperHandoff = Boolean(logFile);
+const heartbeatFile = argValue("--heartbeat-file");
+const instanceId = argValue("--instance-id") ?? "replay-run-test-artifact";
+const startAt = argValue("--start-at") ?? new Date().toISOString();
 const baseUrl = process.env.TRADING_API_BASE_URL;
 if (!baseUrl) {
   throw new Error("missing TRADING_API_BASE_URL");
@@ -291,10 +300,10 @@ async function event(payload) {
 }
 
 const market = await getJson("/market/snapshot");
-await event({ event: "market_snapshot", ...market });
 const account = await getJson("/account/state");
-await event({ event: "account_state", ...account });
-const intent = market.expected_direction === "flat"
+const flatSignal = market.moving_average_fast === market.moving_average_slow;
+const shortSignal = market.moving_average_fast < market.moving_average_slow;
+const intent = flatSignal
   ? {
       symbol: market.symbol,
       side: "hold",
@@ -304,15 +313,59 @@ const intent = market.expected_direction === "flat"
     }
   : {
       symbol: market.symbol,
-      side: "buy",
-      quantity: Number(((account.equity * account.target_risk_fraction) / market.price).toFixed(8)),
+      side: shortSignal ? "sell" : "buy",
+      quantity: Number(((account.equity * Math.min(0.02, account.max_risk_fraction)) / market.price).toFixed(8)),
       order_type: "market",
       reason: "long replay regime with bounded account risk"
     };
-await event({ event: "order_request", ...intent });
 const validation = await postJson("/orders/validate", intent);
-await event({ event: "order_validation", ...validation });
-await event({ event: "run_complete", accepted: validation.accepted });
+if (paperHandoff) {
+  const decision = flatSignal
+    ? {
+        event: "hold",
+        event_id: instanceId + ":hold:0001",
+        instance_id: instanceId,
+        at: startAt,
+        authority_status: "trace_only",
+        reason: intent.reason
+      }
+    : {
+        event: "order_request",
+        event_id: instanceId + ":order-request:0001",
+        instance_id: instanceId,
+        at: startAt,
+        authority_status: "trace_only",
+        intent_kind: "place_order",
+        symbol: intent.symbol,
+        side: intent.side,
+        order_type: intent.order_type,
+        quantity: String(intent.quantity),
+        reason: intent.reason
+      };
+  await event(decision);
+  const heartbeat = {
+    event: "runtime_heartbeat",
+    instance_id: instanceId,
+    tick: 1,
+    at: startAt
+  };
+  await event(heartbeat);
+  if (heartbeatFile) {
+    await appendFile(heartbeatFile, JSON.stringify(heartbeat) + "\\n", "utf8");
+  }
+  await event({
+    event: "runtime_stopped",
+    instance_id: instanceId,
+    tick: 1,
+    at: new Date().toISOString()
+  });
+} else {
+  await event({ event: "market_snapshot", ...market });
+  await event({ event: "account_state", ...account });
+  await event({ event: "order_request", ...intent });
+  await event({ event: "order_validation", ...validation });
+  await event({ event: "run_complete", accepted: validation.accepted });
+}
 `;
 }
 

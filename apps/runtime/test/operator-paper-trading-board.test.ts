@@ -1,13 +1,21 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
-import { OperatorService } from "@ouroboros/application/services/operator";
+import {
+  OperatorService,
+  selectedPaperTradingEvaluation
+} from "@ouroboros/application/services/operator";
+import { createPaperTradingEvaluationCommitment } from "@ouroboros/application/trading/paper/commitment";
+import { initialPaperTradingEngineState } from "@ouroboros/application/trading/paper/engine";
+import { PaperTradingComparisonPromotionServiceError } from
+  "@ouroboros/application/trading/paper/comparison-promotion-service";
 import type {
   CandidateMaterializationInput,
   OperatorReadModel,
   PaperTradingEvaluationRecord,
+  PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
   RuntimeHeartbeatRecord,
   ResearchDirectionKind,
@@ -16,14 +24,18 @@ import type {
   SandboxPlacementRecord,
   SandboxRecord,
   SystemCodeRecord,
-  TradingProfitLossReadModel
+  TradingProfitLossReadModel,
+  TradingPromotionRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
+let activePaperTradingRunIds: Set<string>;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-paper-board-"));
+  activePaperTradingRunIds = new Set();
 });
 
 afterEach(async () => {
@@ -51,7 +63,12 @@ describe("operator paper trading board", () => {
       observationCount: 8,
       status: "running",
       runnerActive: true,
-      sourcePriority: "websocket_primary"
+      sourcePriority: "websocket_primary",
+      priorObservation: {
+        netRevenueUsdt: 11.4,
+        netReturnPct: 0.114,
+        observedAt: "2026-05-16T00:01:00.000Z"
+      }
     });
     await seedPaperEvaluation(store, {
       candidate: losing,
@@ -60,19 +77,12 @@ describe("operator paper trading board", () => {
       observationCount: 6,
       status: "stopped",
       runnerActive: false,
-      sourcePriority: "rest_fallback"
-    });
-    await seedPriorPaperObservation(store, winning.candidate_id, {
-      netRevenueUsdt: 11.4,
-      netReturnPct: 0.114,
-      sequence: 1,
-      observedAt: "2026-05-16T00:01:00.000Z"
-    });
-    await seedPriorPaperObservation(store, losing.candidate_id, {
-      netRevenueUsdt: -13.7,
-      netReturnPct: -0.137,
-      sequence: 1,
-      observedAt: "2026-05-16T00:01:00.000Z"
+      sourcePriority: "rest_fallback",
+      priorObservation: {
+        netRevenueUsdt: -13.7,
+        netReturnPct: -0.137,
+        observedAt: "2026-05-16T00:01:00.000Z"
+      }
     });
 
     const service = new OperatorService({
@@ -82,7 +92,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === winning.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -304,8 +314,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === mature.runtime.ref.id ||
-          tradingRunId === collecting.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -326,6 +335,7 @@ describe("operator paper trading board", () => {
       }
     });
     expect(byCandidate.get(mature.candidate_id)).toMatchObject({
+      promotion_gate_status: "prospective_comparison_required",
       qualification_status: "qualified",
       qualification_reasons: []
     });
@@ -339,7 +349,339 @@ describe("operator paper trading board", () => {
     });
   });
 
-  it("promotes a selected paper candidate into Trading review without live authority", async () => {
+  it("keeps mature profitable research feedback outside qualification and promotion", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "research-feedback-not-qualification",
+      title: "Research Feedback Not Qualification"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 120,
+      netReturnPct: 1.2,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z",
+      evidencePurpose: "research_feedback"
+    });
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: { active: () => true }
+    });
+
+    await service.executeCommand("candidate.select", { candidate_id: candidate.candidate_id });
+    const operator = await service.readOperator();
+
+    expect(operator.selected_paper_trading_evaluation).toMatchObject({
+      evidence_purpose: "research_feedback",
+      freeze_status: "verified"
+    });
+    expect(operator.paper_trading_board.entries[0]).toMatchObject({
+      candidate_id: candidate.candidate_id,
+      evidence_purpose: "research_feedback",
+      freeze_status: "verified",
+      qualification_status: "not_qualification_evidence",
+      qualification_reasons: ["evidence_purpose_not_qualification"],
+      promotion_gate_status: "not_qualification_evidence"
+    });
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: "paper_trading_qualification_required",
+      details: {
+        paper_qualification_status: "not_qualification_evidence",
+        paper_qualification_reasons: ["evidence_purpose_not_qualification"],
+        next_action:
+          "Run a prospective qualification comparison; research feedback cannot authorize promotion."
+      }
+    });
+  });
+
+  it("does not claim a frozen evaluation when its commitment is missing or mutated", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "paper-freeze-integrity",
+      title: "Paper Freeze Integrity"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 12,
+      netReturnPct: 0.12,
+      observationCount: 3,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:03:00.000Z"
+    });
+    const evaluation = await store.getLatestPaperTradingEvaluationForCandidate(
+      candidate.candidate_id
+    );
+    if (!evaluation?.paper_trading_evaluation_commitment_ref) {
+      throw new Error("paper evaluation commitment ref missing");
+    }
+    const commitment = await store.getPaperTradingEvaluationCommitment(
+      evaluation.paper_trading_evaluation_commitment_ref.id
+    );
+    if (!commitment) {
+      throw new Error("paper evaluation commitment missing");
+    }
+    const mutatedCommitment = {
+      ...commitment,
+      policy_identity: {
+        ...commitment.policy_identity,
+        cost_policy_version: "mutated-after-commit"
+      }
+    };
+
+    expect(selectedPaperTradingEvaluation(
+      candidate,
+      evaluation,
+      mutatedCommitment
+    ).freeze_status).toBeUndefined();
+    expect(selectedPaperTradingEvaluation(
+      candidate,
+      { ...evaluation, status: "not_started" },
+      undefined
+    ).freeze_status).toBeUndefined();
+  });
+
+  it("blocks standalone qualification promotion until a prospective comparison verdict exists", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "standalone-qualification-no-verdict",
+      title: "Standalone Qualification No Verdict"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: "paper_trading_comparison_required",
+      details: {
+        candidate_id: candidate.candidate_id,
+        paper_trading_evaluation_id: `paper-evaluation-${candidate.candidate_id}`,
+        paper_qualification_status: "qualified",
+        required_evidence: "promotion_eligible_paper_trading_comparison_verdict"
+      }
+    });
+    await expect(store.getLatestTradingPromotion()).resolves.toBeUndefined();
+  });
+
+  it("promotes a confirmed challenger through the explicit operator command", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "confirmed-command-promotion",
+      title: "Confirmed Command Promotion"
+    });
+    const promotion = comparisonBackedPromotionForCandidate(candidate);
+    const promoteCalls: Array<{ candidateId: string }> = [];
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingComparisonPromotionService: {
+        async promote(input) {
+          promoteCalls.push(input);
+          return promotion;
+        }
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).resolves.toEqual({
+      result: { promotion },
+      summary: `Promoted ${candidate.candidate_id} to Trading review from confirmed paper comparison evidence.`
+    });
+    expect(promoteCalls).toEqual([{ candidateId: candidate.candidate_id }]);
+  });
+
+  it.each([
+    [
+      "paper_trading_comparison_promotion_stale",
+      "paper_trading_comparison_stale"
+    ],
+    [
+      "paper_trading_comparison_promotion_graph_invalid",
+      "paper_trading_comparison_invalid"
+    ],
+    [
+      "paper_trading_comparison_promotion_reference_not_found",
+      "paper_trading_comparison_invalid"
+    ],
+    [
+      "paper_trading_comparison_promotion_persistence_conflict",
+      "paper_trading_comparison_invalid"
+    ]
+  ] as const)("maps %s to %s", async (serviceCode, operatorError) => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "comparison-promotion-error",
+      title: "Comparison Promotion Error"
+    });
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingComparisonPromotionService: {
+        async promote() {
+          throw new PaperTradingComparisonPromotionServiceError(
+            serviceCode,
+            "comparison promotion failed"
+          );
+        }
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: operatorError,
+      details: {
+        candidate_id: candidate.candidate_id
+      }
+    });
+  });
+
+  it("binds Trading review readback to the exact promotion evaluation and confirmation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "exact-promotion-readback",
+      title: "Exact Promotion Readback"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    const boundEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(
+      candidate.candidate_id
+    );
+    if (!boundEvaluation) {
+      throw new Error("promotion-bound paper evaluation missing");
+    }
+    const newerEvaluationId = boundEvaluation.paper_trading_evaluation_id + "-newer";
+    await writeNewerUnrelatedPaperEvaluation(
+      store,
+      boundEvaluation,
+      newerEvaluationId
+    );
+    const promotion = await recordTradingPromotionForCandidate(
+      store,
+      candidate,
+      "2026-05-16T00:32:00.000Z",
+      boundEvaluation.paper_trading_evaluation_id
+    );
+    const projectionStore = comparisonConfirmationProjectionStore(store, promotion);
+    const service = new OperatorService({
+      store: projectionStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
+      }
+    });
+
+    await service.executeCommand("candidate.select", {
+      candidate_id: candidate.candidate_id
+    });
+    const operator = await service.readOperator();
+    const confirmation = {
+      campaign_id: promotion.comparison_confirmation.campaign_ref.id,
+      campaign_outcome_id:
+        promotion.comparison_confirmation.campaign_outcome_ref.id,
+      final_verdict_id:
+        promotion.comparison_confirmation.final_verdict_ref.id,
+      required_window_count: 2,
+      improved_window_count: 2,
+      primary_metric: "net_revenue_usdt",
+      minimum_net_revenue_lift_usdt: 0.75,
+      evaluated_at: "2026-05-16T00:31:30.000Z",
+      evaluation_authority: "external_to_trading_systems",
+      authority_status: "not_live"
+    } as const;
+
+    expect(operator.paper_trading_board.entries[0]?.evaluation_id).toBe(
+      newerEvaluationId
+    );
+    expect(operator.trading_promotion).toMatchObject({
+      paper_trading_evaluation_id:
+        boundEvaluation.paper_trading_evaluation_id,
+      paper_profit_loss: {
+        net_revenue_usdt: 14.2,
+        net_return_pct: 0.142
+      },
+      comparison_confirmation: confirmation
+    });
+    expect(operator.trading_review).toMatchObject({
+      paper_trading_evaluation_id:
+        boundEvaluation.paper_trading_evaluation_id,
+      comparison_confirmation: confirmation,
+      paper_trading_evaluation: {
+        evaluation_id: boundEvaluation.paper_trading_evaluation_id,
+        profit_loss: {
+          net_revenue_usdt: 14.2,
+          net_return_pct: 0.142
+        }
+      },
+      review_packet: {
+        subject: {
+          paper_trading_evaluation_id:
+            boundEvaluation.paper_trading_evaluation_id
+        },
+        evidence_quality: {
+          comparison_confirmation: confirmation
+        }
+      }
+    });
+  });
+
+  it("projects a persisted Trading review target without live authority", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
@@ -401,17 +743,17 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
-    const result = await service.executeCommand("trading_candidate.promote", {
+    await recordTradingPromotionForCandidate(store, candidate);
+    await service.executeCommand("candidate.select", {
       candidate_id: candidate.candidate_id
     });
     const operator = await service.readOperator();
     const promotionRecord = await store.getLatestTradingPromotion();
 
-    expect(result.summary).toBe(`Promoted ${candidate.candidate_id} to Trading review.`);
     expect(promotionRecord?.candidate_ref).toEqual({
       record_kind: "trading_system_candidate",
       id: candidate.candidate_id
@@ -472,7 +814,7 @@ describe("operator paper trading board", () => {
             observation_count: 30,
             failed_observation_count: 0,
             elapsed_ms: 31 * 60_000,
-            first_observed_at: "2026-05-16T00:31:00.000Z",
+            first_observed_at: "2026-05-16T00:01:02.000Z",
             last_observed_at: "2026-05-16T00:31:00.000Z"
           },
           qualification_reasons: [],
@@ -520,7 +862,7 @@ describe("operator paper trading board", () => {
           runner_active: true,
           trading_run_status: "registered",
           last_observed_at: "2026-05-16T00:31:00.000Z",
-          next_observation_at: "2026-05-16T00:09:00.000Z",
+          next_observation_at: "2026-05-16T00:40:00.000Z",
           authority_status: "not_live"
         },
         ledger: {
@@ -594,6 +936,12 @@ describe("operator paper trading board", () => {
       sourcePriority: "websocket_primary",
       observedAt: "2026-05-16T00:31:00.000Z"
     });
+    const promotedEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(
+      promoted.candidate_id
+    );
+    if (!promotedEvaluation) {
+      throw new Error("promoted target paper evaluation missing");
+    }
 
     const service = new OperatorService({
       store,
@@ -602,13 +950,11 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === promoted.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
-    await service.executeCommand("trading_candidate.promote", {
-      candidate_id: promoted.candidate_id
-    });
+    await recordTradingPromotionForCandidate(store, promoted);
     await service.executeCommand("candidate.select", {
       candidate_id: arenaSelected.candidate_id
     });
@@ -646,7 +992,7 @@ describe("operator paper trading board", () => {
           runner_active: true,
           trading_run_status: "registered",
           last_observed_at: "2026-05-16T00:31:00.000Z",
-          next_observation_at: "2026-05-16T00:09:00.000Z",
+          next_observation_at: "2026-05-16T00:40:00.000Z",
           authority_status: "not_live"
         },
         ledger: {
@@ -657,12 +1003,12 @@ describe("operator paper trading board", () => {
       },
       paper_trading_evaluation: {
         candidate_id: promoted.candidate_id,
-        trading_run_id: promoted.runtime.ref.id
+        trading_run_id: promotedEvaluation.trading_run_ref.id
       }
     });
   });
 
-  it("makes qualified Trading review target replacement explicit", async () => {
+  it("projects the latest persisted Trading review target replacement explicitly", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
@@ -702,26 +1048,26 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) =>
-          tradingRunId === activeTarget.runtime.ref.id || tradingRunId === replacement.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
-    await service.executeCommand("trading_candidate.promote", {
-      candidate_id: activeTarget.candidate_id
-    });
+    await recordTradingPromotionForCandidate(
+      store,
+      activeTarget,
+      "2026-05-16T00:32:00.000Z"
+    );
     await service.executeCommand("candidate.select", {
       candidate_id: replacement.candidate_id
     });
-    const result = await service.executeCommand("trading_candidate.promote", {
-      candidate_id: replacement.candidate_id
-    });
+    await recordTradingPromotionForCandidate(
+      store,
+      replacement,
+      "2026-05-16T00:42:00.000Z"
+    );
     const operator = await service.readOperator();
     const promotionRecord = await store.getLatestTradingPromotion();
 
-    expect(result.summary).toBe(
-      `Replaced Trading review target ${activeTarget.candidate_id} with ${replacement.candidate_id}.`
-    );
     expect(promotionRecord?.candidate_ref).toEqual({
       record_kind: "trading_system_candidate",
       id: replacement.candidate_id
@@ -780,7 +1126,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -842,15 +1188,11 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) =>
-          tradingRunId === activeTarget.runtime.ref.id ||
-          tradingRunId === collectingReplacement.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
-    await service.executeCommand("trading_candidate.promote", {
-      candidate_id: activeTarget.candidate_id
-    });
+    await recordTradingPromotionForCandidate(store, activeTarget);
     await service.executeCommand("candidate.select", {
       candidate_id: collectingReplacement.candidate_id
     });
@@ -936,7 +1278,8 @@ describe("operator paper trading board", () => {
         active: () => resumeRunnerActive
       }
     });
-    await resumeService.executeCommand("trading_candidate.promote", {
+    await recordTradingPromotionForCandidate(resumeStore, resume);
+    await resumeService.executeCommand("candidate.select", {
       candidate_id: resume.candidate_id
     });
     resumeRunnerActive = false;
@@ -1181,17 +1524,229 @@ async function seedPaperEvaluation(
     observedAt?: string;
     includePublicExecution?: boolean;
     failureReason?: string;
+    evidencePurpose?: PaperTradingEvidencePurpose;
+    priorObservation?: {
+      netRevenueUsdt: number;
+      netReturnPct: number;
+      observedAt: string;
+    };
   }
 ): Promise<void> {
   const evaluationId = `paper-evaluation-${input.candidate.candidate_id}`;
-  const observedAt = input.observedAt ?? "2026-05-16T00:08:00.000Z";
-  const score = {
-    revenue_usdt: input.netRevenueUsdt + 0.6,
-    cost_usdt: 0.6,
-    net_revenue_usdt: input.netRevenueUsdt,
-    net_return_pct: input.netReturnPct
+  const finalObservedAt = input.observedAt ?? "2026-05-16T00:08:00.000Z";
+  const evidencePurpose = input.evidencePurpose ?? "qualification";
+  let paperCandidate = input.candidate;
+  if (evidencePurpose === "qualification") {
+    const paperRun = await store.createPaperTradingRun({
+      idempotency_key: `operator-paper-board:${input.candidate.candidate_id}:qualification`,
+      candidate_id: input.candidate.candidate_id,
+      candidate_version_id: input.candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: "2026-05-16T00:00:00.000Z"
+    });
+    const projected = await store.getCandidateForTradingRun(paperRun.trading_run_id);
+    if (!projected) {
+      throw new Error(`missing qualification TradingRun projection for ${input.candidate.candidate_id}`);
+    }
+    paperCandidate = projected;
+  }
+  const systemCodeId = input.candidate.system_code?.ref?.id;
+  const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
+  if (!systemCode) {
+    throw new Error(`missing SystemCode for ${input.candidate.candidate_id}`);
+  }
+  const initialState = initialPaperTradingEngineState();
+  const commitment = createPaperTradingEvaluationCommitment({
+    commitmentId: `paper-commitment-${input.candidate.candidate_id}`,
+    evidencePurpose,
+    candidate: paperCandidate,
+    systemCode,
+    resolvedArtifactDigest: systemCode.artifact_digest,
+    marketData: fakeGatewayMarketDataPort(),
+    intervalMs: 60_000,
+    initialAccountSnapshot: initialState.account,
+    committedAt: "2026-05-16T00:00:00.000Z"
+  });
+  await store.recordPaperTradingEvaluationCommitment(commitment);
+  if (input.runnerActive) {
+    activePaperTradingRunIds.add(commitment.trading_run_ref.id);
+  }
+
+  let evaluation: PaperTradingEvaluationRecord = {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: evaluationId,
+    candidate_ref: commitment.candidate_ref,
+    candidate_version_ref: commitment.candidate_version_ref,
+    trading_run_ref: commitment.trading_run_ref,
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    interval_ms: 60_000,
+    observation_count: 0,
+    started_at: "2026-05-16T00:00:00.000Z",
+    latest_score: zeroPaperScore(),
+    paper_account_snapshot: commitment.initial_account_snapshot,
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    authority_status: "not_live"
   };
-  const marketSnapshot = {
+  await store.recordPaperTradingEvaluation(evaluation);
+
+  for (let sequence = 1; sequence <= input.observationCount; sequence += 1) {
+    const isFinal = sequence === input.observationCount;
+    const observedAt = isFinal
+      ? finalObservedAt
+      : input.priorObservation && sequence === 1
+        ? input.priorObservation.observedAt
+        : interpolatedPaperObservedAt(finalObservedAt, sequence, input.observationCount);
+    const score = paperScoreAtSequence(input, sequence);
+    const scoreDelta = subtractPaperScore(score, evaluation.latest_score);
+    const account = paperBoardAccount(score);
+    const marketSnapshot = paperBoardMarketSnapshot(observedAt, input.sourcePriority);
+    const executionSnapshot = isFinal && input.includePublicExecution !== false
+      ? paperBoardExecutionSnapshot(input.candidate.candidate_id, observedAt, input.sourcePriority)
+      : undefined;
+    const latestFill = isFinal
+      ? paperBoardFill(input.candidate.candidate_id, observedAt)
+      : undefined;
+    const nextEvaluation: PaperTradingEvaluationRecord = {
+      ...evaluation,
+      status: isFinal ? input.status : "running",
+      observation_count: sequence,
+      last_observed_at: observedAt,
+      next_observation_at: isFinal && input.status === "running"
+        ? "2026-05-16T00:40:00.000Z"
+        : undefined,
+      latest_score: score,
+      paper_account_snapshot: account,
+      open_orders: [],
+      latest_fill: latestFill ?? evaluation.latest_fill,
+      latest_public_execution_snapshot: executionSnapshot ??
+        evaluation.latest_public_execution_snapshot,
+      latest_failure_reason: isFinal ? input.failureReason : undefined
+    };
+    const observation: PaperTradingObservationRecord = {
+      record_kind: "paper_trading_observation",
+      version: 1,
+      paper_trading_observation_id:
+        `paper-observation-${input.candidate.candidate_id}-${String(sequence).padStart(4, "0")}`,
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: evaluationId
+      },
+      paper_trading_evaluation_commitment_ref:
+        evaluation.paper_trading_evaluation_commitment_ref,
+      candidate_ref: commitment.candidate_ref,
+      candidate_version_ref: commitment.candidate_version_ref,
+      trading_run_ref: commitment.trading_run_ref,
+      sequence,
+      status: isFinal && input.failureReason ? "failed" : "recorded",
+      observed_at: observedAt,
+      market_snapshot: marketSnapshot,
+      public_execution_snapshot: executionSnapshot,
+      paper_account_snapshot: account,
+      open_orders: [],
+      latest_fill: latestFill,
+      score_delta: scoreDelta,
+      cumulative_score: score,
+      failure_reason: isFinal ? input.failureReason : undefined,
+      authority_status: "not_live"
+    };
+    await store.recordPaperTradingObservation(observation, nextEvaluation);
+    evaluation = nextEvaluation;
+  }
+}
+
+function zeroPaperScore(): TradingProfitLossReadModel {
+  return {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
+  };
+}
+
+function paperScoreAtSequence(
+  input: {
+    netRevenueUsdt: number;
+    netReturnPct: number;
+    observationCount: number;
+    priorObservation?: {
+      netRevenueUsdt: number;
+      netReturnPct: number;
+    };
+  },
+  sequence: number
+): TradingProfitLossReadModel {
+  const progress = input.priorObservation && input.observationCount > 1
+    ? (sequence - 1) / (input.observationCount - 1)
+    : sequence / input.observationCount;
+  const startRevenue = input.priorObservation?.netRevenueUsdt ?? 0;
+  const startReturn = input.priorObservation?.netReturnPct ?? 0;
+  const netRevenue = sequence === input.observationCount
+    ? input.netRevenueUsdt
+    : roundPaperValue(startRevenue + (input.netRevenueUsdt - startRevenue) * progress);
+  const netReturn = sequence === input.observationCount
+    ? input.netReturnPct
+    : roundPaperValue(startReturn + (input.netReturnPct - startReturn) * progress);
+  const cost = sequence === input.observationCount ? 0.6 : roundPaperValue(0.6 * progress);
+  return {
+    revenue_usdt: roundPaperValue(netRevenue + cost),
+    cost_usdt: cost,
+    net_revenue_usdt: netRevenue,
+    net_return_pct: netReturn
+  };
+}
+
+function subtractPaperScore(
+  next: TradingProfitLossReadModel,
+  previous: TradingProfitLossReadModel
+): TradingProfitLossReadModel {
+  return {
+    revenue_usdt: roundPaperValue(next.revenue_usdt - previous.revenue_usdt),
+    cost_usdt: roundPaperValue(next.cost_usdt - previous.cost_usdt),
+    net_revenue_usdt: roundPaperValue(next.net_revenue_usdt - previous.net_revenue_usdt),
+    net_return_pct: roundPaperValue(next.net_return_pct - previous.net_return_pct)
+  };
+}
+
+function paperBoardAccount(score: TradingProfitLossReadModel) {
+  const fee = roundPaperValue(score.cost_usdt / 3);
+  const slippage = roundPaperValue(score.cost_usdt / 3);
+  const funding = roundPaperValue(score.cost_usdt - fee - slippage);
+  const equity = roundPaperValue(10_000 + score.net_revenue_usdt);
+  return {
+    wallet_balance_usdt: `${equity}`,
+    available_balance_usdt: `${equity}`,
+    equity_usdt: `${equity}`,
+    realized_pnl_usdt: `${score.revenue_usdt}`,
+    unrealized_pnl_usdt: "0",
+    fee_paid_usdt: `${fee}`,
+    slippage_paid_usdt: `${slippage}`,
+    funding_paid_usdt: `${funding}`,
+    margin_reserved_usdt: "0",
+    position: {
+      symbol: "BTCUSDT" as const,
+      quantity: "0.001",
+      side: "long" as const,
+      average_entry_price: "65000",
+      mark_price: "65200",
+      notional_usdt: "65.2"
+    },
+    open_order_count: 0,
+    authority_status: "not_live" as const
+  };
+}
+
+function paperBoardMarketSnapshot(
+  observedAt: string,
+  sourcePriority: "websocket_primary" | "rest_fallback"
+) {
+  return {
     symbol: "BTCUSDT" as const,
     price: 65_200,
     moving_average_fast: 65_240,
@@ -1200,23 +1755,30 @@ async function seedPaperEvaluation(
     expected_direction: "long" as const,
     observed_at: observedAt,
     source_kind: "binance_production_public_hybrid" as const,
-    source_priority: input.sourcePriority,
+    source_priority: sourcePriority,
     freshness: "fresh" as const,
-    ws_connected: input.sourcePriority === "websocket_primary",
-    rest_fallback_used: input.sourcePriority === "rest_fallback",
+    ws_connected: sourcePriority === "websocket_primary",
+    rest_fallback_used: sourcePriority === "rest_fallback",
     authority_status: "read_only" as const
   };
-  const executionSnapshot = {
+}
+
+function paperBoardExecutionSnapshot(
+  candidateId: string,
+  observedAt: string,
+  sourcePriority: "websocket_primary" | "rest_fallback"
+) {
+  return {
     symbol: "BTCUSDT" as const,
     observed_at: observedAt,
     source_kind: "binance_production_public_hybrid" as const,
-    source_priority: input.sourcePriority,
+    source_priority: sourcePriority,
     freshness: "fresh" as const,
-    ws_connected: input.sourcePriority === "websocket_primary",
-    rest_fallback_used: input.sourcePriority === "rest_fallback",
-    stream_marker: `${input.sourcePriority}-${input.candidate.candidate_id}`,
+    ws_connected: sourcePriority === "websocket_primary",
+    rest_fallback_used: sourcePriority === "rest_fallback",
+    stream_marker: `${sourcePriority}-${candidateId}`,
     agg_trades: [{
-      trade_id: `trade-${input.candidate.candidate_id}`,
+      trade_id: `trade-${candidateId}`,
       price: "65200",
       quantity: "0.001",
       trade_time: observedAt
@@ -1238,30 +1800,12 @@ async function seedPaperEvaluation(
     },
     authority_status: "read_only" as const
   };
-  const account = {
-    wallet_balance_usdt: `${10_000 + input.netRevenueUsdt}`,
-    available_balance_usdt: `${10_000 + input.netRevenueUsdt}`,
-    equity_usdt: `${10_000 + input.netRevenueUsdt}`,
-    realized_pnl_usdt: `${input.netRevenueUsdt}`,
-    unrealized_pnl_usdt: "0",
-    fee_paid_usdt: "0.2",
-    slippage_paid_usdt: "0.2",
-    funding_paid_usdt: "0.2",
-    margin_reserved_usdt: "0",
-    position: {
-      symbol: "BTCUSDT" as const,
-      quantity: "0.001",
-      side: "long" as const,
-      average_entry_price: "65000",
-      mark_price: "65200",
-      notional_usdt: "65.2"
-    },
-    open_order_count: 0,
-    authority_status: "not_live" as const
-  };
-  const latestFill = {
-    fill_id: `fill-${input.candidate.candidate_id}`,
-    order_id: `order-${input.candidate.candidate_id}`,
+}
+
+function paperBoardFill(candidateId: string, observedAt: string) {
+  return {
+    fill_id: `fill-${candidateId}`,
+    order_id: `order-${candidateId}`,
     fill_status: "filled" as const,
     fill_price: "65200",
     fill_quantity: "0.001",
@@ -1269,60 +1813,22 @@ async function seedPaperEvaluation(
     slippage_usdt: "0.2",
     funding_usdt: "0.2",
     trade_time: observedAt,
-    source_trade_id: `trade-${input.candidate.candidate_id}`
+    source_trade_id: `trade-${candidateId}`
   };
-  const evaluation: PaperTradingEvaluationRecord = {
-    record_kind: "paper_trading_evaluation",
-    version: 1,
-    paper_trading_evaluation_id: evaluationId,
-    candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
-    candidate_version_ref: {
-      record_kind: "candidate_version",
-      id: input.candidate.candidate_version.candidate_version_id
-    },
-    trading_run_ref: input.candidate.runtime.ref,
-    status: input.status,
-    interval_ms: 60_000,
-    observation_count: input.observationCount,
-    started_at: "2026-05-16T00:00:00.000Z",
-    last_observed_at: observedAt,
-    next_observation_at: input.status === "running" ? "2026-05-16T00:09:00.000Z" : undefined,
-    latest_score: score,
-    paper_account_snapshot: account,
-    open_orders: [],
-    latest_fill: latestFill,
-    latest_public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
-    latest_failure_reason: input.failureReason,
-    authority_status: "not_live"
-  };
-  const observation: PaperTradingObservationRecord = {
-    record_kind: "paper_trading_observation",
-    version: 1,
-    paper_trading_observation_id: `paper-observation-${input.candidate.candidate_id}`,
-    paper_trading_evaluation_ref: {
-      record_kind: "paper_trading_evaluation",
-      id: evaluationId
-    },
-    candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
-    candidate_version_ref: {
-      record_kind: "candidate_version",
-      id: input.candidate.candidate_version.candidate_version_id
-    },
-    trading_run_ref: input.candidate.runtime.ref,
-    sequence: input.observationCount,
-    status: input.failureReason ? "failed" : "recorded",
-    observed_at: observedAt,
-    market_snapshot: marketSnapshot,
-    public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
-    paper_account_snapshot: account,
-    open_orders: [],
-    latest_fill: latestFill,
-    score_delta: score,
-    cumulative_score: score,
-    failure_reason: input.failureReason,
-    authority_status: "not_live"
-  };
-  await store.recordPaperTradingObservation(observation, evaluation);
+}
+
+function interpolatedPaperObservedAt(
+  finalObservedAt: string,
+  sequence: number,
+  observationCount: number
+): string {
+  const startedAt = Date.parse("2026-05-16T00:00:00.000Z");
+  const endedAt = Date.parse(finalObservedAt);
+  return new Date(startedAt + (endedAt - startedAt) * sequence / observationCount).toISOString();
+}
+
+function roundPaperValue(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 async function seedLargeSandboxHistory(
@@ -1412,47 +1918,38 @@ function timestampAt(index: number): string {
   return `2026-05-16T00:00:${String(index).padStart(2, "0")}.000Z`;
 }
 
-async function seedPriorPaperObservation(
-  store: LocalStore,
-  candidateId: string,
-  input: {
-    netRevenueUsdt: number;
-    netReturnPct: number;
-    sequence: number;
-    observedAt: string;
-  }
-): Promise<void> {
-  const evaluation = await store.getLatestPaperTradingEvaluationForCandidate(candidateId);
-  if (!evaluation) {
-    throw new Error(`missing paper evaluation for ${candidateId}`);
-  }
-  const latestObservation = (await store.listPaperTradingObservations(
-    evaluation.paper_trading_evaluation_id
-  )).at(-1);
-  if (!latestObservation) {
-    throw new Error(`missing paper observation for ${candidateId}`);
-  }
-  const score = {
-    revenue_usdt: input.netRevenueUsdt + 0.6,
-    cost_usdt: 0.6,
-    net_revenue_usdt: input.netRevenueUsdt,
-    net_return_pct: input.netReturnPct
-  };
-  await store.recordPaperTradingObservation({
-    ...latestObservation,
-    paper_trading_observation_id: `paper-observation-${candidateId}-prior-${input.sequence}`,
-    sequence: input.sequence,
-    observed_at: input.observedAt,
-    score_delta: score,
-    cumulative_score: score
-  }, evaluation);
-}
-
 async function recordTradingPromotionForCandidate(
   store: LocalStore,
-  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>
-): Promise<void> {
-  await store.recordTradingPromotion({
+  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>,
+  promotedAt = "2026-05-16T00:32:00.000Z",
+  paperTradingEvaluationId = `paper-evaluation-${candidate.candidate_id}`
+): Promise<TradingPromotionRecord> {
+  const promotion = comparisonBackedPromotionForCandidate(
+    candidate,
+    promotedAt,
+    paperTradingEvaluationId
+  );
+  const itemDir = path.join(store.root(), "trading-promotions/items");
+  await mkdir(itemDir, { recursive: true });
+  await writeFile(
+    path.join(
+      itemDir,
+      encodeURIComponent(promotion.trading_promotion_id) + ".json"
+    ),
+    JSON.stringify(promotion, null, 2) + "\n",
+    "utf8"
+  );
+  return promotion;
+}
+
+function comparisonBackedPromotionForCandidate(
+  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>,
+  promotedAt = "2026-05-16T00:32:00.000Z",
+  paperTradingEvaluationId = `paper-evaluation-${candidate.candidate_id}`
+): TradingPromotionRecord {
+  const campaignId = "operator-test-campaign-" + candidate.candidate_id;
+  const outcomeId = campaignId + "-outcome";
+  return {
     record_kind: "trading_promotion",
     version: 1,
     trading_promotion_id: `promotion-${candidate.candidate_id}`,
@@ -1464,10 +1961,143 @@ async function recordTradingPromotionForCandidate(
     },
     paper_trading_evaluation_ref: {
       record_kind: "paper_trading_evaluation",
-      id: `paper-evaluation-${candidate.candidate_id}`
+      id: paperTradingEvaluationId
     },
-    promoted_at: "2026-05-16T00:32:00.000Z",
+    comparison_confirmation: {
+      basis_kind: "paper_trading_comparison_confirmation",
+      campaign_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: campaignId
+      },
+      campaign_digest: "sha256:" + campaignId,
+      campaign_outcome_ref: {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: outcomeId
+      },
+      campaign_outcome_digest: "sha256:" + outcomeId,
+      final_verdict_ref: {
+        record_kind: "paper_trading_comparison_verdict",
+        id: outcomeId + "-final-verdict"
+      },
+      final_verdict_digest: "sha256:" + outcomeId + "-final-verdict"
+    },
+    promoted_at: promotedAt,
     authority_status: "not_live"
+  };
+}
+
+async function writeNewerUnrelatedPaperEvaluation(
+  store: LocalStore,
+  boundEvaluation: PaperTradingEvaluationRecord,
+  evaluationId: string
+): Promise<void> {
+  const itemDir = path.join(store.root(), "paper-trading-evaluations/items");
+  await mkdir(itemDir, { recursive: true });
+  await writeFile(
+    path.join(itemDir, encodeURIComponent(evaluationId) + ".json"),
+    JSON.stringify({
+      ...boundEvaluation,
+      paper_trading_evaluation_id: evaluationId,
+      started_at: "2026-05-16T01:00:00.000Z",
+      observation_count: 0,
+      last_observed_at: "2026-05-16T01:01:00.000Z",
+      next_observation_at: "2026-05-16T01:02:00.000Z",
+      latest_score: {
+        revenue_usdt: 1_000.6,
+        cost_usdt: 0.6,
+        net_revenue_usdt: 1_000,
+        net_return_pct: 10
+      }
+    }, null, 2) + "\n",
+    "utf8"
+  );
+}
+
+function comparisonConfirmationProjectionStore(
+  store: LocalStore,
+  promotion: TradingPromotionRecord
+): LocalStore {
+  const campaign = {
+    record_kind: "paper_trading_comparison_confirmation_campaign",
+    paper_trading_comparison_confirmation_campaign_id:
+      promotion.comparison_confirmation.campaign_ref.id,
+    campaign_digest: promotion.comparison_confirmation.campaign_digest,
+    campaign_policy: {
+      required_window_count: 2
+    },
+    comparison_policy: {
+      primary_metric: "net_revenue_usdt",
+      minimum_net_revenue_lift_usdt: 0.75
+    },
+    slots: [{ slot_index: 1 }, { slot_index: 2 }],
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as NonNullable<Awaited<ReturnType<
+    LocalStore["getPaperTradingComparisonConfirmationCampaign"]
+  >>>;
+  const outcome = {
+    record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+    paper_trading_comparison_confirmation_campaign_outcome_id:
+      promotion.comparison_confirmation.campaign_outcome_ref.id,
+    campaign_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign",
+      id: campaign.paper_trading_comparison_confirmation_campaign_id
+    },
+    campaign_digest: campaign.campaign_digest,
+    slot_results: [
+      {
+        slot_index: 1,
+        status: "challenger_improved",
+        verdict_ref: {
+          record_kind: "paper_trading_comparison_verdict",
+          id: "operator-test-slot-1-verdict"
+        },
+        verdict_digest: "sha256:operator-test-slot-1-verdict"
+      },
+      {
+        slot_index: 2,
+        status: "challenger_improved",
+        verdict_ref: {
+          ...promotion.comparison_confirmation.final_verdict_ref
+        },
+        verdict_digest:
+          promotion.comparison_confirmation.final_verdict_digest
+      }
+    ],
+    improved_count: 2,
+    not_improved_count: 0,
+    ineligible_count: 0,
+    expired_count: 0,
+    campaign_outcome: "confirmed_improvement",
+    promotion_eligibility: "eligible",
+    next_action: "review_for_trading_promotion",
+    evaluated_at: "2026-05-16T00:31:30.000Z",
+    outcome_digest:
+      promotion.comparison_confirmation.campaign_outcome_digest,
+    evaluation_authority: "external_to_trading_systems",
+    authority_status: "not_live"
+  } as NonNullable<Awaited<ReturnType<
+    LocalStore["getPaperTradingComparisonConfirmationCampaignOutcome"]
+  >>>;
+
+  return new Proxy(store, {
+    get(target, property) {
+      if (property === "getPaperTradingComparisonConfirmationCampaign") {
+        return async (id: string) => id ===
+          campaign.paper_trading_comparison_confirmation_campaign_id
+          ? campaign
+          : undefined;
+      }
+      if (property ===
+        "getPaperTradingComparisonConfirmationCampaignOutcome") {
+        return async (id: string) => id ===
+          outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+          ? outcome
+          : undefined;
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
   });
 }
 

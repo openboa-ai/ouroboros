@@ -1,0 +1,39 @@
+{
+  "record_kind": "system_code",
+  "version": 1,
+  "system_code_id": "system-code-confirmation-challenger",
+  "artifact_kind": "python_file",
+  "artifact_path": "fixtures/trading-systems/clock.py",
+  "artifact_digest": "sha256:confirmation-challenger",
+  "runtime_kind": "python",
+  "entrypoint": [
+    "python3",
+    "fixtures/trading-systems/clock.py"
+  ],
+  "declared_output_contract": {
+    "contract_kind": "opaque_runtime_boundary",
+    "declared_output_kinds": [
+      "program_event",
+      "runtime_log",
+      "runtime_heartbeat",
+      "metric_snapshot"
+    ]
+  },
+  "secret_policy_ref": {
+    "record_kind": "secret_policy",
+    "id": "secret-policy-no-raw-values-v1"
+  },
+  "capability_policy_ref": {
+    "record_kind": "capability_policy",
+    "id": "capability-policy-clock-fixture-v1"
+  },
+  "provenance_refs": [
+    {
+      "record_kind": "research_finding",
+      "id": "confirmation-seed"
+    }
+  ],
+  "status": "registered",
+  "created_at": "2026-07-09T20:50:00.000Z",
+  "authority_status": "not_live"
+}

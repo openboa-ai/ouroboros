@@ -1,0 +1,116 @@
+{
+  "record_kind": "paper_trading_observation",
+  "version": 1,
+  "paper_trading_observation_id": "paper-trading-observation-paper-trading-evaluation-trading-run-paper-session-5e87124cece6e828-19df-7a27c626cec429bc-0002",
+  "paper_trading_evaluation_ref": {
+    "record_kind": "paper_trading_evaluation",
+    "id": "paper-trading-evaluation-trading-run-paper-session-5e87124cece6e828-19df61e3131cc0a3"
+  },
+  "paper_trading_evaluation_commitment_ref": {
+    "record_kind": "paper_trading_evaluation_commitment",
+    "id": "paper-trading-evaluation-commitment-trading-run-paper-session-5e87124cece6e828-19df61e3131cc0a3"
+  },
+  "paper_trading_comparison_tick_ref": {
+    "record_kind": "paper_trading_comparison_tick",
+    "id": "paper-trading-comparison-tick-2de037a7f5ad38f0"
+  },
+  "paper_trading_comparison_tick_digest": "sha256:926d9ffe9349b1783dfb90e581f13ba858973577026fe44087b5d5e0a2c1d8d2",
+  "paper_trading_comparison_tick_acknowledgement_ref": {
+    "record_kind": "paper_trading_comparison_tick_acknowledgement",
+    "id": "paper-comparison-tick-acknowledgement-paper-comparison-tick-delivery-paper-comparison-activation-attempt-52db8-98300596a19d8f0e"
+  },
+  "paper_trading_comparison_tick_acknowledgement_digest": "sha256:c97aca75f4fb11adb0ef6a769521479a0245f85c55027764ece80e30611118c1",
+  "paper_trading_comparison_checkpoint_attempt_ref": {
+    "record_kind": "paper_trading_comparison_checkpoint_attempt",
+    "id": "paper-comparison-checkpoint-attempt-ca9eb07f40405766cd1a"
+  },
+  "paper_trading_comparison_checkpoint_attempt_digest": "sha256:e34ab3d3e67168bf7451514ccda18ed501bd005e869750b6857b08b709fb227f",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "fixture-candidate-sealed-replay-001"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "fixture-candidate-version-001"
+  },
+  "trading_run_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-5e87124cece6e828"
+  },
+  "sequence": 2,
+  "status": "no_order",
+  "observed_at": "2026-07-10T00:05:38.000Z",
+  "market_snapshot": {
+    "symbol": "BTCUSDT",
+    "price": 60100,
+    "moving_average_fast": 60200,
+    "moving_average_slow": 60000,
+    "volatility": 0.01,
+    "expected_direction": "long",
+    "observed_at": "2026-07-10T00:05:37.998Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "authority_status": "read_only"
+  },
+  "public_execution_snapshot": {
+    "symbol": "BTCUSDT",
+    "observed_at": "2026-07-10T00:05:37.999Z",
+    "source_kind": "binance_production_public_rest",
+    "source_priority": "rest_fallback",
+    "freshness": "fresh",
+    "ws_connected": false,
+    "rest_fallback_used": true,
+    "gap_detected": false,
+    "stream_marker": "confirmation-2026-07-10T00:05:38.000Z",
+    "agg_trades": [
+      {
+        "trade_id": "aggTrade:2026-07-10T00:05:38.000Z",
+        "price": "60000",
+        "quantity": "0.001",
+        "trade_time": "2026-07-10T00:05:37.999Z",
+        "is_buyer_maker": false
+      }
+    ],
+    "authority_status": "read_only"
+  },
+  "paper_account_snapshot": {
+    "wallet_balance_usdt": "10000",
+    "available_balance_usdt": "10000",
+    "equity_usdt": "10000",
+    "realized_pnl_usdt": "0",
+    "unrealized_pnl_usdt": "0",
+    "fee_paid_usdt": "0",
+    "slippage_paid_usdt": "0",
+    "funding_paid_usdt": "0",
+    "margin_reserved_usdt": "0",
+    "position": {
+      "symbol": "BTCUSDT",
+      "quantity": "0",
+      "side": "flat",
+      "mark_price": "60100",
+      "notional_usdt": "0"
+    },
+    "open_order_count": 0,
+    "authority_status": "not_live"
+  },
+  "open_orders": [],
+  "processed_trading_system_event_ids": [],
+  "processed_public_trade_ids": [],
+  "score_delta": {
+    "revenue_usdt": 0,
+    "cost_usdt": 0,
+    "net_revenue_usdt": 0,
+    "net_return_pct": 0
+  },
+  "cumulative_score": {
+    "revenue_usdt": 0,
+    "cost_usdt": 0,
+    "net_revenue_usdt": 0,
+    "net_return_pct": 0
+  },
+  "authority_status": "not_live"
+}

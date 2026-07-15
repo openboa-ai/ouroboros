@@ -2,6 +2,8 @@ import type {
   AgentProfileId,
   AgentProfileRecord,
   ArtifactLineageRecord,
+  CandidateAdmissionDecisionRecord,
+  CandidateArenaResearchAllocationRecord,
   CandidateArenaTickRecord,
   CandidateEvaluationRunOutcome,
   CandidateInspectReadModel,
@@ -9,19 +11,63 @@ import type {
   CandidateMaterializationInput,
   CandidateMaterializationOutcome,
   CandidateSummaryReadModel,
+  CandidateVersionRecord,
   EvaluationExecutionMode,
   ExperimentRunRecord,
   ImprovementProposalRecord,
   OuroborosCommandRecord,
   Ref,
   ResearchOrchestrationRunRecord,
+  ResearchBehaviorFingerprintRecord,
+  ResearchDirectionRecord,
+  ResearchControlCampaignArmIntentRecord,
+  ResearchControlCampaignOutcomeRecord,
+  ResearchControlCampaignPaperScheduleRecord,
+  ResearchControlCampaignPaperStartBatchRecord,
+  ResearchControlCampaignPaperSlotOutcomeRecord,
+  ResearchControlCampaignRecord,
+  ResearchControlCampaignReportRecord,
+  ResearchControlStudyRecord,
+  ResearchControlStudyOutcomeRecord,
+  ResearchGeneralizationOutcomeRecord,
+  ResearchGeneralizationPolicyDecisionRecord,
+  ResearchGeneralizationProtocolRecord,
+  ResearchAllocationPolicyDecisionRecord,
+  ResearchMemoryControlPairOutcomeRecord,
+  ResearchMemoryControlStudyOutcomeRecord,
+  ResearchMemoryControlStudyRecord,
+  ResearchPreflightCommitmentRecord,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
+  ResearchWorkerRecord,
+  ResearchWorkerCheckpointRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingPromotionRecord,
+  PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
+  PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
+  PaperTradingHandoffConformanceRecord,
+  PaperTradingComparisonCommitmentRecord,
+  PaperTradingComparisonPreparationRecord,
+  PaperTradingComparisonTickRecord,
+  PaperTradingComparisonTickCaptureWriteContext,
+  PaperTradingComparisonTickAcknowledgementRecord,
+  PaperTradingComparisonTickDeliveryRecord,
+  PaperTradingComparisonTickIOWriteContext,
+  PaperTradingComparisonActivationRecord,
+  PaperTradingComparisonActivationAttemptRecord,
+  PaperTradingComparisonActivationSideResultRecord,
+  PaperTradingComparisonActivationOutcomeRecord,
+  PaperTradingComparisonCheckpointAttemptRecord,
+  PaperTradingComparisonCheckpointOutcomeRecord,
+  PaperTradingComparisonCheckpointWriteContext,
+  PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingComparisonConfirmationCampaignRecord,
+  PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  PaperTradingComparisonResearchReleaseRecord,
+  PaperTradingComparisonVerdictRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -36,7 +82,44 @@ import type {
   TradingRunRecord
 } from "@ouroboros/domain";
 import type { SandboxStartResult, SandboxAdapterObservationResult } from "./sandbox";
+import type { DecideResearchMemoryControlPairOutcomeInput } from
+  "../candidate/research-memory-control-study-outcome";
 import { createHash } from "node:crypto";
+
+export type SandboxStartPersistenceInput = Omit<SandboxStartResult, "placement"> & {
+  placement?: SandboxStartResult["placement"];
+};
+
+export interface PreparedPaperTradingComparisonCheckpointSide {
+  role: "champion" | "challenger";
+  ledger_inputs: LedgerInput[];
+  ledger_outcomes: LedgerWriteOutcome[];
+  observation: PaperTradingObservationRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  consumed_event_count: number;
+  provider_request_count_after: number;
+  preparation_digest: string;
+}
+
+export interface RecordPaperTradingComparisonPairedCheckpointInput {
+  attempt: PaperTradingComparisonCheckpointAttemptRecord;
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord;
+  champion: PreparedPaperTradingComparisonCheckpointSide;
+  challenger: PreparedPaperTradingComparisonCheckpointSide;
+}
+
+export interface PaperTradingComparisonWindowClosureGraphSnapshot {
+  activation_attempt: PaperTradingComparisonActivationAttemptRecord;
+  activation_outcomes: PaperTradingComparisonActivationOutcomeRecord[];
+  ticks: PaperTradingComparisonTickRecord[];
+  checkpoint_attempts: PaperTradingComparisonCheckpointAttemptRecord[];
+  checkpoint_outcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+}
+
+export interface ResearchMemoryControlPairOutcomePersistenceInput {
+  outcome: ResearchMemoryControlPairOutcomeRecord;
+  source_graph: DecideResearchMemoryControlPairOutcomeInput;
+}
 
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
 export const FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
@@ -69,6 +152,14 @@ export interface OuroborosStorePort {
   getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined>;
   getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined>;
   getTradingRun(tradingRunId: string): Promise<TradingRunRecord | undefined>;
+  createPaperTradingRun(input: {
+    idempotency_key: string;
+    candidate_id: string;
+    candidate_version_id: string;
+    evidence_purpose: PaperTradingEvidencePurpose;
+    created_at?: string;
+  }): Promise<TradingRunRecord>;
+  listTradingRunsForCandidateVersion(candidateVersionId: string): Promise<TradingRunRecord[]>;
   listCandidates(): Promise<CandidateSummaryReadModel[]>;
   materializeCandidate(input: CandidateMaterializationInput): Promise<CandidateMaterializationOutcome>;
   recordCandidateMaterializationFailure(input: CandidateMaterializationFailureInput): Promise<CandidateMaterializationOutcome>;
@@ -86,8 +177,215 @@ export interface OuroborosStorePort {
   }): Promise<CandidateEvaluationRunOutcome>;
   recordCandidateArenaTick(tick: CandidateArenaTickRecord): Promise<CandidateArenaTickRecord>;
   listCandidateArenaTicks(): Promise<CandidateArenaTickRecord[]>;
+  recordCandidateArenaResearchAllocation(
+    allocation: CandidateArenaResearchAllocationRecord
+  ): Promise<CandidateArenaResearchAllocationRecord>;
+  getCandidateArenaResearchAllocation(
+    allocationId: string
+  ): Promise<CandidateArenaResearchAllocationRecord | undefined>;
+  listCandidateArenaResearchAllocations(): Promise<
+    CandidateArenaResearchAllocationRecord[]
+  >;
+  recordResearchControlCampaign(
+    campaign: ResearchControlCampaignRecord
+  ): Promise<ResearchControlCampaignRecord>;
+  getResearchControlCampaign(
+    campaignId: string
+  ): Promise<ResearchControlCampaignRecord | undefined>;
+  listResearchControlCampaigns(): Promise<ResearchControlCampaignRecord[]>;
+  recordResearchControlCampaignArmIntent(
+    intent: ResearchControlCampaignArmIntentRecord
+  ): Promise<ResearchControlCampaignArmIntentRecord>;
+  getResearchControlCampaignArmIntent(
+    intentId: string
+  ): Promise<ResearchControlCampaignArmIntentRecord | undefined>;
+  listResearchControlCampaignArmIntents(): Promise<
+    ResearchControlCampaignArmIntentRecord[]
+  >;
+  recordResearchControlCampaignReport(
+    report: ResearchControlCampaignReportRecord
+  ): Promise<ResearchControlCampaignReportRecord>;
+  getResearchControlCampaignReport(
+    reportId: string
+  ): Promise<ResearchControlCampaignReportRecord | undefined>;
+  listResearchControlCampaignReports(): Promise<
+    ResearchControlCampaignReportRecord[]
+  >;
+  recordResearchControlCampaignPaperSchedule(
+    schedule: ResearchControlCampaignPaperScheduleRecord
+  ): Promise<ResearchControlCampaignPaperScheduleRecord>;
+  getResearchControlCampaignPaperSchedule(
+    scheduleId: string
+  ): Promise<ResearchControlCampaignPaperScheduleRecord | undefined>;
+  listResearchControlCampaignPaperSchedules(): Promise<
+    ResearchControlCampaignPaperScheduleRecord[]
+  >;
+  recordResearchControlCampaignPaperStartBatch(
+    batch: ResearchControlCampaignPaperStartBatchRecord
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord>;
+  replicateResearchControlCampaignPaperStartBatch(
+    batch: ResearchControlCampaignPaperStartBatchRecord
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord>;
+  getResearchControlCampaignPaperStartBatch(
+    batchId: string
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord | undefined>;
+  listResearchControlCampaignPaperStartBatches(
+    scheduleId?: string
+  ): Promise<ResearchControlCampaignPaperStartBatchRecord[]>;
+  recordResearchControlCampaignPaperSlotOutcome(
+    outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord>;
+  replicateResearchControlCampaignPaperSlotOutcome(
+    outcome: ResearchControlCampaignPaperSlotOutcomeRecord
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord>;
+  getResearchControlCampaignPaperSlotOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord | undefined>;
+  listResearchControlCampaignPaperSlotOutcomes(
+    scheduleId?: string
+  ): Promise<ResearchControlCampaignPaperSlotOutcomeRecord[]>;
+  recordResearchControlCampaignOutcome(
+    outcome: ResearchControlCampaignOutcomeRecord
+  ): Promise<ResearchControlCampaignOutcomeRecord>;
+  getResearchControlCampaignOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlCampaignOutcomeRecord | undefined>;
+  listResearchControlCampaignOutcomes(): Promise<
+    ResearchControlCampaignOutcomeRecord[]
+  >;
+  recordResearchControlStudy(
+    study: ResearchControlStudyRecord
+  ): Promise<ResearchControlStudyRecord>;
+  getResearchControlStudy(
+    studyId: string
+  ): Promise<ResearchControlStudyRecord | undefined>;
+  listResearchControlStudies(): Promise<ResearchControlStudyRecord[]>;
+  recordResearchControlStudyOutcome(
+    outcome: ResearchControlStudyOutcomeRecord
+  ): Promise<ResearchControlStudyOutcomeRecord>;
+  getResearchControlStudyOutcome(
+    outcomeId: string
+  ): Promise<ResearchControlStudyOutcomeRecord | undefined>;
+  listResearchControlStudyOutcomes(): Promise<
+    ResearchControlStudyOutcomeRecord[]
+  >;
+  recordResearchMemoryControlStudy(
+    study: ResearchMemoryControlStudyRecord
+  ): Promise<ResearchMemoryControlStudyRecord>;
+  getResearchMemoryControlStudy(
+    studyId: string
+  ): Promise<ResearchMemoryControlStudyRecord | undefined>;
+  listResearchMemoryControlStudies(): Promise<
+    ResearchMemoryControlStudyRecord[]
+  >;
+  recordResearchMemoryControlPairOutcome(
+    input: ResearchMemoryControlPairOutcomePersistenceInput
+  ): Promise<ResearchMemoryControlPairOutcomeRecord>;
+  getResearchMemoryControlPairOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord | undefined>;
+  listResearchMemoryControlPairOutcomes(
+    studyId?: string
+  ): Promise<ResearchMemoryControlPairOutcomeRecord[]>;
+  recordResearchMemoryControlStudyOutcome(
+    outcome: ResearchMemoryControlStudyOutcomeRecord
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord>;
+  getResearchMemoryControlStudyOutcome(
+    outcomeId: string
+  ): Promise<ResearchMemoryControlStudyOutcomeRecord | undefined>;
+  listResearchMemoryControlStudyOutcomes(): Promise<
+    ResearchMemoryControlStudyOutcomeRecord[]
+  >;
+  recordResearchGeneralizationProtocol(
+    protocol: ResearchGeneralizationProtocolRecord
+  ): Promise<ResearchGeneralizationProtocolRecord>;
+  getResearchGeneralizationProtocol(
+    protocolId: string
+  ): Promise<ResearchGeneralizationProtocolRecord | undefined>;
+  listResearchGeneralizationProtocols(): Promise<
+    ResearchGeneralizationProtocolRecord[]
+  >;
+  recordResearchGeneralizationOutcome(
+    outcome: ResearchGeneralizationOutcomeRecord
+  ): Promise<ResearchGeneralizationOutcomeRecord>;
+  getResearchGeneralizationOutcome(
+    outcomeId: string
+  ): Promise<ResearchGeneralizationOutcomeRecord | undefined>;
+  listResearchGeneralizationOutcomes(): Promise<
+    ResearchGeneralizationOutcomeRecord[]
+  >;
+  recordResearchGeneralizationPolicyDecision(
+    decision: ResearchGeneralizationPolicyDecisionRecord
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord>;
+  getResearchGeneralizationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchGeneralizationPolicyDecisionRecord | undefined>;
+  listResearchGeneralizationPolicyDecisions(): Promise<
+    ResearchGeneralizationPolicyDecisionRecord[]
+  >;
+  recordResearchAllocationPolicyDecision(
+    decision: ResearchAllocationPolicyDecisionRecord
+  ): Promise<ResearchAllocationPolicyDecisionRecord>;
+  getResearchAllocationPolicyDecision(
+    decisionId: string
+  ): Promise<ResearchAllocationPolicyDecisionRecord | undefined>;
+  listResearchAllocationPolicyDecisions(): Promise<
+    ResearchAllocationPolicyDecisionRecord[]
+  >;
+  recordResearchDirection(
+    direction: ResearchDirectionRecord
+  ): Promise<ResearchDirectionRecord>;
+  getResearchDirection(
+    directionId: string
+  ): Promise<ResearchDirectionRecord | undefined>;
+  listResearchDirections(): Promise<ResearchDirectionRecord[]>;
+  recordResearchWorker(worker: ResearchWorkerRecord): Promise<ResearchWorkerRecord>;
+  getResearchWorker(workerId: string): Promise<ResearchWorkerRecord | undefined>;
+  listResearchWorkers(): Promise<ResearchWorkerRecord[]>;
+  recordResearchPreflightCommitment(
+    commitment: ResearchPreflightCommitmentRecord
+  ): Promise<ResearchPreflightCommitmentRecord>;
+  getResearchPreflightCommitment(
+    commitmentId: string
+  ): Promise<ResearchPreflightCommitmentRecord | undefined>;
+  listResearchPreflightCommitments(): Promise<ResearchPreflightCommitmentRecord[]>;
+  recordResearchWorkerCheckpoint(
+    checkpoint: ResearchWorkerCheckpointRecord
+  ): Promise<ResearchWorkerCheckpointRecord>;
+  getResearchWorkerCheckpoint(
+    checkpointId: string
+  ): Promise<ResearchWorkerCheckpointRecord | undefined>;
+  listResearchWorkerCheckpoints(): Promise<ResearchWorkerCheckpointRecord[]>;
+  recordResearchBehaviorFingerprint(
+    fingerprint: ResearchBehaviorFingerprintRecord
+  ): Promise<ResearchBehaviorFingerprintRecord>;
+  getResearchBehaviorFingerprint(
+    fingerprintId: string
+  ): Promise<ResearchBehaviorFingerprintRecord | undefined>;
+  listResearchBehaviorFingerprints(): Promise<ResearchBehaviorFingerprintRecord[]>;
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
+  getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined>;
+  getTradingEvaluationResult(
+    evaluationResultId: string
+  ): Promise<TradingEvaluationResultRecord | undefined>;
+  recordPaperTradingHandoffConformance(
+    record: PaperTradingHandoffConformanceRecord
+  ): Promise<PaperTradingHandoffConformanceRecord>;
+  getPaperTradingHandoffConformance(
+    conformanceId: string
+  ): Promise<PaperTradingHandoffConformanceRecord | undefined>;
+  listPaperTradingHandoffConformances(): Promise<PaperTradingHandoffConformanceRecord[]>;
+  recordCandidateAdmissionDecision(
+    record: CandidateAdmissionDecisionRecord
+  ): Promise<CandidateAdmissionDecisionRecord>;
+  getCandidateAdmissionDecision(
+    decisionId: string
+  ): Promise<CandidateAdmissionDecisionRecord | undefined>;
+  getCandidateVersion(
+    candidateVersionId: string
+  ): Promise<CandidateVersionRecord | undefined>;
+  listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]>;
   recordExperimentRun(record: ExperimentRunRecord): Promise<ExperimentRunRecord>;
   recordTradingEvaluationResult(record: TradingEvaluationResultRecord): Promise<TradingEvaluationResultRecord>;
   recordResearchFinding(record: ResearchFindingRecord): Promise<ResearchFindingRecord>;
@@ -114,25 +412,48 @@ export interface OuroborosStorePort {
   getResearcherProviderSelection(): Promise<ResearcherProviderSelectionRecord | undefined>;
   recordResearcherProviderSelection(selection: ResearcherProviderSelectionRecord): Promise<ResearcherProviderSelectionRecord>;
   getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined>;
+  getTradingPromotion(promotionId: string): Promise<TradingPromotionRecord | undefined>;
   recordTradingPromotion(promotion: TradingPromotionRecord): Promise<TradingPromotionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
-  recordRunControlAudit(input: RunControlAuditInput): Promise<RunControlAuditOutcome>;
+  recordRunControlAudit(
+    input: RunControlAuditInput,
+    authority?: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<RunControlAuditOutcome>;
   recordPublicMarketLivenessSurface(surface: PublicMarketLivenessSurfaceRecord): Promise<PublicMarketLivenessSurfaceReadModel>;
   getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined>;
   recordSandboxStart(input: SandboxStartResult): Promise<StartSandboxOutcome>;
+  recordSandboxStart(
+    input: SandboxStartPersistenceInput,
+    authority: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<StartSandboxOutcome>;
   recordSandboxObservations(
     sandboxId: string,
     observations: Omit<SandboxAdapterObservationResult, "instance"> & {
       lifecycle_status?: SandboxRecord["lifecycle_status"];
       last_heartbeat_at?: string;
-    }
+    },
+    authority?: PaperTradingComparisonCheckpointWriteContext
   ): Promise<SandboxLogsOutcome>;
   stopSandbox(
     input: StopSandboxInput,
-    observations?: SandboxAdapterObservationResult
+    observations?: SandboxAdapterObservationResult,
+    authority?: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome>;
-  recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
+  recordPaperTradingEvaluationCommitment(
+    commitment: PaperTradingEvaluationCommitmentRecord
+  ): Promise<PaperTradingEvaluationCommitmentRecord>;
+  getPaperTradingEvaluationCommitment(
+    commitmentId: string
+  ): Promise<PaperTradingEvaluationCommitmentRecord | undefined>;
+  listPaperTradingEvaluationCommitments(): Promise<PaperTradingEvaluationCommitmentRecord[]>;
+  recordPaperTradingEvaluation(
+    evaluation: PaperTradingEvaluationRecord,
+    authority?: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<PaperTradingEvaluationRecord>;
+  getPaperTradingEvaluation(
+    evaluationId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined>;
   listPaperTradingEvaluations(): Promise<PaperTradingEvaluationRecord[]>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
@@ -141,6 +462,154 @@ export interface OuroborosStorePort {
     evaluation: PaperTradingEvaluationRecord
   ): Promise<PaperTradingObservationRecord>;
   listPaperTradingObservations(evaluationId: string): Promise<PaperTradingObservationRecord[]>;
+  reservePaperTradingComparisonPreparation(
+    preparation: PaperTradingComparisonPreparationRecord
+  ): Promise<PaperTradingComparisonPreparationRecord>;
+  getPaperTradingComparisonPreparation(
+    preparationId: string
+  ): Promise<PaperTradingComparisonPreparationRecord | undefined>;
+  listPaperTradingComparisonPreparations(): Promise<PaperTradingComparisonPreparationRecord[]>;
+  recordPaperTradingComparisonCommitment(
+    commitment: PaperTradingComparisonCommitmentRecord
+  ): Promise<PaperTradingComparisonCommitmentRecord>;
+  getPaperTradingComparisonCommitment(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonCommitmentRecord | undefined>;
+  listPaperTradingComparisonCommitments(): Promise<PaperTradingComparisonCommitmentRecord[]>;
+  recordPaperTradingComparisonTick(
+    tick: PaperTradingComparisonTickRecord,
+    authority?: PaperTradingComparisonTickCaptureWriteContext
+  ): Promise<PaperTradingComparisonTickRecord>;
+  getPaperTradingComparisonTick(
+    tickId: string
+  ): Promise<PaperTradingComparisonTickRecord | undefined>;
+  listPaperTradingComparisonTicks(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonTickRecord[]>;
+  recordPaperTradingComparisonTickDelivery(
+    delivery: PaperTradingComparisonTickDeliveryRecord,
+    authority: PaperTradingComparisonTickIOWriteContext
+  ): Promise<PaperTradingComparisonTickDeliveryRecord>;
+  getPaperTradingComparisonTickDelivery(
+    deliveryId: string
+  ): Promise<PaperTradingComparisonTickDeliveryRecord | undefined>;
+  listPaperTradingComparisonTickDeliveries(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonTickDeliveryRecord[]>;
+  recordPaperTradingComparisonTickAcknowledgement(
+    acknowledgement: PaperTradingComparisonTickAcknowledgementRecord,
+    authority: PaperTradingComparisonTickIOWriteContext
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord>;
+  getPaperTradingComparisonTickAcknowledgement(
+    acknowledgementId: string
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord | undefined>;
+  listPaperTradingComparisonTickAcknowledgements(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonTickAcknowledgementRecord[]>;
+  recordPaperTradingComparisonActivation(
+    activation: PaperTradingComparisonActivationRecord
+  ): Promise<PaperTradingComparisonActivationRecord>;
+  getPaperTradingComparisonActivation(
+    activationId: string
+  ): Promise<PaperTradingComparisonActivationRecord | undefined>;
+  listPaperTradingComparisonActivations(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonActivationRecord[]>;
+  recordPaperTradingComparisonActivationAttempt(
+    attempt: PaperTradingComparisonActivationAttemptRecord
+  ): Promise<PaperTradingComparisonActivationAttemptRecord>;
+  getPaperTradingComparisonActivationAttempt(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationAttemptRecord | undefined>;
+  listPaperTradingComparisonActivationAttempts(
+    activationId: string
+  ): Promise<PaperTradingComparisonActivationAttemptRecord[]>;
+  recordPaperTradingComparisonActivationSideResult(
+    result: PaperTradingComparisonActivationSideResultRecord
+  ): Promise<PaperTradingComparisonActivationSideResultRecord>;
+  getPaperTradingComparisonActivationSideResult(
+    resultId: string
+  ): Promise<PaperTradingComparisonActivationSideResultRecord | undefined>;
+  listPaperTradingComparisonActivationSideResults(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationSideResultRecord[]>;
+  recordPaperTradingComparisonActivationOutcome(
+    outcome: PaperTradingComparisonActivationOutcomeRecord
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord>;
+  getPaperTradingComparisonActivationOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord | undefined>;
+  listPaperTradingComparisonActivationOutcomes(
+    attemptId: string
+  ): Promise<PaperTradingComparisonActivationOutcomeRecord[]>;
+  recordPaperTradingComparisonCheckpointAttempt(
+    attempt: PaperTradingComparisonCheckpointAttemptRecord
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord>;
+  getPaperTradingComparisonCheckpointAttempt(
+    attemptId: string
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord | undefined>;
+  listPaperTradingComparisonCheckpointAttempts(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonCheckpointAttemptRecord[]>;
+  recordPaperTradingComparisonCheckpointOutcome(
+    outcome: PaperTradingComparisonCheckpointOutcomeRecord
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord>;
+  getPaperTradingComparisonCheckpointOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord | undefined>;
+  listPaperTradingComparisonCheckpointOutcomes(
+    checkpointAttemptId: string
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord[]>;
+  /** Linearizes one durable graph read with all paper-comparison evidence writes. */
+  snapshotPaperTradingComparisonWindowClosureGraph(
+    activationAttemptId: string
+  ): Promise<PaperTradingComparisonWindowClosureGraphSnapshot>;
+  previewLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
+  recordPaperTradingComparisonPairedCheckpoint(
+    input: RecordPaperTradingComparisonPairedCheckpointInput
+  ): Promise<PaperTradingComparisonCheckpointOutcomeRecord>;
+  recoverPaperTradingComparisonCheckpointTransactions(): Promise<
+    PaperTradingComparisonCheckpointOutcomeRecord[]
+  >;
+  recordPaperTradingComparisonVerdict(
+    verdict: PaperTradingComparisonVerdictRecord
+  ): Promise<PaperTradingComparisonVerdictRecord>;
+  getPaperTradingComparisonVerdict(
+    verdictId: string
+  ): Promise<PaperTradingComparisonVerdictRecord | undefined>;
+  listPaperTradingComparisonVerdicts(
+    comparisonId?: string
+  ): Promise<PaperTradingComparisonVerdictRecord[]>;
+  recordPaperTradingComparisonConfirmationCampaign(
+    campaign: PaperTradingComparisonConfirmationCampaignRecord
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord>;
+  getPaperTradingComparisonConfirmationCampaign(
+    campaignId: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignRecord | undefined>;
+  listPaperTradingComparisonConfirmationCampaigns(): Promise<
+    PaperTradingComparisonConfirmationCampaignRecord[]
+  >;
+  recordPaperTradingComparisonConfirmationCampaignOutcome(
+    outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord>;
+  getPaperTradingComparisonConfirmationCampaignOutcome(
+    outcomeId: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord | undefined>;
+  listPaperTradingComparisonConfirmationCampaignOutcomes(
+    campaignId?: string
+  ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord[]>;
+  recordPaperTradingComparisonResearchRelease(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<PaperTradingComparisonResearchReleaseRecord>;
+  getPaperTradingComparisonResearchRelease(
+    releaseId: string
+  ): Promise<PaperTradingComparisonResearchReleaseRecord | undefined>;
+  listPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  >;
+  recoverPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  >;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

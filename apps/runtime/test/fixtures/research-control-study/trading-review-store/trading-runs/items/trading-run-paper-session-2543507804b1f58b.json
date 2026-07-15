@@ -1,0 +1,90 @@
+{
+  "record_kind": "trading_run",
+  "version": 1,
+  "trading_run_id": "trading-run-paper-session-2543507804b1f58b",
+  "stage_binding_profile": "paper",
+  "runtime_lifecycle_status": "stopped",
+  "paper_evidence_purpose": "qualification",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "sandbox-placement-paper-session-2543507804b1f58b"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "hands-environment-paper-session-2543507804b1f58b"
+  },
+  "memory_surface_ref": {
+    "record_kind": "runtime_memory_surface",
+    "id": "runtime-memory-surface-paper-session-2543507804b1f58b"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  },
+  "created_at": "2026-07-10T00:01:09.000Z",
+  "authority_status": "not_live",
+  "sandbox_ref": {
+    "record_kind": "sandbox",
+    "id": "sandbox-paper-comparison-paper-comparison-activation-attempt-4c4146b08ff7a687ae9-97904acf1ab130ee"
+  },
+  "run_control_command_refs": [
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-b520291572255069"
+    },
+    {
+      "record_kind": "run_control_command",
+      "id": "run-control-command-64c126146747345d"
+    }
+  ],
+  "run_control_decision_refs": [
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-b520291572255069"
+    },
+    {
+      "record_kind": "run_control_decision",
+      "id": "run-control-decision-64c126146747345d"
+    }
+  ],
+  "runtime_audit_event_refs": [
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-b520291572255069"
+    },
+    {
+      "record_kind": "runtime_audit_event",
+      "id": "runtime-audit-event-64c126146747345d"
+    }
+  ],
+  "stage_binding_ref": {
+    "record_kind": "stage_binding",
+    "id": "stage-binding-paper-bb3dd575c076d2a3"
+  },
+  "order_request_refs": [
+    {
+      "record_kind": "order_request",
+      "id": "order-request-5ed1ba5e4d5a7749"
+    }
+  ],
+  "gateway_result_refs": [
+    {
+      "record_kind": "gateway_result",
+      "id": "gateway-result-5ed1ba5e4d5a7749"
+    }
+  ],
+  "execution_result_refs": [
+    {
+      "record_kind": "execution_result",
+      "id": "execution-result-5ed1ba5e4d5a7749"
+    }
+  ]
+}

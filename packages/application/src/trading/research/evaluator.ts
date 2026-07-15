@@ -1,12 +1,18 @@
 import type {
   ArtifactRunResult,
   OrderRequest,
-  OrderValidationResult,
-  TradingEvaluationMetric,
   TradingEvaluationResult,
+  TradingEvaluationMetric,
   TradingProfitLoss,
   ReplayTradingScenario
 } from "./types";
+import type { TradingEvaluationDisqualificationReason } from "@ouroboros/domain";
+import { validateOrderRequest } from "./replay-trading-api-provider";
+import {
+  isConformantTradingResearchProviderRequest,
+  isDeclaredTradingResearchProviderEndpoint,
+  tradingResearchOrderRequestFrom
+} from "./provider-protocol";
 
 const ZERO_PROFIT_LOSS: TradingProfitLoss = {
   revenue_usdt: 0,
@@ -19,56 +25,83 @@ export function evaluateTradingRun(
   run: ArtifactRunResult,
   scenario?: ReplayTradingScenario
 ): TradingEvaluationResult {
-  if (run.status === "crashed") {
-    return {
-      status: "disqualified",
-      score: 0,
-      metrics: [
-        {
-          name: "runtime",
-          score: 0,
-          detail: run.error ?? "artifact crashed"
-        }
-      ],
-      summary: "Artifact crashed before producing a valid trading run.",
-      risk_decision: "no_order_request",
-      profit_loss: ZERO_PROFIT_LOSS
-    };
+  const boundaryViolation = tradingResearchEvaluatorBoundaryViolation(run);
+  if (boundaryViolation) {
+    return disqualifiedResult(
+      boundaryViolation,
+      boundaryViolation === "lookahead_leakage"
+        ? "Artifact emitted evaluator-only or future outcome fields."
+        : "Artifact probed an undeclared provider or evaluator endpoint."
+    );
   }
 
-  const orderIntent = latestPayload<OrderRequest>(run.events, "order_request");
-  const validation = latestPayload<OrderValidationResult>(run.events, "order_validation");
-  const market = latestPayload<{ expected_direction?: string }>(run.events, "market_snapshot");
-  const account = latestPayload<{ target_risk_fraction?: number }>(run.events, "account_state");
-  const providerPaths = new Set(run.provider_requests.map((request) => request.path));
-  const usedProviderBoundary = providerPaths.has("/market/snapshot") &&
-    providerPaths.has("/account/state") &&
-    providerPaths.has("/orders/validate");
+  if (run.status === "crashed") {
+    return disqualifiedResult(
+      "runtime_crash",
+      "Artifact crashed before producing a valid trading run.",
+      "no_order_request",
+      [metric("runtime", 0, run.error ?? "artifact crashed")]
+    );
+  }
+  if (!scenario) {
+    return disqualifiedResult(
+      "unreproducible",
+      "External evaluator scenario is required for ResearchPreflight."
+    );
+  }
+
+  const orderIntent = tradingResearchOrderRequestFrom(
+    latestPayload<Record<string, unknown>>(run.events, "order_request"),
+    true
+  );
+  const validationRequest = [...run.provider_requests]
+    .reverse()
+    .find((request) => request.method === "POST" && request.path === "/orders/validate");
+  const submittedOrder = tradingResearchOrderRequestFrom(validationRequest?.body);
+  const usedProviderBoundary = requiredProviderRequestsPresent(run);
 
   if (!orderIntent) {
-    return {
-      status: "disqualified",
-      score: 0,
-      metrics: [
+    return disqualifiedResult(
+      "no_order_request",
+      "Artifact did not emit an order request.",
+      "no_order_request",
+      [
         metric("provider_boundary", usedProviderBoundary ? 0.2 : 0, "provider boundary usage"),
         metric("order_request", 0, "missing order request event")
-      ],
-      summary: "Artifact did not emit an order request.",
-      risk_decision: "no_order_request",
-      profit_loss: ZERO_PROFIT_LOSS
-    };
+      ]
+    );
+  }
+  if (!submittedOrder || !sameOrderRequest(orderIntent, submittedOrder)) {
+    return disqualifiedResult(
+      "runtime_self_report_only",
+      "Candidate order event did not match the externally recorded validation request."
+    );
   }
 
-  const profitLoss = profitLossForOrder(orderIntent, validation, scenario);
-  const directionMetric = signalDirectionMetric(market?.expected_direction, orderIntent.side);
+  const validation = validateOrderRequest(submittedOrder, scenario.market, scenario.account);
+  if (!validation.accepted) {
+    return disqualifiedResult(
+      "risk_validation_failed",
+      `External pre-trade validation rejected the order: ${validation.reason}.`
+    );
+  }
+  if (!usedProviderBoundary) {
+    return disqualifiedResult(
+      "runtime_self_report_only",
+      "Candidate did not complete the declared external provider protocol."
+    );
+  }
+
+  const profitLoss = profitLossForOrder(submittedOrder, validation, scenario);
+  const directionMetric = signalDirectionMetric(scenario.market.expected_direction, submittedOrder.side);
   const providerBoundaryScore = usedProviderBoundary ? 0.2 : 0;
-  const validationScore = validation?.accepted ? 0.15 : 0;
-  const riskScore = validation ? riskFitScore(
+  const validationScore = validation.accepted ? 0.15 : 0;
+  const riskScore = riskFitScore(
     validation.risk_fraction,
-    account?.target_risk_fraction,
-    market?.expected_direction
-  ) : 0;
-  const explanationScore = orderIntent.reason && orderIntent.reason.length >= 12 ? 0.1 : 0;
+    scenario.account.target_risk_fraction,
+    scenario.market.expected_direction
+  );
+  const explanationScore = submittedOrder.reason && submittedOrder.reason.length >= 12 ? 0.1 : 0;
   const complexityPenalty = Math.min(0.1, Math.max(0, run.events.length - 8) * 0.01);
   const score = clampScore(
     providerBoundaryScore +
@@ -79,14 +112,14 @@ export function evaluateTradingRun(
     explanationScore -
     complexityPenalty
   );
-  const accepted = Boolean(validation?.accepted) && usedProviderBoundary && score > 0;
+  const accepted = validation.accepted && usedProviderBoundary && score > 0;
 
   const metrics: TradingEvaluationMetric[] = [
     metric("provider_boundary", providerBoundaryScore, "market/account/order validation went through the external provider"),
     metric("signal_direction", directionMetric.score, directionMetric.detail),
     metric("net_revenue", profitScore(profitLoss), `net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs`),
     metric("risk_fit", riskScore, "risk fraction closeness to the hidden replay target"),
-    metric("pre_trade_validation", validationScore, validation?.reason ?? "missing validation"),
+    metric("pre_trade_validation", validationScore, validation.reason),
     metric("rationale", explanationScore, "order request includes a useful rationale")
   ];
   if (complexityPenalty > 0) {
@@ -100,9 +133,141 @@ export function evaluateTradingRun(
     summary: accepted
       ? `Accepted order request with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs.`
       : `Rejected order request with score ${score.toFixed(3)}.`,
-    risk_decision: validation?.accepted ? "valid_order_request" : "invalid_order_request",
+    risk_decision: validation.accepted ? "valid_order_request" : "invalid_order_request",
     profit_loss: profitLoss
   };
+}
+
+function disqualifiedResult(
+  reason: TradingEvaluationDisqualificationReason,
+  summary: string,
+  riskDecision: TradingEvaluationResult["risk_decision"] = "invalid_order_request",
+  metrics: TradingEvaluationMetric[] = [metric("external_evidence", 0, summary)]
+): TradingEvaluationResult {
+  return {
+    status: "disqualified",
+    score: 0,
+    metrics,
+    summary,
+    risk_decision: riskDecision,
+    profit_loss: ZERO_PROFIT_LOSS,
+    disqualification_reason: reason
+  };
+}
+
+export function tradingResearchEvaluatorBoundaryViolation(
+  run: Pick<ArtifactRunResult, "events" | "provider_requests">
+): TradingEvaluationDisqualificationReason | undefined {
+  const unexpectedRequest = run.provider_requests.some((request) =>
+    !isDeclaredTradingResearchProviderEndpoint(request)
+  );
+  if (unexpectedRequest) {
+    return "data_leakage";
+  }
+
+  const payloadViolation = tradingResearchEvaluatorPayloadViolation(run);
+  if (payloadViolation) {
+    return payloadViolation;
+  }
+
+  if (run.provider_requests.some((request) =>
+    !isConformantTradingResearchProviderRequest(request)
+  )) {
+    return "runtime_self_report_only";
+  }
+  return undefined;
+}
+
+export function tradingResearchEvaluatorPayloadViolation(
+  run: Pick<ArtifactRunResult, "events" | "provider_requests">
+): "lookahead_leakage" | "runtime_self_report_only" | undefined {
+  for (const request of run.provider_requests) {
+    const keys = nestedKeys(request.body);
+    if (keys.some((key) => LOOKAHEAD_FIELD_NAMES.has(key))) {
+      return "lookahead_leakage";
+    }
+    if (keys.some((key) => CANDIDATE_SELF_REPORT_FIELD_NAMES.has(key))) {
+      return "runtime_self_report_only";
+    }
+  }
+
+  for (const event of run.events) {
+    const keys = nestedKeys(event);
+    if (keys.some((key) => LOOKAHEAD_FIELD_NAMES.has(key))) {
+      return "lookahead_leakage";
+    }
+    if (keys.some((key) => CANDIDATE_SELF_REPORT_FIELD_NAMES.has(key))) {
+      return "runtime_self_report_only";
+    }
+  }
+  return undefined;
+}
+
+const LOOKAHEAD_FIELD_NAMES = new Set([
+  "expecteddirection",
+  "expectedanswer",
+  "evaluatoroutcome",
+  "futureevent",
+  "futureprice",
+  "outcome",
+  "exitprice",
+  "feebps",
+  "fundingbps",
+  "rotationseed",
+  "scenarioid",
+  "scenarioresult",
+  "scenarioresults",
+  "sealedseed",
+  "sealedsuitedigest",
+  "slippagebps",
+  "targetriskfraction"
+]);
+
+const CANDIDATE_SELF_REPORT_FIELD_NAMES = new Set([
+  "costusdt",
+  "disqualificationreason",
+  "evaluationscore",
+  "netreturnpct",
+  "netrevenueusdt",
+  "profitloss",
+  "revenueusdt"
+]);
+
+function nestedKeys(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(nestedKeys);
+  }
+  return Object.entries(value as Record<string, unknown>).flatMap(
+    ([key, nested]) => [normalizeBoundaryFieldName(key), ...nestedKeys(nested)]
+  );
+}
+
+function normalizeBoundaryFieldName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function requiredProviderRequestsPresent(run: ArtifactRunResult): boolean {
+  return [
+    ["GET", "/market/snapshot"],
+    ["GET", "/account/state"],
+    ["POST", "/orders/validate"]
+  ].every(([method, path]) => run.provider_requests.some((request) =>
+    request.method === method && request.path === path &&
+    request.response_status === 200 &&
+    isConformantTradingResearchProviderRequest(request)
+  ));
+}
+
+function sameOrderRequest(left: OrderRequest, right: OrderRequest): boolean {
+  return left.symbol === right.symbol &&
+    left.side === right.side &&
+    Object.is(left.quantity, right.quantity) &&
+    left.order_type === right.order_type &&
+    left.limit_price === right.limit_price &&
+    left.reason === right.reason;
 }
 
 function latestPayload<T>(events: Array<Record<string, unknown>>, eventName: string): T | undefined {
@@ -148,10 +313,10 @@ function riskFitScore(
 
 function profitLossForOrder(
   order: OrderRequest,
-  validation: OrderValidationResult | undefined,
+  validation: { accepted: boolean; notional: number },
   scenario: ReplayTradingScenario | undefined
 ): TradingProfitLoss {
-  if (!scenario || !validation?.accepted || order.side === "hold" || order.order_type === "none") {
+  if (!scenario || !validation.accepted || order.side === "hold" || order.order_type === "none") {
     return ZERO_PROFIT_LOSS;
   }
   const quantity = Math.abs(order.quantity);

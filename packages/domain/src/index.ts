@@ -3,9 +3,18 @@ import type {
   PrivateReadinessPolicyGateInput
 } from "./private-readiness-policy";
 import type { PrivateReadGateDecision } from "./private-read-gate";
+import {
+  isCandidateAdmissionDecisionConsistent,
+  type CandidateAdmissionBehaviorComparisonStatus,
+  type CandidateAdmissionDecisionRecord,
+  type CandidateAdmissionReason,
+  type CandidateAdmissionResearchWorkerOutcome,
+  type CandidateAdmissionStatus
+} from "./candidate-admission-policy";
 
 export * from "./private-read-gate";
 export * from "./private-readiness-policy";
+export * from "./candidate-admission-policy";
 
 export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
 
@@ -145,11 +154,26 @@ export type ResearchDirectionKind =
   | "execution_cost_robustness"
   | "other";
 
+export const RESEARCH_DIRECTION_KINDS = [
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "liquidation_aware_risk",
+  "execution_cost_robustness",
+  "other"
+] as const satisfies readonly ResearchDirectionKind[];
+
 export type ResearchWorkerStatus = "active" | "failed" | "retired";
 
 export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
 
-export type CandidateArenaDirectionResultStatus = "created" | "failed";
+export type CandidateArenaDirectionResultStatus =
+  | "created"
+  | "duplicate"
+  | "quarantined"
+  | "no_submission"
+  | "failed";
 
 export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
 
@@ -178,6 +202,10 @@ export type TradingEvaluationDisqualificationReason =
   | "seed_cherry_pick"
   | "oos_overfit"
   | "unreproducible"
+  | "research_worker_failed"
+  | "runtime_crash"
+  | "risk_validation_failed"
+  | "no_order_request"
   | "runtime_self_report_only";
 
 export type TradingEvaluationQuarantineReason =
@@ -192,6 +220,7 @@ export type ResearchFindingKind =
   | "negative_result"
   | "failure_analysis"
   | "anti_hacking_case"
+  | "duplicate_result"
   | "next_artifact_hint";
 
 export type ImprovementProposalStatus =
@@ -1414,6 +1443,27 @@ export type SystemCodeRecord =
       image_ref: string;
     });
 
+export interface SystemCodeArtifactClosureDigestEntry {
+  relative_path: string;
+  content_digest: string;
+}
+
+export function systemCodeArtifactClosureDigestInput(
+  entries: SystemCodeArtifactClosureDigestEntry[]
+): string {
+  return JSON.stringify({
+    closure_kind: "single_file_python_v1",
+    entries: [...entries]
+      .sort((left, right) => left.relative_path === right.relative_path
+        ? 0
+        : left.relative_path < right.relative_path ? -1 : 1)
+      .map((entry) => ({
+        relative_path: entry.relative_path,
+        content_digest: entry.content_digest
+      }))
+  });
+}
+
 export interface ResearchDirectionRecord extends BaseRecord {
   record_kind: "research_direction";
   research_direction_id: string;
@@ -1431,9 +1481,12 @@ export interface ResearchWorkerRecord extends BaseRecord {
   display_name: string;
   model?: string;
   provider_kind?: ProviderKind;
+  agent_profile_id?: string;
   research_direction_ref: Ref;
   sandbox_policy_ref?: Ref;
   budget_policy_ref?: Ref;
+  workspace_key?: string;
+  lifecycle_protocol?: "research_worker_checkpoint_v1";
   created_at: string;
   status: ResearchWorkerStatus;
   authority_status: "research_only";
@@ -1470,6 +1523,800 @@ export interface ExperimentRunRecord extends BaseRecord {
   submitted_at: string;
   status: ExperimentRunStatus;
   authority_status: "not_live";
+}
+
+export type ResearchWorkerMemoryMode =
+  | "released_memory"
+  | "memory_masked";
+
+export interface ResearchWorkerMemoryControlAssignment {
+  study_ref: Ref;
+  study_digest: string;
+  pair_index: number;
+  arm_kind:
+    | "released_memory_treatment"
+    | "memory_masked_control";
+}
+
+export type ResearchWorkerMemoryPriorCheckpoint =
+  | {
+      disposition: "included" | "masked";
+      checkpoint_ref: Ref;
+      checkpoint_digest: string;
+    }
+  | { disposition: "none_available" };
+
+export interface ResearchWorkerMemoryPolicy {
+  protocol_version: "research_worker_memory_v1";
+  memory_mode: ResearchWorkerMemoryMode;
+  memory_source_digest: string;
+  available_memory_item_count: number;
+  arena_context_digest: string;
+  prior_checkpoint: ResearchWorkerMemoryPriorCheckpoint;
+  control_assignment?: ResearchWorkerMemoryControlAssignment;
+}
+
+export interface ResearchPreflightCommitmentRecord extends BaseRecord {
+  record_kind: "research_preflight_commitment";
+  research_preflight_commitment_id: string;
+  candidate_arena_tick_id: string;
+  research_direction_ref: Ref;
+  research_worker_ref: Ref;
+  research_allocation_ref: Ref;
+  research_allocation_digest: string;
+  source_system_code_ref: Ref;
+  source_artifact_digest: string;
+  memory_policy?: ResearchWorkerMemoryPolicy;
+  development_policy: {
+    suite_version: "research_development_replay_v1";
+    suite_digest: string;
+    submission_limit: number;
+    feedback_release: "aggregate_after_each_submission";
+  };
+  sealed_admission_policy: {
+    suite_version: "research_sealed_admission_v1";
+    generator_version: "research_scenario_generator_v1";
+    rotation_commitment_digest: string;
+    suite_digest: string;
+    submission_limit: 1;
+    feedback_release: "terminal_after_freeze";
+  };
+  committed_at: string;
+  research_preflight_authority: true;
+  admission_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+  commitment_digest: string;
+}
+
+export interface ResearchBehaviorFingerprintDecision {
+  symbol: "BTCUSDT";
+  side: "buy" | "sell" | "hold";
+  quantity: number;
+  order_type: "market" | "limit" | "none";
+}
+
+export interface ResearchBehaviorFingerprintObservation {
+  scenario_id: string;
+  decision: ResearchBehaviorFingerprintDecision;
+}
+
+export interface ResearchBehaviorFingerprintRecord extends BaseRecord {
+  record_kind: "research_behavior_fingerprint";
+  research_behavior_fingerprint_id: string;
+  research_preflight_commitment_ref: Ref;
+  research_preflight_commitment_digest: string;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  protocol_version: "research_behavior_fingerprint_v1";
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  observations: ResearchBehaviorFingerprintObservation[];
+  observation_count: number;
+  fingerprint_digest: string;
+  created_at: string;
+  duplicate_detection_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export type ResearchWorkerCheckpointTerminalStatus = "completed" | "failed_closed";
+
+export type ResearchWorkerCheckpointTerminalReason =
+  | "admission_recorded"
+  | "finished_without_submission"
+  | "execution_failed"
+  | "restart_recovery";
+
+export interface ResearchWorkerCheckpointNotebookEntry {
+  sequence: number;
+  candidate_arena_tick_id: string;
+  iteration: number;
+  decision: "keep" | "discard" | "crash";
+  agent_status: "edited" | "no_change" | "failed";
+  score: number;
+  summary: string;
+  evaluation_status: "accepted" | "disqualified";
+  risk_decision: "valid_order_request" | "invalid_order_request" | "no_order_request";
+  net_revenue_usdt: number;
+}
+
+export interface ResearchWorkerCheckpointNotebook {
+  protocol_version: "research_worker_notebook_v1";
+  total_entry_count: number;
+  recent_entries: ResearchWorkerCheckpointNotebookEntry[];
+}
+
+export interface ResearchWorkerCheckpointRecord extends BaseRecord {
+  record_kind: "research_worker_checkpoint";
+  research_worker_checkpoint_id: string;
+  research_worker_ref: Ref;
+  research_direction_ref: Ref;
+  candidate_arena_tick_id: string;
+  research_preflight_commitment_ref: Ref;
+  research_preflight_commitment_digest: string;
+  workspace_key: string;
+  previous_checkpoint_ref?: Ref;
+  previous_checkpoint_digest?: string;
+  development_budget: {
+    submission_limit: number;
+    recorded_submission_count: number;
+    cumulative_committed_submission_limit: number;
+    cumulative_recorded_submission_count: number;
+    remaining_submission_authority: 0;
+  };
+  notebook: ResearchWorkerCheckpointNotebook;
+  terminal_status: ResearchWorkerCheckpointTerminalStatus;
+  terminal_reason: ResearchWorkerCheckpointTerminalReason;
+  candidate_admission_decision_ref?: Ref;
+  closed_at: string;
+  checkpoint_digest: string;
+  notebook_continuation_authority: true;
+  evaluation_authority: false;
+  admission_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export function researchWorkerCheckpointDigestInput(
+  record: ResearchWorkerCheckpointRecord
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput({
+    research_worker_checkpoint_id: record.research_worker_checkpoint_id,
+    research_worker_ref: record.research_worker_ref,
+    research_direction_ref: record.research_direction_ref,
+    candidate_arena_tick_id: record.candidate_arena_tick_id,
+    research_preflight_commitment_ref: record.research_preflight_commitment_ref,
+    research_preflight_commitment_digest: record.research_preflight_commitment_digest,
+    workspace_key: record.workspace_key,
+    ...(record.previous_checkpoint_ref
+      ? {
+          previous_checkpoint_ref: record.previous_checkpoint_ref,
+          previous_checkpoint_digest: record.previous_checkpoint_digest
+        }
+      : {}),
+    development_budget: record.development_budget,
+    notebook: record.notebook,
+    terminal_status: record.terminal_status,
+    terminal_reason: record.terminal_reason,
+    ...(record.candidate_admission_decision_ref
+      ? { candidate_admission_decision_ref: record.candidate_admission_decision_ref }
+      : {}),
+    closed_at: record.closed_at,
+    notebook_continuation_authority: record.notebook_continuation_authority,
+    evaluation_authority: record.evaluation_authority,
+    admission_authority: record.admission_authority,
+    promotion_authority: record.promotion_authority,
+    order_submission_authority: record.order_submission_authority,
+    live_exchange_authority: record.live_exchange_authority,
+    authority_status: record.authority_status
+  });
+}
+
+export function researchWorkerCheckpointHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerCheckpointRecord {
+  if (!comparisonObject(value)) return false;
+  const hasPreviousRef = Object.hasOwn(value, "previous_checkpoint_ref");
+  const hasPreviousDigest = Object.hasOwn(value, "previous_checkpoint_digest");
+  const hasAdmissionRef = Object.hasOwn(value, "candidate_admission_decision_ref");
+  if (hasPreviousRef !== hasPreviousDigest || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_worker_checkpoint_id",
+    "research_worker_ref",
+    "research_direction_ref",
+    "candidate_arena_tick_id",
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "workspace_key",
+    ...(hasPreviousRef ? ["previous_checkpoint_ref", "previous_checkpoint_digest"] : []),
+    "development_budget",
+    "notebook",
+    "terminal_status",
+    "terminal_reason",
+    ...(hasAdmissionRef ? ["candidate_admission_decision_ref"] : []),
+    "closed_at",
+    "checkpoint_digest",
+    "notebook_continuation_authority",
+    "evaluation_authority",
+    "admission_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  if (value.record_kind !== "research_worker_checkpoint" || value.version !== 1 ||
+    !comparisonString(value.research_worker_checkpoint_id) ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonString(value.candidate_arena_tick_id) ||
+    !comparisonRef(value.research_preflight_commitment_ref, "research_preflight_commitment") ||
+    !researchPreflightSha256Digest(value.research_preflight_commitment_digest) ||
+    !researchWorkerWorkspaceKey(value.workspace_key) ||
+    (hasPreviousRef && (
+      !comparisonRef(value.previous_checkpoint_ref, "research_worker_checkpoint") ||
+      !researchPreflightSha256Digest(value.previous_checkpoint_digest)
+    )) || !researchWorkerCheckpointBudgetHasRuntimeShape(value.development_budget) ||
+    !researchWorkerCheckpointNotebookHasRuntimeShape(value.notebook) ||
+    value.notebook.total_entry_count !==
+      value.development_budget.cumulative_recorded_submission_count ||
+    !researchWorkerCheckpointTerminalHasRuntimeShape(value, hasAdmissionRef) ||
+    !comparisonIso(value.closed_at) ||
+    !researchPreflightSha256Digest(value.checkpoint_digest) ||
+    value.notebook_continuation_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.admission_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerWorkspaceKey(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^candidate-arena-workers\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value);
+}
+
+function researchWorkerCheckpointBudgetHasRuntimeShape(value: unknown): value is
+  ResearchWorkerCheckpointRecord["development_budget"] {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "submission_limit",
+    "recorded_submission_count",
+    "cumulative_committed_submission_limit",
+    "cumulative_recorded_submission_count",
+    "remaining_submission_authority"
+  ]) || !comparisonPositive(value.submission_limit) ||
+    !comparisonNonNegative(value.recorded_submission_count) ||
+    value.recorded_submission_count > value.submission_limit ||
+    !comparisonPositive(value.cumulative_committed_submission_limit) ||
+    value.cumulative_committed_submission_limit < value.submission_limit ||
+    !comparisonNonNegative(value.cumulative_recorded_submission_count) ||
+    value.cumulative_recorded_submission_count < value.recorded_submission_count ||
+    value.cumulative_recorded_submission_count > value.cumulative_committed_submission_limit ||
+    value.remaining_submission_authority !== 0) {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerCheckpointNotebookHasRuntimeShape(value: unknown): value is
+  ResearchWorkerCheckpointNotebook {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_version",
+    "total_entry_count",
+    "recent_entries"
+  ]) || value.protocol_version !== "research_worker_notebook_v1" ||
+    !comparisonNonNegative(value.total_entry_count) ||
+    !Array.isArray(value.recent_entries) ||
+    value.recent_entries.length !== Math.min(value.total_entry_count, 6)) {
+    return false;
+  }
+  const firstSequence = value.total_entry_count - value.recent_entries.length + 1;
+  return value.recent_entries.every((entry, index) =>
+    researchWorkerCheckpointNotebookEntryHasRuntimeShape(entry) &&
+    entry.sequence === firstSequence + index
+  );
+}
+
+function researchWorkerCheckpointNotebookEntryHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerCheckpointNotebookEntry {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "sequence",
+    "candidate_arena_tick_id",
+    "iteration",
+    "decision",
+    "agent_status",
+    "score",
+    "summary",
+    "evaluation_status",
+    "risk_decision",
+    "net_revenue_usdt"
+  ]) && comparisonPositive(value.sequence) &&
+    comparisonString(value.candidate_arena_tick_id) &&
+    comparisonPositive(value.iteration) &&
+    (value.decision === "keep" || value.decision === "discard" || value.decision === "crash") &&
+    (value.agent_status === "edited" || value.agent_status === "no_change" ||
+      value.agent_status === "failed") &&
+    comparisonFinite(value.score) && comparisonString(value.summary) &&
+    value.summary.length <= 500 &&
+    (value.evaluation_status === "accepted" || value.evaluation_status === "disqualified") &&
+    (value.risk_decision === "valid_order_request" ||
+      value.risk_decision === "invalid_order_request" ||
+      value.risk_decision === "no_order_request") &&
+    comparisonFinite(value.net_revenue_usdt);
+}
+
+function researchWorkerCheckpointTerminalHasRuntimeShape(
+  value: Record<string, unknown>,
+  hasAdmissionRef: boolean
+): boolean {
+  if (value.terminal_status === "completed") {
+    return value.terminal_reason === "admission_recorded"
+      ? hasAdmissionRef &&
+        comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision")
+      : value.terminal_reason === "finished_without_submission" && !hasAdmissionRef;
+  }
+  return value.terminal_status === "failed_closed" &&
+    (value.terminal_reason === "execution_failed" || value.terminal_reason === "restart_recovery") &&
+    !hasAdmissionRef;
+}
+
+export function researchBehaviorFingerprintDigestInput(
+  record: ResearchBehaviorFingerprintRecord
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput({
+    protocol_version: record.protocol_version,
+    development_suite_version: record.development_suite_version,
+    development_suite_digest: record.development_suite_digest,
+    observations: record.observations
+  });
+}
+
+export function researchBehaviorFingerprintHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_behavior_fingerprint_id",
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "protocol_version",
+    "development_suite_version",
+    "development_suite_digest",
+    "observations",
+    "observation_count",
+    "fingerprint_digest",
+    "created_at",
+    "duplicate_detection_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_behavior_fingerprint" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_behavior_fingerprint_id) ||
+    !comparisonRef(
+      value.research_preflight_commitment_ref,
+      "research_preflight_commitment"
+    ) || !researchPreflightSha256Digest(value.research_preflight_commitment_digest) ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !researchPreflightSha256Digest(value.system_code_artifact_digest) ||
+    value.protocol_version !== "research_behavior_fingerprint_v1" ||
+    value.development_suite_version !== "research_development_replay_v1" ||
+    !researchPreflightSha256Digest(value.development_suite_digest) ||
+    !Array.isArray(value.observations)) {
+    return false;
+  }
+  const observations = value.observations;
+  if (observations.length === 0 ||
+    !observations.every(researchBehaviorFingerprintObservationHasRuntimeShape) ||
+    !comparisonPositive(value.observation_count) ||
+    value.observation_count !== observations.length ||
+    !researchPreflightSha256Digest(value.fingerprint_digest) ||
+    !comparisonIso(value.created_at) ||
+    value.duplicate_detection_authority !== true ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return observations.every((observation, index) =>
+    index === 0 || observations[index - 1]!.scenario_id < observation.scenario_id
+  );
+}
+
+function researchBehaviorFingerprintObservationHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintObservation {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "scenario_id",
+    "decision"
+  ]) && comparisonString(value.scenario_id) &&
+    researchBehaviorFingerprintDecisionHasRuntimeShape(value.decision);
+}
+
+function researchBehaviorFingerprintDecisionHasRuntimeShape(
+  value: unknown
+): value is ResearchBehaviorFingerprintDecision {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "symbol",
+    "side",
+    "quantity",
+    "order_type"
+  ]) || value.symbol !== "BTCUSDT" ||
+    !["buy", "sell", "hold"].includes(value.side as string) ||
+    !comparisonNonNegativeFinite(value.quantity) ||
+    !["market", "limit", "none"].includes(value.order_type as string)) {
+    return false;
+  }
+  return value.side === "hold"
+    ? value.order_type === "none" && Object.is(value.quantity, 0)
+    : (value.order_type === "market" || value.order_type === "limit") &&
+      value.quantity > 0;
+}
+
+export function researchPreflightCommitmentDigestInput(
+  record: ResearchPreflightCommitmentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_preflight_commitment_id: _id,
+    commitment_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchPreflightCommitmentHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord {
+  if (!comparisonObject(value)) return false;
+  const hasMemoryPolicy = Object.hasOwn(value, "memory_policy");
+  if (!comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_preflight_commitment_id",
+    "candidate_arena_tick_id",
+    "research_direction_ref",
+    "research_worker_ref",
+    "research_allocation_ref",
+    "research_allocation_digest",
+    "source_system_code_ref",
+    "source_artifact_digest",
+    ...(hasMemoryPolicy ? ["memory_policy"] : []),
+    "development_policy",
+    "sealed_admission_policy",
+    "committed_at",
+    "research_preflight_authority",
+    "admission_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status",
+    "commitment_digest"
+  ]) || value.record_kind !== "research_preflight_commitment" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_preflight_commitment_id) ||
+    !comparisonString(value.candidate_arena_tick_id) ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(
+      value.research_allocation_ref,
+      "candidate_arena_research_allocation"
+    ) || !researchPreflightSha256Digest(value.research_allocation_digest) ||
+    !comparisonRef(value.source_system_code_ref, "system_code") ||
+    !researchPreflightSha256Digest(value.source_artifact_digest) ||
+    (hasMemoryPolicy && !researchWorkerMemoryPolicyHasRuntimeShape(
+      value.memory_policy
+    )) ||
+    !researchPreflightDevelopmentPolicyHasRuntimeShape(value.development_policy) ||
+    !researchPreflightSealedPolicyHasRuntimeShape(value.sealed_admission_policy) ||
+    !comparisonIso(value.committed_at) ||
+    value.research_preflight_authority !== true ||
+    value.admission_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live" ||
+    !researchPreflightSha256Digest(value.commitment_digest)) {
+    return false;
+  }
+  return value.development_policy.suite_digest !==
+    value.sealed_admission_policy.suite_digest;
+}
+
+export function researchWorkerMemoryPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchWorkerMemoryPolicy {
+  if (!comparisonObject(value)) return false;
+  const hasAssignment = Object.hasOwn(value, "control_assignment");
+  if (!comparisonHasExactKeys(value, [
+    "protocol_version",
+    "memory_mode",
+    "memory_source_digest",
+    "available_memory_item_count",
+    "arena_context_digest",
+    "prior_checkpoint",
+    ...(hasAssignment ? ["control_assignment"] : [])
+  ]) || value.protocol_version !== "research_worker_memory_v1" ||
+    (value.memory_mode !== "released_memory" &&
+      value.memory_mode !== "memory_masked") ||
+    !researchPreflightSha256Digest(value.memory_source_digest) ||
+    !comparisonNonNegative(value.available_memory_item_count) ||
+    !Number.isInteger(value.available_memory_item_count) ||
+    !researchPreflightSha256Digest(value.arena_context_digest) ||
+    !researchWorkerMemoryPriorCheckpointHasRuntimeShape(
+      value.prior_checkpoint,
+      value.memory_mode
+    ) || (hasAssignment && !researchWorkerMemoryControlAssignmentHasRuntimeShape(
+      value.control_assignment,
+      value.memory_mode
+    ))) {
+    return false;
+  }
+  return true;
+}
+
+function researchWorkerMemoryPriorCheckpointHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchWorkerMemoryPriorCheckpoint {
+  if (!comparisonObject(value) || typeof value.disposition !== "string") {
+    return false;
+  }
+  if (value.disposition === "none_available") {
+    return comparisonHasExactKeys(value, ["disposition"]);
+  }
+  return (memoryMode === "released_memory"
+      ? value.disposition === "included"
+      : value.disposition === "masked") && comparisonHasExactKeys(value, [
+    "disposition",
+    "checkpoint_ref",
+    "checkpoint_digest"
+  ]) && comparisonRef(value.checkpoint_ref, "research_worker_checkpoint") &&
+    researchPreflightSha256Digest(value.checkpoint_digest);
+}
+
+function researchWorkerMemoryControlAssignmentHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchWorkerMemoryControlAssignment {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "study_ref",
+    "study_digest",
+    "pair_index",
+    "arm_kind"
+  ]) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchPreflightSha256Digest(value.study_digest) ||
+    !comparisonPositive(value.pair_index) ||
+    !Number.isInteger(value.pair_index) || value.pair_index > 30) {
+    return false;
+  }
+  return memoryMode === "released_memory"
+    ? value.arm_kind === "released_memory_treatment"
+    : value.arm_kind === "memory_masked_control";
+}
+
+function researchPreflightDevelopmentPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord["development_policy"] {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "suite_version",
+    "suite_digest",
+    "submission_limit",
+    "feedback_release"
+  ]) && value.suite_version === "research_development_replay_v1" &&
+    researchPreflightSha256Digest(value.suite_digest) &&
+    comparisonPositive(value.submission_limit) &&
+    value.submission_limit <= 2 &&
+    value.feedback_release === "aggregate_after_each_submission";
+}
+
+function researchPreflightSealedPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightCommitmentRecord["sealed_admission_policy"] {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "suite_version",
+    "generator_version",
+    "rotation_commitment_digest",
+    "suite_digest",
+    "submission_limit",
+    "feedback_release"
+  ]) && value.suite_version === "research_sealed_admission_v1" &&
+    value.generator_version === "research_scenario_generator_v1" &&
+    researchPreflightSha256Digest(value.rotation_commitment_digest) &&
+    researchPreflightSha256Digest(value.suite_digest) &&
+    value.submission_limit === 1 &&
+    value.feedback_release === "terminal_after_freeze";
+}
+
+function researchPreflightSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+export type PaperTradingHandoffConformanceRunnerKind =
+  | "host_process"
+  | "docker_sandboxes_sbx";
+
+export type PaperTradingHandoffConformanceStatus = "passed" | "rejected";
+
+export type PaperTradingHandoffConformanceReason =
+  | "passed"
+  | "runner_crash"
+  | "execution_timed_out"
+  | "provider_protocol_incomplete"
+  | "provider_protocol_violation"
+  | "provider_request_limit_exceeded"
+  | "paper_decision_missing"
+  | "paper_decision_ambiguous"
+  | "paper_event_invalid"
+  | "runtime_heartbeat_missing"
+  | "runtime_stop_missing"
+  | "instance_identity_mismatch"
+  | "artifact_digest_mismatch"
+  | "hidden_evaluator_field"
+  | "candidate_self_report"
+  | "private_or_live_authority";
+
+export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
+  record_kind: "paper_trading_handoff_conformance";
+  paper_trading_handoff_conformance_id: string;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  experiment_run_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  protocol_version: "paper_trading_event_protocol_v1";
+  runner_kind: PaperTradingHandoffConformanceRunnerKind;
+  status: PaperTradingHandoffConformanceStatus;
+  reason: PaperTradingHandoffConformanceReason;
+  provider_request_count: number;
+  decision_event_kind?: "order_request" | "hold" | "no_action";
+  heartbeat_count: number;
+  runtime_stopped: boolean;
+  started_at: string;
+  completed_at: string;
+  evidence_digest: string;
+  research_preflight_authority: true;
+  runnable_paper_handoff: boolean;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+const PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS = new Set<
+  PaperTradingHandoffConformanceReason
+>([
+  "runner_crash",
+  "execution_timed_out",
+  "provider_protocol_incomplete",
+  "provider_protocol_violation",
+  "provider_request_limit_exceeded",
+  "paper_decision_missing",
+  "paper_decision_ambiguous",
+  "paper_event_invalid",
+  "runtime_heartbeat_missing",
+  "runtime_stop_missing",
+  "instance_identity_mismatch",
+  "artifact_digest_mismatch",
+  "hidden_evaluator_field",
+  "candidate_self_report",
+  "private_or_live_authority"
+]);
+
+export function paperTradingHandoffConformanceDigestInput(
+  record: PaperTradingHandoffConformanceRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    paper_trading_handoff_conformance_id: _id,
+    evidence_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingHandoffConformanceHasRuntimeShape(
+  value: unknown
+): value is PaperTradingHandoffConformanceRecord {
+  if (!comparisonObject(value)) {
+    return false;
+  }
+  const requiredKeys = [
+    "record_kind",
+    "version",
+    "paper_trading_handoff_conformance_id",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "experiment_run_ref",
+    "trading_evaluation_task_ref",
+    "protocol_version",
+    "runner_kind",
+    "status",
+    "reason",
+    "provider_request_count",
+    "heartbeat_count",
+    "runtime_stopped",
+    "started_at",
+    "completed_at",
+    "evidence_digest",
+    "research_preflight_authority",
+    "runnable_paper_handoff",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ];
+  const expectedKeys = value.decision_event_kind === undefined
+    ? requiredKeys
+    : [...requiredKeys, "decision_event_kind"];
+  if (!comparisonHasExactKeys(value, expectedKeys)) {
+    return false;
+  }
+  if (
+    value.record_kind !== "paper_trading_handoff_conformance" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_handoff_conformance_id) ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.experiment_run_ref, "experiment_run") ||
+    !comparisonRef(value.trading_evaluation_task_ref, "trading_evaluation_task") ||
+    value.protocol_version !== "paper_trading_event_protocol_v1" ||
+    (value.runner_kind !== "host_process" &&
+      value.runner_kind !== "docker_sandboxes_sbx") ||
+    (value.status !== "passed" && value.status !== "rejected") ||
+    !comparisonString(value.reason) ||
+    !comparisonNonNegative(value.provider_request_count) ||
+    value.provider_request_count > 8 ||
+    (value.decision_event_kind !== undefined &&
+      value.decision_event_kind !== "order_request" &&
+      value.decision_event_kind !== "hold" &&
+      value.decision_event_kind !== "no_action") ||
+    !comparisonNonNegative(value.heartbeat_count) ||
+    typeof value.runtime_stopped !== "boolean" ||
+    !comparisonIso(value.started_at) ||
+    !comparisonIso(value.completed_at) ||
+    Date.parse(value.completed_at) < Date.parse(value.started_at) ||
+    !comparisonDigest(value.evidence_digest) ||
+    value.research_preflight_authority !== true ||
+    typeof value.runnable_paper_handoff !== "boolean" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  if (value.status === "passed") {
+    return value.reason === "passed" &&
+      value.provider_request_count >= 3 &&
+      value.decision_event_kind !== undefined &&
+      value.heartbeat_count > 0 &&
+      value.runtime_stopped === true &&
+      value.runnable_paper_handoff === true;
+  }
+  return PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS.has(
+    value.reason as PaperTradingHandoffConformanceReason
+  ) && value.runnable_paper_handoff === false;
 }
 
 export interface TradingEvaluationScoreSummary {
@@ -1639,10 +2486,50 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
   score_summary: TradingEvaluationScoreSummary;
   metric_refs: Ref[];
   evaluator_trace_ref: Ref;
+  research_preflight_commitment_ref?: Ref;
+  research_preflight_commitment_digest?: string;
+  submitted_system_code_ref?: Ref;
+  submitted_artifact_digest?: string;
+  sealed_admission_suite_digest?: string;
+  evaluation_phase?: "sealed_admission";
+  submission_sequence?: 1;
+  selected_development_submission_sequence?: number;
   disqualification_reason?: TradingEvaluationDisqualificationReason;
   quarantine_reason?: TradingEvaluationQuarantineReason;
   completed_at: string;
   authority_status: "not_counted" | "counted";
+}
+
+export function tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(
+  value: unknown
+): value is TradingEvaluationResultRecord {
+  if (!comparisonObject(value)) return false;
+  const linkageKeys = [
+    "research_preflight_commitment_ref",
+    "research_preflight_commitment_digest",
+    "submitted_system_code_ref",
+    "submitted_artifact_digest",
+    "sealed_admission_suite_digest",
+    "evaluation_phase",
+    "submission_sequence"
+  ] as const;
+  const presentCount = linkageKeys.filter((key) => Object.hasOwn(value, key)).length;
+  if (presentCount === 0) {
+    return !Object.hasOwn(value, "selected_development_submission_sequence");
+  }
+  const selectedSequence = value.selected_development_submission_sequence;
+  return presentCount === linkageKeys.length &&
+    comparisonRef(
+      value.research_preflight_commitment_ref,
+      "research_preflight_commitment"
+    ) && researchPreflightSha256Digest(value.research_preflight_commitment_digest) &&
+    comparisonRef(value.submitted_system_code_ref, "system_code") &&
+    researchPreflightSha256Digest(value.submitted_artifact_digest) &&
+    researchPreflightSha256Digest(value.sealed_admission_suite_digest) &&
+    value.evaluation_phase === "sealed_admission" &&
+    value.submission_sequence === 1 &&
+    (selectedSequence === undefined ||
+      (Number.isInteger(selectedSequence) && Number(selectedSequence) >= 1));
 }
 
 export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";
@@ -1667,12 +2554,2891 @@ export interface PaperTradingDecisionSummary {
   authority_status: "trace_only";
 }
 
+export type PaperTradingEvidencePurpose = "research_feedback" | "qualification";
+
+export type PaperTradingEvaluationInvalidationReason =
+  | "commitment_missing"
+  | "commitment_digest_mismatch"
+  | "candidate_identity_mismatch"
+  | "candidate_version_identity_mismatch"
+  | "system_code_identity_mismatch"
+  | "stored_artifact_digest_mismatch"
+  | "resolved_artifact_digest_mismatch"
+  | "runtime_identity_mismatch"
+  | "provider_identity_mismatch"
+  | "capability_policy_mismatch"
+  | "secret_policy_mismatch"
+  | "evaluation_policy_identity_mismatch"
+  | "initial_account_identity_mismatch"
+  | "paper_only_authority_violation";
+
+export interface PaperTradingEvaluationRuntimeIdentity {
+  artifact_kind: SystemCodeKind;
+  runtime_kind: SystemCodeRuntimeKind;
+  entrypoint: string[];
+  artifact_runtime_contract_ref?: Ref;
+}
+
+export interface PaperTradingEvaluationProviderIdentity {
+  runtime_provider_kind: "none" | "managed_agent";
+  agent_profile_ref?: Ref;
+  model?: string;
+  provider_configuration_digest?: string;
+  qualification_eligible: boolean;
+  ineligibility_reason?: "provider_identity_unavailable";
+}
+
+export interface PaperTradingEvaluationPolicyIdentity {
+  market_data_policy_version: string;
+  gateway_policy_version: string;
+  cost_policy_version: string;
+  funding_policy_version: string;
+  slippage_policy_version: string;
+  fill_policy_version: string;
+  risk_policy_version: string;
+  paper_account_policy_version: string;
+  decision_event_protocol_version: string;
+  persistent_state_boundary_version: string;
+}
+
+export interface PaperTradingEvaluationDataIdentity {
+  symbol: "BTCUSDT";
+  market_data_port: "gateway_owned";
+  allowed_market_data_source: PaperTradingMarketDataSourceKind;
+  market_data_configuration_digest: string;
+  private_exchange_access: "forbidden";
+  live_order_access: "forbidden";
+}
+
+export interface PaperTradingEvaluationWindowPolicy {
+  interval_ms: number;
+  release_policy: "closed_observation" | "sealed_until_adjudication";
+  eligibility_policy_version: string;
+}
+
+export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
+  record_kind: "paper_trading_evaluation_commitment";
+  paper_trading_evaluation_commitment_id: string;
+  evidence_purpose: PaperTradingEvidencePurpose;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  trading_run_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  resolved_artifact_digest: string;
+  runtime_identity: PaperTradingEvaluationRuntimeIdentity;
+  provider_identity: PaperTradingEvaluationProviderIdentity;
+  capability_policy_ref: Ref;
+  secret_policy_ref: Ref;
+  policy_identity: PaperTradingEvaluationPolicyIdentity;
+  data_identity: PaperTradingEvaluationDataIdentity;
+  window_policy: PaperTradingEvaluationWindowPolicy;
+  initial_account_snapshot: PaperTradingAccountSnapshot;
+  committed_at: string;
+  commitment_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonCandidateSide {
+  role: "champion" | "challenger";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  candidate_version_digest: string;
+  system_code_ref: Ref;
+  system_code_record_digest: string;
+  system_code_artifact_digest: string;
+  candidate_admission_decision_ref: Ref;
+  admission_decision_digest: string;
+}
+
+export interface PaperTradingComparisonSide extends PaperTradingComparisonCandidateSide {
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_commitment_digest: string;
+  paper_trading_evaluation_commitment_record_digest: string;
+  paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_record_digest: string;
+}
+
+export interface PaperTradingComparisonPolicy {
+  policy_version: string;
+  comparison_mode: "bootstrap" | "champion_challenge";
+  symbol: "BTCUSDT";
+  interval_ms: number;
+  minimum_observation_count: number;
+  minimum_elapsed_ms: number;
+  maximum_observation_count: number;
+  maximum_elapsed_ms: number;
+  maximum_start_skew_ms: number;
+  maximum_provider_request_count_per_side: number;
+  maximum_retry_count_per_side: number;
+  primary_metric: "net_revenue_usdt";
+  minimum_net_revenue_lift_usdt: number;
+  required_confirmation_count: number;
+  require_non_overlapping_windows: true;
+  require_both_qualified: true;
+  release_policy: "sealed_until_adjudication";
+}
+
+export type PaperTradingComparisonChampionSelection =
+  | { selection_kind: "bootstrap" }
+  | {
+      selection_kind: "trading_review";
+      trading_promotion_ref: Ref;
+      trading_promotion_digest: string;
+      paper_trading_evaluation_ref: Ref;
+      paper_trading_evaluation_record_digest: string;
+      paper_trading_evaluation_commitment_ref: Ref;
+      paper_trading_evaluation_commitment_record_digest: string;
+      paper_trading_observation_chain_digest: string;
+    };
+
+export interface PaperTradingComparisonPreparationRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_preparation";
+  paper_trading_comparison_preparation_id: string;
+  paper_trading_comparison_commitment_id: string;
+  champion: PaperTradingComparisonCandidateSide;
+  challenger: PaperTradingComparisonCandidateSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  committed_at: string;
+  preparation_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonCommitmentRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_commitment";
+  paper_trading_comparison_commitment_id: string;
+  preparation_ref: Ref;
+  champion: PaperTradingComparisonSide;
+  challenger: PaperTradingComparisonSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  committed_at: string;
+  commitment_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonTickRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick";
+  paper_trading_comparison_tick_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  sequence: number;
+  previous_tick_ref?: Ref;
+  previous_tick_digest?: string;
+  market_data_configuration_digest: string;
+  market_snapshot: PaperTradingMarketSnapshotSummary;
+  public_execution_snapshot: PaperTradingPublicExecutionSnapshotSummary;
+  observed_at: string;
+  tick_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonTickContext {
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  delivery_ref: Ref;
+  delivery_digest: string;
+}
+
+export interface PaperTradingComparisonTickDeliveryRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick_delivery";
+  paper_trading_comparison_tick_delivery_id: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  provider_request_count_at_delivery: number;
+  endpoint: "GET /market/snapshot";
+  delivered_at: string;
+  delivery_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonTickAcknowledgementRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_tick_acknowledgement";
+  paper_trading_comparison_tick_acknowledgement_id: string;
+  delivery_ref: Ref;
+  delivery_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  tick_sequence: number;
+  provider_request_count_at_acknowledgement: number;
+  endpoint: "POST /comparison/tick/ack";
+  acknowledged_at: string;
+  acknowledgement_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonTickIOOperation =
+  | "deliver_market_snapshot"
+  | "acknowledge_tick";
+
+export interface PaperTradingComparisonTickIOWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  tick_ref: Ref;
+  tick_digest: string;
+  operation: PaperTradingComparisonTickIOOperation;
+}
+
+export interface PaperTradingComparisonTickCaptureWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  previous_checkpoint_attempt_ref: Ref;
+  previous_checkpoint_attempt_digest: string;
+  previous_checkpoint_outcome_ref: Ref;
+  previous_checkpoint_outcome_digest: string;
+  operation: "capture_next_tick";
+}
+
+export interface PaperTradingComparisonActivationSide {
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+}
+
+export interface PaperTradingComparisonActivationPolicy {
+  policy_version: "paper-comparison-activation-v1";
+  maximum_start_skew_ms: number;
+  maximum_retry_count_per_side: number;
+  maximum_provider_request_count_per_side: number;
+  maximum_activation_elapsed_ms: 60_000;
+  cleanup_timeout_ms: 10_000;
+  require_both_running_before_observation: true;
+  partial_start_policy: "stop_started_side_before_retry";
+  restart_policy: "recover_both_or_stop_both";
+  market_view_policy: "first_tick_then_contiguous_persisted_ticks";
+}
+
+export interface PaperTradingComparisonActivationRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_activation";
+  paper_trading_comparison_activation_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  first_tick_ref: Ref;
+  first_tick_digest: string;
+  champion: PaperTradingComparisonActivationSide;
+  challenger: PaperTradingComparisonActivationSide;
+  market_data_configuration_digest: string;
+  activation_policy: PaperTradingComparisonActivationPolicy;
+  activation_scope: "qualification_pair";
+  activation_status: "authorized";
+  authorized_at: string;
+  activation_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  private_exchange_access: "forbidden";
+  credentials_access: "forbidden";
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonActivationAttemptRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_activation_attempt";
+  paper_trading_comparison_activation_attempt_id: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  first_tick_ref: Ref;
+  first_tick_digest: string;
+  champion: PaperTradingComparisonActivationSide;
+  challenger: PaperTradingComparisonActivationSide;
+  activation_policy: PaperTradingComparisonActivationPolicy;
+  attempt_sequence: number;
+  retry_index: number;
+  start_mode: "parallel";
+  attempt_status: "starting";
+  attempted_at: string;
+  start_deadline_at: string;
+  attempt_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonActivationSideResultReason =
+  | "symmetric_start"
+  | "partial_start_cleanup"
+  | "policy_cleanup"
+  | "restart_cleanup"
+  | "handoff_cleanup";
+
+export type PaperTradingComparisonActivationSideResultOutcome =
+  | "succeeded"
+  | "failed"
+  | "timed_out"
+  | "not_running";
+
+export interface PaperTradingComparisonActivationSideResultRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_activation_side_result";
+  paper_trading_comparison_activation_side_result_id: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  role: "champion" | "challenger";
+  operation_sequence: number;
+  operation: "start" | "stop";
+  reason: PaperTradingComparisonActivationSideResultReason;
+  outcome: PaperTradingComparisonActivationSideResultOutcome;
+  trading_run_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+  sandbox_ref?: Ref;
+  runtime_lifecycle_status: TradingRunLifecycleStatus | "unknown";
+  evaluation_status: PaperTradingEvaluationStatus | "unknown";
+  provider_request_count: number;
+  effect_started_at: string;
+  effect_completed_at: string;
+  stable_error_code?: string;
+  side_result_digest: string;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonActivationOutcomeStatus =
+  | "both_running"
+  | "stopped_cleanly"
+  | "cleanup_required";
+
+export type PaperTradingComparisonActivationOutcomeReason =
+  | "started_within_policy"
+  | "start_failed"
+  | "start_timed_out"
+  | "start_skew_exceeded"
+  | "activation_elapsed_exceeded"
+  | "provider_request_budget_exceeded"
+  | "side_result_persistence_failed"
+  | "cleanup_failed"
+  | "restart_cleanup"
+  | "handoff_cleanup";
+
+export type PaperTradingComparisonActivationNextAction =
+  | "capture_first_paired_checkpoint"
+  | "retry_activation"
+  | "recover_cleanup"
+  | "checkpoint_handoff_complete";
+
+export interface PaperTradingComparisonWindowClosureEvidence {
+  protocol_version: "paper_trading_comparison_window_closure_v1";
+  requested_at: string;
+  tick_count: number;
+  checkpoint_attempt_count: number;
+  paired_checkpoint_count: number;
+  latest_tick_ref: Ref;
+  latest_tick_observed_at: string;
+  latest_checkpoint_attempt_ref?: Ref;
+  latest_checkpoint_outcome_ref?: Ref;
+}
+
+export interface PaperTradingComparisonActivationOutcomeRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_activation_outcome";
+  paper_trading_comparison_activation_outcome_id: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  outcome_sequence: number;
+  previous_outcome_ref?: Ref;
+  outcome_status: PaperTradingComparisonActivationOutcomeStatus;
+  outcome_reason: PaperTradingComparisonActivationOutcomeReason;
+  champion_latest_result_ref?: Ref;
+  challenger_latest_result_ref?: Ref;
+  window_closure?: PaperTradingComparisonWindowClosureEvidence;
+  next_action: PaperTradingComparisonActivationNextAction;
+  completed_at: string;
+  outcome_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonRuntimeWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  role: "champion" | "challenger";
+  operation: "start" | "stop";
+}
+
+export interface PaperTradingComparisonCheckpointAttemptSide {
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+  evaluation_record_digest: string;
+  observation_chain_digest: string;
+  provider_request_count_before: number;
+}
+
+export interface PaperTradingComparisonCheckpointAttemptRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_checkpoint_attempt";
+  paper_trading_comparison_checkpoint_attempt_id: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  activation_outcome_ref: Ref;
+  activation_outcome_digest: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  tick_ref: Ref;
+  tick_digest: string;
+  checkpoint_sequence: number;
+  previous_checkpoint_outcome_ref?: Ref;
+  previous_checkpoint_outcome_digest?: string;
+  champion: PaperTradingComparisonCheckpointAttemptSide;
+  challenger: PaperTradingComparisonCheckpointAttemptSide;
+  attempted_at: string;
+  checkpoint_deadline_at: string;
+  attempt_status: "preparing";
+  attempt_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonCheckpointSideEvidence {
+  role: "champion" | "challenger";
+  observation_ref: Ref;
+  observation_record_digest: string;
+  evaluation_record_digest: string;
+  ledger_chain_refs: Ref[];
+  observation_status: PaperTradingObservationStatus;
+  consumed_event_count: number;
+  provider_request_count_after: number;
+  tick_acknowledgement_ref?: Ref;
+  tick_acknowledgement_digest?: string;
+}
+
+export type PaperTradingComparisonCheckpointOutcomeStatus = "paired" | "incomplete";
+
+export type PaperTradingComparisonCheckpointOutcomeReason =
+  | "paired_checkpoint_recorded"
+  | "side_preparation_failed"
+  | "side_preparation_timed_out"
+  | "provider_request_budget_exceeded"
+  | "checkpoint_deadline_exceeded"
+  | "paired_persistence_failed"
+  | "restart_cleanup";
+
+export type PaperTradingComparisonCheckpointNextAction =
+  | "serve_and_acknowledge_current_tick"
+  | "capture_next_tick"
+  | "close_failed_comparison"
+  | "recover_cleanup";
+
+export interface PaperTradingComparisonCheckpointOutcomeRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_checkpoint_outcome";
+  paper_trading_comparison_checkpoint_outcome_id: string;
+  checkpoint_attempt_ref: Ref;
+  checkpoint_attempt_digest: string;
+  tick_ref: Ref;
+  tick_digest: string;
+  checkpoint_sequence: number;
+  outcome_status: PaperTradingComparisonCheckpointOutcomeStatus;
+  outcome_reason: PaperTradingComparisonCheckpointOutcomeReason;
+  champion?: PaperTradingComparisonCheckpointSideEvidence;
+  challenger?: PaperTradingComparisonCheckpointSideEvidence;
+  stable_error_code?: string;
+  next_action: PaperTradingComparisonCheckpointNextAction;
+  completed_at: string;
+  outcome_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonCheckpointWriteContext {
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  activation_outcome_ref: Ref;
+  activation_outcome_digest: string;
+  checkpoint_attempt_ref: Ref;
+  checkpoint_attempt_digest: string;
+  role: "champion" | "challenger";
+  operation:
+    | "advance_tick_view"
+    | "refresh_sandbox_evidence"
+    | "commit_paired_checkpoint";
+}
+
+export function paperTradingComparisonRuntimeControlIdempotencyKey(
+  context: PaperTradingComparisonRuntimeWriteContext
+): string {
+  return [
+    "paper-comparison-run-control",
+    context.paper_trading_comparison_activation_attempt_ref.id,
+    context.role,
+    context.operation
+  ].join(":");
+}
+
+export interface PaperTradingQualificationPolicy {
+  minObservationCount: number;
+  minElapsedMs: number;
+  maxFailedObservationRatio: number;
+  assessRunnerHealth: boolean;
+}
+
+export interface PaperTradingQualificationEvidenceInput {
+  evaluation: PaperTradingEvaluationRecord;
+  commitment?: PaperTradingEvaluationCommitmentRecord;
+  observations: PaperTradingObservationRecord[];
+  commitmentDigestVerified: boolean;
+}
+
+export interface PaperTradingQualificationDecisionInput
+  extends PaperTradingQualificationEvidenceInput {
+  runnerActive: boolean;
+  policy?: Partial<PaperTradingQualificationPolicy>;
+}
+
+export interface PaperTradingQualificationResult {
+  qualification_status: PaperTradingQualificationStatus;
+  qualification_reasons: PaperTradingQualificationReason[];
+  evidence_window: PaperTradingEvidenceWindowReadModel;
+}
+
+export type PaperTradingComparisonQualificationStatus =
+  | "qualified"
+  | "not_qualified";
+
+export type PaperTradingComparisonQualificationReason =
+  | "comparison_window_not_stopped_cleanly"
+  | "comparison_window_not_completed_normally"
+  | "comparison_frozen_window_boundary_not_reached"
+  | "comparison_checkpoint_incomplete"
+  | "comparison_minimum_observation_count_not_met"
+  | "comparison_minimum_elapsed_not_met"
+  | "champion_not_qualified"
+  | "challenger_not_qualified"
+  | "champion_ledger_incomplete"
+  | "challenger_ledger_incomplete"
+  | "champion_ledger_lineage_mismatch"
+  | "challenger_ledger_lineage_mismatch";
+
+export interface PaperTradingComparisonQualificationResult {
+  comparison_id: string;
+  activation_id: string;
+  activation_attempt_id: string;
+  qualification_status: PaperTradingComparisonQualificationStatus;
+  qualification_reasons: PaperTradingComparisonQualificationReason[];
+  checkpoint_count: number;
+  champion: PaperTradingQualificationResult;
+  challenger: PaperTradingQualificationResult;
+  authority_status: "not_verdict";
+}
+
+export type PaperTradingComparisonVerdictOutcome =
+  | "challenger_improved"
+  | "challenger_not_improved"
+  | "comparison_ineligible";
+
+export interface PaperTradingComparisonVerdictSide {
+  role: "champion" | "challenger";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_commitment_record_digest: string;
+  paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_record_digest: string;
+  paper_trading_observation_chain_digest: string;
+  net_revenue_usdt?: number;
+  cost_usdt?: number;
+}
+
+export interface PaperTradingComparisonVerdictMetric {
+  metric_kind: "net_revenue_usdt";
+  champion_value_usdt: number;
+  challenger_value_usdt: number;
+  observed_lift_usdt: number;
+  minimum_lift_usdt: number;
+}
+
+export interface PaperTradingComparisonVerdictRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_verdict";
+  paper_trading_comparison_verdict_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  paper_trading_comparison_activation_ref: Ref;
+  paper_trading_comparison_activation_digest: string;
+  paper_trading_comparison_activation_attempt_ref: Ref;
+  paper_trading_comparison_activation_attempt_digest: string;
+  final_activation_outcome_ref: Ref;
+  final_activation_outcome_digest: string;
+  latest_tick_ref: Ref;
+  latest_tick_digest: string;
+  checkpoint_outcome_refs: Ref[];
+  checkpoint_outcome_digests: string[];
+  pair_qualification: PaperTradingComparisonQualificationResult;
+  pair_qualification_digest: string;
+  champion: PaperTradingComparisonVerdictSide;
+  challenger: PaperTradingComparisonVerdictSide;
+  metric?: PaperTradingComparisonVerdictMetric;
+  verdict_outcome: PaperTradingComparisonVerdictOutcome;
+  window_started_at: string;
+  window_ended_at: string;
+  evaluator_policy_version: "paper-comparison-verdict-v1";
+  evaluation_authority: "external_to_trading_systems";
+  confirmation_disposition: "requires_precommitted_campaign" | "not_applicable";
+  promotion_eligibility: "not_eligible";
+  release_status: "sealed";
+  next_action:
+    | "precommit_confirmation_campaign"
+    | "return_to_candidate_arena"
+    | "repair_evidence_or_rerun_comparison";
+  evaluated_at: string;
+  verdict_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonConfirmationSlot {
+  slot_index: number;
+  comparison_idempotency_key: string;
+  paper_trading_comparison_preparation_id: string;
+  paper_trading_comparison_commitment_id: string;
+}
+
+export interface PaperTradingComparisonConfirmationCampaignPolicy {
+  policy_version: "paper-comparison-confirmation-v1";
+  required_window_count: number;
+  decision_rule: "all_reserved_windows_must_improve";
+  slot_order_policy: "strict_sequence";
+  non_overlap_policy: "strict";
+  maximum_slot_start_delay_ms: number;
+  missed_slot_policy: "campaign_not_confirmed";
+}
+
+export interface PaperTradingComparisonConfirmationCampaignRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_confirmation_campaign";
+  paper_trading_comparison_confirmation_campaign_id: string;
+  source_verdict_ref: Ref;
+  source_verdict_digest: string;
+  source_comparison_ref: Ref;
+  source_comparison_digest: string;
+  champion: PaperTradingComparisonCandidateSide;
+  challenger: PaperTradingComparisonCandidateSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  campaign_policy: PaperTradingComparisonConfirmationCampaignPolicy;
+  slots: PaperTradingComparisonConfirmationSlot[];
+  committed_at: string;
+  campaign_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_eligibility: "not_eligible";
+  release_status: "sealed";
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonConfirmationSlotResultStatus =
+  | "challenger_improved"
+  | "challenger_not_improved"
+  | "comparison_ineligible"
+  | "slot_expired";
+
+export interface PaperTradingComparisonConfirmationSlotResult {
+  slot_index: number;
+  paper_trading_comparison_commitment_ref: Ref;
+  status: PaperTradingComparisonConfirmationSlotResultStatus;
+  verdict_ref?: Ref;
+  verdict_digest?: string;
+  window_started_at?: string;
+  window_ended_at?: string;
+}
+
+export interface PaperTradingComparisonConfirmationCampaignOutcomeRecord
+  extends BaseRecord {
+  record_kind: "paper_trading_comparison_confirmation_campaign_outcome";
+  paper_trading_comparison_confirmation_campaign_outcome_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  slot_results: PaperTradingComparisonConfirmationSlotResult[];
+  improved_count: number;
+  not_improved_count: number;
+  ineligible_count: number;
+  expired_count: number;
+  campaign_outcome: "confirmed_improvement" | "not_confirmed";
+  decision_rule: "all_reserved_windows_must_improve";
+  promotion_eligibility: "eligible" | "not_eligible";
+  release_status: "sealed";
+  next_action: "review_for_trading_promotion" | "return_to_candidate_arena";
+  evaluated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonResearchReleaseKind =
+  | "confirmed_improvement"
+  | "challenger_not_reproduced"
+  | "comparison_evidence_ineligible"
+  | "campaign_slot_expired";
+
+export interface PaperTradingComparisonResearchReleaseRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_research_release";
+  paper_trading_comparison_research_release_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  campaign_outcome_ref: Ref;
+  campaign_outcome_digest: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  source_finding_ref: Ref;
+  source_finding_record_digest: string;
+  source_lineage_ref: Ref;
+  source_lineage_record_digest: string;
+  direction_kind: ResearchDirectionKind;
+  release_kind: PaperTradingComparisonResearchReleaseKind;
+  finding: ResearchFindingRecord;
+  finding_record_digest: string;
+  lineage: ArtifactLineageRecord;
+  lineage_record_digest: string;
+  next_research_focus: string;
+  released_at: string;
+  release_digest: string;
+  research_visibility: "released_to_research";
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "lineage_only";
+}
+
+export function paperTradingEvaluationCommitmentDigestInput(
+  record: PaperTradingEvaluationCommitmentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    paper_trading_evaluation_commitment_id: _id,
+    committed_at: _committedAt,
+    commitment_digest: _commitmentDigest,
+    ...payload
+  } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+function canonicalPaperTradingCommitmentJson(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("paper_trading_commitment_non_canonical_value");
+    }
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalPaperTradingCommitmentJson(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => {
+      if (item === undefined) {
+        throw new Error("paper_trading_commitment_non_canonical_value");
+      }
+      return `${JSON.stringify(key)}:${canonicalPaperTradingCommitmentJson(item)}`;
+    }).join(",")}}`;
+  }
+  throw new Error("paper_trading_commitment_non_canonical_value");
+}
+
+export function paperTradingComparisonPersistedRecordDigestInput(value: unknown): string {
+  return canonicalPaperTradingComparisonPersistedRecordJson(value, new Set<object>());
+}
+
+function canonicalPaperTradingComparisonPersistedRecordJson(
+  value: unknown,
+  ancestors: Set<object>
+): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return JSON.stringify(value);
+    throw comparisonNonPersistable();
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw comparisonNonPersistable();
+    ancestors.add(value);
+    try {
+      return `[${Array.from({ length: value.length }, (_, index) => {
+        if (!Object.hasOwn(value, index) || value[index] === undefined) {
+          throw comparisonNonPersistable();
+        }
+        return canonicalPaperTradingComparisonPersistedRecordJson(value[index], ancestors);
+      }).join(",")}]`;
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+  if (value && typeof value === "object") {
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null ||
+      ancestors.has(value) || Reflect.ownKeys(value).some((key) => typeof key === "symbol")) {
+      throw comparisonNonPersistable();
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Object.values(descriptors).some((descriptor) => !descriptor.enumerable || !("value" in descriptor))) {
+      throw comparisonNonPersistable();
+    }
+    ancestors.add(value);
+    try {
+      return `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => `${JSON.stringify(key)}:${canonicalPaperTradingComparisonPersistedRecordJson(item, ancestors)}`)
+        .join(",")}}`;
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+  throw comparisonNonPersistable();
+}
+
+function comparisonNonPersistable(): Error {
+  return new Error("paper_trading_comparison_non_persistable_record");
+}
+
+export const paperTradingComparisonCandidateVersionDigestInput = (
+  record: CandidateVersionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonSystemCodeRecordDigestInput = (
+  record: SystemCodeRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonAdmissionDecisionDigestInput = (
+  record: CandidateAdmissionDecisionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonTradingPromotionDigestInput = (
+  record: TradingPromotionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonEvaluationCommitmentRecordDigestInput = (
+  record: PaperTradingEvaluationCommitmentRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonEvaluationRecordDigestInput = (
+  record: PaperTradingEvaluationRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+
+export function paperTradingComparisonObservationChainDigestInput(
+  records: readonly PaperTradingObservationRecord[]
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput([...records].sort((left, right) =>
+    left.sequence - right.sequence ||
+    left.paper_trading_observation_id.localeCompare(right.paper_trading_observation_id)));
+}
+
+export function paperTradingComparisonCandidateVersionPairKey(leftId: string, rightId: string): string {
+  return canonicalPaperTradingCommitmentJson(leftId <= rightId ? [leftId, rightId] : [rightId, leftId]);
+}
+
+export function paperTradingComparisonPreparationDigestInput(
+  record: PaperTradingComparisonPreparationRecord
+): string {
+  const { record_kind: _kind, version: _version, paper_trading_comparison_preparation_id: _id,
+    preparation_digest: _digest, ...payload } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+export function paperTradingComparisonCommitmentDigestInput(
+  record: PaperTradingComparisonCommitmentRecord
+): string {
+  const { record_kind: _kind, version: _version, paper_trading_comparison_commitment_id: _id,
+    committed_at: _committedAt, commitment_digest: _digest, ...payload } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+export function paperTradingComparisonTickDigestInput(
+  record: PaperTradingComparisonTickRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_id: _id,
+    tick_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonTickDeliveryDigestInput(
+  record: PaperTradingComparisonTickDeliveryRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_delivery_id: _id,
+    delivery_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonTickAcknowledgementDigestInput(
+  record: PaperTradingComparisonTickAcknowledgementRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_tick_acknowledgement_id: _id,
+    acknowledgement_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonActivationPolicyFor(
+  comparisonPolicy: PaperTradingComparisonPolicy
+): PaperTradingComparisonActivationPolicy {
+  return {
+    policy_version: "paper-comparison-activation-v1",
+    maximum_start_skew_ms: comparisonPolicy.maximum_start_skew_ms,
+    maximum_retry_count_per_side: comparisonPolicy.maximum_retry_count_per_side,
+    maximum_provider_request_count_per_side:
+      comparisonPolicy.maximum_provider_request_count_per_side,
+    maximum_activation_elapsed_ms: 60_000,
+    cleanup_timeout_ms: 10_000,
+    require_both_running_before_observation: true,
+    partial_start_policy: "stop_started_side_before_retry",
+    restart_policy: "recover_both_or_stop_both",
+    market_view_policy: "first_tick_then_contiguous_persisted_ticks"
+  };
+}
+
+export function paperTradingComparisonActivationDigestInput(
+  record: PaperTradingComparisonActivationRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_activation_id: _id,
+    authorized_at: _authorizedAt,
+    activation_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonActivationAttemptDigestInput(
+  record: PaperTradingComparisonActivationAttemptRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_activation_attempt_id: _id,
+    attempt_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonActivationSideResultDigestInput(
+  record: PaperTradingComparisonActivationSideResultRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_activation_side_result_id: _id,
+    side_result_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonActivationOutcomeDigestInput(
+  record: PaperTradingComparisonActivationOutcomeRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_activation_outcome_id: _id,
+    outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonCheckpointAttemptDigestInput(
+  record: PaperTradingComparisonCheckpointAttemptRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_checkpoint_attempt_id: _id,
+    attempt_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonCheckpointOutcomeDigestInput(
+  record: PaperTradingComparisonCheckpointOutcomeRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_checkpoint_outcome_id: _id,
+    outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonQualificationResultDigestInput(
+  result: PaperTradingComparisonQualificationResult
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput(result);
+}
+
+export function paperTradingComparisonVerdictDigestInput(
+  record: PaperTradingComparisonVerdictRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_verdict_id: _id,
+    verdict_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonConfirmationCampaignDigestInput(
+  record: PaperTradingComparisonConfirmationCampaignRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_confirmation_campaign_id: _id,
+    campaign_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonConfirmationCampaignOutcomeDigestInput(
+  record: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_confirmation_campaign_outcome_id: _id,
+    outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonResearchReleaseDigestInput(
+  record: PaperTradingComparisonResearchReleaseRecord
+): string {
+  if (!paperTradingComparisonResearchReleaseHasRuntimeShape(record)) {
+    throw comparisonNonPersistable();
+  }
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_research_release_id: _id,
+    release_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export const PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT: PaperTradingAccountSnapshot = {
+  wallet_balance_usdt: "10000", available_balance_usdt: "10000", equity_usdt: "10000",
+  realized_pnl_usdt: "0", unrealized_pnl_usdt: "0", fee_paid_usdt: "0",
+  slippage_paid_usdt: "0", funding_paid_usdt: "0", margin_reserved_usdt: "0",
+  position: { symbol: "BTCUSDT", quantity: "0", side: "flat", mark_price: "0", notional_usdt: "0" },
+  open_order_count: 0, authority_status: "not_live"
+};
+export const PAPER_TRADING_COMPARISON_ZERO_SCORE: TradingProfitLossReadModel = {
+  revenue_usdt: 0, cost_usdt: 0, net_revenue_usdt: 0, net_return_pct: 0
+};
+
+export function paperTradingComparisonRefsEqual(left: unknown, right: unknown): boolean {
+  return comparisonRef(left) && comparisonRef(right) && left.record_kind === right.record_kind && left.id === right.id;
+}
+
+function comparisonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function comparisonHasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[]
+): boolean {
+  const actual = Object.keys(value);
+  return actual.length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key));
+}
+function comparisonString(value: unknown): value is string { return typeof value === "string" && value.length > 0; }
+function comparisonRef(value: unknown, kind?: string): value is Ref {
+  return comparisonObject(value) && comparisonString(value.record_kind) && comparisonString(value.id) &&
+    (kind === undefined || value.record_kind === kind);
+}
+function comparisonIso(value: unknown): value is string {
+  return comparisonString(value) && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+}
+function comparisonPositive(value: unknown): value is number { return Number.isInteger(value) && Number(value) > 0; }
+function comparisonNonNegative(value: unknown): value is number { return Number.isInteger(value) && Number(value) >= 0; }
+function comparisonFinite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
+function comparisonPositiveFinite(value: unknown): value is number {
+  return comparisonFinite(value) && value > 0;
+}
+function comparisonNonNegativeFinite(value: unknown): value is number {
+  return comparisonFinite(value) && value >= 0;
+}
+function comparisonDigest(value: unknown): value is string { return comparisonString(value); }
+function comparisonPolicyIdentity(value: unknown): boolean {
+  return comparisonObject(value) && ["market_data_policy_version", "gateway_policy_version", "cost_policy_version", "funding_policy_version", "slippage_policy_version", "fill_policy_version", "risk_policy_version", "paper_account_policy_version", "decision_event_protocol_version", "persistent_state_boundary_version"].every((key) => comparisonString(value[key]));
+}
+
+const PAPER_TRADING_COMPARISON_QUALIFICATION_REASONS = new Set<string>([
+  "comparison_window_not_stopped_cleanly",
+  "comparison_window_not_completed_normally",
+  "comparison_frozen_window_boundary_not_reached",
+  "comparison_checkpoint_incomplete",
+  "comparison_minimum_observation_count_not_met",
+  "comparison_minimum_elapsed_not_met",
+  "champion_not_qualified",
+  "challenger_not_qualified",
+  "champion_ledger_incomplete",
+  "challenger_ledger_incomplete",
+  "champion_ledger_lineage_mismatch",
+  "challenger_ledger_lineage_mismatch"
+]);
+
+const PAPER_TRADING_QUALIFICATION_REASONS = new Set<string>([
+  "min_observation_count_not_met",
+  "min_elapsed_ms_not_met",
+  "runner_inactive_for_running_evaluation",
+  "paper_observation_chain_incomplete",
+  "paper_score_account_mismatch",
+  "failed_observation_ratio_exceeded",
+  "latest_market_snapshot_missing",
+  "fill_public_execution_evidence_missing",
+  "paper_evaluation_failed",
+  "evidence_purpose_not_qualification",
+  "provider_identity_not_qualification_eligible",
+  "paper_evaluation_commitment_missing",
+  "paper_evaluation_invalidated"
+]);
+
+function paperTradingQualificationResultHasRuntimeShape(
+  value: unknown
+): value is PaperTradingQualificationResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "qualification_status",
+    "qualification_reasons",
+    "evidence_window"
+  ]) || ![
+    "collecting_evidence",
+    "qualified",
+    "needs_resume",
+    "blocked_by_quality",
+    "paper_failed",
+    "not_qualification_evidence"
+  ].includes(value.qualification_status as string) ||
+    !Array.isArray(value.qualification_reasons) ||
+    value.qualification_reasons.some((reason) =>
+      !PAPER_TRADING_QUALIFICATION_REASONS.has(reason as string)) ||
+    new Set(value.qualification_reasons).size !== value.qualification_reasons.length ||
+    !comparisonObject(value.evidence_window)) return false;
+  const evidence = value.evidence_window;
+  const evidenceKeys = [
+    "observation_count",
+    "elapsed_ms",
+    "failed_observation_count",
+    ...(evidence.first_observed_at !== undefined ? ["first_observed_at"] : []),
+    ...(evidence.last_observed_at !== undefined ? ["last_observed_at"] : [])
+  ];
+  if (!comparisonHasExactKeys(evidence, evidenceKeys) ||
+    !comparisonNonNegative(evidence.observation_count) ||
+    !comparisonNonNegative(evidence.elapsed_ms) ||
+    !comparisonNonNegative(evidence.failed_observation_count) ||
+    Number(evidence.failed_observation_count) > Number(evidence.observation_count) ||
+    (evidence.first_observed_at !== undefined && !comparisonIso(evidence.first_observed_at)) ||
+    (evidence.last_observed_at !== undefined && !comparisonIso(evidence.last_observed_at)) ||
+    (evidence.first_observed_at !== undefined && evidence.last_observed_at !== undefined &&
+      Date.parse(evidence.last_observed_at as string) <
+        Date.parse(evidence.first_observed_at as string))) return false;
+  return value.qualification_status === "qualified"
+    ? value.qualification_reasons.length === 0
+    : value.qualification_reasons.length > 0;
+}
+
+export function paperTradingComparisonQualificationResultHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonQualificationResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "comparison_id",
+    "activation_id",
+    "activation_attempt_id",
+    "qualification_status",
+    "qualification_reasons",
+    "checkpoint_count",
+    "champion",
+    "challenger",
+    "authority_status"
+  ]) || !comparisonString(value.comparison_id) ||
+    !comparisonString(value.activation_id) ||
+    !comparisonString(value.activation_attempt_id) ||
+    (value.qualification_status !== "qualified" &&
+      value.qualification_status !== "not_qualified") ||
+    !Array.isArray(value.qualification_reasons) ||
+    value.qualification_reasons.some((reason) =>
+      !PAPER_TRADING_COMPARISON_QUALIFICATION_REASONS.has(reason as string)) ||
+    new Set(value.qualification_reasons).size !== value.qualification_reasons.length ||
+    !comparisonNonNegative(value.checkpoint_count) ||
+    !paperTradingQualificationResultHasRuntimeShape(value.champion) ||
+    !paperTradingQualificationResultHasRuntimeShape(value.challenger) ||
+    value.authority_status !== "not_verdict") return false;
+  return value.qualification_status === "qualified"
+    ? value.qualification_reasons.length === 0 &&
+      value.champion.qualification_status === "qualified" &&
+      value.challenger.qualification_status === "qualified"
+    : value.qualification_reasons.length > 0;
+}
+
+function paperTradingComparisonVerdictSideHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger",
+  scored: boolean
+): value is PaperTradingComparisonVerdictSide {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "role",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "trading_run_ref",
+    "paper_trading_evaluation_commitment_ref",
+    "paper_trading_evaluation_commitment_record_digest",
+    "paper_trading_evaluation_ref",
+    "paper_trading_evaluation_record_digest",
+    "paper_trading_observation_chain_digest",
+    ...(scored ? ["net_revenue_usdt", "cost_usdt"] : [])
+  ]) || value.role !== role ||
+    !comparisonRef(value.candidate_ref, "trading_system_candidate") ||
+    !comparisonRef(value.candidate_version_ref, "candidate_version") ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.trading_run_ref, "trading_run") ||
+    !comparisonRef(
+      value.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) || !comparisonDigest(value.paper_trading_evaluation_commitment_record_digest) ||
+    !comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") ||
+    !comparisonDigest(value.paper_trading_evaluation_record_digest) ||
+    !comparisonDigest(value.paper_trading_observation_chain_digest)) return false;
+  return !scored || comparisonFinite(value.net_revenue_usdt) &&
+    comparisonNonNegativeFinite(value.cost_usdt);
+}
+
+function comparisonRound6(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+export function paperTradingComparisonVerdictHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonVerdictRecord {
+  if (!comparisonObject(value) ||
+    !paperTradingComparisonQualificationResultHasRuntimeShape(value.pair_qualification)) {
+    return false;
+  }
+  const scored = value.pair_qualification.qualification_status === "qualified";
+  if (!comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_verdict_id",
+    "paper_trading_comparison_commitment_ref",
+    "paper_trading_comparison_commitment_digest",
+    "paper_trading_comparison_activation_ref",
+    "paper_trading_comparison_activation_digest",
+    "paper_trading_comparison_activation_attempt_ref",
+    "paper_trading_comparison_activation_attempt_digest",
+    "final_activation_outcome_ref",
+    "final_activation_outcome_digest",
+    "latest_tick_ref",
+    "latest_tick_digest",
+    "checkpoint_outcome_refs",
+    "checkpoint_outcome_digests",
+    "pair_qualification",
+    "pair_qualification_digest",
+    "champion",
+    "challenger",
+    ...(scored ? ["metric"] : []),
+    "verdict_outcome",
+    "window_started_at",
+    "window_ended_at",
+    "evaluator_policy_version",
+    "evaluation_authority",
+    "confirmation_disposition",
+    "promotion_eligibility",
+    "release_status",
+    "next_action",
+    "evaluated_at",
+    "verdict_digest",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_verdict" || value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_verdict_id) ||
+    !comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) || !comparisonDigest(value.paper_trading_comparison_commitment_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) || !comparisonDigest(value.paper_trading_comparison_activation_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) || !comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) ||
+    !comparisonRef(
+      value.final_activation_outcome_ref,
+      "paper_trading_comparison_activation_outcome"
+    ) || !comparisonDigest(value.final_activation_outcome_digest) ||
+    !comparisonRef(value.latest_tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonDigest(value.latest_tick_digest) ||
+    !Array.isArray(value.checkpoint_outcome_refs) ||
+    !Array.isArray(value.checkpoint_outcome_digests) ||
+    value.checkpoint_outcome_refs.length !== value.checkpoint_outcome_digests.length ||
+    value.checkpoint_outcome_refs.some((item) =>
+      !comparisonRef(item, "paper_trading_comparison_checkpoint_outcome")) ||
+    value.checkpoint_outcome_digests.some((item) => !comparisonDigest(item)) ||
+    new Set(value.checkpoint_outcome_refs.map((item) => item.id)).size !==
+      value.checkpoint_outcome_refs.length ||
+    new Set(value.checkpoint_outcome_digests).size !==
+      value.checkpoint_outcome_digests.length ||
+    !comparisonDigest(value.pair_qualification_digest) ||
+    value.pair_qualification.comparison_id !==
+      value.paper_trading_comparison_commitment_ref.id ||
+    value.pair_qualification.activation_id !==
+      value.paper_trading_comparison_activation_ref.id ||
+    value.pair_qualification.activation_attempt_id !==
+      value.paper_trading_comparison_activation_attempt_ref.id ||
+    !paperTradingComparisonVerdictSideHasRuntimeShape(value.champion, "champion", scored) ||
+    !paperTradingComparisonVerdictSideHasRuntimeShape(value.challenger, "challenger", scored) ||
+    value.champion.candidate_version_ref.id === value.challenger.candidate_version_ref.id ||
+    value.champion.trading_run_ref.id === value.challenger.trading_run_ref.id ||
+    !comparisonIso(value.window_started_at) || !comparisonIso(value.window_ended_at) ||
+    Date.parse(value.window_ended_at as string) < Date.parse(value.window_started_at as string) ||
+    !comparisonIso(value.evaluated_at) ||
+    Date.parse(value.evaluated_at as string) < Date.parse(value.window_ended_at as string) ||
+    value.evaluator_policy_version !== "paper-comparison-verdict-v1" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_eligibility !== "not_eligible" ||
+    value.release_status !== "sealed" ||
+    !comparisonDigest(value.verdict_digest) ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "not_live") return false;
+
+  if (!scored) {
+    return value.verdict_outcome === "comparison_ineligible" &&
+      value.metric === undefined &&
+      value.confirmation_disposition === "not_applicable" &&
+      value.next_action === "repair_evidence_or_rerun_comparison";
+  }
+  if (!comparisonObject(value.metric) || !comparisonHasExactKeys(value.metric, [
+    "metric_kind",
+    "champion_value_usdt",
+    "challenger_value_usdt",
+    "observed_lift_usdt",
+    "minimum_lift_usdt"
+  ]) || value.metric.metric_kind !== "net_revenue_usdt" ||
+    !comparisonFinite(value.metric.champion_value_usdt) ||
+    !comparisonFinite(value.metric.challenger_value_usdt) ||
+    !comparisonFinite(value.metric.observed_lift_usdt) ||
+    !comparisonNonNegativeFinite(value.metric.minimum_lift_usdt) ||
+    value.metric.champion_value_usdt !== value.champion.net_revenue_usdt ||
+    value.metric.challenger_value_usdt !== value.challenger.net_revenue_usdt ||
+    value.metric.observed_lift_usdt !== comparisonRound6(
+      Number(value.metric.challenger_value_usdt) -
+        Number(value.metric.champion_value_usdt)
+    )) return false;
+  const improved = Number(value.metric.observed_lift_usdt) > 0 &&
+    Number(value.metric.observed_lift_usdt) >= Number(value.metric.minimum_lift_usdt);
+  return improved
+    ? value.verdict_outcome === "challenger_improved" &&
+      value.confirmation_disposition === "requires_precommitted_campaign" &&
+      value.next_action === "precommit_confirmation_campaign"
+    : value.verdict_outcome === "challenger_not_improved" &&
+      value.confirmation_disposition === "not_applicable" &&
+      value.next_action === "return_to_candidate_arena";
+}
+
+function paperTradingComparisonConfirmationCampaignPolicyHasRuntimeShape(
+  value: unknown,
+  comparisonPolicy: PaperTradingComparisonPolicy
+): value is PaperTradingComparisonConfirmationCampaignPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "required_window_count",
+    "decision_rule",
+    "slot_order_policy",
+    "non_overlap_policy",
+    "maximum_slot_start_delay_ms",
+    "missed_slot_policy"
+  ]) && value.policy_version === "paper-comparison-confirmation-v1" &&
+    comparisonPositive(value.required_window_count) &&
+    value.required_window_count === comparisonPolicy.required_confirmation_count &&
+    value.decision_rule === "all_reserved_windows_must_improve" &&
+    value.slot_order_policy === "strict_sequence" &&
+    value.non_overlap_policy === "strict" &&
+    comparisonPositive(value.maximum_slot_start_delay_ms) &&
+    value.maximum_slot_start_delay_ms === comparisonPolicy.maximum_elapsed_ms &&
+    value.missed_slot_policy === "campaign_not_confirmed";
+}
+
+function paperTradingComparisonConfirmationSlotHasRuntimeShape(
+  value: unknown,
+  campaignId: string,
+  slotIndex: number
+): value is PaperTradingComparisonConfirmationSlot {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "comparison_idempotency_key",
+    "paper_trading_comparison_preparation_id",
+    "paper_trading_comparison_commitment_id"
+  ])) return false;
+  return value.slot_index === slotIndex &&
+    value.comparison_idempotency_key ===
+      `paper-comparison-confirmation:${campaignId}:slot:${slotIndex}` &&
+    typeof value.paper_trading_comparison_preparation_id === "string" &&
+    /^paper-trading-comparison-preparation-[a-f0-9]{16}$/.test(
+      value.paper_trading_comparison_preparation_id
+    ) && typeof value.paper_trading_comparison_commitment_id === "string" &&
+    /^paper-trading-comparison-[a-f0-9]{16}$/.test(
+      value.paper_trading_comparison_commitment_id
+    );
+}
+
+export function paperTradingComparisonConfirmationCampaignHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonConfirmationCampaignRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_confirmation_campaign_id",
+    "source_verdict_ref",
+    "source_verdict_digest",
+    "source_comparison_ref",
+    "source_comparison_digest",
+    "champion",
+    "challenger",
+    "champion_selection",
+    "comparison_policy",
+    "market_data_configuration_digest",
+    "paper_policy_identity",
+    "campaign_policy",
+    "slots",
+    "committed_at",
+    "campaign_digest",
+    "evaluation_authority",
+    "promotion_eligibility",
+    "release_status",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_confirmation_campaign" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_confirmation_campaign_id) ||
+    !comparisonRef(value.source_verdict_ref, "paper_trading_comparison_verdict") ||
+    !comparisonDigest(value.source_verdict_digest) ||
+    !comparisonRef(
+      value.source_comparison_ref,
+      "paper_trading_comparison_commitment"
+    ) || !comparisonDigest(value.source_comparison_digest) ||
+    !paperTradingComparisonCandidateSideHasRuntimeShape(value.champion, "champion") ||
+    !paperTradingComparisonCandidateSideHasRuntimeShape(value.challenger, "challenger") ||
+    value.champion.candidate_version_ref.id ===
+      value.challenger.candidate_version_ref.id ||
+    !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy) ||
+    !paperTradingComparisonChampionSelectionHasRuntimeShape(
+      value.champion_selection,
+      value.comparison_policy.comparison_mode
+    ) || !comparisonDigest(value.market_data_configuration_digest) ||
+    !comparisonPolicyIdentity(value.paper_policy_identity) ||
+    !paperTradingComparisonConfirmationCampaignPolicyHasRuntimeShape(
+      value.campaign_policy,
+      value.comparison_policy
+    ) || !Array.isArray(value.slots) ||
+    value.slots.length !== value.campaign_policy.required_window_count ||
+    !comparisonIso(value.committed_at) || !comparisonDigest(value.campaign_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_eligibility !== "not_eligible" ||
+    value.release_status !== "sealed" || value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false || value.authority_status !== "not_live") {
+    return false;
+  }
+  const campaign = value as unknown as
+    PaperTradingComparisonConfirmationCampaignRecord;
+  const slots = campaign.slots;
+  if (!slots.every((slot, index) =>
+    paperTradingComparisonConfirmationSlotHasRuntimeShape(
+      slot,
+      campaign.paper_trading_comparison_confirmation_campaign_id,
+      index + 1
+    )) || slots.some((slot) =>
+      slot.paper_trading_comparison_commitment_id === campaign.source_comparison_ref.id)) {
+    return false;
+  }
+  return new Set(slots.map((slot) =>
+    slot.paper_trading_comparison_preparation_id)).size === slots.length &&
+    new Set(slots.map((slot) =>
+      slot.paper_trading_comparison_commitment_id)).size === slots.length;
+}
+
+function paperTradingComparisonConfirmationSlotResultHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is PaperTradingComparisonConfirmationSlotResult {
+  if (!comparisonObject(value)) return false;
+  const expired = value.status === "slot_expired";
+  if (!comparisonHasExactKeys(value, [
+    "slot_index",
+    "paper_trading_comparison_commitment_ref",
+    "status",
+    ...(!expired ? [
+      "verdict_ref",
+      "verdict_digest",
+      "window_started_at",
+      "window_ended_at"
+    ] : [])
+  ]) || value.slot_index !== slotIndex || !comparisonRef(
+    value.paper_trading_comparison_commitment_ref,
+    "paper_trading_comparison_commitment"
+  )) return false;
+  if (expired) return true;
+  return [
+    "challenger_improved",
+    "challenger_not_improved",
+    "comparison_ineligible"
+  ].includes(value.status as string) &&
+    comparisonRef(value.verdict_ref, "paper_trading_comparison_verdict") &&
+    comparisonDigest(value.verdict_digest) &&
+    comparisonIso(value.window_started_at) && comparisonIso(value.window_ended_at) &&
+    Date.parse(value.window_ended_at) >= Date.parse(value.window_started_at);
+}
+
+export function paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonConfirmationCampaignOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_confirmation_campaign_outcome_id",
+    "campaign_ref",
+    "campaign_digest",
+    "slot_results",
+    "improved_count",
+    "not_improved_count",
+    "ineligible_count",
+    "expired_count",
+    "campaign_outcome",
+    "decision_rule",
+    "promotion_eligibility",
+    "release_status",
+    "next_action",
+    "evaluated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !==
+      "paper_trading_comparison_confirmation_campaign_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(
+      value.paper_trading_comparison_confirmation_campaign_outcome_id
+    ) || !comparisonRef(
+      value.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) || !comparisonDigest(value.campaign_digest) ||
+    !Array.isArray(value.slot_results) || value.slot_results.length === 0 ||
+    !value.slot_results.every((result, index) =>
+      paperTradingComparisonConfirmationSlotResultHasRuntimeShape(
+        result,
+        index + 1
+      )) || !comparisonNonNegative(value.improved_count) ||
+    !comparisonNonNegative(value.not_improved_count) ||
+    !comparisonNonNegative(value.ineligible_count) ||
+    !comparisonNonNegative(value.expired_count) ||
+    value.decision_rule !== "all_reserved_windows_must_improve" ||
+    value.release_status !== "sealed" || !comparisonIso(value.evaluated_at) ||
+    !comparisonDigest(value.outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false || value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as
+    PaperTradingComparisonConfirmationCampaignOutcomeRecord;
+  const results = outcome.slot_results;
+  if (new Set(results.map((result) =>
+    result.paper_trading_comparison_commitment_ref.id)).size !== results.length ||
+    new Set(results.flatMap((result) =>
+      result.verdict_ref ? [result.verdict_ref.id] : [])).size !==
+      results.filter((result) => result.verdict_ref !== undefined).length) {
+    return false;
+  }
+  let previousWindowEndedAt: string | undefined;
+  let expiredSeen = false;
+  for (const result of results) {
+    if (result.status === "slot_expired") {
+      expiredSeen = true;
+      continue;
+    }
+    if (expiredSeen || previousWindowEndedAt !== undefined &&
+      Date.parse(result.window_started_at!) <= Date.parse(previousWindowEndedAt)) {
+      return false;
+    }
+    previousWindowEndedAt = result.window_ended_at;
+  }
+  const improvedCount = results.filter((result) =>
+    result.status === "challenger_improved").length;
+  const notImprovedCount = results.filter((result) =>
+    result.status === "challenger_not_improved").length;
+  const ineligibleCount = results.filter((result) =>
+    result.status === "comparison_ineligible").length;
+  const expiredCount = results.filter((result) =>
+    result.status === "slot_expired").length;
+  if (outcome.improved_count !== improvedCount ||
+    outcome.not_improved_count !== notImprovedCount ||
+    outcome.ineligible_count !== ineligibleCount ||
+    outcome.expired_count !== expiredCount ||
+    improvedCount + notImprovedCount + ineligibleCount + expiredCount !==
+      results.length || results.some((result) =>
+        result.window_ended_at !== undefined &&
+        Date.parse(outcome.evaluated_at) < Date.parse(result.window_ended_at))) {
+    return false;
+  }
+  const confirmed = improvedCount === results.length;
+  return confirmed
+    ? outcome.campaign_outcome === "confirmed_improvement" &&
+      outcome.promotion_eligibility === "eligible" &&
+      outcome.next_action === "review_for_trading_promotion"
+    : outcome.campaign_outcome === "not_confirmed" &&
+      outcome.promotion_eligibility === "not_eligible" &&
+      outcome.next_action === "return_to_candidate_arena";
+}
+
+const PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND = {
+  confirmed_improvement: "positive_result",
+  challenger_not_reproduced: "negative_result",
+  comparison_evidence_ineligible: "failure_analysis",
+  campaign_slot_expired: "failure_analysis"
+} as const satisfies Record<
+  PaperTradingComparisonResearchReleaseKind,
+  ResearchFindingKind
+>;
+
+const PAPER_TRADING_COMPARISON_RESEARCH_DIRECTION_KINDS = new Set<
+  ResearchDirectionKind
+>([
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "liquidation_aware_risk",
+  "execution_cost_robustness",
+  "other"
+]);
+
+function paperTradingComparisonReleasedFindingHasRuntimeShape(
+  value: unknown,
+  release: PaperTradingComparisonResearchReleaseRecord
+): value is ResearchFindingRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_finding_id",
+    "research_worker_ref",
+    "research_direction_ref",
+    "experiment_run_ref",
+    "trading_evaluation_result_ref",
+    "finding_kind",
+    "summary",
+    "supporting_record_refs",
+    "created_at",
+    "authority_status"
+  ]) || value.record_kind !== "research_finding" || value.version !== 1 ||
+    value.research_finding_id !==
+      `${release.paper_trading_comparison_research_release_id}-finding` ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonRef(value.experiment_run_ref, "experiment_run") ||
+    !comparisonRef(
+      value.trading_evaluation_result_ref,
+      "trading_evaluation_result"
+    ) || value.finding_kind !==
+      PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND[
+        release.release_kind
+      ] || !comparisonString(value.summary) ||
+    !Array.isArray(value.supporting_record_refs) ||
+    value.supporting_record_refs.length < 3 ||
+    !value.supporting_record_refs.every((ref) => comparisonRef(ref)) ||
+    !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[0],
+      release.source_finding_ref
+    ) || !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[1],
+      release.campaign_ref
+    ) || !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[2],
+      release.campaign_outcome_ref
+    ) || !value.supporting_record_refs.slice(3).every((ref) =>
+      comparisonRef(ref, "paper_trading_comparison_verdict")) ||
+    value.created_at !== release.released_at ||
+    value.authority_status !== "research_trace_only") {
+    return false;
+  }
+  const supportingRefs = value.supporting_record_refs as Ref[];
+  return new Set(supportingRefs.map((ref) => `${ref.record_kind}:${ref.id}`)).size ===
+    supportingRefs.length;
+}
+
+function paperTradingComparisonReleasedLineageHasRuntimeShape(
+  value: unknown,
+  release: PaperTradingComparisonResearchReleaseRecord
+): value is ArtifactLineageRecord {
+  if (!comparisonObject(value)) return false;
+  const keys = [
+    "record_kind",
+    "version",
+    "artifact_lineage_id",
+    "child_system_code_ref",
+    ...(value.parent_system_code_ref !== undefined
+      ? ["parent_system_code_ref"]
+      : []),
+    "source_finding_refs",
+    "created_by_research_worker_ref",
+    "created_at",
+    "authority_status"
+  ];
+  if (!comparisonHasExactKeys(value, keys) ||
+    value.record_kind !== "artifact_lineage" || value.version !== 1 ||
+    value.artifact_lineage_id !==
+      `${release.paper_trading_comparison_research_release_id}-lineage` ||
+    !paperTradingComparisonRefsEqual(
+      value.child_system_code_ref,
+      release.system_code_ref
+    ) || value.parent_system_code_ref !== undefined &&
+      !comparisonRef(value.parent_system_code_ref, "system_code") ||
+    !Array.isArray(value.source_finding_refs) ||
+    value.source_finding_refs.length < 2 ||
+    !value.source_finding_refs.every((ref) =>
+      comparisonRef(ref, "research_finding")) ||
+    !comparisonRef(value.created_by_research_worker_ref, "research_worker") ||
+    !paperTradingComparisonRefsEqual(
+      value.created_by_research_worker_ref,
+      release.finding.research_worker_ref
+    ) || value.created_at !== release.released_at ||
+    value.authority_status !== "lineage_only") {
+    return false;
+  }
+  const sourceRefs = value.source_finding_refs as Ref[];
+  return sourceRefs.some((ref) =>
+    paperTradingComparisonRefsEqual(ref, release.source_finding_ref)) &&
+    sourceRefs.some((ref) => paperTradingComparisonRefsEqual(ref, {
+      record_kind: "research_finding",
+      id: release.finding.research_finding_id
+    })) && new Set(sourceRefs.map((ref) => `${ref.record_kind}:${ref.id}`)).size ===
+      sourceRefs.length;
+}
+
+export function paperTradingComparisonResearchReleaseHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonResearchReleaseRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_research_release_id",
+    "campaign_ref",
+    "campaign_digest",
+    "campaign_outcome_ref",
+    "campaign_outcome_digest",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "source_finding_ref",
+    "source_finding_record_digest",
+    "source_lineage_ref",
+    "source_lineage_record_digest",
+    "direction_kind",
+    "release_kind",
+    "finding",
+    "finding_record_digest",
+    "lineage",
+    "lineage_record_digest",
+    "next_research_focus",
+    "released_at",
+    "release_digest",
+    "research_visibility",
+    "evaluation_authority",
+    "promotion_authority",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_research_release" ||
+    value.version !== 1 ||
+    !comparisonRef(
+      value.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) || !comparisonDigest(value.campaign_digest) ||
+    !comparisonRef(
+      value.campaign_outcome_ref,
+      "paper_trading_comparison_confirmation_campaign_outcome"
+    ) || !comparisonDigest(value.campaign_outcome_digest) ||
+    value.paper_trading_comparison_research_release_id !==
+      `${value.campaign_outcome_ref.id}-research-release` ||
+    !comparisonRef(value.candidate_ref, "trading_system_candidate") ||
+    !comparisonRef(value.candidate_version_ref, "candidate_version") ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.source_finding_ref, "research_finding") ||
+    !comparisonDigest(value.source_finding_record_digest) ||
+    !comparisonRef(value.source_lineage_ref, "artifact_lineage") ||
+    !comparisonDigest(value.source_lineage_record_digest) ||
+    !PAPER_TRADING_COMPARISON_RESEARCH_DIRECTION_KINDS.has(
+      value.direction_kind as ResearchDirectionKind
+    ) || !Object.hasOwn(
+      PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND,
+      value.release_kind as PropertyKey
+    ) || !comparisonDigest(value.finding_record_digest) ||
+    !comparisonDigest(value.lineage_record_digest) ||
+    !comparisonString(value.next_research_focus) ||
+    !comparisonIso(value.released_at) || !comparisonDigest(value.release_digest) ||
+    value.research_visibility !== "released_to_research" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "lineage_only") {
+    return false;
+  }
+  const release = value as unknown as
+    PaperTradingComparisonResearchReleaseRecord;
+  return release.source_finding_ref.id !== release.finding.research_finding_id &&
+    release.source_lineage_ref.id !== release.lineage.artifact_lineage_id &&
+    paperTradingComparisonReleasedFindingHasRuntimeShape(
+      release.finding,
+      release
+    ) && paperTradingComparisonReleasedLineageHasRuntimeShape(
+      release.lineage,
+      release
+    );
+}
+
+export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unknown): value is TradingPromotionRecord {
+  return comparisonObject(value) && value.record_kind === "trading_promotion" && value.version === 1 &&
+    comparisonString(value.trading_promotion_id) && value.status === "promoted_for_trading_review" &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    comparisonObject(value.comparison_confirmation) &&
+    value.comparison_confirmation.basis_kind === "paper_trading_comparison_confirmation" &&
+    comparisonRef(
+      value.comparison_confirmation.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) && comparisonDigest(value.comparison_confirmation.campaign_digest) &&
+    comparisonRef(
+      value.comparison_confirmation.campaign_outcome_ref,
+      "paper_trading_comparison_confirmation_campaign_outcome"
+    ) && comparisonDigest(value.comparison_confirmation.campaign_outcome_digest) &&
+    comparisonRef(
+      value.comparison_confirmation.final_verdict_ref,
+      "paper_trading_comparison_verdict"
+    ) && comparisonDigest(value.comparison_confirmation.final_verdict_digest) &&
+    comparisonIso(value.promoted_at) &&
+    (value.promoted_by_command_ref === undefined || comparisonRef(value.promoted_by_command_ref)) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonPolicyHasRuntimeShape(value: unknown): value is PaperTradingComparisonPolicy {
+  return comparisonObject(value) && comparisonString(value.policy_version) &&
+    (value.comparison_mode === "bootstrap" || value.comparison_mode === "champion_challenge") && value.symbol === "BTCUSDT" &&
+    comparisonPositive(value.interval_ms) && comparisonPositive(value.minimum_observation_count) && comparisonPositive(value.minimum_elapsed_ms) &&
+    comparisonPositive(value.maximum_observation_count) && comparisonPositive(value.maximum_elapsed_ms) && comparisonNonNegative(value.maximum_start_skew_ms) &&
+    comparisonPositive(value.maximum_provider_request_count_per_side) && comparisonNonNegative(value.maximum_retry_count_per_side) &&
+    value.minimum_observation_count <= value.maximum_observation_count && value.minimum_elapsed_ms <= value.maximum_elapsed_ms &&
+    value.maximum_start_skew_ms <= value.maximum_elapsed_ms && value.primary_metric === "net_revenue_usdt" &&
+    comparisonFinite(value.minimum_net_revenue_lift_usdt) && value.minimum_net_revenue_lift_usdt >= 0 && comparisonPositive(value.required_confirmation_count) &&
+    value.require_non_overlapping_windows === true && value.require_both_qualified === true && value.release_policy === "sealed_until_adjudication";
+}
+
+export function paperTradingComparisonCandidateSideHasRuntimeShape(value: unknown, role: "champion" | "challenger"): value is PaperTradingComparisonCandidateSide {
+  return comparisonObject(value) && value.role === role && comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonDigest(value.candidate_version_digest) &&
+    comparisonRef(value.system_code_ref, "system_code") && comparisonDigest(value.system_code_record_digest) &&
+    comparisonDigest(value.system_code_artifact_digest) && comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision") &&
+    comparisonDigest(value.admission_decision_digest);
+}
+
+export function paperTradingComparisonSideHasRuntimeShape(value: unknown, role: "champion" | "challenger"): value is PaperTradingComparisonSide {
+  if (!paperTradingComparisonCandidateSideHasRuntimeShape(value, role)) return false;
+  const runtimeSide = value as PaperTradingComparisonSide;
+  return comparisonRef(runtimeSide.trading_run_ref, "trading_run") &&
+    comparisonRef(runtimeSide.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonDigest(runtimeSide.paper_trading_evaluation_commitment_digest) &&
+    comparisonDigest(runtimeSide.paper_trading_evaluation_commitment_record_digest) && comparisonRef(runtimeSide.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    comparisonDigest(runtimeSide.paper_trading_evaluation_record_digest);
+}
+
+export function paperTradingComparisonChampionSelectionHasRuntimeShape(value: unknown, mode: PaperTradingComparisonPolicy["comparison_mode"]): value is PaperTradingComparisonChampionSelection {
+  if (!comparisonObject(value)) return false;
+  if (mode === "bootstrap") return value.selection_kind === "bootstrap" && Object.keys(value).length === 1;
+  return value.selection_kind === "trading_review" && comparisonRef(value.trading_promotion_ref, "trading_promotion") && comparisonDigest(value.trading_promotion_digest) &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonDigest(value.paper_trading_evaluation_record_digest) &&
+    comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonDigest(value.paper_trading_evaluation_commitment_record_digest) && comparisonDigest(value.paper_trading_observation_chain_digest);
+}
+
+export function paperTradingComparisonPreparationHasRuntimeShape(value: unknown): value is PaperTradingComparisonPreparationRecord {
+  if (!comparisonObject(value) || !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy)) return false;
+  return value.record_kind === "paper_trading_comparison_preparation" && value.version === 1 && comparisonString(value.paper_trading_comparison_preparation_id) && comparisonString(value.paper_trading_comparison_commitment_id) &&
+    paperTradingComparisonCandidateSideHasRuntimeShape(value.champion, "champion") && paperTradingComparisonCandidateSideHasRuntimeShape(value.challenger, "challenger") &&
+    value.champion.candidate_version_ref.id !== value.challenger.candidate_version_ref.id && paperTradingComparisonChampionSelectionHasRuntimeShape(value.champion_selection, value.comparison_policy.comparison_mode) &&
+    comparisonDigest(value.market_data_configuration_digest) && comparisonPolicyIdentity(value.paper_policy_identity) && comparisonIso(value.committed_at) && comparisonDigest(value.preparation_digest) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonCommitmentHasRuntimeShape(value: unknown): value is PaperTradingComparisonCommitmentRecord {
+  if (!comparisonObject(value) || !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy)) return false;
+  return value.record_kind === "paper_trading_comparison_commitment" && value.version === 1 && comparisonString(value.paper_trading_comparison_commitment_id) && comparisonRef(value.preparation_ref, "paper_trading_comparison_preparation") &&
+    paperTradingComparisonSideHasRuntimeShape(value.champion, "champion") && paperTradingComparisonSideHasRuntimeShape(value.challenger, "challenger") &&
+    value.champion.candidate_version_ref.id !== value.challenger.candidate_version_ref.id && value.champion.trading_run_ref.id !== value.challenger.trading_run_ref.id &&
+    paperTradingComparisonChampionSelectionHasRuntimeShape(value.champion_selection, value.comparison_policy.comparison_mode) && comparisonDigest(value.market_data_configuration_digest) && comparisonPolicyIdentity(value.paper_policy_identity) && comparisonIso(value.committed_at) && comparisonDigest(value.commitment_digest) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickRecord {
+  if (
+    !comparisonObject(value) ||
+    !comparisonObject(value.market_snapshot) ||
+    !comparisonObject(value.public_execution_snapshot)
+  ) {
+    return false;
+  }
+  const market = value.market_snapshot;
+  const execution = value.public_execution_snapshot;
+  const lineageValid = value.sequence === 1
+    ? value.previous_tick_ref === undefined && value.previous_tick_digest === undefined
+    : comparisonPositive(value.sequence) &&
+      comparisonRef(value.previous_tick_ref, "paper_trading_comparison_tick") &&
+      comparisonDigest(value.previous_tick_digest);
+  return value.record_kind === "paper_trading_comparison_tick" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
+    lineageValid &&
+    comparisonDigest(value.market_data_configuration_digest) &&
+    comparisonMarketSnapshot(market) &&
+    comparisonPositiveFinite(market.price) &&
+    comparisonPositiveFinite(market.moving_average_fast) &&
+    comparisonPositiveFinite(market.moving_average_slow) &&
+    comparisonNonNegativeFinite(market.volatility) &&
+    (market.expected_direction === "long" ||
+      market.expected_direction === "short" ||
+      market.expected_direction === "flat") &&
+    comparisonMarketSourcePriority(market.source_priority) &&
+    market.freshness === "fresh" &&
+    typeof market.ws_connected === "boolean" &&
+    typeof market.rest_fallback_used === "boolean" &&
+    market.gap_detected === false &&
+    comparisonPublicExecution(execution) &&
+    comparisonMarketSourcePriority(execution.source_priority) &&
+    execution.freshness === "fresh" &&
+    typeof execution.ws_connected === "boolean" &&
+    typeof execution.rest_fallback_used === "boolean" &&
+    execution.gap_detected === false &&
+    comparisonIso(value.observed_at) &&
+    comparisonDigest(value.tick_digest) &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickCaptureWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickCaptureWriteContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "previous_checkpoint_attempt_ref",
+      "previous_checkpoint_attempt_digest",
+      "previous_checkpoint_outcome_ref",
+      "previous_checkpoint_outcome_digest",
+      "operation"
+    ]) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    comparisonRef(
+      value.previous_checkpoint_attempt_ref,
+      "paper_trading_comparison_checkpoint_attempt"
+    ) &&
+    comparisonDigest(value.previous_checkpoint_attempt_digest) &&
+    comparisonRef(
+      value.previous_checkpoint_outcome_ref,
+      "paper_trading_comparison_checkpoint_outcome"
+    ) &&
+    comparisonDigest(value.previous_checkpoint_outcome_digest) &&
+    value.operation === "capture_next_tick";
+}
+
+export function paperTradingComparisonTickContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "delivery_ref",
+      "delivery_digest"
+    ]) &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonRef(value.delivery_ref, "paper_trading_comparison_tick_delivery") &&
+    comparisonDigest(value.delivery_digest);
+}
+
+export function paperTradingComparisonTickDeliveryHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickDeliveryRecord {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "record_kind",
+      "version",
+      "paper_trading_comparison_tick_delivery_id",
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "provider_request_count_at_delivery",
+      "endpoint",
+      "delivered_at",
+      "delivery_digest",
+      "live_exchange_authority",
+      "order_submission_authority",
+      "authority_status"
+    ]) &&
+    value.record_kind === "paper_trading_comparison_tick_delivery" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_delivery_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonPositive(value.provider_request_count_at_delivery) &&
+    value.endpoint === "GET /market/snapshot" &&
+    comparisonIso(value.delivered_at) &&
+    comparisonDigest(value.delivery_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickAcknowledgementHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickAcknowledgementRecord {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "record_kind",
+      "version",
+      "paper_trading_comparison_tick_acknowledgement_id",
+      "delivery_ref",
+      "delivery_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "tick_sequence",
+      "provider_request_count_at_acknowledgement",
+      "endpoint",
+      "acknowledged_at",
+      "acknowledgement_digest",
+      "live_exchange_authority",
+      "order_submission_authority",
+      "authority_status"
+    ]) &&
+    value.record_kind === "paper_trading_comparison_tick_acknowledgement" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_tick_acknowledgement_id) &&
+    comparisonRef(value.delivery_ref, "paper_trading_comparison_tick_delivery") &&
+    comparisonDigest(value.delivery_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    comparisonPositive(value.tick_sequence) &&
+    comparisonPositive(value.provider_request_count_at_acknowledgement) &&
+    value.endpoint === "POST /comparison/tick/ack" &&
+    comparisonIso(value.acknowledged_at) &&
+    comparisonDigest(value.acknowledgement_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonTickIOWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonTickIOWriteContext {
+  return comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "paper_trading_comparison_activation_ref",
+      "paper_trading_comparison_activation_digest",
+      "paper_trading_comparison_activation_attempt_ref",
+      "paper_trading_comparison_activation_attempt_digest",
+      "role",
+      "trading_run_ref",
+      "tick_ref",
+      "tick_digest",
+      "operation"
+    ]) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    (value.operation === "deliver_market_snapshot" ||
+      value.operation === "acknowledge_tick");
+}
+
+export function paperTradingComparisonActivationSideHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger"
+): value is PaperTradingComparisonActivationSide {
+  return comparisonObject(value) &&
+    value.role === role &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(
+      value.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation");
+}
+
+export function paperTradingComparisonActivationPolicyHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationPolicy {
+  return comparisonObject(value) &&
+    value.policy_version === "paper-comparison-activation-v1" &&
+    comparisonNonNegative(value.maximum_start_skew_ms) &&
+    comparisonNonNegative(value.maximum_retry_count_per_side) &&
+    comparisonPositive(value.maximum_provider_request_count_per_side) &&
+    value.maximum_activation_elapsed_ms === 60_000 &&
+    value.cleanup_timeout_ms === 10_000 &&
+    value.require_both_running_before_observation === true &&
+    value.partial_start_policy === "stop_started_side_before_retry" &&
+    value.restart_policy === "recover_both_or_stop_both" &&
+    value.market_view_policy === "first_tick_then_contiguous_persisted_ticks";
+}
+
+export function paperTradingComparisonActivationHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationRecord {
+  if (
+    !comparisonObject(value) ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.champion, "champion") ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.challenger, "challenger") ||
+    !paperTradingComparisonActivationPolicyHasRuntimeShape(value.activation_policy)
+  ) {
+    return false;
+  }
+  const champion = value.champion;
+  const challenger = value.challenger;
+  return value.record_kind === "paper_trading_comparison_activation" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_activation_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
+    comparisonRef(value.first_tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.first_tick_digest) &&
+    champion.trading_run_ref.id !== challenger.trading_run_ref.id &&
+    champion.paper_trading_evaluation_commitment_ref.id !==
+      challenger.paper_trading_evaluation_commitment_ref.id &&
+    champion.paper_trading_evaluation_ref.id !==
+      challenger.paper_trading_evaluation_ref.id &&
+    comparisonDigest(value.market_data_configuration_digest) &&
+    value.activation_scope === "qualification_pair" &&
+    value.activation_status === "authorized" &&
+    comparisonIso(value.authorized_at) &&
+    comparisonDigest(value.activation_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.private_exchange_access === "forbidden" &&
+    value.credentials_access === "forbidden" &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonActivationAttemptHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationAttemptRecord {
+  if (
+    !comparisonObject(value) ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.champion, "champion") ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.challenger, "challenger") ||
+    !paperTradingComparisonActivationPolicyHasRuntimeShape(value.activation_policy)
+  ) {
+    return false;
+  }
+  const champion = value.champion;
+  const challenger = value.challenger;
+  if (
+    value.record_kind !== "paper_trading_comparison_activation_attempt" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_activation_attempt_id) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_activation_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_commitment_digest) ||
+    !comparisonRef(value.first_tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonDigest(value.first_tick_digest) ||
+    !comparisonPositive(value.attempt_sequence) ||
+    !comparisonNonNegative(value.retry_index) ||
+    value.retry_index !== value.attempt_sequence - 1 ||
+    value.retry_index > value.activation_policy.maximum_retry_count_per_side ||
+    value.start_mode !== "parallel" ||
+    value.attempt_status !== "starting" ||
+    !comparisonIso(value.attempted_at) ||
+    !comparisonIso(value.start_deadline_at) ||
+    !comparisonDigest(value.attempt_digest) ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  return champion.trading_run_ref.id !== challenger.trading_run_ref.id &&
+    champion.paper_trading_evaluation_commitment_ref.id !==
+      challenger.paper_trading_evaluation_commitment_ref.id &&
+    champion.paper_trading_evaluation_ref.id !==
+      challenger.paper_trading_evaluation_ref.id &&
+    Date.parse(value.start_deadline_at) ===
+      Date.parse(value.attempted_at) + value.activation_policy.maximum_activation_elapsed_ms;
+}
+
+function comparisonTradingRunLifecycleStatus(
+  value: unknown
+): value is TradingRunLifecycleStatus {
+  return comparisonString(value) && [
+    "registered",
+    "deployed",
+    "starting",
+    "running",
+    "paused",
+    "stopping",
+    "stopped",
+    "failed",
+    "killed",
+    "human_review_required",
+    "fixture_placeholder"
+  ].includes(value);
+}
+
+function comparisonPaperTradingEvaluationStatus(
+  value: unknown
+): value is PaperTradingEvaluationStatus {
+  return comparisonString(value) && [
+    "not_started",
+    "running",
+    "stopped",
+    "failed",
+    "invalidated"
+  ].includes(value);
+}
+
+export function paperTradingComparisonActivationSideResultHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationSideResultRecord {
+  if (
+    !comparisonObject(value) ||
+    value.record_kind !== "paper_trading_comparison_activation_side_result" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_activation_side_result_id) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_activation_digest) ||
+    (value.role !== "champion" && value.role !== "challenger") ||
+    !comparisonPositive(value.operation_sequence) ||
+    (value.operation !== "start" && value.operation !== "stop") ||
+    ![
+      "symmetric_start",
+      "partial_start_cleanup",
+      "policy_cleanup",
+      "restart_cleanup",
+      "handoff_cleanup"
+    ].includes(value.reason as string) ||
+    !["succeeded", "failed", "timed_out", "not_running"].includes(
+      value.outcome as string
+    ) ||
+    !comparisonRef(value.trading_run_ref, "trading_run") ||
+    !comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") ||
+    (value.sandbox_ref !== undefined && !comparisonRef(value.sandbox_ref, "sandbox")) ||
+    (value.runtime_lifecycle_status !== "unknown" &&
+      !comparisonTradingRunLifecycleStatus(value.runtime_lifecycle_status)) ||
+    (value.evaluation_status !== "unknown" &&
+      !comparisonPaperTradingEvaluationStatus(value.evaluation_status)) ||
+    !comparisonNonNegative(value.provider_request_count) ||
+    !comparisonIso(value.effect_started_at) ||
+    !comparisonIso(value.effect_completed_at) ||
+    Date.parse(value.effect_completed_at) < Date.parse(value.effect_started_at) ||
+    !comparisonDigest(value.side_result_digest) ||
+    value.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  if (
+    value.operation === "start" &&
+      (value.operation_sequence !== 1 || value.reason !== "symmetric_start") ||
+    value.operation === "stop" &&
+      (value.operation_sequence < 2 || value.reason === "symmetric_start") ||
+    value.outcome === "not_running" && value.operation !== "stop"
+  ) {
+    return false;
+  }
+  if (value.outcome === "failed" || value.outcome === "timed_out") {
+    if (!comparisonString(value.stable_error_code)) return false;
+  } else if (value.stable_error_code !== undefined) {
+    return false;
+  }
+  if (value.operation === "start" && value.outcome === "succeeded") {
+    return comparisonRef(value.sandbox_ref, "sandbox") &&
+      value.runtime_lifecycle_status === "running" &&
+      value.evaluation_status === "running";
+  }
+  if (value.operation === "stop" && value.outcome === "succeeded") {
+    return value.runtime_lifecycle_status === "stopped" &&
+      (value.evaluation_status === "stopped" || value.evaluation_status === "failed");
+  }
+  if (value.operation === "stop" && value.outcome === "not_running") {
+    return (value.runtime_lifecycle_status === "registered" ||
+        value.runtime_lifecycle_status === "stopped") &&
+      (value.evaluation_status === "not_started" || value.evaluation_status === "stopped");
+  }
+  return true;
+}
+
+export function paperTradingComparisonWindowClosureEvidenceHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonWindowClosureEvidence {
+  if (!comparisonObject(value)) return false;
+  const expectedKeys = [
+    "protocol_version",
+    "requested_at",
+    "tick_count",
+    "checkpoint_attempt_count",
+    "paired_checkpoint_count",
+    "latest_tick_ref",
+    "latest_tick_observed_at",
+    ...(value.latest_checkpoint_attempt_ref === undefined
+      ? []
+      : ["latest_checkpoint_attempt_ref"]),
+    ...(value.latest_checkpoint_outcome_ref === undefined
+      ? []
+      : ["latest_checkpoint_outcome_ref"])
+  ];
+  if (!comparisonHasExactKeys(value, expectedKeys) ||
+    value.protocol_version !== "paper_trading_comparison_window_closure_v1" ||
+    !comparisonIso(value.requested_at) ||
+    !comparisonPositive(value.tick_count) ||
+    !comparisonNonNegative(value.checkpoint_attempt_count) ||
+    !comparisonNonNegative(value.paired_checkpoint_count) ||
+    value.checkpoint_attempt_count > value.tick_count ||
+    value.paired_checkpoint_count > value.checkpoint_attempt_count ||
+    !comparisonRef(value.latest_tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonIso(value.latest_tick_observed_at) ||
+    Date.parse(value.latest_tick_observed_at) > Date.parse(value.requested_at)) {
+    return false;
+  }
+  if (value.checkpoint_attempt_count === 0) {
+    return value.latest_checkpoint_attempt_ref === undefined &&
+      value.latest_checkpoint_outcome_ref === undefined;
+  }
+  if (!comparisonRef(
+    value.latest_checkpoint_attempt_ref,
+    "paper_trading_comparison_checkpoint_attempt"
+  )) return false;
+  if (value.latest_checkpoint_outcome_ref !== undefined &&
+    !comparisonRef(
+      value.latest_checkpoint_outcome_ref,
+      "paper_trading_comparison_checkpoint_outcome"
+    )) return false;
+  return value.paired_checkpoint_count !== value.checkpoint_attempt_count ||
+    value.latest_checkpoint_outcome_ref !== undefined;
+}
+
+export function paperTradingComparisonActivationOutcomeHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationOutcomeRecord {
+  if (
+    !comparisonObject(value) ||
+    value.record_kind !== "paper_trading_comparison_activation_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_activation_outcome_id) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) ||
+    !comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) ||
+    !comparisonDigest(value.paper_trading_comparison_activation_digest) ||
+    !comparisonPositive(value.outcome_sequence) ||
+    !["both_running", "stopped_cleanly", "cleanup_required"].includes(
+      value.outcome_status as string
+    ) ||
+    ![
+      "started_within_policy",
+      "start_failed",
+      "start_timed_out",
+      "start_skew_exceeded",
+      "activation_elapsed_exceeded",
+      "provider_request_budget_exceeded",
+      "side_result_persistence_failed",
+      "cleanup_failed",
+      "restart_cleanup",
+      "handoff_cleanup"
+    ].includes(value.outcome_reason as string) ||
+    (value.champion_latest_result_ref !== undefined &&
+      !comparisonRef(
+        value.champion_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      )) ||
+    (value.challenger_latest_result_ref !== undefined &&
+      !comparisonRef(
+        value.challenger_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      )) ||
+    (value.window_closure !== undefined &&
+      !paperTradingComparisonWindowClosureEvidenceHasRuntimeShape(
+        value.window_closure
+      )) ||
+    ![
+      "capture_first_paired_checkpoint",
+      "retry_activation",
+      "recover_cleanup",
+      "checkpoint_handoff_complete"
+    ].includes(value.next_action as string) ||
+    !comparisonIso(value.completed_at) ||
+    !comparisonDigest(value.outcome_digest) ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "not_live" ||
+    comparisonRef(
+      value.champion_latest_result_ref,
+      "paper_trading_comparison_activation_side_result"
+    ) &&
+      comparisonRef(
+        value.challenger_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      ) &&
+      value.champion_latest_result_ref.id === value.challenger_latest_result_ref.id
+  ) {
+    return false;
+  }
+  if (value.window_closure !== undefined &&
+    (value.outcome_status !== "stopped_cleanly" ||
+      value.outcome_reason !== "handoff_cleanup" ||
+      Date.parse(value.window_closure.requested_at) >
+        Date.parse(value.completed_at))) return false;
+  const previousOutcomeValid = value.outcome_sequence === 1
+    ? value.previous_outcome_ref === undefined
+    : comparisonRef(
+        value.previous_outcome_ref,
+        "paper_trading_comparison_activation_outcome"
+      ) && value.previous_outcome_ref.id !==
+        value.paper_trading_comparison_activation_outcome_id;
+  if (!previousOutcomeValid) return false;
+  if (value.outcome_status === "both_running") {
+    return value.outcome_reason === "started_within_policy" &&
+      comparisonRef(
+        value.champion_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      ) &&
+      comparisonRef(
+        value.challenger_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      ) &&
+      value.next_action === "capture_first_paired_checkpoint";
+  }
+  if (value.outcome_status === "stopped_cleanly") {
+    return value.outcome_reason !== "started_within_policy" &&
+      value.outcome_reason !== "cleanup_failed" &&
+      comparisonRef(
+        value.champion_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      ) &&
+      comparisonRef(
+        value.challenger_latest_result_ref,
+        "paper_trading_comparison_activation_side_result"
+      ) &&
+      value.next_action === (value.outcome_reason === "handoff_cleanup"
+        ? "checkpoint_handoff_complete"
+        : "retry_activation");
+  }
+  return value.outcome_reason !== "started_within_policy" &&
+    value.next_action === "recover_cleanup";
+}
+
+export function paperTradingComparisonRuntimeWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonRuntimeWriteContext {
+  return comparisonObject(value) &&
+    Object.keys(value).length === 6 &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    (value.operation === "start" || value.operation === "stop");
+}
+
+function paperTradingComparisonCheckpointAttemptSideHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger"
+): value is PaperTradingComparisonCheckpointAttemptSide {
+  return comparisonObject(value) &&
+    value.role === role &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    comparisonDigest(value.evaluation_record_digest) &&
+    comparisonDigest(value.observation_chain_digest) &&
+    comparisonNonNegative(value.provider_request_count_before);
+}
+
+export function paperTradingComparisonCheckpointAttemptHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonCheckpointAttemptRecord {
+  if (
+    !comparisonObject(value) ||
+    !paperTradingComparisonCheckpointAttemptSideHasRuntimeShape(
+      value.champion,
+      "champion"
+    ) ||
+    !paperTradingComparisonCheckpointAttemptSideHasRuntimeShape(
+      value.challenger,
+      "challenger"
+    )
+  ) {
+    return false;
+  }
+  const champion = value.champion;
+  const challenger = value.challenger;
+  const predecessorValid = value.checkpoint_sequence === 1
+    ? value.previous_checkpoint_outcome_ref === undefined &&
+      value.previous_checkpoint_outcome_digest === undefined
+    : comparisonPositive(value.checkpoint_sequence) &&
+      comparisonRef(
+        value.previous_checkpoint_outcome_ref,
+        "paper_trading_comparison_checkpoint_outcome"
+      ) &&
+      comparisonDigest(value.previous_checkpoint_outcome_digest);
+  return value.record_kind === "paper_trading_comparison_checkpoint_attempt" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_checkpoint_attempt_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    comparisonRef(
+      value.activation_outcome_ref,
+      "paper_trading_comparison_activation_outcome"
+    ) &&
+    comparisonDigest(value.activation_outcome_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
+    comparisonRef(value.tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.tick_digest) &&
+    predecessorValid &&
+    champion.trading_run_ref.id !== challenger.trading_run_ref.id &&
+    champion.paper_trading_evaluation_ref.id !==
+      challenger.paper_trading_evaluation_ref.id &&
+    comparisonIso(value.attempted_at) &&
+    comparisonIso(value.checkpoint_deadline_at) &&
+    Date.parse(value.checkpoint_deadline_at) > Date.parse(value.attempted_at) &&
+    Date.parse(value.checkpoint_deadline_at) - Date.parse(value.attempted_at) <= 60_000 &&
+    value.attempt_status === "preparing" &&
+    comparisonDigest(value.attempt_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.authority_status === "not_live";
+}
+
+function paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger",
+  checkpointSequence: number
+): value is PaperTradingComparisonCheckpointSideEvidence {
+  if (!comparisonObject(value)) return false;
+  const acknowledgementValid = checkpointSequence === 1
+    ? value.tick_acknowledgement_ref === undefined &&
+      value.tick_acknowledgement_digest === undefined
+    : comparisonRef(
+        value.tick_acknowledgement_ref,
+        "paper_trading_comparison_tick_acknowledgement"
+      ) && comparisonDigest(value.tick_acknowledgement_digest);
+  return acknowledgementValid &&
+    value.role === role &&
+    comparisonRef(value.observation_ref, "paper_trading_observation") &&
+    comparisonDigest(value.observation_record_digest) &&
+    comparisonDigest(value.evaluation_record_digest) &&
+    Array.isArray(value.ledger_chain_refs) &&
+    value.ledger_chain_refs.every((item) => comparisonRef(item, "ledger_chain")) &&
+    new Set(value.ledger_chain_refs.map((item) => item.id)).size ===
+      value.ledger_chain_refs.length &&
+    (value.observation_status === "recorded" ||
+      value.observation_status === "no_order" ||
+      value.observation_status === "failed") &&
+    comparisonNonNegative(value.consumed_event_count) &&
+    comparisonNonNegative(value.provider_request_count_after) &&
+    (value.observation_status !== "no_order" || value.ledger_chain_refs.length === 0);
+}
+
+export function paperTradingComparisonCheckpointOutcomeHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonCheckpointOutcomeRecord {
+  if (
+    !comparisonObject(value) ||
+    value.record_kind !== "paper_trading_comparison_checkpoint_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_checkpoint_outcome_id) ||
+    !comparisonRef(
+      value.checkpoint_attempt_ref,
+      "paper_trading_comparison_checkpoint_attempt"
+    ) ||
+    !comparisonDigest(value.checkpoint_attempt_digest) ||
+    !comparisonRef(value.tick_ref, "paper_trading_comparison_tick") ||
+    !comparisonDigest(value.tick_digest) ||
+    !comparisonPositive(value.checkpoint_sequence) ||
+    (value.outcome_status !== "paired" && value.outcome_status !== "incomplete") ||
+    ![
+      "paired_checkpoint_recorded",
+      "side_preparation_failed",
+      "side_preparation_timed_out",
+      "provider_request_budget_exceeded",
+      "checkpoint_deadline_exceeded",
+      "paired_persistence_failed",
+      "restart_cleanup"
+    ].includes(value.outcome_reason as string) ||
+    ![
+      "serve_and_acknowledge_current_tick",
+      "capture_next_tick",
+      "close_failed_comparison",
+      "recover_cleanup"
+    ].includes(value.next_action as string) ||
+    !comparisonIso(value.completed_at) ||
+    !comparisonDigest(value.outcome_digest) ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  if (value.outcome_status === "paired") {
+    if (
+      value.outcome_reason !== "paired_checkpoint_recorded" ||
+      value.stable_error_code !== undefined ||
+      !paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
+        value.champion,
+        "champion",
+        value.checkpoint_sequence
+      ) ||
+      !paperTradingComparisonCheckpointSideEvidenceHasRuntimeShape(
+        value.challenger,
+        "challenger",
+        value.checkpoint_sequence
+      ) ||
+      value.champion.observation_ref.id === value.challenger.observation_ref.id ||
+      value.checkpoint_sequence > 1 &&
+        value.champion.tick_acknowledgement_ref!.id ===
+          value.challenger.tick_acknowledgement_ref!.id
+    ) {
+      return false;
+    }
+    const hasFailedSide = value.champion.observation_status === "failed" ||
+      value.challenger.observation_status === "failed";
+    return value.next_action === (hasFailedSide
+      ? "close_failed_comparison"
+      : value.checkpoint_sequence === 1
+        ? "serve_and_acknowledge_current_tick"
+        : "capture_next_tick");
+  }
+  if (
+    value.outcome_reason === "paired_checkpoint_recorded" ||
+    value.champion !== undefined ||
+    value.challenger !== undefined ||
+    !comparisonString(value.stable_error_code)
+  ) {
+    return false;
+  }
+  const requiresRecovery = value.outcome_reason === "paired_persistence_failed" ||
+    value.outcome_reason === "restart_cleanup";
+  return value.next_action === (requiresRecovery
+    ? "recover_cleanup"
+    : "close_failed_comparison");
+}
+
+export function paperTradingComparisonCheckpointWriteContextHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonCheckpointWriteContext {
+  return comparisonObject(value) &&
+    Object.keys(value).length === 10 &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_ref,
+      "paper_trading_comparison_activation"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_digest) &&
+    comparisonRef(
+      value.paper_trading_comparison_activation_attempt_ref,
+      "paper_trading_comparison_activation_attempt"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_activation_attempt_digest) &&
+    comparisonRef(
+      value.activation_outcome_ref,
+      "paper_trading_comparison_activation_outcome"
+    ) &&
+    comparisonDigest(value.activation_outcome_digest) &&
+    comparisonRef(
+      value.checkpoint_attempt_ref,
+      "paper_trading_comparison_checkpoint_attempt"
+    ) &&
+    comparisonDigest(value.checkpoint_attempt_digest) &&
+    (value.role === "champion" || value.role === "challenger") &&
+    (value.operation === "advance_tick_view" ||
+      value.operation === "refresh_sandbox_evidence" ||
+      value.operation === "commit_paired_checkpoint");
+}
+
 export interface PaperTradingEvaluationRecord extends BaseRecord {
   record_kind: "paper_trading_evaluation";
   paper_trading_evaluation_id: string;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref?: Ref;
   status: PaperTradingEvaluationStatus;
   interval_ms: number;
   observation_count: number;
@@ -1687,14 +5453,100 @@ export interface PaperTradingEvaluationRecord extends BaseRecord {
   processed_trading_system_event_ids?: string[];
   processed_public_trade_ids?: string[];
   latest_public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   latest_failure_reason?: string;
   authority_status: "not_live";
+}
+
+export function paperTradingComparisonBaselineEvaluation(
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  evaluationRef: Ref
+): PaperTradingEvaluationRecord {
+  return {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: evaluationRef.id,
+    candidate_ref: { ...commitment.candidate_ref },
+    candidate_version_ref: { ...commitment.candidate_version_ref },
+    trading_run_ref: { ...commitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    interval_ms: commitment.window_policy.interval_ms,
+    observation_count: 0,
+    started_at: commitment.committed_at,
+    latest_score: { ...PAPER_TRADING_COMPARISON_ZERO_SCORE },
+    paper_account_snapshot: {
+      ...commitment.initial_account_snapshot,
+      position: { ...commitment.initial_account_snapshot.position }
+    },
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    authority_status: "not_live"
+  };
+}
+
+export function paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+  value: unknown,
+  baseline: PaperTradingEvaluationRecord,
+  expectedStatus: "not_started" | "running" | "stopped"
+): value is PaperTradingEvaluationRecord {
+  if (
+    !comparisonObject(value) ||
+    !comparisonInertEvaluation(baseline) ||
+    baseline.next_observation_at !== undefined ||
+    baseline.latest_fill !== undefined ||
+    baseline.latest_public_execution_snapshot !== undefined ||
+    baseline.invalidation_reason !== undefined ||
+    baseline.latest_failure_reason !== undefined
+  ) {
+    return false;
+  }
+  if (expectedStatus === "not_started") {
+    return value.status === "not_started" && semanticEqual(value, baseline);
+  }
+  if (expectedStatus === "running") {
+    if (
+      value.status !== "running" ||
+      !comparisonIso(value.next_observation_at) ||
+      Date.parse(value.next_observation_at) <= Date.parse(baseline.started_at)
+    ) {
+      return false;
+    }
+    return semanticEqual(value, {
+      ...baseline,
+      status: "running",
+      next_observation_at: value.next_observation_at
+    });
+  }
+  if (
+    value.status !== "stopped" ||
+    !comparisonIso(value.stopped_at) ||
+    Date.parse(value.stopped_at) < Date.parse(baseline.started_at)
+  ) {
+    return false;
+  }
+  return semanticEqual(value, {
+    ...baseline,
+    status: "stopped",
+    stopped_at: value.stopped_at
+  });
 }
 
 export interface PaperTradingObservationRecord extends BaseRecord {
   record_kind: "paper_trading_observation";
   paper_trading_observation_id: string;
   paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_commitment_ref?: Ref;
+  paper_trading_comparison_tick_ref?: Ref;
+  paper_trading_comparison_tick_digest?: string;
+  paper_trading_comparison_tick_acknowledgement_ref?: Ref;
+  paper_trading_comparison_tick_acknowledgement_digest?: string;
+  paper_trading_comparison_checkpoint_attempt_ref?: Ref;
+  paper_trading_comparison_checkpoint_attempt_digest?: string;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   trading_run_ref: Ref;
@@ -1715,6 +5567,242 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   failure_reason?: string;
   authority_status: "not_live";
 }
+
+export interface PaperTradingComparisonLoadedSideRecords {
+  candidate: CandidateInspectReadModel;
+  candidateVersion: CandidateVersionRecord;
+  admission: CandidateAdmissionDecisionRecord;
+  run: TradingRunRecord;
+  systemCode: SystemCodeRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  observations: PaperTradingObservationRecord[];
+}
+
+export interface PaperTradingComparisonStoppedQualificationClosure {
+  systemCode: SystemCodeRecord;
+  admission: CandidateAdmissionDecisionRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  observations: PaperTradingObservationRecord[];
+  promotion: TradingPromotionRecord;
+  preparationCommittedAt: string;
+}
+
+export const DEFAULT_PAPER_TRADING_QUALIFICATION_POLICY: PaperTradingQualificationPolicy = {
+  minObservationCount: 30,
+  minElapsedMs: 30 * 60_000,
+  maxFailedObservationRatio: 0.1,
+  assessRunnerHealth: true
+};
+
+export function paperTradingEvidenceIntegrityReasons(input: PaperTradingQualificationEvidenceInput): PaperTradingQualificationReason[] {
+  if (!input.commitment || !input.commitmentDigestVerified || !qualificationCommitmentMatches(input.commitment, input.evaluation)) return ["paper_evaluation_commitment_missing"];
+  if (!qualificationObservationChain(input.evaluation, input.commitment, input.observations)) return ["paper_observation_chain_incomplete"];
+  if (!qualificationAccounting(input.evaluation, input.commitment, input.observations)) return ["paper_score_account_mismatch"];
+  return [];
+}
+
+export function decidePaperTradingQualification(input: PaperTradingQualificationDecisionInput): PaperTradingQualificationResult {
+  const policy = { ...DEFAULT_PAPER_TRADING_QUALIFICATION_POLICY, ...input.policy };
+  const observations = [...input.observations].sort((left, right) => left.sequence - right.sequence);
+  const failed = observations.filter((item) => item.status === "failed").length;
+  const last = observations.at(-1);
+  const started = Date.parse(input.evaluation.started_at);
+  const ended = last ? Date.parse(last.observed_at) : Number.NaN;
+  const elapsed = Number.isFinite(started) && Number.isFinite(ended) && ended >= started ? ended - started : 0;
+  const evidence_window = { observation_count: input.evaluation.observation_count, elapsed_ms: elapsed, failed_observation_count: failed, first_observed_at: observations[0]?.observed_at, last_observed_at: last?.observed_at ?? input.evaluation.last_observed_at };
+  const result = (qualification_status: PaperTradingQualificationStatus, qualification_reasons: PaperTradingQualificationReason[]): PaperTradingQualificationResult => ({ qualification_status, qualification_reasons, evidence_window });
+  if (input.evaluation.status === "invalidated") return result("blocked_by_quality", ["paper_evaluation_invalidated"]);
+  const commitment = input.commitment;
+  if (!commitment || !input.commitmentDigestVerified || !qualificationCommitmentMatches(commitment, input.evaluation)) return result("not_qualification_evidence", ["paper_evaluation_commitment_missing"]);
+  if (commitment.evidence_purpose !== "qualification") return result("not_qualification_evidence", ["evidence_purpose_not_qualification"]);
+  if (!commitment.provider_identity.qualification_eligible) return result("not_qualification_evidence", ["provider_identity_not_qualification_eligible"]);
+  if (input.evaluation.status === "failed") return result("paper_failed", ["paper_evaluation_failed"]);
+  const integrity = paperTradingEvidenceIntegrityReasons(input);
+  if (integrity.length) return result("blocked_by_quality", integrity);
+  const quality: PaperTradingQualificationReason[] = [];
+  if (policy.assessRunnerHealth && input.evaluation.status === "running" && !input.runnerActive) quality.push("runner_inactive_for_running_evaluation");
+  if (input.evaluation.observation_count > 0 && failed / input.evaluation.observation_count > policy.maxFailedObservationRatio) quality.push("failed_observation_ratio_exceeded");
+  if (input.evaluation.observation_count >= policy.minObservationCount && !observations.some((item) => item.market_snapshot !== undefined)) quality.push("latest_market_snapshot_missing");
+  if (!qualificationFillsHaveEvidence(input.evaluation, observations)) quality.push("fill_public_execution_evidence_missing");
+  if (quality.length) return result(quality.length === 1 && quality[0] === "runner_inactive_for_running_evaluation" ? "needs_resume" : "blocked_by_quality", quality);
+  const collecting: PaperTradingQualificationReason[] = [];
+  if (input.evaluation.observation_count < policy.minObservationCount) collecting.push("min_observation_count_not_met");
+  if (elapsed < policy.minElapsedMs) collecting.push("min_elapsed_ms_not_met");
+  return collecting.length ? result("collecting_evidence", collecting) : result("qualified", []);
+}
+
+function qualificationCommitmentMatches(commitment: PaperTradingEvaluationCommitmentRecord, evaluation: PaperTradingEvaluationRecord): boolean {
+  return paperTradingComparisonRefsEqual(evaluation.paper_trading_evaluation_commitment_ref, { record_kind: commitment.record_kind, id: commitment.paper_trading_evaluation_commitment_id }) &&
+    paperTradingComparisonRefsEqual(evaluation.candidate_ref, commitment.candidate_ref) && paperTradingComparisonRefsEqual(evaluation.candidate_version_ref, commitment.candidate_version_ref) && paperTradingComparisonRefsEqual(evaluation.trading_run_ref, commitment.trading_run_ref) &&
+    evaluation.interval_ms === commitment.window_policy.interval_ms && commitment.authority_status === "not_live" && evaluation.authority_status === "not_live";
+}
+
+function qualificationObservationChain(evaluation: PaperTradingEvaluationRecord, commitment: PaperTradingEvaluationCommitmentRecord, observations: PaperTradingObservationRecord[]): boolean {
+  return observations.length === evaluation.observation_count && [...observations].sort((left, right) => left.sequence - right.sequence).every((item, index) => item.sequence === index + 1 &&
+    paperTradingComparisonRefsEqual(item.paper_trading_evaluation_ref, { record_kind: evaluation.record_kind, id: evaluation.paper_trading_evaluation_id }) &&
+    paperTradingComparisonRefsEqual(item.paper_trading_evaluation_commitment_ref, evaluation.paper_trading_evaluation_commitment_ref) &&
+    paperTradingComparisonRefsEqual(item.candidate_ref, commitment.candidate_ref) && paperTradingComparisonRefsEqual(item.candidate_version_ref, commitment.candidate_version_ref) && paperTradingComparisonRefsEqual(item.trading_run_ref, commitment.trading_run_ref));
+}
+
+function qualificationScore(account: PaperTradingAccountSnapshot, initialEquity: number): TradingProfitLossReadModel {
+  const decimal = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const round = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
+  const revenue = decimal(account.realized_pnl_usdt) + decimal(account.unrealized_pnl_usdt);
+  const cost = decimal(account.fee_paid_usdt) + decimal(account.slippage_paid_usdt) + decimal(account.funding_paid_usdt);
+  const roundedRevenue = round(revenue);
+  const roundedCost = round(cost);
+  const net = round(roundedRevenue - roundedCost);
+  return { revenue_usdt: roundedRevenue, cost_usdt: roundedCost, net_revenue_usdt: net, net_return_pct: round(net / initialEquity * 100) };
+}
+function qualificationSameScore(left: TradingProfitLossReadModel, right: TradingProfitLossReadModel): boolean { return left.revenue_usdt === right.revenue_usdt && left.cost_usdt === right.cost_usdt && left.net_revenue_usdt === right.net_revenue_usdt && left.net_return_pct === right.net_return_pct; }
+function qualificationAccountEquityReconciles(account: PaperTradingAccountSnapshot, initialEquity: number): boolean {
+  const values = [account.equity_usdt, account.realized_pnl_usdt, account.unrealized_pnl_usdt, account.fee_paid_usdt, account.slippage_paid_usdt, account.funding_paid_usdt].map(Number);
+  if (!values.every(Number.isFinite)) return false;
+  const [equity, realized, unrealized, fee, slippage, funding] = values as [number, number, number, number, number, number];
+  return Math.abs((equity - initialEquity) - (realized + unrealized - fee - slippage - funding)) <= 0.000001;
+}
+function qualificationAccounting(evaluation: PaperTradingEvaluationRecord, commitment: PaperTradingEvaluationCommitmentRecord, observations: PaperTradingObservationRecord[]): boolean {
+  const initial = Number(commitment.initial_account_snapshot.equity_usdt);
+  if (!Number.isFinite(initial) || initial <= 0 || !qualificationSameScore(qualificationScore(commitment.initial_account_snapshot, initial), PAPER_TRADING_COMPARISON_ZERO_SCORE) || !qualificationAccountEquityReconciles(commitment.initial_account_snapshot, initial)) return false;
+  let prior = PAPER_TRADING_COMPARISON_ZERO_SCORE;
+  let account = commitment.initial_account_snapshot;
+  for (const item of [...observations].sort((left, right) => left.sequence - right.sequence)) {
+    const current = item.cumulative_score;
+    const delta = { revenue_usdt: Math.round((current.revenue_usdt - prior.revenue_usdt) * 1_000_000) / 1_000_000, cost_usdt: Math.round((current.cost_usdt - prior.cost_usdt) * 1_000_000) / 1_000_000, net_revenue_usdt: Math.round((current.net_revenue_usdt - prior.net_revenue_usdt) * 1_000_000) / 1_000_000, net_return_pct: Math.round((current.net_return_pct - prior.net_return_pct) * 1_000_000) / 1_000_000 };
+    if (![...Object.values(item.score_delta), ...Object.values(current)].every(Number.isFinite) || !qualificationSameScore(item.score_delta, delta)) return false;
+    if (item.paper_account_snapshot) { if (!qualificationSameScore(qualificationScore(item.paper_account_snapshot, initial), current) || !qualificationAccountEquityReconciles(item.paper_account_snapshot, initial)) return false; account = item.paper_account_snapshot; }
+    else if (!qualificationSameScore(current, prior)) return false;
+    prior = current;
+  }
+  return Boolean(evaluation.paper_account_snapshot) && qualificationSameScore(prior, evaluation.latest_score) && semanticEqual(account, evaluation.paper_account_snapshot);
+}
+function semanticEqual(left: unknown, right: unknown): boolean { try { return paperTradingComparisonPersistedRecordDigestInput(left) === paperTradingComparisonPersistedRecordDigestInput(right); } catch { return false; } }
+function qualificationFillsHaveEvidence(evaluation: PaperTradingEvaluationRecord, observations: PaperTradingObservationRecord[]): boolean {
+  const fills = [evaluation.latest_fill, ...observations.map((item) => item.latest_fill)].filter((item): item is PaperTradingFillSummary => Boolean(item));
+  const snapshots = [evaluation.latest_public_execution_snapshot, ...observations.map((item) => item.public_execution_snapshot)].filter(Boolean);
+  return fills.every((fill) => snapshots.some((snapshot) => {
+    if (!fill.source_trade_id) return Boolean(snapshot!.book_ticker || snapshot!.agg_trades.length);
+    return snapshot!.agg_trades.some((trade) => trade.trade_id === fill.source_trade_id) ||
+      snapshot!.stream_marker === fill.source_trade_id ||
+      fill.source_trade_id.startsWith(`${snapshot!.stream_marker}:`);
+  }));
+}
+
+export function paperTradingComparisonSideRecordsHaveInertShape(value: unknown): value is PaperTradingComparisonLoadedSideRecords {
+  if (!comparisonObject(value) || !comparisonObject(value.candidate) || !comparisonObject(value.candidateVersion) || !comparisonObject(value.admission) || !comparisonObject(value.run) || !comparisonObject(value.systemCode) || !comparisonObject(value.commitment) || !comparisonObject(value.evaluation) || !Array.isArray(value.observations)) return false;
+  const candidate = value.candidate;
+  const version = value.candidateVersion;
+  const admission = value.admission;
+  const run = value.run;
+  const code = value.systemCode;
+  const commitment = value.commitment;
+  const evaluation = value.evaluation;
+  if (!comparisonString(candidate.candidate_id) || !comparisonObject(candidate.runtime) || !comparisonObject(candidate.system_code) || !comparisonRef(candidate.runtime.ref, "trading_run") || !comparisonRef(candidate.system_code.ref, "system_code")) return false;
+  if (version.record_kind !== "candidate_version" || version.version !== 1 || !comparisonString(version.candidate_version_id) || version.candidate_id !== candidate.candidate_id || !comparisonRef(version.runtime_ref, "trading_run") || !comparisonRef(version.system_code_ref, "system_code") || !Array.isArray(version.capability_package_refs) || !version.capability_package_refs.every((item) => comparisonRef(item, "capability_package"))) return false;
+  if (run.record_kind !== "trading_run" || run.version !== 1 || !comparisonString(run.trading_run_id) || !comparisonRef(run.candidate_ref, "trading_system_candidate") || !comparisonRef(run.candidate_version_ref, "candidate_version") || !comparisonRef(run.system_code_ref, "system_code")) return false;
+  if (!comparisonSystemCode(code) || !comparisonAdmission(admission) || !comparisonInertCommitment(commitment) || !comparisonInertEvaluation(evaluation)) return false;
+  return paperTradingComparisonRefsEqual(candidate.runtime.ref, { record_kind: "trading_run", id: run.trading_run_id }) && paperTradingComparisonRefsEqual(candidate.system_code.ref, { record_kind: "system_code", id: code.system_code_id }) && version.runtime_ref.id !== run.trading_run_id && version.system_code_ref.id === code.system_code_id && admission.system_code_ref.id === code.system_code_id && admission.submitted_artifact_digest === code.artifact_digest && code.created_at <= admission.decided_at && commitment.candidate_ref.id === run.candidate_ref.id && commitment.candidate_version_ref.id === run.candidate_version_ref.id && commitment.trading_run_ref.id === run.trading_run_id && commitment.system_code_ref.id === code.system_code_id && evaluation.candidate_ref.id === commitment.candidate_ref.id && evaluation.candidate_version_ref.id === commitment.candidate_version_ref.id && evaluation.trading_run_ref.id === commitment.trading_run_ref.id && evaluation.paper_trading_evaluation_commitment_ref?.id === commitment.paper_trading_evaluation_commitment_id && evaluation.interval_ms === commitment.window_policy.interval_ms && value.observations.length === 0;
+}
+
+export function paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(value: unknown): value is PaperTradingComparisonStoppedQualificationClosure {
+  if (!comparisonObject(value) || !comparisonSystemCode(value.systemCode) || !comparisonAdmission(value.admission) || !comparisonStoppedCommitment(value.commitment) || !comparisonStoppedEvaluation(value.evaluation) || !Array.isArray(value.observations) || !value.observations.every(comparisonStoppedObservation) || !paperTradingComparisonTradingPromotionHasRuntimeShape(value.promotion) || !comparisonIso(value.preparationCommittedAt)) return false;
+  const { systemCode, admission, commitment, evaluation, promotion } = value;
+  const observations = [...value.observations].sort((left, right) => left.sequence - right.sequence);
+  if (admission.system_code_ref.id !== systemCode.system_code_id || admission.submitted_artifact_digest !== systemCode.artifact_digest || commitment.system_code_ref.id !== systemCode.system_code_id || commitment.system_code_artifact_digest !== systemCode.artifact_digest || !comparisonRuntimeIdentityMatchesSystemCode(commitment.runtime_identity, systemCode) || commitment.capability_policy_ref.id !== systemCode.capability_policy_ref.id || commitment.secret_policy_ref.id !== systemCode.secret_policy_ref.id) return false;
+  if (evaluation.candidate_ref.id !== commitment.candidate_ref.id || evaluation.candidate_version_ref.id !== commitment.candidate_version_ref.id || evaluation.trading_run_ref.id !== commitment.trading_run_ref.id || evaluation.paper_trading_evaluation_commitment_ref?.id !== commitment.paper_trading_evaluation_commitment_id || evaluation.interval_ms !== commitment.window_policy.interval_ms || promotion.candidate_ref.id !== commitment.candidate_ref.id || promotion.candidate_version_ref.id !== commitment.candidate_version_ref.id || promotion.paper_trading_evaluation_ref.id !== evaluation.paper_trading_evaluation_id) return false;
+  if (observations.length !== evaluation.observation_count || observations.some((item, index) => item.sequence !== index + 1 || item.paper_trading_evaluation_ref.id !== evaluation.paper_trading_evaluation_id || item.paper_trading_evaluation_commitment_ref?.id !== commitment.paper_trading_evaluation_commitment_id || item.candidate_ref.id !== commitment.candidate_ref.id || item.candidate_version_ref.id !== commitment.candidate_version_ref.id || item.trading_run_ref.id !== commitment.trading_run_ref.id || (index > 0 && item.observed_at < observations[index - 1]!.observed_at))) return false;
+  const first = observations[0]?.observed_at ?? evaluation.started_at;
+  const last = observations.at(-1)?.observed_at ?? evaluation.started_at;
+  return systemCode.created_at <= admission.decided_at && admission.decided_at <= commitment.committed_at && commitment.committed_at <= evaluation.started_at && evaluation.started_at <= first && last <= evaluation.stopped_at! && evaluation.stopped_at! <= promotion.promoted_at && promotion.promoted_at <= value.preparationCommittedAt;
+}
+
+function comparisonSystemCode(value: unknown): value is SystemCodeRecord {
+  return comparisonObject(value) && value.record_kind === "system_code" && value.version === 1 && comparisonString(value.system_code_id) && (value.artifact_kind === "python_file" ? value.runtime_kind === "python" && comparisonString(value.artifact_path) && value.image_ref === undefined : value.artifact_kind === "container_image" && value.runtime_kind === "container_image" && comparisonString(value.image_ref) && value.artifact_path === undefined) && comparisonString(value.artifact_digest) && Array.isArray(value.entrypoint) && value.entrypoint.length > 0 && value.entrypoint.every(comparisonString) && comparisonRef(value.capability_policy_ref, "capability_policy") && comparisonRef(value.secret_policy_ref, "secret_policy") && comparisonIso(value.created_at) && value.authority_status === "not_live";
+}
+function comparisonAdmission(value: unknown): value is CandidateAdmissionDecisionRecord {
+  if (!comparisonObject(value) || value.record_kind !== "candidate_admission_decision" || value.version !== 1 || !comparisonString(value.candidate_admission_decision_id) || !comparisonRef(value.system_code_ref, "system_code") || !comparisonString(value.submitted_artifact_digest) || !comparisonIso(value.decided_at) || value.authority_status !== "not_live") return false;
+  try { return isCandidateAdmissionDecisionConsistent(value as unknown as CandidateAdmissionDecisionRecord); } catch { return false; }
+}
+function comparisonAccount(value: unknown): value is PaperTradingAccountSnapshot {
+  return comparisonObject(value) && ["wallet_balance_usdt", "available_balance_usdt", "equity_usdt", "realized_pnl_usdt", "unrealized_pnl_usdt", "fee_paid_usdt", "slippage_paid_usdt", "funding_paid_usdt", "margin_reserved_usdt"].every((key) => comparisonString(value[key])) && comparisonObject(value.position) && value.position.symbol === "BTCUSDT" && comparisonString(value.position.quantity) && ["long", "short", "flat"].includes(value.position.side as string) && comparisonString(value.position.mark_price) && comparisonString(value.position.notional_usdt) && comparisonNonNegative(value.open_order_count) && value.authority_status === "not_live";
+}
+function comparisonStringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every(comparisonString); }
+function comparisonOptionalRef(value: unknown): boolean { return value === undefined || comparisonRef(value); }
+function comparisonOrder(value: unknown): boolean {
+  return comparisonObject(value) && comparisonString(value.order_id) && comparisonString(value.event_id) &&
+    (value.side === "buy" || value.side === "sell") && (value.order_type === "market" || value.order_type === "limit") &&
+    comparisonString(value.quantity) && (value.limit_price === undefined || comparisonString(value.limit_price)) &&
+    ["open", "partially_filled", "filled", "canceled", "rejected"].includes(value.status as string) &&
+    comparisonString(value.cumulative_filled_quantity) && comparisonString(value.remaining_quantity) &&
+    (value.average_fill_price === undefined || comparisonString(value.average_fill_price)) &&
+    comparisonIso(value.created_at) && comparisonIso(value.updated_at) && comparisonOptionalRef(value.ledger_ref);
+}
+function comparisonFill(value: unknown): boolean {
+  return value === undefined || comparisonObject(value) && comparisonString(value.fill_id) && comparisonString(value.order_id) &&
+    (value.fill_status === "partially_filled" || value.fill_status === "filled") && comparisonString(value.fill_price) &&
+    comparisonString(value.fill_quantity) && comparisonString(value.fee_usdt) && comparisonString(value.slippage_usdt) &&
+    comparisonString(value.funding_usdt) && comparisonIso(value.trade_time) &&
+    (value.source_trade_id === undefined || comparisonString(value.source_trade_id));
+}
+function comparisonMarketSnapshot(value: unknown): boolean {
+  return value === undefined || comparisonObject(value) && value.symbol === "BTCUSDT" && comparisonFinite(value.price) &&
+    (value.moving_average_fast === undefined || comparisonFinite(value.moving_average_fast)) &&
+    (value.moving_average_slow === undefined || comparisonFinite(value.moving_average_slow)) &&
+    (value.volatility === undefined || comparisonFinite(value.volatility)) &&
+    (value.expected_direction === undefined || ["long", "short", "flat"].includes(value.expected_direction as string)) &&
+    comparisonIso(value.observed_at) && comparisonMarketSource(value.source_kind) &&
+    (value.source_priority === undefined || ["websocket_primary", "rest_fallback", "hybrid_recovered"].includes(value.source_priority as string)) &&
+    (value.freshness === undefined || ["fresh", "stale", "recovering", "unavailable"].includes(value.freshness as string)) &&
+    [value.ws_connected, value.rest_fallback_used, value.gap_detected].every((item) => item === undefined || typeof item === "boolean") &&
+    (value.last_update_id === undefined || comparisonString(value.last_update_id)) &&
+    (value.stream_marker === undefined || comparisonString(value.stream_marker)) && value.authority_status === "read_only";
+}
+function comparisonMarketSource(value: unknown): boolean { return ["binance_production_public_rest", "binance_production_public_websocket", "binance_production_public_hybrid", "binance_production_public_stream"].includes(value as string); }
+function comparisonMarketSourcePriority(value: unknown): boolean {
+  return ["websocket_primary", "rest_fallback", "hybrid_recovered"].includes(value as string);
+}
+function comparisonOrderBook(value: unknown): boolean {
+  return value === undefined || comparisonObject(value) && value.symbol === "BTCUSDT" && comparisonIso(value.observed_at) && comparisonMarketSource(value.source_kind) &&
+    ["not_started", "buffering", "synced", "recovering", "stale"].includes(value.sync_status as string) &&
+    [value.last_update_id, value.previous_final_update_id, value.top_bid_price, value.top_bid_quantity, value.top_ask_price, value.top_ask_quantity].every((item) => item === undefined || comparisonString(item)) &&
+    (value.depth_level_count === undefined || comparisonNonNegative(value.depth_level_count)) && typeof value.gap_detected === "boolean" && value.authority_status === "read_only";
+}
+function comparisonPublicExecution(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!comparisonObject(value) || value.symbol !== "BTCUSDT" || !comparisonIso(value.observed_at) || !comparisonMarketSource(value.source_kind) || !comparisonString(value.stream_marker) || !Array.isArray(value.agg_trades) || value.authority_status !== "read_only") return false;
+  const ticker = value.book_ticker;
+  return (ticker === undefined || comparisonObject(ticker) && comparisonString(ticker.bid_price) && comparisonString(ticker.bid_quantity) && comparisonString(ticker.ask_price) && comparisonString(ticker.ask_quantity) && (ticker.event_time === undefined || comparisonString(ticker.event_time))) &&
+    value.agg_trades.every((trade) => comparisonObject(trade) && comparisonString(trade.trade_id) && comparisonString(trade.price) && comparisonString(trade.quantity) && comparisonString(trade.trade_time) && (trade.is_buyer_maker === undefined || typeof trade.is_buyer_maker === "boolean")) && comparisonOrderBook(value.order_book) &&
+    (value.source_priority === undefined || ["websocket_primary", "rest_fallback", "hybrid_recovered"].includes(value.source_priority as string)) &&
+    (value.freshness === undefined || ["fresh", "stale", "recovering", "unavailable"].includes(value.freshness as string)) &&
+    [value.ws_connected, value.rest_fallback_used, value.gap_detected].every((item) => item === undefined || typeof item === "boolean") && (value.last_update_id === undefined || comparisonString(value.last_update_id));
+}
+function comparisonDecision(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!comparisonObject(value) || !["order_request", "hold", "no_action", "cancel_order", "error"].includes(value.decision_kind as string) || value.source_kind !== "trading_system_decision" || typeof value.reason !== "string" || !comparisonIso(value.observed_at) || value.authority_status !== "trace_only") return false;
+  if (value.order_request === undefined) return value.decision_kind !== "order_request";
+  return value.decision_kind === "order_request" && comparisonObject(value.order_request) && value.order_request.intent_kind === "place_order" && value.order_request.symbol === "BTCUSDT" && (value.order_request.side === "buy" || value.order_request.side === "sell") && (value.order_request.order_type === "market" || value.order_request.order_type === "limit") && comparisonString(value.order_request.quantity) && (value.order_request.limit_price === undefined || comparisonString(value.order_request.limit_price));
+}
+function comparisonRuntimeIdentityMatchesSystemCode(value: unknown, code: SystemCodeRecord): boolean {
+  return comparisonObject(value) && value.artifact_kind === code.artifact_kind && value.runtime_kind === code.runtime_kind && semanticEqual(value.entrypoint, code.entrypoint) && ((value.artifact_runtime_contract_ref === undefined && code.artifact_runtime_contract_ref === undefined) || paperTradingComparisonRefsEqual(value.artifact_runtime_contract_ref, code.artifact_runtime_contract_ref));
+}
+function comparisonProvider(value: unknown): boolean {
+  return comparisonObject(value) && typeof value.qualification_eligible === "boolean" && (value.runtime_provider_kind === "none" ? value.agent_profile_ref === undefined && value.model === undefined && value.provider_configuration_digest === undefined : value.runtime_provider_kind === "managed_agent" && comparisonRef(value.agent_profile_ref, "agent_profile") && comparisonString(value.model) && comparisonString(value.provider_configuration_digest));
+}
+function comparisonCommitmentBase(value: unknown, evidencePurpose?: PaperTradingEvidencePurpose): value is PaperTradingEvaluationCommitmentRecord {
+  if (!comparisonObject(value) || !comparisonObject(value.runtime_identity) || !comparisonObject(value.data_identity) || !comparisonObject(value.window_policy)) return false;
+  const runtime = value.runtime_identity;
+  const runtimePair = runtime.artifact_kind === "python_file" ? runtime.runtime_kind === "python" : runtime.artifact_kind === "container_image" && runtime.runtime_kind === "container_image";
+  return value.record_kind === "paper_trading_evaluation_commitment" && value.version === 1 && comparisonString(value.paper_trading_evaluation_commitment_id) && (evidencePurpose === undefined || value.evidence_purpose === evidencePurpose) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.system_code_ref, "system_code") && comparisonString(value.system_code_artifact_digest) && comparisonString(value.resolved_artifact_digest) && runtimePair && comparisonStringArray(runtime.entrypoint) && runtime.entrypoint.length > 0 && (runtime.artifact_runtime_contract_ref === undefined || comparisonRef(runtime.artifact_runtime_contract_ref, "artifact_runtime_contract")) && comparisonProvider(value.provider_identity) && comparisonRef(value.capability_policy_ref, "capability_policy") && comparisonRef(value.secret_policy_ref, "secret_policy") && comparisonPolicyIdentity(value.policy_identity) && value.data_identity.symbol === "BTCUSDT" && value.data_identity.market_data_port === "gateway_owned" && comparisonMarketSource(value.data_identity.allowed_market_data_source) && comparisonString(value.data_identity.market_data_configuration_digest) && value.data_identity.private_exchange_access === "forbidden" && value.data_identity.live_order_access === "forbidden" && comparisonPositive(value.window_policy.interval_ms) && ["closed_observation", "sealed_until_adjudication"].includes(value.window_policy.release_policy as string) && comparisonString(value.window_policy.eligibility_policy_version) && comparisonAccount(value.initial_account_snapshot) && comparisonIso(value.committed_at) && comparisonString(value.commitment_digest) && value.authority_status === "not_live";
+}
+function comparisonInertCommitment(value: unknown): value is PaperTradingEvaluationCommitmentRecord { return comparisonCommitmentBase(value, "qualification") && value.window_policy.release_policy === "sealed_until_adjudication" && value.provider_identity.qualification_eligible === true && semanticEqual(value.initial_account_snapshot, PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT); }
+function comparisonStoppedCommitment(value: unknown): value is PaperTradingEvaluationCommitmentRecord { return comparisonCommitmentBase(value, "qualification") && value.window_policy.release_policy === "sealed_until_adjudication" && value.provider_identity.qualification_eligible === true; }
+function comparisonScore(value: unknown): value is TradingProfitLossReadModel { return comparisonObject(value) && ["revenue_usdt", "cost_usdt", "net_revenue_usdt", "net_return_pct"].every((key) => comparisonFinite(value[key])); }
+function comparisonInertEvaluation(value: unknown): value is PaperTradingEvaluationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_evaluation" && value.version === 1 && comparisonString(value.paper_trading_evaluation_id) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && value.status === "not_started" && comparisonPositive(value.interval_ms) && value.observation_count === 0 && comparisonIso(value.started_at) && comparisonScore(value.latest_score) && semanticEqual(value.latest_score, PAPER_TRADING_COMPARISON_ZERO_SCORE) && comparisonAccount(value.paper_account_snapshot) && semanticEqual(value.paper_account_snapshot, PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT) && Array.isArray(value.open_orders) && value.open_orders.length === 0 && Array.isArray(value.processed_trading_system_event_ids) && value.processed_trading_system_event_ids.length === 0 && Array.isArray(value.processed_public_trade_ids) && value.processed_public_trade_ids.length === 0 && value.last_observed_at === undefined && value.stopped_at === undefined && value.authority_status === "not_live"; }
+function comparisonStoppedEvaluation(value: unknown): value is PaperTradingEvaluationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_evaluation" && value.version === 1 && comparisonString(value.paper_trading_evaluation_id) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && value.status === "stopped" && comparisonPositive(value.interval_ms) && comparisonNonNegative(value.observation_count) && comparisonIso(value.started_at) && comparisonIso(value.last_observed_at) && value.next_observation_at === undefined && comparisonIso(value.stopped_at) && comparisonScore(value.latest_score) && comparisonAccount(value.paper_account_snapshot) && Array.isArray(value.open_orders) && value.open_orders.every(comparisonOrder) && comparisonFill(value.latest_fill) && comparisonStringArray(value.processed_trading_system_event_ids) && comparisonStringArray(value.processed_public_trade_ids) && comparisonPublicExecution(value.latest_public_execution_snapshot) && value.invalidation_reason === undefined && (value.latest_failure_reason === undefined || comparisonString(value.latest_failure_reason)) && value.authority_status === "not_live"; }
+function comparisonStoppedObservation(value: unknown): value is PaperTradingObservationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_observation" && value.version === 1 && comparisonString(value.paper_trading_observation_id) && comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonPositive(value.sequence) && ["recorded", "no_order", "failed"].includes(value.status as string) && comparisonIso(value.observed_at) && comparisonMarketSnapshot(value.market_snapshot) && comparisonPublicExecution(value.public_execution_snapshot) && comparisonDecision(value.decision) && comparisonOptionalRef(value.ledger_ref) && (value.paper_account_snapshot === undefined || comparisonAccount(value.paper_account_snapshot)) && (value.open_orders === undefined || Array.isArray(value.open_orders) && value.open_orders.every(comparisonOrder)) && comparisonFill(value.latest_fill) && (value.processed_trading_system_event_ids === undefined || comparisonStringArray(value.processed_trading_system_event_ids)) && (value.processed_public_trade_ids === undefined || comparisonStringArray(value.processed_public_trade_ids)) && comparisonScore(value.score_delta) && comparisonScore(value.cumulative_score) && (value.failure_reason === undefined || comparisonString(value.failure_reason)) && value.authority_status === "not_live"; }
 
 export interface ResearchFindingRecord extends BaseRecord {
   record_kind: "research_finding";
@@ -1997,6 +6085,7 @@ export interface TradingRunRecord extends BaseRecord {
   trading_run_id: string;
   stage_binding_profile: "paper";
   runtime_lifecycle_status?: TradingRunLifecycleStatus;
+  paper_evidence_purpose?: PaperTradingEvidencePurpose;
   candidate_ref?: Ref;
   candidate_version_ref?: Ref;
   stage_binding_ref?: Ref;
@@ -2484,7 +6573,5946 @@ export interface CandidateArenaResearchEfficiencyReadModel {
   runner_command_total: number;
   scenario_count: number;
   elapsed_ms: number;
+  development?: CandidateArenaResearchEfficiencyPhaseReadModel;
+  sealed_admission?: CandidateArenaResearchEfficiencyPhaseReadModel;
   authority_status: "not_promotion_authority";
+}
+
+export interface CandidateArenaResearchEfficiencyPhaseReadModel {
+  submission_count: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+export type ResearchDiversityMeasurementStatus =
+  | "insufficient_evidence"
+  | "measured"
+  | "incomparable_suites";
+
+export interface ResearchDiversityDistributionReadModel {
+  measurement_status: ResearchDiversityMeasurementStatus;
+  sample_count: number;
+  unique_count?: number;
+  entropy_bits?: number;
+  normalized_entropy?: number;
+}
+
+export interface ResearchPopulationDiversityObservedBehaviorReadModel
+  extends ResearchDiversityDistributionReadModel {
+  cohort_count: number;
+  admitted_submission_count: number;
+  exact_behavior_duplicate_count: number;
+  artifact_duplicate_count: number;
+  unavailable_fingerprint_count: number;
+}
+
+export interface ResearchPopulationDiversityDirectionReadModel {
+  direction_kind: ResearchDirectionKind;
+  attempt_count: number;
+  observed_behavior_count: number;
+  unique_behavior_count?: number;
+  admitted_submission_count: number;
+  exact_behavior_duplicate_count: number;
+}
+
+export interface ResearchPopulationDiversityTickReadModel {
+  tick_id: string;
+  completed_at: string;
+  assigned_directions: ResearchDiversityDistributionReadModel;
+  observed_behaviors: ResearchPopulationDiversityObservedBehaviorReadModel;
+  evaluation_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
+export interface ResearchPopulationDiversityReadModel {
+  protocol_version: "research_population_diversity_v1";
+  window_tick_count: number;
+  assigned_directions: ResearchDiversityDistributionReadModel;
+  observed_behaviors: ResearchPopulationDiversityObservedBehaviorReadModel;
+  by_direction: ResearchPopulationDiversityDirectionReadModel[];
+  tick_series: ResearchPopulationDiversityTickReadModel[];
+  evaluation_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
+export function researchPopulationDiversityHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_version",
+    "window_tick_count",
+    "assigned_directions",
+    "observed_behaviors",
+    "by_direction",
+    "tick_series",
+    "evaluation_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || value.protocol_version !== "research_population_diversity_v1" ||
+    !comparisonNonNegative(value.window_tick_count) || value.window_tick_count > 10 ||
+    !researchDiversityComparableDistributionHasRuntimeShape(
+      value.assigned_directions,
+      RESEARCH_DIRECTION_KINDS.length
+    ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
+    !Array.isArray(value.by_direction) ||
+    !Array.isArray(value.tick_series) ||
+    value.evaluation_authority !== false ||
+    value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+
+  const readModel = value as unknown as ResearchPopulationDiversityReadModel;
+  const behaviorIsComparable =
+    readModel.observed_behaviors.measurement_status !== "incomparable_suites";
+  if (!readModel.by_direction.every((row) =>
+    researchPopulationDiversityDirectionHasRuntimeShape(row, behaviorIsComparable)
+  )) {
+    return false;
+  }
+  const directionIndexes = readModel.by_direction.map((row) =>
+    RESEARCH_DIRECTION_KINDS.indexOf(row.direction_kind)
+  );
+  if (directionIndexes.some((index, position) =>
+    index < 0 || (position > 0 && directionIndexes[position - 1]! >= index)
+  )) {
+    return false;
+  }
+
+  if (readModel.tick_series.length !== readModel.window_tick_count ||
+    !readModel.tick_series.every(researchPopulationDiversityTickHasRuntimeShape) ||
+    new Set(readModel.tick_series.map((tick) => tick.tick_id)).size !==
+      readModel.tick_series.length ||
+    readModel.tick_series.some((tick, index) => {
+      const previous = readModel.tick_series[index - 1];
+      return Boolean(previous) && (
+        previous.completed_at < tick.completed_at ||
+        (previous.completed_at === tick.completed_at && previous.tick_id < tick.tick_id)
+      );
+    })) {
+    return false;
+  }
+
+  const attemptCount = readModel.by_direction.reduce(
+    (total, row) => total + row.attempt_count,
+    0
+  );
+  const behaviorCount = readModel.by_direction.reduce(
+    (total, row) => total + row.observed_behavior_count,
+    0
+  );
+  const admittedCount = readModel.by_direction.reduce(
+    (total, row) => total + row.admitted_submission_count,
+    0
+  );
+  const duplicateCount = readModel.by_direction.reduce(
+    (total, row) => total + row.exact_behavior_duplicate_count,
+    0
+  );
+  const tickAttemptCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.assigned_directions.sample_count
+  );
+  const tickBehaviorCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.sample_count
+  );
+  const tickAdmittedCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.admitted_submission_count
+  );
+  const tickDuplicateCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.exact_behavior_duplicate_count
+  );
+  const tickArtifactDuplicateCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.artifact_duplicate_count
+  );
+  const tickUnavailableCount = sumResearchPopulationDiversityTicks(
+    readModel.tick_series,
+    (tick) => tick.observed_behaviors.unavailable_fingerprint_count
+  );
+  return attemptCount === readModel.assigned_directions.sample_count &&
+    behaviorCount === readModel.observed_behaviors.sample_count &&
+    admittedCount === readModel.observed_behaviors.admitted_submission_count &&
+    duplicateCount === readModel.observed_behaviors.exact_behavior_duplicate_count &&
+    readModel.observed_behaviors.artifact_duplicate_count <= attemptCount &&
+    readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount &&
+    admittedCount + duplicateCount +
+      readModel.observed_behaviors.artifact_duplicate_count +
+      readModel.observed_behaviors.unavailable_fingerprint_count <= attemptCount &&
+    tickAttemptCount === attemptCount &&
+    tickBehaviorCount === behaviorCount &&
+    tickAdmittedCount === admittedCount &&
+    tickDuplicateCount === duplicateCount &&
+    tickArtifactDuplicateCount ===
+      readModel.observed_behaviors.artifact_duplicate_count &&
+    tickUnavailableCount === readModel.observed_behaviors.unavailable_fingerprint_count;
+}
+
+function researchPopulationDiversityTickHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityTickReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "tick_id",
+    "completed_at",
+    "assigned_directions",
+    "observed_behaviors",
+    "evaluation_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || !comparisonString(value.tick_id) || !comparisonIso(value.completed_at) ||
+    !researchDiversityComparableDistributionHasRuntimeShape(
+      value.assigned_directions,
+      RESEARCH_DIRECTION_KINDS.length
+    ) || !researchDiversityObservedBehaviorHasRuntimeShape(value.observed_behaviors) ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+  const tick = value as unknown as ResearchPopulationDiversityTickReadModel;
+  const attemptCount = tick.assigned_directions.sample_count;
+  const observed = tick.observed_behaviors;
+  return observed.sample_count <= attemptCount &&
+    observed.admitted_submission_count + observed.exact_behavior_duplicate_count +
+      observed.artifact_duplicate_count + observed.unavailable_fingerprint_count <=
+      attemptCount;
+}
+
+function sumResearchPopulationDiversityTicks(
+  ticks: ResearchPopulationDiversityTickReadModel[],
+  select: (tick: ResearchPopulationDiversityTickReadModel) => number
+): number {
+  return ticks.reduce((sum, tick) => sum + select(tick), 0);
+}
+
+function researchDiversityComparableDistributionHasRuntimeShape(
+  value: unknown,
+  maximumCategoryCount: number
+): value is ResearchDiversityDistributionReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "measurement_status",
+    "sample_count",
+    "unique_count",
+    "entropy_bits",
+    "normalized_entropy"
+  ]) || !comparisonNonNegative(value.sample_count) ||
+    !comparisonNonNegative(value.unique_count) ||
+    value.unique_count > Math.min(value.sample_count, maximumCategoryCount) ||
+    !researchDiversityMetric(value.entropy_bits) ||
+    !researchDiversityMetric(value.normalized_entropy) ||
+    value.normalized_entropy > 1) {
+    return false;
+  }
+  if (value.measurement_status === "insufficient_evidence") {
+    return value.sample_count < 2 && value.unique_count === value.sample_count &&
+      value.entropy_bits === 0 && value.normalized_entropy === 0;
+  }
+  if (value.measurement_status !== "measured" || value.sample_count < 2 ||
+    value.unique_count < 1) {
+    return false;
+  }
+  return value.entropy_bits <= Math.log2(value.unique_count) + 0.000001;
+}
+
+function researchDiversityObservedBehaviorHasRuntimeShape(
+  value: unknown
+): value is ResearchPopulationDiversityObservedBehaviorReadModel {
+  if (!comparisonObject(value)) return false;
+  const countKeys = [
+    "cohort_count",
+    "admitted_submission_count",
+    "exact_behavior_duplicate_count",
+    "artifact_duplicate_count",
+    "unavailable_fingerprint_count"
+  ];
+  if (!countKeys.every((key) => comparisonNonNegative(value[key]))) return false;
+
+  if (value.measurement_status === "incomparable_suites") {
+    return comparisonHasExactKeys(value, [
+      "measurement_status",
+      "sample_count",
+      ...countKeys
+    ]) && comparisonNonNegative(value.sample_count) &&
+      Number(value.cohort_count) > 1 &&
+      Number(value.cohort_count) <= value.sample_count;
+  }
+  if (!comparisonHasExactKeys(value, [
+    "measurement_status",
+    "sample_count",
+    "unique_count",
+    "entropy_bits",
+    "normalized_entropy",
+    ...countKeys
+  ]) || !researchDiversityComparableDistributionHasRuntimeShape({
+    measurement_status: value.measurement_status,
+    sample_count: value.sample_count,
+    unique_count: value.unique_count,
+    entropy_bits: value.entropy_bits,
+    normalized_entropy: value.normalized_entropy
+  }, Number.MAX_SAFE_INTEGER)) {
+    return false;
+  }
+  return value.sample_count === 0
+    ? value.cohort_count === 0
+    : value.cohort_count === 1;
+}
+
+function researchPopulationDiversityDirectionHasRuntimeShape(
+  value: unknown,
+  requireUniqueBehaviorCount: boolean
+): value is ResearchPopulationDiversityDirectionReadModel {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "direction_kind",
+    "attempt_count",
+    "observed_behavior_count",
+    ...(requireUniqueBehaviorCount ? ["unique_behavior_count"] : []),
+    "admitted_submission_count",
+    "exact_behavior_duplicate_count"
+  ]) || !candidateArenaResearchDirection(value.direction_kind)) {
+    return false;
+  }
+  const counts = [
+    value.attempt_count,
+    value.observed_behavior_count,
+    ...(requireUniqueBehaviorCount ? [value.unique_behavior_count] : []),
+    value.admitted_submission_count,
+    value.exact_behavior_duplicate_count
+  ];
+  if (!counts.every(comparisonNonNegative)) return false;
+  const row = value as unknown as ResearchPopulationDiversityDirectionReadModel;
+  if (row.attempt_count === 0 ||
+    row.observed_behavior_count > row.attempt_count ||
+    (requireUniqueBehaviorCount &&
+      row.unique_behavior_count! > row.observed_behavior_count) ||
+    row.admitted_submission_count > row.attempt_count ||
+    row.exact_behavior_duplicate_count > row.attempt_count ||
+    row.admitted_submission_count + row.exact_behavior_duplicate_count >
+      row.attempt_count) {
+    return false;
+  }
+  return true;
+}
+
+function researchDiversityMetric(value: unknown): value is number {
+  return comparisonNonNegativeFinite(value) &&
+    Math.round(value * 1_000_000) / 1_000_000 === value;
+}
+
+export interface CandidateArenaResearchPreflightReadModel {
+  commitment_id: string;
+  development_submission_count: number;
+  sealed_terminal_status: "accepted" | "rejected" | "not_run";
+  reason:
+    | "accepted"
+    | "candidate_rejected"
+    | "no_development_winner"
+    | "execution_failed";
+  authority_status: "not_promotion_authority";
+}
+
+export type CandidateArenaResearchAllocationMode =
+  | "adaptive_default"
+  | "static_control"
+  | "explicit";
+
+export type CandidateArenaResearchSelectionKind =
+  | "focus"
+  | "exploration"
+  | "static_control"
+  | "explicit";
+
+export type CandidateArenaResearchAllocationPolicyBasis =
+  | {
+      basis_kind: "explicit_request";
+    }
+  | {
+      basis_kind: "repository_default";
+    }
+  | {
+      basis_kind: "research_allocation_policy_decision";
+      policy_decision_ref: Ref;
+      policy_decision_digest: string;
+      study_outcome_ref: Ref;
+      study_outcome_digest: string;
+    }
+  | {
+      basis_kind: "research_generalization_policy_decision";
+      policy_decision_ref: Ref;
+      policy_decision_digest: string;
+      generalization_outcome_ref: Ref;
+      generalization_outcome_digest: string;
+    };
+
+export interface CandidateArenaResearchAllocationPolicy {
+  policy_kind: "bounded_adaptive_v1";
+  default_direction_slot_count: 3;
+  maximum_focus_direction_count: 2;
+  minimum_exploration_direction_count: 1;
+  concurrency_limit: 2;
+  focus_experiment_budget: 2;
+  exploration_experiment_budget: 1;
+  explicit_experiment_budget: 1;
+  maximum_total_experiment_budget: 5;
+}
+
+export const CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY = {
+  policy_kind: "bounded_adaptive_v1",
+  default_direction_slot_count: 3,
+  maximum_focus_direction_count: 2,
+  minimum_exploration_direction_count: 1,
+  concurrency_limit: 2,
+  focus_experiment_budget: 2,
+  exploration_experiment_budget: 1,
+  explicit_experiment_budget: 1,
+  maximum_total_experiment_budget: 5
+} as const satisfies CandidateArenaResearchAllocationPolicy;
+
+export interface CandidateArenaResearchAllocationSignal {
+  direction_kind: ResearchDirectionKind;
+  finding_pressure_score: number;
+  research_efficiency_score: number;
+  recent_outcome_score: number;
+  focus_score: number;
+  completed_selection_count: number;
+  last_completed_allocation_ref?: Ref;
+  source_candidate_ids: string[];
+  source_tick_ids: string[];
+  reasons: string[];
+}
+
+export interface CandidateArenaResearchAllocationSelection {
+  direction_kind: ResearchDirectionKind;
+  selection_kind: CandidateArenaResearchSelectionKind;
+  priority: number;
+  experiment_budget: number;
+  signal_score: number;
+  reasons: string[];
+}
+
+export interface CandidateArenaResearchAllocationRecord extends BaseRecord {
+  record_kind: "candidate_arena_research_allocation";
+  candidate_arena_research_allocation_id: string;
+  tick_id: string;
+  allocation_mode: CandidateArenaResearchAllocationMode;
+  allocation_policy_basis: CandidateArenaResearchAllocationPolicyBasis;
+  policy: CandidateArenaResearchAllocationPolicy;
+  source_tick_refs: Ref[];
+  signal_snapshot: CandidateArenaResearchAllocationSignal[];
+  selected_directions: CandidateArenaResearchAllocationSelection[];
+  deferred_directions: ResearchDirectionKind[];
+  allocated_at: string;
+  allocation_digest: string;
+  research_scheduling_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface CandidateArenaResearchAllocationReadModel {
+  allocation_id: string;
+  tick_id: string;
+  allocation_mode: CandidateArenaResearchAllocationMode;
+  allocation_policy_basis: CandidateArenaResearchAllocationPolicyBasis;
+  policy: CandidateArenaResearchAllocationPolicy;
+  selected_directions: CandidateArenaResearchAllocationSelection[];
+  deferred_directions: ResearchDirectionKind[];
+  allocated_at: string;
+  research_scheduling_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+const CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS = [
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "execution_cost_robustness"
+] as const satisfies readonly ResearchDirectionKind[];
+
+const CANDIDATE_ARENA_RESEARCH_DIRECTIONS = new Set<ResearchDirectionKind>([
+  ...RESEARCH_DIRECTION_KINDS
+]);
+
+export function candidateArenaResearchAllocationDigestInput(
+  record: CandidateArenaResearchAllocationRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    candidate_arena_research_allocation_id: _id,
+    allocation_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function candidateArenaResearchAllocationHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "candidate_arena_research_allocation_id",
+    "tick_id",
+    "allocation_mode",
+    "allocation_policy_basis",
+    "policy",
+    "source_tick_refs",
+    "signal_snapshot",
+    "selected_directions",
+    "deferred_directions",
+    "allocated_at",
+    "allocation_digest",
+    "research_scheduling_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "candidate_arena_research_allocation" ||
+    value.version !== 1 ||
+    !comparisonString(value.candidate_arena_research_allocation_id) ||
+    !comparisonString(value.tick_id) ||
+    !candidateArenaResearchAllocationMode(value.allocation_mode) ||
+    !candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
+      value.allocation_policy_basis
+    ) ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(value.policy) ||
+    !Array.isArray(value.source_tick_refs) ||
+    value.source_tick_refs.some((item) =>
+      !comparisonRef(item, "candidate_arena_tick")
+    ) || !candidateArenaAllocationStringsUnique(
+      value.source_tick_refs.map((item) => item.id)
+    ) ||
+    !Array.isArray(value.signal_snapshot) ||
+    !value.signal_snapshot.every(candidateArenaResearchAllocationSignalHasRuntimeShape) ||
+    !Array.isArray(value.selected_directions) ||
+    !value.selected_directions.every(
+      candidateArenaResearchAllocationSelectionHasRuntimeShape
+    ) || !Array.isArray(value.deferred_directions) ||
+    !value.deferred_directions.every(candidateArenaResearchDirection) ||
+    !candidateArenaAllocationStringsUnique(value.deferred_directions) ||
+    !comparisonIso(value.allocated_at) ||
+    !comparisonDigest(value.allocation_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+
+  const allocation = value as unknown as CandidateArenaResearchAllocationRecord;
+  if ((allocation.allocation_mode === "static_control" ||
+      allocation.allocation_mode === "explicit") &&
+    allocation.allocation_policy_basis.basis_kind !== "explicit_request") {
+    return false;
+  }
+  const selectedDirections = allocation.selected_directions.map(
+    (selection) => selection.direction_kind
+  );
+  if (!candidateArenaAllocationStringsUnique(selectedDirections) ||
+    allocation.selected_directions.some(
+      (selection, index) => selection.priority !== index + 1
+    ) || allocation.selected_directions.reduce(
+      (total, selection) => total + selection.experiment_budget,
+      0
+    ) > allocation.policy.maximum_total_experiment_budget) {
+    return false;
+  }
+
+  if (allocation.allocation_mode === "explicit") {
+    const expectedDeferred = CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.filter(
+      (direction) => !selectedDirections.includes(direction)
+    );
+    return allocation.signal_snapshot.length === 0 &&
+      allocation.source_tick_refs.length === 0 &&
+      allocation.selected_directions.length >= 1 &&
+      allocation.selected_directions.length <= 5 &&
+      allocation.selected_directions.every((selection) =>
+        selection.selection_kind === "explicit" &&
+        selection.experiment_budget ===
+          allocation.policy.explicit_experiment_budget &&
+        selection.signal_score === 0
+      ) && arraysEqual(allocation.deferred_directions, expectedDeferred);
+  }
+
+  if (!arraysEqual(
+    allocation.signal_snapshot.map((signal) => signal.direction_kind),
+    CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS
+  )) {
+    return false;
+  }
+  const combinedDefaultDirections = [
+    ...selectedDirections,
+    ...allocation.deferred_directions
+  ];
+  if (combinedDefaultDirections.length !==
+      CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.length ||
+    !CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.every((direction) =>
+      combinedDefaultDirections.includes(direction)
+    ) || !candidateArenaAllocationStringsUnique(combinedDefaultDirections)) {
+    return false;
+  }
+
+  if (allocation.allocation_mode === "static_control") {
+    return arraysEqual(
+      selectedDirections,
+      CANDIDATE_ARENA_DEFAULT_RESEARCH_DIRECTIONS.slice(0, 3)
+    ) && allocation.selected_directions.every((selection, index) =>
+      selection.selection_kind === "static_control" &&
+      selection.experiment_budget === (index < 2 ? 2 : 1) &&
+      selection.signal_score === 0
+    );
+  }
+
+  const focusSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "focus"
+  );
+  const explorationSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "exploration"
+  );
+  return allocation.selected_directions.length ===
+      allocation.policy.default_direction_slot_count &&
+    focusSelections.length <= allocation.policy.maximum_focus_direction_count &&
+    explorationSelections.length >=
+      allocation.policy.minimum_exploration_direction_count &&
+    focusSelections.every((selection) =>
+      selection.experiment_budget === allocation.policy.focus_experiment_budget
+    ) && explorationSelections.every((selection) =>
+      selection.experiment_budget ===
+        allocation.policy.exploration_experiment_budget
+    ) && allocation.selected_directions.every((selection) =>
+      selection.selection_kind === "focus" ||
+      selection.selection_kind === "exploration"
+    );
+}
+
+function candidateArenaResearchAllocationMode(
+  value: unknown
+): value is CandidateArenaResearchAllocationMode {
+  return value === "adaptive_default" ||
+    value === "static_control" ||
+    value === "explicit";
+}
+
+function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationPolicyBasis {
+  if (!comparisonObject(value)) return false;
+  if (value.basis_kind === "explicit_request" ||
+    value.basis_kind === "repository_default") {
+    return comparisonHasExactKeys(value, ["basis_kind"]);
+  }
+  if (value.basis_kind === "research_allocation_policy_decision") {
+    return comparisonHasExactKeys(value, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "study_outcome_ref",
+      "study_outcome_digest"
+    ]) && comparisonRef(
+      value.policy_decision_ref,
+      "research_allocation_policy_decision"
+    ) && researchControlCampaignSha256Digest(
+      value.policy_decision_digest
+    ) && comparisonRef(
+      value.study_outcome_ref,
+      "research_control_study_outcome"
+    ) && researchControlCampaignSha256Digest(value.study_outcome_digest);
+  }
+  return value.basis_kind === "research_generalization_policy_decision" &&
+    comparisonHasExactKeys(value, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "generalization_outcome_ref",
+      "generalization_outcome_digest"
+    ]) && comparisonRef(
+      value.policy_decision_ref,
+      "research_generalization_policy_decision"
+    ) && researchControlCampaignSha256Digest(
+      value.policy_decision_digest
+    ) && comparisonRef(
+      value.generalization_outcome_ref,
+      "research_generalization_outcome"
+    ) && researchControlCampaignSha256Digest(
+      value.generalization_outcome_digest
+    );
+}
+
+function candidateArenaResearchAllocationPolicyHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_kind",
+    "default_direction_slot_count",
+    "maximum_focus_direction_count",
+    "minimum_exploration_direction_count",
+    "concurrency_limit",
+    "focus_experiment_budget",
+    "exploration_experiment_budget",
+    "explicit_experiment_budget",
+    "maximum_total_experiment_budget"
+  ]) && Object.entries(CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY).every(
+    ([key, expected]) => value[key] === expected
+  );
+}
+
+function candidateArenaResearchAllocationSignalHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationSignal {
+  const keys = [
+    "direction_kind",
+    "finding_pressure_score",
+    "research_efficiency_score",
+    "recent_outcome_score",
+    "focus_score",
+    "completed_selection_count",
+    "source_candidate_ids",
+    "source_tick_ids",
+    "reasons"
+  ];
+  if (comparisonObject(value) && Object.hasOwn(
+    value,
+    "last_completed_allocation_ref"
+  )) {
+    keys.push("last_completed_allocation_ref");
+  }
+  return comparisonObject(value) && comparisonHasExactKeys(value, keys) &&
+    candidateArenaResearchDirection(value.direction_kind) &&
+    comparisonFinite(value.finding_pressure_score) &&
+    comparisonFinite(value.research_efficiency_score) &&
+    comparisonFinite(value.recent_outcome_score) &&
+    comparisonFinite(value.focus_score) &&
+    value.focus_score === value.finding_pressure_score +
+      value.research_efficiency_score + value.recent_outcome_score &&
+    comparisonNonNegative(value.completed_selection_count) &&
+    (value.last_completed_allocation_ref === undefined || comparisonRef(
+      value.last_completed_allocation_ref,
+      "candidate_arena_research_allocation"
+    )) && stringArray(value.source_candidate_ids) &&
+    stringArray(value.source_tick_ids) && stringArray(value.reasons);
+}
+
+function candidateArenaResearchAllocationSelectionHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaResearchAllocationSelection {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "direction_kind",
+    "selection_kind",
+    "priority",
+    "experiment_budget",
+    "signal_score",
+    "reasons"
+  ]) && candidateArenaResearchDirection(value.direction_kind) &&
+    (value.selection_kind === "focus" ||
+      value.selection_kind === "exploration" ||
+      value.selection_kind === "static_control" ||
+      value.selection_kind === "explicit") &&
+    comparisonPositive(value.priority) &&
+    comparisonPositive(value.experiment_budget) &&
+    comparisonFinite(value.signal_score) &&
+    stringArray(value.reasons) && value.reasons.length > 0;
+}
+
+function candidateArenaResearchDirection(
+  value: unknown
+): value is ResearchDirectionKind {
+  return typeof value === "string" &&
+    CANDIDATE_ARENA_RESEARCH_DIRECTIONS.has(value as ResearchDirectionKind);
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(comparisonString) &&
+    candidateArenaAllocationStringsUnique(value);
+}
+
+function candidateArenaAllocationStringsUnique(
+  values: readonly string[]
+): boolean {
+  return new Set(values).size === values.length;
+}
+
+function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+export type ResearchControlCampaignArmKind =
+  | "adaptive_treatment"
+  | "static_control";
+
+export interface ResearchExperimentBaselineSnapshot {
+  protocol_version: "local_store_regular_files_v1";
+  snapshot_digest: string;
+  regular_file_count: number;
+  total_bytes: number;
+  exclusion_policy:
+    | "research_control_campaign_evidence_only"
+    | "research_experiment_evidence_only";
+}
+
+export interface ResearchExperimentSource {
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  system_code_record_digest: string;
+  research_artifact_protocol: "single_file_python_v1";
+  research_artifact_closure_digest: string;
+}
+
+export interface ResearchExperimentAgentIdentity {
+  provider: AgentProfileProviderKind;
+  model?: string;
+  permission_policy: "artifact_workspace_only" | "fixture_only";
+  identity_digest: string;
+}
+
+export type ResearchMemoryControlArmKind =
+  | "released_memory_treatment"
+  | "memory_masked_control";
+
+export interface ResearchMemoryControlArmPlan {
+  arm_kind: ResearchMemoryControlArmKind;
+  memory_mode: ResearchWorkerMemoryMode;
+  tick_id: string;
+}
+
+export interface ResearchMemoryControlPairPlan {
+  pair_index: number;
+  research_direction_ref: Ref;
+  direction_kind: ResearchDirectionKind;
+  released_memory_treatment: ResearchMemoryControlArmPlan;
+  memory_masked_control: ResearchMemoryControlArmPlan;
+}
+
+export interface ResearchMemoryControlOpportunityProtocol {
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  sealed_suite_version: "research_sealed_admission_v1";
+  sealed_generator_version: "research_scenario_generator_v1";
+  sealed_rotation_commitment_digest: string;
+  sealed_suite_digest: string;
+}
+
+export interface ResearchMemoryControlStudyPolicy {
+  policy_version: "research_memory_control_study_v1";
+  pair_count: number;
+  allocation_mode: "explicit";
+  development_submission_limit_per_worker: 1;
+  sealed_submission_limit_per_worker: 1;
+  baseline_copy_policy: "fresh_verified_copy_per_arm";
+  within_pair_start_policy: "concurrent_initial_sides";
+  maximum_within_pair_start_skew_ms: 5_000;
+  across_pair_execution_policy: "sequential";
+  maximum_baseline_regular_file_count: number;
+  maximum_baseline_total_bytes: number;
+}
+
+export interface ResearchMemoryControlStudyAnalysisPolicy {
+  policy_version: "paired_exact_repeat_sign_test_v1";
+  primary_estimand:
+    "mean_masked_minus_released_memory_exact_repeat_indicator";
+  significance_method: "two_sided_exact_sign_test";
+  alpha: 0.05;
+  minimum_non_tied_pair_count: 6;
+  tie_policy: "exclude_from_sign_test_include_in_mean";
+  ineligible_pair_policy: "retain_in_counts_exclude_from_inference";
+  minimum_mean_paired_difference: 0;
+}
+
+export interface ResearchMemoryControlStudyRecord extends BaseRecord {
+  record_kind: "research_memory_control_study";
+  research_memory_control_study_id: string;
+  idempotency_key: string;
+  hypothesis: "released_memory_reduces_exact_behavior_repeats";
+  baseline: ResearchExperimentBaselineSnapshot;
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
+  research_agent_profile_id: string;
+  opportunity_protocol: ResearchMemoryControlOpportunityProtocol;
+  pair_plans: ResearchMemoryControlPairPlan[];
+  policy: ResearchMemoryControlStudyPolicy;
+  analysis_policy: ResearchMemoryControlStudyAnalysisPolicy;
+  committed_at: string;
+  study_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export type ResearchMemoryControlArmTerminalStatus =
+  | "completed"
+  | "no_submission"
+  | "worker_failed"
+  | "platform_failed"
+  | "interrupted";
+
+export type ResearchMemoryControlFailureKind =
+  | "research_worker_failed"
+  | "provider_failed"
+  | "runner_failed"
+  | "restart_interrupted"
+  | "evidence_reconstruction_failed";
+
+export interface ResearchMemoryControlResourceSummary {
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+export interface ResearchMemoryControlTickEvidence {
+  tick_ref: Ref;
+  tick_id: string;
+  tick_digest: string;
+  started_at: string;
+  completed_at: string;
+  tick_status: CandidateArenaTickStatus;
+  direction_result_status: CandidateArenaDirectionResultStatus;
+}
+
+export interface ResearchMemoryControlPreflightEvidence {
+  commitment_ref: Ref;
+  commitment_digest: string;
+  development_suite_version: "research_development_replay_v1";
+  development_suite_digest: string;
+  sealed_suite_version: "research_sealed_admission_v1";
+  sealed_generator_version: "research_scenario_generator_v1";
+  sealed_suite_digest: string;
+  sealed_rotation_commitment_digest: string;
+  memory_policy: ResearchWorkerMemoryPolicy;
+}
+
+export interface ResearchMemoryControlWorkerEvidence {
+  worker_ref: Ref;
+  agent_profile_id: string;
+  provider_kind: ProviderKind;
+  model: string;
+}
+
+export interface ResearchMemoryControlAllocationEvidence {
+  allocation_ref: Ref;
+  allocation_digest: string;
+  allocation_mode: "explicit";
+  allocation_policy_digest: string;
+  direction_kind: ResearchDirectionKind;
+  selection_kind: "explicit";
+  experiment_budget: 1;
+}
+
+export interface ResearchMemoryControlAdmissionEvidence {
+  decision_ref: Ref;
+  decision_digest: string;
+  status: CandidateAdmissionStatus;
+  reason: CandidateAdmissionReason;
+  research_worker_outcome: CandidateAdmissionResearchWorkerOutcome;
+  behavior_comparison_status:
+    | CandidateAdmissionBehaviorComparisonStatus
+    | null;
+  fingerprint_ref: Ref | null;
+  fingerprint_digest: string | null;
+  matching_fingerprint_ref: Ref | null;
+  matching_fingerprint_digest: string | null;
+}
+
+export type ResearchMemoryControlPairIneligibilityReason =
+  | "no_submission"
+  | "worker_or_platform_failure"
+  | "behavior_fingerprint_unavailable"
+  | "malformed_evidence_graph"
+  | "missing_memory_contrast"
+  | "interrupted_or_unpaired_run";
+
+export type ResearchMemoryControlObservation =
+  | "exact_repeat"
+  | "distinct_behavior"
+  | "ineligible";
+
+export interface ResearchMemoryControlArmResult {
+  arm_kind: ResearchMemoryControlArmKind;
+  memory_mode: ResearchWorkerMemoryMode;
+  planned_tick_id: string;
+  terminal_status: ResearchMemoryControlArmTerminalStatus;
+  failure_kind: ResearchMemoryControlFailureKind | null;
+  tick_evidence: ResearchMemoryControlTickEvidence | null;
+  preflight_evidence: ResearchMemoryControlPreflightEvidence | null;
+  worker_evidence: ResearchMemoryControlWorkerEvidence | null;
+  allocation_evidence: ResearchMemoryControlAllocationEvidence | null;
+  admission_evidence: ResearchMemoryControlAdmissionEvidence | null;
+  resource_summary: ResearchMemoryControlResourceSummary | null;
+  observation: ResearchMemoryControlObservation;
+  exact_repeat_indicator: 0 | 1 | null;
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+}
+
+export interface ResearchMemoryControlPairOutcomeRecord extends BaseRecord {
+  record_kind: "research_memory_control_pair_outcome";
+  research_memory_control_pair_outcome_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  pair_index: number;
+  pair_plan_digest: string;
+  research_direction_ref: Ref;
+  direction_kind: ResearchDirectionKind;
+  released_memory: ResearchMemoryControlArmResult;
+  memory_masked: ResearchMemoryControlArmResult;
+  eligibility_status: "eligible" | "ineligible";
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+  initial_start_skew_ms: number | null;
+  paired_difference: -1 | 0 | 1 | null;
+  terminal_at: string;
+  pair_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchMemoryControlStudyPairResult {
+  pair_index: number;
+  pair_outcome_ref: Ref;
+  pair_outcome_digest: string;
+  eligibility_status: "eligible" | "ineligible";
+  ineligibility_reason: ResearchMemoryControlPairIneligibilityReason | null;
+  paired_difference: -1 | 0 | 1 | null;
+}
+
+export interface ResearchMemoryControlStudyOutcomeRecord extends BaseRecord {
+  record_kind: "research_memory_control_study_outcome";
+  research_memory_control_study_outcome_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  pair_results: ResearchMemoryControlStudyPairResult[];
+  planned_pair_count: number;
+  completed_pair_count: number;
+  eligible_pair_count: number;
+  ineligible_pair_count: number;
+  favorable_pair_count: number;
+  unfavorable_pair_count: number;
+  tied_pair_count: number;
+  non_tied_pair_count: number;
+  mean_paired_difference: number | null;
+  exact_sign_test_p_value: number;
+  inference_status:
+    | "memory_effect_supported"
+    | "memory_effect_not_supported"
+    | "insufficient_memory_control_evidence";
+  causal_scope: "same_baseline_paired_exact_repeat_effect_only";
+  memory_policy_decision_eligibility: "not_eligible";
+  next_action:
+    | "review_memory_evidence_without_automatic_policy_change"
+    | "retain_current_memory_policy_and_redesign_study";
+  adjudicated_at: string;
+  study_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  memory_policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export type ResearchControlCampaignPaperComparator =
+  | {
+      comparator_status: "trading_review";
+      trading_promotion_ref: Ref;
+      trading_promotion_digest: string;
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      paper_trading_evaluation_ref: Ref;
+    }
+  | {
+      comparator_status: "unavailable";
+      reason: "no_trading_promotion_at_commitment";
+    };
+
+export interface ResearchControlCampaignPaperSchedulePolicy {
+  policy_version: "research-control-paper-schedule-v1";
+  source_start_order: "paired_by_sequence";
+  maximum_active_source_pairs: 2;
+  maximum_cross_arm_first_tick_skew_ms: number;
+  source_missed_start_policy: "slot_expired";
+  confirmation_precommit_deadline_ms: number;
+}
+
+export type ResearchControlCampaignPaperEvaluationProtocol =
+  | {
+      protocol_status: "bound";
+      comparison_policy: PaperTradingComparisonPolicy;
+      market_data_configuration_digest: string;
+      paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+      schedule_policy: ResearchControlCampaignPaperSchedulePolicy;
+      protocol_digest: string;
+    }
+  | {
+      protocol_status: "unavailable";
+      reason:
+        | "no_trading_promotion_at_commitment"
+        | "paper_configuration_unavailable_at_commitment";
+    };
+
+export interface ResearchControlCampaignArm {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  research_control_campaign_arm_intent_id: string;
+  tick_ids: string[];
+}
+
+export interface ResearchControlCampaignPolicy {
+  policy_version: "research_control_campaign_v1";
+  tick_count_per_arm: number;
+  worker_slot_count_per_tick: 3;
+  concurrency_limit_per_arm: 2;
+  maximum_total_development_submissions_per_tick: 5;
+  arm_execution_policy: "concurrent_per_sequence";
+  maximum_baseline_regular_file_count: number;
+  maximum_baseline_total_bytes: number;
+  paper_candidate_slot_count_per_arm: number;
+  paper_candidate_reservation_rule:
+    "first_admitted_per_tick_in_allocation_order";
+  primary_metric_kind:
+    "prospective_qualified_candidate_discovery_rate";
+  required_future_evidence: "confirmed_comparison_research_release";
+}
+
+export interface ResearchControlCampaignRecord extends BaseRecord {
+  record_kind: "research_control_campaign";
+  research_control_campaign_id: string;
+  idempotency_key: string;
+  hypothesis:
+    "adaptive_allocation_improves_prospective_qualified_discovery_yield";
+  baseline: ResearchExperimentBaselineSnapshot;
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
+  paper_comparator: ResearchControlCampaignPaperComparator;
+  paper_evaluation_protocol: ResearchControlCampaignPaperEvaluationProtocol;
+  allocation_policy: CandidateArenaResearchAllocationPolicy;
+  allocation_policy_digest: string;
+  arms: [ResearchControlCampaignArm, ResearchControlCampaignArm];
+  policy: ResearchControlCampaignPolicy;
+  committed_at: string;
+  campaign_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlCampaignArmIntentRecord extends BaseRecord {
+  record_kind: "research_control_campaign_arm_intent";
+  research_control_campaign_arm_intent_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  baseline_snapshot_digest: string;
+  tick_ids: string[];
+  committed_at: string;
+  intent_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlCampaignDiagnostics {
+  attempt_count: number;
+  admitted_candidate_count: number;
+  duplicate_count: number;
+  quarantined_count: number;
+  failed_count: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+}
+
+interface ResearchControlCampaignPaperCandidateSlotBase {
+  sequence: number;
+  tick_ref: Ref;
+}
+
+export type ResearchControlCampaignPaperCandidateSlot =
+  | (ResearchControlCampaignPaperCandidateSlotBase & {
+      status: "candidate_reserved";
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      system_code_ref: Ref;
+      system_code_artifact_digest: string;
+      admission_decision_ref: Ref;
+    })
+  | (ResearchControlCampaignPaperCandidateSlotBase & {
+      status: "no_admitted_candidate";
+    });
+
+export interface ResearchControlCampaignArmReport {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  arm_intent_ref: Ref;
+  arm_intent_digest: string;
+  tick_refs: Ref[];
+  allocation_refs: Ref[];
+  diagnostics: ResearchControlCampaignDiagnostics;
+  population_diversity: ResearchPopulationDiversityReadModel;
+  paper_candidate_slots: ResearchControlCampaignPaperCandidateSlot[];
+  final_store_snapshot_digest: string;
+  completed_at: string;
+  research_diagnostics_authority: false;
+  promotion_authority: false;
+  authority_status: "not_promotion_authority";
+}
+
+export interface ResearchControlCampaignReportRecord extends BaseRecord {
+  record_kind: "research_control_campaign_report";
+  research_control_campaign_report_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  arms: [ResearchControlCampaignArmReport, ResearchControlCampaignArmReport];
+  primary_outcome_status: "unadjudicated";
+  causal_conclusion: "not_available_from_research_phase";
+  next_action: "schedule_prospective_paper_slots";
+  completed_at: string;
+  report_digest: string;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+interface ResearchControlCampaignPaperScheduleSlotBase {
+  sequence: number;
+  tick_ref: Ref;
+}
+
+export type ResearchControlCampaignPaperScheduleSlot =
+  | (ResearchControlCampaignPaperScheduleSlotBase & {
+      slot_status: "no_admitted_candidate";
+    })
+  | (ResearchControlCampaignPaperScheduleSlotBase & {
+      slot_status: "candidate_scheduled";
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      system_code_ref: Ref;
+      system_code_artifact_digest: string;
+      admission_decision_ref: Ref;
+      source_comparison_idempotency_key: string;
+      source_preparation_id: string;
+      source_comparison_commitment_id: string;
+      maximum_source_start_delay_ms: number;
+    });
+
+export interface ResearchControlCampaignPaperScheduleArm {
+  arm_kind: ResearchControlCampaignArmKind;
+  slots: ResearchControlCampaignPaperScheduleSlot[];
+}
+
+export interface ResearchControlCampaignPaperScheduleRecord extends BaseRecord {
+  record_kind: "research_control_campaign_paper_schedule";
+  research_control_campaign_paper_schedule_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  report_ref: Ref;
+  report_digest: string;
+  paper_comparator: Extract<
+    ResearchControlCampaignPaperComparator,
+    { comparator_status: "trading_review" }
+  >;
+  paper_evaluation_protocol_digest: string;
+  arms: [
+    ResearchControlCampaignPaperScheduleArm,
+    ResearchControlCampaignPaperScheduleArm
+  ];
+  committed_at: string;
+  schedule_digest: string;
+  paper_evaluation_scheduling_authority: true;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export type ResearchControlCampaignPaperStartBatchStatus =
+  | "single_ready"
+  | "paired_ready"
+  | "ineligible";
+
+export interface ResearchControlCampaignPaperStartBatchSide {
+  arm_kind: ResearchControlCampaignArmKind;
+  source_comparison_ref: Ref;
+  source_comparison_digest: string;
+  first_tick_ref?: Ref;
+  first_tick_digest?: string;
+  first_tick_observed_at?: string;
+}
+
+export interface ResearchControlCampaignPaperStartBatchRecord extends BaseRecord {
+  record_kind: "research_control_campaign_paper_start_batch";
+  research_control_campaign_paper_start_batch_id: string;
+  schedule_ref: Ref;
+  schedule_digest: string;
+  sequence: number;
+  batch_status: ResearchControlCampaignPaperStartBatchStatus;
+  sides: ResearchControlCampaignPaperStartBatchSide[];
+  source_start_deadline_at: string;
+  shared_market_snapshot_digest?: string;
+  shared_public_execution_snapshot_digest?: string;
+  ineligible_reason?:
+    | "first_tick_incomplete"
+    | "cross_arm_first_tick_mismatch"
+    | "source_start_deadline_missed";
+  evaluated_at: string;
+  start_batch_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export type ResearchControlCampaignPaperSlotTerminalStatus =
+  | "source_not_improved"
+  | "qualified_improvement"
+  | "not_reproduced"
+  | "evidence_ineligible"
+  | "paper_slot_expired";
+
+export type ResearchControlCampaignPaperSlotTerminalEvidence =
+  | {
+      evidence_kind: "source_verdict";
+      source_comparison_ref: Ref;
+      source_comparison_digest: string;
+      source_verdict_ref: Ref;
+      source_verdict_digest: string;
+      terminal_status: "source_not_improved" | "evidence_ineligible";
+    }
+  | {
+      evidence_kind: "source_slot_expired";
+      terminal_status: "paper_slot_expired";
+      expired_at: string;
+    }
+  | {
+      evidence_kind: "source_start_ineligible";
+      start_batch_ref: Ref;
+      start_batch_digest: string;
+      terminal_status: "evidence_ineligible";
+      reason:
+        | "first_tick_incomplete"
+        | "cross_arm_first_tick_mismatch"
+        | "source_start_deadline_missed";
+      persisted_first_tick_refs: Ref[];
+      persisted_first_tick_digests: string[];
+      evaluated_at: string;
+    }
+  | {
+      evidence_kind: "confirmation_precommit_expired";
+      source_comparison_ref: Ref;
+      source_comparison_digest: string;
+      source_verdict_ref: Ref;
+      source_verdict_digest: string;
+      terminal_status: "paper_slot_expired";
+      expired_at: string;
+    }
+  | {
+      evidence_kind: "confirmation_release";
+      confirmation_campaign_ref: Ref;
+      confirmation_campaign_digest: string;
+      confirmation_outcome_ref: Ref;
+      confirmation_outcome_digest: string;
+      research_release_ref: Ref;
+      research_release_digest: string;
+      release_kind: PaperTradingComparisonResearchReleaseKind;
+      terminal_status:
+        | "qualified_improvement"
+        | "not_reproduced"
+        | "evidence_ineligible"
+        | "paper_slot_expired";
+    };
+
+export interface ResearchControlCampaignPaperSlotOutcomeRecord extends BaseRecord {
+  record_kind: "research_control_campaign_paper_slot_outcome";
+  research_control_campaign_paper_slot_outcome_id: string;
+  schedule_ref: Ref;
+  schedule_digest: string;
+  arm_kind: ResearchControlCampaignArmKind;
+  sequence: number;
+  tick_ref: Ref;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  admission_decision_ref: Ref;
+  source_comparison_idempotency_key: string;
+  source_preparation_id: string;
+  source_comparison_commitment_id: string;
+  terminal_evidence: ResearchControlCampaignPaperSlotTerminalEvidence;
+  terminal_at: string;
+  slot_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export type ResearchControlCampaignOutcomeTerminalStatus =
+  | "source_not_improved"
+  | "qualified_improvement"
+  | "not_reproduced"
+  | "evidence_ineligible"
+  | "paper_slot_expired";
+
+interface ResearchControlCampaignOutcomeSlotBase {
+  sequence: number;
+  tick_ref: Ref;
+}
+
+export type ResearchControlCampaignOutcomeSlotResult =
+  | (ResearchControlCampaignOutcomeSlotBase & {
+      terminal_status: "no_admitted_candidate";
+      discovery_credit: 0;
+    })
+  | (ResearchControlCampaignOutcomeSlotBase & {
+      terminal_status: ResearchControlCampaignOutcomeTerminalStatus;
+      candidate_ref: Ref;
+      candidate_version_ref: Ref;
+      system_code_ref: Ref;
+      system_code_artifact_digest: string;
+      paper_slot_outcome_ref: Ref;
+      paper_slot_outcome_digest: string;
+      discovery_credit: 0 | 1;
+    });
+
+export interface ResearchControlCampaignOutcomeArmMetrics {
+  slot_count: number;
+  admitted_candidate_slot_count: number;
+  no_admitted_candidate_count: number;
+  qualified_discovery_count: number;
+  source_not_improved_count: number;
+  not_reproduced_count: number;
+  evidence_ineligible_count: number;
+  paper_slot_expired_count: number;
+  qualified_discovery_rate: number;
+}
+
+export interface ResearchControlCampaignOutcomeArm {
+  arm_kind: ResearchControlCampaignArmKind;
+  allocation_mode: "adaptive_default" | "static_control";
+  slot_results: ResearchControlCampaignOutcomeSlotResult[];
+  metrics: ResearchControlCampaignOutcomeArmMetrics;
+}
+
+export interface ResearchControlCampaignOutcomeRecord extends BaseRecord {
+  record_kind: "research_control_campaign_outcome";
+  research_control_campaign_outcome_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  report_ref: Ref;
+  report_digest: string;
+  schedule_ref: Ref;
+  schedule_digest: string;
+  paper_comparator: Extract<
+    ResearchControlCampaignPaperComparator,
+    { comparator_status: "trading_review" }
+  >;
+  shared_evaluation_policy_status: "bound";
+  shared_evaluation_policy_digest: string;
+  arms: [
+    ResearchControlCampaignOutcomeArm,
+    ResearchControlCampaignOutcomeArm
+  ];
+  observed_rate_difference: number;
+  observed_result:
+    | "adaptive_rate_higher"
+    | "rates_equal"
+    | "static_rate_higher";
+  causal_conclusion: "single_campaign_observation_only";
+  policy_replacement_eligibility: "not_eligible";
+  next_action: "accumulate_replicated_control_campaigns";
+  adjudicated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchControlStudyCondition {
+  source: ResearchExperimentSource;
+  research_agent: ResearchExperimentAgentIdentity;
+  paper_comparator: Extract<
+    ResearchControlCampaignPaperComparator,
+    { comparator_status: "trading_review" }
+  >;
+  paper_evaluation_protocol: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  >;
+  allocation_policy: CandidateArenaResearchAllocationPolicy;
+  allocation_policy_digest: string;
+  campaign_policy: ResearchControlCampaignPolicy;
+  condition_digest: string;
+}
+
+export interface ResearchGeneralizationPublicKline {
+  open_time: string;
+  close_time: string;
+  close_price: string;
+}
+
+export interface ResearchGeneralizationPublicMarketSource {
+  provider_kind: "binance_production_public_market_data";
+  source_kind: "binance_production_public_rest";
+  rest_base_url: string;
+  endpoint: "/fapi/v1/klines";
+  authority_status: "read_only";
+}
+
+export interface ResearchGeneralizationPublicKlineWindowInput {
+  symbol: "BTCUSDT";
+  interval: "1m";
+  sample_count: 30;
+  observed_at: string;
+  closed_window_end_at: string;
+  source: ResearchGeneralizationPublicMarketSource;
+  klines: ResearchGeneralizationPublicKline[];
+  authority_status: "read_only";
+}
+
+export interface ResearchGeneralizationPublicKlineWindow
+extends ResearchGeneralizationPublicKlineWindowInput {
+  window_digest: string;
+}
+
+export interface ResearchGeneralizationMarketClassifierPolicy {
+  policy_version: "btc_usdt_closed_kline_direction_v1";
+  symbol: "BTCUSDT";
+  interval: "1m";
+  sample_count: 30;
+  fast_mean_sample_count: 5;
+  slow_mean_sample_count: 30;
+  directional_gap_ratio_threshold: 0.00005;
+  observation_boundary_rule: "last_fully_closed_minute_before_observation";
+  missing_data_rule: "no_condition_block";
+  classifier_digest: string;
+}
+
+export type ResearchGeneralizationMarketConditionBlock =
+  | "long"
+  | "short"
+  | "flat";
+
+export interface ResearchGeneralizationMarketCondition {
+  classifier_policy: ResearchGeneralizationMarketClassifierPolicy;
+  public_kline_window: ResearchGeneralizationPublicKlineWindow;
+  fast_mean: number;
+  slow_mean: number;
+  directional_gap_ratio: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  classified_at: string;
+  classification_digest: string;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "public_evidence_only";
+}
+
+export interface ResearchGeneralizationProtocolConditionBlock {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  required_study_count: 2;
+}
+
+export interface ResearchGeneralizationProtocolStudySlot {
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  study_idempotency_key: string;
+  study_ref: Ref;
+  replication_idempotency_keys: string[];
+}
+
+export interface ResearchGeneralizationProtocolTimingPolicy {
+  policy_version: "research_generalization_timing_v1";
+  minimum_study_commitment_interval_ms: 86_400_000;
+  maximum_collection_duration_ms: 7_776_000_000;
+  collection_deadline_at: string;
+  expiry_policy: "close_with_missing_slots";
+}
+
+export interface ResearchGeneralizationProtocolStudyPolicy {
+  policy_version: "research_generalization_study_v1";
+  replication_count_per_study: 6;
+  tick_count_per_arm: 1;
+  maximum_baseline_regular_file_count: 10_000;
+  maximum_baseline_total_bytes: 1_000_000_000;
+  source_baseline_reuse_policy: "unique_within_condition_block";
+}
+
+export interface ResearchGeneralizationProtocolAnalysisPolicy {
+  policy_version: "equal_block_exact_sign_test_v1";
+  primary_estimand:
+    "equal_block_mean_adaptive_minus_static_qualified_discovery_rate";
+  block_weighting: "equal_precommitted_condition_blocks";
+  significance_method: "two_sided_exact_sign_test";
+  alpha: 0.05;
+  minimum_terminal_study_count: 6;
+  minimum_non_tied_study_count: 6;
+  minimum_distinct_baseline_count: 3;
+  tie_policy: "exclude_from_sign_test_include_in_mean";
+  missing_block_policy: "insufficient_generalization_evidence";
+  harmful_block_policy: "non_positive_block_blocks_support";
+}
+
+export interface ResearchGeneralizationProtocolRecord extends BaseRecord {
+  record_kind: "research_generalization_protocol";
+  research_generalization_protocol_id: string;
+  idempotency_key: string;
+  hypothesis:
+    "adaptive_allocation_effect_generalizes_across_baselines_and_market_conditions";
+  target_allocation_policy: CandidateArenaResearchAllocationPolicy;
+  target_allocation_policy_digest: string;
+  research_agent: ResearchExperimentAgentIdentity;
+  paper_evaluation_protocol: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  >;
+  campaign_policy: ResearchControlCampaignPolicy;
+  market_classifier_policy: ResearchGeneralizationMarketClassifierPolicy;
+  condition_blocks: [
+    ResearchGeneralizationProtocolConditionBlock,
+    ResearchGeneralizationProtocolConditionBlock,
+    ResearchGeneralizationProtocolConditionBlock
+  ];
+  study_slots: ResearchGeneralizationProtocolStudySlot[];
+  timing_policy: ResearchGeneralizationProtocolTimingPolicy;
+  study_policy: ResearchGeneralizationProtocolStudyPolicy;
+  analysis_policy: ResearchGeneralizationProtocolAnalysisPolicy;
+  committed_at: string;
+  protocol_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlStudyReplication {
+  replication_index: number;
+  campaign_idempotency_key: string;
+  campaign_ref: Ref;
+  expected_baseline_snapshot_digest: string;
+}
+
+export interface ResearchControlStudyAnalysisPolicy {
+  policy_version: "paired_exact_sign_test_v1";
+  primary_estimand:
+    "mean_adaptive_minus_static_qualified_discovery_rate";
+  significance_method: "two_sided_exact_sign_test";
+  alpha: 0.05;
+  minimum_non_tied_replication_count: 6;
+  tie_policy: "exclude_from_sign_test_include_in_mean";
+  minimum_mean_rate_difference: 0;
+}
+
+export interface ResearchControlStudyGeneralizationAssignment {
+  protocol_ref: Ref;
+  protocol_digest: string;
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  market_condition: ResearchGeneralizationMarketCondition;
+  source_system_code_artifact_digest: string;
+  assigned_at: string;
+  assignment_digest: string;
+}
+
+export interface ResearchControlStudyRecord extends BaseRecord {
+  record_kind: "research_control_study";
+  research_control_study_id: string;
+  idempotency_key: string;
+  hypothesis:
+    "adaptive_allocation_improves_replicated_qualified_discovery_yield";
+  baseline_policy: "same_frozen_snapshot";
+  baseline_snapshot_digest: string;
+  condition: ResearchControlStudyCondition;
+  replications: ResearchControlStudyReplication[];
+  generalization_assignment?: ResearchControlStudyGeneralizationAssignment;
+  analysis_policy: ResearchControlStudyAnalysisPolicy;
+  committed_at: string;
+  study_digest: string;
+  research_scheduling_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchControlStudyExecutionLeaseOwner {
+  server_instance_id: string;
+  host_id: string;
+  process_id: number;
+  process_start_marker: string;
+}
+
+export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
+  record_kind: "research_control_study_execution_lease";
+  research_control_study_execution_lease_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  owner: ResearchControlStudyExecutionLeaseOwner;
+  lease_token: string;
+  lease_status: "active" | "released" | "expired";
+  lease_duration_ms: number;
+  acquired_at: string;
+  renewed_at: string;
+  expires_at: string;
+  closed_at?: string;
+  close_reason?: "owner_released" | "expired_owner_absent";
+  lease_digest: string;
+  runtime_coordination_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "runtime_coordination_only";
+}
+
+export class ResearchControlStudyExecutionLeaseDecisionError extends Error {
+  readonly code = "invalid_research_control_study_execution_lease_input";
+
+  constructor() {
+    super("Invalid ResearchControlStudy execution lease input");
+    this.name = "ResearchControlStudyExecutionLeaseDecisionError";
+  }
+}
+
+export interface ResearchControlStudyReplicationResult {
+  replication_index: number;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  campaign_outcome_ref: Ref;
+  campaign_outcome_digest: string;
+  observed_rate_difference: number;
+}
+
+export interface ResearchControlStudyOutcomeRecord extends BaseRecord {
+  record_kind: "research_control_study_outcome";
+  research_control_study_outcome_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  replication_results: ResearchControlStudyReplicationResult[];
+  planned_replication_count: number;
+  completed_replication_count: number;
+  adaptive_positive_count: number;
+  static_positive_count: number;
+  tied_count: number;
+  non_tied_count: number;
+  mean_rate_difference: number;
+  exact_sign_test_p_value: number;
+  inference_status:
+    | "adaptive_effect_supported"
+    | "adaptive_effect_not_supported"
+    | "insufficient_non_tied_replications";
+  causal_scope: "same_baseline_stochastic_replication_only";
+  policy_decision_eligibility:
+    | "eligible_for_separate_policy_decision"
+    | "not_eligible";
+  next_action:
+    | "review_research_allocation_policy"
+    | "accumulate_or_redesign_precommitted_study";
+  adjudicated_at: string;
+  study_outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export type ResearchGeneralizationOutcomeSlotStatus =
+  | "completed"
+  | "missing_study"
+  | "missing_outcome"
+  | "ineligible";
+
+export type ResearchGeneralizationOutcomeSlotReason =
+  | "eligible_terminal_study"
+  | "planned_study_not_committed"
+  | "study_outcome_not_terminal"
+  | "protocol_assignment_mismatch"
+  | "protocol_condition_mismatch"
+  | "study_commitment_outside_protocol_window"
+  | "study_spacing_not_elapsed"
+  | "source_baseline_reused_within_condition_block";
+
+export interface ResearchGeneralizationOutcomeSlotResult {
+  slot_index: number;
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  condition_block_study_index: number;
+  planned_study_ref: Ref;
+  slot_status: ResearchGeneralizationOutcomeSlotStatus;
+  status_reason: ResearchGeneralizationOutcomeSlotReason;
+  study_ref: Ref | null;
+  study_digest: string | null;
+  study_outcome_ref: Ref | null;
+  study_outcome_digest: string | null;
+  baseline_snapshot_digest: string | null;
+  source_system_code_artifact_digest: string | null;
+  observed_rate_difference: number | null;
+  study_effect_status:
+    | "adaptive_positive"
+    | "static_positive"
+    | "tied"
+    | null;
+}
+
+export interface ResearchGeneralizationOutcomeBlockResult {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  planned_study_count: 2;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  adaptive_positive_count: number;
+  static_positive_count: number;
+  distinct_baseline_count: number;
+  mean_rate_difference: number | null;
+  block_status:
+    | "complete_positive"
+    | "complete_non_positive"
+    | "incomplete";
+}
+
+export interface ResearchGeneralizationOutcomeRecord extends BaseRecord {
+  record_kind: "research_generalization_outcome";
+  research_generalization_outcome_id: string;
+  protocol_ref: Ref;
+  protocol_digest: string;
+  target_allocation_policy_digest: string;
+  slot_results: ResearchGeneralizationOutcomeSlotResult[];
+  block_results: [
+    ResearchGeneralizationOutcomeBlockResult,
+    ResearchGeneralizationOutcomeBlockResult,
+    ResearchGeneralizationOutcomeBlockResult
+  ];
+  planned_study_count: 6;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  adaptive_positive_count: number;
+  static_positive_count: number;
+  distinct_baseline_count: number;
+  equal_weight_mean_rate_difference: number | null;
+  exact_sign_test_p_value: number;
+  harmful_condition_blocks: ResearchGeneralizationMarketConditionBlock[];
+  inference_status:
+    | "generalization_supported"
+    | "generalization_not_supported"
+    | "insufficient_generalization_evidence";
+  causal_scope:
+    "pre_effect_market_condition_blocked_cross_baseline_study_effects";
+  policy_decision_eligibility:
+    | "eligible_for_separate_generalization_policy_decision"
+    | "not_eligible";
+  next_action:
+    | "review_broad_research_allocation_policy"
+    | "retain_negative_generalization_evidence"
+    | "complete_or_redesign_generalization_protocol";
+  adjudicated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchAllocationPolicyDecisionPolicy {
+  policy_version: "adaptive_supported_effect_v1";
+  target_allocation_mode: "adaptive_default";
+  required_inference_status: "adaptive_effect_supported";
+  required_causal_scope: "same_baseline_stochastic_replication_only";
+  required_policy_decision_eligibility:
+    "eligible_for_separate_policy_decision";
+  application_scope: "future_uncontrolled_candidate_arena_ticks";
+}
+
+export interface ResearchAllocationPolicyDecisionRecord extends BaseRecord {
+  record_kind: "research_allocation_policy_decision";
+  research_allocation_policy_decision_id: string;
+  study_ref: Ref;
+  study_digest: string;
+  study_outcome_ref: Ref;
+  study_outcome_digest: string;
+  target_allocation_policy_digest: string;
+  decision_policy: ResearchAllocationPolicyDecisionPolicy;
+  decision_status: "approved" | "not_approved";
+  decision_reason:
+    | "supported_same_baseline_adaptive_effect"
+    | "study_outcome_not_eligible";
+  effective_default_mode: "adaptive_default" | null;
+  decided_at: string;
+  policy_decision_digest: string;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
+export interface ResearchGeneralizationPolicyDecisionPolicy {
+  policy_version: "generalization_supported_adaptive_v1";
+  target_allocation_mode: "adaptive_default";
+  required_inference_status: "generalization_supported";
+  required_causal_scope:
+    "pre_effect_market_condition_blocked_cross_baseline_study_effects";
+  required_policy_decision_eligibility:
+    "eligible_for_separate_generalization_policy_decision";
+  application_scope: "future_uncontrolled_candidate_arena_ticks";
+}
+
+export interface ResearchGeneralizationPolicyDecisionRecord extends BaseRecord {
+  record_kind: "research_generalization_policy_decision";
+  research_generalization_policy_decision_id: string;
+  protocol_ref: Ref;
+  protocol_digest: string;
+  generalization_outcome_ref: Ref;
+  generalization_outcome_digest: string;
+  target_allocation_policy_digest: string;
+  decision_policy: ResearchGeneralizationPolicyDecisionPolicy;
+  decision_status: "approved" | "not_approved";
+  decision_reason:
+    | "supported_cross_condition_adaptive_effect"
+    | "generalization_outcome_not_eligible";
+  effective_default_mode: "adaptive_default" | null;
+  decided_at: string;
+  policy_decision_digest: string;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
+export function researchControlCampaignDigestInput(
+  record: ResearchControlCampaignRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_id: _id,
+    campaign_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignPaperEvaluationProtocolDigestInput(
+  protocol: Extract<
+    ResearchControlCampaignPaperEvaluationProtocol,
+    { protocol_status: "bound" }
+  >
+): string {
+  const { protocol_digest: _digest, ...payload } = protocol;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignArmIntentDigestInput(
+  record: ResearchControlCampaignArmIntentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_arm_intent_id: _id,
+    intent_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignReportDigestInput(
+  record: ResearchControlCampaignReportRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_report_id: _id,
+    report_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignPaperScheduleDigestInput(
+  record: ResearchControlCampaignPaperScheduleRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_paper_schedule_id: _id,
+    schedule_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignPaperStartBatchDigestInput(
+  record: ResearchControlCampaignPaperStartBatchRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_paper_start_batch_id: _id,
+    start_batch_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignPaperSlotOutcomeDigestInput(
+  record: ResearchControlCampaignPaperSlotOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_paper_slot_outcome_id: _id,
+    slot_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlCampaignOutcomeDigestInput(
+  record: ResearchControlCampaignOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_campaign_outcome_id: _id,
+    outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlStudyConditionDigestInput(
+  condition: ResearchControlStudyCondition
+): string {
+  const { condition_digest: _digest, ...payload } = condition;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationPublicKlineWindowDigestInput(
+  window: ResearchGeneralizationPublicKlineWindow
+): string {
+  const { window_digest: _digest, ...payload } = window;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationMarketClassifierPolicyDigestInput(
+  policy: ResearchGeneralizationMarketClassifierPolicy
+): string {
+  const { classifier_digest: _digest, ...payload } = policy;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationMarketConditionDigestInput(
+  condition: ResearchGeneralizationMarketCondition
+): string {
+  const { classification_digest: _digest, ...payload } = condition;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationProtocolDigestInput(
+  record: ResearchGeneralizationProtocolRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_protocol_id: _id,
+    protocol_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlStudyGeneralizationAssignmentDigestInput(
+  assignment: ResearchControlStudyGeneralizationAssignment
+): string {
+  const { assignment_digest: _digest, ...payload } = assignment;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlStudyDigestInput(
+  record: ResearchControlStudyRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_study_id: _id,
+    study_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchMemoryControlStudyDigestInput(
+  record: ResearchMemoryControlStudyRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_study_id: _id,
+    study_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchMemoryControlPairOutcomeDigestInput(
+  record: ResearchMemoryControlPairOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_pair_outcome_id: _id,
+    pair_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchMemoryControlStudyOutcomeDigestInput(
+  record: ResearchMemoryControlStudyOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_memory_control_study_outcome_id: _id,
+    study_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchControlStudyExecutionLeaseDigestInput(
+  record: ResearchControlStudyExecutionLeaseRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_study_execution_lease_id: _id,
+    lease_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function decideResearchControlStudyExecutionLease(input: {
+  study: ResearchControlStudyRecord;
+  owner: ResearchControlStudyExecutionLeaseOwner;
+  leaseToken: string;
+  leaseDurationMs: number;
+  acquiredAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyHasRuntimeShape(input?.study) ||
+      !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(input?.owner) ||
+      !researchControlStudyExecutionLeasePositiveInteger(
+        input?.leaseDurationMs
+      )) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const leaseToken = researchControlStudyExecutionLeaseCanonicalString(
+      input.leaseToken
+    );
+    const acquiredAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.acquiredAt
+    );
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      record_kind: "research_control_study_execution_lease",
+      version: 1,
+      research_control_study_execution_lease_id:
+        researchControlStudyExecutionLeaseId(
+          input.study.research_control_study_id,
+          leaseToken
+        ),
+      study_ref: {
+        record_kind: "research_control_study",
+        id: input.study.research_control_study_id
+      },
+      study_digest: input.study.study_digest,
+      owner: { ...input.owner },
+      lease_token: leaseToken,
+      lease_status: "active",
+      lease_duration_ms: input.leaseDurationMs,
+      acquired_at: acquiredAt,
+      renewed_at: acquiredAt,
+      expires_at: researchControlStudyExecutionLeaseExpiry(
+        acquiredAt,
+        input.leaseDurationMs
+      ),
+      lease_digest: researchControlStudyExecutionLeasePendingDigest(),
+      runtime_coordination_authority: true,
+      evaluation_authority: false,
+      policy_replacement_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "runtime_coordination_only"
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
+export function renewResearchControlStudyExecutionLease(input: {
+  lease: ResearchControlStudyExecutionLeaseRecord;
+  renewedAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(input?.lease) ||
+      input.lease.lease_status !== "active") {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const renewedAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.renewedAt
+    );
+    if (Date.parse(renewedAt) <= Date.parse(input.lease.renewed_at) ||
+      Date.parse(renewedAt) >= Date.parse(input.lease.expires_at)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      ...input.lease,
+      study_ref: { ...input.lease.study_ref },
+      owner: { ...input.lease.owner },
+      renewed_at: renewedAt,
+      expires_at: researchControlStudyExecutionLeaseExpiry(
+        renewedAt,
+        input.lease.lease_duration_ms
+      ),
+      lease_digest: researchControlStudyExecutionLeasePendingDigest()
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
+export function closeResearchControlStudyExecutionLease(input: {
+  lease: ResearchControlStudyExecutionLeaseRecord;
+  leaseStatus: "released" | "expired";
+  closedAt: string;
+}): ResearchControlStudyExecutionLeaseRecord {
+  try {
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(input?.lease) ||
+      input.lease.lease_status !== "active" ||
+      (input.leaseStatus !== "released" && input.leaseStatus !== "expired")) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const closedAt = researchControlStudyExecutionLeaseCanonicalTime(
+      input.closedAt
+    );
+    if (Date.parse(closedAt) < Date.parse(input.lease.renewed_at)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    const record: ResearchControlStudyExecutionLeaseRecord = {
+      ...input.lease,
+      study_ref: { ...input.lease.study_ref },
+      owner: { ...input.lease.owner },
+      lease_status: input.leaseStatus,
+      closed_at: closedAt,
+      close_reason: input.leaseStatus === "released"
+        ? "owner_released"
+        : "expired_owner_absent",
+      lease_digest: researchControlStudyExecutionLeasePendingDigest()
+    };
+    record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
+    if (!researchControlStudyExecutionLeaseHasRuntimeShape(record)) {
+      throw researchControlStudyExecutionLeaseInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof ResearchControlStudyExecutionLeaseDecisionError) {
+      throw error;
+    }
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+}
+
+export function researchControlStudyOutcomeDigestInput(
+  record: ResearchControlStudyOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_control_study_outcome_id: _id,
+    study_outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationOutcomeDigestInput(
+  record: ResearchGeneralizationOutcomeRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_outcome_id: _id,
+    outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchAllocationPolicyDecisionDigestInput(
+  record: ResearchAllocationPolicyDecisionRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_allocation_policy_decision_id: _id,
+    policy_decision_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationPolicyDecisionDigestInput(
+  record: ResearchGeneralizationPolicyDecisionRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_generalization_policy_decision_id: _id,
+    policy_decision_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchGeneralizationProtocolHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_protocol_id",
+    "idempotency_key",
+    "hypothesis",
+    "target_allocation_policy",
+    "target_allocation_policy_digest",
+    "research_agent",
+    "paper_evaluation_protocol",
+    "campaign_policy",
+    "market_classifier_policy",
+    "condition_blocks",
+    "study_slots",
+    "timing_policy",
+    "study_policy",
+    "analysis_policy",
+    "committed_at",
+    "protocol_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_protocol" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_protocol_id) ||
+    !comparisonString(value.idempotency_key) || value.hypothesis !==
+      "adaptive_allocation_effect_generalizes_across_baselines_and_market_conditions" ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(
+      value.target_allocation_policy
+    ) || !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
+    !researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
+      value.paper_evaluation_protocol
+    ) || value.paper_evaluation_protocol.protocol_status !== "bound" ||
+    !researchControlCampaignPolicyHasRuntimeShape(value.campaign_policy) ||
+    !researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+      value.market_classifier_policy
+    ) || !researchGeneralizationProtocolConditionBlocksHaveRuntimeShape(
+      value.condition_blocks
+    ) || !Array.isArray(value.study_slots) ||
+    value.study_slots.length !== 6 ||
+    !researchGeneralizationProtocolTimingPolicyHasRuntimeShape(
+      value.timing_policy
+    ) || !researchGeneralizationProtocolStudyPolicyHasRuntimeShape(
+      value.study_policy
+    ) || !researchGeneralizationProtocolAnalysisPolicyHasRuntimeShape(
+      value.analysis_policy
+    ) || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const protocol = value as unknown as ResearchGeneralizationProtocolRecord;
+  if (Date.parse(protocol.timing_policy.collection_deadline_at) !==
+      Date.parse(protocol.committed_at) +
+        protocol.timing_policy.maximum_collection_duration_ms ||
+    protocol.campaign_policy.tick_count_per_arm !==
+      protocol.study_policy.tick_count_per_arm ||
+    protocol.campaign_policy.maximum_baseline_regular_file_count !==
+      protocol.study_policy.maximum_baseline_regular_file_count ||
+    protocol.campaign_policy.maximum_baseline_total_bytes !==
+      protocol.study_policy.maximum_baseline_total_bytes ||
+    !protocol.study_slots.every((slot, index) =>
+      researchGeneralizationProtocolStudySlotHasRuntimeShape(slot, index + 1)
+    )) {
+    return false;
+  }
+  return candidateArenaAllocationStringsUnique(
+    protocol.study_slots.map((slot) => slot.study_idempotency_key)
+  ) && candidateArenaAllocationStringsUnique(
+    protocol.study_slots.map((slot) => slot.study_ref.id)
+  ) && candidateArenaAllocationStringsUnique(
+    protocol.study_slots.flatMap((slot) =>
+      slot.replication_idempotency_keys
+    )
+  );
+}
+
+export function researchGeneralizationMarketConditionHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationMarketCondition {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "classifier_policy",
+    "public_kline_window",
+    "fast_mean",
+    "slow_mean",
+    "directional_gap_ratio",
+    "condition_block",
+    "classified_at",
+    "classification_digest",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || !researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+    value.classifier_policy
+  ) || !researchGeneralizationPublicKlineWindowHasRuntimeShape(
+    value.public_kline_window
+  ) || !comparisonPositiveFinite(value.fast_mean) ||
+    !comparisonPositiveFinite(value.slow_mean) ||
+    !comparisonFinite(value.directional_gap_ratio) ||
+    !["long", "short", "flat"].includes(String(value.condition_block)) ||
+    !comparisonIso(value.classified_at) ||
+    !researchControlCampaignSha256Digest(value.classification_digest) ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "public_evidence_only") {
+    return false;
+  }
+  const condition = value as unknown as ResearchGeneralizationMarketCondition;
+  if (Date.parse(condition.classified_at) <
+      Date.parse(condition.public_kline_window.observed_at)) {
+    return false;
+  }
+  const closes = condition.public_kline_window.klines.map((kline) =>
+    Number(kline.close_price)
+  );
+  const fastMean = researchGeneralizationRoundFeature(
+    closes.slice(-5).reduce((sum, close) => sum + close, 0) / 5
+  );
+  const slowMean = researchGeneralizationRoundFeature(
+    closes.reduce((sum, close) => sum + close, 0) / 30
+  );
+  const gap = researchGeneralizationRoundFeature(
+    (fastMean - slowMean) / slowMean
+  );
+  const expectedBlock: ResearchGeneralizationMarketConditionBlock =
+    gap > 0.00005 ? "long" : gap < -0.00005 ? "short" : "flat";
+  return condition.fast_mean === fastMean && condition.slow_mean === slowMean &&
+    condition.directional_gap_ratio === gap &&
+    condition.condition_block === expectedBlock;
+}
+
+export function researchMemoryControlStudyHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_study_id",
+    "idempotency_key",
+    "hypothesis",
+    "baseline",
+    "source",
+    "research_agent",
+    "research_agent_profile_id",
+    "opportunity_protocol",
+    "pair_plans",
+    "policy",
+    "analysis_policy",
+    "committed_at",
+    "study_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_study" ||
+    value.version !== 1 || typeof value.research_memory_control_study_id !==
+      "string" || !/^research-memory-control-study-[a-f0-9]{20}$/.test(
+        value.research_memory_control_study_id
+      ) || !comparisonString(value.idempotency_key) || value.hypothesis !==
+      "released_memory_reduces_exact_behavior_repeats" ||
+    !researchExperimentBaselineHasRuntimeShape(value.baseline) ||
+    value.baseline.exclusion_policy !== "research_experiment_evidence_only" ||
+    !researchExperimentSourceHasRuntimeShape(value.source) ||
+    !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
+    !comparisonString(value.research_agent.model) ||
+    !comparisonString(value.research_agent_profile_id) ||
+    !researchMemoryControlOpportunityProtocolHasRuntimeShape(
+      value.opportunity_protocol
+    ) ||
+    !Array.isArray(value.pair_plans) || value.pair_plans.length < 6 ||
+    value.pair_plans.length > 30 ||
+    !researchMemoryControlStudyPolicyHasRuntimeShape(
+      value.policy,
+      value.pair_plans.length
+    ) || !researchMemoryControlStudyAnalysisPolicyHasRuntimeShape(
+      value.analysis_policy
+    ) || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const study = value as unknown as ResearchMemoryControlStudyRecord;
+  if (study.baseline.regular_file_count >
+      study.policy.maximum_baseline_regular_file_count ||
+    study.baseline.total_bytes > study.policy.maximum_baseline_total_bytes ||
+    !study.pair_plans.every((pair, index) =>
+      researchMemoryControlPairPlanHasRuntimeShape(pair, index + 1)
+    )) {
+    return false;
+  }
+  const directions = study.pair_plans.map((pair) => pair.direction_kind);
+  const tickIds = study.pair_plans.flatMap((pair) => [
+    pair.released_memory_treatment.tick_id,
+    pair.memory_masked_control.tick_id
+  ]);
+  return new Set(directions).size >= 2 &&
+    candidateArenaAllocationStringsUnique(tickIds);
+}
+
+export function researchMemoryControlPairOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlPairOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_pair_outcome_id",
+    "study_ref",
+    "study_digest",
+    "pair_index",
+    "pair_plan_digest",
+    "research_direction_ref",
+    "direction_kind",
+    "released_memory",
+    "memory_masked",
+    "eligibility_status",
+    "ineligibility_reason",
+    "initial_start_skew_ms",
+    "paired_difference",
+    "terminal_at",
+    "pair_outcome_digest",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_pair_outcome" ||
+    value.version !== 1 ||
+    typeof value.research_memory_control_pair_outcome_id !== "string" ||
+    !/^research-memory-control-pair-outcome-[a-f0-9]{20}$/.test(
+      value.research_memory_control_pair_outcome_id
+    ) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !comparisonPositive(value.pair_index) ||
+    !Number.isInteger(value.pair_index) || value.pair_index > 30 ||
+    !researchControlCampaignSha256Digest(value.pair_plan_digest) ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !researchDirectionKindHasRuntimeShape(value.direction_kind) ||
+    !researchMemoryControlArmResultHasRuntimeShape(
+      value.released_memory,
+      "released_memory_treatment"
+    ) || !researchMemoryControlArmResultHasRuntimeShape(
+      value.memory_masked,
+      "memory_masked_control"
+    ) || !(value.initial_start_skew_ms === null || (
+      comparisonNonNegative(value.initial_start_skew_ms) &&
+      Number.isInteger(value.initial_start_skew_ms)
+    )) || !comparisonIso(value.terminal_at) ||
+    !researchControlCampaignSha256Digest(value.pair_outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchMemoryControlPairOutcomeRecord;
+  if (!researchMemoryControlArmAssignmentMatches(
+    outcome.released_memory,
+    outcome,
+    "released_memory_treatment"
+  ) || !researchMemoryControlArmAssignmentMatches(
+    outcome.memory_masked,
+    outcome,
+    "memory_masked_control"
+  )) {
+    return false;
+  }
+  const releasedIndicator = outcome.released_memory.exact_repeat_indicator;
+  const maskedIndicator = outcome.memory_masked.exact_repeat_indicator;
+  const expectedStartSkew = researchMemoryControlInitialStartSkew(outcome);
+  if (outcome.initial_start_skew_ms !== expectedStartSkew) return false;
+  if (outcome.eligibility_status === "eligible") {
+    return outcome.ineligibility_reason === null &&
+      (releasedIndicator === 0 || releasedIndicator === 1) &&
+      (maskedIndicator === 0 || maskedIndicator === 1) &&
+      outcome.released_memory.ineligibility_reason === null &&
+      outcome.memory_masked.ineligibility_reason === null &&
+      outcome.paired_difference === maskedIndicator - releasedIndicator &&
+      expectedStartSkew !== null &&
+      expectedStartSkew <= 5_000 &&
+      researchMemoryControlPairedEvidenceMatches(outcome) &&
+      researchMemoryControlMemoryContrastMatches(outcome);
+  }
+  return outcome.eligibility_status === "ineligible" &&
+    researchMemoryControlIneligibilityReason(outcome.ineligibility_reason) &&
+    outcome.paired_difference === null &&
+    (outcome.released_memory.observation === "ineligible" ||
+      outcome.memory_masked.observation === "ineligible") &&
+    (outcome.released_memory.ineligibility_reason ===
+      outcome.ineligibility_reason ||
+      outcome.memory_masked.ineligibility_reason ===
+        outcome.ineligibility_reason);
+}
+
+export function researchMemoryControlStudyOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_memory_control_study_outcome_id",
+    "study_ref",
+    "study_digest",
+    "pair_results",
+    "planned_pair_count",
+    "completed_pair_count",
+    "eligible_pair_count",
+    "ineligible_pair_count",
+    "favorable_pair_count",
+    "unfavorable_pair_count",
+    "tied_pair_count",
+    "non_tied_pair_count",
+    "mean_paired_difference",
+    "exact_sign_test_p_value",
+    "inference_status",
+    "causal_scope",
+    "memory_policy_decision_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "study_outcome_digest",
+    "evaluation_authority",
+    "memory_policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_memory_control_study_outcome" ||
+    value.version !== 1 ||
+    typeof value.research_memory_control_study_outcome_id !== "string" ||
+    !/^research-memory-control-study-outcome-[a-f0-9]{20}$/.test(
+      value.research_memory_control_study_outcome_id
+    ) || !comparisonRef(value.study_ref, "research_memory_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !Array.isArray(value.pair_results) || value.pair_results.length < 6 ||
+    value.pair_results.length > 30 ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.study_outcome_digest) ||
+    value.causal_scope !==
+      "same_baseline_paired_exact_repeat_effect_only" ||
+    value.memory_policy_decision_eligibility !== "not_eligible" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.memory_policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchMemoryControlStudyOutcomeRecord;
+  if (!outcome.pair_results.every((pair, index) =>
+    researchMemoryControlStudyPairResultHasRuntimeShape(pair, index + 1)
+  ) || !candidateArenaAllocationStringsUnique(outcome.pair_results.map(
+    (pair) => pair.pair_outcome_ref.id
+  ))) {
+    return false;
+  }
+  const eligible = outcome.pair_results.filter(
+    (pair) => pair.eligibility_status === "eligible"
+  );
+  const differences = eligible.map((pair) => pair.paired_difference!);
+  const favorable = differences.filter((difference) => difference > 0).length;
+  const unfavorable = differences.filter((difference) => difference < 0).length;
+  const tied = differences.length - favorable - unfavorable;
+  const nonTied = favorable + unfavorable;
+  const mean = differences.length === 0
+    ? null
+    : comparisonRound6(
+        differences.reduce<number>((sum, difference) => sum + difference, 0) /
+          differences.length
+      );
+  const pValue = researchControlStudyExactSignPValue(favorable, unfavorable);
+  const supported = nonTied >= 6 && favorable > unfavorable &&
+    pValue <= 0.05 && mean !== null && mean > 0;
+  const inference = nonTied < 6
+    ? "insufficient_memory_control_evidence"
+    : supported
+    ? "memory_effect_supported"
+    : "memory_effect_not_supported";
+  const nextAction = supported
+    ? "review_memory_evidence_without_automatic_policy_change"
+    : "retain_current_memory_policy_and_redesign_study";
+  return outcome.planned_pair_count === outcome.pair_results.length &&
+    outcome.completed_pair_count === outcome.pair_results.length &&
+    outcome.eligible_pair_count === eligible.length &&
+    outcome.ineligible_pair_count ===
+      outcome.pair_results.length - eligible.length &&
+    outcome.favorable_pair_count === favorable &&
+    outcome.unfavorable_pair_count === unfavorable &&
+    outcome.tied_pair_count === tied &&
+    outcome.non_tied_pair_count === nonTied &&
+    outcome.mean_paired_difference === mean &&
+    outcome.exact_sign_test_p_value === pValue &&
+    outcome.inference_status === inference && outcome.next_action === nextAction;
+}
+
+function researchMemoryControlOpportunityProtocolHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlOpportunityProtocol {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "development_suite_version",
+    "development_suite_digest",
+    "sealed_suite_version",
+    "sealed_generator_version",
+    "sealed_rotation_commitment_digest",
+    "sealed_suite_digest"
+  ]) && value.development_suite_version ===
+      "research_development_replay_v1" &&
+    researchControlCampaignSha256Digest(value.development_suite_digest) &&
+    value.sealed_suite_version === "research_sealed_admission_v1" &&
+    value.sealed_generator_version === "research_scenario_generator_v1" &&
+    researchControlCampaignSha256Digest(
+      value.sealed_rotation_commitment_digest
+    ) && researchControlCampaignSha256Digest(value.sealed_suite_digest);
+}
+
+function researchMemoryControlStudyPolicyHasRuntimeShape(
+  value: unknown,
+  pairCount: number
+): value is ResearchMemoryControlStudyPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "pair_count",
+    "allocation_mode",
+    "development_submission_limit_per_worker",
+    "sealed_submission_limit_per_worker",
+    "baseline_copy_policy",
+    "within_pair_start_policy",
+    "maximum_within_pair_start_skew_ms",
+    "across_pair_execution_policy",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes"
+  ]) && value.policy_version === "research_memory_control_study_v1" &&
+    value.pair_count === pairCount && value.allocation_mode === "explicit" &&
+    value.development_submission_limit_per_worker === 1 &&
+    value.sealed_submission_limit_per_worker === 1 &&
+    value.baseline_copy_policy === "fresh_verified_copy_per_arm" &&
+    value.within_pair_start_policy === "concurrent_initial_sides" &&
+    value.maximum_within_pair_start_skew_ms === 5_000 &&
+    value.across_pair_execution_policy === "sequential" &&
+    comparisonPositive(value.maximum_baseline_regular_file_count) &&
+    Number.isInteger(value.maximum_baseline_regular_file_count) &&
+    value.maximum_baseline_regular_file_count <= 100_000 &&
+    comparisonPositive(value.maximum_baseline_total_bytes) &&
+    Number.isInteger(value.maximum_baseline_total_bytes) &&
+    value.maximum_baseline_total_bytes <= 1_000_000_000;
+}
+
+function researchMemoryControlStudyAnalysisPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlStudyAnalysisPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "primary_estimand",
+    "significance_method",
+    "alpha",
+    "minimum_non_tied_pair_count",
+    "tie_policy",
+    "ineligible_pair_policy",
+    "minimum_mean_paired_difference"
+  ]) && value.policy_version === "paired_exact_repeat_sign_test_v1" &&
+    value.primary_estimand ===
+      "mean_masked_minus_released_memory_exact_repeat_indicator" &&
+    value.significance_method === "two_sided_exact_sign_test" &&
+    value.alpha === 0.05 && value.minimum_non_tied_pair_count === 6 &&
+    value.tie_policy === "exclude_from_sign_test_include_in_mean" &&
+    value.ineligible_pair_policy ===
+      "retain_in_counts_exclude_from_inference" &&
+    value.minimum_mean_paired_difference === 0;
+}
+
+function researchMemoryControlPairPlanHasRuntimeShape(
+  value: unknown,
+  pairIndex: number
+): value is ResearchMemoryControlPairPlan {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "pair_index",
+    "research_direction_ref",
+    "direction_kind",
+    "released_memory_treatment",
+    "memory_masked_control"
+  ]) && value.pair_index === pairIndex &&
+    comparisonRef(value.research_direction_ref, "research_direction") &&
+    researchDirectionKindHasRuntimeShape(value.direction_kind) &&
+    researchMemoryControlArmPlanHasRuntimeShape(
+      value.released_memory_treatment,
+      "released_memory_treatment"
+    ) && researchMemoryControlArmPlanHasRuntimeShape(
+      value.memory_masked_control,
+      "memory_masked_control"
+    ) && value.released_memory_treatment.tick_id !==
+      value.memory_masked_control.tick_id;
+}
+
+function researchMemoryControlArmPlanHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchMemoryControlArmKind
+): value is ResearchMemoryControlArmPlan {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "arm_kind",
+    "memory_mode",
+    "tick_id"
+  ]) && value.arm_kind === armKind && comparisonString(value.tick_id) &&
+    (armKind === "released_memory_treatment"
+      ? value.memory_mode === "released_memory"
+      : value.memory_mode === "memory_masked");
+}
+
+function researchMemoryControlArmResultHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchMemoryControlArmKind
+): value is ResearchMemoryControlArmResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "memory_mode",
+    "planned_tick_id",
+    "terminal_status",
+    "failure_kind",
+    "tick_evidence",
+    "preflight_evidence",
+    "worker_evidence",
+    "allocation_evidence",
+    "admission_evidence",
+    "resource_summary",
+    "observation",
+    "exact_repeat_indicator",
+    "ineligibility_reason"
+  ]) || value.arm_kind !== armKind || !comparisonString(value.planned_tick_id) ||
+    ![
+      "completed",
+      "no_submission",
+      "worker_failed",
+      "platform_failed",
+      "interrupted"
+    ].includes(String(value.terminal_status)) ||
+    (armKind === "released_memory_treatment"
+      ? value.memory_mode !== "released_memory"
+      : value.memory_mode !== "memory_masked") ||
+    !researchMemoryControlFailureKindOrNull(value.failure_kind) ||
+    !researchMemoryControlTickEvidenceHasRuntimeShape(
+      value.tick_evidence,
+      value.planned_tick_id
+    ) || !researchMemoryControlPreflightEvidenceHasRuntimeShape(
+      value.preflight_evidence,
+      value.memory_mode as ResearchWorkerMemoryMode
+    ) || !researchMemoryControlWorkerEvidenceHasRuntimeShape(
+      value.worker_evidence
+    ) || !researchMemoryControlAllocationEvidenceHasRuntimeShape(
+      value.allocation_evidence
+    ) || !researchMemoryControlAdmissionEvidenceHasRuntimeShape(
+      value.admission_evidence
+    ) || !researchMemoryControlResourceSummaryHasRuntimeShape(
+      value.resource_summary
+    )) {
+    return false;
+  }
+  const arm = value as unknown as ResearchMemoryControlArmResult;
+  const requiresFailure = arm.terminal_status === "worker_failed" ||
+    arm.terminal_status === "platform_failed" ||
+    arm.terminal_status === "interrupted";
+  if (requiresFailure !== (arm.failure_kind !== null)) return false;
+  if (arm.observation === "exact_repeat") {
+    return arm.terminal_status === "completed" &&
+      arm.exact_repeat_indicator === 1 && arm.ineligibility_reason === null &&
+      researchMemoryControlCompletedEvidencePresent(arm) &&
+      researchMemoryControlAdmissionClassifies(arm.admission_evidence, true);
+  }
+  if (arm.observation === "distinct_behavior") {
+    return arm.terminal_status === "completed" &&
+      arm.exact_repeat_indicator === 0 && arm.ineligibility_reason === null &&
+      researchMemoryControlCompletedEvidencePresent(arm) &&
+      researchMemoryControlAdmissionClassifies(arm.admission_evidence, false);
+  }
+  return arm.observation === "ineligible" &&
+    arm.exact_repeat_indicator === null &&
+    researchMemoryControlIneligibilityReason(arm.ineligibility_reason) &&
+    researchMemoryControlIneligibleArmMatchesReason(arm);
+}
+
+function researchMemoryControlTickEvidenceHasRuntimeShape(
+  value: unknown,
+  plannedTickId: unknown
+): value is ResearchMemoryControlTickEvidence | null {
+  if (value === null) return true;
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "tick_ref",
+    "tick_id",
+    "tick_digest",
+    "started_at",
+    "completed_at",
+    "tick_status",
+    "direction_result_status"
+  ]) && comparisonRef(value.tick_ref, "candidate_arena_tick") &&
+    value.tick_id === plannedTickId &&
+    researchControlCampaignSha256Digest(value.tick_digest) &&
+    comparisonIso(value.started_at) && comparisonIso(value.completed_at) &&
+    Date.parse(value.completed_at) >= Date.parse(value.started_at) &&
+    ["completed", "completed_with_errors", "failed"].includes(
+      String(value.tick_status)
+    ) && [
+      "created",
+      "duplicate",
+      "quarantined",
+      "no_submission",
+      "failed"
+    ].includes(String(value.direction_result_status));
+}
+
+function researchMemoryControlPreflightEvidenceHasRuntimeShape(
+  value: unknown,
+  memoryMode: ResearchWorkerMemoryMode
+): value is ResearchMemoryControlPreflightEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "commitment_ref",
+      "commitment_digest",
+      "development_suite_version",
+      "development_suite_digest",
+      "sealed_suite_version",
+      "sealed_generator_version",
+      "sealed_suite_digest",
+      "sealed_rotation_commitment_digest",
+      "memory_policy"
+    ]) && comparisonRef(
+      value.commitment_ref,
+      "research_preflight_commitment"
+    ) && researchControlCampaignSha256Digest(value.commitment_digest) &&
+    value.development_suite_version === "research_development_replay_v1" &&
+    researchControlCampaignSha256Digest(value.development_suite_digest) &&
+    value.sealed_suite_version === "research_sealed_admission_v1" &&
+    value.sealed_generator_version === "research_scenario_generator_v1" &&
+    researchControlCampaignSha256Digest(value.sealed_suite_digest) &&
+    researchControlCampaignSha256Digest(
+      value.sealed_rotation_commitment_digest
+    ) &&
+    researchWorkerMemoryPolicyHasRuntimeShape(value.memory_policy) &&
+    value.memory_policy.memory_mode === memoryMode);
+}
+
+function researchMemoryControlWorkerEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlWorkerEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "worker_ref",
+      "agent_profile_id",
+      "provider_kind",
+      "model"
+    ]) && comparisonRef(value.worker_ref, "research_worker") &&
+    comparisonString(value.agent_profile_id) && comparisonString(value.model) &&
+    ["codex_cli", "claude_code", "local_process", "fixture_only"].includes(
+      String(value.provider_kind)
+    ));
+}
+
+function researchMemoryControlAllocationEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlAllocationEvidence | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "allocation_ref",
+      "allocation_digest",
+      "allocation_mode",
+      "allocation_policy_digest",
+      "direction_kind",
+      "selection_kind",
+      "experiment_budget"
+    ]) && comparisonRef(
+      value.allocation_ref,
+      "candidate_arena_research_allocation"
+    ) && researchControlCampaignSha256Digest(value.allocation_digest) &&
+    value.allocation_mode === "explicit" &&
+    researchControlCampaignSha256Digest(value.allocation_policy_digest) &&
+    researchDirectionKindHasRuntimeShape(value.direction_kind) &&
+    value.selection_kind === "explicit" && value.experiment_budget === 1);
+}
+
+function researchMemoryControlAdmissionEvidenceHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlAdmissionEvidence | null {
+  if (value === null) return true;
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "decision_ref",
+    "decision_digest",
+    "status",
+    "reason",
+    "research_worker_outcome",
+    "behavior_comparison_status",
+    "fingerprint_ref",
+    "fingerprint_digest",
+    "matching_fingerprint_ref",
+    "matching_fingerprint_digest"
+  ]) || !comparisonRef(value.decision_ref, "candidate_admission_decision") ||
+    !researchControlCampaignSha256Digest(value.decision_digest) ||
+    !["admitted", "duplicate", "quarantined"].includes(
+      String(value.status)
+    ) || ![
+      "evaluation_accepted",
+      "research_worker_failed",
+      "no_candidate_change",
+      "experiment_failed",
+      "evaluation_disqualified",
+      "evaluation_quarantined",
+      "evidence_already_counted",
+      "evidence_quarantined",
+      "paper_handoff_conformance_failed",
+      "behavior_duplicate",
+      "behavior_fingerprint_unavailable"
+    ].includes(String(value.reason)) ||
+    !["changed", "unchanged", "failed"].includes(
+      String(value.research_worker_outcome)
+    ) || !(value.behavior_comparison_status === null || [
+      "distinct",
+      "duplicate",
+      "unavailable"
+    ].includes(String(value.behavior_comparison_status)))) {
+    return false;
+  }
+  const linked = [value.fingerprint_ref, value.fingerprint_digest];
+  const matching = [
+    value.matching_fingerprint_ref,
+    value.matching_fingerprint_digest
+  ];
+  const fingerprintRef = value.fingerprint_ref as Ref | null;
+  const fingerprintDigest = value.fingerprint_digest as string | null;
+  const matchingFingerprintRef = value.matching_fingerprint_ref as Ref | null;
+  const matchingFingerprintDigest =
+    value.matching_fingerprint_digest as string | null;
+  const linkedPresent = linked.every((item) => item !== null);
+  const matchingPresent = matching.every((item) => item !== null);
+  if (linked.some((item) => item === null) !==
+      linked.every((item) => item === null) ||
+    matching.some((item) => item === null) !==
+      matching.every((item) => item === null) ||
+    (linkedPresent && (!comparisonRef(
+      value.fingerprint_ref,
+      "research_behavior_fingerprint"
+    ) || !researchControlCampaignSha256Digest(value.fingerprint_digest))) ||
+    (matchingPresent && (!comparisonRef(
+      value.matching_fingerprint_ref,
+      "research_behavior_fingerprint"
+    ) || !researchControlCampaignSha256Digest(
+      value.matching_fingerprint_digest
+    )))) {
+    return false;
+  }
+  return value.behavior_comparison_status === "duplicate"
+    ? linkedPresent && matchingPresent &&
+      fingerprintRef!.id !== matchingFingerprintRef!.id &&
+      fingerprintDigest === matchingFingerprintDigest
+    : value.behavior_comparison_status === "distinct"
+    ? linkedPresent && !matchingPresent
+    : !linkedPresent && !matchingPresent;
+}
+
+function researchMemoryControlResourceSummaryHasRuntimeShape(
+  value: unknown
+): value is ResearchMemoryControlResourceSummary | null {
+  return value === null || (comparisonObject(value) &&
+    comparisonHasExactKeys(value, [
+      "provider_request_total",
+      "runner_command_total",
+      "scenario_count",
+      "elapsed_ms"
+    ]) && [
+      value.provider_request_total,
+      value.runner_command_total,
+      value.scenario_count,
+      value.elapsed_ms
+    ].every((item) => comparisonNonNegative(item) && Number.isInteger(item)));
+}
+
+function researchMemoryControlFailureKindOrNull(value: unknown): boolean {
+  return value === null || [
+    "research_worker_failed",
+    "provider_failed",
+    "runner_failed",
+    "restart_interrupted",
+    "evidence_reconstruction_failed"
+  ].includes(String(value));
+}
+
+function researchMemoryControlIneligibilityReason(
+  value: unknown
+): value is ResearchMemoryControlPairIneligibilityReason {
+  return [
+    "no_submission",
+    "worker_or_platform_failure",
+    "behavior_fingerprint_unavailable",
+    "malformed_evidence_graph",
+    "missing_memory_contrast",
+    "interrupted_or_unpaired_run"
+  ].includes(String(value));
+}
+
+function researchMemoryControlAdmissionClassifies(
+  admission: ResearchMemoryControlAdmissionEvidence | null,
+  exactRepeat: boolean
+): boolean {
+  if (!admission) return false;
+  if (exactRepeat) {
+    return (admission.research_worker_outcome === "unchanged" &&
+      admission.status === "duplicate" &&
+      admission.reason === "no_candidate_change" &&
+      admission.behavior_comparison_status === null) ||
+      (admission.research_worker_outcome === "changed" &&
+        admission.status === "duplicate" &&
+        admission.reason === "behavior_duplicate" &&
+        admission.behavior_comparison_status === "duplicate");
+  }
+  return admission.research_worker_outcome === "changed" &&
+    admission.behavior_comparison_status === "distinct";
+}
+
+function researchMemoryControlArmAssignmentMatches(
+  arm: ResearchMemoryControlArmResult,
+  outcome: ResearchMemoryControlPairOutcomeRecord,
+  armKind: ResearchMemoryControlArmKind
+): boolean {
+  const assignment = arm.preflight_evidence?.memory_policy.control_assignment;
+  return !assignment || (
+    assignment.study_ref.id === outcome.study_ref.id &&
+    assignment.study_digest === outcome.study_digest &&
+    assignment.pair_index === outcome.pair_index &&
+    assignment.arm_kind === armKind
+  );
+}
+
+function researchMemoryControlMemoryContrastMatches(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): boolean {
+  const released = outcome.released_memory.preflight_evidence?.memory_policy;
+  const masked = outcome.memory_masked.preflight_evidence?.memory_policy;
+  return Boolean(released && masked && released.control_assignment &&
+    masked.control_assignment && released.available_memory_item_count > 0 &&
+    released.available_memory_item_count === masked.available_memory_item_count &&
+    released.memory_source_digest === masked.memory_source_digest);
+}
+
+function researchMemoryControlCompletedEvidencePresent(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  return arm.tick_evidence !== null && arm.preflight_evidence !== null &&
+    arm.worker_evidence !== null && arm.allocation_evidence !== null &&
+    arm.admission_evidence !== null && arm.resource_summary !== null;
+}
+
+function researchMemoryControlIneligibleArmMatchesReason(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  switch (arm.ineligibility_reason) {
+    case "no_submission":
+      return arm.terminal_status === "no_submission" &&
+        arm.failure_kind === null && arm.tick_evidence !== null &&
+        arm.preflight_evidence !== null && arm.worker_evidence !== null &&
+        arm.allocation_evidence !== null && arm.admission_evidence === null &&
+        arm.resource_summary !== null;
+    case "worker_or_platform_failure":
+      return (arm.terminal_status === "worker_failed" ||
+        arm.terminal_status === "platform_failed") &&
+        arm.failure_kind !== null && arm.resource_summary !== null &&
+        (researchMemoryControlBoundTerminalEvidencePresent(arm) ||
+          (arm.terminal_status === "platform_failed" &&
+            researchMemoryControlNoEffectTerminalEvidence(arm)));
+    case "interrupted_or_unpaired_run":
+      return arm.terminal_status === "interrupted" &&
+        arm.failure_kind !== null && arm.resource_summary !== null &&
+        (researchMemoryControlBoundTerminalEvidencePresent(arm) ||
+          researchMemoryControlNoEffectTerminalEvidence(arm));
+    case "behavior_fingerprint_unavailable":
+      return arm.terminal_status === "completed" &&
+        researchMemoryControlCompletedEvidencePresent(arm) &&
+        arm.admission_evidence?.behavior_comparison_status === "unavailable";
+    case "missing_memory_contrast":
+      return arm.terminal_status === "completed" &&
+        researchMemoryControlCompletedEvidencePresent(arm);
+    case "malformed_evidence_graph":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function researchMemoryControlBoundTerminalEvidencePresent(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  return arm.preflight_evidence !== null && arm.worker_evidence !== null &&
+    arm.allocation_evidence !== null;
+}
+
+function researchMemoryControlNoEffectTerminalEvidence(
+  arm: ResearchMemoryControlArmResult
+): boolean {
+  const resource = arm.resource_summary;
+  return arm.tick_evidence === null && arm.preflight_evidence === null &&
+    arm.worker_evidence === null && arm.allocation_evidence === null &&
+    arm.admission_evidence === null && resource !== null &&
+    resource.provider_request_total === 0 &&
+    resource.runner_command_total === 0 && resource.scenario_count === 0 &&
+    resource.elapsed_ms === 0;
+}
+
+function researchMemoryControlInitialStartSkew(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): number | null {
+  const releasedStartedAt = outcome.released_memory.tick_evidence?.started_at;
+  const maskedStartedAt = outcome.memory_masked.tick_evidence?.started_at;
+  return releasedStartedAt && maskedStartedAt
+    ? Math.abs(Date.parse(releasedStartedAt) - Date.parse(maskedStartedAt))
+    : null;
+}
+
+function researchMemoryControlPairedEvidenceMatches(
+  outcome: ResearchMemoryControlPairOutcomeRecord
+): boolean {
+  const releasedWorker = outcome.released_memory.worker_evidence;
+  const maskedWorker = outcome.memory_masked.worker_evidence;
+  const releasedAllocation = outcome.released_memory.allocation_evidence;
+  const maskedAllocation = outcome.memory_masked.allocation_evidence;
+  const releasedPreflight = outcome.released_memory.preflight_evidence;
+  const maskedPreflight = outcome.memory_masked.preflight_evidence;
+  return Boolean(releasedWorker && maskedWorker && releasedAllocation &&
+    maskedAllocation && releasedPreflight && maskedPreflight &&
+    releasedWorker.worker_ref.id === maskedWorker.worker_ref.id &&
+    releasedWorker.agent_profile_id === maskedWorker.agent_profile_id &&
+    releasedWorker.provider_kind === maskedWorker.provider_kind &&
+    releasedWorker.model === maskedWorker.model &&
+    releasedAllocation.allocation_mode === maskedAllocation.allocation_mode &&
+    releasedAllocation.allocation_policy_digest ===
+      maskedAllocation.allocation_policy_digest &&
+    releasedAllocation.direction_kind === outcome.direction_kind &&
+    maskedAllocation.direction_kind === outcome.direction_kind &&
+    releasedAllocation.selection_kind === maskedAllocation.selection_kind &&
+    releasedAllocation.experiment_budget ===
+      maskedAllocation.experiment_budget &&
+    releasedPreflight.development_suite_version ===
+      maskedPreflight.development_suite_version &&
+    releasedPreflight.development_suite_digest ===
+      maskedPreflight.development_suite_digest &&
+    releasedPreflight.sealed_suite_version ===
+      maskedPreflight.sealed_suite_version &&
+    releasedPreflight.sealed_generator_version ===
+      maskedPreflight.sealed_generator_version &&
+    releasedPreflight.sealed_suite_digest ===
+      maskedPreflight.sealed_suite_digest &&
+    releasedPreflight.sealed_rotation_commitment_digest ===
+      maskedPreflight.sealed_rotation_commitment_digest);
+}
+
+function researchMemoryControlStudyPairResultHasRuntimeShape(
+  value: unknown,
+  pairIndex: number
+): value is ResearchMemoryControlStudyPairResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "pair_index",
+    "pair_outcome_ref",
+    "pair_outcome_digest",
+    "eligibility_status",
+    "ineligibility_reason",
+    "paired_difference"
+  ]) || value.pair_index !== pairIndex || !comparisonRef(
+    value.pair_outcome_ref,
+    "research_memory_control_pair_outcome"
+  ) || !researchControlCampaignSha256Digest(value.pair_outcome_digest)) {
+    return false;
+  }
+  return value.eligibility_status === "eligible"
+    ? value.ineligibility_reason === null &&
+      (value.paired_difference === -1 || value.paired_difference === 0 ||
+        value.paired_difference === 1)
+    : value.eligibility_status === "ineligible" &&
+      researchMemoryControlIneligibilityReason(value.ineligibility_reason) &&
+      value.paired_difference === null;
+}
+
+function researchDirectionKindHasRuntimeShape(
+  value: unknown
+): value is ResearchDirectionKind {
+  return RESEARCH_DIRECTION_KINDS.includes(value as ResearchDirectionKind);
+}
+
+export function researchControlStudyHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyRecord {
+  if (!comparisonObject(value)) return false;
+  const hasGeneralizationAssignment = Object.prototype.hasOwnProperty.call(
+    value,
+    "generalization_assignment"
+  );
+  if (!comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_study_id",
+    "idempotency_key",
+    "hypothesis",
+    "baseline_policy",
+    "baseline_snapshot_digest",
+    "condition",
+    "replications",
+    ...(hasGeneralizationAssignment ? ["generalization_assignment"] : []),
+    "analysis_policy",
+    "committed_at",
+    "study_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_study" || value.version !== 1 ||
+    !comparisonString(value.research_control_study_id) ||
+    !comparisonString(value.idempotency_key) || value.hypothesis !==
+      "adaptive_allocation_improves_replicated_qualified_discovery_yield" ||
+    value.baseline_policy !== "same_frozen_snapshot" ||
+    !researchControlCampaignSha256Digest(value.baseline_snapshot_digest) ||
+    !researchControlStudyConditionHasRuntimeShape(value.condition) ||
+    !Array.isArray(value.replications) || value.replications.length < 6 ||
+    value.replications.length > 30 ||
+    !researchControlStudyAnalysisPolicyHasRuntimeShape(value.analysis_policy) ||
+    !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const study = value as unknown as ResearchControlStudyRecord;
+  if (hasGeneralizationAssignment &&
+    (!researchControlStudyGeneralizationAssignmentHasRuntimeShape(
+      study.generalization_assignment
+    ) || study.generalization_assignment.assigned_at !== study.committed_at ||
+      study.generalization_assignment.source_system_code_artifact_digest !==
+        study.condition.source.system_code_artifact_digest)) {
+    return false;
+  }
+  if (!study.replications.every((replication, index) =>
+    researchControlStudyReplicationHasRuntimeShape(
+      replication,
+      index + 1,
+      study.baseline_snapshot_digest
+    ))) {
+    return false;
+  }
+  return candidateArenaAllocationStringsUnique(
+    study.replications.map((entry) => entry.campaign_idempotency_key)
+  ) && candidateArenaAllocationStringsUnique(
+    study.replications.map((entry) => entry.campaign_ref.id)
+  );
+}
+
+export function researchControlStudyExecutionLeaseHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyExecutionLeaseRecord {
+  if (!comparisonObject(value) || ![
+    "active",
+    "released",
+    "expired"
+  ].includes(String(value.lease_status))) {
+    return false;
+  }
+  const terminal = value.lease_status !== "active";
+  const exactKeys = [
+    "record_kind",
+    "version",
+    "research_control_study_execution_lease_id",
+    "study_ref",
+    "study_digest",
+    "owner",
+    "lease_token",
+    "lease_status",
+    "lease_duration_ms",
+    "acquired_at",
+    "renewed_at",
+    "expires_at",
+    ...(terminal ? ["closed_at", "close_reason"] : []),
+    "lease_digest",
+    "runtime_coordination_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ];
+  if (!comparisonHasExactKeys(value, exactKeys) ||
+    value.record_kind !== "research_control_study_execution_lease" ||
+    value.version !== 1 ||
+    typeof value.research_control_study_execution_lease_id !== "string" ||
+    !/^research-control-study-execution-lease-[a-f0-9]{32}$/.test(
+      value.research_control_study_execution_lease_id
+    ) || !comparisonRef(value.study_ref, "research_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(value.owner) ||
+    !researchControlStudyExecutionLeaseCanonicalStringShape(value.lease_token) ||
+    !researchControlStudyExecutionLeasePositiveInteger(
+      value.lease_duration_ms
+    ) ||
+    !comparisonIso(value.acquired_at) || !comparisonIso(value.renewed_at) ||
+    !comparisonIso(value.expires_at) ||
+    Date.parse(value.renewed_at) < Date.parse(value.acquired_at) ||
+    value.runtime_coordination_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "runtime_coordination_only" ||
+    !researchControlCampaignSha256Digest(value.lease_digest)) {
+    return false;
+  }
+  const lease = value as unknown as ResearchControlStudyExecutionLeaseRecord;
+  try {
+    if (lease.expires_at !== researchControlStudyExecutionLeaseExpiry(
+      lease.renewed_at,
+      lease.lease_duration_ms
+    ) || lease.research_control_study_execution_lease_id !==
+      researchControlStudyExecutionLeaseId(lease.study_ref.id, lease.lease_token)) {
+      return false;
+    }
+    if (lease.lease_status === "active") {
+      if (lease.closed_at !== undefined || lease.close_reason !== undefined) return false;
+    } else if (!comparisonIso(lease.closed_at) ||
+      Date.parse(lease.closed_at) < Date.parse(lease.renewed_at) ||
+      lease.close_reason !== (lease.lease_status === "released"
+        ? "owner_released"
+        : "expired_owner_absent")) {
+      return false;
+    }
+    return lease.lease_digest ===
+      researchControlStudyExecutionLeaseExactDigest(lease);
+  } catch {
+    return false;
+  }
+}
+
+export function researchControlStudyOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_study_outcome_id",
+    "study_ref",
+    "study_digest",
+    "replication_results",
+    "planned_replication_count",
+    "completed_replication_count",
+    "adaptive_positive_count",
+    "static_positive_count",
+    "tied_count",
+    "non_tied_count",
+    "mean_rate_difference",
+    "exact_sign_test_p_value",
+    "inference_status",
+    "causal_scope",
+    "policy_decision_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "study_outcome_digest",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_study_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_study_outcome_id) ||
+    !comparisonRef(value.study_ref, "research_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !Array.isArray(value.replication_results) ||
+    value.replication_results.length < 6 ||
+    value.replication_results.length > 30 ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.study_outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live" ||
+    value.causal_scope !== "same_baseline_stochastic_replication_only") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchControlStudyOutcomeRecord;
+  if (!outcome.replication_results.every((result, index) =>
+    researchControlStudyReplicationResultHasRuntimeShape(result, index + 1)
+  ) || !candidateArenaAllocationStringsUnique(
+    outcome.replication_results.map((result) => result.campaign_ref.id)
+  ) || !candidateArenaAllocationStringsUnique(
+    outcome.replication_results.map((result) => result.campaign_outcome_ref.id)
+  )) {
+    return false;
+  }
+  const differences = outcome.replication_results.map(
+    (result) => result.observed_rate_difference
+  );
+  const adaptivePositive = differences.filter((value) => value > 0).length;
+  const staticPositive = differences.filter((value) => value < 0).length;
+  const tied = differences.length - adaptivePositive - staticPositive;
+  const nonTied = adaptivePositive + staticPositive;
+  const mean = comparisonRound6(
+    differences.reduce((sum, difference) => sum + difference, 0) /
+      differences.length
+  );
+  const pValue = researchControlStudyExactSignPValue(
+    adaptivePositive,
+    staticPositive
+  );
+  const supported = nonTied >= 6 && adaptivePositive > staticPositive &&
+    pValue <= 0.05 && mean > 0;
+  const inference = nonTied < 6
+    ? "insufficient_non_tied_replications"
+    : supported
+    ? "adaptive_effect_supported"
+    : "adaptive_effect_not_supported";
+  const eligibility = supported
+    ? "eligible_for_separate_policy_decision"
+    : "not_eligible";
+  const nextAction = supported
+    ? "review_research_allocation_policy"
+    : "accumulate_or_redesign_precommitted_study";
+  return outcome.planned_replication_count === differences.length &&
+    outcome.completed_replication_count === differences.length &&
+    outcome.adaptive_positive_count === adaptivePositive &&
+    outcome.static_positive_count === staticPositive &&
+    outcome.tied_count === tied && outcome.non_tied_count === nonTied &&
+    outcome.mean_rate_difference === mean &&
+    outcome.exact_sign_test_p_value === pValue &&
+    outcome.inference_status === inference &&
+    outcome.policy_decision_eligibility === eligibility &&
+    outcome.next_action === nextAction;
+}
+
+export function researchGeneralizationOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_outcome_id",
+    "protocol_ref",
+    "protocol_digest",
+    "target_allocation_policy_digest",
+    "slot_results",
+    "block_results",
+    "planned_study_count",
+    "completed_study_count",
+    "non_tied_study_count",
+    "tied_study_count",
+    "missing_study_count",
+    "ineligible_study_count",
+    "adaptive_positive_count",
+    "static_positive_count",
+    "distinct_baseline_count",
+    "equal_weight_mean_rate_difference",
+    "exact_sign_test_p_value",
+    "harmful_condition_blocks",
+    "inference_status",
+    "causal_scope",
+    "policy_decision_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_outcome_id) ||
+    !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !Array.isArray(value.slot_results) ||
+    value.slot_results.length !== 6 || !Array.isArray(value.block_results) ||
+    value.block_results.length !== 3 || value.planned_study_count !== 6 ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.outcome_digest) ||
+    value.causal_scope !==
+      "pre_effect_market_condition_blocked_cross_baseline_study_effects" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as ResearchGeneralizationOutcomeRecord;
+  if (!outcome.slot_results.every((slot, index) =>
+    researchGeneralizationOutcomeSlotHasRuntimeShape(slot, index + 1)
+  ) || !outcome.block_results.every((block, index) =>
+    researchGeneralizationOutcomeBlockHasRuntimeShape(block, index)
+  )) {
+    return false;
+  }
+  const completed = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "completed"
+  );
+  const missing = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "missing_study" ||
+    slot.slot_status === "missing_outcome"
+  );
+  const ineligible = outcome.slot_results.filter((slot) =>
+    slot.slot_status === "ineligible"
+  );
+  const effects = completed.map((slot) => slot.observed_rate_difference!);
+  const adaptivePositive = effects.filter((effect) => effect > 0).length;
+  const staticPositive = effects.filter((effect) => effect < 0).length;
+  const tied = effects.length - adaptivePositive - staticPositive;
+  const nonTied = adaptivePositive + staticPositive;
+  const distinctBaselines = new Set(completed.map((slot) =>
+    slot.baseline_snapshot_digest!
+  )).size;
+  if (outcome.completed_study_count !== completed.length ||
+    outcome.non_tied_study_count !== nonTied ||
+    outcome.tied_study_count !== tied ||
+    outcome.missing_study_count !== missing.length ||
+    outcome.ineligible_study_count !== ineligible.length ||
+    outcome.adaptive_positive_count !== adaptivePositive ||
+    outcome.static_positive_count !== staticPositive ||
+    outcome.distinct_baseline_count !== distinctBaselines ||
+    outcome.exact_sign_test_p_value !== researchControlStudyExactSignPValue(
+      adaptivePositive,
+      staticPositive
+    )) {
+    return false;
+  }
+  const expectedBlocks = ["long", "short", "flat"] as const;
+  for (let index = 0; index < expectedBlocks.length; index += 1) {
+    const slots = outcome.slot_results.filter((slot) =>
+      slot.condition_block === expectedBlocks[index]
+    );
+    if (!researchGeneralizationOutcomeBlockMatches(
+      outcome.block_results[index]!,
+      slots
+    )) {
+      return false;
+    }
+  }
+  const completeBlockMeans = outcome.block_results.map((block) =>
+    block.mean_rate_difference
+  );
+  const equalWeightMean = completeBlockMeans.every((mean) => mean !== null)
+    ? comparisonRound6(
+        completeBlockMeans.reduce((sum, mean) => sum + Number(mean), 0) / 3
+      )
+    : null;
+  const harmfulBlocks = outcome.block_results.filter((block) =>
+    block.mean_rate_difference !== null && block.mean_rate_difference <= 0
+  ).map((block) => block.condition_block);
+  const sufficient = completed.length === 6 && missing.length === 0 &&
+    ineligible.length === 0 && nonTied === 6 && distinctBaselines >= 3 &&
+    equalWeightMean !== null;
+  const supported = sufficient &&
+    outcome.exact_sign_test_p_value <= 0.05 && equalWeightMean > 0 &&
+    harmfulBlocks.length === 0;
+  const inference = !sufficient
+    ? "insufficient_generalization_evidence" as const
+    : supported
+      ? "generalization_supported" as const
+      : "generalization_not_supported" as const;
+  const eligibility = supported
+    ? "eligible_for_separate_generalization_policy_decision" as const
+    : "not_eligible" as const;
+  const nextAction = inference === "generalization_supported"
+    ? "review_broad_research_allocation_policy" as const
+    : inference === "generalization_not_supported"
+      ? "retain_negative_generalization_evidence" as const
+      : "complete_or_redesign_generalization_protocol" as const;
+  return outcome.equal_weight_mean_rate_difference === equalWeightMean &&
+    outcome.harmful_condition_blocks.length === harmfulBlocks.length &&
+    outcome.harmful_condition_blocks.every((block, index) =>
+      block === harmfulBlocks[index]
+    ) && outcome.inference_status === inference &&
+    outcome.policy_decision_eligibility === eligibility &&
+    outcome.next_action === nextAction;
+}
+
+function researchGeneralizationOutcomeSlotHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is ResearchGeneralizationOutcomeSlotResult {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "planned_study_ref",
+    "slot_status",
+    "status_reason",
+    "study_ref",
+    "study_digest",
+    "study_outcome_ref",
+    "study_outcome_digest",
+    "baseline_snapshot_digest",
+    "source_system_code_artifact_digest",
+    "observed_rate_difference",
+    "study_effect_status"
+  ]) || value.slot_index !== slotIndex ||
+    !comparisonRef(value.planned_study_ref, "research_control_study")) {
+    return false;
+  }
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long", "short", "flat"
+  ];
+  if (value.condition_block !== expectedBlocks[Math.floor((slotIndex - 1) / 2)] ||
+    value.condition_block_study_index !== ((slotIndex - 1) % 2) + 1) {
+    return false;
+  }
+  const slot = value as unknown as ResearchGeneralizationOutcomeSlotResult;
+  const hasStudy = comparisonRef(slot.study_ref, "research_control_study") &&
+    researchControlCampaignSha256Digest(slot.study_digest) &&
+    researchControlCampaignSha256Digest(slot.baseline_snapshot_digest) &&
+    comparisonString(slot.source_system_code_artifact_digest);
+  const hasOutcome = comparisonRef(
+    slot.study_outcome_ref,
+    "research_control_study_outcome"
+  ) && researchControlCampaignSha256Digest(slot.study_outcome_digest) &&
+    comparisonFinite(slot.observed_rate_difference) && [
+      "adaptive_positive", "static_positive", "tied"
+    ].includes(String(slot.study_effect_status));
+  if (slot.slot_status === "missing_study") {
+    return slot.status_reason === "planned_study_not_committed" &&
+      slot.study_ref === null && slot.study_digest === null &&
+      slot.study_outcome_ref === null && slot.study_outcome_digest === null &&
+      slot.baseline_snapshot_digest === null &&
+      slot.source_system_code_artifact_digest === null &&
+      slot.observed_rate_difference === null &&
+      slot.study_effect_status === null;
+  }
+  if (slot.slot_status === "missing_outcome") {
+    return slot.status_reason === "study_outcome_not_terminal" && hasStudy &&
+      slot.study_ref!.id === slot.planned_study_ref.id &&
+      slot.study_outcome_ref === null && slot.study_outcome_digest === null &&
+      slot.observed_rate_difference === null &&
+      slot.study_effect_status === null;
+  }
+  if (!hasStudy || !hasOutcome || slot.study_ref!.id !==
+      slot.planned_study_ref.id || slot.study_effect_status !==
+      (slot.observed_rate_difference! > 0
+        ? "adaptive_positive"
+        : slot.observed_rate_difference! < 0
+          ? "static_positive"
+          : "tied")) {
+    return false;
+  }
+  if (slot.slot_status === "completed") {
+    return slot.status_reason === "eligible_terminal_study";
+  }
+  return slot.slot_status === "ineligible" && [
+    "protocol_assignment_mismatch",
+    "protocol_condition_mismatch",
+    "study_commitment_outside_protocol_window",
+    "study_spacing_not_elapsed",
+    "source_baseline_reused_within_condition_block"
+  ].includes(slot.status_reason);
+}
+
+function researchGeneralizationOutcomeBlockHasRuntimeShape(
+  value: unknown,
+  blockIndex: number
+): value is ResearchGeneralizationOutcomeBlockResult {
+  const blocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long", "short", "flat"
+  ];
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "condition_block",
+    "planned_study_count",
+    "completed_study_count",
+    "non_tied_study_count",
+    "tied_study_count",
+    "missing_study_count",
+    "ineligible_study_count",
+    "adaptive_positive_count",
+    "static_positive_count",
+    "distinct_baseline_count",
+    "mean_rate_difference",
+    "block_status"
+  ]) && value.condition_block === blocks[blockIndex] &&
+    value.planned_study_count === 2 && [
+      "completed_study_count",
+      "non_tied_study_count",
+      "tied_study_count",
+      "missing_study_count",
+      "ineligible_study_count",
+      "adaptive_positive_count",
+      "static_positive_count",
+      "distinct_baseline_count"
+    ].every((key) => comparisonNonNegative(value[key])) &&
+    (value.mean_rate_difference === null ||
+      comparisonFinite(value.mean_rate_difference)) && [
+      "complete_positive", "complete_non_positive", "incomplete"
+    ].includes(String(value.block_status));
+}
+
+function researchGeneralizationOutcomeBlockMatches(
+  block: ResearchGeneralizationOutcomeBlockResult,
+  slots: ResearchGeneralizationOutcomeSlotResult[]
+): boolean {
+  const completed = slots.filter((slot) => slot.slot_status === "completed");
+  const effects = completed.map((slot) => slot.observed_rate_difference!);
+  const adaptivePositive = effects.filter((effect) => effect > 0).length;
+  const staticPositive = effects.filter((effect) => effect < 0).length;
+  const tied = effects.length - adaptivePositive - staticPositive;
+  const mean = completed.length === 2
+    ? comparisonRound6(effects.reduce((sum, effect) => sum + effect, 0) / 2)
+    : null;
+  const status = mean === null
+    ? "incomplete"
+    : mean > 0
+      ? "complete_positive"
+      : "complete_non_positive";
+  return slots.length === 2 && block.completed_study_count === completed.length &&
+    block.non_tied_study_count === adaptivePositive + staticPositive &&
+    block.tied_study_count === tied && block.missing_study_count ===
+      slots.filter((slot) => slot.slot_status === "missing_study" ||
+        slot.slot_status === "missing_outcome").length &&
+    block.ineligible_study_count === slots.filter((slot) =>
+      slot.slot_status === "ineligible"
+    ).length && block.adaptive_positive_count === adaptivePositive &&
+    block.static_positive_count === staticPositive &&
+    block.distinct_baseline_count === new Set(completed.map((slot) =>
+      slot.baseline_snapshot_digest!
+    )).size && block.mean_rate_difference === mean &&
+    block.block_status === status;
+}
+
+export function researchAllocationPolicyDecisionHasRuntimeShape(
+  value: unknown
+): value is ResearchAllocationPolicyDecisionRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_allocation_policy_decision_id",
+    "study_ref",
+    "study_digest",
+    "study_outcome_ref",
+    "study_outcome_digest",
+    "target_allocation_policy_digest",
+    "decision_policy",
+    "decision_status",
+    "decision_reason",
+    "effective_default_mode",
+    "decided_at",
+    "policy_decision_digest",
+    "research_policy_selection_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_allocation_policy_decision" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_allocation_policy_decision_id) ||
+    !comparisonRef(value.study_ref, "research_control_study") ||
+    !researchControlCampaignSha256Digest(value.study_digest) ||
+    !comparisonRef(
+      value.study_outcome_ref,
+      "research_control_study_outcome"
+    ) || !researchControlCampaignSha256Digest(value.study_outcome_digest) ||
+    !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !researchAllocationPolicyDecisionPolicyHasRuntimeShape(
+      value.decision_policy
+    ) || !comparisonIso(value.decided_at) ||
+    !researchControlCampaignSha256Digest(value.policy_decision_digest) ||
+    value.research_policy_selection_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_policy_only") {
+    return false;
+  }
+  return value.decision_status === "approved"
+    ? value.decision_reason === "supported_same_baseline_adaptive_effect" &&
+      value.effective_default_mode === "adaptive_default"
+    : value.decision_status === "not_approved" &&
+      value.decision_reason === "study_outcome_not_eligible" &&
+      value.effective_default_mode === null;
+}
+
+function researchAllocationPolicyDecisionPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchAllocationPolicyDecisionPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "target_allocation_mode",
+    "required_inference_status",
+    "required_causal_scope",
+    "required_policy_decision_eligibility",
+    "application_scope"
+  ]) && value.policy_version === "adaptive_supported_effect_v1" &&
+    value.target_allocation_mode === "adaptive_default" &&
+    value.required_inference_status === "adaptive_effect_supported" &&
+    value.required_causal_scope ===
+      "same_baseline_stochastic_replication_only" &&
+    value.required_policy_decision_eligibility ===
+      "eligible_for_separate_policy_decision" &&
+    value.application_scope === "future_uncontrolled_candidate_arena_ticks";
+}
+
+export function researchGeneralizationPolicyDecisionHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPolicyDecisionRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_generalization_policy_decision_id",
+    "protocol_ref",
+    "protocol_digest",
+    "generalization_outcome_ref",
+    "generalization_outcome_digest",
+    "target_allocation_policy_digest",
+    "decision_policy",
+    "decision_status",
+    "decision_reason",
+    "effective_default_mode",
+    "decided_at",
+    "policy_decision_digest",
+    "research_policy_selection_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_generalization_policy_decision" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_generalization_policy_decision_id) ||
+    !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !comparisonRef(
+      value.generalization_outcome_ref,
+      "research_generalization_outcome"
+    ) || !researchControlCampaignSha256Digest(
+      value.generalization_outcome_digest
+    ) || !researchControlCampaignSha256Digest(
+      value.target_allocation_policy_digest
+    ) || !researchGeneralizationPolicyDecisionPolicyHasRuntimeShape(
+      value.decision_policy
+    ) || !comparisonIso(value.decided_at) ||
+    !researchControlCampaignSha256Digest(value.policy_decision_digest) ||
+    value.research_policy_selection_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_policy_only") {
+    return false;
+  }
+  return value.decision_status === "approved"
+    ? value.decision_reason ===
+        "supported_cross_condition_adaptive_effect" &&
+      value.effective_default_mode === "adaptive_default"
+    : value.decision_status === "not_approved" &&
+      value.decision_reason === "generalization_outcome_not_eligible" &&
+      value.effective_default_mode === null;
+}
+
+function researchGeneralizationPolicyDecisionPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPolicyDecisionPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "target_allocation_mode",
+    "required_inference_status",
+    "required_causal_scope",
+    "required_policy_decision_eligibility",
+    "application_scope"
+  ]) && value.policy_version === "generalization_supported_adaptive_v1" &&
+    value.target_allocation_mode === "adaptive_default" &&
+    value.required_inference_status === "generalization_supported" &&
+    value.required_causal_scope ===
+      "pre_effect_market_condition_blocked_cross_baseline_study_effects" &&
+    value.required_policy_decision_eligibility ===
+      "eligible_for_separate_generalization_policy_decision" &&
+    value.application_scope === "future_uncontrolled_candidate_arena_ticks";
+}
+
+function researchGeneralizationMarketClassifierPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationMarketClassifierPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "symbol",
+    "interval",
+    "sample_count",
+    "fast_mean_sample_count",
+    "slow_mean_sample_count",
+    "directional_gap_ratio_threshold",
+    "observation_boundary_rule",
+    "missing_data_rule",
+    "classifier_digest"
+  ]) && value.policy_version === "btc_usdt_closed_kline_direction_v1" &&
+    value.symbol === "BTCUSDT" && value.interval === "1m" &&
+    value.sample_count === 30 && value.fast_mean_sample_count === 5 &&
+    value.slow_mean_sample_count === 30 &&
+    value.directional_gap_ratio_threshold === 0.00005 &&
+    value.observation_boundary_rule ===
+      "last_fully_closed_minute_before_observation" &&
+    value.missing_data_rule === "no_condition_block" &&
+    researchControlCampaignSha256Digest(value.classifier_digest);
+}
+
+function researchGeneralizationPublicKlineWindowHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPublicKlineWindow {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "symbol",
+    "interval",
+    "sample_count",
+    "observed_at",
+    "closed_window_end_at",
+    "source",
+    "klines",
+    "authority_status",
+    "window_digest"
+  ]) || value.symbol !== "BTCUSDT" || value.interval !== "1m" ||
+    value.sample_count !== 30 || !comparisonIso(value.observed_at) ||
+    !comparisonIso(value.closed_window_end_at) ||
+    !researchGeneralizationPublicMarketSourceHasRuntimeShape(value.source) ||
+    !Array.isArray(value.klines) || value.klines.length !== 30 ||
+    value.authority_status !== "read_only" ||
+    !researchControlCampaignSha256Digest(value.window_digest)) {
+    return false;
+  }
+  const window = value as unknown as ResearchGeneralizationPublicKlineWindow;
+  const observedEpoch = Date.parse(window.observed_at);
+  const expectedEnd = Math.floor(observedEpoch / 60_000) * 60_000 - 1;
+  if (Date.parse(window.closed_window_end_at) !== expectedEnd) return false;
+  const firstOpen = expectedEnd + 1 - 30 * 60_000;
+  return window.klines.every((kline, index) =>
+    comparisonObject(kline) && comparisonHasExactKeys(kline, [
+      "open_time",
+      "close_time",
+      "close_price"
+    ]) && comparisonIso(kline.open_time) && comparisonIso(kline.close_time) &&
+    typeof kline.close_price === "string" &&
+    /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(kline.close_price) &&
+    Number.isFinite(Number(kline.close_price)) &&
+    Number(kline.close_price) > 0 &&
+    Date.parse(kline.open_time) === firstOpen + index * 60_000 &&
+    Date.parse(kline.close_time) === firstOpen + index * 60_000 + 59_999
+  );
+}
+
+function researchGeneralizationPublicMarketSourceHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationPublicMarketSource {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "provider_kind",
+    "source_kind",
+    "rest_base_url",
+    "endpoint",
+    "authority_status"
+  ]) && value.provider_kind === "binance_production_public_market_data" &&
+    value.source_kind === "binance_production_public_rest" &&
+    comparisonString(value.rest_base_url) &&
+    value.endpoint === "/fapi/v1/klines" &&
+    value.authority_status === "read_only";
+}
+
+function researchControlStudyGeneralizationAssignmentHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyGeneralizationAssignment {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "protocol_ref",
+    "protocol_digest",
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "market_condition",
+    "source_system_code_artifact_digest",
+    "assigned_at",
+    "assignment_digest"
+  ]) || !comparisonRef(value.protocol_ref, "research_generalization_protocol") ||
+    !researchControlCampaignSha256Digest(value.protocol_digest) ||
+    !comparisonPositive(value.slot_index) || value.slot_index > 6 ||
+    !["long", "short", "flat"].includes(String(value.condition_block)) ||
+    !comparisonPositive(value.condition_block_study_index) ||
+    value.condition_block_study_index > 2 ||
+    !researchGeneralizationMarketConditionHasRuntimeShape(
+      value.market_condition
+    ) || !comparisonString(value.source_system_code_artifact_digest) ||
+    !comparisonIso(value.assigned_at) ||
+    !researchControlCampaignSha256Digest(value.assignment_digest)) {
+    return false;
+  }
+  const assignment = value as unknown as
+    ResearchControlStudyGeneralizationAssignment;
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  const expectedBlock = expectedBlocks[Math.floor(
+    (assignment.slot_index - 1) / 2
+  )];
+  return assignment.condition_block === expectedBlock &&
+    assignment.condition_block_study_index ===
+      ((assignment.slot_index - 1) % 2) + 1 &&
+    assignment.market_condition.condition_block ===
+      assignment.condition_block &&
+    Date.parse(assignment.market_condition.classified_at) <=
+      Date.parse(assignment.assigned_at);
+}
+
+function researchGeneralizationRoundFeature(value: number): number {
+  return Math.round(value * 1_000_000_000_000) / 1_000_000_000_000;
+}
+
+function researchGeneralizationProtocolConditionBlocksHaveRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolRecord["condition_blocks"] {
+  const blocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  return Array.isArray(value) && value.length === blocks.length &&
+    value.every((block, index) =>
+      comparisonObject(block) && comparisonHasExactKeys(block, [
+        "condition_block",
+        "required_study_count"
+      ]) && block.condition_block === blocks[index] &&
+      block.required_study_count === 2
+    );
+}
+
+function researchGeneralizationProtocolStudySlotHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is ResearchGeneralizationProtocolStudySlot {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "condition_block",
+    "condition_block_study_index",
+    "study_idempotency_key",
+    "study_ref",
+    "replication_idempotency_keys"
+  ]) || value.slot_index !== slotIndex ||
+    !comparisonString(value.study_idempotency_key) ||
+    !comparisonRef(value.study_ref, "research_control_study") ||
+    !Array.isArray(value.replication_idempotency_keys) ||
+    value.replication_idempotency_keys.length !== 6 ||
+    !value.replication_idempotency_keys.every(comparisonString) ||
+    !candidateArenaAllocationStringsUnique(
+      value.replication_idempotency_keys as string[]
+    )) {
+    return false;
+  }
+  const blockIndex = Math.floor((slotIndex - 1) / 2);
+  const expectedBlocks: ResearchGeneralizationMarketConditionBlock[] = [
+    "long",
+    "short",
+    "flat"
+  ];
+  return value.condition_block === expectedBlocks[blockIndex] &&
+    value.condition_block_study_index === ((slotIndex - 1) % 2) + 1;
+}
+
+function researchGeneralizationProtocolTimingPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolTimingPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "minimum_study_commitment_interval_ms",
+    "maximum_collection_duration_ms",
+    "collection_deadline_at",
+    "expiry_policy"
+  ]) && value.policy_version === "research_generalization_timing_v1" &&
+    value.minimum_study_commitment_interval_ms === 86_400_000 &&
+    value.maximum_collection_duration_ms === 7_776_000_000 &&
+    comparisonIso(value.collection_deadline_at) &&
+    value.expiry_policy === "close_with_missing_slots";
+}
+
+function researchGeneralizationProtocolStudyPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolStudyPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "replication_count_per_study",
+    "tick_count_per_arm",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes",
+    "source_baseline_reuse_policy"
+  ]) && value.policy_version === "research_generalization_study_v1" &&
+    value.replication_count_per_study === 6 &&
+    value.tick_count_per_arm === 1 &&
+    value.maximum_baseline_regular_file_count === 10_000 &&
+    value.maximum_baseline_total_bytes === 1_000_000_000 &&
+    value.source_baseline_reuse_policy === "unique_within_condition_block";
+}
+
+function researchGeneralizationProtocolAnalysisPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchGeneralizationProtocolAnalysisPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "primary_estimand",
+    "block_weighting",
+    "significance_method",
+    "alpha",
+    "minimum_terminal_study_count",
+    "minimum_non_tied_study_count",
+    "minimum_distinct_baseline_count",
+    "tie_policy",
+    "missing_block_policy",
+    "harmful_block_policy"
+  ]) && value.policy_version === "equal_block_exact_sign_test_v1" &&
+    value.primary_estimand ===
+      "equal_block_mean_adaptive_minus_static_qualified_discovery_rate" &&
+    value.block_weighting === "equal_precommitted_condition_blocks" &&
+    value.significance_method === "two_sided_exact_sign_test" &&
+    value.alpha === 0.05 && value.minimum_terminal_study_count === 6 &&
+    value.minimum_non_tied_study_count === 6 &&
+    value.minimum_distinct_baseline_count === 3 &&
+    value.tie_policy === "exclude_from_sign_test_include_in_mean" &&
+    value.missing_block_policy === "insufficient_generalization_evidence" &&
+    value.harmful_block_policy === "non_positive_block_blocks_support";
+}
+
+function researchControlStudyConditionHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyCondition {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "source",
+    "research_agent",
+    "paper_comparator",
+    "paper_evaluation_protocol",
+    "allocation_policy",
+    "allocation_policy_digest",
+    "campaign_policy",
+    "condition_digest"
+  ]) && researchExperimentSourceHasRuntimeShape(value.source) &&
+    researchExperimentAgentHasRuntimeShape(value.research_agent) &&
+    researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) && value.paper_comparator.comparator_status === "trading_review" &&
+    researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
+      value.paper_evaluation_protocol
+    ) && value.paper_evaluation_protocol.protocol_status === "bound" &&
+    candidateArenaResearchAllocationPolicyHasRuntimeShape(
+      value.allocation_policy
+    ) && researchControlCampaignSha256Digest(
+      value.allocation_policy_digest
+    ) && researchControlCampaignPolicyHasRuntimeShape(value.campaign_policy) &&
+    researchControlCampaignSha256Digest(value.condition_digest);
+}
+
+function researchControlStudyReplicationHasRuntimeShape(
+  value: unknown,
+  replicationIndex: number,
+  baselineSnapshotDigest: string
+): value is ResearchControlStudyReplication {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "replication_index",
+    "campaign_idempotency_key",
+    "campaign_ref",
+    "expected_baseline_snapshot_digest"
+  ]) && value.replication_index === replicationIndex &&
+    comparisonString(value.campaign_idempotency_key) &&
+    comparisonRef(value.campaign_ref, "research_control_campaign") &&
+    value.expected_baseline_snapshot_digest === baselineSnapshotDigest;
+}
+
+function researchControlStudyReplicationResultHasRuntimeShape(
+  value: unknown,
+  replicationIndex: number
+): value is ResearchControlStudyReplicationResult {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "replication_index",
+    "campaign_ref",
+    "campaign_digest",
+    "campaign_outcome_ref",
+    "campaign_outcome_digest",
+    "observed_rate_difference"
+  ]) && value.replication_index === replicationIndex &&
+    comparisonRef(value.campaign_ref, "research_control_campaign") &&
+    researchControlCampaignSha256Digest(value.campaign_digest) &&
+    comparisonRef(
+      value.campaign_outcome_ref,
+      "research_control_campaign_outcome"
+    ) && researchControlCampaignSha256Digest(
+      value.campaign_outcome_digest
+    ) && comparisonFinite(value.observed_rate_difference) &&
+    value.observed_rate_difference >= -1 &&
+    value.observed_rate_difference <= 1 &&
+    comparisonRound6(value.observed_rate_difference) ===
+      value.observed_rate_difference;
+}
+
+function researchControlStudyExactSignPValue(
+  adaptivePositive: number,
+  staticPositive: number
+): number {
+  const count = adaptivePositive + staticPositive;
+  if (count === 0) return 1;
+  const lowerTail = Math.min(adaptivePositive, staticPositive);
+  let combinations = 0;
+  for (let index = 0; index <= lowerTail; index += 1) {
+    combinations += researchControlStudyCombination(count, index);
+  }
+  return comparisonRound6(Math.min(1, 2 * combinations / 2 ** count));
+}
+
+function researchControlStudyCombination(count: number, selected: number): number {
+  let result = 1;
+  for (let index = 1; index <= selected; index += 1) {
+    result = result * (count - index + 1) / index;
+  }
+  return result;
+}
+
+function researchControlStudyAnalysisPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyAnalysisPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "primary_estimand",
+    "significance_method",
+    "alpha",
+    "minimum_non_tied_replication_count",
+    "tie_policy",
+    "minimum_mean_rate_difference"
+  ]) && value.policy_version === "paired_exact_sign_test_v1" &&
+    value.primary_estimand ===
+      "mean_adaptive_minus_static_qualified_discovery_rate" &&
+    value.significance_method === "two_sided_exact_sign_test" &&
+    value.alpha === 0.05 && value.minimum_non_tied_replication_count === 6 &&
+    value.tie_policy === "exclude_from_sign_test_include_in_mean" &&
+    value.minimum_mean_rate_difference === 0;
+}
+
+export function researchControlCampaignHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_id",
+    "idempotency_key",
+    "hypothesis",
+    "baseline",
+    "source",
+    "research_agent",
+    "paper_comparator",
+    "paper_evaluation_protocol",
+    "allocation_policy",
+    "allocation_policy_digest",
+    "arms",
+    "policy",
+    "committed_at",
+    "campaign_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign" || value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_id) ||
+    !comparisonString(value.idempotency_key) ||
+    value.hypothesis !==
+      "adaptive_allocation_improves_prospective_qualified_discovery_yield" ||
+    !researchExperimentBaselineHasRuntimeShape(value.baseline) ||
+    value.baseline.exclusion_policy !==
+      "research_control_campaign_evidence_only" ||
+    !researchExperimentSourceHasRuntimeShape(value.source) ||
+    !researchExperimentAgentHasRuntimeShape(value.research_agent) ||
+    !researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) ||
+    !researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
+      value.paper_evaluation_protocol
+    ) || !researchControlCampaignPaperProtocolMatchesComparator(
+      value.paper_evaluation_protocol,
+      value.paper_comparator
+    ) ||
+    !candidateArenaResearchAllocationPolicyHasRuntimeShape(
+      value.allocation_policy
+    ) || !researchControlCampaignSha256Digest(value.allocation_policy_digest) ||
+    !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    !researchControlCampaignPolicyHasRuntimeShape(value.policy) ||
+    !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+
+  const campaign = value as unknown as ResearchControlCampaignRecord;
+  if (!researchControlCampaignArmHasRuntimeShape(
+    campaign.arms[0],
+    "adaptive_treatment",
+    "adaptive_default",
+    campaign.policy.tick_count_per_arm
+  ) || !researchControlCampaignArmHasRuntimeShape(
+    campaign.arms[1],
+    "static_control",
+    "static_control",
+    campaign.policy.tick_count_per_arm
+  ) || campaign.baseline.regular_file_count >
+      campaign.policy.maximum_baseline_regular_file_count ||
+    campaign.baseline.total_bytes >
+      campaign.policy.maximum_baseline_total_bytes ||
+    campaign.policy.paper_candidate_slot_count_per_arm !==
+      campaign.policy.tick_count_per_arm) {
+    return false;
+  }
+  const tickIds = campaign.arms.flatMap((arm) => arm.tick_ids);
+  const intentIds = campaign.arms.map(
+    (arm) => arm.research_control_campaign_arm_intent_id
+  );
+  return candidateArenaAllocationStringsUnique(tickIds) &&
+    candidateArenaAllocationStringsUnique(intentIds);
+}
+
+export function researchControlCampaignArmIntentHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignArmIntentRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_arm_intent_id",
+    "campaign_ref",
+    "campaign_digest",
+    "arm_kind",
+    "allocation_mode",
+    "baseline_snapshot_digest",
+    "tick_ids",
+    "committed_at",
+    "intent_digest",
+    "research_scheduling_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_arm_intent" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_arm_intent_id) ||
+    !comparisonRef(value.campaign_ref, "research_control_campaign") ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !researchControlCampaignArmModeMatches(
+      value.arm_kind,
+      value.allocation_mode
+    ) || !researchControlCampaignSha256Digest(value.baseline_snapshot_digest) ||
+    !stringArray(value.tick_ids) || value.tick_ids.length < 1 ||
+    value.tick_ids.length > 5 || !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.intent_digest) ||
+    value.research_scheduling_authority !== true ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return true;
+}
+
+export function researchControlCampaignReportHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignReportRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_report_id",
+    "campaign_ref",
+    "campaign_digest",
+    "arms",
+    "primary_outcome_status",
+    "causal_conclusion",
+    "next_action",
+    "completed_at",
+    "report_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_report" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_report_id) ||
+    !comparisonRef(value.campaign_ref, "research_control_campaign") ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    value.primary_outcome_status !== "unadjudicated" ||
+    value.causal_conclusion !== "not_available_from_research_phase" ||
+    value.next_action !== "schedule_prospective_paper_slots" ||
+    !comparisonIso(value.completed_at) ||
+    !researchControlCampaignSha256Digest(value.report_digest) ||
+    value.evaluation_authority !== false || value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  const report = value as unknown as ResearchControlCampaignReportRecord;
+  if (!researchControlCampaignArmReportHasRuntimeShape(
+    report.arms[0],
+    "adaptive_treatment",
+    "adaptive_default"
+  ) || !researchControlCampaignArmReportHasRuntimeShape(
+    report.arms[1],
+    "static_control",
+    "static_control"
+  ) || report.arms[0].tick_refs.length !== report.arms[1].tick_refs.length ||
+    report.arms.some((arm) =>
+      Date.parse(arm.completed_at) > Date.parse(report.completed_at)
+    )) {
+    return false;
+  }
+  const intentIds = report.arms.map((arm) => arm.arm_intent_ref.id);
+  const tickIds = report.arms.flatMap((arm) => arm.tick_refs.map((ref) => ref.id));
+  return candidateArenaAllocationStringsUnique(intentIds) &&
+    candidateArenaAllocationStringsUnique(tickIds);
+}
+
+export function researchControlCampaignPaperScheduleHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperScheduleRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_paper_schedule_id",
+    "campaign_ref",
+    "campaign_digest",
+    "report_ref",
+    "report_digest",
+    "paper_comparator",
+    "paper_evaluation_protocol_digest",
+    "arms",
+    "committed_at",
+    "schedule_digest",
+    "paper_evaluation_scheduling_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_paper_schedule" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_paper_schedule_id) ||
+    !comparisonRef(value.campaign_ref, "research_control_campaign") ||
+    !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !comparisonRef(value.report_ref, "research_control_campaign_report") ||
+    !researchControlCampaignSha256Digest(value.report_digest) ||
+    !researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) || value.paper_comparator.comparator_status !== "trading_review" ||
+    !researchControlCampaignSha256Digest(
+      value.paper_evaluation_protocol_digest
+    ) || !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    !comparisonIso(value.committed_at) ||
+    !researchControlCampaignSha256Digest(value.schedule_digest) ||
+    value.paper_evaluation_scheduling_authority !== true ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+
+  const schedule = value as unknown as ResearchControlCampaignPaperScheduleRecord;
+  if (!researchControlCampaignPaperScheduleArmHasRuntimeShape(
+    schedule.arms[0],
+    "adaptive_treatment"
+  ) || !researchControlCampaignPaperScheduleArmHasRuntimeShape(
+    schedule.arms[1],
+    "static_control"
+  ) || schedule.arms[0].slots.length !== schedule.arms[1].slots.length) {
+    return false;
+  }
+
+  const slots = schedule.arms.flatMap((arm) => arm.slots);
+  const candidateSlots = slots.filter(
+    (slot): slot is Extract<
+      ResearchControlCampaignPaperScheduleSlot,
+      { slot_status: "candidate_scheduled" }
+    > => slot.slot_status === "candidate_scheduled"
+  );
+  return candidateArenaAllocationStringsUnique(
+    slots.map((slot) => slot.tick_ref.id)
+  ) && candidateArenaAllocationStringsUnique(
+    candidateSlots.map((slot) => slot.source_comparison_idempotency_key)
+  ) && candidateArenaAllocationStringsUnique(
+    candidateSlots.map((slot) => slot.source_preparation_id)
+  ) && candidateArenaAllocationStringsUnique(
+    candidateSlots.map((slot) => slot.source_comparison_commitment_id)
+  ) && new Set(candidateSlots.map(
+    (slot) => slot.maximum_source_start_delay_ms
+  )).size <= 1;
+}
+
+export function researchControlCampaignPaperStartBatchHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperStartBatchRecord {
+  if (!comparisonObject(value)) return false;
+  const ready = value.batch_status === "single_ready" ||
+    value.batch_status === "paired_ready";
+  const exactKeys = [
+    "record_kind",
+    "version",
+    "research_control_campaign_paper_start_batch_id",
+    "schedule_ref",
+    "schedule_digest",
+    "sequence",
+    "batch_status",
+    "sides",
+    "source_start_deadline_at",
+    ...(ready ? [
+      "shared_market_snapshot_digest",
+      "shared_public_execution_snapshot_digest"
+    ] : ["ineligible_reason"]),
+    "evaluated_at",
+    "start_batch_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ];
+  if (!comparisonHasExactKeys(value, exactKeys) ||
+    value.record_kind !== "research_control_campaign_paper_start_batch" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_paper_start_batch_id) ||
+    !comparisonRef(
+      value.schedule_ref,
+      "research_control_campaign_paper_schedule"
+    ) || !researchControlCampaignSha256Digest(value.schedule_digest) ||
+    !comparisonPositive(value.sequence) || value.sequence > 5 ||
+    !Array.isArray(value.sides) || value.sides.length < 1 ||
+    value.sides.length > 2 ||
+    !comparisonIso(value.source_start_deadline_at) ||
+    !comparisonIso(value.evaluated_at) ||
+    !researchControlCampaignSha256Digest(value.start_batch_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  const batch = value as unknown as ResearchControlCampaignPaperStartBatchRecord;
+  if (!batch.sides.every(
+    researchControlCampaignPaperStartBatchSideHasRuntimeShape
+  )) return false;
+  const expectedArms = batch.sides.length === 1
+    ? [batch.sides[0]!.arm_kind]
+    : ["adaptive_treatment", "static_control"];
+  if (!batch.sides.every((side, index) =>
+    side.arm_kind === expectedArms[index]
+  ) || !candidateArenaAllocationStringsUnique(
+    batch.sides.map((side) => side.source_comparison_ref.id)
+  )) return false;
+  const completeSides = batch.sides.filter((side) => side.first_tick_ref);
+  if (!candidateArenaAllocationStringsUnique(
+    completeSides.map((side) => side.first_tick_ref!.id)
+  )) return false;
+  const evaluatedMs = Date.parse(batch.evaluated_at);
+  const deadlineMs = Date.parse(batch.source_start_deadline_at);
+  const latestTickMs = Math.max(...completeSides.map((side) =>
+    Date.parse(side.first_tick_observed_at!)), Number.NEGATIVE_INFINITY);
+
+  if (batch.batch_status === "single_ready" ||
+    batch.batch_status === "paired_ready") {
+    const expectedSideCount = batch.batch_status === "single_ready" ? 1 : 2;
+    return batch.sides.length === expectedSideCount &&
+      completeSides.length === expectedSideCount &&
+      researchControlCampaignSha256Digest(
+        batch.shared_market_snapshot_digest
+      ) && researchControlCampaignSha256Digest(
+        batch.shared_public_execution_snapshot_digest
+      ) && latestTickMs <= deadlineMs && evaluatedMs >= latestTickMs;
+  }
+  if (batch.batch_status !== "ineligible") return false;
+  if (batch.ineligible_reason === "first_tick_incomplete") {
+    return completeSides.length < batch.sides.length && evaluatedMs >= deadlineMs &&
+      evaluatedMs >= latestTickMs;
+  }
+  if (batch.ineligible_reason === "cross_arm_first_tick_mismatch") {
+    return batch.sides.length === 2 && completeSides.length === 2 &&
+      latestTickMs <= deadlineMs && evaluatedMs >= latestTickMs;
+  }
+  return batch.ineligible_reason === "source_start_deadline_missed" &&
+    completeSides.length === batch.sides.length && latestTickMs > deadlineMs &&
+    evaluatedMs >= latestTickMs;
+}
+
+export function researchControlCampaignPaperSlotOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperSlotOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_paper_slot_outcome_id",
+    "schedule_ref",
+    "schedule_digest",
+    "arm_kind",
+    "sequence",
+    "tick_ref",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "admission_decision_ref",
+    "source_comparison_idempotency_key",
+    "source_preparation_id",
+    "source_comparison_commitment_id",
+    "terminal_evidence",
+    "terminal_at",
+    "slot_outcome_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_paper_slot_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_paper_slot_outcome_id) ||
+    !comparisonRef(
+      value.schedule_ref,
+      "research_control_campaign_paper_schedule"
+    ) || !researchControlCampaignSha256Digest(value.schedule_digest) ||
+    !["adaptive_treatment", "static_control"].includes(
+      value.arm_kind as string
+    ) || !comparisonPositive(value.sequence) ||
+    !comparisonRef(value.tick_ref, "candidate_arena_tick") ||
+    !comparisonRef(value.candidate_ref, "trading_system_candidate") ||
+    !comparisonRef(value.candidate_version_ref, "candidate_version") ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !researchControlCampaignSha256Digest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.admission_decision_ref, "candidate_admission_decision") ||
+    !comparisonString(value.source_comparison_idempotency_key) ||
+    !comparisonString(value.source_preparation_id) ||
+    !comparisonString(value.source_comparison_commitment_id) ||
+    !comparisonIso(value.terminal_at) ||
+    !researchControlCampaignPaperSlotTerminalEvidenceHasRuntimeShape(
+      value.terminal_evidence,
+      value.terminal_at
+    ) || !researchControlCampaignSha256Digest(value.slot_outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+  return true;
+}
+
+export function researchControlCampaignOutcomeHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_control_campaign_outcome_id",
+    "campaign_ref",
+    "campaign_digest",
+    "report_ref",
+    "report_digest",
+    "schedule_ref",
+    "schedule_digest",
+    "paper_comparator",
+    "shared_evaluation_policy_status",
+    "shared_evaluation_policy_digest",
+    "arms",
+    "observed_rate_difference",
+    "observed_result",
+    "causal_conclusion",
+    "policy_replacement_eligibility",
+    "next_action",
+    "adjudicated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "research_control_campaign_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(value.research_control_campaign_outcome_id) ||
+    !researchControlCampaignOutcomeRef(
+      value.campaign_ref,
+      "research_control_campaign"
+    ) || !researchControlCampaignSha256Digest(value.campaign_digest) ||
+    !researchControlCampaignOutcomeRef(
+      value.report_ref,
+      "research_control_campaign_report"
+    ) || !researchControlCampaignSha256Digest(value.report_digest) ||
+    !researchControlCampaignOutcomeRef(
+      value.schedule_ref,
+      "research_control_campaign_paper_schedule"
+    ) || !researchControlCampaignSha256Digest(value.schedule_digest) ||
+    !researchControlCampaignPaperComparatorHasRuntimeShape(
+      value.paper_comparator
+    ) || value.paper_comparator.comparator_status !== "trading_review" ||
+    value.shared_evaluation_policy_status !== "bound" ||
+    !researchControlCampaignSha256Digest(
+      value.shared_evaluation_policy_digest
+    ) || !Array.isArray(value.arms) || value.arms.length !== 2 ||
+    !comparisonFinite(value.observed_rate_difference) ||
+    ![
+      "adaptive_rate_higher",
+      "rates_equal",
+      "static_rate_higher"
+    ].includes(value.observed_result as string) ||
+    value.causal_conclusion !== "single_campaign_observation_only" ||
+    value.policy_replacement_eligibility !== "not_eligible" ||
+    value.next_action !== "accumulate_replicated_control_campaigns" ||
+    !comparisonIso(value.adjudicated_at) ||
+    !researchControlCampaignSha256Digest(value.outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "not_live") {
+    return false;
+  }
+
+  const outcome = value as unknown as ResearchControlCampaignOutcomeRecord;
+  if (!researchControlCampaignOutcomeArmHasRuntimeShape(
+    outcome.arms[0],
+    "adaptive_treatment",
+    "adaptive_default"
+  ) || !researchControlCampaignOutcomeArmHasRuntimeShape(
+    outcome.arms[1],
+    "static_control",
+    "static_control"
+  ) || outcome.arms[0].metrics.slot_count !==
+      outcome.arms[1].metrics.slot_count) {
+    return false;
+  }
+
+  const adaptiveRate = outcome.arms[0].metrics.qualified_discovery_rate;
+  const staticRate = outcome.arms[1].metrics.qualified_discovery_rate;
+  const difference = comparisonRound6(adaptiveRate - staticRate);
+  const expectedResult = difference > 0
+    ? "adaptive_rate_higher"
+    : difference < 0
+    ? "static_rate_higher"
+    : "rates_equal";
+  if (outcome.observed_rate_difference !== difference ||
+    outcome.observed_result !== expectedResult) {
+    return false;
+  }
+
+  const slots = outcome.arms.flatMap((arm) => arm.slot_results);
+  const paperSlots = slots.filter(
+    (slot): slot is Extract<
+      ResearchControlCampaignOutcomeSlotResult,
+      { terminal_status: ResearchControlCampaignOutcomeTerminalStatus }
+    > => slot.terminal_status !== "no_admitted_candidate"
+  );
+  return researchControlCampaignOutcomeRefsUnique(
+    slots.map((slot) => slot.tick_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.candidate_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.candidate_version_ref)
+  ) && researchControlCampaignOutcomeRefsUnique(
+    paperSlots.map((slot) => slot.paper_slot_outcome_ref)
+  );
+}
+
+function researchControlCampaignOutcomeArmHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control"
+): value is ResearchControlCampaignOutcomeArm {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "slot_results",
+    "metrics"
+  ]) || value.arm_kind !== armKind || value.allocation_mode !== allocationMode ||
+    !Array.isArray(value.slot_results) || value.slot_results.length < 1 ||
+    value.slot_results.length > 5 || !value.slot_results.every(
+      (slot, index) =>
+        researchControlCampaignOutcomeSlotHasRuntimeShape(slot, index + 1)
+    ) || !researchControlCampaignOutcomeMetricsHasRuntimeShape(
+      value.metrics,
+      value.slot_results as ResearchControlCampaignOutcomeSlotResult[]
+    )) {
+    return false;
+  }
+  return true;
+}
+
+function researchControlCampaignOutcomeSlotHasRuntimeShape(
+  value: unknown,
+  sequence: number
+): value is ResearchControlCampaignOutcomeSlotResult {
+  if (!comparisonObject(value) || value.terminal_status ===
+      "no_admitted_candidate") {
+    return comparisonObject(value) && comparisonHasExactKeys(value, [
+      "sequence",
+      "tick_ref",
+      "terminal_status",
+      "discovery_credit"
+    ]) && value.sequence === sequence && researchControlCampaignOutcomeRef(
+      value.tick_ref,
+      "candidate_arena_tick"
+    ) && value.terminal_status === "no_admitted_candidate" &&
+      value.discovery_credit === 0;
+  }
+
+  if (!comparisonHasExactKeys(value, [
+    "sequence",
+    "tick_ref",
+    "terminal_status",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "paper_slot_outcome_ref",
+    "paper_slot_outcome_digest",
+    "discovery_credit"
+  ]) || value.sequence !== sequence || !researchControlCampaignOutcomeRef(
+    value.tick_ref,
+    "candidate_arena_tick"
+  ) || !researchControlCampaignOutcomeRef(
+    value.candidate_ref,
+    "trading_system_candidate"
+  ) || !researchControlCampaignOutcomeRef(
+    value.candidate_version_ref,
+    "candidate_version"
+  ) || !researchControlCampaignOutcomeRef(
+    value.system_code_ref,
+    "system_code"
+  ) || !researchControlCampaignSha256Digest(
+    value.system_code_artifact_digest
+  ) || !researchControlCampaignOutcomeRef(
+    value.paper_slot_outcome_ref,
+    "research_control_campaign_paper_slot_outcome"
+  ) || !researchControlCampaignSha256Digest(
+    value.paper_slot_outcome_digest
+  )) {
+    return false;
+  }
+
+  return [
+    "source_not_improved",
+    "qualified_improvement",
+    "not_reproduced",
+    "evidence_ineligible",
+    "paper_slot_expired"
+  ].includes(value.terminal_status as string) && value.discovery_credit ===
+    (value.terminal_status === "qualified_improvement" ? 1 : 0);
+}
+
+function researchControlCampaignOutcomeMetricsHasRuntimeShape(
+  value: unknown,
+  slots: readonly ResearchControlCampaignOutcomeSlotResult[]
+): value is ResearchControlCampaignOutcomeArmMetrics {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_count",
+    "admitted_candidate_slot_count",
+    "no_admitted_candidate_count",
+    "qualified_discovery_count",
+    "source_not_improved_count",
+    "not_reproduced_count",
+    "evidence_ineligible_count",
+    "paper_slot_expired_count",
+    "qualified_discovery_rate"
+  ]) || ![
+    value.slot_count,
+    value.admitted_candidate_slot_count,
+    value.no_admitted_candidate_count,
+    value.qualified_discovery_count,
+    value.source_not_improved_count,
+    value.not_reproduced_count,
+    value.evidence_ineligible_count,
+    value.paper_slot_expired_count
+  ].every(comparisonNonNegative) ||
+    !comparisonNonNegativeFinite(value.qualified_discovery_rate) ||
+    value.qualified_discovery_rate > 1) {
+    return false;
+  }
+
+  const metrics = value as unknown as ResearchControlCampaignOutcomeArmMetrics;
+  const count = (status: ResearchControlCampaignOutcomeSlotResult["terminal_status"]) =>
+    slots.filter((slot) => slot.terminal_status === status).length;
+  const noCandidateCount = count("no_admitted_candidate");
+  const qualifiedCount = count("qualified_improvement");
+  const sourceNotImprovedCount = count("source_not_improved");
+  const notReproducedCount = count("not_reproduced");
+  const evidenceIneligibleCount = count("evidence_ineligible");
+  const expiredCount = count("paper_slot_expired");
+  return metrics.slot_count === slots.length &&
+    metrics.admitted_candidate_slot_count === slots.length - noCandidateCount &&
+    metrics.no_admitted_candidate_count === noCandidateCount &&
+    metrics.qualified_discovery_count === qualifiedCount &&
+    metrics.source_not_improved_count === sourceNotImprovedCount &&
+    metrics.not_reproduced_count === notReproducedCount &&
+    metrics.evidence_ineligible_count === evidenceIneligibleCount &&
+    metrics.paper_slot_expired_count === expiredCount &&
+    metrics.admitted_candidate_slot_count === qualifiedCount +
+      sourceNotImprovedCount + notReproducedCount + evidenceIneligibleCount +
+      expiredCount &&
+    metrics.qualified_discovery_rate === comparisonRound6(
+      qualifiedCount / slots.length
+    );
+}
+
+function researchControlCampaignOutcomeRef(
+  value: unknown,
+  kind: string
+): value is Ref {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "record_kind",
+    "id"
+  ]) && comparisonRef(value, kind);
+}
+
+function researchControlCampaignOutcomeRefsUnique(
+  refs: readonly Ref[]
+): boolean {
+  return candidateArenaAllocationStringsUnique(
+    refs.map((ref) => `${ref.record_kind}:${ref.id}`)
+  );
+}
+
+function researchExperimentBaselineHasRuntimeShape(
+  value: unknown
+): value is ResearchExperimentBaselineSnapshot {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "protocol_version",
+    "snapshot_digest",
+    "regular_file_count",
+    "total_bytes",
+    "exclusion_policy"
+  ]) && value.protocol_version === "local_store_regular_files_v1" &&
+    researchControlCampaignSha256Digest(value.snapshot_digest) &&
+    comparisonPositive(value.regular_file_count) &&
+    comparisonPositive(value.total_bytes) &&
+    (value.exclusion_policy === "research_control_campaign_evidence_only" ||
+      value.exclusion_policy === "research_experiment_evidence_only");
+}
+
+function researchExperimentSourceHasRuntimeShape(
+  value: unknown
+): value is ResearchExperimentSource {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "system_code_record_digest",
+    "research_artifact_protocol",
+    "research_artifact_closure_digest"
+  ]) && comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.system_code_ref, "system_code") &&
+    comparisonDigest(value.system_code_artifact_digest) &&
+    researchControlCampaignSha256Digest(value.system_code_record_digest) &&
+    value.research_artifact_protocol === "single_file_python_v1" &&
+    researchControlCampaignSha256Digest(value.research_artifact_closure_digest);
+}
+
+function researchExperimentAgentHasRuntimeShape(
+  value: unknown
+): value is ResearchExperimentAgentIdentity {
+  if (!comparisonObject(value)) return false;
+  const keys = [
+    "provider",
+    ...(value.model !== undefined ? ["model"] : []),
+    "permission_policy",
+    "identity_digest"
+  ];
+  if (!comparisonHasExactKeys(value, keys) || ![
+    "codex",
+    "fixture",
+    "claude_code"
+  ].includes(value.provider as string) ||
+    (value.model !== undefined && !comparisonString(value.model)) ||
+    !researchControlCampaignSha256Digest(value.identity_digest)) {
+    return false;
+  }
+  return value.provider === "fixture"
+    ? value.permission_policy === "fixture_only"
+    : value.permission_policy === "artifact_workspace_only";
+}
+
+function researchControlCampaignPaperComparatorHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperComparator {
+  if (!comparisonObject(value)) return false;
+  if (value.comparator_status === "unavailable") {
+    return comparisonHasExactKeys(value, [
+      "comparator_status",
+      "reason"
+    ]) && value.reason === "no_trading_promotion_at_commitment";
+  }
+  return value.comparator_status === "trading_review" &&
+    comparisonHasExactKeys(value, [
+      "comparator_status",
+      "trading_promotion_ref",
+      "trading_promotion_digest",
+      "candidate_ref",
+      "candidate_version_ref",
+      "paper_trading_evaluation_ref"
+    ]) && comparisonRef(value.trading_promotion_ref, "trading_promotion") &&
+    researchControlCampaignSha256Digest(value.trading_promotion_digest) &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(
+      value.paper_trading_evaluation_ref,
+      "paper_trading_evaluation"
+    );
+}
+
+function researchControlCampaignPaperEvaluationProtocolHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperEvaluationProtocol {
+  if (!comparisonObject(value)) return false;
+  if (value.protocol_status === "unavailable") {
+    return comparisonHasExactKeys(value, [
+      "protocol_status",
+      "reason"
+    ]) && [
+      "no_trading_promotion_at_commitment",
+      "paper_configuration_unavailable_at_commitment"
+    ].includes(value.reason as string);
+  }
+  if (value.protocol_status !== "bound" || !comparisonHasExactKeys(value, [
+    "protocol_status",
+    "comparison_policy",
+    "market_data_configuration_digest",
+    "paper_policy_identity",
+    "schedule_policy",
+    "protocol_digest"
+  ]) || !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy) ||
+    value.comparison_policy.comparison_mode !== "champion_challenge" ||
+    !researchControlCampaignSha256Digest(
+      value.market_data_configuration_digest
+    ) || !researchControlCampaignPaperPolicyIdentityHasRuntimeShape(
+      value.paper_policy_identity
+    ) || !researchControlCampaignPaperSchedulePolicyHasRuntimeShape(
+      value.schedule_policy,
+      value.comparison_policy
+    ) || !researchControlCampaignSha256Digest(value.protocol_digest)) {
+    return false;
+  }
+  return true;
+}
+
+function researchControlCampaignPaperPolicyIdentityHasRuntimeShape(
+  value: unknown
+): value is PaperTradingEvaluationPolicyIdentity {
+  const keys = [
+    "market_data_policy_version",
+    "gateway_policy_version",
+    "cost_policy_version",
+    "funding_policy_version",
+    "slippage_policy_version",
+    "fill_policy_version",
+    "risk_policy_version",
+    "paper_account_policy_version",
+    "decision_event_protocol_version",
+    "persistent_state_boundary_version"
+  ];
+  return comparisonObject(value) && comparisonHasExactKeys(value, keys) &&
+    keys.every((key) => comparisonString(value[key]));
+}
+
+function researchControlCampaignPaperSchedulePolicyHasRuntimeShape(
+  value: unknown,
+  comparisonPolicy: PaperTradingComparisonPolicy
+): value is ResearchControlCampaignPaperSchedulePolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "source_start_order",
+    "maximum_active_source_pairs",
+    "maximum_cross_arm_first_tick_skew_ms",
+    "source_missed_start_policy",
+    "confirmation_precommit_deadline_ms"
+  ]) && value.policy_version === "research-control-paper-schedule-v1" &&
+    value.source_start_order === "paired_by_sequence" &&
+    value.maximum_active_source_pairs === 2 &&
+    comparisonNonNegative(value.maximum_cross_arm_first_tick_skew_ms) &&
+    value.maximum_cross_arm_first_tick_skew_ms <=
+      comparisonPolicy.maximum_start_skew_ms &&
+    value.source_missed_start_policy === "slot_expired" &&
+    value.confirmation_precommit_deadline_ms ===
+      comparisonPolicy.maximum_elapsed_ms;
+}
+
+function researchControlCampaignPaperProtocolMatchesComparator(
+  protocol: ResearchControlCampaignPaperEvaluationProtocol,
+  comparator: ResearchControlCampaignPaperComparator
+): boolean {
+  if (comparator.comparator_status === "unavailable") {
+    return protocol.protocol_status === "unavailable" &&
+      protocol.reason === "no_trading_promotion_at_commitment";
+  }
+  return protocol.protocol_status === "bound" ||
+    protocol.reason === "paper_configuration_unavailable_at_commitment";
+}
+
+function researchControlCampaignArmHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control",
+  tickCount: number
+): value is ResearchControlCampaignArm {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "research_control_campaign_arm_intent_id",
+    "tick_ids"
+  ]) && value.arm_kind === armKind && value.allocation_mode === allocationMode &&
+    comparisonString(value.research_control_campaign_arm_intent_id) &&
+    stringArray(value.tick_ids) && value.tick_ids.length === tickCount;
+}
+
+function researchControlCampaignPolicyHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "tick_count_per_arm",
+    "worker_slot_count_per_tick",
+    "concurrency_limit_per_arm",
+    "maximum_total_development_submissions_per_tick",
+    "arm_execution_policy",
+    "maximum_baseline_regular_file_count",
+    "maximum_baseline_total_bytes",
+    "paper_candidate_slot_count_per_arm",
+    "paper_candidate_reservation_rule",
+    "primary_metric_kind",
+    "required_future_evidence"
+  ]) && value.policy_version === "research_control_campaign_v1" &&
+    comparisonPositive(value.tick_count_per_arm) && value.tick_count_per_arm <= 5 &&
+    value.worker_slot_count_per_tick === 3 &&
+    value.concurrency_limit_per_arm === 2 &&
+    value.maximum_total_development_submissions_per_tick === 5 &&
+    value.arm_execution_policy === "concurrent_per_sequence" &&
+    comparisonPositive(value.maximum_baseline_regular_file_count) &&
+    value.maximum_baseline_regular_file_count <= 100_000 &&
+    comparisonPositive(value.maximum_baseline_total_bytes) &&
+    value.maximum_baseline_total_bytes <= 1_000_000_000 &&
+    comparisonPositive(value.paper_candidate_slot_count_per_arm) &&
+    value.paper_candidate_reservation_rule ===
+      "first_admitted_per_tick_in_allocation_order" &&
+    value.primary_metric_kind ===
+      "prospective_qualified_candidate_discovery_rate" &&
+    value.required_future_evidence ===
+      "confirmed_comparison_research_release";
+}
+
+function researchControlCampaignArmModeMatches(
+  armKind: unknown,
+  allocationMode: unknown
+): boolean {
+  return armKind === "adaptive_treatment"
+    ? allocationMode === "adaptive_default"
+    : armKind === "static_control" && allocationMode === "static_control";
+}
+
+function researchControlCampaignDiagnosticsHasRuntimeShape(
+  value: unknown,
+  tickCount: number
+): value is ResearchControlCampaignDiagnostics {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "attempt_count",
+    "admitted_candidate_count",
+    "duplicate_count",
+    "quarantined_count",
+    "failed_count",
+    "provider_request_total",
+    "runner_command_total",
+    "scenario_count",
+    "elapsed_ms"
+  ]) || ![
+    value.attempt_count,
+    value.admitted_candidate_count,
+    value.duplicate_count,
+    value.quarantined_count,
+    value.failed_count,
+    value.provider_request_total,
+    value.runner_command_total,
+    value.scenario_count,
+    value.elapsed_ms
+  ].every(comparisonNonNegative)) {
+    return false;
+  }
+  const diagnostics = value as unknown as ResearchControlCampaignDiagnostics;
+  return diagnostics.attempt_count === tickCount * 3 &&
+    diagnostics.attempt_count === diagnostics.admitted_candidate_count +
+      diagnostics.duplicate_count + diagnostics.quarantined_count +
+      diagnostics.failed_count;
+}
+
+function researchControlCampaignPaperCandidateSlotHasRuntimeShape(
+  value: unknown,
+  sequence: number,
+  tickRef: Ref
+): value is ResearchControlCampaignPaperCandidateSlot {
+  if (!comparisonObject(value) || value.status === "no_admitted_candidate") {
+    return comparisonObject(value) && comparisonHasExactKeys(value, [
+      "sequence",
+      "tick_ref",
+      "status"
+    ]) && value.sequence === sequence &&
+      paperTradingComparisonRefsEqual(value.tick_ref, tickRef) &&
+      value.status === "no_admitted_candidate";
+  }
+  return comparisonHasExactKeys(value, [
+    "sequence",
+    "tick_ref",
+    "status",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "admission_decision_ref"
+  ]) && value.sequence === sequence &&
+    paperTradingComparisonRefsEqual(value.tick_ref, tickRef) &&
+    value.status === "candidate_reserved" &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.system_code_ref, "system_code") &&
+    researchControlCampaignSha256Digest(value.system_code_artifact_digest) &&
+    comparisonRef(value.admission_decision_ref, "candidate_admission_decision");
+}
+
+function researchControlCampaignPaperScheduleArmHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind
+): value is ResearchControlCampaignPaperScheduleArm {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "arm_kind",
+    "slots"
+  ]) && value.arm_kind === armKind && Array.isArray(value.slots) &&
+    value.slots.length >= 1 && value.slots.length <= 5 &&
+    value.slots.every((slot, index) =>
+      researchControlCampaignPaperScheduleSlotHasRuntimeShape(slot, index + 1)
+    );
+}
+
+function researchControlCampaignPaperScheduleSlotHasRuntimeShape(
+  value: unknown,
+  sequence: number
+): value is ResearchControlCampaignPaperScheduleSlot {
+  if (!comparisonObject(value) || value.slot_status === "no_admitted_candidate") {
+    return comparisonObject(value) && comparisonHasExactKeys(value, [
+      "sequence",
+      "tick_ref",
+      "slot_status"
+    ]) && value.sequence === sequence &&
+      comparisonRef(value.tick_ref, "candidate_arena_tick") &&
+      value.slot_status === "no_admitted_candidate";
+  }
+  return comparisonHasExactKeys(value, [
+    "sequence",
+    "tick_ref",
+    "slot_status",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "admission_decision_ref",
+    "source_comparison_idempotency_key",
+    "source_preparation_id",
+    "source_comparison_commitment_id",
+    "maximum_source_start_delay_ms"
+  ]) && value.sequence === sequence &&
+    comparisonRef(value.tick_ref, "candidate_arena_tick") &&
+    value.slot_status === "candidate_scheduled" &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.system_code_ref, "system_code") &&
+    researchControlCampaignSha256Digest(value.system_code_artifact_digest) &&
+    comparisonRef(value.admission_decision_ref, "candidate_admission_decision") &&
+    comparisonString(value.source_comparison_idempotency_key) &&
+    comparisonString(value.source_preparation_id) &&
+    comparisonString(value.source_comparison_commitment_id) &&
+    comparisonPositive(value.maximum_source_start_delay_ms);
+}
+
+function researchControlCampaignPaperStartBatchSideHasRuntimeShape(
+  value: unknown
+): value is ResearchControlCampaignPaperStartBatchSide {
+  if (!comparisonObject(value)) return false;
+  const hasTick = value.first_tick_ref !== undefined ||
+    value.first_tick_digest !== undefined ||
+    value.first_tick_observed_at !== undefined;
+  return comparisonHasExactKeys(value, [
+    "arm_kind",
+    "source_comparison_ref",
+    "source_comparison_digest",
+    ...(hasTick ? [
+      "first_tick_ref",
+      "first_tick_digest",
+      "first_tick_observed_at"
+    ] : [])
+  ]) && ["adaptive_treatment", "static_control"].includes(
+    value.arm_kind as string
+  ) && comparisonRef(
+    value.source_comparison_ref,
+    "paper_trading_comparison_commitment"
+  ) && researchControlCampaignSha256Digest(value.source_comparison_digest) &&
+    (!hasTick || comparisonRef(
+      value.first_tick_ref,
+      "paper_trading_comparison_tick"
+    ) && researchControlCampaignSha256Digest(value.first_tick_digest) &&
+      comparisonIso(value.first_tick_observed_at));
+}
+
+function researchControlCampaignPaperSlotTerminalEvidenceHasRuntimeShape(
+  value: unknown,
+  terminalAt: string
+): value is ResearchControlCampaignPaperSlotTerminalEvidence {
+  if (!comparisonObject(value) || !comparisonString(value.evidence_kind)) {
+    return false;
+  }
+  switch (value.evidence_kind) {
+    case "source_verdict":
+      return comparisonHasExactKeys(value, [
+        "evidence_kind",
+        "source_comparison_ref",
+        "source_comparison_digest",
+        "source_verdict_ref",
+        "source_verdict_digest",
+        "terminal_status"
+      ]) && comparisonRef(
+        value.source_comparison_ref,
+        "paper_trading_comparison_commitment"
+      ) && researchControlCampaignSha256Digest(
+        value.source_comparison_digest
+      ) && comparisonRef(
+        value.source_verdict_ref,
+        "paper_trading_comparison_verdict"
+      ) && researchControlCampaignSha256Digest(value.source_verdict_digest) &&
+        ["source_not_improved", "evidence_ineligible"].includes(
+          value.terminal_status as string
+        );
+    case "source_slot_expired":
+      return comparisonHasExactKeys(value, [
+        "evidence_kind",
+        "terminal_status",
+        "expired_at"
+      ]) && value.terminal_status === "paper_slot_expired" &&
+        comparisonIso(value.expired_at) && value.expired_at === terminalAt;
+    case "source_start_ineligible": {
+      if (!comparisonHasExactKeys(value, [
+        "evidence_kind",
+        "start_batch_ref",
+        "start_batch_digest",
+        "terminal_status",
+        "reason",
+        "persisted_first_tick_refs",
+        "persisted_first_tick_digests",
+        "evaluated_at"
+      ]) || value.terminal_status !== "evidence_ineligible" ||
+        ![
+          "first_tick_incomplete",
+          "cross_arm_first_tick_mismatch",
+          "source_start_deadline_missed"
+        ].includes(value.reason as string) ||
+        !comparisonRef(
+          value.start_batch_ref,
+          "research_control_campaign_paper_start_batch"
+        ) || !researchControlCampaignSha256Digest(value.start_batch_digest) ||
+        !Array.isArray(value.persisted_first_tick_refs) ||
+        !Array.isArray(value.persisted_first_tick_digests) ||
+        value.persisted_first_tick_refs.length !==
+          value.persisted_first_tick_digests.length ||
+        !value.persisted_first_tick_refs.every((ref) =>
+          comparisonRef(ref, "paper_trading_comparison_tick")
+        ) || !value.persisted_first_tick_digests.every(
+          researchControlCampaignSha256Digest
+        ) || !comparisonIso(value.evaluated_at) ||
+        value.evaluated_at !== terminalAt) {
+        return false;
+      }
+      const tickIds = (value.persisted_first_tick_refs as Ref[]).map(
+        (ref) => ref.id
+      );
+      if (!candidateArenaAllocationStringsUnique(tickIds)) return false;
+      if (value.reason === "first_tick_incomplete") return tickIds.length <= 1;
+      if (value.reason === "cross_arm_first_tick_mismatch") {
+        return tickIds.length === 2;
+      }
+      return tickIds.length >= 1 && tickIds.length <= 2;
+    }
+    case "confirmation_precommit_expired":
+      return comparisonHasExactKeys(value, [
+        "evidence_kind",
+        "source_comparison_ref",
+        "source_comparison_digest",
+        "source_verdict_ref",
+        "source_verdict_digest",
+        "terminal_status",
+        "expired_at"
+      ]) && comparisonRef(
+        value.source_comparison_ref,
+        "paper_trading_comparison_commitment"
+      ) && researchControlCampaignSha256Digest(
+        value.source_comparison_digest
+      ) && comparisonRef(
+        value.source_verdict_ref,
+        "paper_trading_comparison_verdict"
+      ) && researchControlCampaignSha256Digest(value.source_verdict_digest) &&
+        value.terminal_status === "paper_slot_expired" &&
+        comparisonIso(value.expired_at) && value.expired_at === terminalAt;
+    case "confirmation_release": {
+      if (!comparisonHasExactKeys(value, [
+        "evidence_kind",
+        "confirmation_campaign_ref",
+        "confirmation_campaign_digest",
+        "confirmation_outcome_ref",
+        "confirmation_outcome_digest",
+        "research_release_ref",
+        "research_release_digest",
+        "release_kind",
+        "terminal_status"
+      ]) || !comparisonRef(
+        value.confirmation_campaign_ref,
+        "paper_trading_comparison_confirmation_campaign"
+      ) || !researchControlCampaignSha256Digest(
+        value.confirmation_campaign_digest
+      ) || !comparisonRef(
+        value.confirmation_outcome_ref,
+        "paper_trading_comparison_confirmation_campaign_outcome"
+      ) || !researchControlCampaignSha256Digest(
+        value.confirmation_outcome_digest
+      ) || !comparisonRef(
+        value.research_release_ref,
+        "paper_trading_comparison_research_release"
+      ) || !researchControlCampaignSha256Digest(
+        value.research_release_digest
+      )) {
+        return false;
+      }
+      const terminalByRelease: Record<
+        PaperTradingComparisonResearchReleaseKind,
+        Exclude<
+          ResearchControlCampaignPaperSlotTerminalStatus,
+          "source_not_improved"
+        >
+      > = {
+        confirmed_improvement: "qualified_improvement",
+        challenger_not_reproduced: "not_reproduced",
+        comparison_evidence_ineligible: "evidence_ineligible",
+        campaign_slot_expired: "paper_slot_expired"
+      };
+      return comparisonString(value.release_kind) &&
+        value.release_kind in terminalByRelease &&
+        value.terminal_status === terminalByRelease[
+          value.release_kind as PaperTradingComparisonResearchReleaseKind
+        ];
+    }
+    default:
+      return false;
+  }
+}
+
+function researchControlCampaignArmReportHasRuntimeShape(
+  value: unknown,
+  armKind: ResearchControlCampaignArmKind,
+  allocationMode: "adaptive_default" | "static_control"
+): value is ResearchControlCampaignArmReport {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "arm_kind",
+    "allocation_mode",
+    "arm_intent_ref",
+    "arm_intent_digest",
+    "tick_refs",
+    "allocation_refs",
+    "diagnostics",
+    "population_diversity",
+    "paper_candidate_slots",
+    "final_store_snapshot_digest",
+    "completed_at",
+    "research_diagnostics_authority",
+    "promotion_authority",
+    "authority_status"
+  ]) || value.arm_kind !== armKind || value.allocation_mode !== allocationMode ||
+    !comparisonRef(
+      value.arm_intent_ref,
+      "research_control_campaign_arm_intent"
+    ) || !researchControlCampaignSha256Digest(value.arm_intent_digest) ||
+    !Array.isArray(value.tick_refs) || value.tick_refs.length < 1 ||
+    value.tick_refs.length > 5 || value.tick_refs.some((candidate) =>
+      !comparisonRef(candidate, "candidate_arena_tick")
+    ) || !Array.isArray(value.allocation_refs) ||
+    value.allocation_refs.length !== value.tick_refs.length ||
+    value.allocation_refs.some((candidate) =>
+      !comparisonRef(candidate, "candidate_arena_research_allocation")
+    ) || !researchControlCampaignDiagnosticsHasRuntimeShape(
+      value.diagnostics,
+      value.tick_refs.length
+    ) || !researchPopulationDiversityHasRuntimeShape(value.population_diversity) ||
+    !Array.isArray(value.paper_candidate_slots) ||
+    value.paper_candidate_slots.length !== value.tick_refs.length ||
+    !researchControlCampaignSha256Digest(value.final_store_snapshot_digest) ||
+    !comparisonIso(value.completed_at) ||
+    value.research_diagnostics_authority !== false ||
+    value.promotion_authority !== false ||
+    value.authority_status !== "not_promotion_authority") {
+    return false;
+  }
+  const arm = value as unknown as ResearchControlCampaignArmReport;
+  if (!candidateArenaAllocationStringsUnique(arm.tick_refs.map((ref) => ref.id)) ||
+    !candidateArenaAllocationStringsUnique(
+      arm.allocation_refs.map((ref) => ref.id)
+    ) || !arm.paper_candidate_slots.every((slot, index) =>
+      researchControlCampaignPaperCandidateSlotHasRuntimeShape(
+        slot,
+        index + 1,
+        arm.tick_refs[index]!
+      )
+    ) || arm.population_diversity.window_tick_count !== arm.tick_refs.length ||
+    arm.population_diversity.assigned_directions.sample_count !==
+      arm.diagnostics.attempt_count ||
+    arm.population_diversity.observed_behaviors.admitted_submission_count !==
+      arm.diagnostics.admitted_candidate_count ||
+    arm.population_diversity.observed_behaviors.exact_behavior_duplicate_count +
+      arm.population_diversity.observed_behaviors.artifact_duplicate_count >
+        arm.diagnostics.duplicate_count ||
+    arm.population_diversity.observed_behaviors.unavailable_fingerprint_count >
+      arm.diagnostics.quarantined_count) {
+    return false;
+  }
+  const reserved = arm.paper_candidate_slots.filter((slot) =>
+    slot.status === "candidate_reserved"
+  );
+  return reserved.length <= arm.diagnostics.admitted_candidate_count &&
+    candidateArenaAllocationStringsUnique(reserved.map((slot) =>
+      slot.candidate_version_ref.id
+    ));
+}
+
+function researchControlStudyExecutionLeaseOwnerHasRuntimeShape(
+  value: unknown
+): value is ResearchControlStudyExecutionLeaseOwner {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "server_instance_id",
+    "host_id",
+    "process_id",
+    "process_start_marker"
+  ]) && researchControlStudyExecutionLeaseCanonicalStringShape(
+    value.server_instance_id
+  ) && researchControlStudyExecutionLeaseCanonicalStringShape(value.host_id) &&
+    researchControlStudyExecutionLeasePositiveInteger(value.process_id) &&
+    researchControlStudyExecutionLeaseCanonicalStringShape(
+      value.process_start_marker
+    );
+}
+
+function researchControlStudyExecutionLeaseCanonicalStringShape(
+  value: unknown
+): value is string {
+  return comparisonString(value) && value.trim() === value;
+}
+
+function researchControlStudyExecutionLeasePositiveInteger(
+  value: unknown
+): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function researchControlStudyExecutionLeaseCanonicalString(
+  value: unknown
+): string {
+  if (!researchControlStudyExecutionLeaseCanonicalStringShape(value)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return value;
+}
+
+function researchControlStudyExecutionLeaseCanonicalTime(value: unknown): string {
+  const text = researchControlStudyExecutionLeaseCanonicalString(value);
+  if (!comparisonIso(text)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return text;
+}
+
+function researchControlStudyExecutionLeaseExpiry(
+  renewedAt: string,
+  leaseDurationMs: number
+): string {
+  const expiry = Date.parse(renewedAt) + leaseDurationMs;
+  if (!Number.isSafeInteger(expiry)) {
+    throw researchControlStudyExecutionLeaseInvalidDecision();
+  }
+  return new Date(expiry).toISOString();
+}
+
+function researchControlStudyExecutionLeaseId(
+  studyId: string,
+  leaseToken: string
+): string {
+  return `research-control-study-execution-lease-${
+    researchControlStudyExecutionLeaseSha256Hex(`${studyId}:${leaseToken}`)
+      .slice(0, 32)
+  }`;
+}
+
+function researchControlStudyExecutionLeaseExactDigest(
+  record: ResearchControlStudyExecutionLeaseRecord
+): string {
+  return `sha256:${researchControlStudyExecutionLeaseSha256Hex(
+    researchControlStudyExecutionLeaseDigestInput(record)
+  )}`;
+}
+
+function researchControlStudyExecutionLeasePendingDigest(): string {
+  return `sha256:${"0".repeat(64)}`;
+}
+
+function researchControlStudyExecutionLeaseInvalidDecision():
+  ResearchControlStudyExecutionLeaseDecisionError {
+  return new ResearchControlStudyExecutionLeaseDecisionError();
+}
+
+const RESEARCH_CONTROL_STUDY_EXECUTION_LEASE_SHA256_CONSTANTS = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]);
+
+function researchControlStudyExecutionLeaseRotateRight(
+  value: number,
+  bits: number
+): number {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+function researchControlStudyExecutionLeaseSha256Hex(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+  const data = new Uint8Array(paddedLength);
+  data.set(bytes);
+  data[bytes.length] = 0x80;
+  const view = new DataView(data.buffer);
+  const bitLength = bytes.length * 8;
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000));
+  view.setUint32(paddedLength - 4, bitLength >>> 0);
+  const hash = new Uint32Array([
+    0x6a09e667,
+    0xbb67ae85,
+    0x3c6ef372,
+    0xa54ff53a,
+    0x510e527f,
+    0x9b05688c,
+    0x1f83d9ab,
+    0x5be0cd19
+  ]);
+  const words = new Uint32Array(64);
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      words[index] = view.getUint32(offset + index * 4);
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const left = words[index - 15]!;
+      const right = words[index - 2]!;
+      const sigma0 = researchControlStudyExecutionLeaseRotateRight(left, 7) ^
+        researchControlStudyExecutionLeaseRotateRight(left, 18) ^ (left >>> 3);
+      const sigma1 = researchControlStudyExecutionLeaseRotateRight(right, 17) ^
+        researchControlStudyExecutionLeaseRotateRight(right, 19) ^ (right >>> 10);
+      words[index] = (words[index - 16]! + sigma0 + words[index - 7]! +
+        sigma1) >>> 0;
+    }
+    let a = hash[0]!;
+    let b = hash[1]!;
+    let c = hash[2]!;
+    let d = hash[3]!;
+    let e = hash[4]!;
+    let f = hash[5]!;
+    let g = hash[6]!;
+    let h = hash[7]!;
+    for (let index = 0; index < 64; index += 1) {
+      const sigma1 = researchControlStudyExecutionLeaseRotateRight(e, 6) ^
+        researchControlStudyExecutionLeaseRotateRight(e, 11) ^
+        researchControlStudyExecutionLeaseRotateRight(e, 25);
+      const choice = (e & f) ^ (~e & g);
+      const temporary1 = (h + sigma1 + choice +
+        RESEARCH_CONTROL_STUDY_EXECUTION_LEASE_SHA256_CONSTANTS[index]! +
+        words[index]!) >>> 0;
+      const sigma0 = researchControlStudyExecutionLeaseRotateRight(a, 2) ^
+        researchControlStudyExecutionLeaseRotateRight(a, 13) ^
+        researchControlStudyExecutionLeaseRotateRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temporary2 = (sigma0 + majority) >>> 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temporary1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temporary1 + temporary2) >>> 0;
+    }
+    hash[0] = (hash[0]! + a) >>> 0;
+    hash[1] = (hash[1]! + b) >>> 0;
+    hash[2] = (hash[2]! + c) >>> 0;
+    hash[3] = (hash[3]! + d) >>> 0;
+    hash[4] = (hash[4]! + e) >>> 0;
+    hash[5] = (hash[5]! + f) >>> 0;
+    hash[6] = (hash[6]! + g) >>> 0;
+    hash[7] = (hash[7]! + h) >>> 0;
+  }
+  return Array.from(hash, (word) => word.toString(16).padStart(8, "0")).join("");
+}
+
+function researchControlCampaignSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 }
 
 export type CandidateArenaTickSourceKind =
@@ -2509,6 +12537,7 @@ export type CandidateArenaFindingClusterMarketRegime =
   | "unknown";
 
 export type CandidateArenaFindingClusterBlockerGroupKind =
+  | "evidence_authority"
   | "evidence_window"
   | "runner_health"
   | "observation_quality"
@@ -2536,8 +12565,17 @@ export interface CandidateArenaTickDirectionResultReadModel {
   candidate_id?: string;
   finding?: string;
   error?: string;
+  admission_decision_id?: string;
+  admission_reason?: CandidateAdmissionReason;
   net_revenue_usdt?: number;
   research_efficiency?: CandidateArenaResearchEfficiencyReadModel;
+  research_preflight?: CandidateArenaResearchPreflightReadModel;
+  paper_handoff_conformance?: {
+    conformance_id: string;
+    status: PaperTradingHandoffConformanceStatus;
+    reason: PaperTradingHandoffConformanceReason;
+    authority_status: "research_only";
+  };
 }
 
 export interface CandidateArenaTickReadModel {
@@ -2548,6 +12586,7 @@ export interface CandidateArenaTickReadModel {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  research_allocation?: CandidateArenaResearchAllocationReadModel;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }
@@ -2562,6 +12601,8 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_refs: Ref[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  research_allocation_ref?: Ref;
+  research_allocation_digest?: string;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }
@@ -2574,10 +12615,138 @@ export interface CandidateArenaTickPaperTradingContinuationReadModel {
   authority_status: "not_live";
 }
 
+export type ResearchGeneralizationReadModelStatus =
+  | "not_started"
+  | "collecting"
+  | "awaiting_outcome"
+  | "closed";
+
+export type ResearchGeneralizationActiveProtocolNextAction =
+  | "collect_precommitted_studies"
+  | "complete_assigned_studies"
+  | "await_outcome_reconciliation";
+
+export interface ResearchGeneralizationConditionBlockProgressReadModel {
+  condition_block: ResearchGeneralizationMarketConditionBlock;
+  planned_study_count: number;
+  assigned_study_count: number;
+  terminal_study_count: number;
+}
+
+export interface ResearchGeneralizationActiveProtocolReadModel {
+  research_generalization_protocol_id: string;
+  committed_at: string;
+  collection_deadline_at: string;
+  status: "collecting" | "awaiting_outcome";
+  planned_study_count: number;
+  assigned_study_count: number;
+  terminal_study_count: number;
+  condition_blocks: ResearchGeneralizationConditionBlockProgressReadModel[];
+  next_action: ResearchGeneralizationActiveProtocolNextAction;
+  authority_status: "research_only";
+}
+
+export interface ResearchGeneralizationLatestOutcomeReadModel {
+  research_generalization_outcome_id: string;
+  research_generalization_protocol_id: string;
+  inference_status: ResearchGeneralizationOutcomeRecord["inference_status"];
+  adjudicated_at: string;
+  planned_study_count: number;
+  completed_study_count: number;
+  non_tied_study_count: number;
+  tied_study_count: number;
+  missing_study_count: number;
+  ineligible_study_count: number;
+  distinct_baseline_count: number;
+  equal_weight_mean_rate_difference: number | null;
+  exact_sign_test_p_value: number;
+  harmful_condition_blocks: ResearchGeneralizationMarketConditionBlock[];
+  policy_decision_eligibility:
+    ResearchGeneralizationOutcomeRecord["policy_decision_eligibility"];
+  next_action: ResearchGeneralizationOutcomeRecord["next_action"];
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "not_live";
+}
+
+export interface ResearchGeneralizationLatestPolicyDecisionReadModel {
+  research_generalization_policy_decision_id: string;
+  research_generalization_protocol_id: string;
+  research_generalization_outcome_id: string;
+  decision_status: ResearchGeneralizationPolicyDecisionRecord[
+    "decision_status"
+  ];
+  decision_reason: ResearchGeneralizationPolicyDecisionRecord[
+    "decision_reason"
+  ];
+  effective_default_mode: ResearchGeneralizationPolicyDecisionRecord[
+    "effective_default_mode"
+  ];
+  decided_at: string;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
+export type ResearchGeneralizationPolicyApplicationStatus =
+  | "awaiting_allocation"
+  | "allocated"
+  | "completed_tick";
+
+export interface ResearchGeneralizationPolicyApplicationLatestAllocationReadModel {
+  candidate_arena_research_allocation_id: string;
+  tick_id: string;
+  allocated_at: string;
+  completed_at: string | null;
+}
+
+export interface ResearchGeneralizationPolicyApplicationReadModel {
+  application_status: ResearchGeneralizationPolicyApplicationStatus;
+  allocation_count: number;
+  completed_tick_count: number;
+  latest_allocation:
+    ResearchGeneralizationPolicyApplicationLatestAllocationReadModel | null;
+}
+
+export interface ResearchGeneralizationEffectivePolicyDecisionReadModel {
+  research_generalization_policy_decision_id: string;
+  research_generalization_protocol_id: string;
+  research_generalization_outcome_id: string;
+  effective_default_mode: "adaptive_default";
+  decided_at: string;
+  application: ResearchGeneralizationPolicyApplicationReadModel;
+  research_policy_selection_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_policy_only";
+}
+
+export interface ResearchGeneralizationReadModel {
+  status: ResearchGeneralizationReadModelStatus;
+  protocol_count: number;
+  outcome_count: number;
+  active_protocol: ResearchGeneralizationActiveProtocolReadModel | null;
+  latest_outcome: ResearchGeneralizationLatestOutcomeReadModel | null;
+  latest_policy_decision:
+    ResearchGeneralizationLatestPolicyDecisionReadModel | null;
+  effective_policy_decision:
+    ResearchGeneralizationEffectivePolicyDecisionReadModel | null;
+  authority_status: "not_promotion_authority";
+}
+
 export interface CandidateArenaReadModel {
   arena_kind: "candidate_arena";
   runner_status: "running" | "stopped";
   tick_count: number;
+  research_generalization: ResearchGeneralizationReadModel;
+  research_population_diversity: ResearchPopulationDiversityReadModel;
   active_researchers: CandidateArenaResearcherReadModel[];
   leaderboard: CandidateArenaLeaderboardEntryReadModel[];
   latest_candidates: CandidateArenaLatestCandidateReadModel[];
@@ -3049,12 +13218,23 @@ export type PaperTradingEvaluationStatus =
   | "not_started"
   | "running"
   | "stopped"
-  | "failed";
+  | "failed"
+  | "invalidated";
+
+export type PaperTradingEvaluationFreezeStatus =
+  | "committed"
+  | "verified"
+  | "invalidated";
 
 export interface PaperTradingEvaluationReadModel {
   evaluation_kind: "paper_trading_evaluation";
   evaluation_id?: string;
   status: PaperTradingEvaluationStatus;
+  evidence_purpose?: PaperTradingEvidencePurpose;
+  commitment_id?: string;
+  commitment_digest?: string;
+  freeze_status?: PaperTradingEvaluationFreezeStatus;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   candidate_id?: string;
   candidate_version_id?: string;
   trading_run_id?: string;
@@ -3095,7 +13275,10 @@ export type PaperTradingPromotionGateStatus =
   | "collecting_paper_evidence"
   | "needs_resume"
   | "paper_evidence_recorded"
+  | "prospective_comparison_required"
   | "paper_failed"
+  | "not_qualification_evidence"
+  | "invalidated"
   | "not_evaluated";
 
 export type PaperTradingQualificationStatus =
@@ -3103,16 +13286,23 @@ export type PaperTradingQualificationStatus =
   | "qualified"
   | "needs_resume"
   | "blocked_by_quality"
-  | "paper_failed";
+  | "paper_failed"
+  | "not_qualification_evidence";
 
 export type PaperTradingQualificationReason =
   | "min_observation_count_not_met"
   | "min_elapsed_ms_not_met"
   | "runner_inactive_for_running_evaluation"
+  | "paper_observation_chain_incomplete"
+  | "paper_score_account_mismatch"
   | "failed_observation_ratio_exceeded"
   | "latest_market_snapshot_missing"
   | "fill_public_execution_evidence_missing"
-  | "paper_evaluation_failed";
+  | "paper_evaluation_failed"
+  | "evidence_purpose_not_qualification"
+  | "provider_identity_not_qualification_eligible"
+  | "paper_evaluation_commitment_missing"
+  | "paper_evaluation_invalidated";
 
 export interface PaperTradingLearningSummaryReadModel {
   rank?: number;
@@ -3207,6 +13397,11 @@ export interface PaperTradingBoardEntryReadModel {
   display_name: string;
   evaluation_id: string;
   status: PaperTradingEvaluationStatus;
+  evidence_purpose?: PaperTradingEvidencePurpose;
+  commitment_id?: string;
+  commitment_digest?: string;
+  freeze_status?: PaperTradingEvaluationFreezeStatus;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   runner_status: PaperTradingBoardRunnerStatus;
   promotion_gate_status: PaperTradingPromotionGateStatus;
   qualification_status: PaperTradingQualificationStatus;
@@ -3251,6 +13446,29 @@ export type TradingPromotionReadinessStatus =
   | "ready_to_promote"
   | "promoted_for_trading_review";
 
+export interface TradingPromotionComparisonConfirmation {
+  basis_kind: "paper_trading_comparison_confirmation";
+  campaign_ref: Ref;
+  campaign_digest: string;
+  campaign_outcome_ref: Ref;
+  campaign_outcome_digest: string;
+  final_verdict_ref: Ref;
+  final_verdict_digest: string;
+}
+
+export interface TradingPromotionComparisonConfirmationReadModel {
+  campaign_id: string;
+  campaign_outcome_id: string;
+  final_verdict_id: string;
+  required_window_count: number;
+  improved_window_count: number;
+  primary_metric: "net_revenue_usdt";
+  minimum_net_revenue_lift_usdt: number;
+  evaluated_at: string;
+  evaluation_authority: "external_to_trading_systems";
+  authority_status: "not_live";
+}
+
 export interface TradingPromotionRecord extends BaseRecord {
   record_kind: "trading_promotion";
   trading_promotion_id: string;
@@ -3258,6 +13476,7 @@ export interface TradingPromotionRecord extends BaseRecord {
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   paper_trading_evaluation_ref: Ref;
+  comparison_confirmation: TradingPromotionComparisonConfirmation;
   promoted_at: string;
   promoted_by_command_ref?: Ref;
   authority_status: "not_live";
@@ -3278,6 +13497,7 @@ export interface TradingPromotionReadModel {
   paper_profit_loss?: TradingProfitLossReadModel;
   runner_status?: PaperTradingBoardRunnerStatus;
   latest_failure_reason?: string;
+  comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   next_action: string;
   live_disabled_reason: "mlp_paper_only";
   authority_status: "not_live";
@@ -3297,6 +13517,7 @@ export type TradingReviewPacketBlocker =
   | "paper_required";
 
 export type TradingReviewPacketBlockerGroupKind =
+  | "evidence_authority"
   | "evidence_window"
   | "runner_health"
   | "observation_quality"
@@ -3388,6 +13609,7 @@ export interface TradingReviewPacketReadModel {
     evidence_window?: PaperTradingEvidenceWindowReadModel;
     qualification_reasons: PaperTradingQualificationReason[];
     blocker_groups: TradingReviewPacketBlockerGroup[];
+    comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   };
   provenance: {
     market_data_source?: PaperTradingMarketDataSourceKind;
@@ -3440,6 +13662,7 @@ export interface TradingReviewReadModel {
   paper_board_entry?: PaperTradingBoardEntryReadModel;
   runner_status?: PaperTradingBoardRunnerStatus;
   latest_failure_reason?: string;
+  comparison_confirmation?: TradingPromotionComparisonConfirmationReadModel;
   selected_candidate_id: string | null;
   selected_matches_trading_review: boolean;
   review_packet: TradingReviewPacketReadModel;
@@ -3642,10 +13865,41 @@ export type FixtureRecord =
   | ResearchDirectionRecord
   | ResearchWorkerRecord
   | ExperimentRunRecord
+  | ResearchPreflightCommitmentRecord
+  | ResearchBehaviorFingerprintRecord
+  | ResearchWorkerCheckpointRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
+  | PaperTradingHandoffConformanceRecord
+  | CandidateAdmissionDecisionRecord
+  | PaperTradingEvaluationCommitmentRecord
+  | PaperTradingComparisonPreparationRecord
+  | PaperTradingComparisonCommitmentRecord
+  | PaperTradingComparisonTickRecord
+  | PaperTradingComparisonTickDeliveryRecord
+  | PaperTradingComparisonTickAcknowledgementRecord
+  | PaperTradingComparisonActivationRecord
+  | PaperTradingComparisonActivationAttemptRecord
+  | PaperTradingComparisonActivationSideResultRecord
+  | PaperTradingComparisonActivationOutcomeRecord
+  | PaperTradingComparisonCheckpointAttemptRecord
+  | PaperTradingComparisonCheckpointOutcomeRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
+  | CandidateArenaResearchAllocationRecord
+  | ResearchControlCampaignRecord
+  | ResearchControlCampaignArmIntentRecord
+  | ResearchControlCampaignReportRecord
+  | ResearchControlCampaignPaperScheduleRecord
+  | ResearchControlCampaignPaperStartBatchRecord
+  | ResearchControlCampaignPaperSlotOutcomeRecord
+  | ResearchControlCampaignOutcomeRecord
+  | ResearchControlStudyRecord
+  | ResearchControlStudyOutcomeRecord
+  | ResearchMemoryControlStudyRecord
+  | ResearchMemoryControlPairOutcomeRecord
+  | ResearchMemoryControlStudyOutcomeRecord
+  | ResearchAllocationPolicyDecisionRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord
   | ResearcherProviderSelectionRecord

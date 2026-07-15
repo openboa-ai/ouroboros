@@ -1,0 +1,24 @@
+{
+  "record_kind": "execution_result",
+  "version": 1,
+  "execution_result_id": "execution-result-d8facbf41e509c48",
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-paper-session-e93aa57454db1fb1"
+  },
+  "order_request_ref": {
+    "record_kind": "order_request",
+    "id": "order-request-d8facbf41e509c48"
+  },
+  "gateway_result_ref": {
+    "record_kind": "gateway_result",
+    "id": "gateway-result-d8facbf41e509c48"
+  },
+  "stage": "paper",
+  "execution_mode": "host_local",
+  "venue_scope": "external_trading_api_fixture",
+  "status": "dry_run_recorded",
+  "result_reason": "dry_run_allowed",
+  "created_at": "2026-07-10T00:05:44.000Z",
+  "authority_status": "dry_run_only"
+}

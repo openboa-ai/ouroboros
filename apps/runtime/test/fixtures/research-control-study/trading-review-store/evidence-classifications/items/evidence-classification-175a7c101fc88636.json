@@ -1,0 +1,30 @@
+{
+  "record_kind": "evidence_classification",
+  "version": 1,
+  "evidence_classification_id": "evidence-classification-175a7c101fc88636",
+  "candidate_ref": {
+    "record_kind": "trading_system_candidate",
+    "id": "candidate-a651f33d54cbfec8"
+  },
+  "candidate_version_ref": {
+    "record_kind": "candidate_version",
+    "id": "candidate-version-a651f33d54cbfec8"
+  },
+  "evaluation_run_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "evaluation-run-a651f33d54cbfec8"
+  },
+  "classified_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "evaluation-run-a651f33d54cbfec8"
+  },
+  "classification_kind": "non_counted_evidence",
+  "classification_status": "not_counted",
+  "classification_reason": "no_external_evaluator",
+  "created_at": "2026-07-10T00:00:00.000Z",
+  "sealed_by_decision_ref": {
+    "record_kind": "evidence_sealing_decision",
+    "id": "evidence-sealing-decision-a651f33d54cbfec8"
+  },
+  "authority_status": "not_counted"
+}

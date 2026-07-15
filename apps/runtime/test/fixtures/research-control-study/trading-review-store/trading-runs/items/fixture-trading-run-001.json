@@ -1,0 +1,24 @@
+{
+  "record_kind": "trading_run",
+  "version": 1,
+  "trading_run_id": "fixture-trading-run-001",
+  "stage_binding_profile": "paper",
+  "runtime_lifecycle_status": "fixture_placeholder",
+  "placement_ref": {
+    "record_kind": "sandbox_placement",
+    "id": "fixture-sandbox-placement-001"
+  },
+  "hands_environment_ref": {
+    "record_kind": "hands_environment",
+    "id": "fixture-hands-environment-001"
+  },
+  "memory_surface_ref": {
+    "record_kind": "runtime_memory_surface",
+    "id": "fixture-runtime-memory-surface-001"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  },
+  "authority_status": "not_live"
+}

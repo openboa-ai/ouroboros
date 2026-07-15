@@ -1,0 +1,12 @@
+{
+  "record_kind": "agent_session",
+  "version": 1,
+  "agent_session_id": "agent-session-a651f33d54cbfec8",
+  "agent_spec_ref": {
+    "record_kind": "agent_spec",
+    "id": "agent-spec-a651f33d54cbfec8"
+  },
+  "provider_kind": "fixture_only",
+  "model": "confirmation-fixture",
+  "authority_status": "trace_only"
+}

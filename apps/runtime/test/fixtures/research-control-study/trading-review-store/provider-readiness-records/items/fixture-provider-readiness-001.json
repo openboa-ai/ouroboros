@@ -1,0 +1,7 @@
+{
+  "record_kind": "provider_readiness_record",
+  "version": 1,
+  "provider_readiness_record_id": "fixture-provider-readiness-001",
+  "provider_kind": "fixture_only",
+  "authority_status": "not_ready"
+}

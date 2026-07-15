@@ -1,0 +1,692 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
+  PAPER_TRADING_COMPARISON_ZERO_SCORE,
+  type CandidateInspectReadModel,
+  type LedgerInput,
+  type LedgerWriteOutcome,
+  type PaperTradingComparisonCheckpointAttemptRecord,
+  type PaperTradingComparisonTickAcknowledgementRecord,
+  type PaperTradingComparisonTickRecord,
+  type PaperTradingEvaluationRecord
+} from "@ouroboros/domain";
+import type { OuroborosStorePort } from "../../ports/store";
+import { createGatewayRuntimeBinding } from "../gateway/runtime-binding";
+import { preparePaperTradingComparisonCheckpointEvidence } from "./observation";
+
+describe("paper comparison checkpoint preparation", () => {
+  it("previews candidate-emitted order evidence without economic Store writes", async () => {
+    const fixture = preparationFixture([orderEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.ledger_inputs).toHaveLength(1);
+    expect(prepared.ledger_outcomes).toEqual([fixture.ledgerOutcome]);
+    expect(prepared.observation).toMatchObject({
+      status: "recorded",
+      paper_trading_comparison_tick_ref: fixture.attempt.tick_ref,
+      paper_trading_comparison_tick_digest: fixture.attempt.tick_digest,
+      paper_trading_comparison_checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: fixture.attempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      paper_trading_comparison_checkpoint_attempt_digest: fixture.attempt.attempt_digest,
+      decision: { decision_kind: "order_request" },
+      ledger_ref: {
+        record_kind: "ledger_chain",
+        id: fixture.ledgerOutcome.order_request.order_request_id
+      }
+    });
+    expect(prepared.evaluation.observation_count).toBe(1);
+    expect(prepared.evaluation.processed_trading_system_event_ids)
+      .toEqual(["checkpoint-order-1"]);
+    expect(prepared.consumed_event_count).toBe(1);
+    expect(fixture.store.previewLedger).toHaveBeenCalledTimes(1);
+    expect(fixture.store.recordLedger).not.toHaveBeenCalled();
+    expect(fixture.store.recordPaperTradingObservation).not.toHaveBeenCalled();
+    expect(fixture.marketData.readMarketSnapshot).not.toHaveBeenCalled();
+    expect(fixture.marketData.readPublicExecutionSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("records silence as no-order continuity without a synthesized decision", async () => {
+    const fixture = preparationFixture([]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.ledger_inputs).toEqual([]);
+    expect(prepared.ledger_outcomes).toEqual([]);
+    expect(prepared.observation.status).toBe("no_order");
+    expect(prepared.observation.decision).toBeUndefined();
+    expect(prepared.observation.ledger_ref).toBeUndefined();
+    expect(prepared.observation.score_delta).toEqual(PAPER_TRADING_COMPARISON_ZERO_SCORE);
+    expect(prepared.evaluation.paper_account_snapshot).toMatchObject({
+      wallet_balance_usdt: "10000",
+      realized_pnl_usdt: "0",
+      fee_paid_usdt: "0",
+      slippage_paid_usdt: "0",
+      funding_paid_usdt: "0",
+      position: {
+        side: "flat",
+        quantity: "0",
+        mark_price: "60000",
+        notional_usdt: "0"
+      }
+    });
+    expect(prepared.consumed_event_count).toBe(0);
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("consumes candidate hold as no-order continuity without a Ledger chain", async () => {
+    const fixture = preparationFixture([holdEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      status: "no_order",
+      decision: {
+        decision_kind: "hold",
+        reason: "candidate cadence hold"
+      },
+      processed_trading_system_event_ids: ["checkpoint-hold-1"]
+    });
+    expect(prepared.ledger_outcomes).toEqual([]);
+    expect(prepared.consumed_event_count).toBe(1);
+  });
+
+  it("accepts delivery event lineage through optional first-checkpoint preparation", async () => {
+    const fixture = preparationFixture([deliveryAttributedHoldEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      status: "no_order",
+      decision: {
+        decision_kind: "hold",
+        reason: "candidate attributed cadence hold"
+      },
+      processed_trading_system_event_ids: ["checkpoint-attributed-hold-1"]
+    });
+    expect(prepared.consumed_event_count).toBe(1);
+  });
+
+  it("turns partial delivery lineage into first-checkpoint negative evidence", async () => {
+    const fixture = preparationFixture([partialAttributionHoldEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      status: "failed",
+      failure_reason: "comparison_tick_delivery_attribution_invalid",
+      decision: {
+        decision_kind: "error",
+        reason: "comparison_tick_delivery_attribution_invalid"
+      }
+    });
+    expect(prepared.evaluation.status).toBe("failed");
+    expect(prepared.ledger_outcomes).toEqual([]);
+  });
+
+  it("records acknowledged silence as a causal sequence 2 no-order observation", async () => {
+    const fixture = repeatedPreparationFixture([]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      sequence: 2,
+      status: "no_order",
+      paper_trading_comparison_tick_acknowledgement_ref: {
+        id: fixture.acknowledgement
+          .paper_trading_comparison_tick_acknowledgement_id
+      },
+      paper_trading_comparison_tick_acknowledgement_digest:
+        fixture.acknowledgement.acknowledgement_digest
+    });
+    expect(prepared.observation.decision).toBeUndefined();
+    expect(prepared.evaluation.observation_count).toBe(2);
+    expect(prepared.consumed_event_count).toBe(0);
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("rejects sequence 2 preparation without its exact persisted acknowledgement", async () => {
+    const fixture = repeatedPreparationFixture([]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence({
+      ...fixture.input,
+      tickAcknowledgement: undefined
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_tick_acknowledgement_required"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale event delivery before sequence 2 Ledger preview", async () => {
+    const fixture = repeatedPreparationFixture([deliveryAttributedHoldEventLine()]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    )).rejects.toMatchObject({
+      code: "comparison_tick_delivery_attribution_invalid"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("rejects legacy acknowledgement-attributed events before sequence 2 Ledger preview", async () => {
+    const fixture = repeatedPreparationFixture([
+      acknowledgementAttributedHoldEventLine()
+    ]);
+
+    await expect(preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    )).rejects.toMatchObject({
+      code: "comparison_tick_delivery_attribution_invalid"
+    });
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("consumes an exactly delivered sequence 2 hold without Ledger evidence", async () => {
+    const fixture = repeatedPreparationFixture([]);
+    fixture.input.candidate = candidateWithLogs([
+      deliveryAttributedHoldEventLine({
+        id: fixture.acknowledgement.delivery_ref.id,
+        digest: fixture.acknowledgement.delivery_digest
+      })
+    ]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation).toMatchObject({
+      sequence: 2,
+      status: "no_order",
+      decision: { decision_kind: "hold" },
+      processed_trading_system_event_ids: ["checkpoint-attributed-hold-1"]
+    });
+    expect(prepared.consumed_event_count).toBe(1);
+    expect(fixture.store.previewLedger).not.toHaveBeenCalled();
+  });
+
+  it("turns a rejected candidate protocol event into paired negative evidence", async () => {
+    const fixture = preparationFixture([malformedOrderEventLine()]);
+
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence(
+      fixture.input
+    );
+
+    expect(prepared.observation.status).toBe("failed");
+    expect(prepared.observation.decision).toMatchObject({
+      decision_kind: "error",
+      reason: "forbidden_private_or_live_authority"
+    });
+    expect(prepared.observation.failure_reason)
+      .toBe("forbidden_private_or_live_authority");
+    expect(prepared.observation.cumulative_score)
+      .toEqual(PAPER_TRADING_COMPARISON_ZERO_SCORE);
+    expect(prepared.evaluation.status).toBe("failed");
+    expect(prepared.ledger_outcomes).toEqual([]);
+    expect(fixture.store.recordLedger).not.toHaveBeenCalled();
+    expect(fixture.store.recordPaperTradingObservation).not.toHaveBeenCalled();
+  });
+});
+
+function preparationFixture(lines: string[]) {
+  const tick = comparisonTick();
+  const attempt = checkpointAttempt(tick);
+  const evaluation = runningEvaluation();
+  const candidate = candidateWithLogs(lines);
+  const ledgerOutcome = previewedLedgerOutcome();
+  const store = {
+    previewLedger: vi.fn(async (_input: LedgerInput) => structuredClone(ledgerOutcome)),
+    recordLedger: vi.fn(),
+    recordPaperTradingObservation: vi.fn()
+  } as unknown as OuroborosStorePort;
+  const marketData = {
+    provider_kind: "binance_production_public_market_data" as const,
+    source_kind: "binance_production_public_hybrid" as const,
+    rest_base_url: "https://example.invalid",
+    required_endpoints: ["/fapi/v1/ticker/price"],
+    authority_status: "read_only" as const,
+    readMarketSnapshot: vi.fn(async () => {
+      throw new Error("underlying market read forbidden");
+    }),
+    readPublicExecutionSnapshot: vi.fn(async () => {
+      throw new Error("underlying execution read forbidden");
+    }),
+    readPublicMarketLivenessSurface: vi.fn(async () => {
+      throw new Error("liveness read forbidden");
+    })
+  };
+  const binding = createGatewayRuntimeBinding({ environment: "paper", marketData });
+  if (binding.status !== "enabled") throw new Error("paper binding disabled");
+  return {
+    attempt,
+    ledgerOutcome,
+    store,
+    marketData,
+    input: {
+      store,
+      role: "champion" as const,
+      candidate,
+      evaluation,
+      tick,
+      checkpointAttempt: attempt,
+      gatewayRuntimeBinding: binding,
+      intervalMs: 60_000
+    }
+  };
+}
+
+function repeatedPreparationFixture(lines: string[]) {
+  const fixture = preparationFixture(lines);
+  const firstTick = fixture.input.tick;
+  const tick: PaperTradingComparisonTickRecord = {
+    ...structuredClone(firstTick),
+    paper_trading_comparison_tick_id: "tick-2",
+    sequence: 2,
+    previous_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: firstTick.paper_trading_comparison_tick_id
+    },
+    previous_tick_digest: firstTick.tick_digest,
+    market_snapshot: {
+      ...structuredClone(firstTick.market_snapshot),
+      price: 60_100,
+      observed_at: "2026-07-11T00:01:01.000Z"
+    },
+    public_execution_snapshot: {
+      ...structuredClone(firstTick.public_execution_snapshot),
+      observed_at: "2026-07-11T00:01:01.000Z",
+      stream_marker: "second-tick"
+    },
+    observed_at: "2026-07-11T00:01:02.000Z",
+    tick_digest: "sha256:tick-2"
+  };
+  const evaluation: PaperTradingEvaluationRecord = {
+    ...structuredClone(fixture.input.evaluation),
+    observation_count: 1,
+    last_observed_at: firstTick.observed_at,
+    next_observation_at: tick.observed_at,
+    latest_public_execution_snapshot: structuredClone(
+      firstTick.public_execution_snapshot
+    )
+  };
+  const attempt: PaperTradingComparisonCheckpointAttemptRecord = {
+    ...structuredClone(fixture.attempt),
+    paper_trading_comparison_checkpoint_attempt_id: "checkpoint-attempt-2",
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: tick.tick_digest,
+    checkpoint_sequence: 2,
+    previous_checkpoint_outcome_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: "checkpoint-attempt-1-outcome"
+    },
+    previous_checkpoint_outcome_digest: "sha256:checkpoint-attempt-1-outcome",
+    champion: {
+      ...structuredClone(fixture.attempt.champion),
+      evaluation_record_digest: "sha256:evaluation-1",
+      observation_chain_digest: "sha256:observation-chain-1",
+      provider_request_count_before: 2
+    },
+    challenger: {
+      ...structuredClone(fixture.attempt.challenger),
+      evaluation_record_digest: "sha256:evaluation-challenger-1",
+      observation_chain_digest: "sha256:observation-chain-challenger-1",
+      provider_request_count_before: 2
+    },
+    attempted_at: "2026-07-11T00:01:03.000Z",
+    checkpoint_deadline_at: "2026-07-11T00:02:03.000Z",
+    attempt_digest: "sha256:checkpoint-attempt-2"
+  };
+  const acknowledgement: PaperTradingComparisonTickAcknowledgementRecord = {
+    record_kind: "paper_trading_comparison_tick_acknowledgement",
+    version: 1,
+    paper_trading_comparison_tick_acknowledgement_id: "ack-2",
+    delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
+      id: "delivery-2"
+    },
+    delivery_digest: "sha256:delivery-2",
+    paper_trading_comparison_activation_attempt_ref: {
+      ...attempt.paper_trading_comparison_activation_attempt_ref
+    },
+    paper_trading_comparison_activation_attempt_digest:
+      attempt.paper_trading_comparison_activation_attempt_digest,
+    role: "champion",
+    trading_run_ref: { ...attempt.champion.trading_run_ref },
+    tick_ref: { ...attempt.tick_ref },
+    tick_digest: attempt.tick_digest,
+    tick_sequence: 2,
+    provider_request_count_at_acknowledgement: 4,
+    endpoint: "POST /comparison/tick/ack",
+    acknowledged_at: "2026-07-11T00:01:05.000Z",
+    acknowledgement_digest: "sha256:acknowledgement-2",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  };
+  return {
+    ...fixture,
+    acknowledgement,
+    input: {
+      ...fixture.input,
+      evaluation,
+      tick,
+      checkpointAttempt: attempt,
+      tickAcknowledgement: acknowledgement
+    }
+  };
+}
+
+function candidateWithLogs(lines: string[]): CandidateInspectReadModel {
+  return {
+    candidate_id: "candidate-champion",
+    candidate_version: {
+      candidate_version_id: "version-champion"
+    },
+    runtime: {
+      sandbox: {
+        sandbox_id: "sandbox-champion",
+        logs: lines.length > 0 ? [{
+          captured_at: "2026-07-11T00:00:05.000Z",
+          lines
+        }] : []
+      }
+    }
+  } as unknown as CandidateInspectReadModel;
+}
+
+function runningEvaluation(): PaperTradingEvaluationRecord {
+  return {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: "evaluation-champion",
+    candidate_ref: { record_kind: "trading_system_candidate", id: "candidate-champion" },
+    candidate_version_ref: { record_kind: "candidate_version", id: "version-champion" },
+    trading_run_ref: { record_kind: "trading_run", id: "run-champion" },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: "commitment-champion"
+    },
+    status: "running",
+    interval_ms: 60_000,
+    observation_count: 0,
+    started_at: "2026-07-11T00:00:00.000Z",
+    next_observation_at: "2026-07-11T00:01:00.000Z",
+    latest_score: structuredClone(PAPER_TRADING_COMPARISON_ZERO_SCORE),
+    paper_account_snapshot: structuredClone(PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT),
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    authority_status: "not_live"
+  };
+}
+
+function comparisonTick(): PaperTradingComparisonTickRecord {
+  return {
+    record_kind: "paper_trading_comparison_tick",
+    version: 1,
+    paper_trading_comparison_tick_id: "tick-1",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: "comparison-1"
+    },
+    paper_trading_comparison_commitment_digest: "sha256:comparison",
+    sequence: 1,
+    market_data_configuration_digest: "sha256:market",
+    market_snapshot: {
+      symbol: "BTCUSDT",
+      price: 60_000,
+      moving_average_fast: 60_100,
+      moving_average_slow: 59_900,
+      volatility: 0.01,
+      expected_direction: "long",
+      observed_at: "2026-07-11T00:00:01.000Z",
+      source_kind: "binance_production_public_hybrid",
+      freshness: "fresh",
+      gap_detected: false,
+      authority_status: "read_only"
+    },
+    public_execution_snapshot: {
+      symbol: "BTCUSDT",
+      observed_at: "2026-07-11T00:00:01.000Z",
+      source_kind: "binance_production_public_hybrid",
+      freshness: "fresh",
+      gap_detected: false,
+      stream_marker: "first-tick",
+      agg_trades: [],
+      authority_status: "read_only"
+    },
+    observed_at: "2026-07-11T00:00:02.000Z",
+    tick_digest: "sha256:tick",
+    authority_status: "not_live"
+  };
+}
+
+function checkpointAttempt(
+  tick: PaperTradingComparisonTickRecord
+): PaperTradingComparisonCheckpointAttemptRecord {
+  return {
+    record_kind: "paper_trading_comparison_checkpoint_attempt",
+    version: 1,
+    paper_trading_comparison_checkpoint_attempt_id: "checkpoint-attempt-1",
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation",
+      id: "activation-1"
+    },
+    paper_trading_comparison_activation_digest: "sha256:activation",
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: "activation-attempt-1"
+    },
+    paper_trading_comparison_activation_attempt_digest: "sha256:activation-attempt",
+    activation_outcome_ref: {
+      record_kind: "paper_trading_comparison_activation_outcome",
+      id: "activation-outcome-1"
+    },
+    activation_outcome_digest: "sha256:activation-outcome",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: "comparison-1"
+    },
+    paper_trading_comparison_commitment_digest: "sha256:comparison",
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: tick.paper_trading_comparison_tick_id
+    },
+    tick_digest: tick.tick_digest,
+    checkpoint_sequence: 1,
+    champion: {
+      role: "champion",
+      trading_run_ref: { record_kind: "trading_run", id: "run-champion" },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: "evaluation-champion"
+      },
+      evaluation_record_digest: "sha256:evaluation",
+      observation_chain_digest: "sha256:observations",
+      provider_request_count_before: 0
+    },
+    challenger: {
+      role: "challenger",
+      trading_run_ref: { record_kind: "trading_run", id: "run-challenger" },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: "evaluation-challenger"
+      },
+      evaluation_record_digest: "sha256:evaluation-challenger",
+      observation_chain_digest: "sha256:observations-challenger",
+      provider_request_count_before: 0
+    },
+    attempted_at: "2026-07-11T00:00:03.000Z",
+    checkpoint_deadline_at: "2026-07-11T00:01:03.000Z",
+    attempt_status: "preparing",
+    attempt_digest: "sha256:checkpoint-attempt",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  };
+}
+
+function previewedLedgerOutcome(): LedgerWriteOutcome {
+  return {
+    candidate_id: "candidate-champion",
+    candidate_version_id: "version-champion",
+    runtime_id: "run-champion",
+    order_request: {
+      record_kind: "order_request",
+      version: 1,
+      order_request_id: "order-request-checkpoint-1",
+      runtime_ref: { record_kind: "trading_run", id: "run-champion" },
+      candidate_ref: { record_kind: "trading_system_candidate", id: "candidate-champion" },
+      candidate_version_ref: { record_kind: "candidate_version", id: "version-champion" },
+      stage_binding_ref: { record_kind: "stage_binding", id: "stage-paper" },
+      intent_kind: "place_order",
+      market_scope: "external_trading_api_fixture",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000",
+      status: "proposed",
+      created_at: "2026-07-11T00:00:01.000Z",
+      authority_status: "not_submitted"
+    },
+    gateway_result: {
+      record_kind: "gateway_result",
+      version: 1,
+      gateway_result_id: "gateway-result-checkpoint-1",
+      runtime_ref: { record_kind: "trading_run", id: "run-champion" },
+      order_request_ref: { record_kind: "order_request", id: "order-request-checkpoint-1" },
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      decided_at: "2026-07-11T00:00:01.000Z",
+      authority_status: "dry_run_only"
+    },
+    execution_result: {
+      record_kind: "execution_result",
+      version: 1,
+      execution_result_id: "execution-result-checkpoint-1",
+      runtime_ref: { record_kind: "trading_run", id: "run-champion" },
+      order_request_ref: { record_kind: "order_request", id: "order-request-checkpoint-1" },
+      gateway_result_ref: { record_kind: "gateway_result", id: "gateway-result-checkpoint-1" },
+      stage: "paper",
+      execution_mode: "host_local",
+      venue_scope: "external_trading_api_fixture",
+      status: "dry_run_recorded",
+      result_reason: "paper_stage_only",
+      created_at: "2026-07-11T00:00:01.000Z",
+      authority_status: "dry_run_only"
+    }
+  };
+}
+
+function orderEventLine(): string {
+  return JSON.stringify({
+    event: "order_request",
+    event_id: "checkpoint-order-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    intent_kind: "place_order",
+    symbol: "BTCUSDT",
+    side: "buy",
+    order_type: "limit",
+    quantity: "0.001",
+    limit_price: "60000",
+    reason: "candidate first-tick order"
+  });
+}
+
+function holdEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "candidate cadence hold"
+  });
+}
+
+function deliveryAttributedHoldEventLine(
+  attribution: { id: string; digest: string } = {
+    id: "delivery-1",
+    digest: "sha256:delivery-1"
+  }
+): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-attributed-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "candidate attributed cadence hold",
+    comparison_tick_delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
+      id: attribution.id
+    },
+    comparison_tick_delivery_digest: attribution.digest
+  });
+}
+
+function partialAttributionHoldEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-partial-attribution-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "candidate partial attribution hold",
+    comparison_tick_delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery",
+      id: "delivery-1"
+    }
+  });
+}
+
+function acknowledgementAttributedHoldEventLine(): string {
+  return JSON.stringify({
+    event: "hold",
+    event_id: "checkpoint-legacy-attribution-hold-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    reason: "legacy acknowledgement attribution must fail closed",
+    comparison_tick_acknowledgement_ref: {
+      record_kind: "paper_trading_comparison_tick_acknowledgement",
+      id: "ack-2"
+    },
+    comparison_tick_acknowledgement_digest: "sha256:acknowledgement-2"
+  });
+}
+
+function malformedOrderEventLine(): string {
+  return JSON.stringify({
+    event: "order_request",
+    event_id: "checkpoint-error-1",
+    instance_id: "sandbox-champion",
+    at: "2026-07-11T00:00:04.000Z",
+    authority_status: "trace_only",
+    intent_kind: "place_order",
+    symbol: "BTCUSDT",
+    side: "buy",
+    order_type: "limit",
+    quantity: "0.001",
+    limit_price: "60000",
+    api_key: "forbidden"
+  });
+}

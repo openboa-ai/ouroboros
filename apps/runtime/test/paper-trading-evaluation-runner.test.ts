@@ -58,6 +58,73 @@ describe("PaperTradingEvaluationRunner", () => {
     expect(drained).toBe(true);
   });
 
+  it("drains only the requested trading run", async () => {
+    const runner = new PaperTradingEvaluationRunner({ drainTimeoutMs: 50 });
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const firstStarted = deferred<void>();
+    const secondStarted = deferred<void>();
+
+    runner.start({
+      tradingRunId: "run-target",
+      intervalMs: 1000,
+      observe: async () => {
+        firstStarted.resolve();
+        await first.promise;
+      }
+    });
+    runner.start({
+      tradingRunId: "run-unrelated",
+      intervalMs: 1000,
+      observe: async () => {
+        secondStarted.resolve();
+        await second.promise;
+      }
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await Promise.all([firstStarted.promise, secondStarted.promise]);
+    runner.stop("run-target");
+    runner.stop("run-unrelated");
+
+    let targetResult: boolean | undefined;
+    const targetDrain = runner.drain("run-target").then((result) => {
+      targetResult = result;
+    });
+    first.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    const resultBeforeUnrelatedRelease = targetResult;
+
+    second.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    await targetDrain;
+
+    expect(resultBeforeUnrelatedRelease).toBe(true);
+  });
+
+  it("reports a bounded target-run drain timeout", async () => {
+    const runner = new PaperTradingEvaluationRunner({ drainTimeoutMs: 50 });
+    const blocked = deferred<void>();
+    const started = deferred<void>();
+    runner.start({
+      tradingRunId: "run-timeout",
+      intervalMs: 1000,
+      observe: async () => {
+        started.resolve();
+        await blocked.promise;
+      }
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await started.promise;
+    runner.stop("run-timeout");
+
+    const drain = runner.drain("run-timeout");
+    await vi.advanceTimersByTimeAsync(50);
+
+    await expect(drain).resolves.toBe(false);
+    blocked.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
   it("reports synchronous observe failures and keeps active runs scheduled", async () => {
     const runner = new PaperTradingEvaluationRunner();
     const error = new Error("sync_observe_failed");
@@ -77,3 +144,13 @@ describe("PaperTradingEvaluationRunner", () => {
     expect(observe).toHaveBeenCalledTimes(2);
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}

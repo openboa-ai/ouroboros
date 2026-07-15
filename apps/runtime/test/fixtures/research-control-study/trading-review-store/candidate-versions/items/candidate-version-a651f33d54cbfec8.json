@@ -1,0 +1,65 @@
+{
+  "record_kind": "candidate_version",
+  "version": 1,
+  "candidate_version_id": "candidate-version-a651f33d54cbfec8",
+  "candidate_id": "candidate-a651f33d54cbfec8",
+  "version_label": "materialized-v1",
+  "spec_ref": {
+    "record_kind": "trading_system_spec",
+    "id": "trading-system-spec-a651f33d54cbfec8"
+  },
+  "program_ref": {
+    "record_kind": "trading_system_program",
+    "id": "trading-system-program-a651f33d54cbfec8"
+  },
+  "capability_package_refs": [
+    {
+      "record_kind": "capability_package",
+      "id": "capability-package-a651f33d54cbfec8"
+    }
+  ],
+  "runtime_ref": {
+    "record_kind": "trading_run",
+    "id": "trading-run-a651f33d54cbfec8"
+  },
+  "trace_placeholder_ref": {
+    "record_kind": "trace_placeholder",
+    "id": "trace-confirmation"
+  },
+  "evaluation_run_ref": {
+    "record_kind": "evaluation_run_record",
+    "id": "evaluation-run-a651f33d54cbfec8"
+  },
+  "materialization_attempt_ref": {
+    "record_kind": "candidate_materialization_attempt",
+    "id": "candidate-materialization-attempt-a651f33d54cbfec8"
+  },
+  "agent_spec_ref": {
+    "record_kind": "agent_spec",
+    "id": "agent-spec-a651f33d54cbfec8"
+  },
+  "agent_session_ref": {
+    "record_kind": "agent_session",
+    "id": "agent-session-a651f33d54cbfec8"
+  },
+  "agent_run_ref": {
+    "record_kind": "agent_run",
+    "id": "agent-run-confirmation"
+  },
+  "agent_event_ref": {
+    "record_kind": "agent_event",
+    "id": "agent-event-confirmation"
+  },
+  "provider_readiness_ref": {
+    "record_kind": "provider_readiness_record",
+    "id": "provider-readiness-a651f33d54cbfec8"
+  },
+  "provider_probe_attempt_ref": {
+    "record_kind": "provider_probe_attempt",
+    "id": "provider-probe-a651f33d54cbfec8"
+  },
+  "system_code_ref": {
+    "record_kind": "system_code",
+    "id": "system-code-confirmation-challenger"
+  }
+}

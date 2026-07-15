@@ -104,6 +104,36 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Keys: r refresh");
   });
 
+  it.each([
+    ["awaiting_allocation", 0, 0],
+    ["allocated", 1, 0],
+    ["completed_tick", 1, 1]
+  ] as const)("renders %s research policy application without granting authority", (
+    applicationStatus,
+    allocationCount,
+    completedTickCount
+  ) => {
+    const operator = fixtureOperator();
+    operator.candidate_arena.research_generalization =
+      fixtureCollectingResearchGeneralization(applicationStatus);
+    const output = renderToString(
+      <OperatorTuiScreen
+        operator={operator}
+        cursor={0}
+      />
+    );
+
+    expect(output.replace(/\s+/g, " ")).toContain(
+      "Research generalization: collecting / protocols 2 / outcomes 1 / assigned 2/6 / terminal 1/6 / inference generalization_not_supported / latest decision not_approved / latest mode none / effective mode adaptive_default"
+    );
+    expect(output.replace(/\s+/g, " ")).toContain(
+      `application ${applicationStatus} / allocations ${allocationCount} / completed ticks ${completedTickCount}`
+    );
+    expect(output.replace(/\s+/g, " ")).toContain(
+      "next collect_precommitted_studies / not_promotion_authority"
+    );
+  });
+
   it("points failed promotion commands back to visible blocker surfaces", () => {
     const operator = fixtureOperator();
     operator.latest_commands = [{
@@ -297,6 +327,44 @@ function fixtureOperator(): OperatorReadModel {
       arena_kind: "candidate_arena",
       runner_status: "running",
       tick_count: 3,
+      research_generalization: {
+        status: "not_started",
+        protocol_count: 0,
+        outcome_count: 0,
+        active_protocol: null,
+        latest_outcome: null,
+        latest_policy_decision: null,
+        effective_policy_decision: null,
+        authority_status: "not_promotion_authority"
+      },
+      research_population_diversity: {
+        protocol_version: "research_population_diversity_v1",
+        window_tick_count: 0,
+        assigned_directions: {
+          measurement_status: "insufficient_evidence",
+          sample_count: 0,
+          unique_count: 0,
+          entropy_bits: 0,
+          normalized_entropy: 0
+        },
+        observed_behaviors: {
+          measurement_status: "insufficient_evidence",
+          sample_count: 0,
+          unique_count: 0,
+          entropy_bits: 0,
+          normalized_entropy: 0,
+          cohort_count: 0,
+          admitted_submission_count: 0,
+          exact_behavior_duplicate_count: 0,
+          artifact_duplicate_count: 0,
+          unavailable_fingerprint_count: 0
+        },
+        by_direction: [],
+        tick_series: [],
+        evaluation_authority: false,
+        promotion_authority: false,
+        authority_status: "not_promotion_authority"
+      },
       active_researchers: [],
       leaderboard: [
         {
@@ -802,5 +870,141 @@ function fixtureOperator(): OperatorReadModel {
     ],
     live_disabled: true,
     authority_status: "not_live"
+  };
+}
+
+function fixtureCollectingResearchGeneralization(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick" =
+    "completed_tick"
+):
+  OperatorReadModel["candidate_arena"]["research_generalization"] {
+  return {
+    status: "collecting",
+    protocol_count: 2,
+    outcome_count: 1,
+    active_protocol: {
+      research_generalization_protocol_id: "research-generalization-protocol-1",
+      committed_at: "2026-07-13T00:00:00.000Z",
+      collection_deadline_at: "2026-10-11T00:00:00.000Z",
+      status: "collecting",
+      planned_study_count: 6,
+      assigned_study_count: 2,
+      terminal_study_count: 1,
+      condition_blocks: [
+        {
+          condition_block: "long",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 1
+        },
+        {
+          condition_block: "short",
+          planned_study_count: 2,
+          assigned_study_count: 1,
+          terminal_study_count: 0
+        },
+        {
+          condition_block: "flat",
+          planned_study_count: 2,
+          assigned_study_count: 0,
+          terminal_study_count: 0
+        }
+      ],
+      next_action: "collect_precommitted_studies",
+      authority_status: "research_only"
+    },
+    latest_outcome: fixtureLatestResearchGeneralizationOutcome(),
+    latest_policy_decision: fixtureLatestResearchGeneralizationPolicyDecision(),
+    effective_policy_decision:
+      fixtureEffectiveResearchGeneralizationPolicyDecision(applicationStatus),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function fixtureLatestResearchGeneralizationOutcome(): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["latest_outcome"]
+> {
+  return {
+    research_generalization_outcome_id: "research-generalization-outcome-latest",
+    research_generalization_protocol_id: "research-generalization-protocol-closed",
+    inference_status: "generalization_not_supported",
+    adjudicated_at: "2026-07-12T00:00:00.000Z",
+    planned_study_count: 6,
+    completed_study_count: 6,
+    non_tied_study_count: 5,
+    tied_study_count: 1,
+    missing_study_count: 0,
+    ineligible_study_count: 0,
+    distinct_baseline_count: 4,
+    equal_weight_mean_rate_difference: -0.1,
+    exact_sign_test_p_value: 0.21875,
+    harmful_condition_blocks: ["flat"],
+    policy_decision_eligibility: "not_eligible",
+    next_action: "retain_negative_generalization_evidence",
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+}
+
+function fixtureLatestResearchGeneralizationPolicyDecision(): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["latest_policy_decision"]
+> {
+  return {
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-latest",
+    research_generalization_protocol_id: "research-generalization-protocol-closed",
+    research_generalization_outcome_id: "research-generalization-outcome-latest",
+    decision_status: "not_approved",
+    decision_reason: "generalization_outcome_not_eligible",
+    effective_default_mode: null,
+    decided_at: "2026-07-12T00:00:01.000Z",
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
+  };
+}
+
+function fixtureEffectiveResearchGeneralizationPolicyDecision(
+  applicationStatus: "awaiting_allocation" | "allocated" | "completed_tick"
+): NonNullable<
+  OperatorReadModel["candidate_arena"]["research_generalization"]["effective_policy_decision"]
+> {
+  const allocated = applicationStatus !== "awaiting_allocation";
+  const completed = applicationStatus === "completed_tick";
+  return {
+    research_generalization_policy_decision_id:
+      "research-generalization-policy-decision-effective",
+    research_generalization_protocol_id:
+      "research-generalization-protocol-effective",
+    research_generalization_outcome_id:
+      "research-generalization-outcome-effective",
+    effective_default_mode: "adaptive_default",
+    decided_at: "2026-06-12T00:00:01.000Z",
+    application: {
+      application_status: applicationStatus,
+      allocation_count: allocated ? 1 : 0,
+      completed_tick_count: completed ? 1 : 0,
+      latest_allocation: allocated
+        ? {
+            candidate_arena_research_allocation_id:
+              "candidate-arena-research-allocation-effective",
+            tick_id: "candidate-arena-tick-effective",
+            allocated_at: "2026-06-12T00:00:02.000Z",
+            completed_at: completed ? "2026-06-12T00:00:04.000Z" : null
+          }
+        : null
+    },
+    research_policy_selection_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_policy_only"
   };
 }

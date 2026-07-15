@@ -73,7 +73,7 @@ export function applyPaperTradingCheckpoint(
   input: PaperTradingEngineCheckpointInput
 ): PaperTradingEngineCheckpointResult {
   const previous = input.previous ?? initialPaperTradingEngineState();
-  const previousScore = scoreFromAccount(previous.account);
+  const previousScore = paperTradingScoreFromAccount(previous.account);
   let mutable = mutableState(previous, input.marketPrice);
   const processedEventIdsThisCheckpoint: string[] = [];
 
@@ -114,7 +114,7 @@ export function applyPaperTradingCheckpoint(
     order.status === "open" || order.status === "partially_filled"
   );
 
-  const score = scoreFromAccount(mutable.account);
+  const score = paperTradingScoreFromAccount(mutable.account);
   return {
     account: mutable.account,
     openOrders: mutable.openOrders,
@@ -492,17 +492,22 @@ function paperAccountSnapshot(input: {
   };
 }
 
-function scoreFromAccount(account: PaperTradingAccountSnapshot): TradingProfitLossReadModel {
+export function paperTradingScoreFromAccount(
+  account: PaperTradingAccountSnapshot,
+  initialEquityUsdt = PAPER_TRADING_ACCOUNT_EQUITY_USDT
+): TradingProfitLossReadModel {
   const revenue = parseDecimal(account.realized_pnl_usdt) + parseDecimal(account.unrealized_pnl_usdt);
   const cost = parseDecimal(account.fee_paid_usdt) +
     parseDecimal(account.slippage_paid_usdt) +
     parseDecimal(account.funding_paid_usdt);
-  const net = parseDecimal(account.equity_usdt) - PAPER_TRADING_ACCOUNT_EQUITY_USDT;
+  const roundedRevenue = roundProfit(revenue);
+  const roundedCost = roundProfit(cost);
+  const net = roundProfit(roundedRevenue - roundedCost);
   return {
-    revenue_usdt: roundProfit(revenue),
-    cost_usdt: roundProfit(cost),
-    net_revenue_usdt: roundProfit(net),
-    net_return_pct: roundProfit(net / PAPER_TRADING_ACCOUNT_EQUITY_USDT * 100)
+    revenue_usdt: roundedRevenue,
+    cost_usdt: roundedCost,
+    net_revenue_usdt: net,
+    net_return_pct: roundProfit(net / initialEquityUsdt * 100)
   };
 }
 

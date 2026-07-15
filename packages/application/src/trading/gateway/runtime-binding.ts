@@ -1,15 +1,23 @@
 import http from "node:http";
+import { paperTradingComparisonTickContextHasRuntimeShape } from "@ouroboros/domain";
 import type {
   GatewayResultAuthorityStatus,
   LedgerInput,
+  Ref,
   TradingRuntimeEnvironment
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import { recordPaperExecutionResult } from "./paper-execution";
-import { validateOrderRequest } from "../research/replay-trading-api-provider";
+import {
+  toReplayTradingCandidateInput,
+  toTradingApiAccountState,
+  toTradingApiMarketSnapshot,
+  validateOrderRequest
+} from "../research/replay-trading-api-provider";
 import type {
   AccountState,
   MarketSnapshot,
+  PaperTradingApiProviderComparisonTickHooks,
   ReplayTradingApiProviderSession,
   TradingProviderRequestLog
 } from "../research/types";
@@ -89,7 +97,24 @@ export interface PaperTradingApiProviderOptions {
   base_host?: string;
   sandbox_host?: string;
   request_log_limit?: number;
+  maximum_request_count?: number;
   readAccountState?: () => AccountState | Promise<AccountState>;
+  comparison_tick_hooks?: PaperTradingApiProviderComparisonTickHooks;
+}
+
+export class PaperTradingApiProviderComparisonTickClientError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: 409 | 422
+  ) {
+    super(code);
+    this.name = "PaperTradingApiProviderComparisonTickClientError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export interface PaperTradingApiProviderSession extends ReplayTradingApiProviderSession {
+  request_count(): number;
 }
 
 export type GatewayOrderExecution = Pick<
@@ -159,10 +184,16 @@ export function createGatewayRuntimeBinding(
 export async function startPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions = {}
-): Promise<ReplayTradingApiProviderSession> {
+): Promise<PaperTradingApiProviderSession> {
   assertPaperBindingEnabled(binding);
   const requestLogLimit = options.request_log_limit ?? 200;
+  const maximumRequestCount = options.maximum_request_count;
+  if (maximumRequestCount !== undefined &&
+    (!Number.isInteger(maximumRequestCount) || maximumRequestCount < 0)) {
+    throw new Error("paper_api_maximum_request_count_invalid");
+  }
   const requestLog: TradingProviderRequestLog[] = [];
+  let requestCount = 0;
   const readAccountState = async () => options.readAccountState
     ? options.readAccountState()
     : binding.account.state;
@@ -171,6 +202,21 @@ export async function startPaperTradingApiProvider(
   const server = http.createServer(async (request, response) => {
     const method = request.method ?? "GET";
     const path = requestPath(request.url);
+    requestCount += 1;
+    if (maximumRequestCount !== undefined && requestCount > maximumRequestCount) {
+      request.resume();
+      sendJson(response, 429, {
+        error: "paper_api_request_limit_exceeded",
+        maximum_request_count: maximumRequestCount,
+        authority_status: "not_live"
+      });
+      pushBoundedRequestLog(
+        requestLog,
+        logRequest(method, path, undefined, 429),
+        requestLogLimit
+      );
+      return;
+    }
     let body: unknown;
     try {
       body = await readJsonBody(request);
@@ -185,14 +231,35 @@ export async function startPaperTradingApiProvider(
     try {
       if (method === "GET" && path === "/market/snapshot") {
         const market = await binding.marketData.readMarketSnapshot();
-        sendJson(response, 200, market);
+        const marketPayload = toTradingApiMarketSnapshot(market);
+        const comparisonTickContext = options.comparison_tick_hooks
+          ? await options.comparison_tick_hooks.deliver({
+              market,
+              provider_request_count: requestCount,
+              delivered_at: new Date().toISOString()
+            })
+          : undefined;
+        if (comparisonTickContext !== undefined &&
+          !paperTradingComparisonTickContextHasRuntimeShape(comparisonTickContext)) {
+          throw new Error("comparison_tick_delivery_context_invalid");
+        }
+        sendJson(
+          response,
+          200,
+          comparisonTickContext === undefined
+            ? marketPayload
+            : {
+                ...marketPayload,
+                comparison_tick_context: comparisonTickContext
+              }
+        );
         pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
 
       if (method === "GET" && path === "/account/state") {
         const account = await readAccountState();
-        sendJson(response, 200, account);
+        sendJson(response, 200, toTradingApiAccountState(account));
         pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
@@ -205,6 +272,60 @@ export async function startPaperTradingApiProvider(
         const validation = validateOrderRequest(body, market, account);
         sendJson(response, 200, validation);
         pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
+        return;
+      }
+
+      if (method === "POST" && path === "/comparison/tick/ack" &&
+        options.comparison_tick_hooks) {
+        if (!paperTradingComparisonTickContextHasRuntimeShape(body)) {
+          sendJson(response, 422, {
+            error: "comparison_tick_context_invalid",
+            authority_status: "not_live"
+          });
+          pushBoundedRequestLog(
+            requestLog,
+            logRequest(method, path, body, 422),
+            requestLogLimit
+          );
+          return;
+        }
+        let acknowledgement: {
+          acknowledgement_ref: Ref;
+          acknowledgement_digest: string;
+        };
+        try {
+          acknowledgement = await options.comparison_tick_hooks.acknowledge({
+            context: body,
+            provider_request_count: requestCount,
+            acknowledged_at: new Date().toISOString()
+          });
+        } catch (error) {
+          if (error instanceof PaperTradingApiProviderComparisonTickClientError) {
+            sendJson(response, error.status, {
+              error: error.code,
+              authority_status: "not_live"
+            });
+            pushBoundedRequestLog(
+              requestLog,
+              logRequest(method, path, body, error.status),
+              requestLogLimit
+            );
+            return;
+          }
+          throw error;
+        }
+        if (!isComparisonTickAcknowledgementResult(acknowledgement)) {
+          throw new Error("comparison_tick_acknowledgement_result_invalid");
+        }
+        sendJson(response, 200, {
+          ...acknowledgement,
+          authority_status: "not_live"
+        });
+        pushBoundedRequestLog(
+          requestLog,
+          logRequest(method, path, body, 200),
+          requestLogLimit
+        );
         return;
       }
 
@@ -235,18 +356,11 @@ export async function startPaperTradingApiProvider(
       : undefined,
     close: () => close(server),
     requests: () => [...requestLog],
-    scenario: {
-      id: "binance-production-public-paper",
-      description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
+    request_count: () => requestCount,
+    candidate_input: toReplayTradingCandidateInput({
       market: initialMarket,
-      account: initialAccount,
-      outcome: {
-        exit_price: initialMarket.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account: initialAccount
+    })
   };
 }
 
@@ -390,6 +504,32 @@ function sendJson(response: http.ServerResponse, status: number, body: unknown):
     "content-type": "application/json"
   });
   response.end(`${JSON.stringify(body)}\n`);
+}
+
+function isComparisonTickAcknowledgementResult(value: unknown): value is {
+  acknowledgement_ref: Ref;
+  acknowledgement_digest: string;
+} {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const result = value as Record<string, unknown>;
+  const acknowledgementRef = result.acknowledgement_ref;
+  const acknowledgementRefRecord = acknowledgementRef as Record<string, unknown>;
+  return Object.keys(result).length === 2 &&
+    acknowledgementRef !== null &&
+    typeof acknowledgementRef === "object" &&
+    !Array.isArray(acknowledgementRef) &&
+    Object.keys(acknowledgementRefRecord).length === 2 &&
+    Object.hasOwn(acknowledgementRefRecord, "record_kind") &&
+    Object.hasOwn(acknowledgementRefRecord, "id") &&
+    acknowledgementRefRecord.record_kind ===
+      "paper_trading_comparison_tick_acknowledgement" &&
+    typeof acknowledgementRefRecord.id === "string" &&
+    acknowledgementRefRecord.id.length > 0 &&
+    typeof result.acknowledgement_digest === "string" &&
+    result.acknowledgement_digest.startsWith("sha256:") &&
+    result.acknowledgement_digest.length > "sha256:".length;
 }
 
 function logRequest(

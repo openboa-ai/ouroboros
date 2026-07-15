@@ -8,6 +8,8 @@ import {
   createGatewayRuntimeBinding,
   startPaperTradingApiProvider
 } from "@ouroboros/application/trading/gateway/runtime-binding";
+import { parseTradingSystemPaperEventLine } from
+  "@ouroboros/application/trading/paper/events";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFile);
@@ -133,6 +135,8 @@ describe("Python clock system code fixture", () => {
       marketData: fakeGatewayMarketDataPort({
         snapshots: [{
           price: 65_000,
+          moving_average_fast: 64_975,
+          moving_average_slow: 65_025,
           expected_direction: "short",
           observed_at: "2026-05-16T00:00:03.000Z"
         }]
@@ -140,12 +144,13 @@ describe("Python clock system code fixture", () => {
     }));
 
     try {
-      expect(provider.scenario.market).toMatchObject({
+      expect(provider.candidate_input.market).toMatchObject({
         price: 65_000,
-        expected_direction: "short",
+        moving_average_fast: 64_975,
+        moving_average_slow: 65_025,
         observed_at: "2026-05-16T00:00:03.000Z"
       });
-      expect(provider.scenario.outcome.exit_price).toBe(65_000);
+      expect(provider.candidate_input.market).not.toHaveProperty("expected_direction");
 
       const { stdout } = await execFileAsync(
         "python3",
@@ -179,7 +184,7 @@ describe("Python clock system code fixture", () => {
         order_type: "limit",
         quantity: "0.001",
         limit_price: "65000",
-        reason: "runtime_api_market_expected_direction_short_validation_risk_limits_passed",
+        reason: "runtime_api_market_signal_short_validation_risk_limits_passed",
         authority_status: "trace_only",
         at: "2026-05-16T00:00:03.000Z"
       });
@@ -193,6 +198,106 @@ describe("Python clock system code fixture", () => {
     }
   });
 
+  it("acknowledges each new comparison tick once on its own cadence", async () => {
+    const contexts = [comparisonContext(1), comparisonContext(2)];
+    const deliveries = [undefined, contexts[0], contexts[0], contexts[1]];
+    const acknowledged: unknown[] = [];
+    const acknowledgementLogSnapshots: unknown[][] = [];
+    const logFile = path.join(tmpDir, "clock-comparison-cadence.log");
+    let deliveryIndex = 0;
+    const provider = await startPaperTradingApiProvider(
+      createGatewayRuntimeBinding({ marketData: fakeGatewayMarketDataPort() }),
+      {
+        comparison_tick_hooks: {
+          deliver: async () => deliveries[deliveryIndex++],
+          acknowledge: async ({ context }) => {
+            acknowledged.push(context);
+            const log = await readFile(logFile, "utf8").catch(() => "");
+            acknowledgementLogSnapshots.push(log.trim()
+              ? log.trim().split("\n").map((line) => JSON.parse(line))
+              : []);
+            const sequence = (context as { tick_sequence: number }).tick_sequence;
+            return {
+              acknowledgement_ref: {
+                record_kind: "paper_trading_comparison_tick_acknowledgement",
+                id: `clock-artifact-ack-${sequence}`
+              },
+              acknowledgement_digest: `sha256:clock-artifact-ack-${sequence}`
+            };
+          }
+        }
+      }
+    );
+
+    try {
+      await execFileAsync(
+        "python3",
+        [
+          artifactPath,
+          "--instance-id",
+          "clock-comparison-cadence",
+          "--ticks",
+          "4",
+          "--interval-ms",
+          "1",
+          "--log-file",
+          logFile
+        ],
+        {
+          env: {
+            ...process.env,
+            TRADING_API_BASE_URL: provider.base_url
+          }
+        }
+      );
+
+      expect(acknowledged).toEqual(contexts);
+      const lines = (await readFile(logFile, "utf8")).trim().split("\n")
+        .map((line) => JSON.parse(line));
+      const decisions = lines.filter((line) =>
+        line.event === "order_request" || line.event === "hold");
+      expect(decisions).toMatchObject([
+        {
+          event_id: "clock-comparison-cadence:order-request:0001"
+        },
+        {
+          event_id: "clock-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        }
+      ]);
+      expect(parseTradingSystemPaperEventLine(
+        JSON.stringify(decisions[1]),
+        { sandboxId: "clock-comparison-cadence", lineIndex: 1 }
+      )).toMatchObject({ status: "accepted" });
+      expect(acknowledgementLogSnapshots[0]).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event_id: "clock-comparison-cadence:order-request:0002" })
+      ]));
+      expect(acknowledgementLogSnapshots[1]).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event_id: "clock-comparison-cadence:order-request:0002",
+          comparison_tick_delivery_ref: contexts[1]!.delivery_ref,
+          comparison_tick_delivery_digest: contexts[1]!.delivery_digest
+        })
+      ]));
+      expect(provider.requests().map(({ method, path }) => `${method} ${path}`))
+        .toEqual([
+          "GET /market/snapshot",
+          "GET /account/state",
+          "POST /orders/validate",
+          "GET /market/snapshot",
+          "POST /comparison/tick/ack",
+          "GET /market/snapshot",
+          "GET /market/snapshot",
+          "GET /account/state",
+          "POST /orders/validate",
+          "POST /comparison/tick/ack"
+        ]);
+    } finally {
+      await provider.close();
+    }
+  });
+
   it("keeps the paper runtime API available when the first market snapshot is unavailable", async () => {
     const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
       marketData: fakeGatewayMarketDataPort({
@@ -201,11 +306,11 @@ describe("Python clock system code fixture", () => {
     }));
 
     try {
-      expect(provider.scenario.market).toMatchObject({
+      expect(provider.candidate_input.market).toMatchObject({
         symbol: "BTCUSDT",
-        price: 0,
-        expected_direction: "flat"
+        price: 0
       });
+      expect(provider.candidate_input.market).not.toHaveProperty("expected_direction");
 
       const response = await fetch(`${provider.base_url}/market/snapshot`);
       expect(response.status).toBe(503);
@@ -244,3 +349,19 @@ describe("Python clock system code fixture", () => {
     }
   });
 });
+
+function comparisonContext(sequence: number) {
+  return {
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick" as const,
+      id: `clock-artifact-tick-${sequence}`
+    },
+    tick_digest: `sha256:clock-artifact-tick-${sequence}`,
+    tick_sequence: sequence,
+    delivery_ref: {
+      record_kind: "paper_trading_comparison_tick_delivery" as const,
+      id: `clock-artifact-delivery-${sequence}`
+    },
+    delivery_digest: `sha256:clock-artifact-delivery-${sequence}`
+  };
+}

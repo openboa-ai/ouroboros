@@ -1,0 +1,22 @@
+{
+  "record_kind": "trading_system_candidate",
+  "version": 1,
+  "candidate_id": "fixture-candidate-sealed-replay-001",
+  "display_name": "Fixture generic trading-system candidate",
+  "status": "fixture_only",
+  "active_version_id": "fixture-candidate-version-001",
+  "provenance_refs": [
+    {
+      "record_kind": "agent_run",
+      "id": "fixture-agent-run-001"
+    },
+    {
+      "record_kind": "provider_readiness_record",
+      "id": "fixture-provider-readiness-001"
+    }
+  ],
+  "active_system_code_ref": {
+    "record_kind": "system_code",
+    "id": "fixture-system-code-clock-python-001"
+  }
+}

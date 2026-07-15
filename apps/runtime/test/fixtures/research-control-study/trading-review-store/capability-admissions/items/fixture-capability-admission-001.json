@@ -1,0 +1,7 @@
+{
+  "record_kind": "capability_package_admission_record",
+  "version": 1,
+  "capability_package_admission_record_id": "fixture-capability-admission-001",
+  "status": "fixture_placeholder",
+  "authority_status": "not_scanned"
+}
