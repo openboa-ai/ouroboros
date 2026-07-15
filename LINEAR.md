@@ -12,7 +12,9 @@ pull request, doc path, or validation evidence that owns the durable fact.
 - Repo-originated durable documentation changes stay in the repo.
 - Linear comments and workpads should summarize progress and link to repo truth.
 - Linear-related work must select the `linear` skill first and execute Linear operations through
-  the repo-local GraphQL path when a Linear update is needed.
+  the bundled Linear OAuth Connector.
+- One executable repo issue maps to one branch and one pull request. The complete lifecycle and
+  frontier contract live in [Development Workflow](docs/development-workflow.md).
 - Primary docs should keep agents focused on the CandidateArena loop: parallel or iterative
   TradingSystem candidate generation, external Evaluation, leaderboard, findings/lineage, next
   generation, and selected candidate paper evidence.
@@ -26,6 +28,7 @@ pull request, doc path, or validation evidence that owns the durable fact.
 - [README.md](README.md)
 - [AGENTS.md](AGENTS.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
+- [Development Workflow](docs/development-workflow.md)
 - [Project Direction](docs/project-direction.md)
 - [Architecture Governance](docs/architecture-governance.md)
 - [API And Command Contract](docs/api-command-contract.md)
@@ -78,16 +81,11 @@ Update repo docs, code, tests, and validation first for durable product, archite
 service, naming, or operating changes. Update Linear only when the task needs issue progress,
 scratchpad notes, project coordination, or historical status.
 
-Use the `linear` skill for Linear-related work. Execute the selected Linear operation through the
-repo-local GraphQL path:
+Use the `linear` skill for Linear-related work and execute the selected operation through the
+bundled Linear OAuth Connector. Read the Project, milestone, issue, comments, or document before
+writing. Keep one issue comment headed `## Codex Workpad`, update it rather than creating duplicate
+progress comments, and report the exact Linear identifiers changed.
 
-```bash
-npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
-npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
-```
-
-Both commands read `LINEAR_API_KEY` from the environment first, then local `.env`, and do not print
-the token. Their implementation lives in [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md)
-because this is agent operating support, not product runtime code. If GraphQL execution fails, leave
-the workflow update blocked with the failing evidence instead of treating Linear as a replacement
-for repo truth.
+Do not use a repo-local `LINEAR_API_KEY`, raw GraphQL command, or local `.env` credential path. If
+the OAuth Connector is unavailable, leave workflow writeback blocked with exact evidence instead of
+treating Linear or chat memory as a replacement for repo truth.
