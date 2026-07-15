@@ -64,7 +64,7 @@ worktree="$control_checkout/.worktrees/ouro-nnn-short-slug"
 
 git -C "$control_checkout" fetch origin main
 base="$(git -C "$control_checkout" rev-parse origin/main)"
-git -C "$control_checkout" check-ignore -q .worktrees
+git -C "$control_checkout" check-ignore -q .worktrees/
 git -C "$control_checkout" worktree add "$worktree" -b "$branch" "$base"
 git -C "$worktree" status --short --branch
 ```

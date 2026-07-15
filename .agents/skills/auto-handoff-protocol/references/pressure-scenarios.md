@@ -33,7 +33,8 @@ worktree, or two claimed writers. Represent the missing or conflicting values ex
 route to `auto-project` Workspace Initialization. Reuse or create a dedicated issue worktree only
 after branch ownership and dirty state are checked. Return blocked or reroute when the workspace
 owner cannot establish exclusive evidence; the packet itself does not create the worktree or choose
-a winner.
+a winner. In a fresh checkout, verify the ignored directory with `.worktrees/` or the intended child
+path; checking the nonexistent `.worktrees` pathname without its directory form is not evidence.
 
 ## Direct Coding Initialization
 
