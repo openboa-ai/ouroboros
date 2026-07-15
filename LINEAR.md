@@ -19,9 +19,82 @@ pull request, doc path, or validation evidence that owns the durable fact.
   TradingSystem candidate generation, external Evaluation, leaderboard, findings/lineage, next
   generation, and selected candidate paper evidence.
 
-## Project
+## Current Project
 
 - Ouroboros Project: https://linear.app/openboa/project/ouroboros-113fef53f6d1
+
+The current workspace still has historical work in one Project. The target structure separates the
+Ouroboros product program from the Repository Delivery program. Until the explicit migration issue
+lands, preserve that boundary with milestones, parent relationships, and issue descriptions. Do
+not invent a program label as a substitute for the Project boundary.
+
+## Planning Hierarchy
+
+| Linear object | Owned decision | Required operating evidence |
+| --- | --- | --- |
+| Initiative | One long-lived, measurable strategic objective spanning Projects. | Owner, status, target when useful, independent Initiative priority, and periodic update. |
+| Project | One finite outcome or deliverable inside exactly one program. | Lead, health, horizon, Project priority, milestones, and completion criteria. |
+| Milestone | One meaningful capability or evidence checkpoint inside a Project. | Independently completable child issues and checkpoint evidence; no branch of its own. |
+| Tracking parent | Breakdown and rollup for child issues. | `Backlog`, no issue priority, explicit `no branch / no PR`, and completion only after children. |
+| Executable repo issue | One observable claim that changes durable repo truth. | Complete frontier contract, one branch, one PR, validation, review, merge, and readback. |
+| Linear-only issue | One bounded workspace configuration or coordination mutation. | Explicit `no branch / no PR`, exact mutation plan, OAuth execution, and object readback. |
+| Cycle | Delivery capacity for ready executable issues. | A bounded time window; never CandidateArena or TradingSystem cadence. |
+| View | Filtered navigation over existing state. | No authority and no duplicated workflow state. |
+| Document, comment, or workpad | Coordination that points to repo truth. | Stable links and one updated `## Codex Workpad`, not competing durable policy. |
+
+Initiatives and Projects have independent priorities because they answer different questions.
+Initiative priority compares strategic objectives. Project priority compares finite outcomes.
+Issue priority selects the next executable frontier. Never copy a parent priority mechanically to
+its children.
+
+Linear subissues may inherit the parent Project and priority, but labels do not inherit. After
+creating a child, explicitly read back and normalize its Project, priority, labels, dependencies,
+and state before treating it as ready.
+
+## Priority
+
+| Issue priority | Meaning |
+| --- | --- |
+| `Urgent` | Active production, security, trading-authority, or data-integrity exposure, or the sole immediate blocker. Multiple Urgent issues require independent active exposures and named owners. |
+| `High` | The next unblocked critical-path issue. Additional ready High issues require independent, staffed critical paths. |
+| `Medium` | Planned, valuable work that follows the current critical path. |
+| `Low` | Optional improvement, optimization, or deferred experiment. |
+| `No priority` | Intake, parked work, and branchless tracking parents. |
+
+Priority represents sequencing and impact, never status, dependency, risk, assignee, or effort. A
+blocked issue is not the current `High` or `Urgent` execution selection; preserve its strategic
+importance in its parent, Project, or update and select an unblocked frontier. Estimates describe
+effort when enabled and do not change priority.
+
+## Labels
+
+Executable and Linear-only issues use orthogonal label dimensions:
+
+- exactly one `area:*` label for the owning repository or workflow surface;
+- exactly one `type:*` label for the work shape;
+- zero or more `risk:*` labels for independent risk dimensions;
+- zero or one `gate:*` label only when a human, environment, or manual gate cannot be derived from
+  status, dependencies, assignee, delegate, cycle, or GitHub state.
+
+Do not encode the product-versus-delivery program, status, priority, dependency, assignee, cycle,
+or runner readiness as labels. Retire `gate:blocked`, `gate:agent-ready`, and `gate:hydra-ready`
+when normalizing existing issues because Linear already owns those facts through relations, state,
+assignment, delegation, and cycle membership. Initiative labels are limited to cross-cutting
+strategic dimensions. Project labels are limited to reusable cross-Project operational dimensions;
+they never replace program boundaries or health/status fields.
+
+## Selection And State
+
+Select work only from shaped, unblocked executable repo or Linear-only issues. Prefer the highest
+issue priority that fits current WIP and dependencies; do not activate a tracking parent. `Todo`
+means ready and selected. `In Progress` requires one owner and either a repo branch/base/workpad or
+a Linear-only mutation plan/workpad. `In Review` requires a pull request plus local evidence for
+repo work, or an independent readback gate for Linear-only work. `Done` requires merged-main
+evidence for repo work, or exact post-mutation readback for Linear-only work.
+
+Branch names use `codex/OURO-NNN-short-slug`, pull-request titles start with `[OURO-NNN]`, and the
+PR links back to the issue. Tracking parents, Initiatives, Projects, milestones, cycles, views, and
+Documents do not own branches or pull requests.
 
 ## Primary Repo Read Path
 

@@ -12,6 +12,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Context | `project-context` | current repo thesis, domain, constraints, active docs, or project-document context is needed |
 | Shape | `auto-project` | ownership, route, stop state, or work direction is unclear |
 | Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
+| Shape | `linear-workflow` | Linear hierarchy, issue shape, priority, labels, dependencies, cycles, state, or GitHub linkage need a policy-backed decision |
 | Shape | `taxonomy-design` | durable concepts, schema families, or domain names need vocabulary design before implementation |
 | Execute | `auto-coding` | one bounded code, documentation, or config change must be made and verified |
 | Evaluate | `auto-qa` | a frontier needs scenario, regression, edge-case, or reader acceptance pressure |
@@ -56,7 +57,10 @@ capability becomes reusable.
 ## External Workflow Skills
 
 This is the registry-level Skill-First Gate. The external `linear` skill maps Linear workflow
-operations to the bundled OAuth Connector. `superpowers:using-superpowers` maps to skill selection.
+operations to the bundled OAuth Connector. The repo-local `linear-workflow` skill applies planning
+semantics read from repository truth after the external skill establishes the target and access
+path.
+`superpowers:using-superpowers` maps to skill selection.
 `superpowers:brainstorming` maps to `auto-pm`. `superpowers:executing-plans` maps to `auto-coding`.
 `superpowers:systematic-debugging` maps to `ci-recovery`.
 `superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch` map to
@@ -98,6 +102,8 @@ For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` w
 
 - `auto-project` schedules repo work, not product behavior.
 - `auto-pm` locks scope and acceptance; it does not implement.
+- `linear-workflow` decides planning shape and metadata; it does not implement a connector, mutate
+  product behavior, or replace the external `linear` skill.
 - `auto-coding` implements one bounded change and verifies before keeping it.
 - `auto-qa` can veto; it does not fix by default.
 - `ci-recovery` extracts actionable check evidence; it does not broaden the work.

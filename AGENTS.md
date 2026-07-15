@@ -254,6 +254,23 @@ instead of creating duplicates, and batch only related mutations. Do not use a r
 API key, raw GraphQL command, or `.env` credential path. If the OAuth Connector is unavailable,
 report workflow writeback as blocked instead of replacing repo truth with chat memory.
 
+When work needs a Linear Initiative, Project, milestone, issue shape, priority, label, dependency,
+cycle, state, or GitHub linkage decision, apply the repo-local `linear-workflow` skill after loading
+the external `linear` skill. Initiatives own measurable strategic objectives across Projects;
+Projects own finite outcomes, and the target structure does not mix the Ouroboros product program
+with the Repository Delivery program. Until the explicit migration lands, follow the interim
+milestone, parent, and issue-description boundary in `LINEAR.md`; do not migrate it from an
+unrelated task. Milestones own capability checkpoints. A tracking parent is branchless, PR-less,
+and has no issue priority. An executable repo issue owns one observable claim, one branch, and one
+pull request. A Linear-only configuration issue owns one bounded mutation and readback but no
+branch or pull request.
+
+Priority selects work; it does not restate status, dependency, or risk. Reserve `Urgent` for an
+active exposure or the sole current blocker and `High` for the next unblocked critical-path issue.
+Every executable issue has exactly one `area:*` and one `type:*` label, may have `risk:*` labels,
+and may use one `gate:*` label only for a non-derivable human, environment, or manual gate. Do not
+encode program, status, priority, dependency, assignee, cycle, or runner readiness as labels.
+
 Use project-scoped subagents only when the task benefits from parallel read-only work, such as
 Linear context recovery, code path mapping, PR review, or UI reproduction. Subagents are advisory:
 the main Codex worker remains responsible for the final patch, validation, and writeback decision.
