@@ -17,8 +17,10 @@ mutations.
 1. Load the external `linear` skill before any Linear read or write. Read root `AGENTS.md`,
    `LINEAR.md`, `docs/development-workflow.md`, and the target Initiative, Project, milestone,
    issue, relations, and existing `## Codex Workpad`.
-2. Read program boundaries from root policy. If one Project mixes programs that policy requires to
-   stay separate, route a Project split instead of adding a program label.
+2. Read both the target program boundaries and any current migration or compatibility rule from
+   root policy. Apply the current rule. Split a Project only when the active issue owns that
+   migration; otherwise preserve the documented interim structure and point to or queue the
+   migration frontier instead of adding a program label.
 3. Classify the object and issue shape: Initiative, Project, milestone, tracking parent,
    executable repo issue, Linear-only issue, cycle, view, Document, or workpad.
 4. For an executable issue, verify one observable claim, owned boundary, non-goals, acceptance,
@@ -48,8 +50,9 @@ mutations.
 - Blocked tracker, blocked child, and unblocked `Medium`: keep the tracker `Backlog` with no
   priority, do not select the blocked child, and promote only the shaped unblocked issue when it is
   the next critical path.
-- Programs that root policy requires to stay separate: split Initiatives or Projects; do not hide
-  the mix behind labels.
+- Programs with a target split but a documented interim shared Project: preserve the interim
+  milestone, parent, and description boundary unless the active issue owns migration; point to or
+  queue that migration and do not hide the mix behind labels.
 - Several `Urgent` or ready `High` issues: keep additional selections only for independent active
   exposures or independent staffed critical paths; otherwise normalize the rest.
 - Urgent Initiative or Project with ordinary child work: keep the three priority decisions
