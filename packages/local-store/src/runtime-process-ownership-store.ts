@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   adoptRuntimeProcessOwnership,
@@ -41,6 +41,7 @@ export interface FileSystemRuntimeProcessOwnershipStoreOptions {
   now?: () => string;
   lockRetryMs?: number;
   lockAttempts?: number;
+  beforeStaleLockRetirement?: (owner: Readonly<LockOwner>) => Promise<void>;
 }
 
 type Scope = Pick<RuntimeProcessExpectedIdentity, "process_kind" | "subject_ref">;
@@ -107,8 +108,8 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         sessionToken: input.sessionToken,
         startedAt: input.startedAt
       });
-      await this.writeActive(input.expected, record);
       await this.append(input.expected, record);
+      await this.writeActive(input.expected, record);
       return record;
     });
   }
@@ -388,7 +389,10 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
       if (!existing) break;
       const live = await inspectIdentity(existing);
       if (live === "absent" || live === "reused") {
-        await rm(lock, { force: true });
+        await this.options.beforeStaleLockRetirement?.(existing);
+        if (!await this.retireStaleLock(lock, existing)) {
+          await delay(this.options.lockRetryMs ?? 10);
+        }
       } else if (live === "unknown") {
         break;
       } else {
@@ -399,6 +403,29 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
       "runtime_process_ownership_transition_blocked",
       "Runtime process ownership transition is already active."
     );
+  }
+
+  private async retireStaleLock(lock: string, observed: LockOwner): Promise<boolean> {
+    const retiredDir = `${lock}.retired`;
+    await mkdir(retiredDir, { recursive: true });
+    const tokenKey = createHash("sha256").update(observed.token).digest("hex");
+    const tombstone = path.join(retiredDir, `${tokenKey}.lock`);
+    // A token tombstone lets only one stale observer unlink the still-matching lock.
+    try {
+      await link(lock, tombstone);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return true;
+      if (code === "EEXIST") return false;
+      throw error;
+    }
+    const claimed = await readLock(tombstone);
+    if (!claimed || claimed.token !== observed.token) return false;
+    const current = await readLock(lock);
+    if (!current) return true;
+    if (current.token !== observed.token) return false;
+    await rm(lock);
+    return true;
   }
 
   private paths(scope: Scope): { active: string; history: string; lock: string } {

@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -254,6 +255,84 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     } satisfies Partial<RuntimeProcessOwnershipStoreError>);
   });
 
+  it("does not publish active ownership when claimed history cannot be appended", async () => {
+    const store = new FileSystemRuntimeProcessOwnershipStore(root, {
+      inspectOwner: async () => "alive",
+      terminateOwner: terminate,
+      resolveProcessStartMarker: async () => {
+        await writeFile(path.join(root, "history"), "not-a-directory", "utf8");
+        return "process-start-a";
+      }
+    });
+
+    await expect(store.claim(claimInput())).rejects.toBeDefined();
+
+    await expect(readFile(activeOwnershipPath(root), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not let stale-lock observers delete a contender's fresh lock", async () => {
+    const lockPath = runtimeProcessLockPath(root);
+    await mkdir(path.dirname(lockPath), { recursive: true });
+    await writeFile(lockPath, `${JSON.stringify({
+      process_id: 2_147_483_647,
+      process_start_marker: "stale-process",
+      token: "stale-token"
+    })}\n`, { mode: 0o600 });
+    let releaseStaleObserver: () => void = () => {};
+    const staleObserverGate = new Promise<void>((resolve) => {
+      releaseStaleObserver = resolve;
+    });
+    let markStaleObserved: () => void = () => {};
+    const staleObserved = new Promise<void>((resolve) => {
+      markStaleObserved = resolve;
+    });
+    const laggingStore = new FileSystemRuntimeProcessOwnershipStore(root, {
+      inspectOwner: async () => "alive",
+      terminateOwner: terminate,
+      resolveProcessStartMarker: async () => "process-start-a",
+      beforeStaleLockRetirement: async () => {
+        markStaleObserved();
+        await staleObserverGate;
+      },
+      lockRetryMs: 1
+    });
+    let releaseFreshOwner: () => void = () => {};
+    const freshOwnerGate = new Promise<void>((resolve) => {
+      releaseFreshOwner = resolve;
+    });
+    let markFreshOwnerStarted: () => void = () => {};
+    const freshOwnerStarted = new Promise<void>((resolve) => {
+      markFreshOwnerStarted = resolve;
+    });
+    const freshStore = new FileSystemRuntimeProcessOwnershipStore(root, {
+      inspectOwner: async () => "alive",
+      terminateOwner: terminate,
+      resolveProcessStartMarker: async () => {
+        markFreshOwnerStarted();
+        await freshOwnerGate;
+        return "process-start-a";
+      },
+      lockRetryMs: 1
+    });
+
+    const laggingClaim = laggingStore.claim(claimInput());
+    await staleObserved;
+    const freshClaim = freshStore.claim(claimInput());
+    await freshOwnerStarted;
+    releaseStaleObserver();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releaseFreshOwner();
+    const [laggingResult, freshResult] = await Promise.allSettled([laggingClaim, freshClaim]);
+
+    expect(freshResult.status).toBe("fulfilled");
+    expect(laggingResult.status).toBe("rejected");
+    await expect(freshStore.active(expectedIdentity())).resolves.toMatchObject({
+      ownership_status: "active",
+      session_token: "session-token-a"
+    });
+  });
+
   it("finishes a terminal transition idempotently after a crash before active cleanup", async () => {
     const store = processStore();
     const claimed = await store.claim(claimInput());
@@ -356,4 +435,20 @@ function claimInput() {
     sessionToken: "session-token-a",
     startedAt: "2026-07-15T00:00:00.000Z"
   };
+}
+
+function runtimeProcessScopeKey(): string {
+  return createHash("sha256").update([
+    expectedIdentity().process_kind,
+    expectedIdentity().subject_ref.record_kind,
+    expectedIdentity().subject_ref.id
+  ].join(":")).digest("hex");
+}
+
+function activeOwnershipPath(root: string): string {
+  return path.join(root, "active", `${runtimeProcessScopeKey()}.json`);
+}
+
+function runtimeProcessLockPath(root: string): string {
+  return path.join(root, "locks", `${runtimeProcessScopeKey()}.lock`);
 }

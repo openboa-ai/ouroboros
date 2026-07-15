@@ -328,7 +328,7 @@ describe("sandbox API", () => {
       expect(isPidAlive(firstPid!)).toBe(true);
 
       delayActiveRead = true;
-      const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
+      const stopped = await initialAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
       expect(isPidAlive(firstPid!)).toBe(false);
       expect((await processOwnership.history({

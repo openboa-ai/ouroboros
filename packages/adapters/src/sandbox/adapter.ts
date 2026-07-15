@@ -299,11 +299,14 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const heartbeatLines = await readSandboxLogLines(session.heartbeatFile);
     const lifecycleStatus = childLifecycleStatus(session.child);
     if (session.ownership && lifecycleStatus !== "running") {
-      await this.options.processOwnership?.close({
-        ownership: session.ownership,
-        terminalReason: lifecycleStatus === "stopped" ? "completed" : "crashed",
-        closedAt: capturedAt
-      });
+      const ownership = await this.refreshOwnedSessionOwnership(instanceId, session.ownership);
+      if (ownership) {
+        await this.options.processOwnership?.close({
+          ownership,
+          terminalReason: lifecycleStatus === "stopped" ? "completed" : "crashed",
+          closedAt: capturedAt
+        });
+      }
       this.sessions.delete(instanceId);
     }
     return {
@@ -353,11 +356,24 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const session = this.sessions.get(instanceId);
     if (session) {
       if (session.ownership && this.options.processOwnership) {
-        await this.options.processOwnership.terminate({
-          ownership: session.ownership,
-          terminalReason: "shutdown",
-          closedAt: stoppedAt
-        });
+        try {
+          const ownership = await this.refreshOwnedSessionOwnership(
+            instanceId,
+            session.ownership
+          );
+          if (ownership) {
+            await this.options.processOwnership.terminate({
+              ownership,
+              terminalReason: "shutdown",
+              closedAt: stoppedAt
+            });
+          } else {
+            await terminateChildProcess(session.child);
+          }
+        } catch (error) {
+          await terminateChildProcess(session.child);
+          throw error;
+        }
       } else {
         await terminateChildProcess(session.child);
       }
@@ -716,6 +732,20 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       }
     }
     return reconciliation;
+  }
+
+  private async refreshOwnedSessionOwnership(
+    instanceId: string,
+    ownership: RuntimeProcessOwnershipRecord
+  ): Promise<RuntimeProcessOwnershipRecord | undefined> {
+    const active = await this.options.processOwnership?.active(
+      sandboxProcessOwnershipScope(instanceId)
+    );
+    if (!active) return undefined;
+    if (!sameRuntimeProcessOwnershipLineage(active, ownership)) {
+      throw new Error("sandbox_process_ownership_identity_mismatch");
+    }
+    return active;
   }
 
   private async releaseOwnedSandboxGate(
@@ -1977,6 +2007,23 @@ function expectedIdentityFromOwnership(
     executable: ownership.executable,
     profile_digest: ownership.profile_digest
   };
+}
+
+function sameRuntimeProcessOwnershipLineage(
+  left: RuntimeProcessOwnershipRecord,
+  right: RuntimeProcessOwnershipRecord
+): boolean {
+  return left.runtime_process_ownership_id === right.runtime_process_ownership_id &&
+    left.process_kind === right.process_kind &&
+    sameRef(left.subject_ref, right.subject_ref) &&
+    sameRef(left.runtime_ref, right.runtime_ref) &&
+    left.owner.host_id === right.owner.host_id &&
+    left.owner.process_id === right.owner.process_id &&
+    left.owner.process_start_marker === right.owner.process_start_marker &&
+    left.executable === right.executable &&
+    left.profile_digest === right.profile_digest &&
+    left.session_token === right.session_token &&
+    left.started_at === right.started_at;
 }
 
 function sameRef(left: Ref, right: Ref): boolean {
