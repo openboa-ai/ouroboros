@@ -11,7 +11,9 @@ description: "Use when a planned repo frontier needs one bounded code, docs, con
 
 ## Workflow
 
-1. Load `auto-handoff-protocol` and validate the incoming canonical Frontier Packet.
+1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet. If no packet
+   exists, route to `auto-project` to initialize it from the active work item and current git
+   evidence before editing.
 2. Confirm `frontier_kind: repo`, the locked owned boundary, separate control-checkout and issue
    worktree paths, actual base/branch evidence, and a single writer lease before editing. Reroute
    incomplete, Linear-only, non-executable, or conflicting-writer packets without changing files.
@@ -42,8 +44,9 @@ paths, and `writeback_needed`.
 
 ## Failure Handling
 
-Do not respond to a failed narrow fix by silently widening the task. Capture the failure, restore
-direction through evidence, and route to `auto-pm`, `auto-qa`, or `ci-recovery` when needed.
+Do not respond to a failed narrow fix by silently widening the task. Capture the failure and route
+the packet to `auto-pm` when scope must change or `auto-project` when `auto-qa`, `ci-recovery`, or
+another unmigrated support skill is needed.
 
 ## Required Output
 

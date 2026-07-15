@@ -15,13 +15,20 @@ system the repository builds.
 ## Workflow
 
 1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet when one exists.
+   If none exists, initialize every field from the active issue or work item and current git
+   evidence, using explicit `unknown`, `pending`, or `not_applicable` values for unresolved fields.
 2. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
-   documents, and CI; reconcile that evidence into the packet.
+   documents, and CI; reconcile that evidence into the packet. A repo frontier cannot route to
+   coding until a workspace owner has established its control checkout, issue worktree, base,
+   branch, and single writer-lease evidence.
 3. If a project state document exists, read it before selecting work.
 4. Check whether external workflow skills are available and relevant.
 5. Name exactly one active executable frontier. Park or reroute tracking parents as
    `not_executable` instead of assigning them an implementation owner.
-6. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
+6. Transfer canonical packet ownership only to one migrated owner: `auto-pm`, `auto-coding`, or
+   `llm-wiki`. When another workflow skill is needed, retain packet ownership, invoke it as scoped
+   support, and record its result in `changes_or_findings` and `evidence`. If it must own the next
+   step, park or reroute rather than claiming a canonical handoff.
 7. Require evidence before keeping changes and update the same packet with the route and owner.
 8. Route to `llm-wiki` when durable decisions need writeback.
 
@@ -48,9 +55,10 @@ Use this mode when the repo tracks PR-sized frontiers.
 4. Route by status:
    - `queued`: park unless prerequisite is met
    - `implementation-ready`: `auto-pm` or `auto-coding`
-   - `in-progress`: `auto-coding` or `auto-qa`
-   - `pr-open`: `auto-promotion-protocol` or `ci-recovery`
-   - `ready-to-land`: final owner or merge owner
+   - `in-progress`: `auto-coding`; invoke `auto-qa` as scoped support when needed
+   - `pr-open`: retain `auto-project` ownership while invoking `auto-promotion-protocol` or
+     `ci-recovery` as scoped support
+   - `ready-to-land`: retain `auto-project` ownership through the recorded landing decision
    - `merged`: `llm-wiki`, then select next frontier
    - `blocked`: blocker owner or user action
 5. Persist frontier state changes through `llm-wiki`.
@@ -79,16 +87,16 @@ state document, maintained docs, git state, checks, and `llm-wiki` writeback rem
 
 | Situation | Route |
 | --- | --- |
-| Current state, branch, or assumptions are unclear | `auto-run-memory` |
-| Project framing or active docs are unclear | `project-context` |
+| Current state, branch, or assumptions are unclear | retain ownership; invoke `auto-run-memory` as support |
+| Project framing or active docs are unclear | retain ownership; invoke `project-context` as support |
 | Scope, owner, non-goals, or acceptance are unclear | `auto-pm` |
 | One bounded change is ready to make | `auto-coding` |
-| Work is claimed done or risky | `auto-qa` |
-| Local checks or remote CI fail | `ci-recovery` |
-| Promotion or landing state is unclear | `auto-promotion-protocol` |
+| Work is claimed done or risky | retain ownership; invoke `auto-qa` as support |
+| Local checks or remote CI fail | retain ownership; invoke `ci-recovery` as support |
+| Promotion or landing state is unclear | retain ownership; invoke `auto-promotion-protocol` as support |
 | Durable decision or result must survive chat | `llm-wiki` |
-| Repo memory is stale, duplicated, or hard to resume | `auto-garbage-collection` |
-| Skill surface itself is drifting | `harness-skill-audit` |
+| Repo memory is stale, duplicated, or hard to resume | retain ownership; invoke `auto-garbage-collection` as support |
+| Skill surface itself is drifting | retain ownership; invoke `harness-skill-audit` as support |
 
 ## Stop States
 
@@ -117,5 +125,6 @@ Auto Project-specific packet or aliases for the active issue, branch, PR, owner,
 
 - Do not implement directly unless the user explicitly asks to bypass the harness.
 - Do not allow multiple active writers.
+- Do not transfer canonical packet ownership to an unmigrated consumer.
 - Do not move work forward without current evidence.
 - Do not let chat history be the only memory of a completed decision.

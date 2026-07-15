@@ -32,7 +32,9 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 1. If current state is unclear, use `auto-run-memory`.
 2. If the next owner is unclear, use `auto-project`.
 3. If naming or taxonomy is the source of ambiguity, use `taxonomy-design`.
-4. If the task is already bounded, use the matching worker directly.
+4. If the task is already bounded and has a complete canonical Frontier Packet for a migrated
+   consumer, use that worker directly. Otherwise route through `auto-project` to initialize the
+   packet and establish the required workspace evidence before execution.
 5. Before stopping, decide `writeback_needed: yes/no`.
 6. If `writeback_needed: yes`, route to `llm-wiki`. Durable facts should be written to repo docs,
    tests, or policy first; use workflow tools such as Linear only to record issue progress and link
@@ -94,10 +96,17 @@ route through repo-local credential helpers.
 
 ## Frontier Packet
 
-`auto-handoff-protocol` owns the canonical Frontier Packet used between repository-delivery
-workers. Load it before routing or transferring work, complete every field from current evidence,
-and update the same packet across owners. This registry and consumer skills must not redefine,
-rename, or omit packet fields; they may return only genuinely role-specific extensions.
+`auto-handoff-protocol` owns the canonical Frontier Packet used by the currently migrated delivery
+consumers: `auto-project`, `auto-pm`, `auto-coding`, and `llm-wiki`. These skills load it before
+routing or transferring work, complete every field from current evidence, and update the same
+packet across owners. This registry and those consumers must not redefine, rename, or omit packet
+fields; they may return only genuinely role-specific extensions.
+
+Other workflow skills retain their existing role-output contracts until a separate bounded
+migration. They do not receive canonical packet ownership implicitly. When one is needed inside
+the migrated chain, `auto-project` retains packet ownership, invokes the skill as scoped support,
+and records its result in the packet's findings and evidence. If scoped support is insufficient,
+park or reroute instead of claiming that an unmigrated consumer preserved the packet.
 
 A tracking parent is `not_executable` and cannot own a writer. A Linear-only mutation is
 `linear_only` and has no repo workspace fields. Executable repo work is `repo` and must report its

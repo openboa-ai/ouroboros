@@ -1,15 +1,16 @@
 ---
 name: auto-handoff-protocol
-description: "Use when repo work moves between routing, PM, coding, QA, wiki, CI recovery, skill audit, or review and needs one canonical Frontier Packet carrying ownership, workspace identity, evidence, decision, next owner, cleanup, and writeback state."
+description: "Use when repo work moves among routing, PM, coding, and writeback consumers and needs one canonical Frontier Packet carrying ownership, workspace identity, evidence, decision, next owner, cleanup, and writeback state."
 ---
 
 # Auto Handoff Protocol
 
 ## Role
 
-`auto-handoff-protocol` owns the one canonical Frontier Packet exchanged by repository-delivery
-workers. Other skills complete this packet and may add role-specific output, but they do not define
-competing packet schemas.
+`auto-handoff-protocol` owns the one canonical Frontier Packet exchanged by the currently migrated
+repository-delivery consumers: `auto-project`, `auto-pm`, `auto-coding`, and `llm-wiki`. These
+skills complete this packet and may add role-specific output, but they do not define competing
+packet schemas. Other workflow skills are outside this packet-version contract until migrated.
 
 ## Workflow
 
@@ -20,8 +21,9 @@ competing packet schemas.
 3. Validate `frontier_kind` and its workspace fields. A `repo` frontier names actual base,
    worktree, writer lease, and branch state. A `linear_only` frontier marks repo-only fields
    `not_applicable`. A `not_executable` item cannot own a writer and must be parked or rerouted.
-4. Let the current owner perform only its bounded role, then update the same packet with findings,
-   evidence, decision, remaining gap, cleanup state, and next owner.
+4. Let the current migrated owner perform only its bounded role, then update the same packet with
+   findings, evidence, decision, remaining gap, cleanup state, and next owner. A supporting
+   unmigrated skill does not receive packet ownership; the current owner records its result.
 5. Decide writeback and return the complete packet plus only the current owner's role-specific
    output.
 
@@ -89,7 +91,7 @@ updating a consumer skill, or auditing handoff behavior.
 ## Required Output
 
 - every Frontier Packet field
-- current owner's role-specific output, if any
+- current migrated owner's role-specific output, if any
 
 ## Handoff
 
@@ -100,6 +102,6 @@ owner updates the same packet rather than reconstructing one from chat.
 
 - One owner at a time.
 - One active writer lease per repo worktree.
-- No omitted canonical fields or consumer-defined packet aliases.
+- No omitted canonical fields or aliases from a migrated consumer.
 - No worker continues indefinitely without a new route.
 - If the next owner is unclear, route to `auto-project`.

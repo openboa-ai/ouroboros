@@ -18,7 +18,9 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 4. Define observable acceptance and validation evidence in the packet.
 5. Confirm whether the frontier is `repo`, `linear_only`, or `not_executable`; do not plan
    implementation for a tracking parent.
-6. Assign the next owner and set the packet decision to `ready`, `blocked`, or `reroute`.
+6. Assign the next migrated owner and set the packet decision to `ready`, `blocked`, or `reroute`.
+   When the next capability belongs to an unmigrated workflow skill, route back through
+   `auto-project` so it can retain packet ownership while invoking that skill as scoped support.
 7. Decide whether the resulting plan needs `llm-wiki` writeback and name the project ledger target
    when frontier state changes.
 

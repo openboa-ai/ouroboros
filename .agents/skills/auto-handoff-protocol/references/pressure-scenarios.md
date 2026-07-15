@@ -30,11 +30,19 @@ A repo frontier has no issue worktree, an unknown base, a control checkout prese
 worktree, or two claimed writers. Represent the missing or conflicting values explicitly and
 return blocked or reroute. The packet does not create the worktree or choose a winner.
 
+## Direct Coding Initialization
+
+An already-bounded repo request enters coding without a Frontier Packet. Do not edit or invent a
+writer lease. Route through `auto-project`, initialize every canonical field from the active work
+item and git evidence, and return to coding only after the workspace owner establishes the missing
+workspace and lease evidence.
+
 ## Schema Drift
 
-A consumer proposes renamed, omitted, or locally duplicated packet fields. Reject the competing
-schema, complete the canonical Frontier Packet, and keep only genuinely role-specific output as an
-extension.
+A migrated consumer proposes renamed, omitted, or locally duplicated packet fields. Reject the
+competing schema, complete the canonical Frontier Packet, and keep only genuinely role-specific
+output as an extension. An unmigrated skill remains scoped support and never receives packet
+ownership implicitly.
 
 ## Branchless Linear-Only Work
 
