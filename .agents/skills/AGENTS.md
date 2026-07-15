@@ -19,7 +19,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Promote | `pr-ci-review-loop` | a PR must be published, watched through CI and review comments, fixed in bounded loops, and merged when current-head validation is clean |
 | Promote | `auto-promotion-protocol` | a frontier, branch, release, or PR needs a landing/readiness decision |
 | Persist | `llm-wiki` | durable source/project-document/project-memory writeback is needed |
-| Persist | `linear-graphql` | the `linear` skill has selected a Linear operation that should execute through repo-local GraphQL |
+| Persist | `linear` | Linear workflow state must be read or written through the bundled OAuth Connector |
 | Clean | `auto-garbage-collection` | stale docs, duplicate memory, or old run notes block resumption |
 
 ## Phase Evidence
@@ -55,7 +55,12 @@ capability becomes reusable.
 
 ## External Workflow Skills
 
-This is the registry-level Skill-First Gate. `superpowers:using-superpowers` maps to skill selection. `superpowers:brainstorming` maps to `auto-pm`. `superpowers:executing-plans` maps to `auto-coding`. `superpowers:systematic-debugging` maps to `ci-recovery`. `superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch` map to `auto-promotion-protocol`.
+This is the registry-level Skill-First Gate. The external `linear` skill maps Linear workflow
+operations to the bundled OAuth Connector. `superpowers:using-superpowers` maps to skill selection.
+`superpowers:brainstorming` maps to `auto-pm`. `superpowers:executing-plans` maps to `auto-coding`.
+`superpowers:systematic-debugging` maps to `ci-recovery`.
+`superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch` map to
+`auto-promotion-protocol`.
 
 ## PR-Unit Conductor Mode
 
@@ -77,7 +82,11 @@ Every `SKILL.md` must be a valid Agent Skill and stay cheap to discover.
 
 ## Mandatory llm-wiki Gate
 
-Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat. For issue workflow notes, select the relevant tracker skill and use the repo-local execution path when available.
+Use `llm-wiki` when durable product/design decisions, source interpretation,
+branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy,
+active/historical documentation boundary, read-path, or stale-term cleanup must survive chat. For
+Linear issue workflow notes, select the `linear` skill and use the bundled OAuth Connector. Do not
+route through repo-local credential helpers.
 
 ## Handoff Packet
 
