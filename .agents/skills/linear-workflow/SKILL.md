@@ -1,23 +1,24 @@
 ---
 name: linear-workflow
-description: "Use when repository work needs a repo-specific Linear Initiative, Project, milestone, issue-shape, priority, label, dependency, cycle, state, or GitHub-linkage decision after the external linear skill selects the OAuth Connector path."
+description: "Use when work needs a policy-backed Linear Initiative, Project, milestone, issue-shape, priority, label, dependency, cycle, state, or GitHub-linkage decision after the external linear skill establishes the target and connected execution path."
 ---
 
 # Linear Workflow
 
 ## Role
 
-`linear-workflow` applies the repository-owned planning contract to Linear coordination. It owns
-hierarchy, work shape, selection, priority, labels, state, dependency, cycle, and GitHub-linkage
-decisions. The external `linear` skill owns connector-backed reads and mutations.
+`linear-workflow` applies the planning contract read from repository truth to Linear coordination.
+It owns the decision procedure for hierarchy, work shape, selection, priority, labels, state,
+dependency, cycle, and GitHub linkage. The external `linear` skill owns connected reads and
+mutations.
 
 ## Workflow
 
 1. Load the external `linear` skill before any Linear read or write. Read root `AGENTS.md`,
    `LINEAR.md`, `docs/development-workflow.md`, and the target Initiative, Project, milestone,
    issue, relations, and existing `## Codex Workpad`.
-2. Read the product and Repository Delivery program boundary from root policy. If one Project
-   mixes those programs, route a Project split instead of adding a program label.
+2. Read program boundaries from root policy. If one Project mixes programs that policy requires to
+   stay separate, route a Project split instead of adding a program label.
 3. Classify the object and issue shape: Initiative, Project, milestone, tracking parent,
    executable repo issue, Linear-only issue, cycle, view, Document, or workpad.
 4. For an executable issue, verify one observable claim, owned boundary, non-goals, acceptance,
@@ -38,16 +39,17 @@ decisions. The external `linear` skill owns connector-backed reads and mutations
 8. Enforce state evidence. `Todo` is selected and unblocked. `In Progress` has an owner and workpad,
    plus branch and base for repo work. `In Review` has PR/local evidence or a Linear-only readback
    gate. `Done` has merged-main evidence or exact post-mutation readback.
-9. Predeclare the exact related mutations, execute them through the OAuth Connector, read back the
-   changed objects, and report stable identifiers, remaining blockers, and next action.
+9. Predeclare the exact related mutations, execute them through the connected path selected by the
+   external `linear` skill, read back the changed objects, and report stable identifiers,
+   remaining blockers, and next action.
 
 ## Pressure Checks
 
 - Blocked tracker, blocked child, and unblocked `Medium`: keep the tracker `Backlog` with no
   priority, do not select the blocked child, and promote only the shaped unblocked issue when it is
   the next critical path.
-- Mixed product and Repository Delivery work: split Initiatives or Projects; do not hide the mix
-  behind labels.
+- Programs that root policy requires to stay separate: split Initiatives or Projects; do not hide
+  the mix behind labels.
 - Several `Urgent` or ready `High` issues: keep additional selections only for independent active
   exposures or independent staffed critical paths; otherwise normalize the rest.
 - Urgent Initiative or Project with ordinary child work: keep the three priority decisions
@@ -58,9 +60,9 @@ decisions. The external `linear` skill owns connector-backed reads and mutations
   cycle, delegate, or GitHub state cannot express it.
 - Adjacent review finding: create a separate `Backlog` issue and leave the active PR boundary
   unchanged unless the finding is required for the current claim to be correct.
-- OAuth Connector unavailable: continue repo work that does not require Linear mutation, mark
-  writeback blocked with exact evidence, and never fall back to GraphQL, a local token, or chat
-  memory.
+- Connected Linear execution unavailable: continue repo work that does not require Linear
+  mutation, mark writeback blocked with exact evidence, and never fall back to an undeclared
+  transport, credential path, or chat memory.
 
 ## Required Output
 
@@ -85,11 +87,11 @@ external `linear` skill.
 
 - Linear coordinates delivery; repo `main` owns durable product, architecture, code, tests, and
   operating policy.
-- Never mix product and Repository Delivery Projects or expose delivery credentials/state to the
-  product runtime.
+- Never collapse program boundaries defined by root policy or expose delivery credentials/state to
+  the system being delivered.
 - Never give a tracking parent, Initiative, Project, milestone, cycle, view, or Document a branch
   or pull request.
 - Never use priority or labels as duplicate status, dependency, assignment, or authority fields.
-- Never use repo-local GraphQL, `LINEAR_API_KEY`, `.env` credentials, or chat memory for Linear
-  execution.
+- Never bypass the connected path selected by the external `linear` skill or use chat memory as a
+  workflow store.
 - Never migrate live Linear configuration outside the active issue's owned boundary.
