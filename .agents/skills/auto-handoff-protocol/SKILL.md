@@ -63,6 +63,8 @@ llm_wiki_target:
 Use `not_applicable`, `unknown`, or `pending` rather than omitting a field. `frontier_kind` is
 `repo`, `linear_only`, or `not_executable`. The packet reports workflow truth; it does not create a
 worktree, grant a writer lease, merge a PR, mutate Linear, or certify acceptance by itself.
+`auto-project` owns workspace initialization: it performs or verifies the worktree and branch
+operations, assigns one logical writer lease, and then records that evidence in this packet.
 
 ## Quality Bar
 
@@ -72,6 +74,9 @@ worktree, grant a writer lease, merge a PR, mutate Linear, or certify acceptance
 - Repo work identifies the root control checkout separately from one actual issue worktree and at
   most one active writer lease. The control checkout is not the issue writer workspace. Missing or
   conflicting workspace evidence cannot be represented as ready.
+- An active writer lease names its holder, absolute worktree, and branch as
+  `active:<owner>:<absolute-worktree>:<branch>`. Its evidence includes worktree, branch ownership,
+  base, and dirty-state verification. A released lease cannot authorize edits.
 - Linear-only work has `base`, `control_checkout`, `worktree`, `writer_lease`, `branch`, `pr`, and
   `cleanup_state` set to `not_applicable`; exact object readback belongs in `validation` and
   `evidence`.

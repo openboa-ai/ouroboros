@@ -18,9 +18,9 @@ system the repository builds.
    If none exists, initialize every field from the active issue or work item and current git
    evidence, using explicit `unknown`, `pending`, or `not_applicable` values for unresolved fields.
 2. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
-   documents, and CI; reconcile that evidence into the packet. A repo frontier cannot route to
-   coding until a workspace owner has established its control checkout, issue worktree, base,
-   branch, and single writer-lease evidence.
+   documents, and CI; reconcile that evidence into the packet. For a `repo` frontier,
+   `auto-project` is the workspace owner until it verifies or establishes the control checkout,
+   issue worktree, base, branch, and single writer lease as described below.
 3. If a project state document exists, read it before selecting work.
 4. Check whether external workflow skills are available and relevant.
 5. Name exactly one active executable frontier. Park or reroute tracking parents as
@@ -31,6 +31,33 @@ system the repository builds.
    step, park or reroute rather than claiming a canonical handoff.
 7. Require evidence before keeping changes and update the same packet with the route and owner.
 8. Route to `llm-wiki` when durable decisions need writeback.
+
+## Workspace Initialization
+
+`auto-project` owns the transition from an uninitialized `repo` packet to a workspace that one
+writer can use. The packet records this transition; it does not perform it.
+
+1. Inspect `git worktree list --porcelain`, the intended base, current branch ownership, and the
+   selected worktree's status.
+2. Reuse an existing dedicated issue worktree only when its absolute path, base, and branch match
+   the active issue and it contains no unrelated dirty state. Otherwise create the issue worktree
+   and branch through the repo's worktree workflow. Never use the control checkout as the issue
+   writer workspace.
+3. Refuse the lease when the branch is checked out by another worktree, the worktree contains
+   unrelated changes, or another active packet already names a writer for that worktree. Record the
+   conflict and park or reroute instead of choosing a winner.
+4. When those checks pass, assign one logical lease to the next migrated writer and record it as
+   `active:<owner>:<absolute-worktree>:<branch>` plus the verification commands in `evidence`.
+   Existing dedicated checkout and branch evidence can satisfy this step; a second worktree is not
+   required.
+5. On owner handoff, release the prior holder and assign the same workspace lease to the new owner
+   in one packet update. On merge, discard, or cleanup, mark it `released` before removing the
+   worktree or branch.
+
+This lease is an explicit workflow ownership assertion, not a filesystem lock. If exclusive
+ownership cannot be established from current evidence, coding remains blocked. Lifecycle and
+stronger enforcement may be implemented by a separate bounded workflow change without making this
+initialization path undefined.
 
 ## Skill-First Gate
 
@@ -127,6 +154,7 @@ Auto Project-specific packet or aliases for the active issue, branch, PR, owner,
 
 - Do not implement directly unless the user explicitly asks to bypass the harness.
 - Do not allow multiple active writers.
+- Do not route a `repo` frontier to coding before completing Workspace Initialization.
 - Do not transfer canonical packet ownership to an unmigrated consumer.
 - Do not move work forward without current evidence.
 - Do not let chat history be the only memory of a completed decision.

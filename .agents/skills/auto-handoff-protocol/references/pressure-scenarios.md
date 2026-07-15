@@ -30,14 +30,18 @@ atomicity rationale; do not let coding silently widen `owned_boundary` or erase 
 
 A repo frontier has no issue worktree, an unknown base, a control checkout presented as the issue
 worktree, or two claimed writers. Represent the missing or conflicting values explicitly and
-return blocked or reroute. The packet does not create the worktree or choose a winner.
+route to `auto-project` Workspace Initialization. Reuse or create a dedicated issue worktree only
+after branch ownership and dirty state are checked. Return blocked or reroute when the workspace
+owner cannot establish exclusive evidence; the packet itself does not create the worktree or choose
+a winner.
 
 ## Direct Coding Initialization
 
 An already-bounded repo request enters coding without a Frontier Packet. Do not edit or invent a
 writer lease. Route through `auto-project`, initialize every canonical field from the active work
-item and git evidence, and return to coding only after the workspace owner establishes the missing
-workspace and lease evidence.
+item and git evidence, and return to coding only after `auto-project` verifies or creates the
+dedicated worktree and branch, assigns
+`active:<owner>:<absolute-worktree>:<branch>`, and records the verification evidence.
 
 ## Schema Drift
 
