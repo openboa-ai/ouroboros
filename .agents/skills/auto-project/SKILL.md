@@ -54,6 +54,25 @@ writer can use. The packet records this transition; it does not perform it.
    in one packet update. On merge, discard, or cleanup, mark it `released` before removing the
    worktree or branch.
 
+For a fresh issue, prefer an available native Codex worktree mechanism and verify the same packet
+evidence afterward. When no native mechanism exists, use this repo-owned fallback from any checkout:
+
+```bash
+control_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+branch="codex/OURO-NNN-short-slug"
+worktree="$control_checkout/.worktrees/ouro-nnn-short-slug"
+
+git -C "$control_checkout" fetch origin main
+base="$(git -C "$control_checkout" rev-parse origin/main)"
+git -C "$control_checkout" check-ignore -q .worktrees
+git -C "$control_checkout" worktree add "$worktree" -b "$branch" "$base"
+git -C "$worktree" status --short --branch
+```
+
+Use an explicitly recorded dependency commit instead of `origin/main` only for approved stacked
+work. If the path or branch already exists, return to inventory and either resume its matching
+packet or report the conflict; do not run a second creation command or invent another path.
+
 This lease is an explicit workflow ownership assertion, not a filesystem lock. If exclusive
 ownership cannot be established from current evidence, coding remains blocked. Lifecycle and
 stronger enforcement may be implemented by a separate bounded workflow change without making this

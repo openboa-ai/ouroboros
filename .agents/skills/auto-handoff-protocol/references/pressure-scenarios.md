@@ -61,7 +61,8 @@ ownership implicitly.
 
 A workspace mutation changes no repo files. Use `frontier_kind: linear_only`; set base, control
 checkout, worktree, writer lease, branch, PR, and cleanup state to `not_applicable`; require a
-predeclared mutation and exact object readback; never invent a branch or merge gate.
+predeclared object and mutation boundary plus exact OAuth readback. That evidence can satisfy PM
+readiness without repo files; never invent a branch or merge gate.
 
 ## Tracking Parent
 

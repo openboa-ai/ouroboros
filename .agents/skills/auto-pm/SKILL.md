@@ -26,7 +26,10 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 
 ## Ready Criteria
 
-- The owned boundary names files, modules, docs, config, or checks that are in scope.
+- A `repo` owned boundary names files, modules, docs, config, or checks that are in scope.
+- A `linear_only` owned boundary names the exact Linear objects and mutation surface, with no repo
+  files, branch, or PR; its validation names the exact OAuth readback required after mutation.
+- A `not_executable` tracking item is never ready for implementation.
 - Non-goals explicitly block tempting adjacent work.
 - Acceptance criteria are observable from tests, checks, docs, review, or CI.
 - Validation can run locally or be verified by a named external check.
