@@ -429,6 +429,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     try {
       const candidate = await this.requireCandidateForRun(tradingRunId);
       const binding = this.gatewayBinding();
+      const replaceExistingSandbox = !this.apiProviderSessions.has(tradingRunId);
       const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, binding);
       const paperOrderRequest = input.paperOrderRequest ?? paperOrderRequestFromCandidateRuntime(candidate);
       await this.ensureTradingRunSandbox({
@@ -436,7 +437,8 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         tradingRunId,
         candidateVersionId: candidate.candidate_version.candidate_version_id,
         paperOrderRequest,
-        tradingApiBaseUrl
+        tradingApiBaseUrl,
+        replaceExistingSandbox
       });
       const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
       const evaluation = existing ?? prepared.evaluation;
@@ -474,7 +476,8 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         tradingRunId,
         candidateVersionId: candidate.candidate_version.candidate_version_id,
         paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-        tradingApiBaseUrl
+        tradingApiBaseUrl,
+        replaceExistingSandbox: true
       });
       this.activeSessions.add(tradingRunId);
     }
@@ -2617,6 +2620,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     candidateVersionId: string;
     paperOrderRequest: PaperOrderRequestFixture;
     tradingApiBaseUrl?: string;
+    replaceExistingSandbox?: boolean;
   }): Promise<SandboxDetailReadModel> {
     const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
     const artifact = await this.options.store.getSystemCode(systemCodeId);
@@ -2627,7 +2631,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
     const existing = await this.options.store.getSandbox(sandboxId);
     const adapter = this.options.sandboxAdapters.deterministic_test;
-    if (existing?.lifecycle_status === "running" && adapter.getArtifactInstanceStatus) {
+    if (existing?.lifecycle_status === "running" && input.replaceExistingSandbox) {
+      await this.stopExistingTradingRunSandbox(adapter, existing);
+    } else if (existing?.lifecycle_status === "running" && adapter.getArtifactInstanceStatus) {
       const observations = await adapter.getArtifactInstanceStatus(existing);
       if (
         observations.lifecycle_status ||
@@ -2645,16 +2651,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         return verified;
       }
       if (verified.lifecycle_status !== "stopped" && verified.lifecycle_status !== "removed") {
-        const stop = adapter.stopArtifactInstance;
-        if (!stop) {
-          throw new PaperTradingSessionError("sandbox_adapter_method_not_supported", "sandbox adapter does not support stopArtifactInstance");
-        }
-        const stopObservations = await stop.call(adapter, verified);
-        await this.options.store.stopSandbox({
-          sandbox_id: verified.sandbox_id,
-          stopped_at: stopObservations.stopped_at,
-          removed_at: stopObservations.removed_at
-        }, stopObservations);
+        await this.stopExistingTradingRunSandbox(adapter, verified);
       }
     }
     const result = await adapter.startArtifactInstance({
@@ -2669,6 +2666,36 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       env: input.tradingApiBaseUrl ? { TRADING_API_BASE_URL: input.tradingApiBaseUrl } : undefined
     });
     return (await this.options.store.recordSandboxStart(result)).sandbox;
+  }
+
+  private async stopExistingTradingRunSandbox(
+    adapter: SandboxAdapterRegistryPort["deterministic_test"],
+    sandbox: SandboxDetailReadModel
+  ): Promise<void> {
+    const stop = adapter.stopArtifactInstance;
+    if (!stop) {
+      throw new PaperTradingSessionError(
+        "sandbox_adapter_method_not_supported",
+        "sandbox adapter does not support stopArtifactInstance"
+      );
+    }
+    const observations = await stop.call(adapter, sandbox);
+    await this.options.store.stopSandbox({
+      sandbox_id: sandbox.sandbox_id,
+      stopped_at: observations.stopped_at,
+      removed_at: observations.removed_at
+    }, observations);
+    if (
+      observations.lifecycle_status !== "stopped" &&
+      observations.lifecycle_status !== "removed" &&
+      observations.stopped_at === undefined &&
+      observations.removed_at === undefined
+    ) {
+      throw new PaperTradingSessionError(
+        "sandbox_stop_failed",
+        `sandbox ${sandbox.sandbox_id} did not confirm termination`
+      );
+    }
   }
 
   private async refreshPaperTradingSandbox(tradingRunId: string): Promise<CandidateInspectReadModel> {
