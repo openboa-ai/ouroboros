@@ -532,7 +532,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const expectedOwnership = this.options.processOwnership
       ? sandboxProcessExpectedIdentity(
         input,
-        executionCommand,
+        command,
         this.options.hostId ?? os.hostname()
       )
       : undefined;
@@ -2070,6 +2070,8 @@ function sandboxProcessExpectedIdentity(
       sandbox_placement_id: input.sandbox_placement_id,
       runtime_ref: runtimeRef,
       command,
+      interval_ms: input.interval_ms ?? 1_000,
+      paper_order_request: input.paper_order_request ?? "valid",
       trading_api_base_url: input.env?.TRADING_API_BASE_URL ?? null
     })).digest("hex")}`
   };

@@ -319,7 +319,10 @@ describe("sandbox API", () => {
       for (const observation of concurrentObservations) {
         expect(observation.lifecycle_status).toBe("running");
       }
-      const adopted = await restartedAdapter.startArtifactInstance(input);
+      const adopted = await restartedAdapter.startArtifactInstance({
+        ...input,
+        created_at: "2026-05-21T00:00:10.000Z"
+      });
       expect(adopted.instance.lifecycle_status).toBe("running");
 
       const adoptedHistory = await processOwnership.history({
