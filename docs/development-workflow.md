@@ -179,11 +179,9 @@ they must not replace product design judgment or create TradingSystem policy.
 Program goal or Linear Initiative
 -> Linear Project
 -> Linear milestone
--> executable Linear issue
--> branch
--> pull request
--> checks and review
--> merge evidence and writeback
+-> executable issue
+   -> repo issue -> branch -> pull request -> checks and review -> merge evidence and writeback
+   -> Linear-only issue -> OAuth mutation -> exact readback and writeback
 ```
 
 Each level owns a different decision:
