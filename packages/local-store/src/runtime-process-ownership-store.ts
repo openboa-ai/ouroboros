@@ -537,10 +537,10 @@ async function terminateHostOwner(record: RuntimeProcessOwnershipRecord): Promis
   if (before === "absent") return;
   if (before !== "alive") throw new Error(`runtime_process_termination_identity_${before}`);
   signalTree(record.owner.process_id, "SIGTERM");
-  if (!await waitForExit(record.owner.process_id, 500)) {
+  if (!await waitForProcessTreeExit(record.owner.process_id, 500)) {
     signalTree(record.owner.process_id, "SIGKILL");
   }
-  if (!await waitForExit(record.owner.process_id, 500)) {
+  if (!await waitForProcessTreeExit(record.owner.process_id, 500)) {
     throw new Error("runtime_process_termination_failed");
   }
 }
@@ -559,18 +559,29 @@ function signalTree(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    throw error;
+  }
+}
+
+function isProcessTreeAlive(pid: number): boolean {
+  return isProcessAlive(-pid) || isProcessAlive(pid);
+}
+
+async function waitForProcessTreeExit(pid: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
-      throw error;
-    }
+    if (!isProcessTreeAlive(pid)) return true;
     await delay(10);
   }
-  return false;
+  return !isProcessTreeAlive(pid);
 }
 
 function delay(ms: number): Promise<void> {

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -127,6 +128,40 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     expect(await store.history(expectedIdentity())).toEqual(expect.arrayContaining([
       expect.objectContaining({ terminal_reason: "restart_terminated" })
     ]));
+  });
+
+  it("waits for the owned process group before closing ownership", async () => {
+    const helperPidFile = path.join(root, "stubborn-helper.pid");
+    const owner = spawn(process.execPath, ["-e", stubbornProcessGroupScript(helperPidFile)], {
+      detached: true,
+      stdio: "ignore"
+    });
+    const ownerPid = owner.pid;
+    if (ownerPid === undefined) throw new Error("owned process did not start");
+    owner.unref();
+    let helperPid: number | undefined;
+
+    try {
+      helperPid = Number(await waitForTextFile(helperPidFile, 1_000));
+      expect(Number.isInteger(helperPid)).toBe(true);
+      const store = new FileSystemRuntimeProcessOwnershipStore(root);
+      const claimed = await store.claim({
+        ...claimInput(),
+        processId: ownerPid
+      });
+
+      await store.terminate({
+        ownership: claimed,
+        terminalReason: "shutdown",
+        closedAt: "2026-07-15T00:00:01.000Z"
+      });
+
+      expect(isPidAlive(helperPid)).toBe(false);
+      await expect(store.active(expectedIdentity())).resolves.toBeUndefined();
+    } finally {
+      signalForCleanup(-ownerPid);
+      if (helperPid !== undefined) signalForCleanup(helperPid);
+    }
   });
 
   it("captures reconcile time after a queued transition acquires the lock", async () => {
@@ -266,6 +301,52 @@ function expectedIdentity() {
     executable: "/usr/local/bin/codex",
     profile_digest: `sha256:${"a".repeat(64)}`
   };
+}
+
+function stubbornProcessGroupScript(helperPidFile: string): string {
+  const helperSource = [
+    'const fs = require("node:fs");',
+    'process.on("SIGTERM", () => {});',
+    `fs.writeFileSync(${JSON.stringify(helperPidFile)}, String(process.pid));`,
+    "setInterval(() => {}, 1_000);"
+  ].join("\n");
+  return [
+    'const { spawn } = require("node:child_process");',
+    `spawn(process.execPath, ["-e", ${JSON.stringify(helperSource)}], { stdio: "ignore" });`,
+    'process.on("SIGTERM", () => process.exit(0));',
+    "setInterval(() => {}, 1_000);"
+  ].join("\n");
+}
+
+async function waitForTextFile(filePath: string, timeoutMs: number): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await readFile(filePath, "utf8").catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting for ${filePath}`);
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+function signalForCleanup(pid: number): void {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
 }
 
 function claimInput() {
