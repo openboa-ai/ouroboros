@@ -179,22 +179,70 @@ they must not replace product design judgment or create TradingSystem policy.
 Program goal or Linear Initiative
 -> Linear Project
 -> Linear milestone
--> PR-sized Linear issue
+-> executable Linear issue
 -> branch
 -> pull request
 -> checks and review
 -> merge evidence and writeback
 ```
 
-A Project may contain several long-running goals. A milestone groups multiple independently
-mergeable frontiers. One executable repo issue maps to exactly one branch and one pull request.
-Linear-only administration may close with exact Linear evidence, but any durable product, design,
-process, or implementation decision must land in the repo.
+Each level owns a different decision:
 
-The target Linear shape keeps the product program and Repository Delivery enabling program in
-separate Projects under an explicit program goal or Initiative. Until that migration lands, distinct
-milestones and issue labels preserve the boundary. Linear cycles express delivery capacity only;
-they never control CandidateArena or TradingSystem cadence.
+| Level | Role | Branch or PR |
+| --- | --- | --- |
+| Initiative | Long-lived measurable strategic objective across Projects, with owner, status, target when useful, independent priority, and updates. | None. |
+| Project | Finite outcome or deliverable inside exactly one program, with lead, health, horizon, independent priority, and completion criteria. | None. |
+| Milestone | Meaningful capability or evidence checkpoint inside one Project. | None. |
+| Tracking parent | Breakdown and rollup only; normally `Backlog`, no issue priority, complete after children. | None; state this explicitly. |
+| Executable repo issue | One observable claim that changes durable repo truth. | Exactly one branch and one PR. |
+| Linear-only issue | One bounded workspace mutation with exact OAuth readback. | None; state this explicitly. |
+| Cycle | Delivery capacity for ready executable issues. | None; never product cadence. |
+| View or Document | Navigation or coordination over existing truth. | None; never workflow authority. |
+
+The Ouroboros product program and Repository Delivery enabling program live in separate Initiatives
+and Projects. Do not compensate for a mixed Project with labels. Until the explicit migration
+lands, milestones, parent relationships, and issue descriptions preserve the boundary. Linear
+cycles express delivery capacity only; they never control CandidateArena or TradingSystem cadence.
+
+Linear subissues may inherit Project and priority from a parent while labels do not inherit. Every
+new child therefore needs an explicit Project, priority, label, dependency, and state readback
+before it is ready.
+
+## Priority And Labels
+
+Initiative priority compares strategic objectives. Project priority compares finite outcomes.
+Issue priority chooses execution order. These values are independent and must not be copied down
+the hierarchy automatically.
+
+| Issue priority | Selection meaning |
+| --- | --- |
+| `Urgent` | Active production, security, trading-authority, or data-integrity exposure, or the sole immediate blocker. Multiple Urgent issues require independent active exposures and named owners. |
+| `High` | The next unblocked critical-path issue. Additional ready High issues require independent, staffed critical paths. |
+| `Medium` | Planned valuable work behind the current critical path. |
+| `Low` | Optional optimization, improvement, or deferred experiment. |
+| `No priority` | Intake, parked work, or a branchless tracking parent. |
+
+Priority represents sequencing and impact, not state, dependency, risk, assignee, or effort. A
+blocked issue cannot be the current High/Urgent execution selection. Preserve broader importance
+at the Initiative or Project level and activate an unblocked issue.
+
+Issue labels are orthogonal metadata:
+
+- exactly one `area:*` ownership label;
+- exactly one `type:*` work-shape label;
+- zero or more independent `risk:*` labels;
+- zero or one `gate:*` label only for a non-derivable human, environment, or manual gate.
+
+Never duplicate program, status, priority, dependency, assignee, cycle, delegate, or runner
+readiness in labels. `gate:blocked`, `gate:agent-ready`, and `gate:hydra-ready` are retired by the
+normalization frontier because native Linear and GitHub state already own those facts.
+
+## Ready Selection
+
+Select only a shaped, unblocked executable issue that fits current WIP. Prefer the highest priority
+among eligible issues. A tracking parent is never selected for implementation, and a blocked issue
+does not become executable because it inherited a parent priority. Adjacent discoveries remain
+`Backlog` and do not expand the active branch or pull request.
 
 ## Frontier Contract
 
@@ -224,11 +272,11 @@ current pull request only when it is required to make the current claim correct.
 
 | Linear state | Entry evidence | Allowed work |
 | --- | --- | --- |
-| `Backlog` | Valid problem or opportunity exists. | Research, ordering, dependency discovery. |
-| `Todo` | Frontier contract is complete, bounded, and unblocked. | Branch preparation and implementation start. |
-| `In Progress` | One owner, branch, base commit, and workpad are recorded. | TDD implementation inside the owned boundary. |
-| `In Review` | Pull request exists and local acceptance evidence is recorded. | CI, review, and fixes required by the same claim. |
-| `Done` | Pull request merged, required checks and reviews passed, and writeback is complete. | Select the next ready frontier. |
+| `Backlog` | Valid problem, opportunity, intake item, or tracking parent exists. | Research, ordering, dependency discovery, and decomposition. |
+| `Todo` | Frontier contract is complete, bounded, unblocked, and selected. | Branch preparation or a Linear-only mutation plan. |
+| `In Progress` | One owner and workpad exist; repo work also records branch and base commit. | Work inside the owned boundary. |
+| `In Review` | Repo work has a PR and local evidence; Linear-only work has an independent readback gate. | Review and fixes required by the same claim. |
+| `Done` | Repo work is merged and read back; Linear-only work has exact post-mutation readback; writeback is complete. | Select the next ready frontier. |
 | `Canceled` or `Duplicate` | Reason and replacement issue are recorded. | No implementation. |
 
 Use one issue comment headed `## Codex Workpad` for current execution state. Update that comment;
