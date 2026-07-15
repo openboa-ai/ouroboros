@@ -459,7 +459,12 @@ export class PaperTradingComparisonCheckpointCoordinator {
     }
     const existingOutcomes = await this.readCheckpointOutcomes(attempt);
     const existingOutcome = existingOutcomes.at(-1);
-    if (existingOutcome) return existingOutcome;
+    if (existingOutcome) {
+      if (pairedCheckpointOutcomeHasFailedSide(existingOutcome)) {
+        await this.stopAfterPairedCandidateFailure(attempt);
+      }
+      return existingOutcome;
+    }
     if (!this.ownedOpenCheckpointAttempts.has(checkpointAttemptId) ||
       !this.options.activations.ownsRunningAttempt(
         attempt.paper_trading_comparison_activation_attempt_ref.id
@@ -546,10 +551,19 @@ export class PaperTradingComparisonCheckpointCoordinator {
         )
       });
     }
+    const completedAt = this.readNow();
+    if (Date.parse(completedAt) > Date.parse(attempt.checkpoint_deadline_at)) {
+      this.ownedOpenCheckpointAttempts.delete(checkpointAttemptId);
+      return this.failAttempt({
+        attempt,
+        reason: "checkpoint_deadline_exceeded",
+        stableErrorCode: "paper_trading_comparison_checkpoint_deadline_exceeded"
+      });
+    }
     const outcome = buildPairedOutcome({
       attempt,
       prepared,
-      completedAt: this.readNow()
+      completedAt
     });
     try {
       const persisted = await this.options.store.recordPaperTradingComparisonPairedCheckpoint({
@@ -1419,9 +1433,13 @@ function buildPairedOutcome(input: {
     outcome_reason: "paired_checkpoint_recorded",
     champion: side("champion"),
     challenger: side("challenger"),
-    next_action: input.attempt.checkpoint_sequence === 1
-      ? "serve_and_acknowledge_current_tick"
-      : "capture_next_tick",
+    next_action: ROLES.some((role) =>
+      input.prepared[role].observation.status === "failed"
+    )
+      ? "close_failed_comparison"
+      : input.attempt.checkpoint_sequence === 1
+        ? "serve_and_acknowledge_current_tick"
+        : "capture_next_tick",
     completed_at: input.completedAt,
     outcome_digest: "",
     live_exchange_authority: false,
@@ -1434,6 +1452,15 @@ function buildPairedOutcome(input: {
       paperTradingComparisonCheckpointOutcomeDigestInput(outcome)
     )
   };
+}
+
+function pairedCheckpointOutcomeHasFailedSide(
+  outcome: PaperTradingComparisonCheckpointOutcomeRecord
+): boolean {
+  return outcome.outcome_status === "paired" && (
+    outcome.champion?.observation_status === "failed" ||
+    outcome.challenger?.observation_status === "failed"
+  );
 }
 
 function buildIncompleteOutcome(input: {

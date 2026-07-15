@@ -389,14 +389,16 @@ function sameOwner(
   right: ResearchControlStudyExecutionLeaseOwner
 ): boolean {
   return left.server_instance_id === right.server_instance_id &&
-    left.host_id === right.host_id && left.process_id === right.process_id;
+    left.host_id === right.host_id && left.process_id === right.process_id &&
+    left.process_start_marker === right.process_start_marker;
 }
 
 function exactOwner(value: unknown): value is ResearchControlStudyExecutionLeaseOwner {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const owner = value as Record<string, unknown>;
-  return Object.keys(owner).length === 3 && canonicalString(owner.server_instance_id) &&
-    canonicalString(owner.host_id) && positiveInteger(owner.process_id);
+  return Object.keys(owner).length === 4 && canonicalString(owner.server_instance_id) &&
+    canonicalString(owner.host_id) && positiveInteger(owner.process_id) &&
+    canonicalString(owner.process_start_marker);
 }
 
 function exactPort(value: unknown): value is ResearchControlStudyExecutionLeasePort {

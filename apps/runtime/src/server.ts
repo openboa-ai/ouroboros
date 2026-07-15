@@ -25,7 +25,8 @@ import {
   FileSystemResearchControlStudyExecutionLeaseStore,
   FIXTURE_SYSTEM_CODE_ID,
   LocalStore,
-  LocalStoreError
+  LocalStoreError,
+  currentProcessStartMarker
 } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
@@ -212,7 +213,8 @@ export function createResearchControlStudyServerLeaseSessionFactory(
     owner: input.owner ?? {
       server_instance_id: randomUUID(),
       host_id: hostname(),
-      process_id: process.pid
+      process_id: process.pid,
+      process_start_marker: currentProcessStartMarker()
     },
     ...(input.leaseDurationMs === undefined
       ? {}

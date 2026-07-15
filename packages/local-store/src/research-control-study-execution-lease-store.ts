@@ -12,6 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { processStartMarker } from "./process-start-marker";
 import {
   closeResearchControlStudyExecutionLease,
   decideResearchControlStudyExecutionLease,
@@ -659,12 +660,13 @@ export async function researchControlStudyExecutionLeaseOwnerLiveness(
   if (!exactOwner(owner) || owner.host_id !== os.hostname()) return "unknown";
   try {
     process.kill(owner.process_id, 0);
-    return "alive";
   } catch (error) {
     if (isErrno(error, "ESRCH")) return "absent";
-    if (isErrno(error, "EPERM")) return "alive";
-    return "unknown";
+    if (!isErrno(error, "EPERM")) return "unknown";
   }
+  const marker = await processStartMarker(owner.process_id);
+  if (!marker) return "unknown";
+  return marker === owner.process_start_marker ? "alive" : "absent";
 }
 
 function exactStudy(value: unknown): value is ResearchControlStudyRecord {
@@ -677,10 +679,12 @@ function exactStudy(value: unknown): value is ResearchControlStudyRecord {
 function exactOwner(value: unknown): value is ResearchControlStudyExecutionLeaseOwner {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const owner = value as Record<string, unknown>;
-  return Object.keys(owner).length === 3 &&
+  return Object.keys(owner).length === 4 &&
     Object.hasOwn(owner, "server_instance_id") &&
     Object.hasOwn(owner, "host_id") && Object.hasOwn(owner, "process_id") &&
+    Object.hasOwn(owner, "process_start_marker") &&
     canonicalString(owner.server_instance_id) && canonicalString(owner.host_id) &&
+    canonicalString(owner.process_start_marker) &&
     typeof owner.process_id === "number" &&
     Number.isSafeInteger(owner.process_id) && owner.process_id > 0;
 }

@@ -561,7 +561,8 @@ describe("runtime canonical operator API", () => {
     const owner = {
       server_instance_id: "server-injected-owner",
       host_id: "server-injected-host",
-      process_id: 4242
+      process_id: 4242,
+      process_start_marker: "server-injected-process-start"
     } as const;
     let acquireInput:
       Parameters<ResearchControlStudyExecutionLeasePort["acquire"]>[0] |

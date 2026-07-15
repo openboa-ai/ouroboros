@@ -398,7 +398,8 @@ function ownerFixture(): ResearchControlStudyExecutionLeaseOwner {
   return {
     server_instance_id: "server-a",
     host_id: "host-a",
-    process_id: 101
+    process_id: 101,
+    process_start_marker: "process-start-a"
   };
 }
 

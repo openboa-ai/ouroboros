@@ -16,6 +16,7 @@ import { decideResearchControlStudy } from
   "@ouroboros/application/candidate/research-control-study";
 import {
   FileSystemResearchControlStudyExecutionLeaseStore,
+  currentProcessStartMarker,
   researchControlStudyExecutionLeaseOwnerLiveness
 } from "../src/index";
 
@@ -412,13 +413,24 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     await expect(researchControlStudyExecutionLeaseOwnerLiveness({
       server_instance_id: "this-server",
       host_id: os.hostname(),
-      process_id: process.pid
+      process_id: process.pid,
+      process_start_marker: currentProcessStartMarker()
     })).resolves.toBe("alive");
     await expect(researchControlStudyExecutionLeaseOwnerLiveness({
       server_instance_id: "other-host",
       host_id: `${os.hostname()}-other`,
-      process_id: process.pid
+      process_id: process.pid,
+      process_start_marker: currentProcessStartMarker()
     })).resolves.toBe("unknown");
+  });
+
+  it("treats a reused same-host PID as an absent lease owner", async () => {
+    await expect(researchControlStudyExecutionLeaseOwnerLiveness({
+      server_instance_id: "stale-server",
+      host_id: os.hostname(),
+      process_id: process.pid,
+      process_start_marker: "different-process-incarnation"
+    })).resolves.toBe("absent");
   });
 
   function adapter(options: {
@@ -484,7 +496,8 @@ function owner(
   return {
     server_instance_id: serverInstanceId,
     host_id: "test-host",
-    process_id: processId
+    process_id: processId,
+    process_start_marker: `${serverInstanceId}-process-start`
   };
 }
 

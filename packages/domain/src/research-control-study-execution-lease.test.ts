@@ -125,6 +125,9 @@ describe("ResearchControlStudyExecutionLease", () => {
     ["empty host", (value: any) => { value.owner.host_id = ""; }],
     ["zero PID", (value: any) => { value.owner.process_id = 0; }],
     ["fractional PID", (value: any) => { value.owner.process_id = 1.5; }],
+    ["empty process start marker", (value: any) => {
+      value.owner.process_start_marker = "";
+    }],
     ["empty token", (value: any) => { value.lease_token = ""; }],
     ["zero duration", (value: any) => { value.lease_duration_ms = 0; }],
     ["fractional duration", (value: any) => {
@@ -236,7 +239,8 @@ function ownerFixture() {
   return {
     server_instance_id: "server-a",
     host_id: "host-a",
-    process_id: 101
+    process_id: 101,
+    process_start_marker: "process-start-a"
   };
 }
 

@@ -8280,6 +8280,7 @@ export interface ResearchControlStudyExecutionLeaseOwner {
   server_instance_id: string;
   host_id: string;
   process_id: number;
+  process_start_marker: string;
 }
 
 export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
@@ -12329,11 +12330,15 @@ function researchControlStudyExecutionLeaseOwnerHasRuntimeShape(
   return comparisonObject(value) && comparisonHasExactKeys(value, [
     "server_instance_id",
     "host_id",
-    "process_id"
+    "process_id",
+    "process_start_marker"
   ]) && researchControlStudyExecutionLeaseCanonicalStringShape(
     value.server_instance_id
   ) && researchControlStudyExecutionLeaseCanonicalStringShape(value.host_id) &&
-    researchControlStudyExecutionLeasePositiveInteger(value.process_id);
+    researchControlStudyExecutionLeasePositiveInteger(value.process_id) &&
+    researchControlStudyExecutionLeaseCanonicalStringShape(
+      value.process_start_marker
+    );
 }
 
 function researchControlStudyExecutionLeaseCanonicalStringShape(

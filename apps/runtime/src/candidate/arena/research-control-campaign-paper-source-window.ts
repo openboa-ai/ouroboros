@@ -267,11 +267,30 @@ export class ResearchControlCampaignPaperSourceWindowCoordinator {
         "Partial repeated-tick recovery lacks the persisted peer tick."
       );
       const frozen = researchControlCampaignPaperFrozenEvidenceFromTick(tick);
-      const step = await this.advanceOne(
-        partial.missing.source,
-        frozen,
-        "capture_next_tick"
-      );
+      let step: PaperTradingComparisonWindowStep;
+      try {
+        step = await this.advanceOne(
+          partial.missing.source,
+          frozen,
+          "capture_next_tick"
+        );
+      } catch (error) {
+        await Promise.allSettled(sources.map((source) =>
+          this.options.arms[source.armKind].runtime.stopOwnedAttempt({
+            attemptId: source.activationAttemptId,
+            reason: "handoff_cleanup"
+          })
+        ));
+        throw windowError(
+          "research_control_campaign_paper_source_window_transition_failed",
+          "Partial repeated-tick recovery failed and peers were stopped.",
+          {
+            transition: "capture_next_tick",
+            failures: [transitionFailure(partial.missing.source.armKind, error)]
+          },
+          error
+        );
+      }
       return { transition: "capture_next_tick", steps: [step], terminal: false };
     }
     if (deferMatchedProgress(decisions)) {

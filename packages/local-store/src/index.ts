@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import {
   access,
   link,
@@ -12,6 +11,10 @@ import {
 } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import {
+  currentProcessStartMarker,
+  processStartMarker
+} from "./process-start-marker";
 import { decideResearchMemoryControlPairOutcome } from
   "@ouroboros/application/candidate/research-memory-control-study-outcome";
 import type {
@@ -30,6 +33,7 @@ import type { PrivateReadinessPostureQueryInput } from "./private-readiness-post
 import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-substrate-fixtures";
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
 export * from "./research-control-study-execution-lease-store";
+export { currentProcessStartMarker } from "./process-start-marker";
 import {
   compareAccountPositionRiskMirrorSurfaces,
   compareOrderFillSurfaces,
@@ -23016,70 +23020,6 @@ async function researchMemoryControlPublicationOwnerIsAlive(
     ? await currentProcessStartMarker()
     : await processStartMarker(owner.pid);
   return marker === undefined || marker === owner.process_start_marker;
-}
-
-let currentProcessStartMarkerPromise: Promise<string> | undefined;
-
-function currentProcessStartMarker(): Promise<string> {
-  currentProcessStartMarkerPromise ??= processStartMarker(process.pid).then(
-    (marker) => marker ?? currentProcessFallbackStartMarker()
-  );
-  return currentProcessStartMarkerPromise;
-}
-
-function currentProcessFallbackStartMarker(): string {
-  const startedAtMs = Date.now() - (process.uptime() * 1_000);
-  return `epoch-second:${Math.floor(startedAtMs / 1_000)}`;
-}
-
-async function processStartMarker(pid: number): Promise<string | undefined> {
-  if (process.platform === "linux") {
-    const linuxMarker = await linuxProcessStartMarker(pid);
-    if (linuxMarker) return linuxMarker;
-  }
-  return posixProcessStartMarker(pid);
-}
-
-async function linuxProcessStartMarker(pid: number): Promise<string | undefined> {
-  try {
-    const [statText, bootIdText] = await Promise.all([
-      readFile(`/proc/${pid}/stat`, "utf8"),
-      readFile("/proc/sys/kernel/random/boot_id", "utf8")
-    ]);
-    const commandEnd = statText.lastIndexOf(")");
-    if (commandEnd < 0) return undefined;
-    const fieldsAfterCommand = statText.slice(commandEnd + 1).trim().split(/\s+/);
-    const startTicks = fieldsAfterCommand[19];
-    const bootId = bootIdText.trim();
-    if (!bootId || !startTicks || !/^\d+$/.test(startTicks)) return undefined;
-    return `linux:${bootId}:${startTicks}`;
-  } catch {
-    return undefined;
-  }
-}
-
-function posixProcessStartMarker(pid: number): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    try {
-      execFile(
-        "/bin/ps",
-        ["-p", String(pid), "-o", "lstart="],
-        { encoding: "utf8", timeout: 1_000, maxBuffer: 16_384 },
-        (error, stdout) => {
-          if (error) {
-            resolve(undefined);
-            return;
-          }
-          const startedAtMs = Date.parse(stdout.trim().replace(/\s+/g, " "));
-          resolve(Number.isFinite(startedAtMs)
-            ? `epoch-second:${Math.floor(startedAtMs / 1_000)}`
-            : undefined);
-        }
-      );
-    } catch {
-      resolve(undefined);
-    }
-  });
 }
 
 async function waitForResearchMemoryControlPublicationLock(): Promise<void> {

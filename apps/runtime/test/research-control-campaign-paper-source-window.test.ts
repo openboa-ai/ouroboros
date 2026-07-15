@@ -114,6 +114,42 @@ describe("ResearchControlCampaign matched source window", () => {
     );
   });
 
+  it("stops both peers when partial repeated-tick recovery fails", async () => {
+    const fixture = sourceWindowFixture({
+      failWindowArm: "static_control",
+      sourceReadsFail: true,
+      initialPhases: {
+        adaptive_treatment: "next_tick_captured",
+        static_control: "checkpoint_committed"
+      }
+    });
+    fixture.armStores[0]!.ticks.push(repeatedTick("adaptive_treatment"));
+    await fixture.coordinator.startSourceBatch({
+      schedule: fixture.schedule,
+      batch: fixture.batch
+    });
+
+    await expect(fixture.coordinator.advanceSourceWindow({
+      schedule: fixture.schedule,
+      batch: fixture.batch,
+      sources: activeSources()
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_paper_source_window_transition_failed",
+      details: {
+        failures: [{
+          arm_kind: "static_control",
+          reason: "Error:injected_window_failure"
+        }]
+      }
+    });
+
+    expect(fixture.operations).toEqual(expect.arrayContaining([
+      "stop:adaptive_treatment",
+      "stop:static_control"
+    ]));
+    expect(fixture.running.size).toBe(0);
+  });
+
   it("enables both matched arm sessions while the current tick awaits acknowledgement", async () => {
     const fixture = sourceWindowFixture({
       initialPhases: {

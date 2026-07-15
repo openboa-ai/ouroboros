@@ -208,7 +208,8 @@ describe("PaperTradingComparisonCheckpointCoordinator", () => {
 
     await expect(pending).resolves.toMatchObject({
       outcome_status: "paired",
-      challenger: { observation_status: "failed" }
+      challenger: { observation_status: "failed" },
+      next_action: "close_failed_comparison"
     });
     expect(fixture.events.slice(-2)).toEqual([
       "checkpoint:paired",
@@ -335,6 +336,82 @@ describe("PaperTradingComparisonCheckpointCoordinator", () => {
     })).resolves.toEqual(outcome);
     expect(fixture.preparationInputs).toHaveLength(preparationCount);
     expect(fixture.stopCalls).toEqual([]);
+  });
+
+  it("retries cleanup before replaying a failed repeated checkpoint", async () => {
+    const fixture = checkpointCoordinatorFixture();
+    const repeated = fixture.seedRepeatedCheckpoint();
+    const attempt = await fixture.coordinator.beginNext({
+      activationId: fixture.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        fixture.activationAttempt.paper_trading_comparison_activation_attempt_id,
+      tickId: repeated.nextTick.paper_trading_comparison_tick_id,
+      idempotencyKey: "checkpoint-002"
+    });
+    const prepared = {
+      champion: preparedCheckpointSide(
+        "champion",
+        attempt,
+        repeated.nextTick,
+        fixture.evaluations.champion
+      ),
+      challenger: failedPreparedCheckpointSide(
+        "challenger",
+        attempt,
+        repeated.nextTick,
+        fixture.evaluations.challenger
+      )
+    };
+    const existing = pairedCheckpointOutcome(attempt, prepared);
+    fixture.checkpointOutcomes.push(existing);
+
+    await expect(fixture.coordinator.completeNext({
+      checkpointAttemptId: attempt.paper_trading_comparison_checkpoint_attempt_id
+    })).resolves.toEqual(existing);
+
+    expect(fixture.stopCalls).toEqual([{
+      attemptId: fixture.activationAttempt.paper_trading_comparison_activation_attempt_id,
+      reason: "handoff_cleanup"
+    }]);
+    expect(fixture.preparationInputs).toEqual([]);
+  });
+
+  it("closes a repeated checkpoint that finishes preparation after its deadline", async () => {
+    const fixture = checkpointCoordinatorFixture();
+    const repeated = fixture.seedRepeatedCheckpoint();
+    const attempt = await fixture.coordinator.beginNext({
+      activationId: fixture.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        fixture.activationAttempt.paper_trading_comparison_activation_attempt_id,
+      tickId: repeated.nextTick.paper_trading_comparison_tick_id,
+      idempotencyKey: "checkpoint-002"
+    });
+    fixture.acknowledgeRepeatedTick(attempt);
+    const pending = fixture.coordinator.completeNext({
+      checkpointAttemptId: attempt.paper_trading_comparison_checkpoint_attempt_id
+    });
+    await waitForPreparations(pending, fixture.preparationInputs);
+    fixture.preparations.champion.resolve(preparedCheckpointSide(
+      "champion",
+      attempt,
+      repeated.nextTick,
+      fixture.evaluations.champion
+    ));
+    fixture.preparations.challenger.resolve(preparedCheckpointSide(
+      "challenger",
+      attempt,
+      repeated.nextTick,
+      fixture.evaluations.challenger
+    ));
+    fixture.setNow("2026-07-11T00:02:08.001Z");
+
+    await expect(pending).resolves.toMatchObject({
+      outcome_status: "incomplete",
+      outcome_reason: "checkpoint_deadline_exceeded",
+      stable_error_code: "paper_trading_comparison_checkpoint_deadline_exceeded"
+    });
+    expect(fixture.pairedWrites).toEqual([]);
+    expect(fixture.stopCalls).toHaveLength(1);
   });
 
   it("cleans an owned repeated attempt when either current tick acknowledgement is missing", async () => {
@@ -707,6 +784,7 @@ function checkpointCoordinatorFixture(
     stopCalls,
     seedRepeatedCheckpoint,
     acknowledgeRepeatedTick,
+    setNow(value: string) { currentNow = value; },
     get activationRecoveryCalls() { return activationRecoveryCalls; }
   };
 }
@@ -1268,9 +1346,13 @@ function pairedCheckpointOutcome(
     outcome_reason: "paired_checkpoint_recorded",
     champion: side("champion"),
     challenger: side("challenger"),
-    next_action: attempt.checkpoint_sequence === 1
-      ? "serve_and_acknowledge_current_tick"
-      : "capture_next_tick",
+    next_action: Object.values(prepared).some((side) =>
+      side.observation.status === "failed"
+    )
+      ? "close_failed_comparison"
+      : attempt.checkpoint_sequence === 1
+        ? "serve_and_acknowledge_current_tick"
+        : "capture_next_tick",
     completed_at: attempt.checkpoint_sequence === 1
       ? "2026-07-11T00:00:09.000Z"
       : "2026-07-11T00:01:09.000Z",
