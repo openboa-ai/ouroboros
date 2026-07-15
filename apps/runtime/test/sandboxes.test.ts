@@ -2,7 +2,10 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { LocalStore } from "@ouroboros/local-store";
+import {
+  FileSystemRuntimeProcessOwnershipStore,
+  LocalStore
+} from "@ouroboros/local-store";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/server";
 import {
@@ -233,6 +236,80 @@ describe("sandbox API", () => {
       expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_stopped");
     } finally {
       await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
+  it("adopts one exact owned Sandbox process across adapter restarts without duplicate effects", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    };
+    const input = {
+      artifact,
+      instance_id: "sandbox-owned-restart",
+      sandbox_name: "ouro-owned-restart",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-restart",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance(input);
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const firstHistory = await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      const firstPid = firstHistory.at(-1)?.owner.process_id;
+      expect(firstPid).toBeTypeOf("number");
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      const restartedAdapter = new DeterministicSandboxAdapter(options);
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
+      const adopted = await restartedAdapter.startArtifactInstance(input);
+      expect(adopted.instance.lifecycle_status).toBe("running");
+
+      const adoptedHistory = await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(adoptedHistory.at(-1)).toMatchObject({
+        owner: { process_id: firstPid },
+        ownership_status: "active",
+        adoption_count: 2
+      });
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      const mismatchedAdapter = new DeterministicSandboxAdapter(options);
+      await expect(mismatchedAdapter.startArtifactInstance({
+        ...input,
+        interval_ms: 25
+      })).rejects.toThrow("identity_mismatch");
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+      expect(isPidAlive(firstPid!)).toBe(false);
+      expect((await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      })).at(-1)).toMatchObject({
+        ownership_status: "terminal",
+        terminal_reason: "shutdown"
+      });
+    } finally {
+      await initialAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
     }
   });
 

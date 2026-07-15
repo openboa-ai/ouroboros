@@ -252,7 +252,8 @@ AI-agent leverage, Causal research memory, or Economic frontier improvement.
 
 This does not complete external evaluation, P0, or the Goal. A bounded hidden set and query cap do
 not prove reward-hacking resistance or economic generalization. Approximate or cross-suite behavior
-clustering, broader adversarial side-channel coverage, durable provider-process/sandbox adoption,
+clustering, broader adversarial side-channel coverage, external Sandbox ownership and
+provider-session resumption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
 and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from deployed real public
 paths,

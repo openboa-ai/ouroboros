@@ -20,9 +20,12 @@ import type {
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import type { ResearchControlStudyExecutionLeasePort } from
   "@ouroboros/application/ports/research-control-study-execution-lease";
+import type { RuntimeProcessOwnershipPort } from
+  "@ouroboros/application/ports/runtime-process-ownership";
 import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
 import {
   FileSystemResearchControlStudyExecutionLeaseStore,
+  FileSystemRuntimeProcessOwnershipStore,
   FIXTURE_SYSTEM_CODE_ID,
   LocalStore,
   LocalStoreError,
@@ -180,6 +183,8 @@ export interface BuildServerOptions {
     ResearchControlStudyExecutionLeaseOwner;
   researchControlStudyExecutionLeaseDurationMs?: number;
   researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
+  runtimeProcessOwnershipPort?: RuntimeProcessOwnershipPort;
+  runtimeProcessHostId?: string;
   researchControlStudyCommitmentCoordinator?:
     ResearchControlStudyCommitmentCoordinatorLifecycle;
   researchGeneralizationOutcomeCoordinator?:
@@ -373,6 +378,11 @@ interface RuntimeControllerResponse {
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const store = options.store ?? new LocalStore();
   const repoRoot = path.resolve(options.repoRoot ?? RUNTIME_REPO_ROOT);
+  const runtimeProcessHostId = options.runtimeProcessHostId ?? hostname();
+  const runtimeProcessOwnership = options.runtimeProcessOwnershipPort ??
+    new FileSystemRuntimeProcessOwnershipStore(
+      path.join(store.root(), "runtime-process-ownership")
+    );
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
@@ -391,7 +401,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         return options.tradingResearchAgentAdapter;
       }
       return createTradingResearchAgentAdapter(tradingResearchRuntimeConfig, agent, {
-        env: agent === "codex" ? managedAgentProfileEnv(store, "codex") : undefined
+        env: agent === "codex" ? managedAgentProfileEnv(store, "codex") : undefined,
+        processOwnership: runtimeProcessOwnership,
+        hostId: runtimeProcessHostId
       });
     });
   const candidateArenaRunner = new CandidateArenaRunner({
@@ -406,7 +418,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     deterministic_test: providedSandboxAdapters?.deterministic_test
       ?? new DeterministicSandboxAdapter({
         allowedArtifactRoots: [path.join(store.root(), "candidate-arena-runs")],
-        allowedCapabilityPolicyIds: ["candidate-arena-paper-system-code"]
+        allowedCapabilityPolicyIds: ["candidate-arena-paper-system-code"],
+        processOwnership: runtimeProcessOwnership,
+        hostId: runtimeProcessHostId
       }),
     docker_sandboxes_sbx: providedSandboxAdapters?.docker_sandboxes_sbx
       ?? new DockerSandboxesSbxSandboxAdapter()
@@ -457,7 +471,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             ],
             allowedCapabilityPolicyIds: [
               "candidate-arena-paper-system-code"
-            ]
+            ],
+            processOwnership: new FileSystemRuntimeProcessOwnershipStore(
+              path.join(context.root, "runtime-process-ownership")
+            ),
+            hostId: runtimeProcessHostId
           }),
           docker_sandboxes_sbx: new DockerSandboxesSbxSandboxAdapter({
             workspacePath: context.root

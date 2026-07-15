@@ -635,8 +635,9 @@ The following current surfaces require implementation work before P0 can pass:
   can move an exactly confirmed challenger into Trading review. The default server now creates one
   deterministic latest-promotion study when the bounded queue is empty and runs it with same-host
   shared-LocalStore execution leasing, then reconciles one oldest missing policy decision after
-  successful catch-up. There is still no multi-host fencing, automatic promotion loop,
-  provider-process adoption after restart, or champion runner handoff.
+  successful catch-up. There is still no multi-host fencing, provider-session resumption,
+  automatic promotion loop, or champion runner handoff. Same-host ownership instead terminates an
+  exact stale provider owner before a fresh session.
 - ResearchRelease has a server-owned execution path only inside an already committed study. Raw
   sealed outcomes stay unavailable to ResearchWorkers unless that exact append-only release
   succeeds; standalone release and promotion remain explicit, promotion does not imply research
@@ -659,9 +660,11 @@ The following current surfaces require implementation work before P0 can pass:
   and exposes an equal-bound static control. Every allocation seals explicit-request,
   repository-default, or exact approved-decision provenance. ResearchWorkers now have stable logical identity by
   direction/provider/model/profile, a stable workspace, sanitized per-tick notebook continuity,
-  closed cumulative budget history, and restart-safe orphan reconciliation. Provider-process and
-  sandbox adoption, worker-chosen experiment sequencing, provider-dollar cost, and learned
-  allocation remain open.
+  closed cumulative budget history, and restart-safe orphan reconciliation. Same-host child
+  ownership now terminates exact stale provider owners and may adopt an exact deterministic
+  long-running Sandbox without duplicate effects. External Sandbox ownership, provider-session
+  resumption, worker-chosen experiment sequencing, provider-dollar cost, and learned allocation
+  remain open.
 - `ResearchControlCampaign` now composes an actual isolated adaptive/static run from one verified
   store and source-artifact baseline. Campaign and arm intent precede effects; sequence-paired arms
   wait for both settlements; restart reuses exact completed ticks and runs only missing ticks; and
@@ -865,8 +868,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    family after successful catch-up and records unsupported or underpowered results as not approved.
    Stable ResearchWorker workspace identity, bounded sanitized notebook continuity, append-only
    budget closure, bounded worker-chosen sequencing, no-submission continuation, and fail-closed
-   restart reconciliation are implemented. Durable provider-process/sandbox adoption,
-   provider-dollar cost, learned allocation, and causal discovery-yield evidence remain.
+   restart reconciliation are implemented. Exact same-host provider/Sandbox process ownership is
+   implemented; external Sandbox ownership, provider-session resumption, provider-dollar cost,
+   learned allocation, and causal discovery-yield evidence remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
    verdict, multi-window confirmation campaign, ResearchRelease, explicit comparison-backed
@@ -874,5 +878,5 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    fixture-study closure are proven. Default automatic commitment, server scheduling, same-host
    multi-process ownership, prospective condition-blocked generalization commitment/adjudication,
    and post-catch-up automatic research policy decisions are implemented; complete eligible
-   real-market generalization evidence, multi-host fencing, deployed soak evidence, durable worker
-   process adoption, and full P0 evidence remain.
+   real-market generalization evidence, multi-host fencing, deployed soak evidence, resumable
+   provider sessions, external Sandbox ownership, and full P0 evidence remain.

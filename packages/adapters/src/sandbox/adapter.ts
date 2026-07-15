@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,8 +14,14 @@ import type {
   SandboxAdapterKind,
   SandboxDetailReadModel,
   SandboxLifecycleStatus,
-  SandboxRecord
+  SandboxRecord,
+  RuntimeProcessOwnershipRecord
 } from "@ouroboros/domain";
+import type {
+  RuntimeProcessExpectedIdentity,
+  RuntimeProcessOwnershipPort,
+  RuntimeProcessOwnershipReconcileResult
+} from "@ouroboros/application/ports/runtime-process-ownership";
 import { rebaseCandidateArenaArtifactPath } from
   "../artifact/candidate-arena-artifact-path";
 import { safeId } from "../safe-id";
@@ -34,6 +40,33 @@ let commandEvidenceSequence = 0;
 const DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 const DETERMINISTIC_FIXTURE_ARTIFACT_PATH = "fixtures/trading-systems/clock.py";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const OWNED_SANDBOX_PROCESS_GATE_SOURCE = String.raw`
+const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+const [gateFile, file, ...args] = process.argv.slice(1);
+const deadline = Date.now() + 10000;
+const timer = setInterval(() => {
+  if (!fs.existsSync(gateFile)) {
+    if (Date.now() >= deadline) {
+      clearInterval(timer);
+      process.exit(78);
+    }
+    return;
+  }
+  clearInterval(timer);
+  try { fs.unlinkSync(gateFile); } catch {}
+  const child = spawn(file, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "ignore"
+  });
+  child.once("error", () => process.exit(127));
+  child.once("exit", (code) => process.exit(code ?? 1));
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.on(signal, () => child.kill(signal));
+  }
+}, 5);
+`;
 
 export type PaperOrderRequestFixture = "valid" | "rejected";
 
@@ -112,6 +145,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       logFile: string;
       heartbeatFile: string;
       pidFile: string;
+      ownership?: RuntimeProcessOwnershipRecord;
     }
   >();
 
@@ -121,6 +155,8 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       allowedSystemCodeIds?: readonly string[];
       allowedArtifactRoots?: readonly string[];
       allowedCapabilityPolicyIds?: readonly string[];
+      processOwnership?: RuntimeProcessOwnershipPort;
+      hostId?: string;
     } = {}
   ) {}
 
@@ -224,12 +260,39 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const instanceId = instanceIdFor(instance);
     const session = this.sessions.get(instanceId);
     if (!session) {
+      if (this.options.processOwnership) {
+        const reconciliation = await this.reconcileOwnedSandbox(instance);
+        const capturedAt = new Date().toISOString();
+        const heartbeatLines = await readSandboxLogLines(
+          deterministicSandboxHeartbeatFile(instanceId)
+        );
+        return {
+          lifecycle_status: reconciliation.status === "adopted"
+            ? "running"
+            : sandboxLifecycleFromLines(heartbeatLines),
+          heartbeats: heartbeatRecordsFromLines(
+            instanceId,
+            "status",
+            heartbeatLines,
+            capturedAt
+          )
+        };
+      }
       return {};
     }
     const capturedAt = new Date().toISOString();
     const heartbeatLines = await readSandboxLogLines(session.heartbeatFile);
+    const lifecycleStatus = childLifecycleStatus(session.child);
+    if (session.ownership && lifecycleStatus !== "running") {
+      await this.options.processOwnership?.close({
+        ownership: session.ownership,
+        terminalReason: lifecycleStatus === "stopped" ? "completed" : "crashed",
+        closedAt: capturedAt
+      });
+      this.sessions.delete(instanceId);
+    }
     return {
-      lifecycle_status: childLifecycleStatus(session.child),
+      lifecycle_status: lifecycleStatus,
       heartbeats: heartbeatRecordsFromLines(instanceId, "status", heartbeatLines, capturedAt)
     };
   }
@@ -240,6 +303,20 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const instanceId = instanceIdFor(instance);
     const session = this.sessions.get(instanceId);
     if (!session) {
+      if (this.options.processOwnership) {
+        const reconciliation = await this.reconcileOwnedSandbox(instance);
+        const capturedAt = new Date().toISOString();
+        const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
+        return {
+          lifecycle_status: reconciliation.status === "adopted"
+            ? "running"
+            : sandboxLifecycleFromLines(lines),
+          logs: lines.length > 0
+            ? [runtimeLogRecord(instanceId, `logs-${safeRuntimeId(capturedAt)}`, lines, capturedAt)]
+            : [],
+          heartbeats: heartbeatRecordsFromLines(instanceId, "logs", lines, capturedAt)
+        };
+      }
       return {};
     }
     const capturedAt = new Date().toISOString();
@@ -260,10 +337,38 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const instanceId = instanceIdFor(instance);
     const session = this.sessions.get(instanceId);
     if (session) {
-      await terminateChildProcess(session.child);
+      if (session.ownership && this.options.processOwnership) {
+        await this.options.processOwnership.terminate({
+          ownership: session.ownership,
+          terminalReason: "shutdown",
+          closedAt: stoppedAt
+        });
+      } else {
+        await terminateChildProcess(session.child);
+      }
       this.sessions.delete(instanceId);
       await removePersistedSandboxProcessFiles(session.pidFile);
       const lines = await readSandboxLogLines(session.logFile);
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: stoppedAt,
+        logs: lines.length > 0
+          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+          : [],
+        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+      };
+    }
+    if (this.options.processOwnership) {
+      const reconciliation = await this.reconcileOwnedSandbox(instance);
+      if (reconciliation.status === "adopted") {
+        await this.options.processOwnership.terminate({
+          ownership: reconciliation.ownership,
+          terminalReason: "shutdown",
+          closedAt: stoppedAt
+        });
+      }
+      await removePersistedSandboxProcessFiles(sandboxPidFile(instanceId));
+      const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
       return {
         lifecycle_status: "stopped",
         stopped_at: stoppedAt,
@@ -331,12 +436,6 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const logFile = deterministicSandboxLogFile(input.instance_id);
     const heartbeatFile = deterministicSandboxHeartbeatFile(input.instance_id);
     const pidFile = sandboxPidFile(input.instance_id);
-    await this.stopExistingLongRunningSession(input.instance_id, pidFile);
-    await Promise.all([
-      rm(logFile, { force: true }),
-      rm(heartbeatFile, { force: true }),
-      rm(pidFile, { force: true })
-    ]);
     const executionCommand = [
       ...command,
       "--instance-id",
@@ -382,28 +481,136 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         command_evidence: [commandEvidence]
       };
     }
-    const child = spawn(file, args, {
+    const expectedOwnership = this.options.processOwnership
+      ? sandboxProcessExpectedIdentity(
+        input,
+        executionCommand,
+        this.options.hostId ?? os.hostname()
+      )
+      : undefined;
+    if (expectedOwnership && this.options.processOwnership) {
+      const reconciliation = await this.options.processOwnership.reconcile({
+        expected: expectedOwnership,
+        mode: "adopt",
+        reconciledAt: startedAt
+      });
+      if (reconciliation.status === "blocked") {
+        throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
+      }
+      if (reconciliation.status === "adopted") {
+        const heartbeatLines = await readSandboxLogLines(heartbeatFile);
+        if (heartbeatLines.length === 0) {
+          await releaseSandboxOwnershipGate(reconciliation.ownership.session_token);
+        }
+        const lines = await readSandboxLogLines(logFile);
+        const heartbeats = heartbeatRecordsFromLines(
+          input.instance_id,
+          "adopt",
+          heartbeatLines,
+          startedAt
+        );
+        const commandEvidence = commandEvidenceRecord(input.instance_id, "adopt-owned-process", {
+          command: [
+            this.kind,
+            "adopt-owned-process",
+            reconciliation.ownership.runtime_process_ownership_id
+          ],
+          exit_code: null,
+          stdout: "",
+          stderr: "",
+          started_at: startedAt,
+          completed_at: startedAt
+        });
+        return {
+          instance: sandboxSandboxRecord({
+            adapterKind: this.kind,
+            artifact: input.artifact,
+            instanceId: input.instance_id,
+            sandboxName: input.sandbox_name,
+            runtimeRef: input.runtime_ref,
+            placementId: placement.sandbox_placement_id,
+            lifecycleStatus: "running",
+            createdAt: input.created_at,
+            startedAt: reconciliation.ownership.started_at,
+            lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
+            logRefs: lines.length > 0
+              ? [ref("sandbox_log", `sandbox-log-${sandboxEvidenceRuntimeId(input.instance_id)}-adopt`)]
+              : [],
+            heartbeatRefs: heartbeats.map((heartbeat) =>
+              ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)
+            ),
+            commandEvidenceRefs: [
+              ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)
+            ],
+            traceRef: input.trace_ref
+          }),
+          placement,
+          logs: lines.length > 0
+            ? [runtimeLogRecord(input.instance_id, "adopt", lines, startedAt)]
+            : [],
+          heartbeats,
+          command_evidence: [commandEvidence]
+        };
+      }
+    } else {
+      await this.stopExistingLongRunningSession(input.instance_id, pidFile);
+    }
+    await Promise.all([
+      rm(logFile, { force: true }),
+      rm(heartbeatFile, { force: true }),
+      rm(pidFile, { force: true })
+    ]);
+    const sessionToken = expectedOwnership ? randomUUID() : undefined;
+    const gateFile = sessionToken
+      ? sandboxOwnershipGateFile(sessionToken)
+      : undefined;
+    if (gateFile) await rm(gateFile, { force: true });
+    const child = spawn(
+      gateFile ? process.execPath : file,
+      gateFile
+        ? ["-e", OWNED_SANDBOX_PROCESS_GATE_SOURCE, gateFile, file, ...args]
+        : args,
+      {
       cwd: REPO_ROOT,
       detached: true,
       stdio: "ignore",
-      env: sandboxRuntimeProcessEnv(input.env)
+      env: {
+        ...sandboxRuntimeProcessEnv(input.env),
+        ...(sessionToken
+          ? { OUROBOROS_PROCESS_SESSION_TOKEN: sessionToken }
+          : {})
+      }
     });
     let spawnError: Error | undefined;
-    const spawnErrorSignal = new Promise<never[]>((resolve) => {
+    await new Promise<void>((resolve) => {
+      child.once("spawn", resolve);
       child.once("error", (error) => {
         spawnError = error;
-        resolve([]);
+        resolve();
       });
     });
-    const lines = await Promise.race([
-      waitForSandboxLogLines(logFile, 500),
-      spawnErrorSignal
-    ]);
+    let ownership: RuntimeProcessOwnershipRecord | undefined;
+    if (!spawnError && expectedOwnership && this.options.processOwnership &&
+      sessionToken && child.pid !== undefined) {
+      try {
+        ownership = await this.options.processOwnership.claim({
+          expected: expectedOwnership,
+          processId: child.pid,
+          sessionToken,
+          startedAt
+        });
+        await releaseSandboxOwnershipGate(sessionToken);
+      } catch (error) {
+        await terminateChildProcess(child);
+        throw error;
+      }
+    }
+    const lines = spawnError ? [] : await waitForSandboxLogLines(logFile, 500);
     const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
     const lifecycleStatus = spawnError ? "failed" : childLifecycleStatus(child);
     if (lifecycleStatus === "running") {
       child.unref();
-      if (child.pid !== undefined) {
+      if (!ownership && child.pid !== undefined) {
         await writePersistedSandboxProcess(pidFile, {
           pid: child.pid,
           instance_id: input.instance_id,
@@ -411,8 +618,14 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           started_at: startedAt
         });
       }
-      const session = { child, logFile, heartbeatFile, pidFile };
+      const session = { child, logFile, heartbeatFile, pidFile, ownership };
       this.sessions.set(input.instance_id, session);
+    } else if (ownership && this.options.processOwnership) {
+      await this.options.processOwnership.close({
+        ownership,
+        terminalReason: lifecycleStatus === "stopped" ? "completed" : "crashed",
+        closedAt: new Date().toISOString()
+      });
     }
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
       command: executionCommand,
@@ -451,6 +664,38 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       heartbeats,
       command_evidence: [commandEvidence]
     };
+  }
+
+  private async reconcileOwnedSandbox(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<RuntimeProcessOwnershipReconcileResult> {
+    const processOwnership = this.options.processOwnership;
+    if (!processOwnership) return { status: "vacant" };
+    const scope = sandboxProcessOwnershipScope(instanceIdFor(instance));
+    const active = await processOwnership.active(scope);
+    if (!active) return { status: "vacant" };
+    const runtimeRef = sandboxRuntimeRef(instance);
+    if (!sameRef(active.runtime_ref, runtimeRef) ||
+      active.owner.host_id !== (this.options.hostId ?? os.hostname())) {
+      throw new Error("sandbox_process_ownership_identity_mismatch");
+    }
+    const reconciliation = await processOwnership.reconcile({
+      expected: expectedIdentityFromOwnership(active),
+      mode: "adopt",
+      reconciledAt: new Date().toISOString()
+    });
+    if (reconciliation.status === "blocked") {
+      throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
+    }
+    if (reconciliation.status === "adopted") {
+      const heartbeatLines = await readSandboxLogLines(
+        deterministicSandboxHeartbeatFile(instanceIdFor(instance))
+      );
+      if (heartbeatLines.length === 0) {
+        await releaseSandboxOwnershipGate(reconciliation.ownership.session_token);
+      }
+    }
+    return reconciliation;
   }
 
   private async stopExistingLongRunningSession(instanceId: string, pidFile: string): Promise<void> {
@@ -1628,6 +1873,98 @@ function deterministicSandboxLogFile(instanceId: string): string {
 
 function deterministicSandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${sandboxRuntimeFileKey(instanceId)}.heartbeat.json`;
+}
+
+function sandboxProcessExpectedIdentity(
+  input: SandboxAdapterStartInput,
+  command: string[],
+  hostId: string
+): RuntimeProcessExpectedIdentity {
+  const runtimeRef = input.runtime_ref ?? {
+    record_kind: "sandbox",
+    id: input.instance_id
+  };
+  return {
+    ...sandboxProcessOwnershipScope(input.instance_id),
+    runtime_ref: { ...runtimeRef },
+    host_id: hostId,
+    executable: process.execPath,
+    profile_digest: `sha256:${createHash("sha256").update(JSON.stringify({
+      adapter_kind: "deterministic_test",
+      system_code_id: input.artifact.system_code_id,
+      system_code_artifact_digest: input.artifact.artifact_digest,
+      sandbox_name: input.sandbox_name,
+      sandbox_placement_id: input.sandbox_placement_id,
+      runtime_ref: runtimeRef,
+      command,
+      trading_api_base_url: input.env?.TRADING_API_BASE_URL ?? null
+    })).digest("hex")}`
+  };
+}
+
+function sandboxProcessOwnershipScope(instanceId: string): {
+  process_kind: "candidate_sandbox";
+  subject_ref: Ref;
+} {
+  return {
+    process_kind: "candidate_sandbox",
+    subject_ref: { record_kind: "sandbox", id: instanceId }
+  };
+}
+
+function sandboxRuntimeRef(
+  instance: SandboxRecord | SandboxDetailReadModel
+): Ref {
+  return instance.runtime_ref
+    ? { ...instance.runtime_ref }
+    : { record_kind: "sandbox", id: instanceIdFor(instance) };
+}
+
+function expectedIdentityFromOwnership(
+  ownership: RuntimeProcessOwnershipRecord
+): RuntimeProcessExpectedIdentity {
+  return {
+    process_kind: ownership.process_kind,
+    subject_ref: { ...ownership.subject_ref },
+    runtime_ref: { ...ownership.runtime_ref },
+    host_id: ownership.owner.host_id,
+    executable: ownership.executable,
+    profile_digest: ownership.profile_digest
+  };
+}
+
+function sameRef(left: Ref, right: Ref): boolean {
+  return left.record_kind === right.record_kind && left.id === right.id;
+}
+
+function sandboxOwnershipGateFile(sessionToken: string): string {
+  const tokenDigest = createHash("sha256").update(sessionToken).digest("hex");
+  return path.join(os.tmpdir(), `ouroboros-sandbox-ownership-${tokenDigest}.gate`);
+}
+
+async function releaseSandboxOwnershipGate(sessionToken: string): Promise<void> {
+  const gateFile = sandboxOwnershipGateFile(sessionToken);
+  await writeFile(gateFile, "go\n", { encoding: "utf8", mode: 0o600 });
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 500) {
+    const consumed = await readFile(gateFile, "utf8").then(
+      () => false,
+      (error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+        throw error;
+      }
+    );
+    if (consumed) return;
+    await sleep(5);
+  }
+  await rm(gateFile, { force: true });
+}
+
+function sandboxLifecycleFromLines(lines: string[]): SandboxLifecycleStatus {
+  return lines.some((line) => line.includes('"event":"runtime_stopped"') ||
+    line.includes('"event": "runtime_stopped"'))
+    ? "stopped"
+    : "failed";
 }
 
 function sandboxPidFile(instanceId: string): string {

@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import path from "node:path";
+import type { Ref, RuntimeProcessTerminalReason } from "@ouroboros/domain";
+import type {
+  RuntimeProcessExpectedIdentity,
+  RuntimeProcessOwnershipPort
+} from "../../ports/runtime-process-ownership";
 import { sanitizeResearchWorkerArenaContext } from
   "../../candidate/research-worker-memory";
 import {
@@ -29,6 +35,10 @@ type ExecFileRunner = (
     timeout?: number;
     stdin?: string;
     env?: NodeJS.ProcessEnv;
+    ownership?: {
+      port: RuntimeProcessOwnershipPort;
+      expected: RuntimeProcessExpectedIdentity;
+    };
   }
 ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
 
@@ -49,6 +59,8 @@ export interface CodexTradingResearchAgentOptions {
   reasoning_effort?: "low" | "medium" | "high" | "xhigh";
   env?: NodeJS.ProcessEnv;
   execFile?: ExecFileRunner;
+  process_ownership?: RuntimeProcessOwnershipPort;
+  host_id?: string;
 }
 
 export class CodexTradingResearchAgentAdapter
@@ -59,6 +71,8 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   private readonly reasoningEffort: "low" | "medium" | "high" | "xhigh";
   private readonly env?: NodeJS.ProcessEnv;
   private readonly execFile: ExecFileRunner;
+  private readonly processOwnership?: RuntimeProcessOwnershipPort;
+  private readonly hostId: string;
 
   constructor(options: CodexTradingResearchAgentOptions = {}) {
     this.agent = {
@@ -72,6 +86,8 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
     this.reasoningEffort = options.reasoning_effort ?? "low";
     this.env = options.env;
     this.execFile = options.execFile ?? defaultExecFileRunner;
+    this.processOwnership = options.process_ownership;
+    this.hostId = options.host_id ?? hostname();
   }
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
@@ -127,6 +143,9 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
       server = await startResearchWorkerToolServer(input.tools);
       const command = this.buildCommandForArtifact(input.artifact_dir, server);
       const prompt = await this.buildSessionPrompt(input);
+      const ownership = this.processOwnership
+        ? this.providerProcessOwnership(input, command)
+        : undefined;
       await this.execFile(this.command, command, {
         cwd: input.artifact_dir,
         timeout: Math.min(this.timeoutMs, input.timeout_ms),
@@ -140,7 +159,8 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
             server.transport === "unix_socket" ? server.socket_path : undefined,
           OUROBOROS_RESEARCH_TOOL_TOKEN: server.authorization_token,
           OUROBOROS_RESEARCH_TOOL_CLIENT: client.client_path
-        }
+        },
+        ...(ownership ? { ownership } : {})
       });
       const status = await input.tools.status();
       if (status.session_status === "selected" &&
@@ -243,6 +263,37 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
     }
     command.push("--skip-git-repo-check", "-");
     return command;
+  }
+
+  private providerProcessOwnership(
+    input: ResearchWorkerSessionInput,
+    command: string[]
+  ): {
+    port: RuntimeProcessOwnershipPort;
+    expected: RuntimeProcessExpectedIdentity;
+  } {
+    if (!this.processOwnership || !input.process_ownership) {
+      throw new Error("research_worker_process_ownership_scope_missing");
+    }
+    return {
+      port: this.processOwnership,
+      expected: {
+        process_kind: "research_provider",
+        subject_ref: providerProcessSubjectRef(
+          input.process_ownership.subject_ref,
+          input.artifact_dir
+        ),
+        runtime_ref: { ...input.process_ownership.runtime_ref },
+        host_id: this.hostId,
+        executable: this.command,
+        profile_digest: providerProcessProfileDigest({
+          agent: this.agent,
+          command: this.command,
+          args: command,
+          cwd: input.artifact_dir
+        })
+      }
+    };
   }
 
   private async buildSessionPrompt(input: ResearchWorkerSessionInput): Promise<string> {
@@ -459,11 +510,33 @@ export class NoopTradingResearchAgentAdapter implements TradingResearchAgentAdap
 }
 
 const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) => {
+  if (options.ownership) {
+    const reconciliation = await options.ownership.port.reconcile({
+      expected: options.ownership.expected,
+      mode: "terminate",
+      reconciledAt: new Date().toISOString()
+    });
+    if (reconciliation.status === "blocked") {
+      throw new CodexCommandError(
+        "codex_cli_failed",
+        `Provider process ownership reconciliation blocked: ${reconciliation.reason}`,
+        "",
+        ""
+      );
+    }
+  }
+  const sessionToken = options.ownership ? randomUUID() : undefined;
+  const startedAt = new Date().toISOString();
   return new Promise((resolve, reject) => {
     const processGroup = process.platform !== "win32";
     const child = spawn(file, args, {
       cwd: options.cwd,
-      env: managedResearchAgentEnv(options.env),
+      env: managedResearchAgentEnv({
+        ...options.env,
+        ...(sessionToken
+          ? { OUROBOROS_PROCESS_SESSION_TOKEN: sessionToken }
+          : {})
+      }),
       detached: processGroup,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -471,6 +544,8 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     const stderr: Buffer[] = [];
     let settled = false;
     let terminationError: Error | undefined;
+    let ownershipRecord: Awaited<ReturnType<RuntimeProcessOwnershipPort["claim"]>> | undefined;
+    let ownershipClaim: Promise<void> = Promise.resolve();
     const commandText = `${file} ${args.join(" ")}`;
     const stdoutText = () => Buffer.concat(stdout).toString("utf8");
     const stderrText = () => Buffer.concat(stderr).toString("utf8");
@@ -479,7 +554,7 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
         clearTimeout(timeout);
       }
     };
-    const fail = (error: Error) => {
+    const failBeforeSpawn = (error: Error) => {
       clearCommandTimeout();
       if (!settled) {
         settled = true;
@@ -528,19 +603,69 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
       }
     });
     child.on("error", (error) => {
-      fail(error);
+      failBeforeSpawn(error);
     });
     child.stdin.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code !== "EPIPE") {
-        fail(error);
+        terminate(error);
       }
     });
+    child.once("spawn", () => {
+      if (!options.ownership || !sessionToken || child.pid === undefined) {
+        child.stdin.end(options.stdin ?? "");
+        return;
+      }
+      ownershipClaim = options.ownership.port.claim({
+        expected: options.ownership.expected,
+        processId: child.pid,
+        sessionToken,
+        startedAt
+      }).then((record) => {
+        ownershipRecord = record;
+        child.stdin.end(options.stdin ?? "");
+      }).catch((error) => {
+        terminate(new CodexCommandError(
+          "codex_cli_failed",
+          error instanceof Error
+            ? `Provider process ownership claim failed: ${error.message}`
+            : "Provider process ownership claim failed.",
+          stdoutText(),
+          stderrText()
+        ));
+        throw error;
+      });
+      void ownershipClaim.catch(() => undefined);
+    });
     child.on("close", (code) => {
+      void finalize(code);
+    });
+
+    const finalize = async (code: number | null) => {
       clearCommandTimeout();
       if (settled) {
         return;
       }
       settled = true;
+      try {
+        await ownershipClaim;
+        if (ownershipRecord && options.ownership) {
+          await options.ownership.port.close({
+            ownership: ownershipRecord,
+            terminalReason: providerTerminalReason(code, terminationError),
+            closedAt: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        reject(new CodexCommandError(
+          "codex_cli_failed",
+          error instanceof Error
+            ? `Provider process ownership finalization failed: ${error.message}`
+            : "Provider process ownership finalization failed.",
+          stdoutText(),
+          stderrText()
+        ));
+        return;
+      }
       if (terminationError) {
         reject(terminationError);
         return;
@@ -557,10 +682,20 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
         finalStdout,
         finalStderr
       ));
-    });
-    child.stdin.end(options.stdin ?? "");
+    };
   });
 };
+
+function providerTerminalReason(
+  exitCode: number | null,
+  terminationError: Error | undefined
+): RuntimeProcessTerminalReason {
+  if (terminationError instanceof CodexCommandError &&
+    terminationError.failure_reason === "codex_timed_out") {
+    return "timed_out";
+  }
+  return exitCode === 0 ? "completed" : "crashed";
+}
 
 function killProcessGroup(
   pid: number | undefined,
@@ -592,6 +727,34 @@ function managedResearchAgentEnv(overrides: NodeJS.ProcessEnv | undefined): Node
       ...overrides
     }).filter((entry): entry is [string, string] => typeof entry[1] === "string")
   );
+}
+
+function providerProcessProfileDigest(input: {
+  agent: ManagedResearchAgent;
+  command: string;
+  args: string[];
+  cwd: string;
+}): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    provider: input.agent.provider,
+    model: input.agent.model ?? null,
+    permission_policy: input.agent.permission_policy,
+    command: input.command,
+    args: input.args,
+    cwd: path.resolve(input.cwd)
+  })).digest("hex")}`;
+}
+
+function providerProcessSubjectRef(workerRef: Ref, artifactDir: string): Ref {
+  const resolved = path.resolve(artifactDir);
+  const marker = `${path.sep}candidate-arena-runs${path.sep}`;
+  const markerIndex = resolved.lastIndexOf(marker);
+  const storeRoot = markerIndex > 0 ? resolved.slice(0, markerIndex) : resolved;
+  const scopeDigest = createHash("sha256").update(storeRoot).digest("hex").slice(0, 24);
+  return {
+    record_kind: "research_worker_process_scope",
+    id: `${workerRef.id}-${scopeDigest}`
+  };
 }
 
 class CodexCommandError extends Error {

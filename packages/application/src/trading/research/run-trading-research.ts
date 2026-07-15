@@ -403,6 +403,15 @@ async function runAutonomousTradingResearchSession(input: {
       ...(input.input.arena_context
         ? { arena_context: input.input.arena_context }
         : {}),
+      process_ownership: {
+        subject_ref: {
+          ...input.preflightPlan.commitment.research_worker_ref
+        },
+        runtime_ref: {
+          record_kind: "research_preflight_commitment",
+          id: input.preflightPlan.commitment.research_preflight_commitment_id
+        }
+      },
       tools: session
     });
     if (providerResult.status === "failed") {
