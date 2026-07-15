@@ -377,6 +377,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
             session.ownership
           );
           if (ownership) {
+            stoppedAt = new Date(Math.max(
+              Date.now(),
+              Date.parse(ownership.last_adopted_at ?? ownership.started_at)
+            )).toISOString();
             await this.options.processOwnership.terminate({
               ownership,
               terminalReason: "shutdown",

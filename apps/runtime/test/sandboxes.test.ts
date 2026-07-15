@@ -266,11 +266,20 @@ describe("sandbox API", () => {
     const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
       path.join(tmpDir, "runtime-process-ownership")
     );
-    let delayActiveRead = false;
+    let blockActiveRead = false;
+    let signalActiveRead!: () => void;
+    let releaseActiveRead!: () => void;
+    const activeReadStarted = new Promise<void>((resolve) => {
+      signalActiveRead = resolve;
+    });
+    const activeReadReleased = new Promise<void>((resolve) => {
+      releaseActiveRead = resolve;
+    });
     const delayedProcessOwnership: RuntimeProcessOwnershipPort = {
       active: async (scope) => {
-        if (delayActiveRead) {
-          await new Promise((resolve) => setTimeout(resolve, 5));
+        if (blockActiveRead) {
+          signalActiveRead();
+          await activeReadReleased;
         }
         return processOwnership.active(scope);
       },
@@ -344,8 +353,29 @@ describe("sandbox API", () => {
       })).rejects.toThrow("identity_mismatch");
       expect(isPidAlive(firstPid!)).toBe(true);
 
-      delayActiveRead = true;
-      const stopped = await initialAdapter.stopArtifactInstance(started.instance);
+      blockActiveRead = true;
+      const stopPromise = initialAdapter.stopArtifactInstance(started.instance);
+      await activeReadStarted;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const activeBeforeRace = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      if (!activeBeforeRace) throw new Error("expected active Sandbox ownership");
+      await processOwnership.reconcile({
+        expected: {
+          process_kind: activeBeforeRace.process_kind,
+          subject_ref: activeBeforeRace.subject_ref,
+          runtime_ref: activeBeforeRace.runtime_ref,
+          host_id: activeBeforeRace.owner.host_id,
+          executable: activeBeforeRace.executable,
+          profile_digest: activeBeforeRace.profile_digest
+        },
+        mode: "adopt",
+        reconciledAt: new Date().toISOString()
+      });
+      releaseActiveRead();
+      const stopped = await stopPromise;
       expect(stopped.lifecycle_status).toBe("stopped");
       expect(isPidAlive(firstPid!)).toBe(false);
       expect((await processOwnership.history({
