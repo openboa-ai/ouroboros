@@ -89,7 +89,7 @@ claimed or changed.
 | --- | --- | --- | --- | --- |
 | Goal-based | Explicit user objective or one unblocked Linear issue moved to `Todo` and assigned or delegated for execution. | One issue and declared acceptance claim; repo changes add one branch and PR. | Issue acceptance and writeback; repo changes also require focused checks, repo guards, current-head review, and merge. | Required merge/writeback or a truthful terminal state. |
 | Time-based | Scheduled Codex heartbeat or standalone recurring task. | Reconcile one active PR, recover one active issue, select at most one ready issue, or publish one project-health update. | Fresh Linear/GitHub/repo readback and the same issue acceptance gates. | One bounded reconciliation; the schedule may persist. |
-| Proactive | Trusted Linear assignment/dependency/status event or GitHub PR/check/review/merge event. | The issue or PR named by the event; adjacent discoveries go to Backlog. | Event payload reconciled against current external state, then normal checks/review/merge evidence. | Event handled, no-op, or truthful terminal state. |
+| Proactive | Trusted Linear assignment/dependency/status event or GitHub PR/check/review/merge event. | The issue or PR named by the event; adjacent evidence stays in its workpad until issue admission. | Event payload reconciled against current external state, then normal checks/review/merge evidence. | Event handled, no-op, or truthful terminal state. |
 
 ### Goal-Based Runs
 
@@ -117,7 +117,8 @@ permissions. Selection order is:
 1. fix an actionable current-head failure or review comment inside the active claim;
 2. recover an already-owned `In Progress` frontier;
 3. activate one unblocked, fully shaped `Todo` frontier;
-4. otherwise record a no-op or propose a bounded Backlog issue without implementing it.
+4. otherwise record a no-op; create a bounded Backlog issue only after independent issue admission,
+   and retain unshaped evidence in the current workpad or tracking parent.
 
 ## Attempt, Budget, And Stop Contract
 
@@ -242,7 +243,40 @@ normalization frontier because native Linear and GitHub state already own those 
 Select only a shaped, unblocked executable repo or Linear-only issue that fits current WIP. Prefer
 the highest priority among eligible issues. A tracking parent is never selected for implementation,
 and a blocked issue does not become executable because it inherited a parent priority. Adjacent
-discoveries remain `Backlog` and do not expand the active branch or pull request.
+discoveries remain in the active workpad or tracking parent until they pass issue admission; they
+never expand the active branch or pull request automatically.
+
+## Independent Frontier Decomposition
+
+Issue separation means the resulting units can execute independently. Before creating or selecting
+an executable sibling, prove all six dimensions:
+
+| Dimension | Admission evidence |
+| --- | --- |
+| Claim | One durable, observable outcome not already owned by active or duplicate work. |
+| Inputs | Stable contracts are on `main`; any unavailable input is named exactly. |
+| Boundary | Owned files and external objects do not require a sibling's unmerged implementation or shared mutable output. |
+| Acceptance | The issue can prove its own outcome without borrowing a sibling's acceptance result. |
+| Validation | Local or named remote checks can run from its declared base. |
+| Merge | Siblings can merge in either order without changing one another's intended semantics. |
+
+Admitted siblings fan out from the same stable prerequisite. They do not block one another merely
+because they were conceived, created, or expected to be reviewed in an order. Use parentage for
+rollup, priority or cycles for selection preference, related links for context, and `blocked by`
+only when a concrete artifact, contract, permission, or environment condition is unavailable.
+
+Integration, rollout, migration, qualification, and soak frontiers are valid fan-in points. They
+may depend on the exact independent components whose merged behavior they combine and must own new
+integration acceptance rather than repeat component acceptance. If proposed siblings consume one
+another's unmerged code, mutate the same unstable contract, or cannot validate separately, combine
+them. If the combined unit exceeds the scope budget, first land a smallest stable foundation, then
+fan out independent work and fan it back into one explicit integration frontier.
+
+Do not create an issue for a fix required by the active claim, a duplicate outcome, a transient
+non-reproduced signal, an optional review note, or an unshaped idea. Keep that evidence in the
+active workpad or tracking parent. Admit it later only when it has a distinct claim, boundary,
+acceptance, validation, dependency decision, and owner/capacity decision. A verified high-impact
+exposure can satisfy the evidence threshold immediately, but not bypass the rest of the contract.
 
 ## Frontier Contract
 
@@ -264,9 +298,10 @@ the issue may change. Non-goals block adjacent work. Acceptance names evidence, 
 Validation must be executable locally or by a named remote check. Dependencies must distinguish a
 hard blocker from useful context.
 
-If implementation reveals another claim, another owner boundary, or an unrelated cleanup, create a
-queued Linear issue and keep the current pull request unchanged. Review feedback stays in the
-current pull request only when it is required to make the current claim correct.
+If implementation reveals another claim, another owner boundary, or an unrelated cleanup, keep the
+current pull request unchanged. Create a queued Linear issue only when the discovery passes the
+independent frontier admission gate; otherwise record it in the workpad or tracking parent. Review
+feedback stays in the current pull request when it is required to make the current claim correct.
 
 ## State Gates
 
@@ -289,14 +324,48 @@ non-goals, progress, validation, pull request, blockers, and exact next action.
 - Branch names use `codex/OURO-NNN-short-slug`.
 - Pull-request titles start with `[OURO-NNN]`.
 - Start from current `origin/main` unless an explicit stacked dependency is recorded.
+- Use the root checkout only as the control checkout; implementation starts in the issue's dedicated
+  worktree after base, branch, and writer lease are recorded.
 - A stacked pull request targets its immediate dependency, names that base in the issue and PR, and
-  keeps stack depth at two or less.
+  keeps stack depth at two or less. It still receives a separate worktree and writer lease.
 - Do not add a second Linear issue to a branch or pull request.
 - Do not append follow-up work after a pull request has reached clean current-head review.
 
 Default WIP is one `In Progress` implementation issue per owner plus at most one issue waiting in
 `In Review`. Planning, read-only investigation, and independent QA may run in parallel when they do
 not create competing writers.
+
+## Worktree Execution Contract
+
+Before a repo issue changes files, record:
+
+```text
+control_checkout:
+worktree:
+base_commit:
+branch:
+writer_lease:
+cleanup_state:
+```
+
+The control checkout owns fetch, orientation, inventory, and cleanup coordination. It may be dirty
+with unrelated user work and must not be cleaned, stashed, reset, or used as the issue writer. The
+issue worktree owns one branch and one logical writer lease. Parallel issues also isolate mutable
+build output and service ports; a shared mutable external resource requires an explicit lease,
+while shared read-only caches are acceptable.
+
+Recovery begins with the git common directory, `git worktree list --porcelain`, branch ownership,
+per-worktree dirty state, open PR heads, and active workpad leases. Resume one exact matching
+frontier. A duplicate event or stale task must not create another worktree, branch, writer, issue,
+or PR. True stacked work records the dependency head as base in its own worktree instead of reusing
+the dependency workspace.
+
+Landing and cleanup are separate phases. Merge through a remote-scoped GitHub command that does not
+switch or delete the active local branch. After remote merge, write back and read back both the
+merge evidence and `released` writer-lease state. Then verify the worktree is clean and inactive
+from the control checkout, remove it, and delete local and remote branches as appropriate. Missing
+readback, dirty state, or an active lease keeps `cleanup_state: pending`; cleanup never discards
+work automatically. Linear-only issues set every repo workspace field to `not_applicable`.
 
 ## Scope Budget
 
@@ -319,10 +388,12 @@ model, tool, research-direction, or candidate-code allowlist.
 
 ## Execution Loop
 
-1. **Recover:** fetch remote state; identify issue shape and nearest evidence, plus branch, dirty
-   files, and PR when it is repo work.
+1. **Recover:** fetch remote state; identify issue shape and nearest evidence, plus the control
+   checkout, worktree inventory, branch ownership, dirty files, writer lease, and PR when it is repo
+   work.
 2. **Read:** use the canonical repo read path, then the Linear Project, milestone, issue, and workpad.
-3. **Shape:** lock one frontier contract and route adjacent work to Backlog.
+3. **Shape:** lock one frontier contract and retain adjacent evidence in the workpad until it passes
+   independent issue admission.
 4. **Execute:** for repo work, use TDD and edit only the owned boundary; for Linear-only work,
    perform only the predeclared OAuth mutation.
 5. **Verify:** run focused and required repo checks for repo work; collect exact object readback for

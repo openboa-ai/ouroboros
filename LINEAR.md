@@ -13,8 +13,9 @@ pull request, doc path, or validation evidence that owns the durable fact.
 - Linear comments and workpads should summarize progress and link to repo truth.
 - Linear-related work must select the `linear` skill first and execute Linear operations through
   the bundled Linear OAuth Connector.
-- One executable repo issue maps to one branch and one pull request. The complete lifecycle and
-  frontier contract live in [Development Workflow](docs/development-workflow.md).
+- One executable repo issue maps to one dedicated worktree, one branch, and one pull request. The
+  complete lifecycle and frontier contract live in
+  [Development Workflow](docs/development-workflow.md).
 - Primary docs should keep agents focused on the CandidateArena loop: parallel or iterative
   TradingSystem candidate generation, external Evaluation, leaderboard, findings/lineage, next
   generation, and selected candidate paper evidence.
@@ -50,6 +51,42 @@ its children.
 Linear subissues may inherit the parent Project and priority, but labels do not inherit. After
 creating a child, explicitly read back and normalize its Project, priority, labels, dependencies,
 and state before treating it as ready.
+
+## Issue Admission And Dependency
+
+Creating an issue is an execution decision, not a note-taking action. Admit an executable issue
+only when it has all of the following:
+
+- one durable claim not already owned by an active issue or duplicate outcome;
+- stable inputs available on `main`, or one concrete unavailable input named as a blocker;
+- an owned surface that does not require a sibling's unmerged implementation;
+- acceptance and validation that can pass independently of sibling acceptance;
+- merge-order independent behavior for sibling work, with mutable file, build-output, service, and
+  cleanup ownership separated enough for parallel execution;
+- a priority and owner/capacity decision when it is selected.
+
+A required fix for the active claim stays in its current issue and PR. A duplicate outcome,
+optional review suggestion, transient non-reproduced failure, or unshaped idea stays in the active
+workpad or tracking parent until it satisfies admission. A single verified production, security,
+trading-authority, or data-integrity exposure may satisfy the evidence threshold without repeated
+occurrence, but it still needs a bounded claim and validation.
+
+Use Linear relations according to the fact they own:
+
+- parent/subissue means decomposition and rollup, not execution order;
+- priority or cycle means preferred selection order, not a blocker;
+- related means useful context without execution gating;
+- `blocked by` means the issue cannot start or validate because a specific artifact, contract,
+  permission, or environment condition is unavailable;
+- independent siblings fan out from a stable shared prerequisite with no sibling chain;
+- an integration, rollout, migration, qualification, or soak issue may fan in by depending on the
+  exact component issues whose merged evidence it consumes.
+
+If proposed siblings are not independently startable and merge-order independent, combine them
+into one executable issue. When that would exceed the review budget, land the smallest stable
+foundation first, then reshape the remainder as independent fan-out plus explicit fan-in. After
+changing dependencies, read back every affected issue; creation order and shared theme never
+justify a serial chain.
 
 ## Priority
 
@@ -95,6 +132,22 @@ evidence for repo work, or exact post-mutation readback for Linear-only work.
 Branch names use `codex/OURO-NNN-short-slug`, pull-request titles start with `[OURO-NNN]`, and the
 PR links back to the issue. Tracking parents, Initiatives, Projects, milestones, cycles, views, and
 Documents do not own branches or pull requests.
+
+## Worktree Isolation
+
+The root checkout is the control checkout: use it for fetch, orientation, worktree inventory, and
+cleanup coordination, but never for issue implementation. Before editing, each executable repo
+issue records one current base, one `codex/OURO-NNN-short-slug` branch, one dedicated worktree, and
+one writer lease. Independent issues may run concurrently only when they do not share dirty state,
+index or branch ownership, mutable build output, service ports, or cleanup authority.
+
+True stacked work still uses a separate worktree and lease; record the dependency head as its base
+and target the dependency PR. Recovery enumerates existing worktrees, branches, PRs, dirty state,
+and workpad leases before creating anything, then resumes the exact match. After remote merge,
+write back and read back both the merge evidence and `released` lease state. Only then verify a
+clean inactive worktree from the control checkout, remove it, and delete branches. Never
+automatically remove dirty, active, or leased worktrees. Linear-only issues remain branchless and
+worktree-free.
 
 ## Primary Repo Read Path
 

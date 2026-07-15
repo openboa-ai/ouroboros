@@ -265,6 +265,15 @@ and has no issue priority. An executable repo issue owns one observable claim, o
 pull request. A Linear-only configuration issue owns one bounded mutation and readback but no
 branch or pull request.
 
+Issue separation is an execution contract. Executable siblings must be independently startable
+from stable shared prerequisites, own distinct acceptance and validation, and never require one
+another's unmerged branch. Use priority for preferred order, parentage for rollup, `blocked by` only
+for a concrete unavailable input, and a separate integration issue for explicit fan-in. Combine or
+reshape work that is not merge-order independent. Keep review notes, transient signals, and
+unshaped ideas in the active workpad or tracking parent until they pass issue admission. Every
+repo-writing issue uses its own dedicated worktree, recorded base, branch, and writer lease; the
+root checkout is a control checkout for fetch and inventory, not implementation.
+
 Priority selects work; it does not restate status, dependency, or risk. Reserve `Urgent` for an
 active exposure or the sole current blocker and `High` for the next unblocked critical-path issue.
 Every executable issue has exactly one `area:*` and one `type:*` label, may have `risk:*` labels,
