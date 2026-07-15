@@ -46,7 +46,21 @@ const { spawn } = require("node:child_process");
 const [gateFile, file, ...args] = process.argv.slice(1);
 const deadline = Date.now() + 10000;
 const timer = setInterval(() => {
-  if (!fs.existsSync(gateFile)) {
+  let gateState;
+  try {
+    gateState = fs.readFileSync(gateFile, "utf8");
+  } catch (error) {
+    if (error && error.code !== "ENOENT") {
+      clearInterval(timer);
+      process.exit(79);
+    }
+    if (Date.now() >= deadline) {
+      clearInterval(timer);
+      process.exit(78);
+    }
+    return;
+  }
+  if (gateState !== "go\n") {
     if (Date.now() >= deadline) {
       clearInterval(timer);
       process.exit(78);
@@ -500,10 +514,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
       }
       if (reconciliation.status === "adopted") {
-        const heartbeatLines = await readSandboxLogLines(heartbeatFile);
-        if (heartbeatLines.length === 0) {
+        if (await sandboxOwnershipGatePending(reconciliation.ownership.session_token)) {
           await this.releaseOwnedSandboxGate(reconciliation.ownership);
         }
+        const heartbeatLines = await readSandboxLogLines(heartbeatFile);
         const lines = await readSandboxLogLines(logFile);
         const heartbeats = heartbeatRecordsFromLines(
           input.instance_id,
@@ -569,7 +583,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const gateFile = sessionToken
       ? sandboxOwnershipGateFile(sessionToken)
       : undefined;
-    if (gateFile) await rm(gateFile, { force: true });
+    if (gateFile) {
+      await writeFile(gateFile, "wait\n", { encoding: "utf8", mode: 0o600 });
+    }
     const child = spawn(
       gateFile ? process.execPath : file,
       gateFile
@@ -607,9 +623,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         await this.releaseOwnedSandboxGate(ownership, child);
       } catch (error) {
         if (!ownership) await terminateChildProcess(child);
+        if (gateFile) await rm(gateFile, { force: true });
         throw error;
       }
     }
+    if (spawnError && gateFile) await rm(gateFile, { force: true });
     const lines = spawnError ? [] : await waitForSandboxLogLines(logFile, 500);
     const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
     const lifecycleStatus = spawnError ? "failed" : childLifecycleStatus(child);
@@ -693,10 +711,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
     }
     if (reconciliation.status === "adopted") {
-      const heartbeatLines = await readSandboxLogLines(
-        deterministicSandboxHeartbeatFile(instanceIdFor(instance))
-      );
-      if (heartbeatLines.length === 0) {
+      if (await sandboxOwnershipGatePending(reconciliation.ownership.session_token)) {
         await this.releaseOwnedSandboxGate(reconciliation.ownership);
       }
     }
@@ -1971,6 +1986,20 @@ function sameRef(left: Ref, right: Ref): boolean {
 function sandboxOwnershipGateFile(sessionToken: string): string {
   const tokenDigest = createHash("sha256").update(sessionToken).digest("hex");
   return path.join(os.tmpdir(), `ouroboros-sandbox-ownership-${tokenDigest}.gate`);
+}
+
+async function sandboxOwnershipGatePending(sessionToken: string): Promise<boolean> {
+  const gateFile = sandboxOwnershipGateFile(sessionToken);
+  return readFile(gateFile, "utf8").then(
+    (state) => {
+      if (state === "wait\n" || state === "go\n") return true;
+      throw new Error("sandbox_ownership_gate_invalid");
+    },
+    (error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  );
 }
 
 async function releaseSandboxOwnershipGate(

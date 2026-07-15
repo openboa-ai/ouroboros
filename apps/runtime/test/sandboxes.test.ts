@@ -13,7 +13,9 @@ import { buildServer } from "../src/server";
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
-  type SandboxAdapter
+  type SandboxAdapter,
+  type SandboxAdapterStartInput,
+  type SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
 
 let tmpDir: string;
@@ -385,6 +387,79 @@ describe("sandbox API", () => {
         await processOwnership.terminate({
           ownership: active,
           terminalReason: "timed_out",
+          closedAt: new Date().toISOString()
+        }).catch(() => undefined);
+      }
+    }
+  });
+
+  it("adopts a consumed ownership gate before the first heartbeat", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const delayedScriptPath = path.join(tmpDir, "sandbox-delayed-heartbeat.py");
+    await writeFile(delayedScriptPath, delayedHeartbeatSandboxScript(2_000), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const adapterOptions = {
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId],
+      processOwnership,
+      hostId: "host-a"
+    } as const;
+    const firstAdapter = new DeterministicSandboxAdapter(adapterOptions);
+    const restartedAdapter = new DeterministicSandboxAdapter(adapterOptions);
+    const input: SandboxAdapterStartInput = {
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-delayed-heartbeat",
+        artifact_path: delayedScriptPath,
+        artifact_digest: "sha256:delayed-heartbeat",
+        entrypoint: ["python3", delayedScriptPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: "sandbox-owned-consumed-gate",
+      sandbox_name: "ouro-owned-consumed-gate",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-consumed-gate",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    };
+    let started: SandboxAdapterStartResult | undefined;
+
+    try {
+      started = await firstAdapter.startArtifactInstance(input);
+      expect(started.instance.lifecycle_status).toBe("running");
+      expect(started.heartbeats).toHaveLength(0);
+
+      const adopted = await restartedAdapter.startArtifactInstance(input);
+
+      expect(adopted.instance.lifecycle_status).toBe("running");
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(active).toBeDefined();
+      expect(isPidAlive(active!.owner.process_id)).toBe(true);
+    } finally {
+      if (started) {
+        await firstAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
+      }
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      }).catch(() => undefined);
+      if (active) {
+        await processOwnership.terminate({
+          ownership: active,
+          terminalReason: "shutdown",
           closedAt: new Date().toISOString()
         }).catch(() => undefined);
       }
@@ -1519,6 +1594,33 @@ args, _ = parser.parse_known_args()
 
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
 pathlib.Path(${JSON.stringify(helperPidFile)}).write_text(str(child.pid), encoding="utf8")
+event = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z"
+}
+pathlib.Path(args.log_file).write_text(json.dumps(event) + "\\n", encoding="utf8")
+pathlib.Path(args.heartbeat_file).write_text(json.dumps(event), encoding="utf8")
+while True:
+    time.sleep(1)
+`;
+}
+
+function delayedHeartbeatSandboxScript(delayMs: number): string {
+  return `import argparse
+import json
+import pathlib
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+time.sleep(${delayMs / 1_000})
 event = {
     "event": "runtime_heartbeat",
     "instance_id": args.instance_id,
