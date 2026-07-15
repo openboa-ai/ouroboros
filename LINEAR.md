@@ -159,6 +159,6 @@ bundled Linear OAuth Connector. Read the Project, milestone, issue, comments, or
 writing. Keep one issue comment headed `## Codex Workpad`, update it rather than creating duplicate
 progress comments, and report the exact Linear identifiers changed.
 
-Do not use a repo-local `LINEAR_API_KEY`, raw GraphQL command, or local `.env` credential path. If
-the OAuth Connector is unavailable, leave workflow writeback blocked with exact evidence instead of
-treating Linear or chat memory as a replacement for repo truth.
+The OAuth Connector is the repository's only Linear execution path. If it is unavailable, leave
+workflow writeback blocked with exact evidence instead of treating Linear or chat memory as a
+replacement for repo truth.

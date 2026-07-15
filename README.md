@@ -363,10 +363,9 @@ is an external Codex/plugin capability, not a repository executable or product r
 Load the `linear` skill, read the target before writing, and update the issue's single
 `## Codex Workpad` comment instead of creating duplicate progress notes.
 
-Do not use a repo-local `LINEAR_API_KEY`, raw GraphQL command, or local `.env` credential fallback.
-If the OAuth Connector is unavailable, continue repo work that does not depend on Linear mutation
-and leave writeback blocked with exact evidence. Linear writeback must point back to repo truth
-rather than replacing it.
+The OAuth Connector is the only Linear execution path for this repository. If it is unavailable,
+continue repo work that does not depend on Linear mutation and leave writeback blocked with exact
+evidence. Linear writeback must point back to repo truth rather than replacing it.
 
 ## Product Boundary
 

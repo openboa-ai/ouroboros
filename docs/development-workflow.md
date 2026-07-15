@@ -344,9 +344,9 @@ Load the `linear` skill before reading or mutating Linear. Use the bundled Linea
 for every issue, Project, milestone, document, comment, and status operation. Read targets before
 writing, use stable identifiers, and summarize the exact objects changed.
 
-Do not use a repo-local `LINEAR_API_KEY`, raw Linear GraphQL command, or local `.env` token. If the
-OAuth Connector is unavailable, continue repo work that does not depend on Linear mutation and
-record writeback as blocked. Never use chat memory as a replacement workpad.
+The OAuth Connector is the repository's only Linear execution path. If it is unavailable, continue
+repo work that does not depend on Linear mutation and record writeback as blocked. Never use chat
+memory as a replacement workpad.
 
 ## Completion Evidence
 
