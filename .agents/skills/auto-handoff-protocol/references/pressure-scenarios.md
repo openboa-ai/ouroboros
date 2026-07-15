@@ -17,8 +17,9 @@ to discard or reroute, name the superseding frontier, and report whether cleanup
 
 A current-head review finding is required for the existing claim. Keep the same issue, worktree,
 branch, PR, and owned boundary. Record the exact head and finding. An adjacent suggestion receives a
-separate issue and does not expand the packet. The packet owner invokes `pr-ci-review-loop` as
-scoped support for CI, review, bounded fixes, and landing; `auto-promotion-protocol` only supplies a
+separate issue only after it passes issue admission; otherwise retain it in the active workpad or
+tracking parent without expanding the packet. The packet owner invokes `pr-ci-review-loop` as scoped
+support for CI, review, bounded fixes, and landing; `auto-promotion-protocol` only supplies a
 readiness decision when needed.
 
 ## Over-Budget Change
@@ -76,3 +77,80 @@ readiness without repo files; never invent a branch or merge gate.
 
 A tracking parent is selected for implementation. Use `frontier_kind: not_executable`, grant no
 writer lease, park or reroute it, and select only a shaped unblocked executable child.
+
+## Independent Fan-Out
+
+A stable foundation is already on `main`, and two sibling claims have distinct owned boundaries,
+acceptance, and validation. Give neither sibling a dependency on the other. Start both from the same
+stable base in separate issue worktrees, and require that either merge order preserves each claim.
+
+## Legitimate Fan-In
+
+An integration frontier validates the combined behavior of several independently merged
+components. Block the integration issue on the exact component issues whose artifacts it consumes,
+start it only after those artifacts are on `main`, and keep integration acceptance distinct from
+the component acceptance.
+
+## False Creation-Order Blocker
+
+Two siblings were linked only because one was written or expected to be reviewed first. Remove the
+blocking relation, use priority or cycle placement for preference, and retain a dependency only if
+the blocked issue requires a concrete artifact or contract that is not available on `main`.
+
+## Inseparable Scope
+
+One proposed issue cannot start or validate without another sibling's unmerged implementation, or
+both mutate the same unstable contract. Combine them as one executable frontier when that remains
+reviewable. If it exceeds the scope budget, land a smallest coherent foundation first, then reshape
+independent fan-out and explicit fan-in work from that stable contract.
+
+## Issue Admission Rejection
+
+A review fix already belongs to the active claim, an outcome duplicates existing work, a transient
+failure is not reproducible, or an idea lacks an owned boundary and validation. Do not create an
+issue. Record the evidence in the active workpad or tracking parent and admit a future issue only
+after it owns a distinct durable claim and independent execution contract.
+
+## Clean Worktree Creation
+
+A shaped repo issue has no existing workspace. Fetch and pin the intended base from the control
+checkout, verify the ignored directory path, create one `codex/OURO-NNN-short-slug` branch in one
+dedicated issue worktree, verify clean status, and assign one writer lease before any edit.
+
+## Parallel Issue Worktrees
+
+Two admitted siblings run concurrently. Each has its own branch, absolute worktree, base, writer
+lease, build output, service port, and cleanup authority. Shared read-only caches are allowed;
+shared mutable resources require an explicit lease and must not create hidden sibling ordering.
+
+## Stacked Dependency Worktree
+
+A true dependency requires code that is not yet on `main`. Record the dependency head as the base,
+create a separate worktree and branch for the dependent issue, target the dependency PR explicitly,
+and never reuse the dependency's worktree or writer lease.
+
+## Stale Recovery
+
+Chat says a new workspace is needed, but repo and external state may have advanced. Enumerate the
+git common directory, worktrees, branch ownership, per-worktree dirty state, open PR heads, and
+workpad leases. Resume the one exact matching frontier or report a conflict instead of creating a
+duplicate branch, worktree, issue, or PR.
+
+## Dirty Control Checkout
+
+The root control checkout contains unrelated user changes. Preserve them, use it only for fetch and
+worktree inventory, and perform implementation in the dedicated clean issue worktree. Dirty control
+state is not permission to clean, stash, reset, or move the user's files.
+
+## Duplicate Activation
+
+An assignment event fires while the issue already owns a branch, worktree, PR, or active lease.
+Read back all four surfaces, resume the matching owner when consistent, and otherwise park with the
+conflict. Never create a second writer or workspace merely because the event was delivered twice.
+
+## Failed Cleanup
+
+The remote PR is merged, but external readback is incomplete, the worktree is dirty, or a lease is
+still active. Record cleanup as pending and preserve the workspace. Cleanup may proceed only after
+merge and workflow readback, lease release, and a clean inactive worktree are all verified from the
+control checkout.

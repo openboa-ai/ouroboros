@@ -12,7 +12,8 @@ implementation; it keeps one branch moving through validation, review, bounded f
 
 ## Workflow
 
-1. Recover the current branch, dirty state, upstream, PR number or URL, and latest commit hash.
+1. Recover the control checkout, dedicated issue worktree, writer lease, base, current branch,
+   dirty state, upstream, PR number or URL, and latest commit hash.
 2. If no PR exists, run the repo's required local checks, commit intentional changes, push the
    branch, and open a ready PR.
 3. If a PR exists, confirm the current local head matches the PR head before trusting CI or review
@@ -35,9 +36,14 @@ implementation; it keeps one branch moving through validation, review, bounded f
    current-head comments are handled or explicitly rerouted, and mergeability is clean.
 11. Treat a PR landing-loop request as merge authority once the validation contract below is fully
    satisfied. Do not ask for a second merge confirmation unless the validation contract is ambiguous.
-12. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
-    verify whether the remote PR merged anyway, then separately handle branch cleanup and report the
-    exact final state.
+12. Merge from the active issue worktree with a remote-scoped command such as
+    `gh pr merge <number> --repo <owner/repo> --squash`, then verify the remote merge commit and
+    reviewed-head tree. Do not use `--delete-branch` while the issue worktree or lease is active;
+    local checkout mutation is not part of landing.
+13. After remote merge, write back and read back both the merge evidence and `released` writer-lease
+    state. From the control checkout, verify the worktree is clean and inactive, remove it, then
+    delete local and remote branches as appropriate. Leave cleanup pending when readback,
+    cleanliness, or lease state is incomplete.
 
 ## Validation Contract
 
@@ -51,6 +57,8 @@ implementation; it keeps one branch moving through validation, review, bounded f
   fixed, intentionally rerouted, or explicitly marked non-blocking with evidence.
 - `mergeable` must be `MERGEABLE` and `mergeStateStatus` must be `CLEAN` or the repository's
   equivalent clean state.
+- The PR head, recorded issue worktree branch, base, and active writer lease must identify the same
+  frontier before landing. Cleanup evidence is collected separately after remote merge.
 
 ## Review Freshness Gate
 
@@ -70,6 +78,7 @@ implementation; it keeps one branch moving through validation, review, bounded f
 
 - goal
 - branch, PR URL, and latest head commit
+- control checkout, issue worktree, base, writer lease, and cleanup state
 - local validation commands and results
 - latest CI status tied to the current head
 - review freshness signal and latest review/comment status tied to the current head
@@ -94,6 +103,8 @@ to the repo's durable writeback skill.
 - Do not trust stale CI, stale review, or comments from an older head as current promotion evidence.
 - Do not merge immediately after CI turns green when expected automated review has not reported on
   the current head yet.
+- Do not let merge-time branch deletion switch, detach, or rewrite an active issue worktree.
+- Do not remove a dirty, active, leased, or not-yet-written-back worktree automatically.
 - Do not broaden the implementation scope while fixing CI or review comments.
 - Do not hide failing checks, pending reviews, merge conflicts, or unavailable permissions.
 - Do not treat an opened PR as sufficient evidence; current-head checks and review status must be
