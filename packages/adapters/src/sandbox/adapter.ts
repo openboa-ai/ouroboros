@@ -333,7 +333,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   async stopArtifactInstance(
     instance: SandboxRecord | SandboxDetailReadModel
   ): Promise<SandboxAdapterObservationResult> {
-    const stoppedAt = new Date().toISOString();
+    let stoppedAt = new Date().toISOString();
     const instanceId = instanceIdFor(instance);
     const session = this.sessions.get(instanceId);
     if (session) {
@@ -361,6 +361,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     if (this.options.processOwnership) {
       const reconciliation = await this.reconcileOwnedSandbox(instance);
       if (reconciliation.status === "adopted") {
+        stoppedAt = new Date().toISOString();
         await this.options.processOwnership.terminate({
           ownership: reconciliation.ownership,
           terminalReason: "shutdown",

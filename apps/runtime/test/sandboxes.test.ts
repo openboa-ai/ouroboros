@@ -6,6 +6,8 @@ import {
   FileSystemRuntimeProcessOwnershipStore,
   LocalStore
 } from "@ouroboros/local-store";
+import type { RuntimeProcessOwnershipPort } from
+  "@ouroboros/application/ports/runtime-process-ownership";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/server";
 import {
@@ -247,9 +249,23 @@ describe("sandbox API", () => {
     const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
       path.join(tmpDir, "runtime-process-ownership")
     );
+    let delayActiveRead = false;
+    const delayedProcessOwnership: RuntimeProcessOwnershipPort = {
+      active: async (scope) => {
+        if (delayActiveRead) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        return processOwnership.active(scope);
+      },
+      claim: (input) => processOwnership.claim(input),
+      reconcile: (input) => processOwnership.reconcile(input),
+      close: (input) => processOwnership.close(input),
+      terminate: (input) => processOwnership.terminate(input),
+      history: (scope) => processOwnership.history(scope)
+    };
     const options = {
       commandTimeoutMs: 5_000,
-      processOwnership,
+      processOwnership: delayedProcessOwnership,
       hostId: "host-a"
     };
     const input = {
@@ -298,6 +314,7 @@ describe("sandbox API", () => {
       })).rejects.toThrow("identity_mismatch");
       expect(isPidAlive(firstPid!)).toBe(true);
 
+      delayActiveRead = true;
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
       expect(isPidAlive(firstPid!)).toBe(false);
