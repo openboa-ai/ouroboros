@@ -19,7 +19,12 @@ import {
   processStartMarker as readProcessStartMarker
 } from "./process-start-marker";
 
-export type RuntimeProcessOwnerLiveness = "alive" | "absent" | "reused" | "unknown";
+export type RuntimeProcessOwnerLiveness =
+  | "alive"
+  | "orphaned"
+  | "absent"
+  | "reused"
+  | "unknown";
 export type RuntimeProcessOwnershipStoreErrorCode =
   | "runtime_process_ownership_held"
   | "runtime_process_ownership_conflict"
@@ -80,12 +85,22 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         "Active runtime process ownership metadata is invalid."
       );
       if (state.status === "valid") {
+        if (state.record.owner.host_id !== input.expected.host_id) throw failure(
+          "runtime_process_ownership_conflict",
+          "Runtime process ownership belongs to another host."
+        );
         const live = await this.inspect(state.record);
         if (live === "alive" || live === "unknown") throw failure(
           "runtime_process_ownership_held",
           "A runtime process ownership record is already active."
         );
-        await this.retire(input.expected, state.record, live, input.startedAt);
+        if (live === "orphaned") await this.terminateOwner(state.record);
+        await this.retire(
+          input.expected,
+          state.record,
+          live === "orphaned" ? "absent" : live,
+          input.startedAt
+        );
       }
       const marker = await (this.options.resolveProcessStartMarker ?? readProcessStartMarker)(
         input.processId
@@ -131,6 +146,11 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         const reconciledAt = this.reconciledAt(record, input.reconciledAt);
         const live = await this.inspect(record);
         if (live === "unknown") return blocked("owner_liveness_unknown", record);
+        if (live === "orphaned") {
+          await this.terminateOwner(record);
+          const previous = await this.retire(input.expected, record, "absent", reconciledAt);
+          return { status: "vacant", previous };
+        }
         if (live !== "alive") {
           const previous = await this.retire(input.expected, record, live, reconciledAt);
           return { status: "vacant", previous };
@@ -194,7 +214,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         "runtime_process_ownership_transition_blocked",
         "Runtime process owner liveness is unknown."
       );
-      if (live === "alive") await this.terminateOwner(record);
+      if (live === "alive" || live === "orphaned") await this.terminateOwner(record);
       const reason = live === "reused"
         ? "pid_reused"
         : live === "absent" ? "owner_absent" : input.terminalReason;
@@ -542,11 +562,14 @@ function blocked(
 }
 
 async function inspectHostOwner(record: RuntimeProcessOwnershipRecord): Promise<RuntimeProcessOwnerLiveness> {
-  return inspectIdentity({
+  const owner = await inspectIdentity({
     process_id: record.owner.process_id,
     process_start_marker: record.owner.process_start_marker,
     token: record.session_token
   });
+  return owner === "absent" && isProcessAlive(-record.owner.process_id)
+    ? "orphaned"
+    : owner;
 }
 
 async function inspectIdentity(owner: LockOwner): Promise<RuntimeProcessOwnerLiveness> {
@@ -562,7 +585,9 @@ async function inspectIdentity(owner: LockOwner): Promise<RuntimeProcessOwnerLiv
 async function terminateHostOwner(record: RuntimeProcessOwnershipRecord): Promise<void> {
   const before = await inspectHostOwner(record);
   if (before === "absent") return;
-  if (before !== "alive") throw new Error(`runtime_process_termination_identity_${before}`);
+  if (before !== "alive" && before !== "orphaned") {
+    throw new Error(`runtime_process_termination_identity_${before}`);
+  }
   signalTree(record.owner.process_id, "SIGTERM");
   if (!await waitForProcessTreeExit(record.owner.process_id, 500)) {
     signalTree(record.owner.process_id, "SIGKILL");

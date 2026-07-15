@@ -165,6 +165,41 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     }
   });
 
+  it("reaps an orphaned owned process group before retiring the absent owner", async () => {
+    const helperPidFile = path.join(root, "orphaned-helper.pid");
+    const owner = spawn(process.execPath, ["-e", stubbornProcessGroupScript(helperPidFile)], {
+      detached: true,
+      stdio: "ignore"
+    });
+    const ownerPid = owner.pid;
+    if (ownerPid === undefined) throw new Error("owned process did not start");
+    owner.unref();
+    let helperPid: number | undefined;
+
+    try {
+      helperPid = Number(await waitForTextFile(helperPidFile, 1_000));
+      const store = new FileSystemRuntimeProcessOwnershipStore(root);
+      await store.claim({ ...claimInput(), processId: ownerPid });
+      process.kill(ownerPid, "SIGTERM");
+      await waitForPidExit(ownerPid, 1_000);
+      expect(isPidAlive(helperPid)).toBe(true);
+
+      await expect(store.reconcile({
+        expected: expectedIdentity(),
+        mode: "adopt",
+        reconciledAt: "2026-07-15T00:00:01.000Z"
+      })).resolves.toMatchObject({
+        status: "vacant",
+        previous: { terminal_reason: "owner_absent" }
+      });
+
+      expect(isPidAlive(helperPid)).toBe(false);
+    } finally {
+      signalForCleanup(-ownerPid);
+      if (helperPid !== undefined) signalForCleanup(helperPid);
+    }
+  });
+
   it("captures reconcile time after a queued transition acquires the lock", async () => {
     let releaseFirstInspection: () => void = () => {};
     const firstInspectionGate = new Promise<void>((resolve) => {
@@ -253,6 +288,25 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     })).rejects.toMatchObject({
       code: "runtime_process_ownership_held"
     } satisfies Partial<RuntimeProcessOwnershipStoreError>);
+  });
+
+  it("rejects another host before inspecting or retiring its active owner", async () => {
+    const store = processStore();
+    const claimed = await store.claim(claimInput());
+    liveness = "absent";
+
+    await expect(store.claim({
+      ...claimInput(),
+      expected: { ...expectedIdentity(), host_id: "host-b" },
+      processId: 202,
+      sessionToken: "session-token-b",
+      startedAt: "2026-07-15T00:00:01.000Z"
+    })).rejects.toMatchObject({
+      code: "runtime_process_ownership_conflict"
+    } satisfies Partial<RuntimeProcessOwnershipStoreError>);
+
+    await expect(store.active(expectedIdentity())).resolves.toEqual(claimed);
+    expect(terminate).not.toHaveBeenCalled();
   });
 
   it("does not publish active ownership when claimed history cannot be appended", async () => {
@@ -408,6 +462,15 @@ async function waitForTextFile(filePath: string, timeoutMs: number): Promise<str
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`timed out waiting for ${filePath}`);
+}
+
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting for pid ${pid}`);
 }
 
 function isPidAlive(pid: number): boolean {
