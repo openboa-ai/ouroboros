@@ -64,7 +64,7 @@ building another orchestration database.
 
 ## Source Ownership
 
-| Surface | Capability used | Owns | Does not own |
+| Surface | Capability surface | Owns | Does not own |
 | --- | --- | --- | --- |
 | GitHub repository on `main` | Commits, files, history, and releasable state. | Product and architecture truth, code, tests, validation, naming, API contracts, and workflow policy. | Transient priority, WIP, or handoff state. |
 | Linear | Initiatives, Projects, milestones, cycles, issues, dependencies, priority, assignee/delegate, status updates, comments, and webhooks. | Goal hierarchy, ready queue, WIP, dependency, capacity, and handoff coordination that points to repo truth. | Product, architecture, runtime, test, or merge truth that conflicts with `main`. |
@@ -162,8 +162,8 @@ The worker does not grade its own result. Evaluation is layered:
 1. deterministic scripts and focused tests check the declared behavior;
 2. required repo guards check architecture, naming, secrets, environment files, docs, and diff
    quality;
-3. for repo changes, GitHub CI repeats checks in a clean environment and merge queue checks the
-   latest integration;
+3. for repo changes, GitHub CI repeats checks in a clean environment; after OURO-170 enables and
+   verifies merge queue, it also checks the latest integration;
 4. for repo changes, an independent Codex, code owner, or human review checks semantics, risk, and
    missing tests;
 5. any required merge commit and repo readback prove durable landing;
