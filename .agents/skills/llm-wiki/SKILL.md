@@ -11,12 +11,18 @@ description: "Use when repository knowledge needs durable maintenance: source in
 
 ## Workflow
 
-1. Orient from repo-level `AGENTS.md`, `.agents/AGENTS.md`, and the nearest relevant schema.
-2. Read `LINEAR.md`, then the active issue or project document references it names.
-3. Read the affected maintained project documents, source notes, or minimal repo docs.
-4. Choose `ingest`, `query`, `lint`, or `writeback`.
-5. Make the lightest durable update that preserves current truth.
-6. Return the writeback location and remaining gaps.
+1. Load `auto-handoff-protocol` and inspect the incoming canonical Frontier Packet.
+2. If the packet is absent or incomplete, preserve the incoming legacy output as provisional
+   evidence and invoke `auto-project` to initialize every canonical field from the active work item
+   and current repo state. Perform no writeback until `auto-project` returns the complete packet to
+   `llm-wiki`; if initialization is blocked, return that blocked packet without inventing state.
+3. Orient from repo-level `AGENTS.md`, `.agents/AGENTS.md`, and the nearest relevant schema.
+4. Read `LINEAR.md`, then the active issue or project document references it names.
+5. Read the affected maintained project documents, source notes, or minimal repo docs.
+6. Choose `ingest`, `query`, `lint`, or `writeback` and make the lightest durable update that
+   preserves repo truth.
+7. Update the same packet with the writeback location, evidence, decision, remaining gap, and next
+   owner. Do not reconstruct packet state from chat.
 
 ## Operations
 
@@ -41,20 +47,12 @@ For `ingest`, register provenance. For `query`, answer from maintained truth fir
 
 ## Required Output
 
-- goal
-- owned boundary
-- context read
-- operation
-- pages read
-- pages changed
-- durable truth recorded
-- evidence
-- decision: `written`, `no-op`, `reroute`, or `blocked`
-- unresolved gaps
-- risks
-- next owner, if any
-- `writeback_needed`
-- `writeback_complete: yes/no`
+- every canonical Frontier Packet field from `auto-handoff-protocol`
+- writeback extension: `operation`, `pages_read`, `pages_changed`, `durable_truth_recorded`, and
+  `writeback_complete`
+
+Use the packet's `decision` for `written`, `no-op`, `reroute`, or `blocked`; record unresolved work
+in `remaining_gap` instead of defining a separate gap field.
 
 ## Handoff
 
@@ -73,4 +71,6 @@ If writeback is incomplete, return the smallest unresolved gap and next owner. I
 - Do not turn every transient chat answer into a permanent page.
 - Do not create new folders or templates without enough maintained substance.
 - Do not replace `auto-project`, `auto-pm`, `auto-coding`, or `auto-qa`.
+- Do not write from a legacy or partial handoff until `auto-project` has initialized the canonical
+  packet from current evidence.
 - Do not let durable decisions remain only in chat history.

@@ -14,15 +14,69 @@ system the repository builds.
 
 ## Workflow
 
-1. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
-   documents, and CI.
-2. If a project state document exists, read it before selecting work.
-3. Check whether external workflow skills are available and relevant.
-4. Name exactly one active frontier.
-5. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
-6. Require evidence before keeping changes.
-7. Require every owner to return `writeback_needed: yes/no`.
+1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet when one exists.
+   If none exists, initialize every field from the active issue or work item and current git
+   evidence, using explicit `unknown`, `pending`, or `not_applicable` values for unresolved fields.
+2. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
+   documents, and CI; reconcile that evidence into the packet. For a `repo` frontier,
+   `auto-project` is the workspace owner until it verifies or establishes the control checkout,
+   issue worktree, base, branch, and single writer lease as described below.
+3. If a project state document exists, read it before selecting work.
+4. Check whether external workflow skills are available and relevant.
+5. Name exactly one active executable frontier. Park or reroute tracking parents as
+   `not_executable` instead of assigning them an implementation owner.
+6. Transfer canonical packet ownership only to one migrated owner: `auto-pm`, `auto-coding`, or
+   `llm-wiki`. When another workflow skill is needed, retain packet ownership, invoke it as scoped
+   support, and record its result in `changes_or_findings` and `evidence`. If it must own the next
+   step, park or reroute rather than claiming a canonical handoff.
+7. Require evidence before keeping changes and update the same packet with the route and owner.
 8. Route to `llm-wiki` when durable decisions need writeback.
+
+## Workspace Initialization
+
+`auto-project` owns the transition from an uninitialized `repo` packet to a workspace that one
+writer can use. The packet records this transition; it does not perform it.
+
+1. Inspect `git worktree list --porcelain`, the intended base, current branch ownership, and the
+   selected worktree's status.
+2. Reuse an existing dedicated issue worktree only when its absolute path, base, and branch match
+   the active issue and it contains no unrelated dirty state. Otherwise create the issue worktree
+   and branch through the repo's worktree workflow. Never use the control checkout as the issue
+   writer workspace.
+3. Refuse the lease when the branch is checked out by another worktree, the worktree contains
+   unrelated changes, or another active packet already names a writer for that worktree. Record the
+   conflict and park or reroute instead of choosing a winner.
+4. When those checks pass, assign one logical lease to the next migrated writer and record it as
+   `active:<owner>:<absolute-worktree>:<branch>` plus the verification commands in `evidence`.
+   Existing dedicated checkout and branch evidence can satisfy this step; a second worktree is not
+   required.
+5. On owner handoff, release the prior holder and assign the same workspace lease to the new owner
+   in one packet update. On merge, discard, or cleanup, mark it `released` before removing the
+   worktree or branch.
+
+For a fresh issue, prefer an available native Codex worktree mechanism and verify the same packet
+evidence afterward. When no native mechanism exists, use this repo-owned fallback from any checkout:
+
+```bash
+control_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+branch="codex/OURO-NNN-short-slug"
+worktree="$control_checkout/.worktrees/ouro-nnn-short-slug"
+
+git -C "$control_checkout" fetch origin main
+base="$(git -C "$control_checkout" rev-parse origin/main)"
+git -C "$control_checkout" check-ignore -q .worktrees/
+git -C "$control_checkout" worktree add "$worktree" -b "$branch" "$base"
+git -C "$worktree" status --short --branch
+```
+
+Use an explicitly recorded dependency commit instead of `origin/main` only for approved stacked
+work. If the path or branch already exists, return to inventory and either resume its matching
+packet or report the conflict; do not run a second creation command or invent another path.
+
+This lease is an explicit workflow ownership assertion, not a filesystem lock. If exclusive
+ownership cannot be established from current evidence, coding remains blocked. Lifecycle and
+stronger enforcement may be implemented by a separate bounded workflow change without making this
+initialization path undefined.
 
 ## Skill-First Gate
 
@@ -47,9 +101,11 @@ Use this mode when the repo tracks PR-sized frontiers.
 4. Route by status:
    - `queued`: park unless prerequisite is met
    - `implementation-ready`: `auto-pm` or `auto-coding`
-   - `in-progress`: `auto-coding` or `auto-qa`
-   - `pr-open`: `auto-promotion-protocol` or `ci-recovery`
-   - `ready-to-land`: final owner or merge owner
+   - `in-progress`: `auto-coding`; invoke `auto-qa` as scoped support when needed
+   - `pr-open`: retain `auto-project` ownership while invoking `pr-ci-review-loop` as the landing
+     conductor; use `ci-recovery` for failed checks and `auto-promotion-protocol` for an ambiguous
+     readiness decision
+   - `ready-to-land`: retain `auto-project` ownership through the recorded landing decision
    - `merged`: `llm-wiki`, then select next frontier
    - `blocked`: blocker owner or user action
 5. Persist frontier state changes through `llm-wiki`.
@@ -72,22 +128,23 @@ skills behind the same repo-local ownership model:
 | finish a branch | `superpowers:finishing-a-development-branch` | `auto-promotion-protocol` |
 
 External workflow skills may strengthen the route, but they do not own project truth. The project
-project state document, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
+state document, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
 
 ## Routing Decision Table
 
 | Situation | Route |
 | --- | --- |
-| Current state, branch, or assumptions are unclear | `auto-run-memory` |
-| Project framing or active docs are unclear | `project-context` |
+| Current state, branch, or assumptions are unclear | retain ownership; invoke `auto-run-memory` as support |
+| Project framing or active docs are unclear | retain ownership; invoke `project-context` as support |
 | Scope, owner, non-goals, or acceptance are unclear | `auto-pm` |
 | One bounded change is ready to make | `auto-coding` |
-| Work is claimed done or risky | `auto-qa` |
-| Local checks or remote CI fail | `ci-recovery` |
-| Promotion or landing state is unclear | `auto-promotion-protocol` |
+| Work is claimed done or risky | retain ownership; invoke `auto-qa` as support |
+| A PR is open and needs current-head CI, review, fixes, or merge | retain ownership; invoke `pr-ci-review-loop` as support |
+| Local checks or remote CI fail | retain ownership; invoke `ci-recovery` as support |
+| Promotion or landing state is unclear | retain ownership; invoke `auto-promotion-protocol` as support |
 | Durable decision or result must survive chat | `llm-wiki` |
-| Repo memory is stale, duplicated, or hard to resume | `auto-garbage-collection` |
-| Skill surface itself is drifting | `harness-skill-audit` |
+| Repo memory is stale, duplicated, or hard to resume | retain ownership; invoke `auto-garbage-collection` as support |
+| Skill surface itself is drifting | retain ownership; invoke `harness-skill-audit` as support |
 
 ## Stop States
 
@@ -99,43 +156,13 @@ project state document, maintained docs, git state, checks, and `llm-wiki` write
 
 ## Required Output
 
-- goal
-- owned boundary
-- context read
-- current_mlp, if the repo uses MLP-style planning
-- active frontier
-- branch and PR, if known
-- status
-- route
-- skills considered
-- evidence
-- evidence required to keep the work
-- current owner
-- decision: `route`, `park`, `discard`, `ready`, or `blocked`
-- next owner or stop state
-- risks
-- `writeback_needed`
-- reason this is repo-work routing, not product behavior
+- every canonical Frontier Packet field from `auto-handoff-protocol`
+- routing extension: `route`, `skills_considered`, `evidence_required`, and
+  `repo_routing_reason`
+- `project_state_reference`, when the repo maintains one
 
-## Auto Project Run Packet
-
-Return this shape for PR-unit routing:
-
-```text
-current_mlp:
-active_frontier:
-branch:
-pr:
-status:
-context_read:
-route:
-skills_considered:
-evidence_required:
-risks:
-next_owner:
-writeback_needed:
-llm_wiki_target:
-```
+Use the packet's `decision` for `route`, `park`, `discard`, `ready`, or `blocked`. Do not create an
+Auto Project-specific packet or aliases for the active issue, branch, PR, owner, or status.
 
 ## Handoff
 
@@ -146,5 +173,7 @@ llm_wiki_target:
 
 - Do not implement directly unless the user explicitly asks to bypass the harness.
 - Do not allow multiple active writers.
+- Do not route a `repo` frontier to coding before completing Workspace Initialization.
+- Do not transfer canonical packet ownership to an unmigrated consumer.
 - Do not move work forward without current evidence.
 - Do not let chat history be the only memory of a completed decision.

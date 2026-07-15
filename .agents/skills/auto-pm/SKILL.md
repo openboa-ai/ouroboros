@@ -11,33 +11,27 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 
 ## Workflow
 
-1. Recover current truth from repo docs and branch state.
-2. State the one-sentence goal.
-3. Define the owned boundary and non-goals.
-4. Define acceptance and validation evidence.
-5. Assign next owner.
-6. Decide whether the resulting plan needs `llm-wiki` writeback.
-7. If this creates or changes a PR-sized frontier, include the project ledger update target.
-
-## Frontier Spec
-
-Produce this before implementation starts:
-
-```text
-goal:
-context:
-owned_boundary:
-non_goals:
-acceptance_criteria:
-validation_plan:
-risks:
-next owner:
-writeback_target:
-```
+1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet. If no complete
+   packet exists, route to `auto-project` to initialize every field from the active work item and
+   current evidence before shaping scope or readiness.
+2. Recover current truth from repo docs, issue state, and branch state; reconcile it into the
+   packet.
+3. State the one-sentence goal and define the owned boundary, non-goals, and dependencies.
+4. Define observable acceptance and validation evidence in the packet.
+5. Confirm whether the frontier is `repo`, `linear_only`, or `not_executable`; do not plan
+   implementation for a tracking parent.
+6. Assign the next migrated owner and set the packet decision to `ready`, `blocked`, or `reroute`.
+   When the next capability belongs to an unmigrated workflow skill, route back through
+   `auto-project` so it can retain packet ownership while invoking that skill as scoped support.
+7. Decide whether the resulting plan needs `llm-wiki` writeback and name the project ledger target
+   when frontier state changes.
 
 ## Ready Criteria
 
-- The owned boundary names files, modules, docs, config, or checks that are in scope.
+- A `repo` owned boundary names files, modules, docs, config, or checks that are in scope.
+- A `linear_only` owned boundary names the exact Linear objects and mutation surface, with no repo
+  files, branch, or PR; its validation names the exact OAuth readback required after mutation.
+- A `not_executable` tracking item is never ready for implementation.
 - Non-goals explicitly block tempting adjacent work.
 - Acceptance criteria are observable from tests, checks, docs, review, or CI.
 - Validation can run locally or be verified by a named external check.
@@ -55,18 +49,11 @@ writeback_target:
 
 ## Required Output
 
-- goal
-- owned boundary
-- context read
-- explicit non-goals
-- acceptance criteria
-- validation commands or evidence
-- evidence
-- decision: `ready`, `blocked`, or `reroute`
-- risks
-- next owner
-- ledger update target, if this changes frontier state
-- `writeback_needed`
+- every canonical Frontier Packet field from `auto-handoff-protocol`
+- planning extension: `ledger_update_target`
+
+Use the packet's `decision` for `ready`, `blocked`, or `reroute`. Do not return a PM-specific
+frontier schema or aliases for canonical scope, acceptance, validation, risk, or owner fields.
 
 ## Handoff
 

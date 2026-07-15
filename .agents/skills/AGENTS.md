@@ -32,7 +32,9 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 1. If current state is unclear, use `auto-run-memory`.
 2. If the next owner is unclear, use `auto-project`.
 3. If naming or taxonomy is the source of ambiguity, use `taxonomy-design`.
-4. If the task is already bounded, use the matching worker directly.
+4. If the task is already bounded and has a complete canonical Frontier Packet for a migrated
+   consumer, use that worker directly. Otherwise route through `auto-project` to initialize the
+   packet and establish the required workspace evidence before execution.
 5. Before stopping, decide `writeback_needed: yes/no`.
 6. If `writeback_needed: yes`, route to `llm-wiki`. Durable facts should be written to repo docs,
    tests, or policy first; use workflow tools such as Linear only to record issue progress and link
@@ -92,11 +94,25 @@ active/historical documentation boundary, read-path, or stale-term cleanup must 
 Linear issue workflow notes, select the `linear` skill and use the bundled OAuth Connector. Do not
 route through repo-local credential helpers.
 
-## Handoff Packet
+## Frontier Packet
 
-Every worker should return `goal`, `context_read`, `owned_boundary`, `changes_or_findings`, `evidence`, `decision`, `risks`, `next_owner`, `writeback_needed`, and `llm_wiki_target` when writeback is needed.
+`auto-handoff-protocol` owns the canonical Frontier Packet used by the currently migrated delivery
+consumers: `auto-project`, `auto-pm`, `auto-coding`, and `llm-wiki`. These skills load it before
+routing or transferring work, complete every field from current evidence, and update the same
+packet across owners. This registry and those consumers must not redefine, rename, or omit packet
+fields; they may return only genuinely role-specific extensions.
 
-For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with `current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`, `skills_considered`, `evidence_required`, `next_owner`, and `writeback_needed`.
+Other workflow skills retain their existing role-output contracts until a separate bounded
+migration. They do not receive canonical packet ownership implicitly. When one is needed inside
+the migrated chain, `auto-project` retains packet ownership, invokes the skill as scoped support,
+and records its result in the packet's findings and evidence. If scoped support is insufficient,
+park or reroute instead of claiming that an unmigrated consumer preserved the packet.
+
+A tracking parent is `not_executable` and cannot own a writer. A Linear-only mutation is
+`linear_only` and has no repo workspace fields. Executable repo work is `repo` and must report its
+actual base, worktree, writer lease, branch, PR state, and cleanup state without fabricating
+readiness. Worktree lifecycle and lease enforcement remain separate workflow responsibilities;
+the packet records their evidence.
 
 ## Boundary Rules
 
