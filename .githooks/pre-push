@@ -27,8 +27,11 @@ if [[ -z "$current_branch" || "$invalid_branch_update" -ne 0 ]]; then
   exit 1
 fi
 
+scope_base="$(git config --get "branch.${current_branch}.ouroborosScopeBase" || true)"
+scope_base="${scope_base:-origin/main}"
+
 bash scripts/check-env-files.sh --tracked
 bash scripts/check-docs.sh
 bash scripts/check-secrets.sh --git
 git diff --check
-node scripts/check-pr-frontier.mjs --mode local --repo .
+node scripts/check-pr-frontier.mjs --mode local --repo . --scope-base "$scope_base"

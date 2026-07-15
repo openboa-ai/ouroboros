@@ -141,7 +141,13 @@ describe("PR frontier integration", () => {
   it("wires the local frontier check into pre-push without network tools", async () => {
     const hook = await readFile(path.join(repoRoot, ".githooks/pre-push"), "utf8");
 
-    expect(hook).toContain("node scripts/check-pr-frontier.mjs --mode local --repo .");
+    expect(hook).toContain(
+      'git config --get "branch.${current_branch}.ouroborosScopeBase"'
+    );
+    expect(hook).toContain('scope_base="${scope_base:-origin/main}"');
+    expect(hook).toContain(
+      'node scripts/check-pr-frontier.mjs --mode local --repo . --scope-base "$scope_base"'
+    );
     expect(hook).toContain("Skipping pre-push guards: no non-delete branch update.");
     expect(hook).toContain("ERROR push branches from their linked worktree.");
     expect(hook).not.toMatch(/\b(?:curl|gh)\b/);
@@ -169,6 +175,7 @@ describe("PR frontier integration", () => {
   it("maps pull-request event metadata into one CI frontier check", async () => {
     const workflow = await readFile(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
 
+    expect(workflow).toContain("types: [opened, synchronize, reopened, edited]");
     expect(workflow).not.toContain('- "codex/**"');
     expect(workflow).not.toContain('- "feat/**"');
     expect(workflow).toContain("if: github.event_name == 'pull_request'");
@@ -192,6 +199,7 @@ describe("PR frontier integration", () => {
 
     expect(docs).toContain("Scope-Rationale: <reason>");
     expect(docs).toContain("feature-branch pushes do not duplicate pull-request CI");
+    expect(docs).toContain("ouroborosScopeBase");
   });
 });
 
