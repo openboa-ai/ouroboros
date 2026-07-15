@@ -8,15 +8,16 @@ naming, API contracts, runtime behavior, tests, validation, and agent operating 
 Start every non-trivial task from:
 
 1. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
-2. [Project Direction](docs/project-direction.md)
-3. [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
-4. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
-5. [Autonomy Model](docs/autonomy-model.md)
-6. [Product Quality Design](docs/product-quality-design.md)
-7. [Architecture Governance](docs/architecture-governance.md)
-8. [API And Command Contract](docs/api-command-contract.md)
-9. [Naming Taxonomy](docs/naming-taxonomy.md)
-10. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
+2. [Development Workflow](docs/development-workflow.md)
+3. [Project Direction](docs/project-direction.md)
+4. [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+5. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
+6. [Autonomy Model](docs/autonomy-model.md)
+7. [Product Quality Design](docs/product-quality-design.md)
+8. [Architecture Governance](docs/architecture-governance.md)
+9. [API And Command Contract](docs/api-command-contract.md)
+10. [Naming Taxonomy](docs/naming-taxonomy.md)
+11. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.
@@ -224,23 +225,12 @@ discipline, durable identifiers, related-operation batching, and a clear summary
 blockers.
 
 The purpose of the `linear` skill is to keep issue workflow notes connected to repo truth. The
-method is: recover the active issue and project context, read relevant comments/updates, decide the
-exact Linear operation, execute that operation through the repo-local GraphQL path, and report the
-exact Linear objects changed. Linear comments and chat memory must not become substitutes for repo
-docs, code, tests, and validation.
-
-GraphQL is the main execution path for Linear operations in this repo. The `linear` skill owns the
-workflow and the `.agents/skills/linear-graphql` skill owns the repo-local execution helpers:
-
-```bash
-npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
-npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
-```
-
-The GraphQL path reads `LINEAR_API_KEY` from the environment first, then local `.env`; never print
-raw token values. Its implementation lives in `.agents/skills/linear-graphql` because it is agent
-operating support, not product runtime code. If GraphQL execution fails, report the work as blocked
-with the failing evidence.
+method is: recover the active issue and project context, read relevant comments and updates, decide
+the exact Linear operation, execute that operation through the bundled Linear OAuth Connector, and
+report the exact Linear objects changed. Read before write, update one `## Codex Workpad` comment
+instead of creating duplicates, and batch only related mutations. Do not use a repo-local Linear
+API key, raw GraphQL command, or `.env` credential path. If the OAuth Connector is unavailable,
+report workflow writeback as blocked instead of replacing repo truth with chat memory.
 
 Use project-scoped subagents only when the task benefits from parallel read-only work, such as
 Linear context recovery, code path mapping, PR review, or UI reproduction. Subagents are advisory:
@@ -261,16 +251,17 @@ promote Linear scratchpad text above repo code, tests, and docs.
 ## Agent Workflow
 
 1. Recover the current branch, issue, dirty state, and nearest validation evidence.
-2. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and the relevant
-   docs under [docs](docs/project-direction.md).
-3. Read [LINEAR.md](LINEAR.md) and active Linear issue notes only when the task needs workflow
-   context or writeback.
+2. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+   [Development Workflow](docs/development-workflow.md), and the relevant docs under
+   [docs](docs/project-direction.md).
+3. Read [LINEAR.md](LINEAR.md) and the active Linear issue through the OAuth Connector when the
+   task needs workflow context or writeback.
 4. Read `.agents/skills/AGENTS.md`.
 5. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
 6. Keep implementation changes bounded to the active repo issue, task, or approved plan.
 7. Run the narrowest meaningful validation, then the repo's required checks.
 8. Keep durable outcomes in repo code, tests, docs, and validation. Write Linear progress notes
-   through the `linear` skill and repo-local GraphQL path only when issue workflow needs it.
+   through the `linear` skill and OAuth Connector only when issue workflow needs it.
 
 ## App Launch Workflow
 
