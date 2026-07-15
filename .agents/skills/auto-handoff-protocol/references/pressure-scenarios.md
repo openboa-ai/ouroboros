@@ -78,18 +78,27 @@ readiness without repo files; never invent a branch or merge gate.
 A tracking parent is selected for implementation. Use `frontier_kind: not_executable`, grant no
 writer lease, park or reroute it, and select only a shaped unblocked executable child.
 
-## Independent Fan-Out
+## Independent Outcome Fan-Out
 
-A stable foundation is already on `main`, and two sibling claims have distinct owned boundaries,
-acceptance, and validation. Give neither sibling a dependency on the other. Start both from the same
-stable base in separate issue worktrees, and require that either merge order preserves each claim.
+A stable foundation is already on `main`, and two sibling outcomes are independently usable, have
+distinct owned boundaries, acceptance, and validation, save more parallel wall time than their
+additional delivery cycles cost, and have named writer capacity now. Give neither sibling a
+dependency on the other. Start both from the same stable base in separate issue worktrees, and
+require that either merge order preserves each outcome.
 
 ## Legitimate Fan-In
 
-An integration frontier validates the combined behavior of several independently merged
-components. Block the integration issue on the exact component issues whose artifacts it consumes,
-start it only after those artifacts are on `main`, and keep integration acceptance distinct from
-the component acceptance.
+An integration frontier validates the combined behavior of several independently useful merged
+components and closes a distinct rollout, migration, qualification, or risk decision. Block the
+integration issue on the exact component issues whose artifacts it consumes, start it only after
+those artifacts are on `main`, and keep integration acceptance distinct from component acceptance.
+
+## Micro-Component Fan-In
+
+Two helpers own different files and can merge in either order, but neither is useful until a third
+issue wires them together. Reject the split and keep the helpers plus necessary wiring in one
+outcome packet. Code independence does not offset three issue, worktree, PR, CI, review, merge,
+cleanup, and writeback cycles.
 
 ## False Creation-Order Blocker
 
@@ -99,10 +108,11 @@ the blocked issue requires a concrete artifact or contract that is not available
 
 ## Inseparable Scope
 
-One proposed issue cannot start or validate without another sibling's unmerged implementation, or
-both mutate the same unstable contract. Combine them as one executable frontier when that remains
-reviewable. If it exceeds the scope budget, land a smallest coherent foundation first, then reshape
-independent fan-out and explicit fan-in work from that stable contract.
+One proposed issue cannot start or validate without another sibling's unmerged implementation,
+both mutate the same unstable contract, or one does not close independent delivery value. Combine
+their necessary implementation and wiring as one outcome packet. If it exceeds the scope budget,
+review outcome coherence, risk, ownership, rollback, and validation and record a rationale when it
+is still the smallest safe result; do not manufacture helper and glue issues to fit the number.
 
 ## Issue Admission Rejection
 

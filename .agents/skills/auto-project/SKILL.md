@@ -23,8 +23,11 @@ system the repository builds.
    issue worktree, base, branch, and single writer lease as described below.
 3. If a project state document exists, read it before selecting work.
 4. Check whether external workflow skills are available and relevant.
-5. Name exactly one active executable frontier. Park or reroute tracking parents as
-   `not_executable` instead of assigning them an implementation owner.
+5. Name exactly one active executable frontier for this run. Across the delivery queue, materialize
+   active work only up to verified concurrent writer capacity plus one fully shaped ready successor
+   by default; a larger ready buffer needs named near-term capacity. Keep later design nodes in the
+   repo plan or tracking-parent workpad. Park or reroute tracking parents as `not_executable`
+   instead of assigning them an implementation owner.
 6. Transfer canonical packet ownership only to one migrated owner: `auto-pm`, `auto-coding`, or
    `llm-wiki`. When another workflow skill is needed, retain packet ownership, invoke it as scoped
    support, and record its result in `changes_or_findings` and `evidence`. If it must own the next
@@ -98,6 +101,8 @@ Use this mode when the repo tracks PR-sized frontiers.
 1. Read branch state and the project state document.
 2. If an active frontier exists, continue it unless evidence says it is blocked or ready.
 3. If no active frontier exists, choose the first queued frontier whose prerequisite is met.
+   Do not pre-create the rest of a plan as issues. Before admitting a successor, require
+   independent delivery value and delivery economics from `auto-pm`.
 4. Route by status:
    - `queued`: park unless prerequisite is met
    - `implementation-ready`: `auto-pm` or `auto-coding`
@@ -173,6 +178,9 @@ Auto Project-specific packet or aliases for the active issue, branch, PR, owner,
 
 - Do not implement directly unless the user explicitly asks to bypass the harness.
 - Do not allow multiple active writers.
+- Do not materialize an issue tree beyond verified concurrent writer capacity plus the default one
+  ready successor without naming near-term capacity.
+- Do not treat code independence alone as sufficient reason for separate issues or pull requests.
 - Do not route a `repo` frontier to coding before completing Workspace Initialization.
 - Do not transfer canonical packet ownership to an unmigrated consumer.
 - Do not move work forward without current evidence.

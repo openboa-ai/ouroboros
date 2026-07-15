@@ -127,13 +127,13 @@ describe("PR scope reporter", () => {
       expect(result.code, scriptOutput(result)).toBe(2);
       const report = JSON.parse(result.stdout);
       expect(report).toMatchObject({
-        thresholds: { production_files: 8, production_changed_lines: 400 },
+        thresholds: { production_files: 8, production_changed_lines: 800 },
         over_budget: { files: true, lines: false, any: true },
         rationale: { provided: false, value: null },
         result: "rationale_required"
       });
       expect(result.stderr).toContain(
-        "ERROR scope budget exceeded; split the frontier or provide --rationale"
+        "ERROR scope budget exceeded; reassess outcome scope or provide --rationale"
       );
     } finally {
       await fixture.cleanup();
@@ -143,7 +143,7 @@ describe("PR scope reporter", () => {
   it("requires an atomicity rationale after the production-line budget is crossed", async () => {
     const fixture = await createGitFixture();
     try {
-      const content = Array.from({ length: 401 }, (_, index) => `export const line${index} = ${index};`).join("\n");
+      const content = Array.from({ length: 801 }, (_, index) => `export const line${index} = ${index};`).join("\n");
       await fixture.write("src/large-change.ts", `${content}\n`);
       const head = await fixture.commit("add large production change");
 
@@ -158,7 +158,7 @@ describe("PR scope reporter", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       const report = JSON.parse(result.stdout);
-      expect(report.categories.production.changed_lines).toBe(401);
+      expect(report.categories.production.changed_lines).toBe(801);
       expect(report.over_budget).toEqual({ files: false, lines: true, any: true });
       expect(report.result).toBe("rationale_required");
     } finally {
@@ -170,14 +170,14 @@ describe("PR scope reporter", () => {
     const fixture = await createGitFixture();
     try {
       const original = Array.from(
-        { length: 201 },
+        { length: 401 },
         (_, index) => `export const before${index} = ${index};`
       ).join("\n");
       await fixture.write("src/rewrite.ts", `${original}\n`);
       const base = await fixture.commit("seed production file");
 
       const replacement = Array.from(
-        { length: 201 },
+        { length: 401 },
         (_, index) => `export const after${index} = ${index};`
       ).join("\n");
       await fixture.write("src/rewrite.ts", `${replacement}\n`);
@@ -195,9 +195,9 @@ describe("PR scope reporter", () => {
       expect(result.code, scriptOutput(result)).toBe(2);
       const report = JSON.parse(result.stdout);
       expect(report.categories.production).toMatchObject({
-        additions: 201,
-        deletions: 201,
-        changed_lines: 402
+        additions: 401,
+        deletions: 401,
+        changed_lines: 802
       });
       expect(report.over_budget).toEqual({ files: false, lines: true, any: true });
       expect(report.result).toBe("rationale_required");

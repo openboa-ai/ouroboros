@@ -17,10 +17,13 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 2. Recover current truth from repo docs, issue state, and branch state; reconcile it into the
    packet.
 3. State the one-sentence goal and define the owned boundary, non-goals, and dependencies.
-4. When splitting or admitting work, require each proposed executable sibling to be independently
-   startable from stable inputs, own acceptance and validation, avoid consuming sibling unmerged
-   output, and be merge-order independent. Otherwise combine the scope or shape a stable foundation,
-   independent fan-out, and explicit fan-in.
+4. When splitting or admitting work, require each proposed executable sibling to close an
+   independently usable, operable, review-decidable, or distinct risk/authority outcome. Also
+   require stable inputs, owned acceptance and validation, no sibling unmerged output, merge-order
+   independence, a current capacity slot, and expected parallel wall-time savings greater than the
+   added issue, worktree, PR, CI, review, merge, cleanup, and writeback cost. Otherwise keep the
+   necessary components and wiring in one outcome packet. A planned fan-in needed only to make
+   helper siblings useful is evidence against splitting.
 5. Define observable acceptance and validation evidence in the packet.
 6. Confirm whether the frontier is `repo`, `linear_only`, or `not_executable`; do not plan
    implementation for a tracking parent.
@@ -39,9 +42,14 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 - Non-goals explicitly block tempting adjacent work.
 - Acceptance criteria are observable from tests, checks, docs, review, or CI.
 - Validation can run locally or be verified by a named external check.
+- The frontier closes independent delivery value; it is not only a component of a later useful
+  result.
 - A separated sibling does not depend on another sibling's unmerged branch, acceptance result, or
   mutable workspace output; creation or preferred review order is represented by priority, not a
   blocker.
+- The decomposition decision records delivery economics and a current writer slot, or identifies
+  the issue as fitting the default one-item ready buffer with named near-term capacity for any
+  larger buffer.
 - The next owner can act without asking what the frontier means.
 - If an external planning or brainstorming skill was used, the resulting plan is translated into
   repo-local files, validation commands, and writeback targets.
@@ -51,6 +59,9 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 - The request changes durable repo truth before source/context is read.
 - The task needs research before implementation.
 - Proposed siblings are inseparable but the current issue shape assumes parallel execution.
+- Proposed siblings are code-independent but require a planned fan-in before they deliver value.
+- No execution slot exists and the proposal does not fit the default ready buffer or name near-term
+  capacity.
 - The requested boundary conflicts with existing active docs.
 - Validation is impossible or permission-bound.
 - The task is actually QA, CI recovery, cleanup, or writeback.
@@ -58,7 +69,8 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 ## Required Output
 
 - every canonical Frontier Packet field from `auto-handoff-protocol`
-- planning extension: `decomposition_decision` and `ledger_update_target`
+- planning extension: `decomposition_decision`, `delivery_value`, `delivery_economics`,
+  `materialization_decision`, and `ledger_update_target`
 
 Use the packet's `decision` for `ready`, `blocked`, or `reroute`. Do not return a PM-specific
 frontier schema or aliases for canonical scope, acceptance, validation, risk, or owner fields.

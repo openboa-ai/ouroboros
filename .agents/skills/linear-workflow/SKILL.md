@@ -24,14 +24,18 @@ mutations.
 3. Classify the object and issue shape: Initiative, Project, milestone, tracking parent,
    executable repo issue, Linear-only issue, cycle, view, Document, or workpad.
 4. Before creating or splitting an executable issue, apply issue admission. Require a distinct
-   durable claim, stable inputs on `main`, an owned surface that does not consume a sibling's
-   unmerged branch, independent acceptance and validation, and merge-order independent sibling
-   behavior. Keep a required active-claim fix, duplicate outcome, transient non-reproduced signal,
-   optional review note, or unshaped idea in the current workpad or tracking parent.
+   independently usable, operable, review-decidable, or risk/authority outcome; stable inputs on
+   `main`; an owned surface that does not consume a sibling's unmerged branch; independent
+   acceptance and validation; merge-order independence; a current capacity slot; and expected
+   parallel wall-time savings greater than added issue, worktree, PR, CI, review, merge, cleanup,
+   and writeback cost. Keep a required active-claim fix, duplicate outcome, transient
+   non-reproduced signal, optional review note, helper for a later useful result, or unshaped idea
+   in the current workpad or tracking parent.
 5. For an executable issue, verify one observable claim, owned boundary, non-goals, acceptance,
-   validation, dependencies, and writeback. If proposed siblings cannot start and validate
-   independently, combine them or shape a stable foundation followed by fan-out and explicit
-   fan-in. For a tracking parent, require `Backlog`, no issue priority, and explicit
+   validation, dependencies, and writeback. If proposed siblings cannot each deliver value, start,
+   and validate independently, combine their necessary components and integration in one outcome
+   packet. A planned fan-in needed mainly to make helpers useful is evidence against splitting.
+   For a tracking parent, require `Backlog`, no issue priority, and explicit
    `no branch / no PR`. For a Linear-only issue, require one mutation surface, exact readback, and
    explicit `no branch / no PR`.
 6. Classify every relation by fact: parentage is rollup, priority or cycle is preferred order,
@@ -39,17 +43,20 @@ mutations.
    permission, or environment condition. Independent siblings fan out without mutual blockers;
    integration, rollout, migration, qualification, and soak issues may fan in on the exact merged
    component evidence they consume.
-7. Select only shaped, unblocked executable repo or Linear-only work that fits WIP. Set issue
-   priority independently from Initiative and Project priority: `Urgent` for an active exposure or
-   sole immediate blocker, `High` for the next unblocked critical path, `Medium` for planned work,
-   `Low` for optional work, and `No priority` for intake, parked work, or tracking parents.
+7. Select only shaped, unblocked executable repo or Linear-only work that fits WIP. Materialize
+   active work only up to verified concurrent writer capacity, plus one fully shaped ready
+   successor by default; a larger ready buffer needs named near-term capacity. Retain later design
+   nodes in a repo plan or tracking-parent workpad. Set issue priority independently from
+   Initiative and Project priority: `Urgent` for an active exposure or sole immediate blocker,
+   `High` for the next unblocked critical path, `Medium` for planned work, `Low` for optional work,
+   and `No priority` for intake, parked work, or tracking parents.
 8. Keep Initiative labels to cross-cutting strategic dimensions and Project labels to reusable
    cross-Project operational dimensions. Normalize issue labels to exactly one `area:*`, exactly
    one `type:*`, zero or more `risk:*`, and at most one `gate:*` for a non-derivable human,
    environment, or manual gate. Do not encode program, status, priority, dependency, assignee,
    cycle, delegate, or runner readiness as labels at any level.
-9. After creating a subissue, read back and explicitly normalize Project, priority, labels,
-   dependencies, and state; Project and priority may inherit while labels do not.
+9. After admitting and creating a subissue, read back and explicitly normalize Project, priority,
+   labels, dependencies, and state; Project and priority may inherit while labels do not.
 10. Enforce state evidence. `Todo` is selected and unblocked. `In Progress` has an owner and
    workpad, plus control checkout, dedicated worktree, branch, base, and writer lease for repo work.
    `In Review` has PR/local evidence or a Linear-only readback gate. `Done` has merged-main evidence
@@ -75,11 +82,15 @@ mutations.
 - External human or environment gate: use one `gate:*` only when assignment, dependency, status,
   cycle, delegate, or GitHub state cannot express it.
 - Independent fan-out: admit siblings only when each is independently startable from stable shared
-  prerequisites and can merge in either order; remove creation-order blockers.
-- Legitimate fan-in: keep an integration issue blocked on the exact component artifacts it combines
-  and require new integration acceptance.
-- Inseparable scope: combine proposed siblings that consume one another's unmerged implementation,
-  or land a stable foundation before reshaping the remainder.
+  prerequisites, independently valuable, backed by measured delivery economics, staffed now, and
+  able to merge in either order; remove creation-order blockers.
+- Legitimate fan-in: retain a separate integration issue only when its merged components are
+  already useful and the integration closes distinct rollout, migration, qualification, or risk
+  acceptance.
+- Micro-component fan-in: combine helpers and necessary wiring when the helpers are useful only
+  after the planned fan-in, even if their files and merge order are independent.
+- Inseparable scope: combine proposed siblings that consume one another's unmerged implementation
+  or fail independent delivery-value, economics, or capacity admission.
 - Adjacent review finding: keep a required correction in the active issue. Put optional or unshaped
   evidence in the workpad or tracking parent, and create a separate issue only after admission.
 - Connected Linear execution unavailable: continue repo work that does not require Linear
@@ -116,6 +127,8 @@ external `linear` skill.
 - Never use priority or labels as duplicate status, dependency, assignment, or authority fields.
 - Never manufacture sibling dependency chains from creation order, preferred review order, or a
   shared theme.
+- Never materialize a design tree beyond verified concurrent writer capacity plus the default one
+  ready successor without naming near-term capacity.
 - Never bypass the connected path selected by the external `linear` skill or use chat memory as a
   workflow store.
 - Never migrate live Linear configuration outside the active issue's owned boundary.

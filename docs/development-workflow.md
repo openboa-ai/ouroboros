@@ -138,11 +138,12 @@ no_progress_limit:
 writeback:
 ```
 
-Default WIP remains one writing issue per owner plus at most one issue waiting in review. Each run
-also uses the issue's scope budget, a narrow connector/tool permission set, and an elapsed/attempt
-budget appropriate to its validation cost. Repeating the same material blocker or producing no new
-evidence for three consecutive attempts is `no_progress`; record exact evidence and stop or reroute.
-Retries use backoff and must not bypass a failing evaluator.
+Default active WIP equals verified concurrent writer capacity, starting at one slot when no larger
+capacity is declared, plus at most one issue waiting in review. Each writer slot has a distinct
+worktree and lease. Each run also uses the issue's scope budget, a narrow connector/tool permission
+set, and an elapsed/attempt budget appropriate to its validation cost. Repeating the same material
+blocker or producing no new evidence for three consecutive attempts is `no_progress`; record exact
+evidence and stop or reroute. Retries use backoff and must not bypass a failing evaluator.
 
 Terminal states are precise:
 
@@ -207,7 +208,9 @@ TradingSystem cadence.
 
 Linear subissues may inherit Project and priority from a parent while labels do not inherit. Every
 new child therefore needs an explicit Project, priority, label, dependency, and state readback
-before it is ready.
+before it is ready. A plan, checklist item, or possible component is not automatically a child
+issue. Keep future decomposition in a repo plan or tracking-parent workpad until current execution
+capacity can admit it.
 
 ## Priority And Labels
 
@@ -246,19 +249,29 @@ and a blocked issue does not become executable because it inherited a parent pri
 discoveries remain in the active workpad or tracking parent until they pass issue admission; they
 never expand the active branch or pull request automatically.
 
-## Independent Frontier Decomposition
+Issue creation assigns an execution lease; it is not a way to persist every design node. Materialize
+active writing issues only up to verified concurrent writer capacity, plus one fully shaped ready
+successor by default. A larger ready buffer requires named near-term writer capacity. Additional
+proposed work remains an unmaterialized checklist or workpad entry. A verified urgent exposure may
+enter immediately when it has a named owner and capacity decision, but it does not justify
+pre-creating the rest of its plan.
 
-Issue separation means the resulting units can execute independently. Before creating or selecting
-an executable sibling, prove all six dimensions:
+## Outcome Packet Admission And Decomposition
+
+Issue separation means independent delivery, not merely independent code or merge order. Before
+creating or selecting an executable sibling, prove all nine dimensions:
 
 | Dimension | Admission evidence |
 | --- | --- |
-| Claim | One durable, observable outcome not already owned by active or duplicate work. |
+| Outcome | One durable, observable result not already owned by active or duplicate work. |
+| Delivery value | The result is independently usable, operable, review-decidable, or closes a distinct risk or authority boundary. A helper that becomes useful only after a planned fan-in fails this test. |
 | Inputs | Stable contracts are on `main`; any unavailable input is named exactly. |
 | Boundary | Owned files and external objects do not require a sibling's unmerged implementation or shared mutable output. |
 | Acceptance | The issue can prove its own outcome without borrowing a sibling's acceptance result. |
 | Validation | Local or named remote checks can run from its declared base. |
 | Merge | Siblings can merge in either order without changing one another's intended semantics. |
+| Economics | Expected parallel wall-time saved is materially greater than the extra issue, worktree, PR, CI, review, merge, cleanup, and writeback cost. |
+| Capacity | A verified writer slot exists now, or the issue fits the default one-item ready buffer; additional ready work names near-term writer capacity. |
 
 Admitted siblings fan out from the same stable prerequisite. They do not block one another merely
 because they were conceived, created, or expected to be reviewed in an order. Use parentage for
@@ -267,10 +280,13 @@ only when a concrete artifact, contract, permission, or environment condition is
 
 Integration, rollout, migration, qualification, and soak frontiers are valid fan-in points. They
 may depend on the exact independent components whose merged behavior they combine and must own new
-integration acceptance rather than repeat component acceptance. If proposed siblings consume one
-another's unmerged code, mutate the same unstable contract, or cannot validate separately, combine
-them. If the combined unit exceeds the scope budget, first land a smallest stable foundation, then
-fan out independent work and fan it back into one explicit integration frontier.
+integration acceptance rather than repeat component acceptance. A planned fan-in whose main
+purpose is to make otherwise unusable component siblings useful is evidence that the siblings are
+too small; keep the component and its necessary wiring in one outcome packet. Separate a
+foundation or fan-in only when it already has an independent consumer, risk boundary, operational
+decision, or measured parallel-time advantage. If proposed siblings consume one another's
+unmerged code, mutate the same unstable contract, cannot validate separately, or fail delivery
+economics, combine them.
 
 Do not create an issue for a fix required by the active claim, a duplicate outcome, a transient
 non-reproduced signal, an optional review note, or an unshaped idea. Keep that evidence in the
@@ -293,10 +309,11 @@ dependencies:
 writeback:
 ```
 
-The goal is one observable claim. The owned boundary names the files, modules, or external objects
-the issue may change. Non-goals block adjacent work. Acceptance names evidence, not intent.
+The goal is one observable outcome. The owned boundary names the files, modules, or external
+objects the issue may change. Non-goals block adjacent work. Acceptance names evidence, not intent.
 Validation must be executable locally or by a named remote check. Dependencies must distinguish a
-hard blocker from useful context.
+hard blocker from useful context. The workpad or decomposition decision must also record independent
+delivery value, delivery economics, and whether current capacity admits issue materialization.
 
 If implementation reveals another claim, another owner boundary, or an unrelated cleanup, keep the
 current pull request unchanged. Create a queued Linear issue only when the discovery passes the
@@ -353,9 +370,9 @@ The trailer is optional below the budget. Above the budget, both local pre-push 
 bind it to the exact scope head and pass it to the scope reporter. It keeps the diff reviewable; it
 does not establish correctness, review approval, or merge authority.
 
-Default WIP is one `In Progress` implementation issue per owner plus at most one issue waiting in
-`In Review`. Planning, read-only investigation, and independent QA may run in parallel when they do
-not create competing writers.
+Default active WIP equals verified concurrent writer capacity, with each `In Progress` issue owning
+a distinct worktree and lease, plus at most one issue waiting in `In Review`. Planning, read-only
+investigation, and independent QA may run in parallel when they do not create competing writers.
 
 ## Worktree Execution Contract
 
@@ -399,10 +416,12 @@ Semantic atomicity is the hard gate:
 - direct acceptance evidence;
 - no opportunistic refactor or policy expansion.
 
-The default review budget is at most eight changed production files and 400 production diff lines,
+The default review budget is at most eight changed production files and 800 production diff lines,
 counted as additions plus deletions because both consume review attention. Crossing either threshold
-is a split warning, not an automatic failure. Before coding continues, `auto-pm` must split the
-frontier or record why a larger diff is the smallest coherent change. Tests and docs do not
+is an outcome-scope review signal, not an automatic split decision. Before coding continues,
+`auto-pm` must confirm that the diff still closes one coherent outcome and record why it is the
+smallest safe result, or reshape it around a true delivery, risk, ownership, or rollback boundary.
+Do not manufacture helper and glue PRs only to fit the numeric budget. Tests and docs do not
 disappear from scope accounting merely because they are excluded from the production-line estimate.
 Generated files are identified separately.
 
@@ -415,8 +434,8 @@ model, tool, research-direction, or candidate-code allowlist.
    checkout, worktree inventory, branch ownership, dirty files, writer lease, and PR when it is repo
    work.
 2. **Read:** use the canonical repo read path, then the Linear Project, milestone, issue, and workpad.
-3. **Shape:** lock one frontier contract and retain adjacent evidence in the workpad until it passes
-   independent issue admission.
+3. **Shape:** lock one outcome packet and retain adjacent evidence in the workpad until it passes
+   outcome, economics, capacity, and independent-execution admission.
 4. **Execute:** for repo work, use TDD and edit only the owned boundary; for Linear-only work,
    perform only the predeclared OAuth mutation.
 5. **Verify:** run focused and required repo checks for repo work; collect exact object readback for

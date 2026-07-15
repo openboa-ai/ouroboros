@@ -50,7 +50,7 @@ describe("PR frontier integration", () => {
     const fixture = await createGitFixture();
     try {
       const content = Array.from(
-        { length: 401 },
+        { length: 801 },
         (_, index) => `export const line${index} = ${index};`
       ).join("\n");
       await fixture.write("src/atomic-migration.ts", `${content}\n`);
@@ -67,11 +67,11 @@ describe("PR frontier integration", () => {
     }
   });
 
-  it("preserves the split failure when an over-budget head has no rationale", async () => {
+  it("preserves the outcome-scope failure when an over-budget head has no rationale", async () => {
     const fixture = await createGitFixture();
     try {
       const content = Array.from(
-        { length: 401 },
+        { length: 801 },
         (_, index) => `export const unshaped${index} = ${index};`
       ).join("\n");
       await fixture.write("src/unshaped-change.ts", `${content}\n`);
@@ -81,7 +81,7 @@ describe("PR frontier integration", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain('"result": "rationale_required"');
-      expect(result.stderr).toContain("split the frontier or provide --rationale");
+      expect(result.stderr).toContain("reassess outcome scope or provide --rationale");
     } finally {
       await fixture.cleanup();
     }
