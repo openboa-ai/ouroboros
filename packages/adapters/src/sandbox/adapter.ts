@@ -805,6 +805,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     inspection: RuntimeProcessOwnershipInspectionResult
   ): SandboxOwnershipReconcileResult | undefined {
     if (inspection.status === "blocked") {
+      if (inspection.reason === "identity_mismatch") return undefined;
       return {
         status: "blocked",
         reason: inspection.reason,

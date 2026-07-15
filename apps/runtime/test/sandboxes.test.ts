@@ -390,6 +390,79 @@ describe("sandbox API", () => {
     }
   });
 
+  it("retires a cached dead owner before changed-profile replacement", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    };
+    const input = {
+      artifact,
+      instance_id: "sandbox-cached-dead-owner",
+      sandbox_name: "ouro-cached-dead-owner",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-cached-dead-owner",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const restartedAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance(input);
+    let replacement: Awaited<ReturnType<SandboxAdapter["startArtifactInstance"]>> | undefined;
+
+    try {
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      if (!active) throw new Error("expected active Sandbox ownership");
+      process.kill(active.owner.process_id, "SIGKILL");
+      for (let attempt = 0; attempt < 20 && isPidAlive(active.owner.process_id); attempt += 1) {
+        await sleep(10);
+      }
+      expect(isPidAlive(active.owner.process_id)).toBe(false);
+
+      replacement = await restartedAdapter.startArtifactInstance({
+        ...input,
+        interval_ms: 25
+      });
+      expect(replacement.instance.lifecycle_status).toBe("running");
+      const replacementOwnership = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(replacementOwnership).toMatchObject({
+        ownership_status: "active",
+        owner: { process_id: expect.any(Number) }
+      });
+      expect(replacementOwnership?.profile_digest).not.toBe(active.profile_digest);
+      expect(replacementOwnership?.owner.process_id).not.toBe(active.owner.process_id);
+      expect((await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      })).some((record) =>
+        record.ownership_status === "terminal" &&
+        record.terminal_reason === "owner_absent"
+      )).toBe(true);
+    } finally {
+      if (replacement) {
+        await restartedAdapter.stopArtifactInstance(replacement.instance)
+          .catch(() => undefined);
+      }
+      await initialAdapter.stopArtifactInstance(started.instance)
+        .catch(() => undefined);
+    }
+  });
+
   it("fails closed when the ownership gate is not consumed before startup timeout", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
