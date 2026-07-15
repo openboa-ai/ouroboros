@@ -130,8 +130,9 @@ repo work, or an independent readback gate for Linear-only work. `Done` requires
 evidence for repo work, or exact post-mutation readback for Linear-only work.
 
 Branch names use `codex/OURO-NNN-short-slug`, pull-request titles start with `[OURO-NNN]`, and the
-PR links back to the issue. Tracking parents, Initiatives, Projects, milestones, cycles, views, and
-Documents do not own branches or pull requests.
+authored body follows the one-identifier [pull-request template](.github/pull_request_template.md).
+The Linear integration owns its generated issue linkback. Tracking parents, Initiatives, Projects,
+milestones, cycles, views, and Documents do not own branches or pull requests.
 
 ## Worktree Isolation
 
