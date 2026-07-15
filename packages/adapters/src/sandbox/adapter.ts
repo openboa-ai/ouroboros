@@ -764,9 +764,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     try {
       return await operation;
     } finally {
-      if (this.ownershipReconciliations.get(instanceId) === operation) {
-        this.ownershipReconciliations.delete(instanceId);
-      }
+      this.ownershipReconciliations.delete(instanceId);
     }
   }
 
