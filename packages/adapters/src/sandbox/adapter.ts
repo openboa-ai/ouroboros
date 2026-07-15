@@ -19,6 +19,7 @@ import type {
 } from "@ouroboros/domain";
 import type {
   RuntimeProcessExpectedIdentity,
+  RuntimeProcessOwnershipInspectionResult,
   RuntimeProcessOwnershipPort,
   RuntimeProcessOwnershipReconcileResult
 } from "@ouroboros/application/ports/runtime-process-ownership";
@@ -150,6 +151,11 @@ type PersistedCandidateSandboxNetworkPolicyLease =
   | PersistedCandidateSandboxNetworkPolicyLeaseV1
   | PersistedCandidateSandboxNetworkPolicyLeaseV2;
 
+type SandboxOwnershipReconcileResult = RuntimeProcessOwnershipReconcileResult | {
+  status: "observed";
+  ownership: RuntimeProcessOwnershipRecord;
+};
+
 export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
   private readonly sessions = new Map<
@@ -161,6 +167,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       pidFile: string;
       ownership?: RuntimeProcessOwnershipRecord;
     }
+  >();
+  private readonly recoveredOwnerships = new Map<string, RuntimeProcessOwnershipRecord>();
+  private readonly ownershipReconciliations = new Map<
+    string,
+    Promise<SandboxOwnershipReconcileResult>
   >();
 
   constructor(
@@ -395,13 +406,14 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     }
     if (this.options.processOwnership) {
       const reconciliation = await this.reconcileOwnedSandbox(instance);
-      if (reconciliation.status === "adopted") {
+      if (reconciliation.status === "adopted" || reconciliation.status === "observed") {
         stoppedAt = new Date().toISOString();
         await this.options.processOwnership.terminate({
           ownership: reconciliation.ownership,
           terminalReason: "shutdown",
           closedAt: stoppedAt
         });
+        this.recoveredOwnerships.delete(instanceId);
         await removePersistedSandboxProcessFiles(sandboxPidFile(instanceId));
         const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
         return {
@@ -525,18 +537,15 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       )
       : undefined;
     if (expectedOwnership && this.options.processOwnership) {
-      const reconciliation = await this.options.processOwnership.reconcile({
-        expected: expectedOwnership,
-        mode: "adopt",
-        reconciledAt: startedAt
-      });
+      const reconciliation = await this.reconcileExpectedOwnedSandbox(
+        input.instance_id,
+        expectedOwnership,
+        startedAt
+      );
       if (reconciliation.status === "blocked") {
         throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
       }
-      if (reconciliation.status === "adopted") {
-        if (await sandboxOwnershipGatePending(reconciliation.ownership.session_token)) {
-          await this.releaseOwnedSandboxGate(reconciliation.ownership);
-        }
+      if (reconciliation.status === "adopted" || reconciliation.status === "observed") {
         const heartbeatLines = await readSandboxLogLines(heartbeatFile);
         const lines = await readSandboxLogLines(logFile);
         const heartbeats = heartbeatRecordsFromLines(
@@ -711,39 +720,112 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
   private async reconcileOwnedSandbox(
     instance: SandboxRecord | SandboxDetailReadModel
-  ): Promise<RuntimeProcessOwnershipReconcileResult> {
+  ): Promise<SandboxOwnershipReconcileResult> {
     const processOwnership = this.options.processOwnership;
     if (!processOwnership) return { status: "vacant" };
     const scope = sandboxProcessOwnershipScope(instanceIdFor(instance));
     const active = await processOwnership.active(scope);
-    if (!active) return { status: "vacant" };
+    if (!active) {
+      this.recoveredOwnerships.delete(instanceIdFor(instance));
+      return { status: "vacant" };
+    }
     const runtimeRef = sandboxRuntimeRef(instance);
     if (!sameRef(active.runtime_ref, runtimeRef) ||
       active.owner.host_id !== (this.options.hostId ?? os.hostname())) {
       throw new Error("sandbox_process_ownership_identity_mismatch");
     }
-    const reconciliation = await processOwnership.reconcile({
-      expected: expectedIdentityFromOwnership(active),
-      mode: "adopt",
-      reconciledAt: new Date().toISOString()
-    });
+    const reconciliation = await this.reconcileExpectedOwnedSandbox(
+      instanceIdFor(instance),
+      expectedIdentityFromOwnership(active),
+      new Date().toISOString()
+    );
     if (reconciliation.status === "blocked") {
       throw new Error(`sandbox_process_ownership_${reconciliation.reason}`);
-    }
-    if (reconciliation.status === "adopted") {
-      if (await sandboxOwnershipGatePending(reconciliation.ownership.session_token)) {
-        await this.releaseOwnedSandboxGate(reconciliation.ownership);
-      }
     }
     return reconciliation;
   }
 
+  private async reconcileExpectedOwnedSandbox(
+    instanceId: string,
+    expected: RuntimeProcessExpectedIdentity,
+    reconciledAt: string
+  ): Promise<SandboxOwnershipReconcileResult> {
+    const inFlight = this.ownershipReconciliations.get(instanceId);
+    if (inFlight) {
+      await inFlight;
+      return this.reconcileExpectedOwnedSandbox(instanceId, expected, reconciledAt);
+    }
+    const operation = this.reconcileExpectedOwnedSandboxOnce(
+      instanceId,
+      expected,
+      reconciledAt
+    );
+    this.ownershipReconciliations.set(instanceId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.ownershipReconciliations.get(instanceId) === operation) {
+        this.ownershipReconciliations.delete(instanceId);
+      }
+    }
+  }
+
+  private async reconcileExpectedOwnedSandboxOnce(
+    instanceId: string,
+    expected: RuntimeProcessExpectedIdentity,
+    reconciledAt: string
+  ): Promise<SandboxOwnershipReconcileResult> {
+    const processOwnership = this.options.processOwnership;
+    if (!processOwnership) return { status: "vacant" };
+    const recovered = this.recoveredOwnerships.get(instanceId);
+    if (recovered) {
+      const inspection = await processOwnership.inspect(expected);
+      const observed = this.observeRecoveredSandboxOwnership(recovered, inspection);
+      if (observed) return observed;
+      this.recoveredOwnerships.delete(instanceId);
+    }
+    const reconciliation = await processOwnership.reconcile({
+      expected,
+      mode: "adopt",
+      reconciledAt
+    });
+    if (reconciliation.status === "adopted") {
+      if (await sandboxOwnershipGatePending(reconciliation.ownership.session_token)) {
+        await this.releaseOwnedSandboxGate(reconciliation.ownership);
+      }
+      this.recoveredOwnerships.set(instanceId, reconciliation.ownership);
+    }
+    return reconciliation;
+  }
+
+  private observeRecoveredSandboxOwnership(
+    recovered: RuntimeProcessOwnershipRecord,
+    inspection: RuntimeProcessOwnershipInspectionResult
+  ): SandboxOwnershipReconcileResult | undefined {
+    if (inspection.status === "blocked") {
+      return {
+        status: "blocked",
+        reason: inspection.reason,
+        ...(inspection.ownership ? { ownership: inspection.ownership } : {})
+      };
+    }
+    if (inspection.status !== "owned") return undefined;
+    if (!sameRuntimeProcessOwnershipLineage(recovered, inspection.ownership)) {
+      return {
+        status: "blocked",
+        reason: "identity_mismatch",
+        ownership: inspection.ownership
+      };
+    }
+    return { status: "observed", ownership: inspection.ownership };
+  }
+
   private async recoveredSandboxLifecycle(
     instanceId: string,
-    reconciliation: RuntimeProcessOwnershipReconcileResult,
+    reconciliation: SandboxOwnershipReconcileResult,
     lines: string[]
   ): Promise<SandboxLifecycleStatus> {
-    if (reconciliation.status === "adopted") return "running";
+    if (reconciliation.status === "adopted" || reconciliation.status === "observed") return "running";
     if (reconciliation.status === "vacant") {
       const persisted = await readPersistedSandboxProcess(sandboxPidFile(instanceId));
       if (persisted && await isPersistedSandboxProcessCurrent(persisted)) return "running";

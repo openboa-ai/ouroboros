@@ -274,6 +274,7 @@ describe("sandbox API", () => {
         }
         return processOwnership.active(scope);
       },
+      inspect: (expected) => processOwnership.inspect(expected),
       claim: (input) => processOwnership.claim(input),
       reconcile: (input) => processOwnership.reconcile(input),
       close: (input) => processOwnership.close(input),
@@ -308,8 +309,16 @@ describe("sandbox API", () => {
       expect(isPidAlive(firstPid!)).toBe(true);
 
       const restartedAdapter = new DeterministicSandboxAdapter(options);
-      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
-        .resolves.toMatchObject({ lifecycle_status: "running" });
+      const concurrentObservations = await Promise.all([
+        restartedAdapter.getArtifactInstanceStatus(started.instance),
+        restartedAdapter.getArtifactInstanceStatus(started.instance),
+        restartedAdapter.getArtifactInstanceLogs(started.instance),
+        restartedAdapter.getArtifactInstanceLogs(started.instance)
+      ]);
+      expect(concurrentObservations).toHaveLength(4);
+      for (const observation of concurrentObservations) {
+        expect(observation.lifecycle_status).toBe("running");
+      }
       const adopted = await restartedAdapter.startArtifactInstance(input);
       expect(adopted.instance.lifecycle_status).toBe("running");
 
@@ -320,8 +329,9 @@ describe("sandbox API", () => {
       expect(adoptedHistory.at(-1)).toMatchObject({
         owner: { process_id: firstPid },
         ownership_status: "active",
-        adoption_count: 2
+        adoption_count: 1
       });
+      expect(adoptedHistory).toHaveLength(2);
       expect(isPidAlive(firstPid!)).toBe(true);
 
       const mismatchedAdapter = new DeterministicSandboxAdapter(options);

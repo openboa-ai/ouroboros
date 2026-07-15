@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { CodexTradingResearchAgentAdapter } from "./agent-adapters";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
@@ -38,6 +37,8 @@ import type {
   TradingResearchNotebookEntry,
   TradingResearchPriorCheckpoint
 } from "./types";
+import type { RuntimeProcessOwnershipPort } from
+  "../../ports/runtime-process-ownership";
 
 const ZERO_PROFIT_LOSS = {
   revenue_usdt: 0,
@@ -65,6 +66,7 @@ export interface RunTradingResearchLoopInput {
   arena_context?: string;
   prior_checkpoint?: TradingResearchPriorCheckpoint;
   preflight_plan?: ResearchPreflightPlanHandle;
+  process_ownership?: RuntimeProcessOwnershipPort;
 }
 
 export async function runTradingResearchLoop(
@@ -80,10 +82,12 @@ export async function runTradingResearchLoop(
     throw new Error("research_preflight_development_budget_invalid");
   }
   const mode = input.mode ?? "replay";
-  const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter({
-    timeout_ms: input.agent_timeout_ms
-  });
-  const sessionAdapter = input.session_adapter ?? sessionCapableAdapter(adapter);
+  const adapter = input.agent_adapter ?? (input.session_adapter
+    ? undefined
+    : defaultResearchAgentAdapter(input));
+  const sessionAdapter = input.session_adapter ?? (adapter
+    ? sessionCapableAdapter(adapter)
+    : undefined);
   const artifactRunner = input.artifact_runner ?? artifactRunnerFor(input.artifact_runner_kind);
   const notebookPath = input.notebook_path ?? path.join(runRoot, "notebook.json");
   const bestDir = path.join(runRoot, "best");
@@ -111,7 +115,7 @@ export async function runTradingResearchLoop(
   const notebook: TradingResearchNotebook = {
     session_id: sessionId,
     mode,
-    agent: sessionAdapter?.agent ?? adapter.agent,
+    agent: sessionAdapter?.agent ?? adapter!.agent,
     program_path: programPath,
     ...(input.prior_checkpoint
       ? { prior_checkpoint: sanitizePriorCheckpoint(input.prior_checkpoint) }
@@ -150,8 +154,8 @@ export async function runTradingResearchLoop(
     await rm(candidateDir, { recursive: true, force: true });
     await cp(bestArtifactDir ?? bestDir, candidateDir, { recursive: true });
 
-    const agentResult = await adapter.improveArtifact({
-      agent: adapter.agent,
+    const agentResult = await adapter!.improveArtifact({
+      agent: adapter!.agent,
       artifact_dir: candidateDir,
       program_path: programPath,
       notebook_path: notebookPath,
@@ -711,7 +715,10 @@ function artifactRunnerFor(kind: TradingArtifactRunnerKind | undefined): Trading
   return undefined;
 }
 
-function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {
+export function parseTradingResearchCliArgs(
+  args: string[],
+  options: { processOwnership?: RuntimeProcessOwnershipPort } = {}
+): RunTradingResearchLoopInput & {
   agent?: TradingResearchRuntimeAgent;
   agent_command?: string;
   model?: string;
@@ -770,6 +777,7 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {
   if (parsed.mode && parsed.mode !== "replay") {
     throw new Error("Only --mode replay is supported in the S10 MVP.");
   }
+  parsed.process_ownership = options.processOwnership;
   parsed.agent_adapter = createTradingResearchAgentAdapter({
     ...config,
     default_agent: parsed.agent ?? config.default_agent,
@@ -780,7 +788,9 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {
       timeout_ms: parsed.agent_timeout_ms ?? config.codex.timeout_ms,
       reasoning_effort: parsed.reasoning_effort ?? config.codex.reasoning_effort
     }
-  }, parsed.agent ?? config.default_agent);
+  }, parsed.agent ?? config.default_agent, {
+    processOwnership: options.processOwnership
+  });
   return parsed;
 }
 
@@ -808,23 +818,15 @@ function parseArtifactRunnerKind(value: string): TradingArtifactRunnerKind {
   throw new Error("Only --artifact-runner host and --artifact-runner sbx are supported in the S10 MVP.");
 }
 
-async function main(): Promise<void> {
-  const result = await runTradingResearchLoop(parseCliArgs(process.argv.slice(2)));
-  for (const entry of result.entries) {
-    console.log(
-      `iteration ${entry.iteration}: score ${entry.score.toFixed(3)} ${entry.decision} ${entry.agent_summary}`
-    );
+function defaultResearchAgentAdapter(
+  input: RunTradingResearchLoopInput
+): CodexTradingResearchAgentAdapter {
+  if (!input.process_ownership) {
+    throw new Error("research_provider_process_ownership_required");
   }
-  console.log(`notebook: ${result.notebook_path}`);
-  if (result.best_artifact_dir) {
-    console.log(`best artifact: ${result.best_artifact_dir}`);
-  }
-}
-
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+  return new CodexTradingResearchAgentAdapter({
+    timeout_ms: input.agent_timeout_ms,
+    process_ownership: input.process_ownership
   });
 }
 

@@ -11,6 +11,7 @@ import {
 } from "@ouroboros/domain";
 import type {
   RuntimeProcessExpectedIdentity,
+  RuntimeProcessOwnershipInspectionResult,
   RuntimeProcessOwnershipPort,
   RuntimeProcessOwnershipReconcileResult
 } from "@ouroboros/application/ports/runtime-process-ownership";
@@ -72,6 +73,28 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
     return state.record;
   }
 
+  async inspect(
+    expected: RuntimeProcessExpectedIdentity
+  ): Promise<RuntimeProcessOwnershipInspectionResult> {
+    const state = await this.readActive(expected);
+    if (state.status === "missing") return { status: "vacant" };
+    if (state.status === "invalid") return blockedInspection("ownership_metadata_invalid");
+    const record = state.record;
+    if (record.owner.host_id !== expected.host_id) {
+      return blockedInspection("host_mismatch", record);
+    }
+    if (!sameIdentity(record, expected)) {
+      return blockedInspection("identity_mismatch", record);
+    }
+    const live = await this.inspectOwner(record);
+    if (live === "unknown") {
+      return blockedInspection("owner_liveness_unknown", record);
+    }
+    return live === "alive"
+      ? { status: "owned", ownership: record }
+      : { status: "stale", liveness: live, ownership: record };
+  }
+
   async claim(input: {
     expected: RuntimeProcessExpectedIdentity;
     processId: number;
@@ -89,7 +112,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
           "runtime_process_ownership_conflict",
           "Runtime process ownership belongs to another host."
         );
-        const live = await this.inspect(state.record);
+        const live = await this.inspectOwner(state.record);
         if (live === "alive" || live === "unknown") throw failure(
           "runtime_process_ownership_held",
           "A runtime process ownership record is already active."
@@ -144,7 +167,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
           return blocked("host_mismatch", record);
         }
         const reconciledAt = this.reconciledAt(record, input.reconciledAt);
-        const live = await this.inspect(record);
+        const live = await this.inspectOwner(record);
         if (live === "unknown") return blocked("owner_liveness_unknown", record);
         if (live === "orphaned") {
           await this.terminateOwner(record);
@@ -209,7 +232,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
     const scope = identity(input.ownership);
     return this.locked(scope, async () => {
       const record = await this.exact(input.ownership);
-      const live = await this.inspect(record);
+      const live = await this.inspectOwner(record);
       if (live === "unknown") throw failure(
         "runtime_process_ownership_transition_blocked",
         "Runtime process owner liveness is unknown."
@@ -236,7 +259,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
     return records as RuntimeProcessOwnershipRecord[];
   }
 
-  private inspect(record: RuntimeProcessOwnershipRecord): Promise<RuntimeProcessOwnerLiveness> {
+  private inspectOwner(record: RuntimeProcessOwnershipRecord): Promise<RuntimeProcessOwnerLiveness> {
     return (this.options.inspectOwner ?? inspectHostOwner)(record);
   }
 
@@ -568,6 +591,13 @@ function blocked(
   reason: Extract<RuntimeProcessOwnershipReconcileResult, { status: "blocked" }>["reason"],
   ownership?: RuntimeProcessOwnershipRecord
 ): RuntimeProcessOwnershipReconcileResult {
+  return { status: "blocked", reason, ...(ownership ? { ownership } : {}) };
+}
+
+function blockedInspection(
+  reason: Extract<RuntimeProcessOwnershipInspectionResult, { status: "blocked" }>["reason"],
+  ownership?: RuntimeProcessOwnershipRecord
+): RuntimeProcessOwnershipInspectionResult {
   return { status: "blocked", reason, ...(ownership ? { ownership } : {}) };
 }
 

@@ -419,6 +419,14 @@ class RecordingProcessOwnershipPort implements RuntimeProcessOwnershipPort {
     return this.activeRecord;
   }
 
+  async inspect(): Promise<
+    Awaited<ReturnType<RuntimeProcessOwnershipPort["inspect"]>>
+  > {
+    return this.activeRecord
+      ? { status: "owned", ownership: this.activeRecord }
+      : { status: "vacant" };
+  }
+
   async claim(input: {
     expected: RuntimeProcessExpectedIdentity;
     processId: number;

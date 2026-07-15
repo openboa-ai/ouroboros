@@ -41,10 +41,27 @@ export type RuntimeProcessOwnershipReconcileResult =
       ownership?: RuntimeProcessOwnershipRecord;
     };
 
+export type RuntimeProcessOwnershipInspectionResult =
+  | { status: "vacant" }
+  | { status: "owned"; ownership: RuntimeProcessOwnershipRecord }
+  | {
+      status: "stale";
+      liveness: "absent" | "reused" | "orphaned";
+      ownership: RuntimeProcessOwnershipRecord;
+    }
+  | {
+      status: "blocked";
+      reason: RuntimeProcessOwnershipBlockedReason;
+      ownership?: RuntimeProcessOwnershipRecord;
+    };
+
 export interface RuntimeProcessOwnershipPort {
   active(
     expected: Pick<RuntimeProcessExpectedIdentity, "process_kind" | "subject_ref">
   ): Promise<RuntimeProcessOwnershipRecord | undefined>;
+  inspect(
+    expected: RuntimeProcessExpectedIdentity
+  ): Promise<RuntimeProcessOwnershipInspectionResult>;
   claim(input: {
     expected: RuntimeProcessExpectedIdentity;
     processId: number;
