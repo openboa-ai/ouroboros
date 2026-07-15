@@ -22,6 +22,28 @@ Start every non-trivial task from:
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.
 
+## Product And Delivery System Boundary
+
+Ouroboros contains a product system; the Repository Delivery Loop is the separate system used to
+change that product. They share an evaluation pattern, not implementation, state, credentials, or
+authority.
+
+| Boundary | Ouroboros product system | Repository Delivery Loop |
+| --- | --- | --- |
+| Purpose | Generate and externally evaluate TradingSystem candidates, retain findings and lineage, and accumulate selected PaperTradingEvaluation evidence. | Deliver one bounded repository change from intent through merged evidence and workflow writeback. |
+| State | CandidateArena, Evaluation, TradingRun, Gateway, Ledger, and product read models. | Linear issue/workpad, Git branch and pull request, checks, review, merge commit, and Codex task state. |
+| Authority | Product contracts plus external Evaluation, Gateway, and Ledger evidence. | Repository `main`, required GitHub checks and review, and the merge result. Linear status and Codex claims are not merge authority. |
+| Automation | Product commands and product-owned schedulers inside the runtime boundary. | Linear/GitHub events and bounded Codex goal, scheduled-task, skill, hook, worktree, and connector execution. |
+
+The shared mental model is only `trigger -> bounded goal -> attempts -> external evaluation ->
+persisted evidence -> stop condition -> next frontier`. Product types and delivery types must not be
+reused across that boundary. Delivery automation may edit product code and run product validation
+as issue evidence, but it must not orchestrate CandidateArena, choose ResearchDirections, grade
+candidates, or gain Gateway, exchange, private-data, or live authority. ResearchWorkers,
+TradingSystems, and product schedulers must not access Linear, GitHub, Codex delivery tasks,
+repository credentials, branches, reviews, or merge authority. The full operating contract is in
+[Development Workflow](docs/development-workflow.md).
+
 ## CandidateArena Core Doctrine
 
 Keep every non-trivial product, docs, source-ingestion, and implementation task tied to the core
