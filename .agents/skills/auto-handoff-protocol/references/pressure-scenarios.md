@@ -43,6 +43,13 @@ item and git evidence, and return to coding only after `auto-project` verifies o
 dedicated worktree and branch, assigns
 `active:<owner>:<absolute-worktree>:<branch>`, and records the verification evidence.
 
+## Direct Planning Initialization
+
+A rough or drifting request enters `auto-pm` without a complete packet. Route through
+`auto-project`, initialize every canonical field from the active work item and current evidence,
+then return to PM for scope and readiness shaping. Do not let PM invent missing issue, workspace,
+or ownership state.
+
 ## Legacy Writeback Initialization
 
 An unmigrated support skill routes its legacy output directly to `llm-wiki` without a canonical

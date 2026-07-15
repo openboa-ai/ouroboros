@@ -11,7 +11,9 @@ description: "Use when a rough request, blocked branch, ambiguous design/code ta
 
 ## Workflow
 
-1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet when one exists.
+1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet. If no complete
+   packet exists, route to `auto-project` to initialize every field from the active work item and
+   current evidence before shaping scope or readiness.
 2. Recover current truth from repo docs, issue state, and branch state; reconcile it into the
    packet.
 3. State the one-sentence goal and define the owned boundary, non-goals, and dependencies.
