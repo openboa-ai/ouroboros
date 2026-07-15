@@ -380,11 +380,12 @@ Semantic atomicity is the hard gate:
 - direct acceptance evidence;
 - no opportunistic refactor or policy expansion.
 
-The default review budget is at most eight changed production files and 400 net changed production
-lines. Crossing either threshold is a split warning, not an automatic failure. Before coding
-continues, `auto-pm` must split the frontier or record why a larger diff is the smallest coherent
-change. Tests and docs do not disappear from scope accounting merely because they are excluded from
-the production-line estimate. Generated files are identified separately.
+The default review budget is at most eight changed production files and 400 production diff lines,
+counted as additions plus deletions because both consume review attention. Crossing either threshold
+is a split warning, not an automatic failure. Before coding continues, `auto-pm` must split the
+frontier or record why a larger diff is the smallest coherent change. Tests and docs do not
+disappear from scope accounting merely because they are excluded from the production-line estimate.
+Generated files are identified separately.
 
 These limits govern repository delivery only. They must never become a TradingSystem strategy,
 model, tool, research-direction, or candidate-code allowlist.
