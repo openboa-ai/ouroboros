@@ -27,10 +27,10 @@ mutations.
    validation, dependencies, and writeback. For a tracking parent, require `Backlog`, no issue
    priority, and explicit `no branch / no PR`. For a Linear-only issue, require one mutation
    surface, exact readback, and explicit `no branch / no PR`.
-5. Select only shaped, unblocked executable work that fits WIP. Set issue priority independently
-   from Initiative and Project priority: `Urgent` for an active exposure or sole immediate blocker,
-   `High` for the next unblocked critical path, `Medium` for planned work, `Low` for optional work,
-   and `No priority` for intake, parked work, or tracking parents.
+5. Select only shaped, unblocked executable repo or Linear-only work that fits WIP. Set issue
+   priority independently from Initiative and Project priority: `Urgent` for an active exposure or
+   sole immediate blocker, `High` for the next unblocked critical path, `Medium` for planned work,
+   `Low` for optional work, and `No priority` for intake, parked work, or tracking parents.
 6. Keep Initiative labels to cross-cutting strategic dimensions and Project labels to reusable
    cross-Project operational dimensions. Normalize issue labels to exactly one `area:*`, exactly
    one `type:*`, zero or more `risk:*`, and at most one `gate:*` for a non-derivable human,

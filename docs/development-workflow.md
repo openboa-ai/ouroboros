@@ -241,10 +241,10 @@ normalization frontier because native Linear and GitHub state already own those 
 
 ## Ready Selection
 
-Select only a shaped, unblocked executable issue that fits current WIP. Prefer the highest priority
-among eligible issues. A tracking parent is never selected for implementation, and a blocked issue
-does not become executable because it inherited a parent priority. Adjacent discoveries remain
-`Backlog` and do not expand the active branch or pull request.
+Select only a shaped, unblocked executable repo or Linear-only issue that fits current WIP. Prefer
+the highest priority among eligible issues. A tracking parent is never selected for implementation,
+and a blocked issue does not become executable because it inherited a parent priority. Adjacent
+discoveries remain `Backlog` and do not expand the active branch or pull request.
 
 ## Frontier Contract
 

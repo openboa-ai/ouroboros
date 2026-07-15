@@ -85,12 +85,12 @@ they never replace program boundaries or health/status fields.
 
 ## Selection And State
 
-Select work only from shaped, unblocked executable issues. Prefer the highest issue priority that
-fits current WIP and dependencies; do not activate a tracking parent. `Todo` means ready and
-selected. `In Progress` requires one owner and either a repo branch/base/workpad or a Linear-only
-mutation plan/workpad. `In Review` requires a pull request plus local evidence for repo work, or an
-independent readback gate for Linear-only work. `Done` requires merged-main evidence for repo work,
-or exact post-mutation readback for Linear-only work.
+Select work only from shaped, unblocked executable repo or Linear-only issues. Prefer the highest
+issue priority that fits current WIP and dependencies; do not activate a tracking parent. `Todo`
+means ready and selected. `In Progress` requires one owner and either a repo branch/base/workpad or
+a Linear-only mutation plan/workpad. `In Review` requires a pull request plus local evidence for
+repo work, or an independent readback gate for Linear-only work. `Done` requires merged-main
+evidence for repo work, or exact post-mutation readback for Linear-only work.
 
 Branch names use `codex/OURO-NNN-short-slug`, pull-request titles start with `[OURO-NNN]`, and the
 PR links back to the issue. Tracking parents, Initiatives, Projects, milestones, cycles, views, and
