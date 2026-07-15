@@ -157,6 +157,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       allowedCapabilityPolicyIds?: readonly string[];
       processOwnership?: RuntimeProcessOwnershipPort;
       hostId?: string;
+      ownershipGateReleaseTimeoutMs?: number;
     } = {}
   ) {}
 
@@ -501,7 +502,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       if (reconciliation.status === "adopted") {
         const heartbeatLines = await readSandboxLogLines(heartbeatFile);
         if (heartbeatLines.length === 0) {
-          await releaseSandboxOwnershipGate(reconciliation.ownership.session_token);
+          await this.releaseOwnedSandboxGate(reconciliation.ownership);
         }
         const lines = await readSandboxLogLines(logFile);
         const heartbeats = heartbeatRecordsFromLines(
@@ -603,9 +604,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           sessionToken,
           startedAt
         });
-        await releaseSandboxOwnershipGate(sessionToken);
+        await this.releaseOwnedSandboxGate(ownership, child);
       } catch (error) {
-        await terminateChildProcess(child);
+        if (!ownership) await terminateChildProcess(child);
         throw error;
       }
     }
@@ -696,10 +697,36 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         deterministicSandboxHeartbeatFile(instanceIdFor(instance))
       );
       if (heartbeatLines.length === 0) {
-        await releaseSandboxOwnershipGate(reconciliation.ownership.session_token);
+        await this.releaseOwnedSandboxGate(reconciliation.ownership);
       }
     }
     return reconciliation;
+  }
+
+  private async releaseOwnedSandboxGate(
+    ownership: RuntimeProcessOwnershipRecord,
+    child?: ReturnType<typeof spawn>
+  ): Promise<void> {
+    try {
+      await releaseSandboxOwnershipGate(
+        ownership.session_token,
+        this.options.ownershipGateReleaseTimeoutMs ?? 500
+      );
+    } catch (error) {
+      let cleanupError: unknown;
+      try {
+        await this.options.processOwnership?.terminate({
+          ownership,
+          terminalReason: "timed_out",
+          closedAt: new Date().toISOString()
+        });
+      } catch (candidate) {
+        cleanupError = candidate;
+      }
+      if (child) await terminateChildProcess(child);
+      await rm(sandboxOwnershipGateFile(ownership.session_token), { force: true });
+      throw cleanupError ?? error;
+    }
   }
 
   private async stopExistingLongRunningSession(instanceId: string, pidFile: string): Promise<void> {
@@ -1946,11 +1973,14 @@ function sandboxOwnershipGateFile(sessionToken: string): string {
   return path.join(os.tmpdir(), `ouroboros-sandbox-ownership-${tokenDigest}.gate`);
 }
 
-async function releaseSandboxOwnershipGate(sessionToken: string): Promise<void> {
+async function releaseSandboxOwnershipGate(
+  sessionToken: string,
+  timeoutMs: number
+): Promise<void> {
   const gateFile = sandboxOwnershipGateFile(sessionToken);
   await writeFile(gateFile, "go\n", { encoding: "utf8", mode: 0o600 });
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 500) {
+  while (Date.now() - startedAt < timeoutMs) {
     const consumed = await readFile(gateFile, "utf8").then(
       () => false,
       (error) => {
@@ -1961,7 +1991,7 @@ async function releaseSandboxOwnershipGate(sessionToken: string): Promise<void> 
     if (consumed) return;
     await sleep(5);
   }
-  await rm(gateFile, { force: true });
+  throw new Error("sandbox_ownership_gate_consumption_timeout");
 }
 
 function sandboxLifecycleFromLines(lines: string[]): SandboxLifecycleStatus {

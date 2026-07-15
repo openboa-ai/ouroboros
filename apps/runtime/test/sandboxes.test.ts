@@ -341,6 +341,56 @@ describe("sandbox API", () => {
     }
   });
 
+  it("fails closed when the ownership gate is not consumed before startup timeout", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a",
+      ownershipGateReleaseTimeoutMs: 0
+    });
+    const input = {
+      artifact,
+      instance_id: "sandbox-owned-gate-timeout",
+      sandbox_name: "ouro-owned-gate-timeout",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-gate-timeout",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const scope = {
+      process_kind: "candidate_sandbox" as const,
+      subject_ref: { record_kind: "sandbox", id: input.instance_id }
+    };
+
+    try {
+      await expect(adapter.startArtifactInstance(input)).rejects.toThrow(
+        "sandbox_ownership_gate_consumption_timeout"
+      );
+      const history = await processOwnership.history(scope);
+      const claimedPid = history[0]?.owner.process_id;
+      expect(claimedPid).toBeTypeOf("number");
+      expect(isPidAlive(claimedPid!)).toBe(false);
+      expect(history.at(-1)).toMatchObject({ ownership_status: "terminal" });
+      await expect(processOwnership.active(scope)).resolves.toBeUndefined();
+    } finally {
+      const active = await processOwnership.active(scope).catch(() => undefined);
+      if (active) {
+        await processOwnership.terminate({
+          ownership: active,
+          terminalReason: "timed_out",
+          closedAt: new Date().toISOString()
+        }).catch(() => undefined);
+      }
+    }
+  });
+
   it("reaps a legacy persisted-PID session before ownership-enabled replacement", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
