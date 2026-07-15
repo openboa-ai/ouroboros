@@ -1,7 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+current_branch="$(git branch --show-current)"
+current_ref="refs/heads/${current_branch}"
+current_sha="$(git rev-parse HEAD)"
+branch_update=0
+invalid_branch_update=0
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  if [[ "${remote_ref:-}" != refs/heads/* || "${local_sha:-}" =~ ^0+$ ]]; then
+    continue
+  fi
+  branch_update=1
+  if [[ "$remote_ref" != "$current_ref" || "$local_sha" != "$current_sha" ]]; then
+    invalid_branch_update=1
+  fi
+done
+
+if [[ "$branch_update" -eq 0 ]]; then
+  echo "Skipping pre-push guards: no non-delete branch update."
+  exit 0
+fi
+
+if [[ -z "$current_branch" || "$invalid_branch_update" -ne 0 ]]; then
+  echo "ERROR push branches from their linked worktree." >&2
+  exit 1
+fi
+
 bash scripts/check-env-files.sh --tracked
 bash scripts/check-docs.sh
 bash scripts/check-secrets.sh --git
 git diff --check
+node scripts/check-pr-frontier.mjs --mode local --repo .

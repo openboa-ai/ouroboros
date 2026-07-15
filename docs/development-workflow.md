@@ -334,6 +334,22 @@ non-goals, progress, validation, pull request, blockers, and exact next action.
 - Do not add a second Linear issue to a branch or pull request.
 - Do not append follow-up work after a pull request has reached clean current-head review.
 
+Pre-push runs the local frontier identity and scope components without network credentials. GitHub
+Actions maps pull-request event metadata into the same components. CI, CodeQL, and gitleaks run
+feature branches through the `pull_request` event; `push` validation remains on `main`, so
+feature-branch pushes do not duplicate pull-request CI.
+
+When a diff exceeds the default production review budget but is still the smallest coherent change,
+record the reason on the current head commit as a Git trailer:
+
+```text
+Scope-Rationale: <reason>
+```
+
+The trailer is optional below the budget. Above the budget, both local pre-push and pull-request CI
+bind it to the exact scope head and pass it to the scope reporter. It keeps the diff reviewable; it
+does not establish correctness, review approval, or merge authority.
+
 Default WIP is one `In Progress` implementation issue per owner plus at most one issue waiting in
 `In Review`. Planning, read-only investigation, and independent QA may run in parallel when they do
 not create competing writers.
