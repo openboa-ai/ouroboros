@@ -258,10 +258,12 @@ root documentation, [docs](docs/project-direction.md), and `.agents` instruction
 product, architecture, naming, API, and operating truth.
 
 Linear is a workflow tool for issues, comments, scratchpads, project coordination, and historical
-progress notes. See [LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
+progress notes. See [Development Workflow](docs/development-workflow.md) and
+[LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
 
 Canonical repo docs:
 
+- [Development Workflow](docs/development-workflow.md)
 - [Project Direction](docs/project-direction.md)
 - [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
 - [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
@@ -356,17 +358,15 @@ names such as Codex are internal provider settings on managed `AgentProfile` rec
 setup surface is provider-scoped, and the researcher selects one available provider from that
 managed set; product-facing commands stay under the `ouroboros` noun.
 
-Use Linear GraphQL when a task needs Linear workflow writeback:
+Use the installed Linear OAuth Connector when a task needs Linear workflow writeback. The connector
+is an external Codex/plugin capability, not a repository executable or product runtime dependency.
+Load the `linear` skill, read the target before writing, and update the issue's single
+`## Codex Workpad` comment instead of creating duplicate progress notes.
 
-```bash
-npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
-npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
-```
-
-Both commands read `LINEAR_API_KEY` from the environment first, then local `.env`, and never print
-the token. Their implementation lives under [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md)
-because Linear access is agent operating support, not product runtime code. Linear writeback must
-point back to repo truth rather than replacing it.
+Do not use a repo-local `LINEAR_API_KEY`, raw GraphQL command, or local `.env` credential fallback.
+If the OAuth Connector is unavailable, continue repo work that does not depend on Linear mutation
+and leave writeback blocked with exact evidence. Linear writeback must point back to repo truth
+rather than replacing it.
 
 ## Product Boundary
 
