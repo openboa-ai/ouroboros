@@ -367,17 +367,17 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           terminalReason: "shutdown",
           closedAt: stoppedAt
         });
+        await removePersistedSandboxProcessFiles(sandboxPidFile(instanceId));
+        const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
+        return {
+          lifecycle_status: "stopped",
+          stopped_at: stoppedAt,
+          logs: lines.length > 0
+            ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+            : [],
+          heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+        };
       }
-      await removePersistedSandboxProcessFiles(sandboxPidFile(instanceId));
-      const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
-      return {
-        lifecycle_status: "stopped",
-        stopped_at: stoppedAt,
-        logs: lines.length > 0
-          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
-          : [],
-        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
-      };
     }
     const pidFile = sandboxPidFile(instanceId);
     const persistedProcess = await readPersistedSandboxProcess(pidFile);

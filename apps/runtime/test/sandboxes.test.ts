@@ -210,7 +210,7 @@ describe("sandbox API", () => {
     ]));
   });
 
-  it("stops a deterministic long-running paper session through persisted PID after adapter restart", async () => {
+  it("stops a legacy persisted-PID session after ownership-enabled adapter restart", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
@@ -231,9 +231,20 @@ describe("sandbox API", () => {
     try {
       expect(started.instance.lifecycle_status).toBe("running");
       const runningLogText = await waitForSandboxLog(adapter, started.instance, "runtime_heartbeat", 1_000);
-      const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+      const legacyPid = Number((await readFile(
+        sandboxPidFileForTest(started.instance.sandbox_id),
+        "utf8"
+      )).trim());
+      const restartedAdapter = new DeterministicSandboxAdapter({
+        commandTimeoutMs: 5_000,
+        processOwnership: new FileSystemRuntimeProcessOwnershipStore(
+          path.join(tmpDir, "runtime-process-ownership")
+        ),
+        hostId: "host-a"
+      });
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
+      expect(isPidAlive(legacyPid)).toBe(false);
       expect(runningLogText).toContain("runtime_heartbeat");
       expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_stopped");
     } finally {
