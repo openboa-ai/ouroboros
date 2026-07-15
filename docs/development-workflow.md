@@ -323,6 +323,9 @@ non-goals, progress, validation, pull request, blockers, and exact next action.
 - Fetch `origin/main` before substantive work and report exact divergence.
 - Branch names use `codex/OURO-NNN-short-slug`.
 - Pull-request titles start with `[OURO-NNN]`.
+- Replace the placeholder in the [pull-request template](../.github/pull_request_template.md) so
+  the authored PR body is exactly one `OURO-NNN` identifier, with no URL, copied issue text, or
+  explanatory prose. The Linear integration owns its generated issue linkback.
 - Start from current `origin/main` unless an explicit stacked dependency is recorded.
 - Use the root checkout only as the control checkout; implementation starts in the issue's dedicated
   worktree after base, branch, and writer lease are recorded.
