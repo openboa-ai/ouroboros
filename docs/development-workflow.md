@@ -138,7 +138,7 @@ An issue is not `Done` because code was written or a narrow test passed. Complet
 - the exact acceptance criteria are satisfied;
 - focused tests and required repo guards pass;
 - the current PR head has no unresolved actionable review;
-- the PR is merged or explicitly parked with a named owner;
+- the PR is merged; explicitly parked work remains `In Review` with a named owner and blocker;
 - durable repo truth is current;
 - the Linear workpad records the final evidence and next frontier.
 
