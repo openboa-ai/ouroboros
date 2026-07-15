@@ -244,6 +244,10 @@ describe("sandbox API", () => {
         ),
         hostId: "host-a"
       });
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
+      await expect(restartedAdapter.getArtifactInstanceLogs(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
       expect(isPidAlive(legacyPid)).toBe(false);

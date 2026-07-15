@@ -282,9 +282,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           deterministicSandboxHeartbeatFile(instanceId)
         );
         return {
-          lifecycle_status: reconciliation.status === "adopted"
-            ? "running"
-            : sandboxLifecycleFromLines(heartbeatLines),
+          lifecycle_status: await this.recoveredSandboxLifecycle(
+            instanceId,
+            reconciliation,
+            heartbeatLines
+          ),
           heartbeats: heartbeatRecordsFromLines(
             instanceId,
             "status",
@@ -326,9 +328,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         const capturedAt = new Date().toISOString();
         const lines = await readSandboxLogLines(deterministicSandboxLogFile(instanceId));
         return {
-          lifecycle_status: reconciliation.status === "adopted"
-            ? "running"
-            : sandboxLifecycleFromLines(lines),
+          lifecycle_status: await this.recoveredSandboxLifecycle(
+            instanceId,
+            reconciliation,
+            lines
+          ),
           logs: lines.length > 0
             ? [runtimeLogRecord(instanceId, `logs-${safeRuntimeId(capturedAt)}`, lines, capturedAt)]
             : [],
@@ -732,6 +736,19 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       }
     }
     return reconciliation;
+  }
+
+  private async recoveredSandboxLifecycle(
+    instanceId: string,
+    reconciliation: RuntimeProcessOwnershipReconcileResult,
+    lines: string[]
+  ): Promise<SandboxLifecycleStatus> {
+    if (reconciliation.status === "adopted") return "running";
+    if (reconciliation.status === "vacant") {
+      const persisted = await readPersistedSandboxProcess(sandboxPidFile(instanceId));
+      if (persisted && await isPersistedSandboxProcessCurrent(persisted)) return "running";
+    }
+    return sandboxLifecycleFromLines(lines);
   }
 
   private async refreshOwnedSessionOwnership(
