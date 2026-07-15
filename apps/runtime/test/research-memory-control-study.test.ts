@@ -30,7 +30,11 @@ import {
   loadTradingResearchRuntimeConfig
 } from "@ouroboros/application/trading/research/runtime-config";
 import type { ResearchDirectionKind } from "@ouroboros/domain";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import {
+  FileSystemRuntimeProcessOwnershipStore,
+  FIXTURE_CANDIDATE_ID,
+  LocalStore
+} from "@ouroboros/local-store";
 import {
   networklessResearchPreflightArtifactRunner,
   networklessResearchPreflightProvider
@@ -714,10 +718,13 @@ describe("ResearchMemoryControlStudy runtime", () => {
       ...process.env,
       OUROBOROS_TEST_PROVIDER_ENDPOINT_LOG: endpointLog
     };
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(temporaryRoot, "runtime-process-ownership")
+    );
     const identityAdapter = createTradingResearchAgentAdapter(
       config,
       "codex",
-      { env: adapterEnv }
+      { env: adapterEnv, processOwnership }
     );
     const identity: ManagedResearchAgent & { model: string } = {
       ...identityAdapter.agent,
@@ -736,7 +743,8 @@ describe("ResearchMemoryControlStudy runtime", () => {
       agentFactory: () => {
         adapterCount += 1;
         return createTradingResearchAgentAdapter(config, "codex", {
-          env: adapterEnv
+          env: adapterEnv,
+          processOwnership
         });
       },
       artifactRunner: networklessResearchPreflightArtifactRunner(),
@@ -778,7 +786,12 @@ describe("ResearchMemoryControlStudy runtime", () => {
     const coordinator = await initializedStore("coordinator-real-codex-probe");
     const workspaceRoot = path.join(temporaryRoot, "workspace-real-codex-probe");
     const config = loadTradingResearchRuntimeConfig(process.env);
-    const identityAdapter = createTradingResearchAgentAdapter(config, "codex");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(temporaryRoot, "runtime-process-ownership")
+    );
+    const identityAdapter = createTradingResearchAgentAdapter(config, "codex", {
+      processOwnership
+    });
     const identity: ManagedResearchAgent & { model: string } = {
       ...identityAdapter.agent,
       model: identityAdapter.agent.model ?? identityAdapter.agent.provider
@@ -796,7 +809,9 @@ describe("ResearchMemoryControlStudy runtime", () => {
       researchAgentIdentity: identity,
       agentFactory: () => {
         adapterCount += 1;
-        return createTradingResearchAgentAdapter(config, "codex");
+        return createTradingResearchAgentAdapter(config, "codex", {
+          processOwnership
+        });
       },
       artifactRunner: networklessResearchPreflightArtifactRunner(),
       replayProviderFactory: networklessResearchPreflightProvider,

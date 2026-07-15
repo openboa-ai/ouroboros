@@ -58,6 +58,7 @@ import {
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { sanitizeResearchWorkerArenaContext } from
   "@ouroboros/application/candidate/research-worker-memory";
+import { FileSystemRuntimeProcessOwnershipStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFileCallback);
@@ -2484,6 +2485,9 @@ process.exit(17);
     await writeFile(programPath, "Explore one bounded direction without a fixed workflow.\n", "utf8");
     const adapter = new CodexTradingResearchAgentAdapter({
       model: "gpt-5.4-autonomous-test",
+      process_ownership: new FileSystemRuntimeProcessOwnershipStore(
+        path.join(tmpDir, "runtime-process-ownership")
+      ),
       execFile: async (_file, args, options) => {
         calls.push(args);
         prompts.push(options?.stdin ?? "");
@@ -2644,6 +2648,9 @@ process.exit(17);
     const programPath = path.join(tmpDir, "codex-exit-without-selection-program.md");
     await writeFile(programPath, "Explore one bounded direction.\n", "utf8");
     const adapter = new CodexTradingResearchAgentAdapter({
+      process_ownership: new FileSystemRuntimeProcessOwnershipStore(
+        path.join(tmpDir, "runtime-process-ownership")
+      ),
       execFile: async (_file, _args, options) => {
         const env = options?.env ?? {};
         const clientPath = env.OUROBOROS_RESEARCH_TOOL_CLIENT;
