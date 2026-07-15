@@ -654,7 +654,7 @@ function inferSbxCaskRoot(versionStdout, brewInfoStdout) {
   if (brewPath) {
     return brewPath;
   }
-  const version = versionStdout.match(/Client Version:\s+v?([0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
+  const version = parseDockerSandboxesSbxVersion(versionStdout);
   return version ? `/opt/homebrew/Caskroom/sbx/${version}` : undefined;
 }
 
@@ -715,7 +715,12 @@ function brewCommandEnv() {
 }
 
 function isDockerSandboxesSbxVersion(stdout) {
-  return stdout.includes("Client Version:") && stdout.includes("Server Version:");
+  return parseDockerSandboxesSbxVersion(stdout) !== undefined;
+}
+
+function parseDockerSandboxesSbxVersion(stdout) {
+  return stdout.match(/\bsbx version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1]
+    ?? stdout.match(/\bClient Version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
 }
 
 function parseArgs(argv) {

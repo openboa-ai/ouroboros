@@ -925,7 +925,7 @@ describe("sandbox API", () => {
       }
 
       const persisted = await store.getSandbox("sandbox-real-adapter-evidence");
-      expect(persisted?.command_evidence_refs).toHaveLength(12);
+      expect(persisted?.command_evidence_refs).toHaveLength(20);
       const commandEvidenceIds = persisted?.command_evidence.map((evidence) => evidence.command_evidence_ref.id) ?? [];
       expect(new Set(commandEvidenceIds).size).toBe(commandEvidenceIds.length);
       expect(persisted?.command_evidence.filter((evidence) => evidence.command[1] === "version")).toHaveLength(5);
@@ -1399,11 +1399,29 @@ instance_id=${instanceId}
 printf '%s\\n' "$*" >> "$command_log"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "Client Version:  v0.35.0 test"
+    echo "Server Version:  v0.35.0 test"
     ;;
   create)
     echo "created $4"
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        printf '{"rules":[]}\n'
+        ;;
+      check)
+        printf '{"decision":"deny"}\n'
+        exit 1
+        ;;
+      log)
+        printf '{"entries":[]}\n'
+        ;;
+      *)
+        echo "unexpected policy command: $*" >&2
+        exit 2
+        ;;
+    esac
     ;;
   exec)
     if [ "$2" = "-d" ]; then
@@ -1420,6 +1438,9 @@ case "$1" in
     ;;
   stop)
     echo "stopped $2"
+    ;;
+  rm)
+    echo "removed $3"
     ;;
   *)
     echo "unexpected $*" >&2

@@ -358,6 +358,29 @@ inside the frozen envelope. A change to code, prompts, model configuration, depe
 permissions, decision policy, or undeclared state creates a new candidate and lineage before more
 qualification evidence can count.
 
+## Candidate Sandbox Network Boundary
+
+Generated-candidate execution requires stable Docker Sandboxes `sbx >= 0.35.0`. Before candidate
+effect, the runner lists the effective per-Sandbox network allow rules and requires an empty set.
+An exact but unowned rule fails closed just like a broad rule. A host-provider run may then add one
+runner-owned `localhost:<GatewayPort>` rule for the injected
+`http://host.docker.internal:<GatewayPort>` URL; a Sandbox-local replay sidecar receives no network
+allow. The runner verifies that exact allow plus a fixed public, DNS/UDP, raw TCP, metadata,
+private-network, and alternate-host deny matrix before executing candidate code. No policy in this
+boundary restricts strategy logic, candidate content, or tool choice.
+
+Every terminal path collects the bounded `sbx policy log`, removes the runner-owned rule, stops or
+removes the Sandbox, and retains command evidence. Continuous paper sessions persist only the
+owned rule lease outside the candidate workspace so a replacement adapter can recover and remove
+it after restart. Unknown ownership, policy JSON drift, cleanup failure, and an unsupported `sbx`
+version are infrastructure failures, not strategy Findings.
+
+`npm run prove:candidate-sandbox-egress` is the live platform proof. It starts a temporary local
+Gateway and executes a candidate-owned adversarial fixture that requires Gateway HTTP success while
+direct HTTP, redirects, DNS, raw sockets, subprocesses, metadata/private addresses, and a second
+reachable but unallowed host listener fail. This runtime proof does not replace the future durable
+egress-attestation record.
+
 ## Comparable Trading Evidence
 
 A higher paper score is only a direct challenger-over-champion result when the comparison is fair.
@@ -697,10 +720,11 @@ The following current surfaces require implementation work before P0 can pass:
   payloads retain their specific rejection. A handoff-only adversarial rejection creates no
   candidate and persists as an `anti_hacking_case` Finding under the handoff boundary that observed
   it.
-  The full adversarial matrix for score probing, evaluator side channels, other window
-  cherry-picking paths, unobserved direct process egress, cross-commitment probing,
-  provider-identity ineligibility, and approximate or cross-suite behavior clustering remains
-  incomplete.
+  Generated-candidate direct process egress is now deny-by-default with an exact local Gateway
+  exception, adversarial in-Sandbox probes, restart-owned cleanup, and policy command evidence.
+  Durable egress attestation and the full adversarial matrix for score probing, evaluator side
+  channels, other window cherry-picking paths, cross-commitment probing, provider-identity
+  ineligibility, and approximate or cross-suite behavior clustering remain incomplete.
 
 The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
@@ -776,9 +800,11 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    reject bounded protocol, provider, self-report, hidden-field, private/live, and timeout
    violations. Provider request envelopes are now structurally exact, hidden/self-report aliases
    normalize before classification, and handoff-only attacks persist as anti-hacking memory. Exact
-   same-suite behavior duplicates are isolated, while cross-commitment probing, unobserved direct
-   process egress, broader evaluator side channels, window cherry-picking, and approximate behavior
-   clustering remain. Query bounds alone are not a reward-hacking proof.
+   same-suite behavior duplicates are isolated. Generated-candidate direct process egress is
+   deny-by-default with one exact injected Gateway exception and adversarial runtime proof, while
+   durable egress attestation, cross-commitment probing, broader evaluator side channels, window
+   cherry-picking, and approximate behavior clustering remain. Query bounds alone are not a
+   reward-hacking proof.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

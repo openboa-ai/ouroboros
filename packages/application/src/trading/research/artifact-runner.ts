@@ -15,6 +15,11 @@ import type {
 } from "./types";
 import { PaperTradingHandoffConformanceInfrastructureError } from
   "./paper-handoff-conformance";
+import {
+  acquireCandidateSandboxNetworkPolicy,
+  assertCandidateSandboxSbxVersion,
+  type CandidateSandboxNetworkPolicyLease
+} from "./candidate-sandbox-network-policy";
 
 const execFileAsync = promisify(execFile);
 
@@ -213,7 +218,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
 
     const version = await this.runSbxCommand([this.sbxPath, "version"]);
     commandEvidence.push(version);
-    if (version.exit_code !== 0 || !isDockerSandboxesSbxVersion(version.stdout)) {
+    if (version.exit_code !== 0 || !candidateSbxVersionSupported(version.stdout)) {
       return {
         ...baseResult,
         status: "crashed",
@@ -222,7 +227,9 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         exit_code: version.exit_code ?? undefined,
         events: await readEventsIfPresent(eventsPath),
         provider_requests: input.provider.requests(),
-        error: "docker_sandboxes_sbx_unavailable"
+        error: version.exit_code === 0
+          ? "docker_sandboxes_sbx_unsupported_version"
+          : "docker_sandboxes_sbx_unavailable"
       };
     }
 
@@ -248,7 +255,29 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       };
     }
 
+    let networkPolicy: CandidateSandboxNetworkPolicyLease<TradingArtifactCommandEvidence>;
+    try {
+      networkPolicy = await this.acquireNetworkPolicy(
+        input.provider,
+        sandboxName,
+        commandEvidence
+      );
+    } catch (error) {
+      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "stop", sandboxName]));
+      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "rm", "--force", sandboxName]));
+      return {
+        ...baseResult,
+        status: "crashed",
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        events: await readEventsIfPresent(eventsPath),
+        provider_requests: input.provider.requests(),
+        error: "candidate_sandbox_network_policy_failed"
+      };
+    }
+
     let runResult: ArtifactRunResult;
+    let networkPolicyCleanupFailure: unknown;
     try {
       const [command, ...args] = input.manifest.entrypoint;
       if (!command) {
@@ -330,10 +359,28 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         error: error instanceof Error ? error.message : String(error)
       };
     } finally {
+      try {
+        await networkPolicy.release();
+      } catch (error) {
+        networkPolicyCleanupFailure = error;
+      }
       commandEvidence.push(await this.runSbxCommand([this.sbxPath, "stop", sandboxName]));
       commandEvidence.push(await this.runSbxCommand([this.sbxPath, "rm", "--force", sandboxName]));
     }
 
+    if (networkPolicyCleanupFailure) {
+      return {
+        ...runResult,
+        status: "crashed",
+        stderr: [
+          runResult.stderr,
+          networkPolicyCleanupFailure instanceof Error
+            ? networkPolicyCleanupFailure.message
+            : String(networkPolicyCleanupFailure)
+        ].filter(Boolean).join("\n"),
+        error: "candidate_sandbox_network_policy_cleanup_failed"
+      };
+    }
     return runResult;
   }
 
@@ -349,10 +396,13 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
 
     const version = await this.runSbxCommand([this.sbxPath, "version"]);
     commandEvidence.push(version);
-    if (version.exit_code !== 0 || !isDockerSandboxesSbxVersion(version.stdout)) {
+    if (version.exit_code !== 0 || !candidateSbxVersionSupported(version.stdout)) {
       throw new PaperTradingHandoffConformanceInfrastructureError(
         "runner_unavailable",
-        version.error_message ?? (version.stderr || "docker_sandboxes_sbx_unavailable")
+        version.error_message ?? (version.stderr ||
+          (version.exit_code === 0
+            ? "docker_sandboxes_sbx_unsupported_version"
+            : "docker_sandboxes_sbx_unavailable"))
       );
     }
     const create = await this.runSbxCommand([
@@ -376,64 +426,81 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     let infrastructureFailure:
       | PaperTradingHandoffConformanceInfrastructureError
       | undefined;
+    let networkPolicy:
+      | CandidateSandboxNetworkPolicyLease<TradingArtifactCommandEvidence>
+      | undefined;
     try {
-      const [command, ...args] = input.manifest.entrypoint;
-      if (!command) {
-        infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
-          "runner_unavailable",
-          "Trading artifact manifest entrypoint is empty"
-        );
-      } else {
-        const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
-        const providerBaseUrl = input.provider.sandbox_base_url ??
-          input.provider.base_url;
-        const artifactCommand = [command, ...args, ...paperHandoffProbeArguments(input, paths)];
-        execResult = await this.runSbxCommand(
-          sidecar
-            ? [
-                this.sbxPath,
-                "exec",
-                "-w",
-                sandboxWorkspace.artifact_dir,
-                sandboxName,
-                "python3",
-                sidecar.runnerScriptPath,
-                "--sidecar-script",
-                sidecar.scriptPath,
-                "--scenario",
-                sidecar.scenarioPath,
-                "--requests",
-                sidecar.requestsPath,
-                "--host",
-                "127.0.0.1",
-                "--ready-file",
-                sidecar.readyPath,
-                "--paper-handoff",
-                "--",
-                ...artifactCommand
-              ]
-            : [
-                this.sbxPath,
-                "exec",
-                "-w",
-                sandboxWorkspace.artifact_dir,
-                sandboxName,
-                "env",
-                `TRADING_API_BASE_URL=${providerBaseUrl}`,
-                ...artifactCommand
-              ],
-          paperHandoffProbeTimeout(input.timeout_ms)
-        );
-        commandEvidence.push(execResult);
-        providerRequests = await this.providerRequests(
-          input.provider,
-          sidecar?.requestsPath
-        );
-        if (sidecar && execResult.exit_code === 70) {
+      networkPolicy = await this.acquireNetworkPolicy(
+        input.provider,
+        sandboxName,
+        commandEvidence
+      );
+    } catch (error) {
+      infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+        "network_policy_failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+    try {
+      if (!infrastructureFailure) {
+        const [command, ...args] = input.manifest.entrypoint;
+        if (!command) {
           infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
-            "provider_start_failed",
-            execResult.stderr || "sandbox replay provider failed to start"
+            "runner_unavailable",
+            "Trading artifact manifest entrypoint is empty"
           );
+        } else {
+          const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
+          const providerBaseUrl = input.provider.sandbox_base_url ??
+            input.provider.base_url;
+          const artifactCommand = [command, ...args, ...paperHandoffProbeArguments(input, paths)];
+          execResult = await this.runSbxCommand(
+            sidecar
+              ? [
+                  this.sbxPath,
+                  "exec",
+                  "-w",
+                  sandboxWorkspace.artifact_dir,
+                  sandboxName,
+                  "python3",
+                  sidecar.runnerScriptPath,
+                  "--sidecar-script",
+                  sidecar.scriptPath,
+                  "--scenario",
+                  sidecar.scenarioPath,
+                  "--requests",
+                  sidecar.requestsPath,
+                  "--host",
+                  "127.0.0.1",
+                  "--ready-file",
+                  sidecar.readyPath,
+                  "--paper-handoff",
+                  "--",
+                  ...artifactCommand
+                ]
+              : [
+                  this.sbxPath,
+                  "exec",
+                  "-w",
+                  sandboxWorkspace.artifact_dir,
+                  sandboxName,
+                  "env",
+                  `TRADING_API_BASE_URL=${providerBaseUrl}`,
+                  ...artifactCommand
+                ],
+            paperHandoffProbeTimeout(input.timeout_ms)
+          );
+          commandEvidence.push(execResult);
+          providerRequests = await this.providerRequests(
+            input.provider,
+            sidecar?.requestsPath
+          );
+          if (sidecar && execResult.exit_code === 70) {
+            infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+              "provider_start_failed",
+              execResult.stderr || "sandbox replay provider failed to start"
+            );
+          }
         }
       }
     } catch (error) {
@@ -444,6 +511,16 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
             error instanceof Error ? error.message : String(error)
           );
     } finally {
+      if (networkPolicy) {
+        try {
+          await networkPolicy.release();
+        } catch (error) {
+          infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
+            "network_policy_failed",
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      }
       const stop = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
       const remove = await this.runSbxCommand([
         this.sbxPath,
@@ -532,6 +609,22 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     timeoutMs = this.commandTimeoutMs
   ): Promise<TradingArtifactCommandEvidence> {
     return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private acquireNetworkPolicy(
+    provider: ReplayTradingApiProviderSession,
+    sandboxName: string,
+    commandEvidence: TradingArtifactCommandEvidence[]
+  ): Promise<CandidateSandboxNetworkPolicyLease<TradingArtifactCommandEvidence>> {
+    return acquireCandidateSandboxNetworkPolicy({
+      sbx_path: this.sbxPath,
+      sandbox_name: sandboxName,
+      ...(this.replayProviderTransport === "host_url"
+        ? { gateway_base_url: provider.sandbox_base_url ?? provider.base_url }
+        : {}),
+      run_command: (command) => this.runSbxCommand(command),
+      on_evidence: (evidence) => commandEvidence.push(evidence)
+    });
   }
 
   private async prepareReplayProvider(
@@ -749,8 +842,13 @@ async function readProviderRequestsIfPresent(requestsPath: string): Promise<Trad
   }
 }
 
-function isDockerSandboxesSbxVersion(stdout: string): boolean {
-  return stdout.includes("Client Version:") && stdout.includes("Server Version:");
+function candidateSbxVersionSupported(stdout: string): boolean {
+  try {
+    assertCandidateSandboxSbxVersion(stdout);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveCommandPath(commandPath: string, workspacePath: string): string {

@@ -155,6 +155,28 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
+  it("rejects Docker Sandboxes sbx versions without stable network policy tooling", async () => {
+    const tempDir = await makeTempDir();
+    const callLog = path.join(tempDir, "old-sbx-calls.log");
+    const fakeSbx = path.join(tempDir, "sbx");
+    try {
+      await writeExecutable(fakeSbx, fakeSbxScript("0.34.0"));
+
+      const result = await runValidation({
+        OUROBOROS_SBX_BIN: fakeSbx,
+        SBX_CALL_LOG: callLog
+      });
+      const calls = (await readFile(callLog, "utf8")).trim().split("\n");
+
+      expect(result.code, scriptOutput(result)).toBe(1);
+      expect(result.stderr).toContain("version v0.34.0 is unsupported");
+      expect(result.stderr).toContain("stable sbx >= 0.35.0");
+      expect(calls).toEqual(["version"]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not reject a Docker Sandboxes-compatible CLI solely because it is named sdx", async () => {
     const tempDir = await makeTempDir();
     const callLog = path.join(tempDir, "aliased-sdx-calls.log");
@@ -969,7 +991,7 @@ describe("S5 sbx validation harness", () => {
       const evidencePath = path.join(tempDir, "validate-sdx-starkit.log");
       await writeFile(
         evidencePath,
-        fakeCompletionEvidence().replace("Client Version:  v0.28.3 test", "sdx 2.0 Starkit Developer eXtension"),
+        fakeCompletionEvidence().replace("sbx version: v0.35.0 test", "sdx 2.0 Starkit Developer eXtension"),
         "utf8"
       );
 
@@ -977,6 +999,26 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain("transcript uses sdx/Starkit, not Docker Sandboxes sbx");
+      expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps S5 sbx completion audit incomplete for unsupported policy tooling", async () => {
+    const tempDir = await makeTempDir();
+    try {
+      const evidencePath = path.join(tempDir, "validate-old-sbx.log");
+      await writeFile(
+        evidencePath,
+        fakeCompletionEvidence().replace("sbx version: v0.35.0 test", "sbx version: v0.34.0 test"),
+        "utf8"
+      );
+
+      const result = await runScript(["scripts/audit-s5-sbx-completion.mjs", "--evidence", evidencePath], {});
+
+      expect(result.code, scriptOutput(result)).toBe(2);
+      expect(result.stdout).toContain("unsupported sbx v0.34.0");
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -2512,13 +2554,12 @@ function scriptOutput(result: { stdout: string; stderr: string }): string {
   return `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
 }
 
-function fakeSbxScript(): string {
+function fakeSbxScript(version = "0.35.0"): string {
   return `#!/bin/sh
 printf '%s\\n' "$*" >> "$SBX_CALL_LOG"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v${version} test"
     exit 0
     ;;
   diagnose)
@@ -2571,8 +2612,7 @@ fi
 printf '%s\\n' "$*" >> "$SBX_CALL_LOG"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     exit 0
     ;;
 esac
@@ -2648,8 +2688,7 @@ instance_id_for_args() {
 }
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     exit 0
     ;;
   diagnose)
@@ -2675,6 +2714,22 @@ case "$1" in
     printf '%s\\n' "$3" >> "$SBX_CALL_LOG.sandboxes"
     echo "created $3"
     exit 0
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        echo '{"rules":[]}'
+        exit 0
+        ;;
+      check)
+        echo '{"decision":"deny"}'
+        exit 1
+        ;;
+      log)
+        echo '{"events":[]}'
+        exit 0
+        ;;
+    esac
     ;;
   exec)
     if [ "$2" = "-d" ]; then
@@ -2730,8 +2785,7 @@ fi
 printf '%s\\n' "$*" >> "$SBX_CALL_LOG"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     exit 0
     ;;
   diagnose)
@@ -2780,8 +2834,7 @@ function fakeReportSbxScript(): string {
 printf '%s\\n' "$*" >> "$SBX_CALL_LOG"
 case "$*" in
   "version")
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     exit 0
     ;;
   "diagnose --output github-issue")
@@ -3068,8 +3121,7 @@ function fakeAuditNpmScript(options: {
   const preflightOutput = preflightStage === "diagnose"
     ? `echo "## OURO-32 real Docker Sandboxes sbx validation"
     echo "## sbx version"
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     echo "## sbx diagnose --output json"
     echo 'RESULT: failed - sbx diagnose --output json exited 1'
     echo 'operation not permitted' >&2
@@ -3077,8 +3129,7 @@ function fakeAuditNpmScript(options: {
     : preflightStage === "auth"
       ? `echo "## OURO-32 real Docker Sandboxes sbx validation"
     echo "## sbx version"
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  Unavailable"
+    echo "sbx version: v0.35.0 test"
     echo "## sbx diagnose --output json"
     echo '{"checks":[{"name":"Authentication","status":"fail","message":"not signed in"}],"summary":{"pass":6,"warn":0,"fail":1,"skip":0}}'
     echo 'RESULT: failed - sbx diagnose --output json exited 1'
@@ -3086,16 +3137,14 @@ function fakeAuditNpmScript(options: {
       : preflightStage === "daemon"
         ? `echo "## OURO-32 real Docker Sandboxes sbx validation"
     echo "## sbx version"
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  Unavailable"
+    echo "sbx version: v0.35.0 test"
     echo "## sbx diagnose --output json"
     echo '{"checks":[{"name":"Daemon","status":"fail","message":"not reachable"}],"summary":{"pass":4,"warn":0,"fail":1,"skip":2}}'
     echo 'RESULT: failed - sbx diagnose --output json exited 1'
     exit 1`
     : `echo "## OURO-32 real Docker Sandboxes sbx validation"
     echo "## sbx version"
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "sbx version: v0.35.0 test"
     echo "## sbx diagnose --output json"
     echo '{"summary":{"pass":7,"warn":0,"fail":0,"skip":0}}'
     echo "## sbx daemon status"
@@ -3178,8 +3227,7 @@ function fakeCompletionEvidence(
   return [
     "## OURO-32 real Docker Sandboxes sbx validation",
     "## sbx version",
-    "Client Version:  v0.28.3 test",
-    "Server Version:  v0.28.3 test",
+    "sbx version: v0.35.0 test",
     "## sbx diagnose --output json",
     options.invalidDiagnoseJson
       ? '{"summary":}'

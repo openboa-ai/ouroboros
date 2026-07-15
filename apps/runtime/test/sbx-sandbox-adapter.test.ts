@@ -5,6 +5,8 @@ import { createFixtureRecords, FIXTURE_SYSTEM_CODE_ID } from "@ouroboros/local-s
 import type { SystemCodeRecord } from "@ouroboros/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DockerSandboxesSbxSandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
+import { CANDIDATE_NETWORK_DENY_PROBES } from
+  "@ouroboros/application/trading/research/candidate-sandbox-network-policy";
 
 let tmpDir: string;
 
@@ -66,10 +68,12 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(start.instance.adapter_kind).toBe("docker_sandboxes_sbx");
     expect(start.instance.lifecycle_status).toBe("running");
-    expect(start.command_evidence).toHaveLength(4);
+    expect(start.command_evidence).toHaveLength(12);
     expect(start.command_evidence.map((evidence) => evidence.command.slice(1, 3))).toEqual([
       ["version"],
       ["create", "--name"],
+      ["policy", "ls"],
+      ...CANDIDATE_NETWORK_DENY_PROBES.map(() => ["policy", "check"]),
       ["exec", "-d"],
       ["exec", "ouro-s5-clock-fake"]
     ]);
@@ -93,13 +97,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(stop.command_evidence?.map((evidence) => evidence.command[1])).toEqual([
       "version",
       "exec",
-      "stop"
+      "stop",
+      "policy"
     ]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands).toEqual([
       "version",
       "create --name ouro-s5-clock-fake shell .",
+      ...denyPolicyCommands("ouro-s5-clock-fake"),
       "exec -d -w . ouro-s5-clock-fake python3 fixtures/trading-systems/clock.py --instance-id sandbox-fake-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-fake-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
       "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json",
       "version",
@@ -112,7 +118,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.jsonl",
       "version",
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
-      "stop ouro-s5-clock-fake"
+      "stop ouro-s5-clock-fake",
+      "policy log ouro-s5-clock-fake --json --limit 100"
     ]);
   });
 
@@ -146,6 +153,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(start.command_evidence.map((evidence) => evidence.command.slice(1, 3))).toEqual([
       ["version"],
       ["create", "--name"],
+      ["policy", "ls"],
+      ...CANDIDATE_NETWORK_DENY_PROBES.map(() => ["policy", "check"]),
       ["exec", "-d"],
       ["exec", "ouro-s5-clock-slow-startup"],
       ["exec", "ouro-s5-clock-slow-startup"],
@@ -188,9 +197,12 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(commands).toEqual([
       "version",
       "create --name ouro-s5-clock-finite-stopped shell .",
+      ...denyPolicyCommands("ouro-s5-clock-finite-stopped"),
       "exec -d -w . ouro-s5-clock-finite-stopped python3 fixtures/trading-systems/clock.py --instance-id sandbox-finite-stopped-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
       "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json",
-      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl"
+      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl",
+      "policy log ouro-s5-clock-finite-stopped --json --limit 100",
+      "rm --force ouro-s5-clock-finite-stopped"
     ]);
   });
 
@@ -264,9 +276,66 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-home shell .",
+      ...denyPolicyCommands("ouro-s5-clock-home"),
       "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-home cat /tmp/ouroboros-sandbox-home-sbx.heartbeat.json"
     ]);
+  });
+
+  it("persists the exact Gateway rule lease and removes it after adapter restart", async () => {
+    const commandLog = path.join(tmpDir, "network-policy-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-network-policy");
+    const policyStatePath = path.join(tmpDir, "network-policy-leases");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-network-policy";
+
+    const startAdapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      networkPolicyStatePath: policyStatePath
+    });
+    const start = await startAdapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-network-policy",
+      sandbox_name: "ouro-s5-network-policy",
+      sandbox_placement_id: "sandbox-placement-network-policy",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1,
+      env: {
+        TRADING_API_BASE_URL: "http://host.docker.internal:4173"
+      }
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    const startCommands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    const execIndex = startCommands.findIndex((command) => command.startsWith("exec -d "));
+    expect(startCommands.findIndex((command) =>
+      command === "policy allow network --sandbox ouro-s5-network-policy localhost:4173"
+    )).toBeGreaterThan(0);
+    expect(startCommands.filter((command) => command.startsWith("policy check network ")))
+      .toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length + 1);
+    expect(startCommands.findIndex((command) =>
+      command.startsWith("policy check network ")
+    )).toBeLessThan(execIndex);
+
+    const stopAdapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      networkPolicyStatePath: policyStatePath
+    });
+    const stop = await stopAdapter.stopArtifactInstance(start.instance);
+    expect(stop).toMatchObject({
+      lifecycle_status: "stopped"
+    });
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands).toContain(
+      "policy rm network --sandbox ouro-s5-network-policy --resource localhost:4173"
+    );
+    expect(commands.at(-1)).toBe(
+      "policy rm network --sandbox ouro-s5-network-policy --resource localhost:4173"
+    );
   });
 
   it("accepts a Docker Sandboxes-compatible CLI even when it is aliased as sdx", async () => {
@@ -297,6 +366,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-aliased-sdx shell .",
+      ...denyPolicyCommands("ouro-s5-clock-aliased-sdx"),
       "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-aliased-sdx cat /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json"
     ]);
@@ -327,6 +397,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-sdx-env-alias shell .",
+      ...denyPolicyCommands("ouro-s5-clock-sdx-env-alias"),
       "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-sdx-env-alias cat /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json"
     ]);
@@ -359,6 +430,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       `create --name ouro-s5-clock-relative-sdx-env-alias shell ${tmpDir}`,
+      ...denyPolicyCommands("ouro-s5-clock-relative-sdx-env-alias"),
       `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid`,
       "exec ouro-s5-clock-relative-sdx-env-alias cat /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json"
     ]);
@@ -467,16 +539,18 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(stop.lifecycle_status).toBe("failed");
     expect(stop.stopped_at).toBeUndefined();
-    expect(stop.command_evidence?.map((evidence) => evidence.exit_code)).toEqual([0, 0, 43]);
+    expect(stop.command_evidence?.map((evidence) => evidence.exit_code)).toEqual([0, 0, 43, 0]);
     expect(stop.command_evidence?.[2]?.stderr).toBe("stop runtime failed\n");
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-stop-failed shell .",
+      ...denyPolicyCommands("ouro-s5-clock-stop-failed"),
       "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-stop-failed cat /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json",
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
-      "stop ouro-s5-clock-stop-failed"
+      "stop ouro-s5-clock-stop-failed",
+      "policy log ouro-s5-clock-stop-failed --json --limit 100"
     ]);
   });
 });
@@ -494,6 +568,15 @@ function clockArtifactFixture(): SystemCodeRecord {
   return artifact;
 }
 
+function denyPolicyCommands(sandboxName: string): string[] {
+  return [
+    `policy ls ${sandboxName} --json --type network --decision allow`,
+    ...CANDIDATE_NETWORK_DENY_PROBES.map((target) =>
+      `policy check network --sandbox ${sandboxName} --json ${target}`
+    )
+  ];
+}
+
 function fakeSbxScript(): string {
   return `#!/bin/sh
 set -eu
@@ -504,11 +587,48 @@ fi
 printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "Client Version:  v0.35.0 test"
+    echo "Server Version:  v0.35.0 test"
     ;;
   create)
     echo "created $4"
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ]; then
+          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy")"
+          printf '{"rules":[{"id":"fake-rule","decision":"allow","resources":["%s"],"status":"active"}]}\\n' "$resource"
+        else
+          printf '{"rules":[]}\\n'
+        fi
+        ;;
+      allow)
+        resource=""
+        for argument in "$@"; do resource="$argument"; done
+        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy"
+        ;;
+      check)
+        target=""
+        for argument in "$@"; do target="$argument"; done
+        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy")" = "$target" ]; then
+          printf '{"decision":"allow"}\\n'
+          exit 0
+        fi
+        printf '{"decision":"deny"}\\n'
+        exit 1
+        ;;
+      log)
+        printf '{"entries":[]}\\n'
+        ;;
+      rm)
+        rm -f "$SBX_FAKE_COMMAND_LOG.policy"
+        ;;
+      *)
+        echo "unexpected policy command: $*" >&2
+        exit 2
+        ;;
+    esac
     ;;
 	  exec)
 	    if [ "$2" = "-d" ]; then
@@ -557,6 +677,9 @@ case "$1" in
   stop)
     echo "stopped $2"
     ;;
+  rm)
+    echo "removed $3"
+    ;;
   *)
     echo "unexpected $*" >&2
     exit 2
@@ -570,13 +693,16 @@ function fakeSbxCreateFailureScript(): string {
 set -eu
 printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 if [ "$1" = "version" ]; then
-  echo "Client Version:  v0.28.3 test"
-  echo "Server Version:  v0.28.3 test"
+  echo "Client Version:  v0.35.0 test"
+  echo "Server Version:  v0.35.0 test"
   exit 0
 fi
 if [ "$1" = "create" ]; then
   echo "runtime unavailable" >&2
   exit 42
+fi
+if [ "$1" = "rm" ]; then
+  exit 0
 fi
 echo "unexpected $*" >&2
 exit 2
@@ -602,11 +728,28 @@ set -eu
 printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 case "$1" in
   version)
-    echo "Client Version:  v0.28.3 test"
-    echo "Server Version:  v0.28.3 test"
+    echo "Client Version:  v0.35.0 test"
+    echo "Server Version:  v0.35.0 test"
     ;;
   create)
     echo "created $4"
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        printf '{"rules":[]}\\n'
+        ;;
+      check)
+        printf '{"decision":"deny"}\\n'
+        exit 1
+        ;;
+      log)
+        printf '{"entries":[]}\\n'
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
     ;;
   exec)
     if [ "$2" = "-d" ]; then
@@ -625,6 +768,9 @@ case "$1" in
   stop)
     echo "stop runtime failed" >&2
     exit 43
+    ;;
+  rm)
+    exit 0
     ;;
   *)
     echo "unexpected $*" >&2
