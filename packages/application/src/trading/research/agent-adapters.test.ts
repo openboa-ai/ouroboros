@@ -187,6 +187,22 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
     });
   });
 
+  it("rejects a provider process scope when durable ownership is not configured", async () => {
+    const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const adapter = new CodexTradingResearchAgentAdapter({ execFile });
+
+    await expect(adapter.runSession({
+      artifact_dir: tmpDir,
+      program_path: path.join(tmpDir, "program.md"),
+      notebook_path: path.join(tmpDir, "notebook.json"),
+      submission_limit: 1,
+      timeout_ms: 1_000,
+      process_ownership: researchWorkerProcessScope(),
+      tools: idleTools()
+    })).rejects.toThrow("research_provider_process_ownership_required");
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
   it("claims the exact provider process before releasing its prompt and records completion", async () => {
     const executablePath = path.join(tmpDir, "fake-codex-owned.cjs");
     const evidencePath = path.join(tmpDir, "owned-process.json");

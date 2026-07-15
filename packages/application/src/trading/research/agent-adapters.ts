@@ -203,6 +203,9 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   }
 
   async runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult> {
+    if (input.process_ownership && !this.processOwnership) {
+      throw new Error("research_provider_process_ownership_required");
+    }
     const client = await createResearchWorkerToolClient();
     let server: ResearchWorkerToolServerHandle | undefined;
     try {
