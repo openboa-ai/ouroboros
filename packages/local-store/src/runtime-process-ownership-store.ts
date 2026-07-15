@@ -161,8 +161,8 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
             ownership: record,
             adoptedAt: reconciledAt
           });
-          await this.writeActive(input.expected, adopted);
           await this.append(input.expected, adopted);
+          await this.writeActive(input.expected, adopted);
           return { status: "adopted", ownership: adopted };
         }
         await this.terminateOwner(record);

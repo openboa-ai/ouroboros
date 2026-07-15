@@ -325,6 +325,27 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("does not publish adopted ownership when adoption history cannot be appended", async () => {
+    const store = processStore();
+    const claimed = await store.claim(claimInput());
+    const historyDir = path.join(root, "history", runtimeProcessScopeKey());
+    const adoptionFile = [
+      claimed.started_at.replace(/[:.]/g, "-"),
+      "000001",
+      "adopted",
+      `${claimed.runtime_process_ownership_id}.json`
+    ].join("-");
+    await writeFile(path.join(historyDir, adoptionFile), "occupied\n", "utf8");
+
+    await expect(store.reconcile({
+      expected: expectedIdentity(),
+      mode: "adopt",
+      reconciledAt: "2026-07-15T00:00:01.000Z"
+    })).rejects.toMatchObject({ code: "EEXIST" });
+
+    await expect(store.active(expectedIdentity())).resolves.toEqual(claimed);
+  });
+
   it("does not let stale-lock observers delete a contender's fresh lock", async () => {
     const lockPath = runtimeProcessLockPath(root);
     await mkdir(path.dirname(lockPath), { recursive: true });
