@@ -99,7 +99,9 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "exec",
       "stop",
-      "policy"
+      ...Array.from({ length: CANDIDATE_NETWORK_DENY_PROBES.length + 3 }, () =>
+        "policy"
+      )
     ]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
@@ -120,6 +122,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-fake",
+      ...terminalDenyPolicyCommands("ouro-s5-clock-fake"),
       "policy log ouro-s5-clock-fake --json --limit 100"
     ]);
   });
@@ -202,6 +205,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "exec -d -w . ouro-s5-clock-finite-stopped python3 fixtures/trading-systems/clock.py --instance-id sandbox-finite-stopped-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
       "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json",
       "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl",
+      ...terminalDenyPolicyCommands("ouro-s5-clock-finite-stopped"),
       "policy log ouro-s5-clock-finite-stopped --json --limit 100",
       "rm --force ouro-s5-clock-finite-stopped"
     ]);
@@ -606,7 +610,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(stop.lifecycle_status).toBe("failed");
     expect(stop.stopped_at).toBeUndefined();
-    expect(stop.command_evidence?.map((evidence) => evidence.exit_code)).toEqual([0, 0, 43, 0]);
+    expect(stop.command_evidence?.map((evidence) => evidence.exit_code)).toEqual([
+      0,
+      0,
+      43,
+      0,
+      0,
+      ...CANDIDATE_NETWORK_DENY_PROBES.map(() => 1),
+      0
+    ]);
     expect(stop.command_evidence?.[2]?.stderr).toBe("stop runtime failed\n");
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
@@ -617,6 +629,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-stop-failed",
+      ...terminalDenyPolicyCommands("ouro-s5-clock-stop-failed"),
       "policy log ouro-s5-clock-stop-failed --json --limit 100"
     ]);
   });
@@ -638,6 +651,16 @@ function clockArtifactFixture(): SystemCodeRecord {
 function denyPolicyCommands(sandboxName: string): string[] {
   return [
     `policy ls ${sandboxName} --json --type network --decision allow`,
+    ...CANDIDATE_NETWORK_DENY_PROBES.map((target) =>
+      `policy check network --sandbox ${sandboxName} --json ${target}`
+    )
+  ];
+}
+
+function terminalDenyPolicyCommands(sandboxName: string): string[] {
+  return [
+    `policy ls ${sandboxName} --json --type network --decision allow`,
+    `policy ls ${sandboxName} --json --type network --decision deny`,
     ...CANDIDATE_NETWORK_DENY_PROBES.map((target) =>
       `policy check network --sandbox ${sandboxName} --json ${target}`
     )

@@ -372,22 +372,36 @@ fixed public, DNS/UDP, raw TCP, metadata, private-network, and alternate-host po
 must prove the effective boundary before candidate code executes. No policy in this boundary
 restricts strategy logic, candidate content, or tool choice.
 
-Every terminal path collects the bounded `sbx policy log`, removes every exact owned Gateway allow
-rule by ID, then removes every owned deny rule by ID, stops or removes the Sandbox, and retains
-command evidence. If Gateway-rule cleanup fails, the deny overlay remains. Continuous paper sessions
-persist both rule-ID sets and the inherited allow fingerprint outside the candidate workspace so a
-replacement adapter can recover and remove only owned rules after restart. Existing v1 Gateway leases are
-migrated by resolving one exact Sandbox-scoped rule ID before removal. Unknown ownership, policy
-JSON drift, cleanup failure, and an unsupported `sbx` version are infrastructure failures, not
-strategy Findings. Host policy mutation is outside candidate authority; durable start/end policy
-identity and mismatch evidence belong to the egress-attestation frontier.
+Before one-shot generated-candidate cleanup, the evaluator re-inspects the exact owned allow/deny
+rules and inherited allow identity, repeats the Gateway and fixed-deny checks, then collects the
+bounded `sbx policy log`. It removes every exact owned Gateway allow rule by ID before every owned
+deny rule by ID, stops or removes the Sandbox, and retains command evidence. If Gateway-rule cleanup
+fails, the deny overlay remains. Only successful terminal verification, policy-log collection, and
+owned-rule cleanup produce structured policy evidence. Candidate effect timestamps remain runner
+evidence rather than policy self-report.
+
+CandidateArena binds that evidence to the exact persisted `SystemCode` and `ExperimentRun` as a
+canonical evaluator-owned `CandidateEgressAttestation` inside version 2
+`PaperTradingHandoffConformance`. LocalStore independently re-verifies shape, both digests, subject,
+Sandbox, conformance window, issuer, denial completeness, cleanup, authority, and cross-conformance
+replay on write and restart readback. Version 1 host evidence remains readable for fixtures and
+history; version 1 Docker evidence cannot authorize a new generated-candidate admission. The compact
+operator projection exposes only attestation identity, verification/enforcement status, policy
+digest, denial counts, and research-only authority.
+
+Continuous paper sessions still persist both rule-ID sets and the inherited allow fingerprint
+outside the candidate workspace so a replacement adapter can recover and remove only owned rules
+after restart. Existing v1 Gateway leases are migrated by resolving one exact Sandbox-scoped rule
+ID before removal. Unknown ownership, policy JSON drift, cleanup failure, and an unsupported `sbx`
+version are infrastructure failures, not strategy Findings. Durable always-on TradingRun
+attestation, multi-host fencing, and restart-soak ownership remain separate operations work.
 
 `npm run prove:candidate-sandbox-egress` is the live platform proof. It starts a temporary local
 Gateway and executes a candidate-owned adversarial fixture that requires Gateway HTTP success while
 direct HTTP, redirects, DNS, raw sockets, subprocesses, metadata/private addresses, and a second
 reachable but unallowed host listener fail. Raw TCP counts as an escape only after response bytes
 return; socket connect completion alone can be a proxy-local acknowledgement. This runtime proof
-does not replace the future durable egress-attestation record.
+complements rather than replaces the persisted attestation and restart-verification path.
 
 ## Comparable Trading Evidence
 
@@ -730,10 +744,11 @@ The following current surfaces require implementation work before P0 can pass:
   it.
   Generated-candidate direct process egress is now deny-by-default through a Sandbox-scoped overlay
   that neutralizes inherited host allows, with an exact local Gateway exception, adversarial
-  in-Sandbox probes, rule-ID restart cleanup, and policy command evidence.
-  Durable egress attestation and the full adversarial matrix for score probing, evaluator side
-  channels, other window cherry-picking paths, cross-commitment probing, provider-identity
-  ineligibility, and approximate or cross-suite behavior clustering remain incomplete.
+  in-Sandbox probes, rule-ID restart cleanup, policy command evidence, and evaluator-owned durable
+  start/end attestation required by new Docker-generated admission.
+  The full adversarial matrix for score probing, evaluator side channels, other window
+  cherry-picking paths, cross-commitment probing, provider-identity ineligibility, always-on
+  TradingRun attestation, and approximate or cross-suite behavior clustering remain incomplete.
 
 The isolated candidate-to-paper handoff is now partial conformance evidence rather than a current
 gap. Candidate-facing development payloads omit evaluator direction, outcome, hidden risk, private,
@@ -811,10 +826,10 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    normalize before classification, and handoff-only attacks persist as anti-hacking memory. Exact
    same-suite behavior duplicates are isolated. Generated-candidate direct process egress
    neutralizes inherited host allows with a Sandbox-scoped deny overlay, permits one exact injected
-   Gateway exception, and has adversarial runtime proof, while
-   durable egress attestation, cross-commitment probing, broader evaluator side channels, window
-   cherry-picking, and approximate behavior clustering remain. Query bounds alone are not a
-   reward-hacking proof.
+   Gateway exception, has adversarial runtime proof, and persists evaluator-owned start/end egress
+   attestation in version 2 handoff conformance. Cross-commitment probing, broader evaluator side
+   channels, always-on TradingRun attestation, window cherry-picking, and approximate behavior
+   clustering remain. Query bounds alone are not a reward-hacking proof.
 4. **Implemented for current starts:** immutable research-feedback commitments, verification,
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains

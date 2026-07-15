@@ -12,6 +12,9 @@ import type {
   ResearchPreflightCommitmentRecord,
   TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
+import type {
+  CandidateSandboxNetworkPolicyAttestationEvidence
+} from "./candidate-sandbox-network-policy";
 
 export type TradingResearchAgentProvider = "codex" | "claude_code" | "fixture";
 
@@ -202,6 +205,12 @@ export interface TradingArtifactPaperHandoffProbeResult {
   exit_code?: number;
   output_lines: string[];
   provider_requests: TradingProviderRequestLog[];
+  candidate_effect?: {
+    started_at: string;
+    completed_at: string;
+  };
+  candidate_egress_policy_evidence?:
+    CandidateSandboxNetworkPolicyAttestationEvidence;
   command_evidence?: TradingArtifactCommandEvidence[];
   error?: string;
 }
@@ -256,6 +265,12 @@ export interface TradingPaperHandoffConformanceEvidence {
   started_at: string;
   completed_at: string;
   runnable_paper_handoff: boolean;
+  candidate_effect?: {
+    started_at: string;
+    completed_at: string;
+  };
+  candidate_egress_policy_evidence?:
+    CandidateSandboxNetworkPolicyAttestationEvidence;
 }
 
 export interface TradingEvaluationResult {

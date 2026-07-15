@@ -48,6 +48,8 @@ import type {
 } from "@ouroboros/domain";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
+  candidateEgressNetworkPolicyDigestInput,
   paperTradingComparisonPersistedRecordDigestInput,
   researchAllocationPolicyDecisionDigestInput
 } from "@ouroboros/domain";
@@ -1557,9 +1559,19 @@ describe("CandidateArena paper evidence context", () => {
       writeOrder.push("materialize");
       await expect(store.listPaperTradingHandoffConformances()).resolves.toEqual([
         expect.objectContaining({
+          version: 2,
           status: "passed",
           reason: "passed",
-          runnable_paper_handoff: true
+          runnable_paper_handoff: true,
+          candidate_egress_attestation: expect.objectContaining({
+            execution_ref: expect.objectContaining({
+              record_kind: "experiment_run"
+            }),
+            system_code_ref: expect.objectContaining({
+              record_kind: "system_code"
+            }),
+            enforcement_result: "enforced"
+          })
         })
       ]);
       await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
@@ -1585,7 +1597,7 @@ describe("CandidateArena paper evidence context", () => {
         writeOrder.push("agent_effect");
         await expect(store.listResearchPreflightCommitments()).resolves.toHaveLength(1);
       }),
-      artifactRunner: acceptedNegativeReplayArtifactRunner(),
+      artifactRunner: attestedNegativeReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
     });
 
@@ -1599,7 +1611,13 @@ describe("CandidateArena paper evidence context", () => {
         paper_handoff_conformance: expect.objectContaining({
           status: "passed",
           reason: "passed",
-          authority_status: "research_only"
+          authority_status: "research_only",
+          candidate_egress_attestation: expect.objectContaining({
+            verification_status: "verified",
+            enforcement_result: "enforced",
+            network_policy_digest: expect.stringMatching(/^sha256:/),
+            authority_status: "research_only"
+          })
         }),
         research_preflight: {
           commitment_id: expect.any(String),
@@ -1633,6 +1651,20 @@ describe("CandidateArena paper evidence context", () => {
     ]);
     expect(JSON.stringify(compactPreflight)).not.toMatch(
       /digest|seed|suite|scenario|score|metric|event|path|command|evaluator/i
+    );
+    const compactEgress = outcome.arena.latest_ticks[0]
+      ?.direction_results[0]?.paper_handoff_conformance
+      ?.candidate_egress_attestation;
+    expect(Object.keys(compactEgress ?? {}).sort()).toEqual([
+      "attestation_id",
+      "authority_status",
+      "denial_summary",
+      "enforcement_result",
+      "network_policy_digest",
+      "verification_status"
+    ]);
+    expect(JSON.stringify(compactEgress)).not.toMatch(
+      /owned_|inherited_allow|gateway_resource|command|policy_log|credential/i
     );
     const [admission] = await store.listCandidateAdmissionDecisions();
     const sourceSnapshot = admission
@@ -4586,6 +4618,69 @@ function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
       };
     }
   };
+}
+
+function attestedNegativeReplayArtifactRunner(): TradingArtifactRunner {
+  const base = acceptedNegativeReplayArtifactRunner();
+  return {
+    kind: "docker_sandboxes_sbx",
+    async probePaperHandoff(input) {
+      const probe = passingPaperHandoffProbe(input, "docker_sandboxes_sbx");
+      const networkPolicy = {
+        protocol_version: "candidate_sandbox_network_policy_v1" as const,
+        inherited_allow_digest: sha256Digest("[]"),
+        inherited_allow_count: 0,
+        owned_allow_rule_ids: [],
+        owned_deny_rule_ids: [],
+        deny_targets: [...CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS]
+      };
+      const networkPolicyDigest = sha256Digest(
+        candidateEgressNetworkPolicyDigestInput(networkPolicy)
+      );
+      return {
+        ...probe,
+        candidate_effect: {
+          started_at: probe.started_at,
+          completed_at: probe.completed_at
+        },
+        candidate_egress_policy_evidence: {
+          sandbox: {
+            adapter_kind: "docker_sandboxes_sbx",
+            sandbox_name: "ouro-arena-attested-fixture",
+            implementation_version: "0.35.0"
+          },
+          network_policy: networkPolicy,
+          network_policy_digest: networkPolicyDigest,
+          start: {
+            observed_at: probe.started_at,
+            policy_digest: networkPolicyDigest
+          },
+          end: {
+            observed_at: probe.completed_at,
+            policy_digest: networkPolicyDigest
+          },
+          denial_summary: {
+            required_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+            start_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+            end_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+            unexpected_allow_count: 0
+          },
+          cleanup_status: "released",
+          enforcement_result: "enforced"
+        }
+      };
+    },
+    async run(input) {
+      return {
+        ...await base.run(input),
+        runner_kind: "docker_sandboxes_sbx"
+      };
+    }
+  };
+}
+
+function sha256Digest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function crashedReplayArtifactRunner(): TradingArtifactRunner {

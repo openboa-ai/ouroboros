@@ -1554,6 +1554,30 @@ process.exit(17);
     expect(runner.probe_count()).toBe(1);
   });
 
+  it("fails sealed admission when a Docker probe omits evaluator egress evidence", async () => {
+    const host = controlledPaperHandoffArtifactRunner(["passed"]);
+    const runner: TradingArtifactRunner = {
+      kind: "docker_sandboxes_sbx",
+      run: host.run,
+      async probePaperHandoff(input) {
+        return passingPaperHandoffProbe(input, "docker_sandboxes_sbx");
+      }
+    };
+
+    await expect(runTradingSealedAdmission({
+      artifact_dir: path.resolve("artifacts/trading-system"),
+      manifest: await readTradingSystemManifest(
+        path.resolve("artifacts/trading-system")
+      ),
+      output_dir: path.join(tmpDir, "missing-egress-attestation"),
+      artifact_runner: runner
+    })).rejects.toMatchObject({
+      name: "PaperTradingHandoffConformanceInfrastructureError",
+      code: "network_policy_failed",
+      candidate_rejection: false
+    });
+  });
+
   it("restores the frozen submission when the sealed paper probe mutates it", async () => {
     const preflightPlan = await fixedPreflightPlan(1);
     const result = await runTradingResearchLoop({
@@ -1848,7 +1872,7 @@ process.exit(17);
         scenario_id: "trend_long",
         runner_kind: "docker_sandboxes_sbx",
         provider_request_count: 3,
-        runner_command_count: 14,
+        runner_command_count: 23,
         runner_command_evidence: expect.arrayContaining([
           expect.objectContaining({
             command: expect.arrayContaining(["version"]),
@@ -1872,7 +1896,7 @@ process.exit(17);
         scenario_id: "range_flat",
         runner_kind: "docker_sandboxes_sbx",
         provider_request_count: 3,
-        runner_command_count: 14,
+        runner_command_count: 23,
         runner_command_evidence: expect.any(Array)
       })
     ]);
@@ -1884,7 +1908,28 @@ process.exit(17);
       submission_sequence: 1,
       evaluation: {
         status: "accepted",
-        paper_handoff_conformance: { status: "passed" }
+        paper_handoff_conformance: {
+          status: "passed",
+          candidate_effect: {
+            started_at: expect.any(String),
+            completed_at: expect.any(String)
+          },
+          candidate_egress_policy_evidence: expect.objectContaining({
+            sandbox: expect.objectContaining({
+              adapter_kind: "docker_sandboxes_sbx",
+              implementation_version: "0.35.0"
+            }),
+            network_policy_digest: expect.stringMatching(/^sha256:/),
+            cleanup_status: "released",
+            enforcement_result: "enforced",
+            denial_summary: {
+              required_probe_count: 7,
+              start_denied_probe_count: 7,
+              end_denied_probe_count: 7,
+              unexpected_allow_count: 0
+            }
+          })
+        }
       }
     });
 
@@ -1928,9 +1973,9 @@ process.exit(17);
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands.join("\n")).not.toMatch(/trend_long|range_flat/i);
     expect(commands.filter((command) => command === "version")).toHaveLength(9);
-    expect(commands.filter((command) => command.startsWith("policy ls "))).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("policy ls "))).toHaveLength(3 * 9);
     expect(commands.filter((command) => command.startsWith("policy check network ")))
-      .toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 9);
+      .toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 2 * 9);
     expect(commands.filter((command) => command.startsWith("policy log "))).toHaveLength(9);
     expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(9);
     expect(executionOutputRoots.every((outputRoot) =>
@@ -2003,7 +2048,17 @@ process.exit(17);
       expect(execution).toContain("--ticks 1");
       expect(execution).toContain("--paper-order-request valid");
       expect(execution).not.toContain("--output-events");
-      expect(probe.command_evidence).toHaveLength(14);
+      expect(probe.command_evidence).toHaveLength(commands.length);
+      expect(probe.candidate_egress_policy_evidence).toMatchObject({
+        cleanup_status: "released",
+        enforcement_result: "enforced",
+        denial_summary: {
+          required_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          start_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          end_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          unexpected_allow_count: 0
+        }
+      });
     } finally {
       await provider.close();
       delete process.env.SBX_FAKE_COMMAND_LOG;
@@ -2089,8 +2144,20 @@ process.exit(17);
 
       expect(createIndex).toBeGreaterThanOrEqual(0);
       expect(inspectIndex).toBeGreaterThan(createIndex);
-      expect(checkIndexes).toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length);
-      expect(checkIndexes.every((index) => index > inspectIndex && index < execIndex)).toBe(true);
+      expect(checkIndexes).toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 2);
+      const startCheckIndexes = checkIndexes.slice(
+        0,
+        CANDIDATE_NETWORK_DENY_PROBES.length
+      );
+      const endCheckIndexes = checkIndexes.slice(
+        CANDIDATE_NETWORK_DENY_PROBES.length
+      );
+      expect(startCheckIndexes.every((index) =>
+        index > inspectIndex && index < execIndex
+      )).toBe(true);
+      expect(endCheckIndexes.every((index) =>
+        index > execIndex && index < logIndex
+      )).toBe(true);
       expect(logIndex).toBeGreaterThan(execIndex);
       expect(stopIndex).toBeGreaterThan(logIndex);
       expect(removeIndex).toBeGreaterThan(stopIndex);

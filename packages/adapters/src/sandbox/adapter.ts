@@ -23,6 +23,7 @@ import {
   acquireCandidateSandboxNetworkPolicy,
   assertCandidateSandboxSbxVersion,
   CandidateSandboxNetworkPolicyError,
+  parseCandidateSandboxSbxVersion,
   recoverCandidateSandboxNetworkPolicyRuleId,
   releaseCandidateSandboxNetworkPolicy,
   type CandidateSandboxNetworkPolicyLease
@@ -504,8 +505,12 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     const versionCommand = [this.sbxPath, "version"];
     const versionResult = await this.runSbxCommand(versionCommand);
     const versionEvidence = commandEvidenceRecord(input.instance_id, "version", versionResult);
+    const sandboxImplementationVersion = parseCandidateSandboxSbxVersion(
+      versionResult.stdout
+    );
     if (
       versionResult.exit_code !== 0 ||
+      !sandboxImplementationVersion ||
       !candidateSbxVersionSupported(versionResult.stdout)
     ) {
       return {
@@ -585,6 +590,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       networkPolicy = await acquireCandidateSandboxNetworkPolicy({
         sbx_path: this.sbxPath,
         sandbox_name: input.sandbox_name,
+        sandbox_implementation_version: sandboxImplementationVersion,
         ...(input.env?.TRADING_API_BASE_URL
           ? { gateway_base_url: input.env.TRADING_API_BASE_URL }
           : {}),

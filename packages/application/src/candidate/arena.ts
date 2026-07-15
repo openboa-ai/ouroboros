@@ -23,6 +23,7 @@ import type {
   CandidateArenaResearchPreflightReadModel,
   CandidateArenaResearcherReadModel,
   CandidateInspectReadModel,
+  CandidateEgressAttestation,
   CandidateMaterializationInput,
   ExperimentRunRecord,
   PaperTradingBoardBlockerDensityReadModel,
@@ -31,6 +32,7 @@ import type {
   PaperTradingMarketSnapshotSummary,
   PaperTradingObservationRecord,
   PaperTradingHandoffConformanceRecord,
+  PaperTradingHandoffConformanceRecordV1,
   PaperTradingComparisonResearchReleaseRecord,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
@@ -49,10 +51,15 @@ import type {
   TradingProfitLossReadModel
 } from "@ouroboros/domain";
 import {
+  candidateEgressAttestationDigestInput,
+  candidateEgressAttestationIdForConformance,
+  CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_ATTESTER_ID,
   decideCandidateAdmission,
   deriveCandidateAdmissionResearchWorkerOutcome,
   paperTradingHandoffConformanceDigestInput,
-  paperTradingComparisonResearchReleaseHasRuntimeShape
+  paperTradingComparisonResearchReleaseHasRuntimeShape,
+  verifyCandidateEgressAttestation
 } from "@ouroboros/domain";
 import {
   FIXTURE_CANDIDATE_ID,
@@ -1914,16 +1921,18 @@ function arenaPaperHandoffConformance(input: {
   if (evidence.system_code_artifact_digest !== input.systemCode.artifact_digest) {
     throw new Error("candidate_arena_paper_handoff_artifact_digest_mismatch");
   }
-  const record: PaperTradingHandoffConformanceRecord = {
+  const conformanceId = `paper-handoff-conformance-${input.suffix}`;
+  const common: Omit<
+    PaperTradingHandoffConformanceRecordV1,
+    "version" | "runner_kind"
+  > = {
     record_kind: "paper_trading_handoff_conformance",
-    version: 1,
-    paper_trading_handoff_conformance_id: `paper-handoff-conformance-${input.suffix}`,
+    paper_trading_handoff_conformance_id: conformanceId,
     system_code_ref: ref("system_code", input.systemCode.system_code_id),
     system_code_artifact_digest: evidence.system_code_artifact_digest,
     experiment_run_ref: ref("experiment_run", input.experiment.experiment_run_id),
     trading_evaluation_task_ref: input.experiment.trading_evaluation_task_ref,
     protocol_version: evidence.protocol_version,
-    runner_kind: evidence.runner_kind,
     status: evidence.status,
     reason: evidence.reason,
     provider_request_count: evidence.provider_request_count,
@@ -1942,10 +1951,95 @@ function arenaPaperHandoffConformance(input: {
     live_exchange_authority: false,
     authority_status: "not_live"
   };
-  record.evidence_digest = `sha256:${createHash("sha256")
-    .update(paperTradingHandoffConformanceDigestInput(record))
-    .digest("hex")}`;
+  let record: PaperTradingHandoffConformanceRecord;
+  if (evidence.runner_kind === "docker_sandboxes_sbx") {
+    const policyEvidence = evidence.candidate_egress_policy_evidence;
+    const candidateEffect = evidence.candidate_effect;
+    if (!policyEvidence || !candidateEffect) {
+      throw new Error("candidate_arena_candidate_egress_attestation_missing");
+    }
+    const attestation: CandidateEgressAttestation = {
+      protocol_version: CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+      attestation_id: candidateEgressAttestationIdForConformance(conformanceId),
+      attested_by: {
+        record_kind: "external_evaluator",
+        id: CANDIDATE_EGRESS_ATTESTER_ID
+      },
+      candidate_authored: false,
+      system_code_ref: { ...common.system_code_ref },
+      system_code_artifact_digest: common.system_code_artifact_digest,
+      execution_ref: { ...common.experiment_run_ref },
+      sandbox: { ...policyEvidence.sandbox },
+      network_policy: {
+        ...policyEvidence.network_policy,
+        owned_allow_rule_ids: [
+          ...policyEvidence.network_policy.owned_allow_rule_ids
+        ],
+        owned_deny_rule_ids: [
+          ...policyEvidence.network_policy.owned_deny_rule_ids
+        ],
+        deny_targets: [...policyEvidence.network_policy.deny_targets]
+      },
+      network_policy_digest: policyEvidence.network_policy_digest,
+      start: { ...policyEvidence.start },
+      end: { ...policyEvidence.end },
+      candidate_effect: { ...candidateEffect },
+      cleanup_status: policyEvidence.cleanup_status,
+      enforcement_result: policyEvidence.enforcement_result,
+      denial_summary: { ...policyEvidence.denial_summary },
+      issued_at: common.completed_at,
+      attestation_digest: "pending",
+      research_preflight_authority: true,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    };
+    attestation.attestation_digest = candidateArenaSha256(
+      candidateEgressAttestationDigestInput(attestation)
+    );
+    const verification = verifyCandidateEgressAttestation({
+      attestation,
+      expected: {
+        attestation_id: attestation.attestation_id,
+        system_code_ref: common.system_code_ref,
+        system_code_artifact_digest: common.system_code_artifact_digest,
+        execution_ref: common.experiment_run_ref,
+        sandbox_name: policyEvidence.sandbox.sandbox_name,
+        sandbox_implementation_version:
+          policyEvidence.sandbox.implementation_version,
+        conformance_started_at: common.started_at,
+        conformance_completed_at: common.completed_at
+      },
+      consumed_attestation_digests: [],
+      sha256: candidateArenaSha256
+    });
+    if (verification.status === "rejected") {
+      throw new Error(
+        `candidate_arena_candidate_egress_attestation_${verification.reason}`
+      );
+    }
+    record = {
+      ...common,
+      version: 2,
+      runner_kind: "docker_sandboxes_sbx",
+      candidate_egress_attestation: attestation
+    };
+  } else {
+    record = {
+      ...common,
+      version: 1,
+      runner_kind: "host_process"
+    };
+  }
+  record.evidence_digest = candidateArenaSha256(
+    paperTradingHandoffConformanceDigestInput(record)
+  );
   return record;
+}
+
+function candidateArenaSha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function compactPaperHandoffConformance(
@@ -1955,6 +2049,23 @@ function compactPaperHandoffConformance(
     conformance_id: record.paper_trading_handoff_conformance_id,
     status: record.status,
     reason: record.reason,
+    ...(record.version === 2
+      ? {
+          candidate_egress_attestation: {
+            attestation_id:
+              record.candidate_egress_attestation.attestation_id,
+            verification_status: "verified" as const,
+            enforcement_result: "enforced" as const,
+            network_policy_digest:
+              record.candidate_egress_attestation.network_policy_digest,
+            denial_summary: {
+              ...record.candidate_egress_attestation.denial_summary,
+              unexpected_allow_count: 0 as const
+            },
+            authority_status: "research_only" as const
+          }
+        }
+      : {}),
     authority_status: "research_only"
   };
 }

@@ -1,18 +1,24 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateArenaResearchAllocationDigestInput,
+  candidateEgressAttestationDigestInput,
+  candidateEgressAttestationIdForConformance,
+  candidateEgressNetworkPolicyDigestInput,
   decideCandidateAdmission,
   paperTradingHandoffConformanceDigestInput,
   researchPreflightCommitmentDigestInput,
   type CandidateArenaResearchAllocationRecord,
+  type CandidateEgressAttestation,
   type CandidateAdmissionDecisionRecord,
   type ExperimentRunRecord,
   type PaperTradingHandoffConformanceRecord,
+  type PaperTradingHandoffConformanceRecordV2,
   type ResearchDirectionRecord,
   type ResearchFindingRecord,
   type ResearchPreflightCommitmentRecord,
@@ -59,6 +65,87 @@ describe("LocalStore PaperTradingHandoffConformance", () => {
       first.paper_trading_handoff_conformance_id
     )).resolves.toEqual(first);
     await expect(restarted.listPaperTradingHandoffConformances()).resolves.toEqual([second, first]);
+  });
+
+  it("persists, exactly replays, and restart-verifies version 2 egress evidence", async () => {
+    const graph = await persistedGraph(store);
+    const record = attestedConformanceFixture(graph.systemCode, graph.experiment);
+
+    await expect(store.recordPaperTradingHandoffConformance(record)).resolves.toEqual(record);
+    await expect(store.recordPaperTradingHandoffConformance(record)).resolves.toEqual(record);
+
+    const restarted = new LocalStore(storeRoot);
+    await restarted.initialize();
+    await expect(restarted.getPaperTradingHandoffConformance(
+      record.paper_trading_handoff_conformance_id
+    )).resolves.toEqual(record);
+  });
+
+  it("rejects candidate-authored and cross-conformance replayed egress evidence", async () => {
+    const graph = await persistedGraph(store);
+    const first = attestedConformanceFixture(graph.systemCode, graph.experiment);
+    await store.recordPaperTradingHandoffConformance(first);
+
+    const candidateAuthored = attestedConformanceFixture(
+      graph.systemCode,
+      graph.experiment,
+      { id: "paper-handoff-conformance-candidate-authored" }
+    );
+    candidateAuthored.candidate_egress_attestation.candidate_authored = true;
+    candidateAuthored.candidate_egress_attestation.attested_by = {
+      record_kind: "research_worker",
+      id: "candidate-controlled"
+    };
+    resignAttestation(candidateAuthored.candidate_egress_attestation);
+    candidateAuthored.evidence_digest = conformanceDigest(candidateAuthored);
+    await expect(store.recordPaperTradingHandoffConformance(candidateAuthored))
+      .rejects.toMatchObject({ code: "candidate_egress_attestation_rejected" });
+
+    const replay = structuredClone(first);
+    replay.paper_trading_handoff_conformance_id = "paper-handoff-conformance-replay";
+    replay.evidence_digest = conformanceDigest(replay);
+    await expect(store.recordPaperTradingHandoffConformance(replay))
+      .rejects.toMatchObject({ code: "candidate_egress_attestation_rejected" });
+  });
+
+  it("detects version 2 attestation tampering after restart", async () => {
+    const graph = await persistedGraph(store);
+    const record = attestedConformanceFixture(graph.systemCode, graph.experiment);
+    await store.recordPaperTradingHandoffConformance(record);
+
+    const tampered = structuredClone(record);
+    tampered.candidate_egress_attestation.denial_summary.end_denied_probe_count -= 1;
+    await writeFile(
+      path.join(
+        storeRoot,
+        "paper-trading-handoff-conformances",
+        "items",
+        `${record.paper_trading_handoff_conformance_id}.json`
+      ),
+      `${JSON.stringify(tampered, null, 2)}\n`,
+      "utf8"
+    );
+
+    const restarted = new LocalStore(storeRoot);
+    await restarted.initialize();
+    await expect(restarted.getPaperTradingHandoffConformance(
+      record.paper_trading_handoff_conformance_id
+    )).rejects.toMatchObject({ code: "candidate_egress_attestation_rejected" });
+  });
+
+  it("keeps historical version 1 Docker evidence readable but ineligible for admission", async () => {
+    const graph = await persistedGraph(store);
+    const historical = conformanceFixture(graph.systemCode, graph.experiment);
+    historical.runner_kind = "docker_sandboxes_sbx";
+    historical.evidence_digest = conformanceDigest(historical);
+    await store.recordPaperTradingHandoffConformance(historical);
+    await expect(store.getPaperTradingHandoffConformance(
+      historical.paper_trading_handoff_conformance_id
+    )).resolves.toEqual(historical);
+
+    await expect(store.recordCandidateAdmissionDecision(
+      boundAdmission(graph.admission, historical)
+    )).rejects.toMatchObject({ code: "candidate_admission_egress_attestation_required" });
   });
 
   it("rejects malformed, digest-drifted, rejected-as-runnable, and same-ID-mutated evidence", async () => {
@@ -530,6 +617,114 @@ function conformanceFixture(
   };
   record.evidence_digest = conformanceDigest(record);
   return record;
+}
+
+function attestedConformanceFixture(
+  systemCode: SystemCodeRecord,
+  experiment: ExperimentRunRecord,
+  options: { id?: string } = {}
+): PaperTradingHandoffConformanceRecordV2 {
+  const conformanceId = options.id ?? "paper-handoff-conformance-attested";
+  const networkPolicy = {
+    protocol_version: "candidate_sandbox_network_policy_v1" as const,
+    inherited_allow_digest: digest("inherited-allow-set"),
+    inherited_allow_count: 2,
+    owned_allow_rule_ids: ["owned-allow-3"],
+    owned_deny_rule_ids: ["owned-deny-1", "owned-deny-2"],
+    gateway_resource: "localhost:4173",
+    deny_targets: [...CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS]
+  };
+  const networkPolicyDigest = digest(
+    candidateEgressNetworkPolicyDigestInput(networkPolicy)
+  );
+  const attestation: CandidateEgressAttestation = {
+    protocol_version: "candidate_egress_attestation_v1",
+    attestation_id: candidateEgressAttestationIdForConformance(conformanceId),
+    attested_by: {
+      record_kind: "external_evaluator",
+      id: "candidate-egress-evaluator-v1"
+    },
+    candidate_authored: false,
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_artifact_digest: systemCode.artifact_digest,
+    execution_ref: {
+      record_kind: "experiment_run",
+      id: experiment.experiment_run_id
+    },
+    sandbox: {
+      adapter_kind: "docker_sandboxes_sbx",
+      sandbox_name: "ouro-candidate-attested",
+      implementation_version: "0.35.0"
+    },
+    network_policy: networkPolicy,
+    network_policy_digest: networkPolicyDigest,
+    start: {
+      observed_at: "2026-07-12T10:00:00.100Z",
+      policy_digest: networkPolicyDigest
+    },
+    end: {
+      observed_at: "2026-07-12T10:00:01.900Z",
+      policy_digest: networkPolicyDigest
+    },
+    candidate_effect: {
+      started_at: "2026-07-12T10:00:00.500Z",
+      completed_at: "2026-07-12T10:00:01.500Z"
+    },
+    cleanup_status: "released",
+    enforcement_result: "enforced",
+    denial_summary: {
+      required_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      start_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      end_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      unexpected_allow_count: 0
+    },
+    issued_at: "2026-07-12T10:00:02.000Z",
+    attestation_digest: "pending",
+    research_preflight_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  resignAttestation(attestation);
+  const record: PaperTradingHandoffConformanceRecordV2 = {
+    record_kind: "paper_trading_handoff_conformance",
+    version: 2,
+    paper_trading_handoff_conformance_id: conformanceId,
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_artifact_digest: systemCode.artifact_digest,
+    experiment_run_ref: {
+      record_kind: "experiment_run",
+      id: experiment.experiment_run_id
+    },
+    trading_evaluation_task_ref: { ...experiment.trading_evaluation_task_ref },
+    protocol_version: "paper_trading_event_protocol_v1",
+    runner_kind: "docker_sandboxes_sbx",
+    status: "passed",
+    reason: "passed",
+    provider_request_count: 3,
+    decision_event_kind: "hold",
+    heartbeat_count: 1,
+    runtime_stopped: true,
+    started_at: "2026-07-12T10:00:00.000Z",
+    completed_at: "2026-07-12T10:00:02.100Z",
+    candidate_egress_attestation: attestation,
+    evidence_digest: "pending",
+    research_preflight_authority: true,
+    runnable_paper_handoff: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  record.evidence_digest = conformanceDigest(record);
+  return record;
+}
+
+function resignAttestation(attestation: CandidateEgressAttestation): void {
+  attestation.attestation_digest = digest(
+    candidateEgressAttestationDigestInput(attestation)
+  );
 }
 
 function boundAdmission(

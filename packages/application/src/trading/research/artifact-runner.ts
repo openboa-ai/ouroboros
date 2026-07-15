@@ -18,6 +18,8 @@ import { PaperTradingHandoffConformanceInfrastructureError } from
 import {
   acquireCandidateSandboxNetworkPolicy,
   assertCandidateSandboxSbxVersion,
+  parseCandidateSandboxSbxVersion,
+  type CandidateSandboxNetworkPolicyAttestationEvidence,
   type CandidateSandboxNetworkPolicyLease
 } from "./candidate-sandbox-network-policy";
 
@@ -218,7 +220,12 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
 
     const version = await this.runSbxCommand([this.sbxPath, "version"]);
     commandEvidence.push(version);
-    if (version.exit_code !== 0 || !candidateSbxVersionSupported(version.stdout)) {
+    const sandboxImplementationVersion = parseCandidateSandboxSbxVersion(version.stdout);
+    if (
+      version.exit_code !== 0 ||
+      !sandboxImplementationVersion ||
+      !candidateSbxVersionSupported(version.stdout)
+    ) {
       return {
         ...baseResult,
         status: "crashed",
@@ -260,7 +267,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       networkPolicy = await this.acquireNetworkPolicy(
         input.provider,
         sandboxName,
-        commandEvidence
+        commandEvidence,
+        sandboxImplementationVersion
       );
     } catch (error) {
       commandEvidence.push(await this.runSbxCommand([this.sbxPath, "stop", sandboxName]));
@@ -392,11 +400,15 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     const paths = await preparePaperHandoffProbePaths(sandboxWorkspace.root);
     const commandEvidence: TradingArtifactCommandEvidence[] = [];
     const sandboxName = this.sandboxName(input);
-    const startedAt = new Date().toISOString();
 
     const version = await this.runSbxCommand([this.sbxPath, "version"]);
     commandEvidence.push(version);
-    if (version.exit_code !== 0 || !candidateSbxVersionSupported(version.stdout)) {
+    const sandboxImplementationVersion = parseCandidateSandboxSbxVersion(version.stdout);
+    if (
+      version.exit_code !== 0 ||
+      !sandboxImplementationVersion ||
+      !candidateSbxVersionSupported(version.stdout)
+    ) {
       throw new PaperTradingHandoffConformanceInfrastructureError(
         "runner_unavailable",
         version.error_message ?? (version.stderr ||
@@ -429,11 +441,16 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     let networkPolicy:
       | CandidateSandboxNetworkPolicyLease<TradingArtifactCommandEvidence>
       | undefined;
+    let candidateEgressPolicyEvidence:
+      | CandidateSandboxNetworkPolicyAttestationEvidence
+      | undefined;
+    let attestationIssuedAt: string | undefined;
     try {
       networkPolicy = await this.acquireNetworkPolicy(
         input.provider,
         sandboxName,
-        commandEvidence
+        commandEvidence,
+        sandboxImplementationVersion
       );
     } catch (error) {
       infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
@@ -514,6 +531,14 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       if (networkPolicy) {
         try {
           await networkPolicy.release();
+          candidateEgressPolicyEvidence = networkPolicy.attestation_evidence();
+          if (!candidateEgressPolicyEvidence) {
+            throw new Error("candidate egress policy release produced no attestation evidence");
+          }
+          attestationIssuedAt = new Date(Math.max(
+            Date.now(),
+            Date.parse(candidateEgressPolicyEvidence.end.observed_at)
+          )).toISOString();
         } catch (error) {
           infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
             "network_policy_failed",
@@ -547,6 +572,12 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         "paper handoff probe command was not executed"
       );
     }
+    if (!candidateEgressPolicyEvidence || !attestationIssuedAt) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "network_policy_failed",
+        "Docker paper handoff probe produced no terminal egress evidence"
+      );
+    }
     const outputLines = await probeOutputLines(paths.outputPath, execResult.stdout);
     return {
       status: execResult.exit_code === 0 ? "completed" : "crashed",
@@ -554,14 +585,19 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       artifact_dir: input.artifact_dir,
       entrypoint: [...input.manifest.entrypoint],
       instance_id: input.instance_id,
-      started_at: startedAt,
-      completed_at: execResult.completed_at,
+      started_at: candidateEgressPolicyEvidence.start.observed_at,
+      completed_at: attestationIssuedAt,
       timed_out: execResult.timed_out === true,
       stdout: execResult.stdout,
       stderr: execResult.stderr,
       exit_code: execResult.exit_code ?? undefined,
       output_lines: outputLines,
       provider_requests: providerRequests,
+      candidate_effect: {
+        started_at: execResult.started_at,
+        completed_at: execResult.completed_at
+      },
+      candidate_egress_policy_evidence: candidateEgressPolicyEvidence,
       command_evidence: commandEvidence,
       ...(execResult.exit_code === 0
         ? {}
@@ -614,11 +650,13 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
   private acquireNetworkPolicy(
     provider: ReplayTradingApiProviderSession,
     sandboxName: string,
-    commandEvidence: TradingArtifactCommandEvidence[]
+    commandEvidence: TradingArtifactCommandEvidence[],
+    sandboxImplementationVersion: string
   ): Promise<CandidateSandboxNetworkPolicyLease<TradingArtifactCommandEvidence>> {
     return acquireCandidateSandboxNetworkPolicy({
       sbx_path: this.sbxPath,
       sandbox_name: sandboxName,
+      sandbox_implementation_version: sandboxImplementationVersion,
       ...(this.replayProviderTransport === "host_url"
         ? { gateway_base_url: provider.sandbox_base_url ?? provider.base_url }
         : {}),

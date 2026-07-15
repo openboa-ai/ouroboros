@@ -210,6 +210,15 @@ async function composePaperHandoffConformance(input: {
       instance_id: `paper-handoff-${randomUUID()}`,
       start_at: new Date().toISOString()
     });
+    if (
+      probe.runner_kind === "docker_sandboxes_sbx" &&
+      (!probe.candidate_effect || !probe.candidate_egress_policy_evidence)
+    ) {
+      throw new PaperTradingHandoffConformanceInfrastructureError(
+        "network_policy_failed",
+        "Docker paper handoff probe omitted evaluator-owned egress evidence"
+      );
+    }
     const artifactMutated = await restoreSingleFileTradingArtifactClosure(input.sealed_artifact);
     integrityChecked = true;
     const observedConformance = evaluatePaperTradingHandoffProbe(probe);
@@ -235,7 +244,16 @@ async function composePaperHandoffConformance(input: {
       runtime_stopped: conformance.runtime_stopped,
       started_at: probe.started_at,
       completed_at: probe.completed_at,
-      runnable_paper_handoff: conformance.runnable_paper_handoff
+      runnable_paper_handoff: conformance.runnable_paper_handoff,
+      ...(probe.candidate_effect
+        ? { candidate_effect: { ...probe.candidate_effect } }
+        : {}),
+      ...(probe.candidate_egress_policy_evidence
+        ? {
+            candidate_egress_policy_evidence:
+              probe.candidate_egress_policy_evidence
+          }
+        : {})
     };
     const metric = {
       name: "paper_handoff_conformance",
