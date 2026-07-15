@@ -572,10 +572,12 @@ describe("CandidateArena paper evidence context", () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const agent = new AutonomousSessionResearchAgent("finish-unselected");
+    const now = "2026-07-12T10:00:00.000Z";
 
     const outcome = await runCandidateArenaTick({
       store,
       tickId: "explicit-finish-without-selection",
+      now: () => now,
       directions: ["trend_following"],
       researchAgent: "codex",
       agentFactory: () => agent,
@@ -605,6 +607,7 @@ describe("CandidateArena paper evidence context", () => {
       expect.objectContaining({
         terminal_status: "completed",
         terminal_reason: "finished_without_submission",
+        closed_at: now,
         development_budget: expect.objectContaining({
           recorded_submission_count: 1,
           remaining_submission_authority: 0

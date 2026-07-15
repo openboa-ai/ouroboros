@@ -299,6 +299,11 @@ implements ResearchAllocationPolicyDecisionCoordinatorLifecycle {
     const latestDecisionEpoch = latestDecisionAt
       ? Date.parse(canonicalTime(latestDecisionAt))
       : Number.NEGATIVE_INFINITY;
+    if (nowEpoch < latestDecisionEpoch) {
+      throw coordinationFailed(
+        "ResearchAllocationPolicyDecision clock precedes prior decision evidence."
+      );
+    }
     const lowerBoundEpoch = Math.max(adjudicatedEpoch, latestDecisionEpoch);
     if (nowEpoch > lowerBoundEpoch) return now;
     try {

@@ -848,7 +848,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       worker: preflight.worker,
       notebook_path: preflight.notebook_path,
       terminal_reason: terminalReason,
-      closed_at: new Date().toISOString()
+      closed_at: candidateArenaNow(input.now)
     });
   try {
     const research = await runTradingResearchLoop({

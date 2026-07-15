@@ -307,6 +307,34 @@ describe("ResearchAllocationPolicyDecision application", () => {
     expect(regressedClockStore.decisions).toEqual([]);
   });
 
+  it("fails closed when the clock trails prior decision evidence", async () => {
+    const first = studyGraph(
+      [1, 1, 1, 1, 1, 1],
+      "coordinator-prior-decision-clock"
+    );
+    const second = studyGraph(
+      [-1, -1, -1, -1, -1, -1],
+      "coordinator-regressed-decision-clock"
+    );
+    second.outcome.adjudicated_at = "2026-07-12T12:00:01.000Z";
+    resealOutcome(second.outcome);
+    const firstDecision = decideResearchAllocationPolicyDecision({
+      ...first,
+      decidedAt: "2026-07-12T13:00:00.000Z"
+    });
+    const store = new PolicyDecisionCoordinatorStore([first, second]);
+    store.decisions.push(firstDecision);
+
+    await expect(new ResearchAllocationPolicyDecisionCoordinator({
+      store: store as unknown as OuroborosStorePort,
+      now: () => "2026-07-12T12:30:00.000Z"
+    }).ensureNextDecision()).rejects.toMatchObject({
+      code: "research_allocation_policy_decision_coordination_failed"
+    });
+    expect(store.recordCount).toBe(0);
+    expect(store.decisions).toEqual([firstDecision]);
+  });
+
   it("fails closed for an existing decision that conflicts with its outcome", async () => {
     const graph = studyGraph([1, 1, 1, 1, 1, 1], "coordinator-conflict");
     const conflicting = decideResearchAllocationPolicyDecision({
