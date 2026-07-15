@@ -1,5 +1,12 @@
 # Repository Delivery Loop Implementation Plan
 
+> **Execution-unit correction (OURO-226):** The tasks below preserve design order and acceptance
+> coverage; they are not automatic Linear issue or pull-request boundaries. Materialize active
+> outcome packets only up to verified concurrent writer capacity, plus one ready successor by
+> default. Keep component and necessary integration work together unless each split closes
+> independent delivery value and measured parallel time saved exceeds the added issue, worktree,
+> PR, CI, review, merge, cleanup, and writeback cost.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. In this repository, use executing-plans for writes because project-scoped subagents remain read-only. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Establish and verify an autonomous, bounded Repository Delivery Loop without coupling it

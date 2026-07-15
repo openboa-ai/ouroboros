@@ -265,14 +265,17 @@ and has no issue priority. An executable repo issue owns one observable claim, o
 pull request. A Linear-only configuration issue owns one bounded mutation and readback but no
 branch or pull request.
 
-Issue separation is an execution contract. Executable siblings must be independently startable
-from stable shared prerequisites, own distinct acceptance and validation, and never require one
-another's unmerged branch. Use priority for preferred order, parentage for rollup, `blocked by` only
-for a concrete unavailable input, and a separate integration issue for explicit fan-in. Combine or
-reshape work that is not merge-order independent. Keep review notes, transient signals, and
-unshaped ideas in the active workpad or tracking parent until they pass issue admission. Every
-repo-writing issue uses its own dedicated worktree, recorded base, branch, and writer lease; the
-root checkout is a control checkout for fetch and inventory, not implementation.
+Issue separation is an outcome-delivery contract. Code and merge-order independence are necessary
+but not sufficient: each executable sibling must close independently usable, operable,
+review-decidable, or distinct risk/authority value. Split only when expected parallel wall-time
+savings exceed the added issue, worktree, PR, CI, review, merge, cleanup, and writeback cost and a
+current writer slot exists. A fan-in needed mainly to make helper siblings useful means those
+siblings belong in one outcome packet. Use priority for preferred order, parentage for rollup, and
+`blocked by` only for a concrete unavailable input. Materialize active issues only up to verified
+concurrent writer capacity, plus one ready successor by default; keep later design nodes, review
+notes, transient signals, and unshaped ideas in the repo plan or active workpad. Every repo-writing
+issue uses its own dedicated worktree, recorded base, branch, and writer lease; the root checkout
+is a control checkout for fetch and inventory, not implementation.
 
 Priority selects work; it does not restate status, dependency, or risk. Reserve `Urgent` for an
 active exposure or the sole current blocker and `High` for the next unblocked critical-path issue.

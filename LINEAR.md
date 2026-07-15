@@ -50,7 +50,8 @@ its children.
 
 Linear subissues may inherit the parent Project and priority, but labels do not inherit. After
 creating a child, explicitly read back and normalize its Project, priority, labels, dependencies,
-and state before treating it as ready.
+and state before treating it as ready. Do not create a child merely because a plan contains a
+component or checklist item; retain unselected decomposition in the repo plan or parent workpad.
 
 ## Issue Admission And Dependency
 
@@ -58,12 +59,20 @@ Creating an issue is an execution decision, not a note-taking action. Admit an e
 only when it has all of the following:
 
 - one durable claim not already owned by an active issue or duplicate outcome;
+- an independently usable, operable, review-decidable, or distinct risk/authority outcome;
 - stable inputs available on `main`, or one concrete unavailable input named as a blocker;
 - an owned surface that does not require a sibling's unmerged implementation;
 - acceptance and validation that can pass independently of sibling acceptance;
 - merge-order independent behavior for sibling work, with mutable file, build-output, service, and
   cleanup ownership separated enough for parallel execution;
+- expected parallel wall-time savings that materially exceed the added issue, worktree, PR, CI,
+  review, merge, cleanup, and writeback cost;
 - a priority and owner/capacity decision when it is selected.
+
+A helper that needs a planned glue or fan-in issue before anyone can use or decide on its result is
+not independently admissible by default. Keep the helper and necessary wiring in one outcome
+packet. Issue creation grants an execution lease; it is not the persistence mechanism for a design
+tree.
 
 A required fix for the active claim stays in its current issue and PR. A duplicate outcome,
 optional review suggestion, transient non-reproduced failure, or unshaped idea stays in the active
@@ -83,9 +92,11 @@ Use Linear relations according to the fact they own:
   exact component issues whose merged evidence it consumes.
 
 If proposed siblings are not independently startable and merge-order independent, combine them
-into one executable issue. When that would exceed the review budget, land the smallest stable
-foundation first, then reshape the remainder as independent fan-out plus explicit fan-in. After
-changing dependencies, read back every affected issue; creation order and shared theme never
+into one executable issue. A fan-in whose main purpose is to make its component siblings useful is
+a decomposition failure, not a reason for another ticket. Crossing the review budget triggers an
+outcome and risk review; it does not automatically justify a foundation/component/glue sequence.
+Separate work only at a true delivery, risk, ownership, rollback, or measured parallelism boundary.
+After changing dependencies, read back every affected issue; creation order and shared theme never
 justify a serial chain.
 
 ## Priority
@@ -128,6 +139,12 @@ means ready and selected. `In Progress` requires one owner and either a repo bra
 a Linear-only mutation plan/workpad. `In Review` requires a pull request plus local evidence for
 repo work, or an independent readback gate for Linear-only work. `Done` requires merged-main
 evidence for repo work, or exact post-mutation readback for Linear-only work.
+
+Materialize active issues only up to verified concurrent writer capacity, plus one fully shaped
+ready successor by default. Each active repo issue needs a distinct worktree and writer lease; a
+larger ready buffer needs named near-term capacity. Keep later design nodes in a repo plan or
+tracking-parent workpad until a slot opens. Urgent exposures still require an explicit owner and
+capacity decision; they do not materialize every downstream remediation idea.
 
 Branch names use `codex/OURO-NNN-short-slug`, pull-request titles start with `[OURO-NNN]`, and the
 authored body follows the one-identifier [pull-request template](.github/pull_request_template.md).

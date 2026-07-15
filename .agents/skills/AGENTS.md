@@ -11,7 +11,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Recover | `auto-run-memory` | current branch, task, assumptions, failed attempts, or evidence must be reconstructed from repo state |
 | Context | `project-context` | current repo thesis, domain, constraints, active docs, or project-document context is needed |
 | Shape | `auto-project` | ownership, route, stop state, or work direction is unclear |
-| Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
+| Shape | `auto-pm` | a rough request needs one outcome packet with acceptance, validation, delivery value, economics, and capacity evidence |
 | Shape | `linear-workflow` | Linear hierarchy, issue shape, priority, labels, dependencies, cycles, state, or GitHub linkage need a policy-backed decision |
 | Shape | `taxonomy-design` | durable concepts, schema families, or domain names need vocabulary design before implementation |
 | Execute | `auto-coding` | one bounded code, documentation, or config change must be made and verified |
@@ -39,6 +39,11 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 6. If `writeback_needed: yes`, route to `llm-wiki`. Durable facts should be written to repo docs,
    tests, or policy first; use workflow tools such as Linear only to record issue progress and link
    back to repo truth.
+
+Shaping does not materialize an entire design tree. `auto-pm` and `linear-workflow` admit separate
+issues only for independently valuable outcomes whose parallel-time benefit exceeds added delivery
+cost. Materialize active issues only up to verified concurrent writer capacity, plus one ready
+successor by default.
 
 ## Codex Feature Routing
 

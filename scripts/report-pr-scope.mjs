@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 const MAX_PRODUCTION_FILES = 8;
-const MAX_PRODUCTION_CHANGED_LINES = 400;
+const MAX_PRODUCTION_CHANGED_LINES = 800;
 const args = parseArgs(process.argv.slice(2));
 const repo = path.resolve(args.repo ?? process.cwd());
 const baseRef = requireArgument(args, "base");
@@ -47,7 +47,7 @@ console.log(JSON.stringify(report, null, 2));
 if (result === "rationale_recorded") {
   console.error("WARNING scope budget exceeded; atomicity rationale recorded");
 } else if (result === "rationale_required") {
-  console.error("ERROR scope budget exceeded; split the frontier or provide --rationale");
+  console.error("ERROR scope budget exceeded; reassess outcome scope or provide --rationale");
   process.exitCode = 2;
 }
 
