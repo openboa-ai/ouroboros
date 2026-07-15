@@ -11,13 +11,14 @@ description: "Use when a planned repo frontier needs one bounded code, docs, con
 
 ## Workflow
 
-1. Check branch and dirty state before editing.
-2. Read the locked frontier, active docs, and only the files inside the owned boundary.
-3. State one implementation hypothesis.
-4. Edit only inside the owned boundary.
+1. Load `auto-handoff-protocol` and validate the incoming canonical Frontier Packet.
+2. Confirm `frontier_kind: repo`, the locked owned boundary, separate control-checkout and issue
+   worktree paths, actual base/branch evidence, and a single writer lease before editing. Reroute
+   incomplete, Linear-only, non-executable, or conflicting-writer packets without changing files.
+3. Check branch and dirty state, then read active docs and only the files inside the owned boundary.
+4. State one implementation hypothesis and edit only inside the owned boundary.
 5. Run the narrowest valid verification, then broader checks only when risk justifies it.
-6. Keep, discard, or reroute based on evidence.
-7. Return a handoff packet.
+6. Keep, discard, or reroute based on evidence and update the same packet.
 
 ## Implementation Loop
 
@@ -46,17 +47,11 @@ direction through evidence, and route to `auto-pm`, `auto-qa`, or `ci-recovery` 
 
 ## Required Output
 
-- goal
-- owned boundary
-- context read
-- what changed
-- verification run
-- evidence
-- decision: `keep`, `discard`, or `reroute`
-- remaining gap
-- risks
-- next owner
-- `writeback_needed`
+- every canonical Frontier Packet field from `auto-handoff-protocol`
+- implementation extension: `implementation_hypothesis` and `verification_run`
+
+Record changed paths and behavior in `changes_or_findings`; use the packet's `decision` for `keep`,
+`discard`, or `reroute`. Do not return an implementation-specific handoff schema.
 
 ## Handoff
 

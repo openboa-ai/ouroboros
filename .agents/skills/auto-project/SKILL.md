@@ -14,14 +14,15 @@ system the repository builds.
 
 ## Workflow
 
-1. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
-   documents, and CI.
-2. If a project state document exists, read it before selecting work.
-3. Check whether external workflow skills are available and relevant.
-4. Name exactly one active frontier.
-5. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
-6. Require evidence before keeping changes.
-7. Require every owner to return `writeback_needed: yes/no`.
+1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet when one exists.
+2. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
+   documents, and CI; reconcile that evidence into the packet.
+3. If a project state document exists, read it before selecting work.
+4. Check whether external workflow skills are available and relevant.
+5. Name exactly one active executable frontier. Park or reroute tracking parents as
+   `not_executable` instead of assigning them an implementation owner.
+6. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
+7. Require evidence before keeping changes and update the same packet with the route and owner.
 8. Route to `llm-wiki` when durable decisions need writeback.
 
 ## Skill-First Gate
@@ -72,7 +73,7 @@ skills behind the same repo-local ownership model:
 | finish a branch | `superpowers:finishing-a-development-branch` | `auto-promotion-protocol` |
 
 External workflow skills may strengthen the route, but they do not own project truth. The project
-project state document, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
+state document, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
 
 ## Routing Decision Table
 
@@ -99,43 +100,13 @@ project state document, maintained docs, git state, checks, and `llm-wiki` write
 
 ## Required Output
 
-- goal
-- owned boundary
-- context read
-- current_mlp, if the repo uses MLP-style planning
-- active frontier
-- branch and PR, if known
-- status
-- route
-- skills considered
-- evidence
-- evidence required to keep the work
-- current owner
-- decision: `route`, `park`, `discard`, `ready`, or `blocked`
-- next owner or stop state
-- risks
-- `writeback_needed`
-- reason this is repo-work routing, not product behavior
+- every canonical Frontier Packet field from `auto-handoff-protocol`
+- routing extension: `route`, `skills_considered`, `evidence_required`, and
+  `repo_routing_reason`
+- `project_state_reference`, when the repo maintains one
 
-## Auto Project Run Packet
-
-Return this shape for PR-unit routing:
-
-```text
-current_mlp:
-active_frontier:
-branch:
-pr:
-status:
-context_read:
-route:
-skills_considered:
-evidence_required:
-risks:
-next_owner:
-writeback_needed:
-llm_wiki_target:
-```
+Use the packet's `decision` for `route`, `park`, `discard`, `ready`, or `blocked`. Do not create an
+Auto Project-specific packet or aliases for the active issue, branch, PR, owner, or status.
 
 ## Handoff
 

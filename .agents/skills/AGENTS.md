@@ -92,11 +92,18 @@ active/historical documentation boundary, read-path, or stale-term cleanup must 
 Linear issue workflow notes, select the `linear` skill and use the bundled OAuth Connector. Do not
 route through repo-local credential helpers.
 
-## Handoff Packet
+## Frontier Packet
 
-Every worker should return `goal`, `context_read`, `owned_boundary`, `changes_or_findings`, `evidence`, `decision`, `risks`, `next_owner`, `writeback_needed`, and `llm_wiki_target` when writeback is needed.
+`auto-handoff-protocol` owns the canonical Frontier Packet used between repository-delivery
+workers. Load it before routing or transferring work, complete every field from current evidence,
+and update the same packet across owners. This registry and consumer skills must not redefine,
+rename, or omit packet fields; they may return only genuinely role-specific extensions.
 
-For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with `current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`, `skills_considered`, `evidence_required`, `next_owner`, and `writeback_needed`.
+A tracking parent is `not_executable` and cannot own a writer. A Linear-only mutation is
+`linear_only` and has no repo workspace fields. Executable repo work is `repo` and must report its
+actual base, worktree, writer lease, branch, PR state, and cleanup state without fabricating
+readiness. Worktree lifecycle and lease enforcement remain separate workflow responsibilities;
+the packet records their evidence.
 
 ## Boundary Rules
 
