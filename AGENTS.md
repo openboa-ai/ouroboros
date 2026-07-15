@@ -257,11 +257,13 @@ report workflow writeback as blocked instead of replacing repo truth with chat m
 When work needs a Linear Initiative, Project, milestone, issue shape, priority, label, dependency,
 cycle, state, or GitHub linkage decision, apply the repo-local `linear-workflow` skill after loading
 the external `linear` skill. Initiatives own measurable strategic objectives across Projects;
-Projects own finite outcomes and must not mix the Ouroboros product program with the Repository
-Delivery program; milestones own capability checkpoints. A tracking parent is branchless,
-PR-less, and has no issue priority. An executable repo issue owns one observable claim, one branch,
-and one pull request. A Linear-only configuration issue owns one bounded mutation and readback but
-no branch or pull request.
+Projects own finite outcomes, and the target structure does not mix the Ouroboros product program
+with the Repository Delivery program. Until the explicit migration lands, follow the interim
+milestone, parent, and issue-description boundary in `LINEAR.md`; do not migrate it from an
+unrelated task. Milestones own capability checkpoints. A tracking parent is branchless, PR-less,
+and has no issue priority. An executable repo issue owns one observable claim, one branch, and one
+pull request. A Linear-only configuration issue owns one bounded mutation and readback but no
+branch or pull request.
 
 Priority selects work; it does not restate status, dependency, or risk. Reserve `Urgent` for an
 active exposure or the sole current blocker and `High` for the next unblocked critical-path issue.

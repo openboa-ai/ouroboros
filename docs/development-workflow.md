@@ -199,10 +199,12 @@ Each level owns a different decision:
 | Cycle | Delivery capacity for ready executable issues. | None; never product cadence. |
 | View or Document | Navigation or coordination over existing truth. | None; never workflow authority. |
 
-The Ouroboros product program and Repository Delivery enabling program live in separate Initiatives
-and Projects. Do not compensate for a mixed Project with labels. Until the explicit migration
-lands, milestones, parent relationships, and issue descriptions preserve the boundary. Linear
-cycles express delivery capacity only; they never control CandidateArena or TradingSystem cadence.
+The target structure places the Ouroboros product program and Repository Delivery enabling program
+in separate Initiatives and Projects. Until the explicit migration lands, the current historical
+Project remains valid only with milestones, parent relationships, and issue descriptions
+preserving the boundary. Do not compensate for it with labels or migrate it from an unrelated
+issue. Linear cycles express delivery capacity only; they never control CandidateArena or
+TradingSystem cadence.
 
 Linear subissues may inherit Project and priority from a parent while labels do not inherit. Every
 new child therefore needs an explicit Project, priority, label, dependency, and state readback
