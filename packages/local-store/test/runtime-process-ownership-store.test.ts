@@ -129,6 +129,62 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     ]));
   });
 
+  it("captures reconcile time after a queued transition acquires the lock", async () => {
+    let releaseFirstInspection: () => void = () => {};
+    const firstInspectionGate = new Promise<void>((resolve) => {
+      releaseFirstInspection = resolve;
+    });
+    let markFirstInspectionStarted: () => void = () => {};
+    const firstInspectionStarted = new Promise<void>((resolve) => {
+      markFirstInspectionStarted = resolve;
+    });
+    let inspectionCount = 0;
+    let lockAcquiredAt = "2026-07-15T00:00:02.000Z";
+    const store = new FileSystemRuntimeProcessOwnershipStore(root, {
+      inspectOwner: async () => {
+        inspectionCount += 1;
+        if (inspectionCount === 1) {
+          markFirstInspectionStarted();
+          await firstInspectionGate;
+        }
+        return "alive";
+      },
+      terminateOwner: terminate,
+      resolveProcessStartMarker: async () => "process-start-a",
+      now: () => lockAcquiredAt
+    });
+    await store.claim(claimInput());
+
+    const adoption = store.reconcile({
+      expected: expectedIdentity(),
+      mode: "adopt",
+      reconciledAt: "2026-07-15T00:00:02.000Z"
+    });
+    await firstInspectionStarted;
+    const termination = store.reconcile({
+      expected: expectedIdentity(),
+      mode: "terminate",
+      reconciledAt: "2026-07-15T00:00:01.000Z"
+    });
+    lockAcquiredAt = "2026-07-15T00:00:03.000Z";
+    releaseFirstInspection();
+
+    await expect(adoption).resolves.toMatchObject({
+      status: "adopted",
+      ownership: { last_adopted_at: "2026-07-15T00:00:02.000Z" }
+    });
+    await expect(termination).resolves.toMatchObject({
+      status: "terminated",
+      ownership: {
+        ownership_status: "terminal",
+        closed_at: "2026-07-15T00:00:03.000Z",
+        terminal_reason: "restart_terminated"
+      }
+    });
+    expect(terminate).toHaveBeenCalledOnce();
+    await expect(store.active(expectedIdentity())).resolves.toBeUndefined();
+  });
+
   it("recovers one exact open owner from immutable history when the active pointer is missing", async () => {
     const store = processStore();
     const claimed = await store.claim(claimInput());
@@ -192,7 +248,8 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
       inspectOwner: async (_ownership: RuntimeProcessOwnershipRecord) => liveness,
       terminateOwner: terminate,
       resolveProcessStartMarker: async (processId) =>
-        processId === 101 ? "process-start-a" : "process-start-b"
+        processId === 101 ? "process-start-a" : "process-start-b",
+      now: () => "2026-07-15T00:00:00.000Z"
     });
   }
 });

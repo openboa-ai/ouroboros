@@ -341,14 +341,22 @@ describe("sandbox API", () => {
     }
   });
 
-  it("reaps an existing long-running paper session before replacing its handle", async () => {
+  it("reaps a legacy persisted-PID session before ownership-enabled replacement", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
     if (!artifact) {
       throw new Error("expected fixture SystemCode");
     }
-    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const legacyAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const ownershipAdapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    });
     const instanceId = "sandbox-deterministic-replaced-session";
     const pidFile = sandboxPidFileForTest(instanceId);
     const startInput = {
@@ -360,20 +368,25 @@ describe("sandbox API", () => {
       created_at: "2026-05-21T00:00:00.000Z",
       interval_ms: 10
     } as const;
-    const started = await adapter.startArtifactInstance(startInput);
+    const started = await legacyAdapter.startArtifactInstance(startInput);
     let activeInstance = started.instance;
 
     try {
       const firstPid = Number((await readFile(pidFile, "utf8")).trim());
-      const replaced = await adapter.startArtifactInstance(startInput);
+      const replaced = await ownershipAdapter.startArtifactInstance(startInput);
       activeInstance = replaced.instance;
-      const secondPid = Number((await readFile(pidFile, "utf8")).trim());
+      const secondPid = (await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: instanceId }
+      })).at(-1)?.owner.process_id;
 
       expect(secondPid).not.toBe(firstPid);
       expect(isPidAlive(firstPid)).toBe(false);
-      expect(isPidAlive(secondPid)).toBe(true);
+      expect(secondPid).toBeTypeOf("number");
+      expect(isPidAlive(secondPid!)).toBe(true);
     } finally {
-      await adapter.stopArtifactInstance(activeInstance);
+      await ownershipAdapter.stopArtifactInstance(activeInstance).catch(() => undefined);
+      await legacyAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
     }
   });
 

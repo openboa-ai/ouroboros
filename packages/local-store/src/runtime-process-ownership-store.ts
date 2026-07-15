@@ -38,6 +38,7 @@ export interface FileSystemRuntimeProcessOwnershipStoreOptions {
   inspectOwner?: (record: RuntimeProcessOwnershipRecord) => Promise<RuntimeProcessOwnerLiveness>;
   terminateOwner?: (record: RuntimeProcessOwnershipRecord) => Promise<void>;
   resolveProcessStartMarker?: (pid: number) => Promise<string | undefined>;
+  now?: () => string;
   lockRetryMs?: number;
   lockAttempts?: number;
 }
@@ -126,17 +127,18 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         if (record.owner.host_id !== input.expected.host_id) {
           return blocked("host_mismatch", record);
         }
+        const reconciledAt = this.reconciledAt(record, input.reconciledAt);
         const live = await this.inspect(record);
         if (live === "unknown") return blocked("owner_liveness_unknown", record);
         if (live !== "alive") {
-          const previous = await this.retire(input.expected, record, live, input.reconciledAt);
+          const previous = await this.retire(input.expected, record, live, reconciledAt);
           return { status: "vacant", previous };
         }
         if (input.mode === "adopt") {
           if (!sameIdentity(record, input.expected)) return blocked("identity_mismatch", record);
           const adopted = adoptRuntimeProcessOwnership({
             ownership: record,
-            adoptedAt: input.reconciledAt
+            adoptedAt: reconciledAt
           });
           await this.writeActive(input.expected, adopted);
           await this.append(input.expected, adopted);
@@ -149,7 +151,7 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
             input.expected,
             record,
             "restart_terminated",
-            input.reconciledAt
+            reconciledAt
           )
         };
       });
@@ -226,6 +228,23 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
         error instanceof Error ? error.message : "Runtime process termination failed."
       );
     }
+  }
+
+  private reconciledAt(record: RuntimeProcessOwnershipRecord, requestedAt: string): string {
+    const acquiredAt = this.options.now?.() ?? new Date().toISOString();
+    if (!canonicalIso(requestedAt) || !canonicalIso(acquiredAt)) {
+      throw failure(
+        "runtime_process_ownership_transition_blocked",
+        "Runtime process reconciliation time is invalid."
+      );
+    }
+    return [
+      record.last_adopted_at ?? record.started_at,
+      requestedAt,
+      acquiredAt
+    ].reduce((latest, candidate) =>
+      Date.parse(candidate) > Date.parse(latest) ? candidate : latest
+    );
   }
 
   private async retire(
@@ -481,6 +500,11 @@ function sameRef(left: { record_kind: string; id: string }, right: {
   id: string;
 }): boolean {
   return left.record_kind === right.record_kind && left.id === right.id;
+}
+
+function canonicalIso(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function blocked(

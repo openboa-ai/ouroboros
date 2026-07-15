@@ -553,6 +553,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           command_evidence: [commandEvidence]
         };
       }
+      if (reconciliation.status === "vacant") {
+        await this.stopExistingLongRunningSession(input.instance_id, pidFile);
+      }
     } else {
       await this.stopExistingLongRunningSession(input.instance_id, pidFile);
     }
