@@ -166,6 +166,46 @@ describe("PR scope reporter", () => {
     }
   });
 
+  it("charges both additions and deletions to production review load", async () => {
+    const fixture = await createGitFixture();
+    try {
+      const original = Array.from(
+        { length: 201 },
+        (_, index) => `export const before${index} = ${index};`
+      ).join("\n");
+      await fixture.write("src/rewrite.ts", `${original}\n`);
+      const base = await fixture.commit("seed production file");
+
+      const replacement = Array.from(
+        { length: 201 },
+        (_, index) => `export const after${index} = ${index};`
+      ).join("\n");
+      await fixture.write("src/rewrite.ts", `${replacement}\n`);
+      const head = await fixture.commit("rewrite production file");
+
+      const result = await runReporter([
+        "--repo",
+        fixture.repo,
+        "--base",
+        base,
+        "--head",
+        head
+      ]);
+
+      expect(result.code, scriptOutput(result)).toBe(2);
+      const report = JSON.parse(result.stdout);
+      expect(report.categories.production).toMatchObject({
+        additions: 201,
+        deletions: 201,
+        changed_lines: 402
+      });
+      expect(report.over_budget).toEqual({ files: false, lines: true, any: true });
+      expect(report.result).toBe("rationale_required");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("keeps an over-budget diff reviewable when an atomicity rationale is recorded", async () => {
     const fixture = await createGitFixture();
     try {
