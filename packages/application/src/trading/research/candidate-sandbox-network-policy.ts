@@ -1,14 +1,15 @@
+import { createHash } from "node:crypto";
+import {
+  candidateEgressNetworkPolicyDigestInput,
+  CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
+  type CandidateEgressNetworkPolicyIdentity
+} from "@ouroboros/domain";
+
 export const CANDIDATE_SBX_MINIMUM_VERSION = "0.35.0";
 
-export const CANDIDATE_NETWORK_DENY_PROBES = [
-  "https://example.com",
-  "https://registry.npmjs.org",
-  "tcp://1.1.1.1:53",
-  "udp://1.1.1.1:53",
-  "http://169.254.169.254:80",
-  "http://10.0.0.1:80",
-  "http://host.docker.internal:1"
-] as const;
+export const CANDIDATE_NETWORK_DENY_PROBES =
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS;
 
 export interface CandidateSandboxNetworkCommandResult {
   command: string[];
@@ -45,9 +46,37 @@ export interface CandidateSandboxNetworkPolicyInput<
 > {
   sbx_path: string;
   sandbox_name: string;
+  sandbox_implementation_version: string;
   gateway_base_url?: string;
+  now?(): string;
   run_command(command: string[]): Promise<Result>;
   on_evidence?(result: Result): void;
+}
+
+export interface CandidateSandboxNetworkPolicyAttestationEvidence {
+  readonly sandbox: {
+    readonly adapter_kind: "docker_sandboxes_sbx";
+    readonly sandbox_name: string;
+    readonly implementation_version: string;
+  };
+  readonly network_policy: CandidateEgressNetworkPolicyIdentity;
+  readonly network_policy_digest: string;
+  readonly start: {
+    readonly observed_at: string;
+    readonly policy_digest: string;
+  };
+  readonly end: {
+    readonly observed_at: string;
+    readonly policy_digest: string;
+  };
+  readonly denial_summary: {
+    readonly required_probe_count: number;
+    readonly start_denied_probe_count: number;
+    readonly end_denied_probe_count: number;
+    readonly unexpected_allow_count: number;
+  };
+  readonly cleanup_status: "released";
+  readonly enforcement_result: "enforced";
 }
 
 export interface CandidateSandboxNetworkPolicyLease<
@@ -59,6 +88,7 @@ export interface CandidateSandboxNetworkPolicyLease<
   readonly owned_deny_rule_ids: readonly string[];
   readonly owned_rule: boolean;
   readonly setup_results: Result[];
+  attestation_evidence(): CandidateSandboxNetworkPolicyAttestationEvidence | undefined;
   release(): Promise<Result[]>;
 }
 
@@ -110,13 +140,16 @@ export async function recoverCandidateSandboxNetworkPolicyRuleId<
 }
 
 export function assertCandidateSandboxSbxVersion(stdout: string): void {
-  const version = parseSbxVersion(stdout);
-  if (!version || compareVersions(version, CANDIDATE_SBX_MINIMUM_VERSION) < 0) {
-    throw new CandidateSandboxNetworkPolicyError(
-      "unsupported_sbx_version",
-      `generated-candidate execution requires stable sbx >= ${CANDIDATE_SBX_MINIMUM_VERSION}`
-    );
+  const version = parseCandidateSandboxSbxVersion(stdout);
+  assertCandidateSandboxImplementationVersion(version);
+}
+
+export function parseCandidateSandboxSbxVersion(stdout: string): string | undefined {
+  const current = stdout.match(/\bsbx version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
+  if (current) {
+    return current;
   }
+  return stdout.match(/\bClient Version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
 }
 
 export async function acquireCandidateSandboxNetworkPolicy<
@@ -124,6 +157,10 @@ export async function acquireCandidateSandboxNetworkPolicy<
 >(
   input: CandidateSandboxNetworkPolicyInput<Result>
 ): Promise<CandidateSandboxNetworkPolicyLease<Result>> {
+  const sandboxImplementationVersion = assertCandidateSandboxImplementationVersion(
+    input.sandbox_implementation_version
+  );
+  assertBoundedPolicyMetadata(input.sandbox_name, 128, "Sandbox name");
   const allowedResource = input.gateway_base_url
     ? candidateGatewayPolicyResource(input.gateway_base_url)
     : undefined;
@@ -136,7 +173,12 @@ export async function acquireCandidateSandboxNetworkPolicy<
   };
   let ownedAllowRuleIds: string[] = [];
   let ownedDenyRuleIds: string[] = [];
+  let ownedAllowRules: ActiveNetworkRule[] = [];
+  let ownedDenyRules: ActiveNetworkRule[] = [];
   let inheritedAllowedResources: string[] = [];
+  let networkPolicy: CandidateSandboxNetworkPolicyAttestationEvidence["network_policy"];
+  let networkPolicyDigest: string;
+  let startObservation: CandidateSandboxNetworkPolicyAttestationEvidence["start"];
 
   try {
     const beforeAllowRules = await inspectNetworkRules(input, execute, "allow");
@@ -151,7 +193,7 @@ export async function acquireCandidateSandboxNetworkPolicy<
 
     if (inheritedAllowedResources.length > 0) {
       const beforeDenyRules = await inspectNetworkRules(input, execute, "deny");
-      ownedDenyRuleIds = await addSandboxScopedNetworkRules({
+      ownedDenyRules = await addSandboxScopedNetworkRules({
         input,
         execute,
         decision: "deny",
@@ -159,10 +201,11 @@ export async function acquireCandidateSandboxNetworkPolicy<
         before_rules: beforeDenyRules,
         failure_code: "policy_overlay_failed"
       });
+      ownedDenyRuleIds = ownedDenyRules.map((rule) => rule.id);
     }
 
     if (allowedResource) {
-      ownedAllowRuleIds = await addSandboxScopedNetworkRules({
+      ownedAllowRules = await addSandboxScopedNetworkRules({
         input,
         execute,
         decision: "allow",
@@ -170,6 +213,7 @@ export async function acquireCandidateSandboxNetworkPolicy<
         before_rules: beforeAllowRules,
         failure_code: "gateway_rule_failed"
       });
+      ownedAllowRuleIds = ownedAllowRules.map((rule) => rule.id);
     }
 
     if (allowedResource) {
@@ -178,6 +222,14 @@ export async function acquireCandidateSandboxNetworkPolicy<
     for (const target of CANDIDATE_NETWORK_DENY_PROBES) {
       await assertPolicyDecision(input, execute, target, "deny");
     }
+    networkPolicy = candidateSandboxNetworkPolicyIdentity({
+      inherited_allowed_resources: inheritedAllowedResources,
+      owned_allow_rule_ids: ownedAllowRuleIds,
+      owned_deny_rule_ids: ownedDenyRuleIds,
+      ...(allowedResource ? { gateway_resource: allowedResource } : {})
+    });
+    networkPolicyDigest = candidateSandboxNetworkPolicyDigest(networkPolicy);
+    startObservation = policyObservation(input.now, networkPolicyDigest);
   } catch (error) {
     try {
       await execute(policyLogCommand(input));
@@ -197,6 +249,7 @@ export async function acquireCandidateSandboxNetworkPolicy<
   }
 
   let released = false;
+  let attestationEvidence: CandidateSandboxNetworkPolicyAttestationEvidence | undefined;
   return {
     ...(allowedResource ? { allowed_resource: allowedResource } : {}),
     inherited_allowed_resources: [...inheritedAllowedResources],
@@ -204,22 +257,96 @@ export async function acquireCandidateSandboxNetworkPolicy<
     owned_deny_rule_ids: [...ownedDenyRuleIds],
     owned_rule: ownedAllowRuleIds.length > 0 || ownedDenyRuleIds.length > 0,
     setup_results: [...commandResults],
+    attestation_evidence: () => attestationEvidence
+      ? copyCandidateSandboxNetworkPolicyAttestationEvidence(attestationEvidence)
+      : undefined,
     release: async () => {
       if (released) {
         return [];
       }
       released = true;
-      return releaseCandidateSandboxNetworkPolicy({
-        sbx_path: input.sbx_path,
-        sandbox_name: input.sandbox_name,
-        owned_allow_rule_ids: ownedAllowRuleIds,
-        owned_deny_rule_ids: ownedDenyRuleIds,
-        run_command: input.run_command,
-        on_evidence: (result) => {
-          commandResults.push(result);
-          input.on_evidence?.(result);
+      const releaseResults: Result[] = [];
+      const recordReleaseResult = (result: Result): void => {
+        releaseResults.push(result);
+        commandResults.push(result);
+        input.on_evidence?.(result);
+      };
+      const verify = async (command: string[]): Promise<Result> => {
+        const result = await input.run_command(command);
+        recordReleaseResult(result);
+        return result;
+      };
+      let terminalFailure: unknown;
+      let endObservation: CandidateSandboxNetworkPolicyAttestationEvidence["end"] | undefined;
+      try {
+        await assertTerminalPolicyIdentity({
+          input,
+          execute: verify,
+          inherited_allowed_resources: inheritedAllowedResources,
+          owned_allow_rules: ownedAllowRules,
+          owned_deny_rules: ownedDenyRules
+        });
+        if (allowedResource) {
+          await assertPolicyDecision(input, verify, allowedResource, "allow");
         }
-      });
+        for (const target of CANDIDATE_NETWORK_DENY_PROBES) {
+          await assertPolicyDecision(input, verify, target, "deny");
+        }
+        endObservation = policyObservation(
+          input.now,
+          networkPolicyDigest,
+          startObservation.observed_at
+        );
+      } catch (error) {
+        terminalFailure = error;
+      }
+
+      let releaseFailure: unknown;
+      try {
+        await releaseCandidateSandboxNetworkPolicy({
+          sbx_path: input.sbx_path,
+          sandbox_name: input.sandbox_name,
+          owned_allow_rule_ids: ownedAllowRuleIds,
+          owned_deny_rule_ids: ownedDenyRuleIds,
+          run_command: input.run_command,
+          on_evidence: recordReleaseResult
+        });
+      } catch (error) {
+        releaseFailure = error;
+      }
+      if (releaseFailure) {
+        throw policyError(releaseFailure, releaseResults);
+      }
+      if (terminalFailure) {
+        throw policyError(terminalFailure, releaseResults);
+      }
+      if (!endObservation) {
+        throw new CandidateSandboxNetworkPolicyError(
+          "policy_check_failed",
+          "terminal policy observation was not recorded",
+          releaseResults
+        );
+      }
+      attestationEvidence = {
+        sandbox: {
+          adapter_kind: "docker_sandboxes_sbx",
+          sandbox_name: input.sandbox_name,
+          implementation_version: sandboxImplementationVersion
+        },
+        network_policy: copyCandidateSandboxNetworkPolicyIdentity(networkPolicy),
+        network_policy_digest: networkPolicyDigest,
+        start: { ...startObservation },
+        end: { ...endObservation },
+        denial_summary: {
+          required_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          start_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          end_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+          unexpected_allow_count: 0
+        },
+        cleanup_status: "released",
+        enforcement_result: "enforced"
+      };
+      return releaseResults;
     }
   };
 }
@@ -272,14 +399,6 @@ export async function releaseCandidateSandboxNetworkPolicy<
   return releaseResults;
 }
 
-function parseSbxVersion(stdout: string): string | undefined {
-  const current = stdout.match(/\bsbx version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
-  if (current) {
-    return current;
-  }
-  return stdout.match(/\bClient Version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
-}
-
 function compareVersions(left: string, right: string): number {
   const leftParts = left.split(".").map(Number);
   const rightParts = right.split(".").map(Number);
@@ -290,6 +409,160 @@ function compareVersions(left: string, right: string): number {
     }
   }
   return 0;
+}
+
+function assertCandidateSandboxImplementationVersion(
+  version: string | undefined
+): string {
+  const parts = version?.split(".").map(Number) ?? [];
+  if (
+    !version ||
+    version.length > 64 ||
+    !/^\d+\.\d+\.\d+$/.test(version) ||
+    parts.length !== 3 ||
+    parts.some((part) => !Number.isSafeInteger(part) || part < 0) ||
+    compareVersions(version, CANDIDATE_SBX_MINIMUM_VERSION) < 0
+  ) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "unsupported_sbx_version",
+      `generated-candidate execution requires stable sbx >= ${CANDIDATE_SBX_MINIMUM_VERSION}`
+    );
+  }
+  return version;
+}
+
+function candidateSandboxNetworkPolicyIdentity(input: {
+  inherited_allowed_resources: readonly string[];
+  owned_allow_rule_ids: readonly string[];
+  owned_deny_rule_ids: readonly string[];
+  gateway_resource?: string;
+}): CandidateSandboxNetworkPolicyAttestationEvidence["network_policy"] {
+  const inheritedAllowedResources = normalizedPolicyResources([
+    ...input.inherited_allowed_resources
+  ]);
+  const ownedAllowRuleIds = normalizedOwnedRuleIds(input.owned_allow_rule_ids);
+  const ownedDenyRuleIds = normalizedOwnedRuleIds(input.owned_deny_rule_ids);
+  if (
+    (input.gateway_resource !== undefined && ownedAllowRuleIds.length !== 1) ||
+    (input.gateway_resource === undefined && ownedAllowRuleIds.length !== 0)
+  ) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_inspection_failed",
+      "Gateway policy identity must bind one exact owned allow rule"
+    );
+  }
+  return {
+    protocol_version: CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+    inherited_allow_digest: sha256CandidatePolicy(
+      JSON.stringify(inheritedAllowedResources)
+    ),
+    inherited_allow_count: inheritedAllowedResources.length,
+    owned_allow_rule_ids: ownedAllowRuleIds,
+    owned_deny_rule_ids: ownedDenyRuleIds,
+    ...(input.gateway_resource !== undefined
+      ? { gateway_resource: input.gateway_resource }
+      : {}),
+    deny_targets: [...CANDIDATE_NETWORK_DENY_PROBES]
+  };
+}
+
+function candidateSandboxNetworkPolicyDigest(
+  identity: CandidateSandboxNetworkPolicyAttestationEvidence["network_policy"]
+): string {
+  return sha256CandidatePolicy(candidateEgressNetworkPolicyDigestInput(identity));
+}
+
+function normalizedOwnedRuleIds(ruleIds: readonly string[]): string[] {
+  const normalized = [...new Set(ruleIds)].sort();
+  if (normalized.length !== ruleIds.length || normalized.length > 512) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_inspection_failed",
+      "owned network policy rule IDs cannot be represented safely"
+    );
+  }
+  for (const ruleId of normalized) {
+    assertBoundedPolicyMetadata(ruleId, 256, "Owned network policy rule ID");
+  }
+  return normalized;
+}
+
+function policyObservation(
+  now: (() => string) | undefined,
+  policyDigest: string,
+  notBefore?: string
+): CandidateSandboxNetworkPolicyAttestationEvidence["start"] {
+  const observedAt = (now ?? (() => new Date().toISOString()))();
+  if (
+    typeof observedAt !== "string" ||
+    !Number.isFinite(Date.parse(observedAt)) ||
+    new Date(observedAt).toISOString() !== observedAt ||
+    (notBefore !== undefined && Date.parse(observedAt) < Date.parse(notBefore))
+  ) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_check_failed",
+      "network policy observation clock must return a non-regressing ISO timestamp"
+    );
+  }
+  return {
+    observed_at: observedAt,
+    policy_digest: policyDigest
+  };
+}
+
+function copyCandidateSandboxNetworkPolicyIdentity(
+  identity: CandidateSandboxNetworkPolicyAttestationEvidence["network_policy"]
+): CandidateSandboxNetworkPolicyAttestationEvidence["network_policy"] {
+  return {
+    protocol_version: identity.protocol_version,
+    inherited_allow_digest: identity.inherited_allow_digest,
+    inherited_allow_count: identity.inherited_allow_count,
+    owned_allow_rule_ids: [...identity.owned_allow_rule_ids],
+    owned_deny_rule_ids: [...identity.owned_deny_rule_ids],
+    ...(identity.gateway_resource
+      ? { gateway_resource: identity.gateway_resource }
+      : {}),
+    deny_targets: [...identity.deny_targets]
+  };
+}
+
+function copyCandidateSandboxNetworkPolicyAttestationEvidence(
+  evidence: CandidateSandboxNetworkPolicyAttestationEvidence
+): CandidateSandboxNetworkPolicyAttestationEvidence {
+  return {
+    sandbox: { ...evidence.sandbox },
+    network_policy: copyCandidateSandboxNetworkPolicyIdentity(evidence.network_policy),
+    network_policy_digest: evidence.network_policy_digest,
+    start: { ...evidence.start },
+    end: { ...evidence.end },
+    denial_summary: { ...evidence.denial_summary },
+    cleanup_status: evidence.cleanup_status,
+    enforcement_result: evidence.enforcement_result
+  };
+}
+
+function sha256CandidatePolicy(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function assertBoundedPolicyMetadata(
+  value: unknown,
+  maxLength: number,
+  label: string
+): asserts value is string {
+  if (!boundedPolicyMetadata(value, maxLength)) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_inspection_failed",
+      `${label} cannot be represented safely`
+    );
+  }
+}
+
+function boundedPolicyMetadata(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    value === value.trim() &&
+    !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 function candidateGatewayPolicyResource(baseUrl: string): string {
@@ -333,10 +606,82 @@ interface ActiveNetworkRule {
   sandbox_id?: string;
 }
 
+async function assertTerminalPolicyIdentity<
+  Result extends CandidateSandboxNetworkCommandResult
+>(input: {
+  input: CandidateSandboxNetworkPolicyInput<Result>;
+  execute(command: string[]): Promise<Result>;
+  inherited_allowed_resources: readonly string[];
+  owned_allow_rules: readonly ActiveNetworkRule[];
+  owned_deny_rules: readonly ActiveNetworkRule[];
+}): Promise<void> {
+  const allowRules = await inspectNetworkRules(input.input, input.execute, "allow");
+  const denyRules = await inspectNetworkRules(input.input, input.execute, "deny");
+  assertExactOwnedRules(
+    allowRules,
+    input.owned_allow_rules,
+    input.input.sandbox_name,
+    "allow"
+  );
+  assertExactOwnedRules(
+    denyRules,
+    input.owned_deny_rules,
+    input.input.sandbox_name,
+    "deny"
+  );
+  const ownedAllowIds = new Set(input.owned_allow_rules.map((rule) => rule.id));
+  const inheritedAllowedResources = ruleResources(
+    allowRules.filter((rule) => !ownedAllowIds.has(rule.id))
+  );
+  if (!sameStrings(inheritedAllowedResources, input.inherited_allowed_resources)) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_inspection_failed",
+      "inherited network allow identity changed before terminal release"
+    );
+  }
+}
+
+function assertExactOwnedRules(
+  currentRules: readonly ActiveNetworkRule[],
+  expectedRules: readonly ActiveNetworkRule[],
+  sandboxName: string,
+  decision: "allow" | "deny"
+): void {
+  const expectedIds = expectedRules.map((rule) => rule.id).sort();
+  const expectedIdSet = new Set(expectedIds);
+  const currentOwnedRules = currentRules
+    .filter((rule) => expectedIdSet.has(rule.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (!sameStrings(currentOwnedRules.map((rule) => rule.id), expectedIds)) {
+    throw new CandidateSandboxNetworkPolicyError(
+      "policy_inspection_failed",
+      `owned ${decision} rule IDs changed before terminal release`
+    );
+  }
+  const currentById = new Map(currentOwnedRules.map((rule) => [rule.id, rule]));
+  for (const expected of expectedRules) {
+    const current = currentById.get(expected.id);
+    if (
+      !current ||
+      current.decision !== decision ||
+      !sameStrings(current.resources, expected.resources) ||
+      !isSandboxScopedRule(current, sandboxName)
+    ) {
+      throw new CandidateSandboxNetworkPolicyError(
+        "policy_inspection_failed",
+        `owned ${decision} rule ${expected.id} changed before terminal release`
+      );
+    }
+  }
+}
+
 async function inspectNetworkRules<
   Result extends CandidateSandboxNetworkCommandResult
 >(
-  input: CandidateSandboxNetworkPolicyInput<Result>,
+  input: {
+    sbx_path: string;
+    sandbox_name: string;
+  },
   execute: (command: string[]) => Promise<Result>,
   decision: "allow" | "deny"
 ): Promise<ActiveNetworkRule[]> {
@@ -393,7 +738,7 @@ function parseNetworkRules(
       continue;
     }
     const id = typeof rule.id === "string" ? rule.id : undefined;
-    if (!id || ids.has(id)) {
+    if (!id || !boundedPolicyMetadata(id, 256) || ids.has(id)) {
       throw new Error("active network rule did not expose one unique id");
     }
     const values = stringLeaves(rule.resources);
@@ -495,7 +840,7 @@ async function addSandboxScopedNetworkRules<
   resources: string[];
   before_rules: ActiveNetworkRule[];
   failure_code: "gateway_rule_failed" | "policy_overlay_failed";
-}): Promise<string[]> {
+}): Promise<ActiveNetworkRule[]> {
   const resources = normalizedPolicyResources(input.resources);
   const mutation = await input.execute([
     input.input.sbx_path,
@@ -523,6 +868,7 @@ async function addSandboxScopedNetworkRules<
     );
   }
   if (
+    created.length > 512 ||
     !sameStrings(ruleResources(created), resources) ||
     created.some((rule) => !isSandboxScopedRule(rule, input.input.sandbox_name))
   ) {
@@ -531,7 +877,7 @@ async function addSandboxScopedNetworkRules<
       `owned ${input.decision} rules did not match the requested Sandbox scope and resources`
     );
   }
-  return created.map((rule) => rule.id).sort();
+  return created;
 }
 
 async function removeOwnedRuleIds<Result extends CandidateSandboxNetworkCommandResult>(
@@ -549,7 +895,7 @@ async function removeOwnedRuleIds<Result extends CandidateSandboxNetworkCommandR
   return firstFailure;
 }
 
-function sameStrings(left: string[], right: string[]): boolean {
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 

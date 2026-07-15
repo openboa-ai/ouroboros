@@ -1,14 +1,24 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   acquireCandidateSandboxNetworkPolicy,
   assertCandidateSandboxSbxVersion,
   CANDIDATE_NETWORK_DENY_PROBES,
   CandidateSandboxNetworkPolicyError,
+  parseCandidateSandboxSbxVersion,
   type CandidateSandboxNetworkCommandResult
 } from "./candidate-sandbox-network-policy";
 
+const SBX_IMPLEMENTATION_VERSION = "0.35.0";
+
 describe("candidate Sandbox network policy", () => {
   it("requires the stable sbx policy-check contract", () => {
+    expect(parseCandidateSandboxSbxVersion(
+      "sbx version: v0.35.0 01e01520456e4126a9653471e7072e4d9b280321\n"
+    )).toBe("0.35.0");
+    expect(parseCandidateSandboxSbxVersion(
+      "Client Version:  v0.36.1 test\nServer Version:  v0.36.1 test\n"
+    )).toBe("0.36.1");
     expect(() => assertCandidateSandboxSbxVersion(
       "Client Version:  v0.28.3 test\nServer Version:  v0.28.3 test\n"
     )).toThrowError(expect.objectContaining({ code: "unsupported_sbx_version" }));
@@ -18,11 +28,25 @@ describe("candidate Sandbox network policy", () => {
     )).not.toThrow();
   });
 
+  it("requires acquisition to bind a supported exact implementation version", async () => {
+    const fake = fakePolicyRuntime();
+
+    await expect(acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-old-sbx",
+      sandbox_implementation_version: "0.34.9",
+      run_command: fake.run
+    })).rejects.toMatchObject({ code: "unsupported_sbx_version" });
+
+    expect(fake.commands).toEqual([]);
+  });
+
   it("permits only the exact injected host Gateway and removes its scoped rule", async () => {
     const fake = fakePolicyRuntime();
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "/usr/local/bin/sbx",
       sandbox_name: "ouro-candidate-1",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     });
@@ -80,11 +104,85 @@ describe("candidate Sandbox network policy", () => {
     ]);
   });
 
+  it("exposes bounded attestation evidence only after successful terminal release", async () => {
+    const inheritedAllows = ["**.github.com:443", "registry.npmjs.org:443"];
+    const fake = fakePolicyRuntime(inheritedAllows);
+    const observations = [
+      "2026-07-15T10:00:00.100Z",
+      "2026-07-15T10:00:01.900Z"
+    ];
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-attested",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
+      gateway_base_url: "http://host.docker.internal:4173",
+      now: () => observations.shift()!,
+      run_command: fake.run
+    });
+
+    expect(lease.attestation_evidence()).toBeUndefined();
+
+    await lease.release();
+
+    const evidence = lease.attestation_evidence();
+    expect(evidence).toEqual({
+      sandbox: {
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_name: "ouro-candidate-attested",
+        implementation_version: SBX_IMPLEMENTATION_VERSION
+      },
+      network_policy: {
+        protocol_version: "candidate_sandbox_network_policy_v1",
+        inherited_allow_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        inherited_allow_count: 2,
+        owned_allow_rule_ids: ["owned-allow-3"],
+        owned_deny_rule_ids: ["owned-deny-1", "owned-deny-2"],
+        gateway_resource: "localhost:4173",
+        deny_targets: [...CANDIDATE_NETWORK_DENY_PROBES]
+      },
+      network_policy_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      start: {
+        observed_at: "2026-07-15T10:00:00.100Z",
+        policy_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)
+      },
+      end: {
+        observed_at: "2026-07-15T10:00:01.900Z",
+        policy_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)
+      },
+      denial_summary: {
+        required_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+        start_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+        end_denied_probe_count: CANDIDATE_NETWORK_DENY_PROBES.length,
+        unexpected_allow_count: 0
+      },
+      cleanup_status: "released",
+      enforcement_result: "enforced"
+    });
+    expect(evidence?.start.policy_digest).toBe(evidence?.network_policy_digest);
+    expect(evidence?.end.policy_digest).toBe(evidence?.network_policy_digest);
+    expect(evidence?.network_policy.inherited_allow_digest).toBe(
+      sha256(JSON.stringify(inheritedAllows))
+    );
+    expect(evidence).not.toHaveProperty("candidate_effect");
+    const serialized = JSON.stringify(evidence);
+    for (const resource of inheritedAllows) {
+      expect(serialized).not.toContain(resource);
+    }
+    for (const target of CANDIDATE_NETWORK_DENY_PROBES) {
+      expect(fake.commands.filter((command) => command.at(-1) === target)).toHaveLength(2);
+    }
+    expect(fake.commands.filter((command) =>
+      command[2] === "check" && command.at(-1) === "localhost:4173"
+    ))
+      .toHaveLength(2);
+  });
+
   it("gives an in-Sandbox replay sidecar no host or public allow rule", async () => {
     const fake = fakePolicyRuntime();
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-sidecar-1",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       run_command: fake.run
     });
 
@@ -94,29 +192,33 @@ describe("candidate Sandbox network policy", () => {
 
     await lease.release();
     expect(fake.commands.some((command) => command[2] === "rm")).toBe(false);
+    expect(lease.attestation_evidence()?.network_policy)
+      .not.toHaveProperty("gateway_resource");
   });
 
-  it("rechecks the full deny matrix for every Sandbox", async () => {
+  it("rechecks the full deny matrix at start and release for every Sandbox", async () => {
     const fake = fakePolicyRuntime();
     const first = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-sidecar-cache-1",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       run_command: fake.run
     });
     await first.release();
     const second = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-sidecar-cache-2",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       run_command: fake.run
     });
     await second.release();
 
     expect(fake.commands.filter((command) =>
       command[1] === "policy" && command[2] === "check"
-    )).toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 2);
+    )).toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 4);
     expect(fake.commands.filter((command) =>
       command[1] === "policy" && command[2] === "ls"
-    )).toHaveLength(2);
+    )).toHaveLength(6);
   });
 
   it("neutralizes inherited balanced-policy allows with a Sandbox-scoped deny overlay", async () => {
@@ -126,6 +228,7 @@ describe("candidate Sandbox network policy", () => {
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-balanced",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     });
@@ -162,6 +265,7 @@ describe("candidate Sandbox network policy", () => {
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-sidecar-balanced",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       run_command: fake.run
     });
 
@@ -176,12 +280,31 @@ describe("candidate Sandbox network policy", () => {
     expect(fake.commands.at(-1)).toContain("owned-deny-1");
   });
 
+  it("fails closed when one Gateway resource creates multiple owned allow IDs", async () => {
+    const fake = fakePolicyRuntime([], { duplicateOwnedGatewayAllow: true });
+
+    await expect(acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-duplicate-gateway-rule",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    })).rejects.toMatchObject({ code: "policy_inspection_failed" });
+
+    expect(fake.allowedResources()).toEqual([]);
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup).toHaveLength(2);
+    expect(cleanup[0]).toContain("owned-allow-1");
+    expect(cleanup[1]).toContain("owned-allow-2");
+  });
+
   it("fails closed and rolls back both owned rules when inherited wildcard deny blocks Gateway", async () => {
     const fake = fakePolicyRuntime(["**"]);
 
     await expect(acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-wildcard",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     })).rejects.toMatchObject({ code: "policy_check_failed" });
@@ -200,12 +323,14 @@ describe("candidate Sandbox network policy", () => {
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-cleanup-failure",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     });
 
     await expect(lease.release()).rejects.toMatchObject({ code: "policy_cleanup_failed" });
 
+    expect(lease.attestation_evidence()).toBeUndefined();
     expect(fake.deniedResources()).toEqual(["registry.npmjs.org:443"]);
     expect(fake.commands.filter((command) => command[2] === "rm")).toHaveLength(1);
   });
@@ -218,6 +343,7 @@ describe("candidate Sandbox network policy", () => {
     await expect(acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-inactive-overlay",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     })).rejects.toMatchObject({ code: "policy_inspection_failed" });
@@ -231,6 +357,7 @@ describe("candidate Sandbox network policy", () => {
     await expect(acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-unowned",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     })).rejects.toMatchObject({
@@ -253,6 +380,7 @@ describe("candidate Sandbox network policy", () => {
       await expect(acquireCandidateSandboxNetworkPolicy({
         sbx_path: "sbx",
         sandbox_name: "ouro-candidate-invalid",
+        sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
         gateway_base_url: gatewayBaseUrl,
         run_command: fake.run
       })).rejects.toMatchObject({ code: "invalid_gateway_url" });
@@ -266,6 +394,7 @@ describe("candidate Sandbox network policy", () => {
     await expect(acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-json-drift",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
     })).rejects.toBeInstanceOf(CandidateSandboxNetworkPolicyError);
@@ -288,6 +417,7 @@ describe("candidate Sandbox network policy", () => {
     const lease = await acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
       sandbox_name: "ouro-candidate-log-throws",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: async (command) => {
         if (command[1] === "policy" && command[2] === "log") {
@@ -300,6 +430,7 @@ describe("candidate Sandbox network policy", () => {
     await expect(lease.release()).rejects.toMatchObject({
       code: "policy_log_failed"
     });
+    expect(lease.attestation_evidence()).toBeUndefined();
     expect(fake.allowedResources()).toEqual([]);
     expect(fake.commands.at(-1)).toEqual([
       "sbx",
@@ -312,6 +443,82 @@ describe("candidate Sandbox network policy", () => {
       "owned-allow-1"
     ]);
   });
+
+  it.each([
+    ["allow", "owned-allow-2", ["localhost:9000"]],
+    ["deny", "owned-deny-1", ["example.com:443"]]
+  ] as const)("fails closed when an owned %s rule drifts before terminal verification", async (
+    _decision,
+    ruleId,
+    resources
+  ) => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"]);
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-owned-drift",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    });
+    fake.replaceRuleResources(ruleId, [...resources]);
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "policy_inspection_failed"
+    });
+
+    expect(lease.attestation_evidence()).toBeUndefined();
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup).toHaveLength(2);
+    expect(cleanup[0]).toContain("owned-allow-2");
+    expect(cleanup[1]).toContain("owned-deny-1");
+  });
+
+  it("fails closed when a fixed policy decision drifts before terminal verification", async () => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"]);
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-decision-drift",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    });
+    fake.setUnknownDecisionTarget("https://example.com");
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "policy_check_failed"
+    });
+
+    expect(lease.attestation_evidence()).toBeUndefined();
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup).toHaveLength(2);
+    expect(cleanup[0]).toContain("owned-allow-2");
+    expect(cleanup[1]).toContain("owned-deny-1");
+  });
+
+  it("fails closed on a regressing observation clock and still cleans owned rules", async () => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"]);
+    const observations = [
+      "2026-07-15T10:00:01.000Z",
+      "2026-07-15T10:00:00.000Z"
+    ];
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-clock-regression",
+      sandbox_implementation_version: SBX_IMPLEMENTATION_VERSION,
+      gateway_base_url: "http://host.docker.internal:4173",
+      now: () => observations.shift()!,
+      run_command: fake.run
+    });
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "policy_check_failed"
+    });
+
+    expect(lease.attestation_evidence()).toBeUndefined();
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup[0]).toContain("owned-allow-2");
+    expect(cleanup[1]).toContain("owned-deny-1");
+  });
 });
 
 function fakePolicyRuntime(
@@ -320,12 +527,15 @@ function fakePolicyRuntime(
     failedRemoveRuleId?: string;
     inactiveOwnedDecision?: "allow" | "deny";
     unknownDecisionTarget?: string;
+    duplicateOwnedGatewayAllow?: boolean;
   } = {}
 ): {
   commands: string[][];
   run(command: string[]): Promise<CandidateSandboxNetworkCommandResult>;
   allowedResources(): string[];
   deniedResources(): string[];
+  replaceRuleResources(ruleId: string, resources: string[]): void;
+  setUnknownDecisionTarget(target: string): void;
 } {
   const commands: string[][] = [];
   const allowRules = new Map<string, string[]>(
@@ -339,6 +549,18 @@ function fakePolicyRuntime(
     commands,
     allowedResources: () => resourcesFor(allowRules),
     deniedResources: () => resourcesFor(denyRules),
+    replaceRuleResources: (ruleId, resources) => {
+      if (allowRules.has(ruleId)) {
+        allowRules.set(ruleId, [...resources]);
+      } else if (denyRules.has(ruleId)) {
+        denyRules.set(ruleId, [...resources]);
+      } else {
+        throw new Error(`unknown fake policy rule ${ruleId}`);
+      }
+    },
+    setUnknownDecisionTarget: (target) => {
+      options.unknownDecisionTarget = target;
+    },
     run: async (command) => {
       commands.push([...command]);
       const args = command.slice(1);
@@ -363,7 +585,11 @@ function fakePolicyRuntime(
         }));
       }
       if (args[1] === "allow" && args[2] === "network") {
-        allowRules.set(`owned-allow-${nextRule++}`, [args.at(-1)!]);
+        const resource = args.at(-1)!;
+        allowRules.set(`owned-allow-${nextRule++}`, [resource]);
+        if (options.duplicateOwnedGatewayAllow) {
+          allowRules.set(`owned-allow-${nextRule++}`, [resource]);
+        }
         return commandResult(command, 0, "rule added\n");
       }
       if (args[1] === "deny" && args[2] === "network") {
@@ -443,4 +669,8 @@ function commandResult(
     stdout,
     stderr
   };
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }

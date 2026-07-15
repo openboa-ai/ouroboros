@@ -2,13 +2,33 @@ import { describe, expect, it } from "vitest";
 import {
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
-  type PaperTradingHandoffConformanceRecord
+  type PaperTradingHandoffConformanceRecord,
+  type PaperTradingHandoffConformanceRecordV1
 } from "./index";
 
 describe("PaperTradingHandoffConformance", () => {
   it("accepts canonical passed and rejected evidence", () => {
     expect(paperTradingHandoffConformanceHasRuntimeShape(passedFixture())).toBe(true);
     expect(paperTradingHandoffConformanceHasRuntimeShape(rejectedFixture())).toBe(true);
+  });
+
+  it("accepts version 2 Docker evidence only with canonical egress attestation", () => {
+    expect(paperTradingHandoffConformanceHasRuntimeShape(attestedFixture())).toBe(true);
+
+    const missing = attestedFixture() as any;
+    delete missing.candidate_egress_attestation;
+    expect(paperTradingHandoffConformanceHasRuntimeShape(missing)).toBe(false);
+
+    const host = attestedFixture() as any;
+    host.runner_kind = "host_process";
+    expect(paperTradingHandoffConformanceHasRuntimeShape(host)).toBe(false);
+  });
+
+  it("keeps version 1 exact and historical", () => {
+    const unexpected = passedFixture() as any;
+    unexpected.candidate_egress_attestation = attestedFixture().candidate_egress_attestation;
+
+    expect(paperTradingHandoffConformanceHasRuntimeShape(unexpected)).toBe(false);
   });
 
   it("freezes identity, protocol, evidence, time, and authority in the digest input", () => {
@@ -87,7 +107,7 @@ describe("PaperTradingHandoffConformance", () => {
   });
 });
 
-function passedFixture(): PaperTradingHandoffConformanceRecord {
+function passedFixture(): PaperTradingHandoffConformanceRecordV1 {
   return {
     ...baseFixture(),
     status: "passed",
@@ -100,7 +120,7 @@ function passedFixture(): PaperTradingHandoffConformanceRecord {
   };
 }
 
-function rejectedFixture(): PaperTradingHandoffConformanceRecord {
+function rejectedFixture(): PaperTradingHandoffConformanceRecordV1 {
   return {
     ...baseFixture(),
     status: "rejected",
@@ -112,8 +132,76 @@ function rejectedFixture(): PaperTradingHandoffConformanceRecord {
   };
 }
 
+function attestedFixture(): any {
+  const record = {
+    ...passedFixture(),
+    version: 2,
+    runner_kind: "docker_sandboxes_sbx",
+    candidate_egress_attestation: {
+      protocol_version: "candidate_egress_attestation_v1",
+      attestation_id: "candidate-egress-attestation-paper-handoff-conformance-system-code-001",
+      attested_by: {
+        record_kind: "external_evaluator",
+        id: "candidate-egress-evaluator-v1"
+      },
+      candidate_authored: false,
+      system_code_ref: { record_kind: "system_code", id: "system-code-001" },
+      system_code_artifact_digest: sha256("a"),
+      execution_ref: { record_kind: "experiment_run", id: "experiment-run-001" },
+      sandbox: {
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_name: "ouro-candidate-001",
+        implementation_version: "0.35.0"
+      },
+      network_policy: {
+        protocol_version: "candidate_sandbox_network_policy_v1",
+        inherited_allow_digest: sha256("b"),
+        inherited_allow_count: 0,
+        owned_allow_rule_ids: [],
+        owned_deny_rule_ids: [],
+        deny_targets: [
+          "https://example.com",
+          "https://registry.npmjs.org",
+          "tcp://1.1.1.1:53",
+          "udp://1.1.1.1:53",
+          "http://169.254.169.254:80",
+          "http://10.0.0.1:80",
+          "http://host.docker.internal:1"
+        ]
+      },
+      network_policy_digest: sha256("c"),
+      start: { observed_at: "2026-07-12T10:00:00.000Z", policy_digest: sha256("c") },
+      end: { observed_at: "2026-07-12T10:00:01.000Z", policy_digest: sha256("c") },
+      candidate_effect: {
+        started_at: "2026-07-12T10:00:00.200Z",
+        completed_at: "2026-07-12T10:00:00.800Z"
+      },
+      cleanup_status: "released",
+      enforcement_result: "enforced",
+      denial_summary: {
+        required_probe_count: 7,
+        start_denied_probe_count: 7,
+        end_denied_probe_count: 7,
+        unexpected_allow_count: 0
+      },
+      issued_at: "2026-07-12T10:00:01.000Z",
+      attestation_digest: sha256("d"),
+      research_preflight_authority: true,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    }
+  };
+  return record;
+}
+
+function sha256(character: string): string {
+  return `sha256:${character.repeat(64)}`;
+}
+
 function baseFixture(): Omit<
-  PaperTradingHandoffConformanceRecord,
+  PaperTradingHandoffConformanceRecordV1,
   | "status"
   | "reason"
   | "provider_request_count"

@@ -63,6 +63,7 @@ import {
   buildLedgerReadModel,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
+  candidateEgressAttestationIdForConformance,
   decidePaperTradingQualification,
   isCandidateAdmissionDecisionConsistent,
   paperTradingComparisonActivationDigestInput,
@@ -96,6 +97,7 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
+  verifyCandidateEgressAttestation,
   researchAllocationPolicyDecisionDigestInput,
   researchAllocationPolicyDecisionHasRuntimeShape,
   researchBehaviorFingerprintDigestInput,
@@ -383,6 +385,8 @@ export type LocalStoreErrorCode =
   | "paper_trading_handoff_conformance_reference_not_found"
   | "paper_trading_handoff_conformance_reference_mismatch"
   | "paper_trading_handoff_conformance_conflict"
+  | "candidate_egress_attestation_rejected"
+  | "candidate_admission_egress_attestation_required"
   | "invalid_persisted_paper_trading_handoff_conformance"
   | "persisted_paper_trading_handoff_conformance_digest_mismatch"
   | "runtime_not_found"
@@ -3289,7 +3293,23 @@ export class LocalStore {
       );
     }
     if (conformance) {
-      this.assertPersistedPaperTradingHandoffConformance(conformance);
+      await this.assertPersistedPaperTradingHandoffConformance(conformance);
+      if (
+        decision.status === "admitted" &&
+        conformance.version === 1 &&
+        conformance.runner_kind === "docker_sandboxes_sbx"
+      ) {
+        throw new LocalStoreError(
+          "candidate_admission_egress_attestation_required",
+          "generated-candidate admission requires version 2 egress attestation",
+          {
+            candidate_admission_decision_id:
+              decision.candidate_admission_decision_id,
+            paper_trading_handoff_conformance_id:
+              conformance.paper_trading_handoff_conformance_id
+          }
+        );
+      }
     }
     const mismatchFields = [
       preflightCommitment && preflightCommitment.commitment_digest !==
@@ -3568,6 +3588,7 @@ export class LocalStore {
         { paper_trading_handoff_conformance_id: record.paper_trading_handoff_conformance_id }
       );
     }
+    await this.assertCandidateEgressAttestation(record);
     const [systemCode, experiment] = await Promise.all([
       this.readOptionalRecord<SystemCodeRecord>("system-codes", record.system_code_ref.id),
       this.readOptionalRecord<ExperimentRunRecord>(
@@ -3636,7 +3657,7 @@ export class LocalStore {
       "paper-trading-handoff-conformances",
       conformanceId
     );
-    if (record) this.assertPersistedPaperTradingHandoffConformance(record);
+    if (record) await this.assertPersistedPaperTradingHandoffConformance(record);
     return record;
   }
 
@@ -3644,25 +3665,77 @@ export class LocalStore {
     const records = await this.readCollection<PaperTradingHandoffConformanceRecord>(
       "paper-trading-handoff-conformances"
     );
-    records.forEach((record) => this.assertPersistedPaperTradingHandoffConformance(record));
+    await Promise.all(records.map((record) =>
+      this.assertPersistedPaperTradingHandoffConformance(record, records)
+    ));
     return records.sort(comparePaperTradingHandoffConformances);
   }
 
-  private assertPersistedPaperTradingHandoffConformance(
-    record: PaperTradingHandoffConformanceRecord
-  ): void {
+  private async assertPersistedPaperTradingHandoffConformance(
+    record: PaperTradingHandoffConformanceRecord,
+    knownRecords?: PaperTradingHandoffConformanceRecord[]
+  ): Promise<void> {
     if (!paperTradingHandoffConformanceHasRuntimeShape(record)) {
       throw new LocalStoreError(
         "invalid_persisted_paper_trading_handoff_conformance",
         "persisted paper trading handoff conformance has invalid runtime shape"
       );
     }
+    await this.assertCandidateEgressAttestation(record, knownRecords);
     if (record.evidence_digest !== comparisonExactRecordDigest(
       paperTradingHandoffConformanceDigestInput(record)
     )) {
       throw new LocalStoreError(
         "persisted_paper_trading_handoff_conformance_digest_mismatch",
         "persisted paper trading handoff conformance digest does not match canonical content"
+      );
+    }
+  }
+
+  private async assertCandidateEgressAttestation(
+    record: PaperTradingHandoffConformanceRecord,
+    knownRecords?: PaperTradingHandoffConformanceRecord[]
+  ): Promise<void> {
+    if (record.version === 1) return;
+    const records = knownRecords ??
+      await this.readCollection<PaperTradingHandoffConformanceRecord>(
+        "paper-trading-handoff-conformances"
+      );
+    const consumedDigests = records.flatMap((other) =>
+      other.paper_trading_handoff_conformance_id !==
+          record.paper_trading_handoff_conformance_id &&
+        paperTradingHandoffConformanceHasRuntimeShape(other) &&
+        other.version === 2
+        ? [other.candidate_egress_attestation.attestation_digest]
+        : []
+    );
+    const verification = verifyCandidateEgressAttestation({
+      attestation: record.candidate_egress_attestation,
+      expected: {
+        attestation_id: candidateEgressAttestationIdForConformance(
+          record.paper_trading_handoff_conformance_id
+        ),
+        system_code_ref: record.system_code_ref,
+        system_code_artifact_digest: record.system_code_artifact_digest,
+        execution_ref: record.experiment_run_ref,
+        sandbox_name: record.candidate_egress_attestation.sandbox.sandbox_name,
+        sandbox_implementation_version:
+          record.candidate_egress_attestation.sandbox.implementation_version,
+        conformance_started_at: record.started_at,
+        conformance_completed_at: record.completed_at
+      },
+      consumed_attestation_digests: consumedDigests,
+      sha256: comparisonExactRecordDigest
+    });
+    if (verification.status === "rejected") {
+      throw new LocalStoreError(
+        "candidate_egress_attestation_rejected",
+        "candidate egress attestation failed independent verification",
+        {
+          paper_trading_handoff_conformance_id:
+            record.paper_trading_handoff_conformance_id,
+          reason: verification.reason
+        }
       );
     }
   }
@@ -21594,10 +21667,47 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
 function isCandidateArenaPaperHandoffConformance(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
-  return Object.keys(raw).length === 4 &&
+  const hasAttestation = raw.candidate_egress_attestation !== undefined;
+  return Object.keys(raw).length === (hasAttestation ? 5 : 4) &&
     nonEmpty(raw.conformance_id) &&
     (raw.status === "passed" || raw.status === "rejected") &&
     nonEmpty(raw.reason) &&
+    (!hasAttestation ||
+      isCandidateArenaCompactEgressAttestation(
+        raw.candidate_egress_attestation
+      )) &&
+    raw.authority_status === "research_only";
+}
+
+function isCandidateArenaCompactEgressAttestation(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  const denial = raw.denial_summary as Record<string, unknown> | undefined;
+  return Object.keys(raw).sort().join(",") === [
+    "attestation_id",
+    "authority_status",
+    "denial_summary",
+    "enforcement_result",
+    "network_policy_digest",
+    "verification_status"
+  ].sort().join(",") &&
+    nonEmpty(raw.attestation_id) &&
+    raw.verification_status === "verified" &&
+    raw.enforcement_result === "enforced" &&
+    isSha256Digest(raw.network_policy_digest) &&
+    denial !== undefined &&
+    Object.keys(denial).sort().join(",") === [
+      "required_probe_count",
+      "start_denied_probe_count",
+      "end_denied_probe_count",
+      "unexpected_allow_count"
+    ].sort().join(",") &&
+    [
+      denial.required_probe_count,
+      denial.start_denied_probe_count,
+      denial.end_denied_probe_count
+    ].every((count) => Number.isSafeInteger(count) && Number(count) >= 0) &&
+    denial.unexpected_allow_count === 0 &&
     raw.authority_status === "research_only";
 }
 

@@ -11,10 +11,15 @@ import {
   type CandidateAdmissionResearchWorkerOutcome,
   type CandidateAdmissionStatus
 } from "./candidate-admission-policy";
+import {
+  candidateEgressAttestationHasRuntimeShape,
+  type CandidateEgressAttestation
+} from "./candidate-egress-attestation";
 
 export * from "./private-read-gate";
 export * from "./private-readiness-policy";
 export * from "./candidate-admission-policy";
+export * from "./candidate-egress-attestation";
 
 export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
 
@@ -2176,7 +2181,7 @@ export type PaperTradingHandoffConformanceReason =
   | "candidate_self_report"
   | "private_or_live_authority";
 
-export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
+interface PaperTradingHandoffConformanceRecordFields {
   record_kind: "paper_trading_handoff_conformance";
   paper_trading_handoff_conformance_id: string;
   system_code_ref: Ref;
@@ -2201,6 +2206,22 @@ export interface PaperTradingHandoffConformanceRecord extends BaseRecord {
   live_exchange_authority: false;
   authority_status: "not_live";
 }
+
+export interface PaperTradingHandoffConformanceRecordV1 extends
+  PaperTradingHandoffConformanceRecordFields {
+  version: 1;
+}
+
+export interface PaperTradingHandoffConformanceRecordV2 extends
+  Omit<PaperTradingHandoffConformanceRecordFields, "runner_kind"> {
+  version: 2;
+  runner_kind: "docker_sandboxes_sbx";
+  candidate_egress_attestation: CandidateEgressAttestation;
+}
+
+export type PaperTradingHandoffConformanceRecord =
+  | PaperTradingHandoffConformanceRecordV1
+  | PaperTradingHandoffConformanceRecordV2;
 
 const PAPER_TRADING_HANDOFF_CONFORMANCE_REJECTION_REASONS = new Set<
   PaperTradingHandoffConformanceReason
@@ -2269,20 +2290,29 @@ export function paperTradingHandoffConformanceHasRuntimeShape(
   const expectedKeys = value.decision_event_kind === undefined
     ? requiredKeys
     : [...requiredKeys, "decision_event_kind"];
+  if (value.version === 2) {
+    expectedKeys.push("candidate_egress_attestation");
+  }
   if (!comparisonHasExactKeys(value, expectedKeys)) {
     return false;
   }
   if (
     value.record_kind !== "paper_trading_handoff_conformance" ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     !comparisonString(value.paper_trading_handoff_conformance_id) ||
     !comparisonRef(value.system_code_ref, "system_code") ||
     !comparisonDigest(value.system_code_artifact_digest) ||
     !comparisonRef(value.experiment_run_ref, "experiment_run") ||
     !comparisonRef(value.trading_evaluation_task_ref, "trading_evaluation_task") ||
     value.protocol_version !== "paper_trading_event_protocol_v1" ||
-    (value.runner_kind !== "host_process" &&
+    (value.version === 1 &&
+      value.runner_kind !== "host_process" &&
       value.runner_kind !== "docker_sandboxes_sbx") ||
+    (value.version === 2 &&
+      (value.runner_kind !== "docker_sandboxes_sbx" ||
+        !candidateEgressAttestationHasRuntimeShape(
+          value.candidate_egress_attestation
+        ))) ||
     (value.status !== "passed" && value.status !== "rejected") ||
     !comparisonString(value.reason) ||
     !comparisonNonNegative(value.provider_request_count) ||
@@ -12574,6 +12604,19 @@ export interface CandidateArenaTickDirectionResultReadModel {
     conformance_id: string;
     status: PaperTradingHandoffConformanceStatus;
     reason: PaperTradingHandoffConformanceReason;
+    candidate_egress_attestation?: {
+      attestation_id: string;
+      verification_status: "verified";
+      enforcement_result: "enforced";
+      network_policy_digest: string;
+      denial_summary: {
+        required_probe_count: number;
+        start_denied_probe_count: number;
+        end_denied_probe_count: number;
+        unexpected_allow_count: 0;
+      };
+      authority_status: "research_only";
+    };
     authority_status: "research_only";
   };
 }
