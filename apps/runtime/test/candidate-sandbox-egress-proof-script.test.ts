@@ -29,13 +29,19 @@ describe("candidate sandbox egress proof script", () => {
       await writeFakeSbx(fakeSbx);
       const result = await runProof(fakeSbx, {
         FAKE_SBX_COMMAND_LOG: commandLog,
-        FAKE_SBX_POLICY_STATE: policyState
+        FAKE_SBX_POLICY_STATE: policyState,
+        FAKE_SBX_INHERITED_ALLOW_JSON: '["**.github.com:443","registry.npmjs.org:443"]'
       });
 
       expect(result.code, scriptOutput(result)).toBe(0);
       expect(result.stdout).toContain("PROOF_RESULT passed");
+      expect(result.stdout).toContain('"inherited_allow_count":2');
+      expect(result.stdout).toContain('"owned_deny_rule_count":2');
       expect(result.stdout).not.toContain("test-secret-value");
       const commands = await readCommands(commandLog);
+      const denyIndex = commands.findIndex((args) =>
+        args[0] === "policy" && args[1] === "deny"
+      );
       const allowIndex = commands.findIndex((args) =>
         args[0] === "policy" && args[1] === "allow"
       );
@@ -43,15 +49,28 @@ describe("candidate sandbox egress proof script", () => {
       const logIndex = commands.findIndex((args) =>
         args[0] === "policy" && args[1] === "log"
       );
+      const allowRemoveIndex = commands.findIndex((args) =>
+        args[0] === "policy" && args[1] === "rm" && args.at(-1) === "owned-allow"
+      );
+      const denyRemoveIndex = commands.findIndex((args) =>
+        args[0] === "policy" && args[1] === "rm" && args.at(-1) === "owned-deny-1"
+      );
+      const finalDenyRemoveIndex = commands.findIndex((args) =>
+        args[0] === "policy" && args[1] === "rm" && args.at(-1) === "owned-deny-2"
+      );
       const policyRemoveIndex = commands.findIndex((args) =>
         args[0] === "policy" && args[1] === "rm"
       );
       const sandboxRemoveIndex = commands.findIndex((args) => args[0] === "rm");
-      expect(allowIndex).toBeGreaterThan(0);
+      expect(denyIndex).toBeGreaterThan(0);
+      expect(allowIndex).toBeGreaterThan(denyIndex);
       expect(execIndex).toBeGreaterThan(allowIndex);
       expect(logIndex).toBeGreaterThan(execIndex);
       expect(policyRemoveIndex).toBeGreaterThan(logIndex);
-      expect(sandboxRemoveIndex).toBeGreaterThan(policyRemoveIndex);
+      expect(allowRemoveIndex).toBe(policyRemoveIndex);
+      expect(denyRemoveIndex).toBeGreaterThan(allowRemoveIndex);
+      expect(finalDenyRemoveIndex).toBeGreaterThan(denyRemoveIndex);
+      expect(sandboxRemoveIndex).toBeGreaterThan(finalDenyRemoveIndex);
       expect(commands[allowIndex]?.at(-1)).toMatch(/^localhost:\d+$/);
       expect(commands[execIndex]).toContain("candidate-network-egress-probe.py");
       expect(commands[execIndex]).toContain("--alternate-host-url");
@@ -71,14 +90,19 @@ describe("candidate sandbox egress proof script", () => {
       const result = await runProof(fakeSbx, {
         FAKE_SBX_COMMAND_LOG: commandLog,
         FAKE_SBX_POLICY_STATE: policyState,
+        FAKE_SBX_INHERITED_ALLOW_JSON: '["**.github.com:443","registry.npmjs.org:443"]',
         FAKE_SBX_PROBE_FAILURE: "1"
       });
 
       expect(result.code, scriptOutput(result)).toBe(1);
       expect(result.stderr).toContain("PROOF_RESULT failed stage=candidate_probe");
+      expect(result.stderr).toContain("failed_probes=direct_https:allowed");
       const commands = await readCommands(commandLog);
       expect(commands.some((args) => args[0] === "policy" && args[1] === "log")).toBe(true);
-      expect(commands.some((args) => args[0] === "policy" && args[1] === "rm")).toBe(true);
+      expect(commands.filter((args) => args[0] === "policy" && args[1] === "rm"))
+        .toHaveLength(3);
+      expect(commands.find((args) => args[0] === "policy" && args[1] === "rm")?.at(-1))
+        .toBe("owned-allow");
       expect(commands.at(-1)?.slice(0, 2)).toEqual(["rm", "--force"]);
       await expect(readFile(policyState, "utf8")).rejects.toThrow();
     } finally {
@@ -140,6 +164,8 @@ describe("candidate sandbox egress proof script", () => {
     for (const probe of requiredDeniedProbes) {
       expect(fixture).toContain(probe);
     }
+    expect(fixture).toContain("client.sendall");
+    expect(fixture).toContain("client.recv");
   });
 });
 
@@ -149,11 +175,17 @@ async function writeFakeSbx(pathname: string): Promise<void> {
     expected: "denied",
     observed: "denied"
   }));
+  const failedProbeResults = probeResults.map((probe) =>
+    probe.name === "direct_https" ? { ...probe, observed: "allowed" } : probe
+  );
   await writeFile(pathname, `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_SBX_COMMAND_LOG, JSON.stringify(args) + "\\n");
 const state = process.env.FAKE_SBX_POLICY_STATE;
+const allowState = state + ".allow";
+const denyState = state + ".deny";
+const inheritedAllows = JSON.parse(process.env.FAKE_SBX_INHERITED_ALLOW_JSON || "[]");
 switch (args[0]) {
   case "version":
     console.log("sbx version: v" + (process.env.FAKE_SBX_VERSION || "0.35.0"));
@@ -164,21 +196,58 @@ switch (args[0]) {
     process.exit(0);
   case "policy": {
     if (args[1] === "ls") {
-      if (fs.existsSync(state)) {
-        const resource = fs.readFileSync(state, "utf8").trim();
-        console.log(JSON.stringify({ rules: [{ decision: "allow", status: "active", resources: [resource] }] }));
-      } else {
-        console.log(JSON.stringify({ rules: [] }));
+      const decision = args.at(-1);
+      const rules = [];
+      if (decision === "allow" && inheritedAllows.length > 0) {
+        rules.push({
+          id: "inherited-allow",
+          decision: "allow",
+          status: "active",
+          scope: "global",
+          resources: inheritedAllows
+        });
       }
+      if (decision === "allow" && fs.existsSync(allowState)) {
+        rules.push({
+          id: "owned-allow",
+          decision: "allow",
+          status: "active",
+          scope: "sandbox:" + args[2],
+          sandbox_id: args[2],
+          resources: [fs.readFileSync(allowState, "utf8").trim()]
+        });
+      }
+      if (decision === "deny" && fs.existsSync(denyState)) {
+        for (const [id, resource] of Object.entries(JSON.parse(fs.readFileSync(denyState, "utf8")))) {
+          rules.push({
+            id,
+            decision: "deny",
+            status: "active",
+            scope: "sandbox:" + args[2],
+            sandbox_id: args[2],
+            resources: [resource]
+          });
+        }
+      }
+      console.log(JSON.stringify({ rules }));
       process.exit(0);
     }
     if (args[1] === "allow") {
-      fs.writeFileSync(state, args.at(-1) + "\\n");
+      fs.writeFileSync(allowState, args.at(-1) + "\\n");
+      process.exit(0);
+    }
+    if (args[1] === "deny") {
+      fs.writeFileSync(denyState, JSON.stringify(Object.fromEntries(
+        args.at(-1).split(",").map((resource, index) => ["owned-deny-" + (index + 1), resource])
+      )));
       process.exit(0);
     }
     if (args[1] === "check") {
       const target = args.at(-1);
-      const allowed = fs.existsSync(state) && fs.readFileSync(state, "utf8").trim() === target;
+      const denied = fs.existsSync(denyState) &&
+        Object.values(JSON.parse(fs.readFileSync(denyState, "utf8"))).includes("**");
+      const allowed = !denied && fs.existsSync(allowState) &&
+        fs.readFileSync(allowState, "utf8").trim() === target;
       console.log(JSON.stringify({ decision: allowed ? "allow" : "deny" }));
       process.exit(allowed ? 0 : 1);
     }
@@ -187,14 +256,28 @@ switch (args[0]) {
       process.exit(0);
     }
     if (args[1] === "rm") {
-      if (fs.existsSync(state)) fs.unlinkSync(state);
+      const ruleId = args.at(-1);
+      if (ruleId === "owned-allow") {
+        if (fs.existsSync(allowState)) fs.unlinkSync(allowState);
+        process.exit(0);
+      }
+      if (!ruleId.startsWith("owned-deny-") || !fs.existsSync(denyState)) process.exit(2);
+      const denyRules = JSON.parse(fs.readFileSync(denyState, "utf8"));
+      delete denyRules[ruleId];
+      if (Object.keys(denyRules).length === 0) fs.unlinkSync(denyState);
+      else fs.writeFileSync(denyState, JSON.stringify(denyRules));
       process.exit(0);
     }
     process.exit(2);
   }
   case "exec":
     if (process.env.FAKE_SBX_PROBE_FAILURE) {
-      console.error("candidate probe failed");
+      console.log(JSON.stringify({
+        protocol_version: "candidate-network-egress-probe/v1",
+        gateway: { expected: "allowed", observed: "allowed" },
+        probes: ${JSON.stringify(failedProbeResults)},
+        passed: false
+      }));
       process.exit(9);
     }
     console.log(JSON.stringify({

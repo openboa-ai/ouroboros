@@ -70,6 +70,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
+  delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
   delete process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_LISTEN_HOST;
   delete process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST;
   delete process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_TRANSPORT;
@@ -2108,6 +2109,7 @@ process.exit(17);
     await chmod(fakeSbx, 0o755);
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INHERITED_ALLOW_JSON = '["registry.npmjs.org:443"]';
     const provider = await startReplayTradingApiProvider(
       toReplayTradingCandidateInput(defaultReplayTradingScenarioSet[0]),
       { listen_host: "0.0.0.0", sandbox_host: "host.docker.internal" }
@@ -2129,23 +2131,32 @@ process.exit(17);
       const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
       const port = new URL(provider.sandbox_base_url!).port;
       const resource = `localhost:${port}`;
+      const denyIndex = commands.findIndex((command) =>
+        command.endsWith(`--sandbox ${run.sandbox_name} registry.npmjs.org:443`)
+      );
       const allowIndex = commands.findIndex((command) =>
         command.endsWith(`--sandbox ${run.sandbox_name} ${resource}`)
       );
       const execIndex = commands.findIndex((command) => command.startsWith("exec -w "));
-      const removeIndex = commands.findIndex((command) =>
-        command.endsWith(`--resource ${resource}`)
+      const allowRemoveIndex = commands.findIndex((command) =>
+        command.endsWith(`--id owned-allow`)
       );
-      expect(allowIndex).toBeGreaterThan(0);
+      const denyRemoveIndex = commands.findIndex((command) =>
+        command.endsWith(`--id owned-deny`)
+      );
+      expect(denyIndex).toBeGreaterThan(0);
+      expect(allowIndex).toBeGreaterThan(denyIndex);
       expect(commands).toContain(
         `policy check network --sandbox ${run.sandbox_name} --json ${resource}`
       );
       expect(execIndex).toBeGreaterThan(allowIndex);
       expect(commands[execIndex]).toContain(`TRADING_API_BASE_URL=${provider.sandbox_base_url}`);
-      expect(removeIndex).toBeGreaterThan(execIndex);
+      expect(allowRemoveIndex).toBeGreaterThan(execIndex);
+      expect(denyRemoveIndex).toBeGreaterThan(allowRemoveIndex);
     } finally {
       await provider.close();
       delete process.env.SBX_FAKE_COMMAND_LOG;
+      delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
     }
   });
 
@@ -2987,37 +2998,70 @@ case "$1" in
   create)
     exit 0
     ;;
-  policy)
-    case "$2" in
-      ls)
-        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ]; then
-          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy")"
-          printf '{"rules":[{"decision":"allow","resources":["%s"],"status":"active"}]}\\n' "$resource"
-        else
-          printf '{"rules":[]}\\n'
-        fi
-        ;;
-      allow)
-        resource=""
-        for argument in "$@"; do resource="$argument"; done
-        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy"
-        ;;
-      check)
-        target=""
-        for argument in "$@"; do target="$argument"; done
-        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy")" = "$target" ]; then
-          printf '{"decision":"allow"}\\n'
-        else
+	  policy)
+	    case "$2" in
+	      ls)
+	        decision=""
+	        for argument in "$@"; do decision="$argument"; done
+	        printf '{"rules":['
+	        separator=""
+	        if [ "$decision" = "allow" ] && [ -n "\${SBX_FAKE_INHERITED_ALLOW_JSON:-}" ]; then
+	          printf '{"id":"inherited-allow","decision":"allow","resources":%s,"status":"active","scope":"global"}' "$SBX_FAKE_INHERITED_ALLOW_JSON"
+	          separator=","
+	        fi
+	        if [ "$decision" = "allow" ] && [ -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ]; then
+	          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy.allow")"
+	          printf '%s{"id":"owned-allow","decision":"allow","resources":["%s"],"status":"active","scope":"sandbox:%s","sandbox_id":"%s"}' "$separator" "$resource" "$3" "$3"
+	        fi
+	        if [ "$decision" = "deny" ] && [ -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ]; then
+	          resources="$(cat "$SBX_FAKE_COMMAND_LOG.policy.deny")"
+	          json_resources="$(printf '%s' "$resources" | sed 's/,/","/g')"
+	          printf '{"id":"owned-deny","decision":"deny","resources":["%s"],"status":"active","scope":"sandbox:%s","sandbox_id":"%s"}' "$json_resources" "$3" "$3"
+	        fi
+	        printf ']}\\n'
+	        ;;
+	      allow)
+	        resource=""
+	        for argument in "$@"; do resource="$argument"; done
+	        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy.allow"
+	        ;;
+	      deny)
+	        resources=""
+	        for argument in "$@"; do resources="$argument"; done
+	        printf '%s\\n' "$resources" > "$SBX_FAKE_COMMAND_LOG.policy.deny"
+	        ;;
+	      check)
+	        target=""
+	        for argument in "$@"; do target="$argument"; done
+	        if [ -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ] && printf '%s' "$(cat "$SBX_FAKE_COMMAND_LOG.policy.deny")" | tr ',' '\\n' | grep -qx '\\*\\*'; then
+	          printf '{"decision":"deny"}\\n'
+	          exit 1
+	        fi
+	        if [ -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy.allow")" = "$target" ]; then
+	          printf '{"decision":"allow"}\\n'
+	        else
           printf '{"decision":"deny"}\\n'
           exit 1
         fi
         ;;
-      log)
-        printf '{"entries":[]}\\n'
-        ;;
-      rm)
-        rm -f "$SBX_FAKE_COMMAND_LOG.policy"
-        ;;
+	      log)
+	        printf '{"entries":[]}\\n'
+	        ;;
+	      rm)
+	        rule_id=""
+	        while [ "$#" -gt 0 ]; do
+	          if [ "$1" = "--id" ]; then
+	            rule_id="$2"
+	            break
+	          fi
+	          shift
+	        done
+	        case "$rule_id" in
+	          owned-allow) rm -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ;;
+	          owned-deny) rm -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ;;
+	          *) exit 64 ;;
+	        esac
+	        ;;
       *)
         echo "unexpected sbx policy command: $*" >&2
         exit 64

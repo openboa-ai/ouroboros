@@ -361,25 +361,33 @@ qualification evidence can count.
 ## Candidate Sandbox Network Boundary
 
 Generated-candidate execution requires stable Docker Sandboxes `sbx >= 0.35.0`. Before candidate
-effect, the runner lists the effective per-Sandbox network allow rules and requires an empty set.
-An exact but unowned rule fails closed just like a broad rule. A host-provider run may then add one
-runner-owned `localhost:<GatewayPort>` rule for the injected
-`http://host.docker.internal:<GatewayPort>` URL; a Sandbox-local replay sidecar receives no network
-allow. The runner verifies that exact allow plus a fixed public, DNS/UDP, raw TCP, metadata,
-private-network, and alternate-host deny matrix before executing candidate code. No policy in this
-boundary restricts strategy logic, candidate content, or tool choice.
+effect, the runner snapshots the effective per-Sandbox network allow rules. An exact but unowned
+Gateway rule fails closed. Other inherited allow resources are neutralized by runner-owned,
+Sandbox-scoped deny rules with the exact same aggregate resources; the machine-global policy and
+other Sandboxes are not mutated. The CLI may expand one multi-resource mutation into multiple owned
+rule IDs. A host-provider run then adds one runner-owned
+`localhost:<GatewayPort>` rule for the injected `http://host.docker.internal:<GatewayPort>` URL; a
+Sandbox-local replay sidecar receives no additional allow. Docker's deny-wins evaluation plus a
+fixed public, DNS/UDP, raw TCP, metadata, private-network, and alternate-host policy-check matrix
+must prove the effective boundary before candidate code executes. No policy in this boundary
+restricts strategy logic, candidate content, or tool choice.
 
-Every terminal path collects the bounded `sbx policy log`, removes the runner-owned rule, stops or
-removes the Sandbox, and retains command evidence. Continuous paper sessions persist only the
-owned rule lease outside the candidate workspace so a replacement adapter can recover and remove
-it after restart. Unknown ownership, policy JSON drift, cleanup failure, and an unsupported `sbx`
-version are infrastructure failures, not strategy Findings.
+Every terminal path collects the bounded `sbx policy log`, removes every exact owned Gateway allow
+rule by ID, then removes every owned deny rule by ID, stops or removes the Sandbox, and retains
+command evidence. If Gateway-rule cleanup fails, the deny overlay remains. Continuous paper sessions
+persist both rule-ID sets and the inherited allow fingerprint outside the candidate workspace so a
+replacement adapter can recover and remove only owned rules after restart. Existing v1 Gateway leases are
+migrated by resolving one exact Sandbox-scoped rule ID before removal. Unknown ownership, policy
+JSON drift, cleanup failure, and an unsupported `sbx` version are infrastructure failures, not
+strategy Findings. Host policy mutation is outside candidate authority; durable start/end policy
+identity and mismatch evidence belong to the egress-attestation frontier.
 
 `npm run prove:candidate-sandbox-egress` is the live platform proof. It starts a temporary local
 Gateway and executes a candidate-owned adversarial fixture that requires Gateway HTTP success while
 direct HTTP, redirects, DNS, raw sockets, subprocesses, metadata/private addresses, and a second
-reachable but unallowed host listener fail. This runtime proof does not replace the future durable
-egress-attestation record.
+reachable but unallowed host listener fail. Raw TCP counts as an escape only after response bytes
+return; socket connect completion alone can be a proxy-local acknowledgement. This runtime proof
+does not replace the future durable egress-attestation record.
 
 ## Comparable Trading Evidence
 
@@ -720,8 +728,9 @@ The following current surfaces require implementation work before P0 can pass:
   payloads retain their specific rejection. A handoff-only adversarial rejection creates no
   candidate and persists as an `anti_hacking_case` Finding under the handoff boundary that observed
   it.
-  Generated-candidate direct process egress is now deny-by-default with an exact local Gateway
-  exception, adversarial in-Sandbox probes, restart-owned cleanup, and policy command evidence.
+  Generated-candidate direct process egress is now deny-by-default through a Sandbox-scoped overlay
+  that neutralizes inherited host allows, with an exact local Gateway exception, adversarial
+  in-Sandbox probes, rule-ID restart cleanup, and policy command evidence.
   Durable egress attestation and the full adversarial matrix for score probing, evaluator side
   channels, other window cherry-picking paths, cross-commitment probing, provider-identity
   ineligibility, and approximate or cross-suite behavior clustering remain incomplete.
@@ -800,8 +809,9 @@ evaluation. This is restart-stable comparison-backed Trading review, not product
    reject bounded protocol, provider, self-report, hidden-field, private/live, and timeout
    violations. Provider request envelopes are now structurally exact, hidden/self-report aliases
    normalize before classification, and handoff-only attacks persist as anti-hacking memory. Exact
-   same-suite behavior duplicates are isolated. Generated-candidate direct process egress is
-   deny-by-default with one exact injected Gateway exception and adversarial runtime proof, while
+   same-suite behavior duplicates are isolated. Generated-candidate direct process egress
+   neutralizes inherited host allows with a Sandbox-scoped deny overlay, permits one exact injected
+   Gateway exception, and has adversarial runtime proof, while
    durable egress attestation, cross-commitment probing, broader evaluator side channels, window
    cherry-picking, and approximate behavior clustering remain. Query bounds alone are not a
    reward-hacking proof.

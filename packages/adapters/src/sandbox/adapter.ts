@@ -23,6 +23,7 @@ import {
   acquireCandidateSandboxNetworkPolicy,
   assertCandidateSandboxSbxVersion,
   CandidateSandboxNetworkPolicyError,
+  recoverCandidateSandboxNetworkPolicyRuleId,
   releaseCandidateSandboxNetworkPolicy,
   type CandidateSandboxNetworkPolicyLease
 } from "@ouroboros/application/trading/research/candidate-sandbox-network-policy";
@@ -83,6 +84,23 @@ export interface SandboxAdapter {
     instance: SandboxRecord | SandboxDetailReadModel
   ): Promise<SandboxAdapterObservationResult>;
 }
+
+interface PersistedCandidateSandboxNetworkPolicyLeaseV1 {
+  schema_version: 1;
+  allowed_resource: string;
+}
+
+interface PersistedCandidateSandboxNetworkPolicyLeaseV2 {
+  schema_version: 2;
+  allowed_resource?: string;
+  inherited_allowed_resources: string[];
+  owned_allow_rule_ids: string[];
+  owned_deny_rule_ids: string[];
+}
+
+type PersistedCandidateSandboxNetworkPolicyLease =
+  | PersistedCandidateSandboxNetworkPolicyLeaseV1
+  | PersistedCandidateSandboxNetworkPolicyLeaseV2;
 
 export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
@@ -548,12 +566,11 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       const persistedNetworkPolicy = await this.readPersistedNetworkPolicyLease(input.sandbox_name);
       if (persistedNetworkPolicy) {
         try {
-          networkPolicyResults.push(...await releaseCandidateSandboxNetworkPolicy({
-            sbx_path: this.sbxPath,
-            sandbox_name: input.sandbox_name,
-            owned_resource: persistedNetworkPolicy.allowed_resource,
-            run_command: (command) => this.runSbxCommand(command)
-          }));
+          await this.releasePersistedNetworkPolicy(
+            input.sandbox_name,
+            persistedNetworkPolicy,
+            (result) => networkPolicyResults.push(result)
+          );
           await this.removePersistedNetworkPolicyLease(input.sandbox_name);
         } catch (error) {
           if (
@@ -911,7 +928,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     sandboxName: string,
     lease: CandidateSandboxNetworkPolicyLease<CommandResult>
   ): Promise<void> {
-    if (!lease.owned_rule || !lease.allowed_resource) {
+    if (!lease.owned_rule) {
       await this.removePersistedNetworkPolicyLease(sandboxName);
       return;
     }
@@ -920,14 +937,50 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     const temporary = target + "." + String(process.pid) + ".tmp";
     try {
       await writeFile(temporary, JSON.stringify({
-        version: 1,
+        version: 2,
         sandbox_name: sandboxName,
-        allowed_resource: lease.allowed_resource
+        ...(lease.allowed_resource ? { allowed_resource: lease.allowed_resource } : {}),
+        inherited_allowed_resources: [...lease.inherited_allowed_resources],
+        owned_allow_rule_ids: [...lease.owned_allow_rule_ids],
+        owned_deny_rule_ids: [...lease.owned_deny_rule_ids]
       }) + "\n", { encoding: "utf8", mode: 0o600 });
       await rename(temporary, target);
     } finally {
       await rm(temporary, { force: true });
     }
+  }
+
+  private async releasePersistedNetworkPolicy(
+    sandboxName: string,
+    persisted: PersistedCandidateSandboxNetworkPolicyLease,
+    onEvidence?: (result: CommandResult) => void
+  ): Promise<CommandResult[]> {
+    const results: CommandResult[] = [];
+    const record = (result: CommandResult): void => {
+      results.push(result);
+      onEvidence?.(result);
+    };
+    const ownedAllowRuleIds = persisted.schema_version === 1
+      ? [await recoverCandidateSandboxNetworkPolicyRuleId({
+        sbx_path: this.sbxPath,
+        sandbox_name: sandboxName,
+        decision: "allow",
+        resources: [persisted.allowed_resource],
+        run_command: (command) => this.runSbxCommand(command),
+        on_evidence: record
+      })]
+      : persisted.owned_allow_rule_ids;
+    await releaseCandidateSandboxNetworkPolicy({
+      sbx_path: this.sbxPath,
+      sandbox_name: sandboxName,
+      owned_allow_rule_ids: ownedAllowRuleIds,
+      owned_deny_rule_ids: persisted.schema_version === 2
+        ? persisted.owned_deny_rule_ids
+        : [],
+      run_command: (command) => this.runSbxCommand(command),
+      on_evidence: record
+    });
+    return results;
   }
 
   private async releaseNetworkPolicy(sandboxName: string): Promise<{
@@ -942,12 +995,13 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
         results = await lease.release();
       } else {
         const persisted = await this.readPersistedNetworkPolicyLease(sandboxName);
-        results = await releaseCandidateSandboxNetworkPolicy({
-          sbx_path: this.sbxPath,
-          sandbox_name: sandboxName,
-          ...(persisted ? { owned_resource: persisted.allowed_resource } : {}),
-          run_command: (command) => this.runSbxCommand(command)
-        });
+        results = persisted
+          ? await this.releasePersistedNetworkPolicy(sandboxName, persisted)
+          : await releaseCandidateSandboxNetworkPolicy({
+            sbx_path: this.sbxPath,
+            sandbox_name: sandboxName,
+            run_command: (command) => this.runSbxCommand(command)
+          });
       }
     } catch (error) {
       failure = error;
@@ -969,20 +1023,36 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
 
   private async readPersistedNetworkPolicyLease(
     sandboxName: string
-  ): Promise<{ allowed_resource: string } | undefined> {
+  ): Promise<PersistedCandidateSandboxNetworkPolicyLease | undefined> {
     try {
       const parsed = JSON.parse(
         await readFile(this.networkPolicyLeaseFile(sandboxName), "utf8")
       ) as Record<string, unknown>;
-      if (
-        parsed.version !== 1 ||
-        parsed.sandbox_name !== sandboxName ||
-        typeof parsed.allowed_resource !== "string" ||
-        !validPersistedCandidateNetworkResource(parsed.allowed_resource)
-      ) {
+      if (parsed.sandbox_name !== sandboxName) {
         throw new Error("candidate_network_policy_lease_invalid");
       }
-      return { allowed_resource: parsed.allowed_resource };
+      if (
+        parsed.version === 1 &&
+        typeof parsed.allowed_resource === "string" &&
+        validPersistedCandidateGatewayResource(parsed.allowed_resource)
+      ) {
+        return {
+          schema_version: 1,
+          allowed_resource: parsed.allowed_resource
+        };
+      }
+      if (parsed.version !== 2 || !validPersistedCandidateNetworkPolicyLeaseV2(parsed)) {
+        throw new Error("candidate_network_policy_lease_invalid");
+      }
+      return {
+        schema_version: 2,
+        ...(typeof parsed.allowed_resource === "string"
+          ? { allowed_resource: parsed.allowed_resource }
+          : {}),
+        inherited_allowed_resources: [...parsed.inherited_allowed_resources],
+        owned_allow_rule_ids: [...parsed.owned_allow_rule_ids],
+        owned_deny_rule_ids: [...parsed.owned_deny_rule_ids]
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return undefined;
@@ -1091,13 +1161,82 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   }
 }
 
-function validPersistedCandidateNetworkResource(value: string): boolean {
+function validPersistedCandidateNetworkPolicyLeaseV2(
+  value: Record<string, unknown>
+): value is Record<string, unknown> & Omit<
+  PersistedCandidateSandboxNetworkPolicyLeaseV2,
+  "schema_version"
+> {
+  const allowedResource = value.allowed_resource;
+  const inheritedResources = value.inherited_allowed_resources;
+  const allowRuleIds = value.owned_allow_rule_ids;
+  const denyRuleIds = value.owned_deny_rule_ids;
+  if (
+    (allowedResource !== undefined && (
+      typeof allowedResource !== "string" ||
+      !validPersistedCandidateGatewayResource(allowedResource)
+    )) ||
+    !Array.isArray(inheritedResources) ||
+    !validPersistedCandidateNetworkResources(inheritedResources) ||
+    !Array.isArray(allowRuleIds) ||
+    !validPersistedCandidateNetworkRuleIds(allowRuleIds) ||
+    !Array.isArray(denyRuleIds) ||
+    !validPersistedCandidateNetworkRuleIds(denyRuleIds)
+  ) {
+    return false;
+  }
+  return (
+    Boolean(allowedResource) === (allowRuleIds.length > 0) &&
+    (inheritedResources.length > 0) === (denyRuleIds.length > 0) &&
+    allowRuleIds.length + denyRuleIds.length > 0
+  );
+}
+
+function validPersistedCandidateGatewayResource(value: string): boolean {
   const match = /^localhost:(\d{4,5})$/.exec(value);
   if (!match) {
     return false;
   }
   const port = Number(match[1]);
   return Number.isInteger(port) && port >= 1024 && port <= 65_535;
+}
+
+function validPersistedCandidateNetworkResources(value: unknown[]): value is string[] {
+  if (
+    value.length > 512 ||
+    value.some((resource) =>
+      typeof resource !== "string" ||
+      resource.length === 0 ||
+      resource.length > 1_024 ||
+      resource !== resource.trim() ||
+      resource.includes(",") ||
+      /[\u0000-\u001f\u007f]/.test(resource)
+    )
+  ) {
+    return false;
+  }
+  const resources = value as string[];
+  return (
+    resources.join(",").length <= 32_768 &&
+    resources.every((resource, index) => index === 0 || resources[index - 1]! < resource)
+  );
+}
+
+function validPersistedCandidateNetworkRuleId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value);
+}
+
+function validPersistedCandidateNetworkRuleIds(value: unknown[]): value is string[] {
+  if (
+    value.length > 512 ||
+    value.some((ruleId) =>
+      typeof ruleId !== "string" || !validPersistedCandidateNetworkRuleId(ruleId)
+    )
+  ) {
+    return false;
+  }
+  const ruleIds = value as string[];
+  return ruleIds.every((ruleId, index) => index === 0 || ruleIds[index - 1]! < ruleId);
 }
 
 function commandEvidenceSuffix(label: string, result: CommandResult): string {
