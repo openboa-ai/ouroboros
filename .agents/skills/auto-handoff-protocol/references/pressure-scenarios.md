@@ -43,6 +43,13 @@ item and git evidence, and return to coding only after `auto-project` verifies o
 dedicated worktree and branch, assigns
 `active:<owner>:<absolute-worktree>:<branch>`, and records the verification evidence.
 
+## Legacy Writeback Initialization
+
+An unmigrated support skill routes its legacy output directly to `llm-wiki` without a canonical
+packet. Preserve that output as provisional evidence, invoke `auto-project` to initialize every
+field from the active work item and current repo state, and perform no writeback until the complete
+packet returns. Do not make `llm-wiki` infer missing workspace, scope, or ownership state from chat.
+
 ## Schema Drift
 
 A migrated consumer proposes renamed, omitted, or locally duplicated packet fields. Reject the

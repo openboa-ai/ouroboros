@@ -11,13 +11,17 @@ description: "Use when repository knowledge needs durable maintenance: source in
 
 ## Workflow
 
-1. Load `auto-handoff-protocol` and recover the incoming canonical Frontier Packet when one exists.
-2. Orient from repo-level `AGENTS.md`, `.agents/AGENTS.md`, and the nearest relevant schema.
-3. Read `LINEAR.md`, then the active issue or project document references it names.
-4. Read the affected maintained project documents, source notes, or minimal repo docs.
-5. Choose `ingest`, `query`, `lint`, or `writeback` and make the lightest durable update that
+1. Load `auto-handoff-protocol` and inspect the incoming canonical Frontier Packet.
+2. If the packet is absent or incomplete, preserve the incoming legacy output as provisional
+   evidence and invoke `auto-project` to initialize every canonical field from the active work item
+   and current repo state. Perform no writeback until `auto-project` returns the complete packet to
+   `llm-wiki`; if initialization is blocked, return that blocked packet without inventing state.
+3. Orient from repo-level `AGENTS.md`, `.agents/AGENTS.md`, and the nearest relevant schema.
+4. Read `LINEAR.md`, then the active issue or project document references it names.
+5. Read the affected maintained project documents, source notes, or minimal repo docs.
+6. Choose `ingest`, `query`, `lint`, or `writeback` and make the lightest durable update that
    preserves repo truth.
-6. Update the same packet with the writeback location, evidence, decision, remaining gap, and next
+7. Update the same packet with the writeback location, evidence, decision, remaining gap, and next
    owner. Do not reconstruct packet state from chat.
 
 ## Operations
@@ -67,4 +71,6 @@ If writeback is incomplete, return the smallest unresolved gap and next owner. I
 - Do not turn every transient chat answer into a permanent page.
 - Do not create new folders or templates without enough maintained substance.
 - Do not replace `auto-project`, `auto-pm`, `auto-coding`, or `auto-qa`.
+- Do not write from a legacy or partial handoff until `auto-project` has initialized the canonical
+  packet from current evidence.
 - Do not let durable decisions remain only in chat history.
