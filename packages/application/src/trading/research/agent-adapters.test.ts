@@ -238,6 +238,35 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
     });
   });
 
+  it("does not start the provider before durable ownership claim succeeds", async () => {
+    const executablePath = path.join(tmpDir, "fake-codex-startup-effect.cjs");
+    const startupMarkerPath = path.join(tmpDir, "provider-started.txt");
+    await writeFile(executablePath, startupEffectCodexScript(), "utf8");
+    await chmod(executablePath, 0o755);
+    const ownership = new RejectingProcessOwnershipPort();
+    const adapter = new CodexTradingResearchAgentAdapter({
+      command: executablePath,
+      timeout_ms: 5_000,
+      process_ownership: ownership,
+      host_id: "host-a",
+      env: { TEST_PROVIDER_STARTUP_MARKER_PATH: startupMarkerPath }
+    });
+
+    await expect(adapter.runSession({
+      artifact_dir: tmpDir,
+      program_path: path.join(tmpDir, "program.md"),
+      notebook_path: path.join(tmpDir, "notebook.json"),
+      submission_limit: 1,
+      timeout_ms: 5_000,
+      process_ownership: researchWorkerProcessScope(),
+      tools: idleTools()
+    })).rejects.toThrow(/ownership/i);
+
+    await delay(100);
+    await expect(access(startupMarkerPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(ownership.events).toEqual(["reconcile:terminate", "claim"]);
+  });
+
   it.each([
     ["timeout", ownedTimeoutCodexScript(), "timed_out"],
     ["crash", ownedCrashCodexScript(), "crashed"]
@@ -322,6 +351,14 @@ process.stdin.on("end", () => {
 function ownedTimeoutCodexScript(): string {
   return `#!/usr/bin/env node
 process.stdin.resume();
+setInterval(() => {}, 1000);
+`;
+}
+
+function startupEffectCodexScript(): string {
+  return `#!/usr/bin/env node
+const fs = require("node:fs");
+fs.writeFileSync(process.env.TEST_PROVIDER_STARTUP_MARKER_PATH, "started");
 setInterval(() => {}, 1000);
 `;
 }
@@ -456,6 +493,14 @@ class RecordingProcessOwnershipPort implements RuntimeProcessOwnershipPort {
 
   async history(): Promise<RuntimeProcessOwnershipRecord[]> {
     return [...this.records];
+  }
+}
+
+class RejectingProcessOwnershipPort extends RecordingProcessOwnershipPort {
+  override async claim(): Promise<RuntimeProcessOwnershipRecord> {
+    this.events.push("claim");
+    await delay(200);
+    throw new Error("durable ownership unavailable");
   }
 }
 

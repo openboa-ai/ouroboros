@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import type { Ref, RuntimeProcessTerminalReason } from "@ouroboros/domain";
 import type {
@@ -50,7 +50,73 @@ const CODEX_RESEARCH_SHELL_ENVIRONMENT_CONFIG =
   "\"OUROBOROS_RESEARCH_TOOL_BASE_URL\"," +
   "\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\"," +
   "\"OUROBOROS_RESEARCH_TOOL_TOKEN\"," +
-  "\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]";
+    "\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]";
+const OWNED_PROVIDER_PROCESS_GATE_SOURCE = String.raw`
+const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+const [gateFile, file, ...args] = process.argv.slice(1);
+const deadline = Date.now() + 120000;
+let child;
+const timer = setInterval(() => {
+  let gateState;
+  try {
+    gateState = fs.readFileSync(gateFile, "utf8");
+  } catch (error) {
+    if (error && error.code !== "ENOENT") {
+      clearInterval(timer);
+      process.exit(79);
+    }
+    if (Date.now() >= deadline) {
+      clearInterval(timer);
+      process.exit(78);
+    }
+    return;
+  }
+  if (gateState !== "go\n") {
+    if (Date.now() >= deadline) {
+      clearInterval(timer);
+      process.exit(78);
+    }
+    return;
+  }
+  clearInterval(timer);
+  try { fs.unlinkSync(gateFile); } catch {}
+  child = spawn(file, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  child.stdin.on("error", (error) => {
+    if (!error || error.code !== "EPIPE") process.exitCode = 1;
+  });
+  process.stdin.pipe(child.stdin);
+  child.stdout.pipe(process.stdout);
+  child.stderr.pipe(process.stderr);
+  child.once("error", () => process.exit(127));
+  child.once("close", (code) => process.exit(code ?? 1));
+}, 5);
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => child?.kill(signal));
+}
+`;
+const OWNED_PROVIDER_PROCESS_GATE_SHELL = String.raw`
+gate_file=$1
+shift
+attempt=0
+while [ "$attempt" -lt 12000 ]; do
+  gate_state=
+  if [ -r "$gate_file" ]; then
+    IFS= read -r gate_state < "$gate_file" || true
+  fi
+  if [ "$gate_state" = "go" ]; then
+    rm -f -- "$gate_file"
+    exec "$@"
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.01
+done
+exit 78
+`;
 
 export interface CodexTradingResearchAgentOptions {
   model?: string;
@@ -527,9 +593,14 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
   }
   const sessionToken = options.ownership ? randomUUID() : undefined;
   const startedAt = new Date().toISOString();
+  const gateFile = sessionToken ? providerOwnershipGateFile(sessionToken) : undefined;
+  if (gateFile) {
+    await writeFile(gateFile, "wait\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+  }
   return new Promise((resolve, reject) => {
     const processGroup = process.platform !== "win32";
-    const child = spawn(file, args, {
+    const gatedCommand = providerGatedCommand(file, args, gateFile);
+    const child = spawn(gatedCommand.file, gatedCommand.args, {
       cwd: options.cwd,
       env: managedResearchAgentEnv({
         ...options.env,
@@ -603,6 +674,10 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
       }
     });
     child.on("error", (error) => {
+      if (gateFile) {
+        void rm(gateFile, { force: true }).finally(() => failBeforeSpawn(error));
+        return;
+      }
       failBeforeSpawn(error);
     });
     child.stdin.on("error", (error) => {
@@ -620,8 +695,9 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
         processId: child.pid,
         sessionToken,
         startedAt
-      }).then((record) => {
+      }).then(async (record) => {
         ownershipRecord = record;
+        if (gateFile) await releaseProviderOwnershipGate(gateFile);
         child.stdin.end(options.stdin ?? "");
       }).catch((error) => {
         terminate(new CodexCommandError(
@@ -646,8 +722,13 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
         return;
       }
       settled = true;
+      let ownershipSetupError: unknown;
       try {
         await ownershipClaim;
+      } catch (error) {
+        ownershipSetupError = error;
+      }
+      try {
         if (ownershipRecord && options.ownership) {
           await options.ownership.port.close({
             ownership: ownershipRecord,
@@ -655,11 +736,23 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
             closedAt: new Date().toISOString()
           });
         }
+        if (gateFile) await rm(gateFile, { force: true });
       } catch (error) {
         reject(new CodexCommandError(
           "codex_cli_failed",
           error instanceof Error
             ? `Provider process ownership finalization failed: ${error.message}`
+            : "Provider process ownership finalization failed.",
+          stdoutText(),
+          stderrText()
+        ));
+        return;
+      }
+      if (ownershipSetupError) {
+        reject(new CodexCommandError(
+          "codex_cli_failed",
+          ownershipSetupError instanceof Error
+            ? `Provider process ownership finalization failed: ${ownershipSetupError.message}`
             : "Provider process ownership finalization failed.",
           stdoutText(),
           stderrText()
@@ -685,6 +778,52 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     };
   });
 };
+
+function providerOwnershipGateFile(sessionToken: string): string {
+  const tokenDigest = createHash("sha256").update(sessionToken).digest("hex");
+  return path.join(tmpdir(), `ouroboros-provider-ownership-${tokenDigest}.gate`);
+}
+
+function providerGatedCommand(
+  file: string,
+  args: string[],
+  gateFile: string | undefined
+): { file: string; args: string[] } {
+  if (!gateFile) return { file, args };
+  return process.platform === "win32"
+    ? {
+        file: process.execPath,
+        args: ["-e", OWNED_PROVIDER_PROCESS_GATE_SOURCE, gateFile, file, ...args]
+      }
+    : {
+        file: "/bin/sh",
+        args: [
+          "-c",
+          OWNED_PROVIDER_PROCESS_GATE_SHELL,
+          "ouroboros-provider-gate",
+          gateFile,
+          file,
+          ...args
+        ]
+      };
+}
+
+async function releaseProviderOwnershipGate(gateFile: string): Promise<void> {
+  await writeFile(gateFile, "go\n", { encoding: "utf8", mode: 0o600 });
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const consumed = await readFile(gateFile, "utf8").then(
+      () => false,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return true;
+        throw error;
+      }
+    );
+    if (consumed) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("provider_ownership_gate_consumption_timeout");
+}
 
 function providerTerminalReason(
   exitCode: number | null,

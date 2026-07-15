@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RuntimeProcessOwnershipRecord } from "@ouroboros/domain";
+import {
+  adoptRuntimeProcessOwnership,
+  type RuntimeProcessOwnershipRecord
+} from "@ouroboros/domain";
 import {
   FileSystemRuntimeProcessOwnershipStore,
   RuntimeProcessOwnershipStoreError,
@@ -329,21 +332,42 @@ describe("FileSystemRuntimeProcessOwnershipStore", () => {
     const store = processStore();
     const claimed = await store.claim(claimInput());
     const historyDir = path.join(root, "history", runtimeProcessScopeKey());
-    const adoptionFile = [
-      claimed.started_at.replace(/[:.]/g, "-"),
-      "000001",
-      "adopted",
-      `${claimed.runtime_process_ownership_id}.json`
-    ].join("-");
-    await writeFile(path.join(historyDir, adoptionFile), "occupied\n", "utf8");
+    await chmod(historyDir, 0o500);
+    try {
+      await expect(store.reconcile({
+        expected: expectedIdentity(),
+        mode: "adopt",
+        reconciledAt: "2026-07-15T00:00:01.000Z"
+      })).rejects.toMatchObject({ code: "EACCES" });
 
+      await expect(store.active(expectedIdentity())).resolves.toEqual(claimed);
+    } finally {
+      await chmod(historyDir, 0o700);
+    }
+  });
+
+  it("recovers a newer open adoption when the active pointer is stale", async () => {
+    const store = processStore();
+    const claimed = await store.claim(claimInput());
+    const adopted = adoptRuntimeProcessOwnership({
+      ownership: claimed,
+      adoptedAt: "2026-07-15T00:00:01.000Z"
+    });
+    await writeFile(
+      adoptionHistoryPath(root, adopted),
+      `${JSON.stringify(adopted)}\n`,
+      { encoding: "utf8", mode: 0o600 }
+    );
+
+    await expect(store.active(expectedIdentity())).resolves.toEqual(adopted);
     await expect(store.reconcile({
       expected: expectedIdentity(),
       mode: "adopt",
-      reconciledAt: "2026-07-15T00:00:01.000Z"
-    })).rejects.toMatchObject({ code: "EEXIST" });
-
-    await expect(store.active(expectedIdentity())).resolves.toEqual(claimed);
+      reconciledAt: "2026-07-15T00:00:02.000Z"
+    })).resolves.toMatchObject({
+      status: "adopted",
+      ownership: { adoption_count: 2 }
+    });
   });
 
   it("does not let stale-lock observers delete a contender's fresh lock", async () => {
@@ -535,4 +559,18 @@ function activeOwnershipPath(root: string): string {
 
 function runtimeProcessLockPath(root: string): string {
   return path.join(root, "locks", `${runtimeProcessScopeKey()}.lock`);
+}
+
+function adoptionHistoryPath(root: string, record: RuntimeProcessOwnershipRecord): string {
+  return path.join(
+    root,
+    "history",
+    runtimeProcessScopeKey(),
+    [
+      record.started_at.replace(/[:.]/g, "-"),
+      String(record.adoption_count).padStart(6, "0"),
+      "adopted",
+      `${record.runtime_process_ownership_id}.json`
+    ].join("-")
+  );
 }

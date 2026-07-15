@@ -324,11 +324,21 @@ export class FileSystemRuntimeProcessOwnershipStore implements RuntimeProcessOwn
     const loaded = await readState(this.paths(scope).active);
     if (loaded === "missing") return this.readOpenHistory(scope);
     if (loaded === "invalid") return { status: "invalid" };
-    return loaded.process_kind === scope.process_kind &&
+    if (!(loaded.process_kind === scope.process_kind &&
       sameRef(loaded.subject_ref, scope.subject_ref) &&
-      loaded.ownership_status === "active"
-      ? { status: "valid", record: loaded }
-      : { status: "invalid" };
+      loaded.ownership_status === "active")) {
+      return { status: "invalid" };
+    }
+    const openHistory = await this.readOpenHistory(scope);
+    if (openHistory.status === "invalid") return openHistory;
+    if (openHistory.status === "missing") return { status: "valid", record: loaded };
+    if (!sameOwnershipLineage(openHistory.record, loaded) ||
+      openHistory.record.adoption_count < loaded.adoption_count ||
+      (openHistory.record.adoption_count === loaded.adoption_count &&
+        openHistory.record.ownership_digest !== loaded.ownership_digest)) {
+      return { status: "invalid" };
+    }
+    return openHistory;
   }
 
   private async readOpenHistory(scope: Scope): Promise<ActiveState> {
