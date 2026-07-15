@@ -29,6 +29,9 @@ describe("candidate Sandbox network policy", () => {
 
     expect(lease.allowed_resource).toBe("localhost:4173");
     expect(lease.owned_rule).toBe(true);
+    expect(lease.owned_allow_rule_ids).toEqual(["owned-allow-1"]);
+    expect(lease.owned_deny_rule_ids).toEqual([]);
+    expect(lease.inherited_allowed_resources).toEqual([]);
     expect(fake.allowedResources()).toEqual(["localhost:4173"]);
     expect(fake.commands).toContainEqual([
       "/usr/local/bin/sbx",
@@ -72,8 +75,8 @@ describe("candidate Sandbox network policy", () => {
       "network",
       "--sandbox",
       "ouro-candidate-1",
-      "--resource",
-      "localhost:4173"
+      "--id",
+      "owned-allow-1"
     ]);
   });
 
@@ -116,17 +119,109 @@ describe("candidate Sandbox network policy", () => {
     )).toHaveLength(2);
   });
 
-  it("fails closed when any unrelated effective allow rule exists", async () => {
-    const fake = fakePolicyRuntime(["registry.npmjs.org"]);
+  it("neutralizes inherited balanced-policy allows with a Sandbox-scoped deny overlay", async () => {
+    const inheritedAllows = ["**.github.com:443", "registry.npmjs.org:443"];
+    const fake = fakePolicyRuntime(inheritedAllows);
+
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-balanced",
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    });
+
+    expect(fake.commands).toContainEqual([
+      "sbx",
+      "policy",
+      "deny",
+      "network",
+      "--sandbox",
+      "ouro-candidate-balanced",
+      inheritedAllows.join(",")
+    ]);
+    expect(fake.deniedResources()).toEqual(inheritedAllows);
+    expect(fake.allowedResources()).toEqual([...inheritedAllows, "localhost:4173"].sort());
+    expect(lease.inherited_allowed_resources).toEqual(inheritedAllows);
+    expect(lease.owned_deny_rule_ids).toEqual(["owned-deny-1", "owned-deny-2"]);
+    expect(lease.owned_allow_rule_ids).toEqual(["owned-allow-3"]);
+
+    await lease.release();
+
+    expect(fake.allowedResources()).toEqual(inheritedAllows);
+    expect(fake.deniedResources()).toEqual([]);
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup).toHaveLength(3);
+    expect(cleanup[0]).toContain("owned-allow-3");
+    expect(cleanup[1]).toContain("owned-deny-1");
+    expect(cleanup[2]).toContain("owned-deny-2");
+  });
+
+  it("neutralizes inherited allows for an in-Sandbox sidecar without adding a Gateway allow", async () => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"]);
+
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-sidecar-balanced",
+      run_command: fake.run
+    });
+
+    expect(lease.allowed_resource).toBeUndefined();
+    expect(lease.owned_allow_rule_ids).toEqual([]);
+    expect(lease.owned_deny_rule_ids).toEqual(["owned-deny-1"]);
+    expect(fake.commands.some((command) => command[2] === "allow")).toBe(false);
+
+    await lease.release();
+
+    expect(fake.deniedResources()).toEqual([]);
+    expect(fake.commands.at(-1)).toContain("owned-deny-1");
+  });
+
+  it("fails closed and rolls back both owned rules when inherited wildcard deny blocks Gateway", async () => {
+    const fake = fakePolicyRuntime(["**"]);
 
     await expect(acquireCandidateSandboxNetworkPolicy({
       sbx_path: "sbx",
-      sandbox_name: "ouro-candidate-broad",
+      sandbox_name: "ouro-candidate-wildcard",
       gateway_base_url: "http://host.docker.internal:4173",
       run_command: fake.run
-    })).rejects.toMatchObject({
-      code: "unexpected_network_allow"
+    })).rejects.toMatchObject({ code: "policy_check_failed" });
+
+    expect(fake.allowedResources()).toEqual(["**"]);
+    expect(fake.deniedResources()).toEqual([]);
+    const cleanup = fake.commands.filter((command) => command[2] === "rm");
+    expect(cleanup[0]).toContain("owned-allow-2");
+    expect(cleanup[1]).toContain("owned-deny-1");
+  });
+
+  it("retains the deny overlay when owned Gateway allow cleanup fails", async () => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"], {
+      failedRemoveRuleId: "owned-allow-2"
     });
+    const lease = await acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-cleanup-failure",
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    });
+
+    await expect(lease.release()).rejects.toMatchObject({ code: "policy_cleanup_failed" });
+
+    expect(fake.deniedResources()).toEqual(["registry.npmjs.org:443"]);
+    expect(fake.commands.filter((command) => command[2] === "rm")).toHaveLength(1);
+  });
+
+  it("fails closed when the created deny overlay is inactive", async () => {
+    const fake = fakePolicyRuntime(["registry.npmjs.org:443"], {
+      inactiveOwnedDecision: "deny"
+    });
+
+    await expect(acquireCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-inactive-overlay",
+      gateway_base_url: "http://host.docker.internal:4173",
+      run_command: fake.run
+    })).rejects.toMatchObject({ code: "policy_inspection_failed" });
+
     expect(fake.commands.some((command) => command[2] === "allow")).toBe(false);
   });
 
@@ -183,8 +278,8 @@ describe("candidate Sandbox network policy", () => {
       "network",
       "--sandbox",
       "ouro-candidate-json-drift",
-      "--resource",
-      "localhost:4173"
+      "--id",
+      "owned-allow-1"
     ]);
   });
 
@@ -213,25 +308,37 @@ describe("candidate Sandbox network policy", () => {
       "network",
       "--sandbox",
       "ouro-candidate-log-throws",
-      "--resource",
-      "localhost:4173"
+      "--id",
+      "owned-allow-1"
     ]);
   });
 });
 
 function fakePolicyRuntime(
   initialResources: string[] = [],
-  options: { unknownDecisionTarget?: string } = {}
+  options: {
+    failedRemoveRuleId?: string;
+    inactiveOwnedDecision?: "allow" | "deny";
+    unknownDecisionTarget?: string;
+  } = {}
 ): {
   commands: string[][];
   run(command: string[]): Promise<CandidateSandboxNetworkCommandResult>;
   allowedResources(): string[];
+  deniedResources(): string[];
 } {
   const commands: string[][] = [];
-  const resources = new Set(initialResources);
+  const allowRules = new Map<string, string[]>(
+    initialResources.map((resource, index) => [`inherited-allow-${index + 1}`, [resource]])
+  );
+  const denyRules = new Map<string, string[]>();
+  let nextRule = 1;
+  const resourcesFor = (rules: Map<string, string[]>): string[] =>
+    [...new Set([...rules.values()].flat())].sort();
   return {
     commands,
-    allowedResources: () => [...resources].sort(),
+    allowedResources: () => resourcesFor(allowRules),
+    deniedResources: () => resourcesFor(denyRules),
     run: async (command) => {
       commands.push([...command]);
       const args = command.slice(1);
@@ -239,17 +346,30 @@ function fakePolicyRuntime(
         return commandResult(command, 2, "", "unexpected command");
       }
       if (args[1] === "ls") {
+        const decisionIndex = args.indexOf("--decision");
+        const decision = decisionIndex >= 0 ? args[decisionIndex + 1] : undefined;
+        const rules = decision === "deny" ? denyRules : allowRules;
         return commandResult(command, 0, JSON.stringify({
-          rules: [...resources].map((resource, index) => ({
-            id: `rule-${index}`,
-            decision: "allow",
-            resources: [resource],
-            status: "active"
+          rules: [...rules].map(([id, resources]) => ({
+            id,
+            decision: decision ?? "allow",
+            resources,
+            status: id.startsWith("owned-") && decision === options.inactiveOwnedDecision
+              ? "inactive"
+              : "active",
+            scope: id.startsWith("inherited-") ? "global" : `sandbox:${command[3]}`,
+            ...(id.startsWith("inherited-") ? {} : { sandbox_id: command[3] })
           }))
         }));
       }
       if (args[1] === "allow" && args[2] === "network") {
-        resources.add(args.at(-1)!);
+        allowRules.set(`owned-allow-${nextRule++}`, [args.at(-1)!]);
+        return commandResult(command, 0, "rule added\n");
+      }
+      if (args[1] === "deny" && args[2] === "network") {
+        for (const resource of args.at(-1)!.split(",")) {
+          denyRules.set(`owned-deny-${nextRule++}`, [resource]);
+        }
         return commandResult(command, 0, "rule added\n");
       }
       if (args[1] === "check" && args[2] === "network") {
@@ -257,19 +377,58 @@ function fakePolicyRuntime(
         if (target === options.unknownDecisionTarget) {
           return commandResult(command, 0, JSON.stringify({ result: "unknown" }));
         }
-        const decision = resources.has(target) ? "allow" : "deny";
+        const denied = resourcesFor(denyRules).some((resource) => policyResourceMatches(resource, target));
+        const allowed = resourcesFor(allowRules).some((resource) => policyResourceMatches(resource, target));
+        const decision = denied || !allowed ? "deny" : "allow";
         return commandResult(command, decision === "allow" ? 0 : 1, JSON.stringify({ decision }));
       }
       if (args[1] === "log") {
         return commandResult(command, 0, JSON.stringify({ entries: [] }));
       }
       if (args[1] === "rm" && args[2] === "network") {
-        resources.delete(args.at(-1)!);
+        const idIndex = args.indexOf("--id");
+        const resourceIndex = args.indexOf("--resource");
+        if (idIndex >= 0) {
+          const ruleId = args[idIndex + 1]!;
+          if (ruleId === options.failedRemoveRuleId) {
+            return commandResult(command, 9, "", "rule removal failed");
+          }
+          allowRules.delete(ruleId);
+          denyRules.delete(ruleId);
+        } else if (resourceIndex >= 0) {
+          const resourcesToRemove = new Set(args[resourceIndex + 1]!.split(","));
+          for (const [id, resources] of [...allowRules, ...denyRules]) {
+            if (resources.some((resource) => resourcesToRemove.has(resource))) {
+              allowRules.delete(id);
+              denyRules.delete(id);
+            }
+          }
+        }
         return commandResult(command, 0, "rule removed\n");
       }
       return commandResult(command, 2, "", "unexpected policy command");
     }
   };
+}
+
+function policyResourceMatches(resource: string, target: string): boolean {
+  if (resource === "**") {
+    return true;
+  }
+  let normalizedTarget = target;
+  if (target.includes("://")) {
+    try {
+      const parsed = new URL(target);
+      normalizedTarget = `${parsed.hostname}:${parsed.port || (parsed.protocol === "http:" ? "80" : "443")}`;
+    } catch {
+      // Invalid targets remain unmatched and therefore denied by the fake runtime.
+    }
+  }
+  const normalizedResource = resource.includes(":") ? resource : `${resource}:443`;
+  if (normalizedResource.startsWith("**.")) {
+    return normalizedTarget.endsWith(normalizedResource.slice(2));
+  }
+  return normalizedResource === normalizedTarget;
 }
 
 function commandResult(

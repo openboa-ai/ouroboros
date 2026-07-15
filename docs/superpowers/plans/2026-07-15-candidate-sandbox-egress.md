@@ -200,3 +200,27 @@ Expected: all checks pass, followed by GitHub CI and Codex review on one OURO-18
   --command-timeout-ms 5000`: contract reached the real 0.35 CLI and failed closed at Sandbox
   creation with `sbx_authentication_required`. The live network-effect claim remains unproven until
   a logged-in Docker Sandboxes runtime reruns this command; no product fallback is allowed.
+
+## Corrective Live-Platform Follow-Up
+
+After PR #234 merged, existing Docker credentials were refreshed without exposing their values and
+`sbx diagnose --output json` passed 9/9 checks on v0.35.0. A bounded 180-second proof then created a
+real Sandbox and failed closed at policy inspection because the host's supported `balanced` preset
+contributes broad machine-global allow rules. This disproved the empty-inherited-allow assumption:
+the implementation remained secure but could not run the Candidate loop.
+
+- [x] Add RED coordinator coverage for inherited allow resources, a Sandbox-scoped deny overlay,
+  rule-ID-set ownership, exact Gateway overlap, and allow-ID-before-deny-ID cleanup order.
+- [x] Carry owned deny resources and rule-ID sets through restart-safe adapter lease persistence.
+- [x] Update the real proof harness to neutralize inherited allows without resetting or mutating the
+  machine-global policy.
+- [x] Re-run the authenticated live proof on the current `balanced` host and require
+  `PROOF_RESULT passed` plus complete cleanup.
+- [ ] Re-run focused tests, full tests, typecheck, repo guards, GitHub CI, and current-head Codex
+  review in the corrective OURO-180 PR.
+
+Authenticated live proof evidence on `sbx 0.35.0`: 160 inherited allow resources, 160 owned scoped
+deny rule IDs, one owned Gateway allow rule ID, Gateway success, all ten adversarial probes denied,
+and `cleanup: "complete"`. A first run exposed that the CLI expands a multi-resource mutation into
+multiple rule IDs; a second run exposed that TCP connect completion alone is not external egress.
+The final proof requires TCP DNS response bytes and passed with no proof Sandbox left behind.

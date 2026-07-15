@@ -20,6 +20,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_HEARTBEAT_COUNTER;
   delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
+  delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
   delete process.env.OUROBOROS_SBX_HOME;
@@ -290,6 +291,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     process.env.SBX_FAKE_INSTANCE_ID = "sandbox-network-policy";
+    process.env.SBX_FAKE_INHERITED_ALLOW_JSON = '["registry.npmjs.org:443"]';
 
     const startAdapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
@@ -312,13 +314,29 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     const startCommands = (await readFile(commandLog, "utf8")).trim().split("\n");
     const execIndex = startCommands.findIndex((command) => command.startsWith("exec -d "));
     expect(startCommands.findIndex((command) =>
-      command === "policy allow network --sandbox ouro-s5-network-policy localhost:4173"
+      command === "policy deny network --sandbox ouro-s5-network-policy registry.npmjs.org:443"
     )).toBeGreaterThan(0);
+    expect(startCommands.findIndex((command) =>
+      command === "policy allow network --sandbox ouro-s5-network-policy localhost:4173"
+    )).toBeGreaterThan(startCommands.findIndex((command) =>
+      command === "policy deny network --sandbox ouro-s5-network-policy registry.npmjs.org:443"
+    ));
     expect(startCommands.filter((command) => command.startsWith("policy check network ")))
       .toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length + 1);
     expect(startCommands.findIndex((command) =>
       command.startsWith("policy check network ")
     )).toBeLessThan(execIndex);
+    expect(JSON.parse(await readFile(
+      path.join(policyStatePath, "ouro-s5-network-policy.json"),
+      "utf8"
+    ))).toEqual({
+      version: 2,
+      sandbox_name: "ouro-s5-network-policy",
+      allowed_resource: "localhost:4173",
+      inherited_allowed_resources: ["registry.npmjs.org:443"],
+      owned_allow_rule_ids: ["owned-allow"],
+      owned_deny_rule_ids: ["owned-deny"]
+    });
 
     const stopAdapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
@@ -331,11 +349,60 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     });
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands).toContain(
-      "policy rm network --sandbox ouro-s5-network-policy --resource localhost:4173"
+      "policy rm network --sandbox ouro-s5-network-policy --id owned-allow"
     );
     expect(commands.at(-1)).toBe(
-      "policy rm network --sandbox ouro-s5-network-policy --resource localhost:4173"
+      "policy rm network --sandbox ouro-s5-network-policy --id owned-deny"
     );
+  });
+
+  it("migrates a v1 Gateway lease by resolving its scoped rule ID", async () => {
+    const commandLog = path.join(tmpDir, "network-policy-v1-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-network-policy-v1");
+    const policyStatePath = path.join(tmpDir, "network-policy-v1-leases");
+    const sandboxName = "ouro-s5-network-policy-v1";
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await mkdir(policyStatePath, { recursive: true });
+    await writeFile(`${commandLog}.policy.allow`, "localhost:4173\n", "utf8");
+    await writeFile(path.join(policyStatePath, `${sandboxName}.json`), JSON.stringify({
+      version: 1,
+      sandbox_name: sandboxName,
+      allowed_resource: "localhost:4173"
+    }) + "\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-network-policy-v1";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      networkPolicyStatePath: policyStatePath
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-network-policy-v1",
+      sandbox_name: sandboxName,
+      sandbox_placement_id: "sandbox-placement-network-policy-v1",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1,
+      env: {
+        TRADING_API_BASE_URL: "http://host.docker.internal:4173"
+      }
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    const migratedCleanup = commands.findIndex((command) =>
+      command === `policy rm network --sandbox ${sandboxName} --id owned-allow`
+    );
+    const replacementAllow = commands.findIndex((command, index) =>
+      index > migratedCleanup &&
+      command === `policy allow network --sandbox ${sandboxName} localhost:4173`
+    );
+    expect(migratedCleanup).toBeGreaterThan(0);
+    expect(replacementAllow).toBeGreaterThan(migratedCleanup);
+
+    await adapter.stopArtifactInstance(start.instance);
   });
 
   it("accepts a Docker Sandboxes-compatible CLI even when it is aliased as sdx", async () => {
@@ -593,37 +660,70 @@ case "$1" in
   create)
     echo "created $4"
     ;;
-  policy)
-    case "$2" in
-      ls)
-        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ]; then
-          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy")"
-          printf '{"rules":[{"id":"fake-rule","decision":"allow","resources":["%s"],"status":"active"}]}\\n' "$resource"
-        else
-          printf '{"rules":[]}\\n'
-        fi
-        ;;
-      allow)
-        resource=""
-        for argument in "$@"; do resource="$argument"; done
-        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy"
-        ;;
-      check)
-        target=""
-        for argument in "$@"; do target="$argument"; done
-        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy")" = "$target" ]; then
-          printf '{"decision":"allow"}\\n'
-          exit 0
-        fi
+	  policy)
+	    case "$2" in
+	      ls)
+	        decision=""
+	        for argument in "$@"; do decision="$argument"; done
+	        printf '{"rules":['
+	        separator=""
+	        if [ "$decision" = "allow" ] && [ -n "\${SBX_FAKE_INHERITED_ALLOW_JSON:-}" ]; then
+	          printf '{"id":"inherited-allow","decision":"allow","resources":%s,"status":"active","scope":"global"}' "$SBX_FAKE_INHERITED_ALLOW_JSON"
+	          separator=","
+	        fi
+	        if [ "$decision" = "allow" ] && [ -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ]; then
+	          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy.allow")"
+	          printf '%s{"id":"owned-allow","decision":"allow","resources":["%s"],"status":"active","scope":"sandbox:%s","sandbox_id":"%s"}' "$separator" "$resource" "$3" "$3"
+	        fi
+	        if [ "$decision" = "deny" ] && [ -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ]; then
+	          resources="$(cat "$SBX_FAKE_COMMAND_LOG.policy.deny")"
+	          json_resources="$(printf '%s' "$resources" | sed 's/,/","/g')"
+	          printf '{"id":"owned-deny","decision":"deny","resources":["%s"],"status":"active","scope":"sandbox:%s","sandbox_id":"%s"}' "$json_resources" "$3" "$3"
+	        fi
+	        printf ']}\\n'
+	        ;;
+	      allow)
+	        resource=""
+	        for argument in "$@"; do resource="$argument"; done
+	        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy.allow"
+	        ;;
+	      deny)
+	        resources=""
+	        for argument in "$@"; do resources="$argument"; done
+	        printf '%s\\n' "$resources" > "$SBX_FAKE_COMMAND_LOG.policy.deny"
+	        ;;
+	      check)
+	        target=""
+	        for argument in "$@"; do target="$argument"; done
+	        if [ -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ] && printf '%s' "$(cat "$SBX_FAKE_COMMAND_LOG.policy.deny")" | tr ',' '\\n' | grep -qx '\\*\\*'; then
+	          printf '{"decision":"deny"}\\n'
+	          exit 1
+	        fi
+	        if [ -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy.allow")" = "$target" ]; then
+	          printf '{"decision":"allow"}\\n'
+	          exit 0
+	        fi
         printf '{"decision":"deny"}\\n'
         exit 1
         ;;
-      log)
-        printf '{"entries":[]}\\n'
-        ;;
-      rm)
-        rm -f "$SBX_FAKE_COMMAND_LOG.policy"
-        ;;
+	      log)
+	        printf '{"entries":[]}\\n'
+	        ;;
+	      rm)
+	        rule_id=""
+	        while [ "$#" -gt 0 ]; do
+	          if [ "$1" = "--id" ]; then
+	            rule_id="$2"
+	            break
+	          fi
+	          shift
+	        done
+	        case "$rule_id" in
+	          owned-allow) rm -f "$SBX_FAKE_COMMAND_LOG.policy.allow" ;;
+	          owned-deny) rm -f "$SBX_FAKE_COMMAND_LOG.policy.deny" ;;
+	          *) exit 2 ;;
+	        esac
+	        ;;
       *)
         echo "unexpected policy command: $*" >&2
         exit 2

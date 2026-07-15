@@ -9,7 +9,7 @@ const PROTOCOL_VERSION = "candidate-network-egress-probe/v1";
 const DENIED_POLICY_TARGETS = [
   "https://example.com",
   "https://registry.npmjs.org",
-  "tcp://1.1.1.1:443",
+  "tcp://1.1.1.1:53",
   "udp://1.1.1.1:53",
   "http://169.254.169.254:80",
   "http://10.0.0.1:80"
@@ -98,7 +98,9 @@ async function proveCandidateSandboxEgress() {
   const alternateHostResource = `localhost:${alternateHost.port}`;
   const alternateHostUrl = `http://host.docker.internal:${alternateHost.port}`;
   let sandboxCreated = false;
-  let ruleOwned = false;
+  let ownedAllowRuleIds = [];
+  let ownedDenyRuleIds = [];
+  let inheritedAllowedResources = [];
   let proofReport;
   let primaryFailure;
   const cleanupFailures = [];
@@ -108,32 +110,30 @@ async function proveCandidateSandboxEgress() {
     assertCommand(create, "create");
     sandboxCreated = true;
 
-    const before = await inspectAllowedResources();
-    if (before.length !== 0) {
+    const beforeAllowRules = await inspectNetworkRules("allow");
+    inheritedAllowedResources = networkRuleResources(beforeAllowRules);
+    if (inheritedAllowedResources.includes(gatewayResource)) {
       throw new ProofFailure(
         "policy_inspection",
-        `expected no active network allows, received ${JSON.stringify(before)}`
+        `exact Gateway allow ${gatewayResource} already exists without proof ownership`
       );
     }
 
-    const allow = await runSbx([
-      "policy",
+    if (inheritedAllowedResources.length > 0) {
+      const beforeDenyRules = await inspectNetworkRules("deny");
+      ownedDenyRuleIds = await addScopedNetworkRules(
+        "deny",
+        inheritedAllowedResources,
+        beforeDenyRules,
+        "policy_overlay"
+      );
+    }
+    ownedAllowRuleIds = await addScopedNetworkRules(
       "allow",
-      "network",
-      "--sandbox",
-      sandboxName,
-      gatewayResource
-    ]);
-    assertCommand(allow, "gateway_rule");
-    ruleOwned = true;
-
-    const after = await inspectAllowedResources();
-    if (after.length !== 1 || after[0] !== gatewayResource) {
-      throw new ProofFailure(
-        "policy_inspection",
-        `expected only ${gatewayResource}, received ${JSON.stringify(after)}`
-      );
-    }
+      [gatewayResource],
+      beforeAllowRules,
+      "gateway_rule"
+    );
     await assertPolicyDecision(gatewayResource, "allow");
     for (const target of [...DENIED_POLICY_TARGETS, alternateHostResource]) {
       await assertPolicyDecision(target, "deny");
@@ -152,7 +152,7 @@ async function proveCandidateSandboxEgress() {
       alternateHostUrl
     ]);
     if (probe.exit_code !== 0) {
-      throw new ProofFailure("candidate_probe", commandFailure(probe));
+      throw new ProofFailure("candidate_probe", candidateProbeFailure(probe));
     }
     proofReport = parseProbeReport(probe.stdout);
   } catch (error) {
@@ -165,16 +165,31 @@ async function proveCandidateSandboxEgress() {
         cleanupFailures
       );
     }
-    if (ruleOwned) {
-      await cleanupCommand([
+    let allowRemoved = true;
+    for (const ruleId of ownedAllowRuleIds) {
+      const removed = await cleanupCommand([
         "policy",
         "rm",
         "network",
         "--sandbox",
         sandboxName,
-        "--resource",
-        gatewayResource
+        "--id",
+        ruleId
       ], "policy_cleanup", cleanupFailures);
+      allowRemoved = removed && allowRemoved;
+    }
+    if (allowRemoved) {
+      for (const ruleId of ownedDenyRuleIds) {
+        await cleanupCommand([
+          "policy",
+          "rm",
+          "network",
+          "--sandbox",
+          sandboxName,
+          "--id",
+          ruleId
+        ], "policy_cleanup", cleanupFailures);
+      }
     }
     if (sandboxCreated) {
       await cleanupCommand(["rm", "--force", sandboxName], "sandbox_cleanup", cleanupFailures);
@@ -213,13 +228,16 @@ async function proveCandidateSandboxEgress() {
     sandbox_name: sandboxName,
     gateway_resource: gatewayResource,
     alternate_host_resource: alternateHostResource,
+    inherited_allow_count: inheritedAllowedResources.length,
+    owned_allow_rule_count: ownedAllowRuleIds.length,
+    owned_deny_rule_count: ownedDenyRuleIds.length,
     candidate: proofReport,
     cleanup: "complete"
   })}`);
   console.log("PROOF_RESULT passed");
 }
 
-async function inspectAllowedResources() {
+async function inspectNetworkRules(decision) {
   const result = await runSbx([
     "policy",
     "ls",
@@ -228,17 +246,49 @@ async function inspectAllowedResources() {
     "--type",
     "network",
     "--decision",
-    "allow"
+    decision
   ]);
   assertCommand(result, "policy_inspection");
   try {
-    return parseAllowedResources(result.stdout);
+    return parseNetworkRules(result.stdout, decision);
   } catch (error) {
     throw new ProofFailure(
       "policy_inspection",
       error instanceof Error ? error.message : String(error)
     );
   }
+}
+
+async function addScopedNetworkRules(decision, resources, beforeRules, stage) {
+  const normalizedResources = normalizePolicyResources(resources);
+  const result = await runSbx([
+    "policy",
+    decision,
+    "network",
+    "--sandbox",
+    sandboxName,
+    normalizedResources.join(",")
+  ]);
+  assertCommand(result, stage);
+  const priorIds = new Set(beforeRules.map((rule) => rule.id));
+  const afterRules = await inspectNetworkRules(decision);
+  const created = afterRules.filter((rule) => !priorIds.has(rule.id));
+  if (created.length === 0) {
+    throw new ProofFailure(
+      "policy_inspection",
+      `expected at least one owned ${decision} rule`
+    );
+  }
+  if (
+    !sameStrings(networkRuleResources(created), normalizedResources) ||
+    created.some((rule) => !isSandboxScopedRule(rule))
+  ) {
+    throw new ProofFailure(
+      "policy_inspection",
+      `owned ${decision} rules did not match the requested Sandbox scope and resources`
+    );
+  }
+  return created.map((rule) => rule.id).sort();
 }
 
 async function assertPolicyDecision(target, expected) {
@@ -276,11 +326,14 @@ async function cleanupCommand(command, stage, failures) {
     const result = await runSbx(command);
     if (result.exit_code !== 0) {
       failures.push(new ProofFailure(stage, commandFailure(result)));
+      return false;
     }
+    return true;
   } catch (error) {
     failures.push(error instanceof ProofFailure
       ? error
       : new ProofFailure(stage, error instanceof Error ? error.message : String(error)));
+    return false;
   }
 }
 
@@ -363,16 +416,7 @@ function commandFailure(result) {
 }
 
 function parseProbeReport(stdout) {
-  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-  let report;
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    try {
-      report = JSON.parse(lines[index]);
-      break;
-    } catch {
-      continue;
-    }
-  }
+  const report = parseLastJsonRecord(stdout);
   if (!isRecord(report) || report.protocol_version !== PROTOCOL_VERSION || report.passed !== true) {
     throw new ProofFailure("candidate_probe", "candidate proof report is missing or failed");
   }
@@ -391,33 +435,116 @@ function parseProbeReport(stdout) {
   return report;
 }
 
-function parseAllowedResources(stdout) {
+function candidateProbeFailure(result) {
+  const report = parseLastJsonRecord(result.stdout);
+  if (!isRecord(report) || report.protocol_version !== PROTOCOL_VERSION) {
+    return commandFailure(result);
+  }
+  const gatewayObserved = isRecord(report.gateway)
+    ? safeProbeObservation(report.gateway.observed)
+    : "missing";
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const observations = new Map(probes.flatMap((probe) =>
+    isRecord(probe) && typeof probe.name === "string"
+      ? [[probe.name, safeProbeObservation(probe.observed)]]
+      : []
+  ));
+  const failed = REQUIRED_DENIED_PROBES
+    .map((name) => [name, observations.get(name) ?? "missing"])
+    .filter(([, observed]) => observed !== "denied")
+    .map(([name, observed]) => `${name}:${observed}`);
+  return `gateway=${gatewayObserved} failed_probes=${failed.join(",") || "none"} ` +
+    `exit=${String(result.exit_code)}`;
+}
+
+function parseLastJsonRecord(stdout) {
+  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+function safeProbeObservation(value) {
+  return ["allowed", "denied", "invalid_response", "unavailable"].includes(value)
+    ? value
+    : "unknown";
+}
+
+function parseNetworkRules(stdout, expectedDecision) {
   const parsed = JSON.parse(stdout);
-  const rules = [];
-  collectRuleObjects(parsed, rules);
-  if (rules.length === 0) {
+  const ruleObjects = [];
+  collectRuleObjects(parsed, ruleObjects);
+  if (ruleObjects.length === 0) {
     if (isEmptyRuleCollection(parsed)) {
       return [];
     }
-    throw new Error("policy allow list did not contain a recognized rule collection");
+    throw new Error("policy list did not contain a recognized rule collection");
   }
-  const resources = new Set();
-  for (const rule of rules) {
+  const rules = [];
+  const ids = new Set();
+  for (const rule of ruleObjects) {
     if (String(rule.status ?? "active").toLowerCase() === "inactive") {
       continue;
     }
-    if (normalizeDecision(rule.decision ?? rule.effect) !== "allow") {
+    const decision = normalizeDecision(rule.decision ?? rule.effect);
+    if (decision !== expectedDecision) {
       continue;
+    }
+    if (typeof rule.id !== "string" || ids.has(rule.id)) {
+      throw new Error("active network rule did not expose one unique id");
     }
     const values = stringLeaves(rule.resources);
     if (values.length === 0) {
-      throw new Error("active allow rule did not expose resources");
+      throw new Error("active network rule did not expose resources");
     }
-    for (const resource of values) {
-      resources.add(resource);
-    }
+    ids.add(rule.id);
+    rules.push({
+      id: rule.id,
+      decision,
+      resources: normalizePolicyResources(values),
+      ...(typeof rule.scope === "string" ? { scope: rule.scope } : {}),
+      ...(typeof rule.applies_to === "string" ? { applies_to: rule.applies_to } : {}),
+      ...(typeof rule.sandbox_id === "string" ? { sandbox_id: rule.sandbox_id } : {})
+    });
   }
-  return [...resources].sort();
+  return rules.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function networkRuleResources(rules) {
+  return normalizePolicyResources(rules.flatMap((rule) => rule.resources));
+}
+
+function normalizePolicyResources(resources) {
+  const normalized = [...new Set(resources)].sort();
+  if (
+    normalized.length > 512 ||
+    normalized.some((resource) =>
+      typeof resource !== "string" ||
+      resource.length === 0 ||
+      resource.length > 1_024 ||
+      resource !== resource.trim() ||
+      resource.includes(",") ||
+      /[\u0000-\u001f\u007f]/.test(resource)
+    ) ||
+    normalized.join(",").length > 32_768
+  ) {
+    throw new Error("active network policy resources cannot be represented safely");
+  }
+  return normalized;
+}
+
+function sameStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function isSandboxScopedRule(rule) {
+  const expected = `sandbox:${sandboxName}`;
+  return rule.sandbox_id === sandboxName || rule.scope === expected || rule.applies_to === expected;
 }
 
 function collectRuleObjects(value, output) {

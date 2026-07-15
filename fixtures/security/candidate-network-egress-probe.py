@@ -45,8 +45,23 @@ def dns_resolution():
 
 
 def raw_tcp():
-    with socket.create_connection(("1.1.1.1", 443), timeout=3):
-        return
+    query = (
+        b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+        b"\x07example\x03com\x00\x00\x01\x00\x01"
+    )
+    with socket.create_connection(("1.1.1.1", 53), timeout=3) as client:
+        client.settimeout(3)
+        client.sendall(len(query).to_bytes(2, "big") + query)
+        response_length = client.recv(2)
+        if len(response_length) != 2:
+            raise OSError("tcp_dns_response_missing")
+        remaining = int.from_bytes(response_length, "big")
+        response = b""
+        while len(response) < remaining:
+            chunk = client.recv(remaining - len(response))
+            if not chunk:
+                raise OSError("tcp_dns_response_truncated")
+            response += chunk
 
 
 def raw_udp_dns():
