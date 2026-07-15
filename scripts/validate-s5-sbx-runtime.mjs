@@ -189,12 +189,36 @@ async function runPreflight() {
 }
 
 function assertDockerSandboxesSbxVersion(stdout) {
-  if (!stdout.includes("Client Version:") || !stdout.includes("Server Version:")) {
+  const version = parseDockerSandboxesSbxVersion(stdout);
+  if (!version) {
     throw new Error(
       `${sbxPath} does not look like the Docker Sandboxes sbx CLI; ` +
         "S5 validation requires sbx, not the system sdx/Starkit utility"
     );
   }
+  if (compareVersions(version, "0.35.0") < 0) {
+    throw new Error(
+      `${sbxPath} version v${version} is unsupported; ` +
+        "S5 candidate validation requires stable sbx >= 0.35.0"
+    );
+  }
+}
+
+function parseDockerSandboxesSbxVersion(stdout) {
+  return stdout.match(/\bsbx version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1]
+    ?? stdout.match(/\bClient Version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
 }
 
 function startRuntimeServer() {

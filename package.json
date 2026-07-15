@@ -23,6 +23,7 @@
     "audit:trading-research:seeded-stability": "node scripts/audit-trading-research-seeded-stability.mjs",
     "prove:trading-research:codex-sdx": "node scripts/prove-trading-research-codex-sdx.mjs",
     "prove:trading-research:seeded-codex-sdx": "node scripts/prove-trading-research-seeded-codex-sdx.mjs",
+    "prove:candidate-sandbox-egress": "node scripts/prove-candidate-sandbox-egress.mjs",
     "research:proposal:codex": "tsx packages/application/src/research/orchestration/run-codex-improvement-proposal.ts",
     "research:proposal:codex:audit": "tsx packages/application/src/research/orchestration/run-codex-improvement-proposal-audit.ts",
     "audit:s9-codex-sbx": "node scripts/audit-s9-codex-sbx.mjs",

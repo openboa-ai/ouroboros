@@ -17,6 +17,8 @@ import {
   readTradingSystemManifest,
   type TradingArtifactRunner
 } from "@ouroboros/application/trading/research/artifact-runner";
+import { CANDIDATE_NETWORK_DENY_PROBES } from
+  "@ouroboros/application/trading/research/candidate-sandbox-network-policy";
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
 import { sealSingleFileTradingArtifactClosure } from
   "@ouroboros/application/trading/research/artifact-closure";
@@ -1845,7 +1847,7 @@ process.exit(17);
         scenario_id: "trend_long",
         runner_kind: "docker_sandboxes_sbx",
         provider_request_count: 3,
-        runner_command_count: 5,
+        runner_command_count: 14,
         runner_command_evidence: expect.arrayContaining([
           expect.objectContaining({
             command: expect.arrayContaining(["version"]),
@@ -1869,7 +1871,7 @@ process.exit(17);
         scenario_id: "range_flat",
         runner_kind: "docker_sandboxes_sbx",
         provider_request_count: 3,
-        runner_command_count: 5,
+        runner_command_count: 14,
         runner_command_evidence: expect.any(Array)
       })
     ]);
@@ -1925,6 +1927,10 @@ process.exit(17);
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands.join("\n")).not.toMatch(/trend_long|range_flat/i);
     expect(commands.filter((command) => command === "version")).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("policy ls "))).toHaveLength(9);
+    expect(commands.filter((command) => command.startsWith("policy check network ")))
+      .toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length * 9);
+    expect(commands.filter((command) => command.startsWith("policy log "))).toHaveLength(9);
     expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(9);
     expect(executionOutputRoots.every((outputRoot) =>
       commands.some((command) => command.startsWith("create --name ") &&
@@ -1996,7 +2002,7 @@ process.exit(17);
       expect(execution).toContain("--ticks 1");
       expect(execution).toContain("--paper-order-request valid");
       expect(execution).not.toContain("--output-events");
-      expect(probe.command_evidence).toHaveLength(5);
+      expect(probe.command_evidence).toHaveLength(14);
     } finally {
       await provider.close();
       delete process.env.SBX_FAKE_COMMAND_LOG;
@@ -2041,6 +2047,102 @@ process.exit(17);
         expect.stringMatching(/^stop ouro-paper-timeout-/),
         expect.stringMatching(/^rm --force ouro-paper-timeout-/)
       ]));
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
+  });
+
+  it("verifies deny-only policy before candidate effect and logs decisions before cleanup", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-network-policy-order");
+    const commandLog = path.join(tmpDir, "sbx-network-policy-order.log");
+    const artifactDir = path.join(tmpDir, "sbx-network-policy-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-network-policy"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-network-policy-output")
+      });
+
+      expect(run.status, run.stderr).toBe("completed");
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      const createIndex = commands.findIndex((command) => command.startsWith("create --name "));
+      const inspectIndex = commands.findIndex((command) => command.startsWith("policy ls "));
+      const execIndex = commands.findIndex((command) => command.startsWith("exec -w "));
+      const logIndex = commands.findIndex((command) => command.startsWith("policy log "));
+      const stopIndex = commands.findIndex((command) => command.startsWith("stop "));
+      const removeIndex = commands.findIndex((command) => command.startsWith("rm --force "));
+      const checkIndexes = commands.flatMap((command, index) =>
+        command.startsWith("policy check network ") ? [index] : []
+      );
+
+      expect(createIndex).toBeGreaterThanOrEqual(0);
+      expect(inspectIndex).toBeGreaterThan(createIndex);
+      expect(checkIndexes).toHaveLength(CANDIDATE_NETWORK_DENY_PROBES.length);
+      expect(checkIndexes.every((index) => index > inspectIndex && index < execIndex)).toBe(true);
+      expect(logIndex).toBeGreaterThan(execIndex);
+      expect(stopIndex).toBeGreaterThan(logIndex);
+      expect(removeIndex).toBeGreaterThan(stopIndex);
+      expect(commands.some((command) => command.startsWith("policy allow network "))).toBe(false);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
+  });
+
+  it("permits only the injected host Gateway for the host-url research runner", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-host-gateway-policy");
+    const commandLog = path.join(tmpDir, "sbx-host-gateway-policy.log");
+    const artifactDir = path.join(tmpDir, "sbx-host-gateway-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const provider = await startReplayTradingApiProvider(
+      toReplayTradingCandidateInput(defaultReplayTradingScenarioSet[0]),
+      { listen_host: "0.0.0.0", sandbox_host: "host.docker.internal" }
+    );
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-host-gateway",
+        replayProviderTransport: "host_url"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-host-gateway-output")
+      });
+
+      expect(run.status, run.stderr).toBe("completed");
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      const port = new URL(provider.sandbox_base_url!).port;
+      const resource = `localhost:${port}`;
+      const allowIndex = commands.findIndex((command) =>
+        command.endsWith(`--sandbox ${run.sandbox_name} ${resource}`)
+      );
+      const execIndex = commands.findIndex((command) => command.startsWith("exec -w "));
+      const removeIndex = commands.findIndex((command) =>
+        command.endsWith(`--resource ${resource}`)
+      );
+      expect(allowIndex).toBeGreaterThan(0);
+      expect(commands).toContain(
+        `policy check network --sandbox ${run.sandbox_name} --json ${resource}`
+      );
+      expect(execIndex).toBeGreaterThan(allowIndex);
+      expect(commands[execIndex]).toContain(`TRADING_API_BASE_URL=${provider.sandbox_base_url}`);
+      expect(removeIndex).toBeGreaterThan(execIndex);
     } finally {
       await provider.close();
       delete process.env.SBX_FAKE_COMMAND_LOG;
@@ -2880,10 +2982,47 @@ printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 
 case "$1" in
   version)
-    printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
+    printf 'Client Version: v0.35.0 fake-sbx\\nServer Version: v0.35.0 fake-sbx\\n'
     ;;
   create)
     exit 0
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ]; then
+          resource="$(cat "$SBX_FAKE_COMMAND_LOG.policy")"
+          printf '{"rules":[{"decision":"allow","resources":["%s"],"status":"active"}]}\\n' "$resource"
+        else
+          printf '{"rules":[]}\\n'
+        fi
+        ;;
+      allow)
+        resource=""
+        for argument in "$@"; do resource="$argument"; done
+        printf '%s\\n' "$resource" > "$SBX_FAKE_COMMAND_LOG.policy"
+        ;;
+      check)
+        target=""
+        for argument in "$@"; do target="$argument"; done
+        if [ -f "$SBX_FAKE_COMMAND_LOG.policy" ] && [ "$(cat "$SBX_FAKE_COMMAND_LOG.policy")" = "$target" ]; then
+          printf '{"decision":"allow"}\\n'
+        else
+          printf '{"decision":"deny"}\\n'
+          exit 1
+        fi
+        ;;
+      log)
+        printf '{"entries":[]}\\n'
+        ;;
+      rm)
+        rm -f "$SBX_FAKE_COMMAND_LOG.policy"
+        ;;
+      *)
+        echo "unexpected sbx policy command: $*" >&2
+        exit 64
+        ;;
+    esac
     ;;
   exec)
     shift
@@ -2897,6 +3036,10 @@ case "$1" in
       shift
       while [ "$#" -gt 0 ]; do
         case "$1" in
+          TRADING_API_BASE_URL=http://host.docker.internal:*)
+            export "TRADING_API_BASE_URL=http://127.0.0.1:\${1##*:}"
+            shift
+            ;;
           *=*)
             export "$1"
             shift
@@ -2931,11 +3074,14 @@ printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 
 case "$1" in
   version)
-    printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
+    printf 'Client Version: v0.35.0 fake-sbx\\nServer Version: v0.35.0 fake-sbx\\n'
     ;;
   create)
     echo 'create failed: run-control unavailable' >&2
     exit 42
+    ;;
+  rm)
+    exit 0
     ;;
   *)
     echo "unexpected sbx command: $*" >&2
@@ -2952,10 +3098,27 @@ printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
 
 case "$1" in
   version)
-    printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
+    printf 'Client Version: v0.35.0 fake-sbx\\nServer Version: v0.35.0 fake-sbx\\n'
     ;;
   create|stop|rm)
     exit 0
+    ;;
+  policy)
+    case "$2" in
+      ls)
+        printf '{"rules":[]}\\n'
+        ;;
+      check)
+        printf '{"decision":"deny"}\\n'
+        exit 1
+        ;;
+      log)
+        printf '{"entries":[]}\\n'
+        ;;
+      *)
+        exit 64
+        ;;
+    esac
     ;;
   exec)
     sleep 1

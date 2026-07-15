@@ -19,6 +19,7 @@ export const PAPER_TRADING_HANDOFF_CONFORMANCE_MAX_PROVIDER_REQUESTS = 8;
 export type PaperTradingHandoffConformanceInfrastructureErrorCode =
   | "runner_unavailable"
   | "sandbox_create_failed"
+  | "network_policy_failed"
   | "provider_start_failed"
   | "probe_cleanup_failed";
 

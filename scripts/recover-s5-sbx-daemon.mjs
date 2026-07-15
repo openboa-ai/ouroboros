@@ -451,7 +451,8 @@ function run(argv, timeoutMs, env) {
 }
 
 function isDockerSandboxesSbxVersion(stdout) {
-  return stdout.includes("Client Version:") && stdout.includes("Server Version:");
+  return /\bsbx version:\s*v?\d+\.\d+\.\d+(?:\s|$)/i.test(stdout) ||
+    /\bClient Version:\s*v?\d+\.\d+\.\d+(?:\s|$)/i.test(stdout);
 }
 
 function summarizeActiveSbxProcesses(processList, options = {}) {

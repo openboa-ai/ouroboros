@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -18,6 +19,13 @@ import type {
 import { rebaseCandidateArenaArtifactPath } from
   "../artifact/candidate-arena-artifact-path";
 import { safeId } from "../safe-id";
+import {
+  acquireCandidateSandboxNetworkPolicy,
+  assertCandidateSandboxSbxVersion,
+  CandidateSandboxNetworkPolicyError,
+  releaseCandidateSandboxNetworkPolicy,
+  type CandidateSandboxNetworkPolicyLease
+} from "@ouroboros/application/trading/research/candidate-sandbox-network-policy";
 
 let commandEvidenceSequence = 0;
 
@@ -451,6 +459,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
 export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   readonly kind = "docker_sandboxes_sbx" as const;
+  private readonly networkPolicyLeases = new Map<
+    string,
+    CandidateSandboxNetworkPolicyLease<CommandResult>
+  >();
 
   constructor(
     private readonly options: {
@@ -460,6 +472,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       commandTimeoutMs?: number;
       startupHeartbeatTimeoutMs?: number;
       startupHeartbeatPollIntervalMs?: number;
+      networkPolicyStatePath?: string;
     } = {}
   ) {}
 
@@ -475,7 +488,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     const versionEvidence = commandEvidenceRecord(input.instance_id, "version", versionResult);
     if (
       versionResult.exit_code !== 0 ||
-      !isDockerSandboxesSbxVersion(versionResult.stdout)
+      !candidateSbxVersionSupported(versionResult.stdout)
     ) {
       return {
         instance: sandboxSandboxRecord({
@@ -529,6 +542,111 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
         command_evidence: [versionEvidence, createEvidence]
       };
     }
+    const networkPolicyResults: CommandResult[] = [];
+    let networkPolicy: CandidateSandboxNetworkPolicyLease<CommandResult> | undefined;
+    try {
+      const persistedNetworkPolicy = await this.readPersistedNetworkPolicyLease(input.sandbox_name);
+      if (persistedNetworkPolicy) {
+        try {
+          networkPolicyResults.push(...await releaseCandidateSandboxNetworkPolicy({
+            sbx_path: this.sbxPath,
+            sandbox_name: input.sandbox_name,
+            owned_resource: persistedNetworkPolicy.allowed_resource,
+            run_command: (command) => this.runSbxCommand(command)
+          }));
+          await this.removePersistedNetworkPolicyLease(input.sandbox_name);
+        } catch (error) {
+          if (
+            error instanceof CandidateSandboxNetworkPolicyError &&
+            error.code !== "policy_cleanup_failed"
+          ) {
+            await this.removePersistedNetworkPolicyLease(input.sandbox_name);
+          }
+          throw error;
+        }
+      }
+      networkPolicy = await acquireCandidateSandboxNetworkPolicy({
+        sbx_path: this.sbxPath,
+        sandbox_name: input.sandbox_name,
+        ...(input.env?.TRADING_API_BASE_URL
+          ? { gateway_base_url: input.env.TRADING_API_BASE_URL }
+          : {}),
+        run_command: (command) => this.runSbxCommand(command),
+        on_evidence: (result) => networkPolicyResults.push(result)
+      });
+      await this.persistNetworkPolicyLease(input.sandbox_name, networkPolicy);
+      this.networkPolicyLeases.set(input.sandbox_name, networkPolicy);
+    } catch {
+      if (networkPolicy) {
+        try {
+          await networkPolicy.release();
+        } catch {
+          // Release evidence is retained below and the instance remains failed.
+        }
+      }
+      const stopResult = await this.runSbxCommand([this.sbxPath, "stop", input.sandbox_name]);
+      const removeResult = await this.runSbxCommand([
+        this.sbxPath,
+        "rm",
+        "--force",
+        input.sandbox_name
+      ]);
+      const policyEvidence = networkPolicyResults.map((result, index) =>
+        commandEvidenceRecord(
+          input.instance_id,
+          commandEvidenceSuffix("network-policy-" + String(index + 1), result),
+          result
+        )
+      );
+      const cleanupEvidence = [
+        commandEvidenceRecord(
+          input.instance_id,
+          commandEvidenceSuffix("network-policy-startup-stop", stopResult),
+          stopResult
+        ),
+        commandEvidenceRecord(
+          input.instance_id,
+          commandEvidenceSuffix("network-policy-startup-remove", removeResult),
+          removeResult
+        )
+      ];
+      const commandEvidence = [
+        versionEvidence,
+        createEvidence,
+        ...policyEvidence,
+        ...cleanupEvidence
+      ];
+      return {
+        instance: sandboxSandboxRecord({
+          adapterKind: this.kind,
+          artifact: input.artifact,
+          instanceId: input.instance_id,
+          sandboxName: input.sandbox_name,
+          runtimeRef: input.runtime_ref,
+          placementId: placement.sandbox_placement_id,
+          lifecycleStatus: "failed",
+          createdAt,
+          commandEvidenceRefs: commandEvidence.map((evidence) =>
+            ref(evidence.record_kind, evidence.sandbox_command_evidence_id)
+          ),
+          traceRef: input.trace_ref
+        }),
+        placement,
+        logs: [],
+        heartbeats: [],
+        command_evidence: commandEvidence
+      };
+    }
+    const networkPolicyEvidence = networkPolicyResults.map((result, index) =>
+      commandEvidenceRecord(
+        input.instance_id,
+        commandEvidenceSuffix("network-policy-" + String(index + 1), result),
+        result
+      )
+    );
+    if (!networkPolicy) {
+      throw new Error("candidate_network_policy_lease_missing");
+    }
     const execCommand = [
       this.sbxPath,
       "exec",
@@ -567,16 +685,58 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
           ? "stopped"
           : "failed"
       : "failed";
-    const stopResult = createResult.exit_code === 0 && lifecycleStatus === "failed"
+    const stopResult = lifecycleStatus === "failed"
       ? await this.runSbxCommand([this.sbxPath, "stop", input.sandbox_name])
       : undefined;
+    const terminalPolicyResultStart = networkPolicyResults.length;
+    let terminalPolicyFailure: unknown;
+    let removeResult: CommandResult | undefined;
+    if (lifecycleStatus !== "running") {
+      try {
+        await networkPolicy.release();
+      } catch (error) {
+        terminalPolicyFailure = error;
+      }
+      removeResult = await this.runSbxCommand([
+        this.sbxPath,
+        "rm",
+        "--force",
+        input.sandbox_name
+      ]);
+      this.networkPolicyLeases.delete(input.sandbox_name);
+      if (!terminalPolicyFailure && removeResult.exit_code === 0) {
+        await this.removePersistedNetworkPolicyLease(input.sandbox_name);
+      }
+    }
+    const terminalPolicyEvidence = networkPolicyResults
+      .slice(terminalPolicyResultStart)
+      .map((result, index) =>
+        commandEvidenceRecord(
+          input.instance_id,
+          commandEvidenceSuffix("network-policy-terminal-" + String(index + 1), result),
+          result
+        )
+      );
+    const finalLifecycleStatus = terminalPolicyFailure ||
+      (removeResult !== undefined && removeResult.exit_code !== 0)
+      ? "failed"
+      : lifecycleStatus;
     const commandEvidence = [
       versionEvidence,
       createEvidence,
+      ...networkPolicyEvidence,
       commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
       ...startupEvidence.commandEvidence,
       ...(stopResult
         ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
+        : []),
+      ...terminalPolicyEvidence,
+      ...(removeResult
+        ? [commandEvidenceRecord(
+            input.instance_id,
+            commandEvidenceSuffix("startup-remove", removeResult),
+            removeResult
+          )]
         : [])
     ];
     const instance = sandboxSandboxRecord({
@@ -586,10 +746,10 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       sandboxName: input.sandbox_name,
       runtimeRef: input.runtime_ref,
       placementId: placement.sandbox_placement_id,
-      lifecycleStatus,
+      lifecycleStatus: finalLifecycleStatus,
       createdAt,
-      startedAt: lifecycleStatus !== "failed" ? createdAt : undefined,
-      stoppedAt: lifecycleStatus === "stopped" ? startupEvidence.stopped_at : undefined,
+      startedAt: finalLifecycleStatus !== "failed" ? createdAt : undefined,
+      stoppedAt: finalLifecycleStatus === "stopped" ? startupEvidence.stopped_at : undefined,
       lastHeartbeatAt: startupEvidence.heartbeats.at(-1)?.observed_at,
       logRefs: startupEvidence.logs.map((log) => ref(log.record_kind, log.sandbox_log_id)),
       heartbeatRefs: startupEvidence.heartbeats.map((heartbeat) =>
@@ -689,14 +849,23 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       "fixtures/trading-systems/clock.py"
     ]);
     const stopResult = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
-    const stopped = stopResult.exit_code === 0;
+    const policyRelease = await this.releaseNetworkPolicy(sandboxName);
+    const stopped = stopResult.exit_code === 0 &&
+      !policyRelease.failure;
     return {
       lifecycle_status: stopped ? "stopped" : "failed",
       stopped_at: stopped ? stopResult.completed_at || stopStartedAt : undefined,
       command_evidence: [
         versionObservation.evidence,
         commandEvidenceRecord(instanceId, commandEvidenceSuffix("terminate", terminateResult), terminateResult),
-        commandEvidenceRecord(instanceId, commandEvidenceSuffix("stop", stopResult), stopResult)
+        commandEvidenceRecord(instanceId, commandEvidenceSuffix("stop", stopResult), stopResult),
+        ...policyRelease.results.map((result, index) =>
+          commandEvidenceRecord(
+            instanceId,
+            commandEvidenceSuffix("network-policy-stop-" + String(index + 1), result),
+            result
+          )
+        )
       ]
     };
   }
@@ -729,8 +898,105 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return this.options.sbxHome ?? process.env.OUROBOROS_SBX_HOME;
   }
 
+  private get networkPolicyStatePath(): string {
+    return this.options.networkPolicyStatePath ??
+      path.join(this.sbxHome ?? os.homedir(), ".ouroboros", "candidate-network-policy-leases");
+  }
+
   private runSbxCommand(command: string[]): Promise<CommandResult> {
     return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private async persistNetworkPolicyLease(
+    sandboxName: string,
+    lease: CandidateSandboxNetworkPolicyLease<CommandResult>
+  ): Promise<void> {
+    if (!lease.owned_rule || !lease.allowed_resource) {
+      await this.removePersistedNetworkPolicyLease(sandboxName);
+      return;
+    }
+    await mkdir(this.networkPolicyStatePath, { recursive: true, mode: 0o700 });
+    const target = this.networkPolicyLeaseFile(sandboxName);
+    const temporary = target + "." + String(process.pid) + ".tmp";
+    try {
+      await writeFile(temporary, JSON.stringify({
+        version: 1,
+        sandbox_name: sandboxName,
+        allowed_resource: lease.allowed_resource
+      }) + "\n", { encoding: "utf8", mode: 0o600 });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
+
+  private async releaseNetworkPolicy(sandboxName: string): Promise<{
+    results: CommandResult[];
+    failure?: unknown;
+  }> {
+    const lease = this.networkPolicyLeases.get(sandboxName);
+    let results: CommandResult[] = [];
+    let failure: unknown;
+    try {
+      if (lease) {
+        results = await lease.release();
+      } else {
+        const persisted = await this.readPersistedNetworkPolicyLease(sandboxName);
+        results = await releaseCandidateSandboxNetworkPolicy({
+          sbx_path: this.sbxPath,
+          sandbox_name: sandboxName,
+          ...(persisted ? { owned_resource: persisted.allowed_resource } : {}),
+          run_command: (command) => this.runSbxCommand(command)
+        });
+      }
+    } catch (error) {
+      failure = error;
+      if (error instanceof CandidateSandboxNetworkPolicyError) {
+        results = error.command_results as CommandResult[];
+      }
+    } finally {
+      this.networkPolicyLeases.delete(sandboxName);
+    }
+    if (
+      !failure ||
+      (failure instanceof CandidateSandboxNetworkPolicyError &&
+        failure.code !== "policy_cleanup_failed")
+    ) {
+      await this.removePersistedNetworkPolicyLease(sandboxName);
+    }
+    return { results, ...(failure ? { failure } : {}) };
+  }
+
+  private async readPersistedNetworkPolicyLease(
+    sandboxName: string
+  ): Promise<{ allowed_resource: string } | undefined> {
+    try {
+      const parsed = JSON.parse(
+        await readFile(this.networkPolicyLeaseFile(sandboxName), "utf8")
+      ) as Record<string, unknown>;
+      if (
+        parsed.version !== 1 ||
+        parsed.sandbox_name !== sandboxName ||
+        typeof parsed.allowed_resource !== "string" ||
+        !validPersistedCandidateNetworkResource(parsed.allowed_resource)
+      ) {
+        throw new Error("candidate_network_policy_lease_invalid");
+      }
+      return { allowed_resource: parsed.allowed_resource };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  private removePersistedNetworkPolicyLease(sandboxName: string): Promise<void> {
+    return rm(this.networkPolicyLeaseFile(sandboxName), { force: true });
+  }
+
+  private networkPolicyLeaseFile(sandboxName: string): string {
+    return path.join(this.networkPolicyStatePath, sandboxName + ".json");
   }
 
   private async readStartupEvidence(
@@ -812,7 +1078,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   }> {
     const result = await this.runSbxCommand([this.sbxPath, "version"]);
     const evidence = commandEvidenceRecord(instanceId, commandEvidenceSuffix(suffix, result), result);
-    if (result.exit_code === 0 && isDockerSandboxesSbxVersion(result.stdout)) {
+    if (result.exit_code === 0 && candidateSbxVersionSupported(result.stdout)) {
       return { evidence };
     }
     return {
@@ -823,6 +1089,15 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       }
     };
   }
+}
+
+function validPersistedCandidateNetworkResource(value: string): boolean {
+  const match = /^localhost:(\d{4,5})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const port = Number(match[1]);
+  return Number.isInteger(port) && port >= 1024 && port <= 65_535;
 }
 
 function commandEvidenceSuffix(label: string, result: CommandResult): string {
@@ -1001,8 +1276,13 @@ function runtimeStoppedAtFromLines(
   return undefined;
 }
 
-function isDockerSandboxesSbxVersion(stdout: string): boolean {
-  return stdout.includes("Client Version:") && stdout.includes("Server Version:");
+function candidateSbxVersionSupported(stdout: string): boolean {
+  try {
+    assertCandidateSandboxSbxVersion(stdout);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveCommandPath(commandPath: string, workspacePath: string): string {

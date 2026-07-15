@@ -10,8 +10,6 @@ const completionChecklist = [
     label: "preflight used Docker Sandboxes sbx",
     evidence: [
       "## sbx version",
-      "Client Version:",
-      "Server Version:",
       "## sbx diagnose --output json",
       "## sbx daemon status",
       "## sbx ls run-control probe"
@@ -132,7 +130,7 @@ await check("real two-sandbox validation transcript is present and complete", as
   assertIncludes(transcript, "## OURO-32 real Docker Sandboxes sbx validation");
   assertIncludes(transcript, "RESULT: passed");
   assertNotIncludes(transcript, "RESULT: failed");
-  assertNotStarkitSdxTranscript(transcript);
+  assertSupportedSbxTranscript(transcript);
 
   for (const item of completionChecklist) {
     for (const expected of item.evidence) {
@@ -228,14 +226,28 @@ function assertNotIncludes(value, unexpected) {
   }
 }
 
-function assertNotStarkitSdxTranscript(value) {
+function assertSupportedSbxTranscript(value) {
   const versionSection = sectionText(value, "sbx version");
-  const hasDockerSandboxesVersion =
-    versionSection.includes("Client Version:") &&
-    versionSection.includes("Server Version:");
-  if (/starkit/i.test(versionSection) || (/(^|\W)sdx(\W|$)/i.test(versionSection) && !hasDockerSandboxesVersion)) {
+  const version = versionSection.match(/\bsbx version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1]
+    ?? versionSection.match(/\bClient Version:\s*v?(\d+\.\d+\.\d+)(?:\s|$)/i)?.[1];
+  if (/starkit/i.test(versionSection) || !version) {
     throw new IncompleteCheck("transcript uses sdx/Starkit, not Docker Sandboxes sbx");
   }
+  if (compareVersions(version, "0.35.0") < 0) {
+    throw new IncompleteCheck(`transcript uses unsupported sbx v${version}; stable v0.35.0 or newer is required`);
+  }
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
 }
 
 function extractSandboxNames(value) {
