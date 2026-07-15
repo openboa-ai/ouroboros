@@ -56,8 +56,9 @@ Use this mode when the repo tracks PR-sized frontiers.
    - `queued`: park unless prerequisite is met
    - `implementation-ready`: `auto-pm` or `auto-coding`
    - `in-progress`: `auto-coding`; invoke `auto-qa` as scoped support when needed
-   - `pr-open`: retain `auto-project` ownership while invoking `auto-promotion-protocol` or
-     `ci-recovery` as scoped support
+   - `pr-open`: retain `auto-project` ownership while invoking `pr-ci-review-loop` as the landing
+     conductor; use `ci-recovery` for failed checks and `auto-promotion-protocol` for an ambiguous
+     readiness decision
    - `ready-to-land`: retain `auto-project` ownership through the recorded landing decision
    - `merged`: `llm-wiki`, then select next frontier
    - `blocked`: blocker owner or user action
@@ -92,6 +93,7 @@ state document, maintained docs, git state, checks, and `llm-wiki` writeback rem
 | Scope, owner, non-goals, or acceptance are unclear | `auto-pm` |
 | One bounded change is ready to make | `auto-coding` |
 | Work is claimed done or risky | retain ownership; invoke `auto-qa` as support |
+| A PR is open and needs current-head CI, review, fixes, or merge | retain ownership; invoke `pr-ci-review-loop` as support |
 | Local checks or remote CI fail | retain ownership; invoke `ci-recovery` as support |
 | Promotion or landing state is unclear | retain ownership; invoke `auto-promotion-protocol` as support |
 | Durable decision or result must survive chat | `llm-wiki` |

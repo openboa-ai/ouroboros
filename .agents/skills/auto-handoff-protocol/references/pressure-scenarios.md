@@ -17,7 +17,9 @@ to discard or reroute, name the superseding frontier, and report whether cleanup
 
 A current-head review finding is required for the existing claim. Keep the same issue, worktree,
 branch, PR, and owned boundary. Record the exact head and finding. An adjacent suggestion receives a
-separate issue and does not expand the packet.
+separate issue and does not expand the packet. The packet owner invokes `pr-ci-review-loop` as
+scoped support for CI, review, bounded fixes, and landing; `auto-promotion-protocol` only supplies a
+readiness decision when needed.
 
 ## Over-Budget Change
 
