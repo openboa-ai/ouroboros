@@ -393,15 +393,30 @@ describe("sandbox API", () => {
   it("recovers a cleanly exited owned Sandbox as stopped on the first status read", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
-    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
-    if (!artifact) throw new Error("expected fixture SystemCode");
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const scriptPath = path.join(tmpDir, "clean-exit-sandbox.py");
+    await writeFile(scriptPath, cleanExitSandboxScript(), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const artifact = {
+      ...fixtureArtifact,
+      system_code_id: "system-code-clean-exit-recovery",
+      artifact_path: scriptPath,
+      artifact_digest: "sha256:clean-exit-recovery",
+      entrypoint: ["python3", scriptPath],
+      capability_policy_ref: { record_kind: "capability_policy" as const, id: capabilityPolicyId }
+    };
     const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
       path.join(tmpDir, "runtime-process-ownership")
     );
     const options = {
       commandTimeoutMs: 5_000,
       processOwnership,
-      hostId: "host-a"
+      hostId: "host-a",
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
     };
     const initialAdapter = new DeterministicSandboxAdapter(options);
     const started = await initialAdapter.startArtifactInstance({
@@ -427,15 +442,7 @@ describe("sandbox API", () => {
         "runtime_stopped",
         1_000
       );
-      const lastHeartbeat = logText.split("\n").reverse().find((line) =>
-        line.includes("runtime_heartbeat")
-      );
-      if (!lastHeartbeat) throw new Error("expected persisted Sandbox heartbeat");
-      await writeFile(
-        sandboxHeartbeatFileForTest(started.instance.sandbox_id),
-        `${lastHeartbeat}\n`,
-        "utf8"
-      );
+      expect(logText).toContain("runtime_heartbeat");
       for (let attempt = 0; attempt < 20 && isPidAlive(active.owner.process_id); attempt += 1) {
         await sleep(10);
       }
@@ -1752,11 +1759,6 @@ function sandboxPidFileForTest(instanceId: string): string {
   return path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${safeRuntimeIdForTest(instanceId)}-${digest}.pid`);
 }
 
-function sandboxHeartbeatFileForTest(instanceId: string): string {
-  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
-  return `/tmp/ouroboros-${safeRuntimeIdForTest(instanceId)}-${digest}.heartbeat.json`;
-}
-
 function safeRuntimeIdForTest(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "runtime";
 }
@@ -1786,6 +1788,48 @@ event = {
 }
 pathlib.Path(args.log_file).write_text(json.dumps(event) + "\\n", encoding="utf8")
 pathlib.Path(args.heartbeat_file).write_text(json.dumps(event), encoding="utf8")
+while True:
+    time.sleep(1)
+`;
+}
+
+function cleanExitSandboxScript(): string {
+  return `import argparse
+import json
+import pathlib
+import signal
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+log_path = pathlib.Path(args.log_file)
+heartbeat_path = pathlib.Path(args.heartbeat_file)
+heartbeat = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z",
+}
+heartbeat_line = json.dumps(heartbeat)
+log_path.write_text(heartbeat_line + "\\n", encoding="utf8")
+heartbeat_path.write_text(heartbeat_line + "\\n", encoding="utf8")
+
+def stop(_signum, _frame):
+    stopped = {
+        "event": "runtime_stopped",
+        "instance_id": args.instance_id,
+        "at": "2026-05-21T00:00:01.000Z",
+    }
+    with log_path.open("a", encoding="utf8") as log_file:
+        log_file.write(json.dumps(stopped) + "\\n")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, stop)
 while True:
     time.sleep(1)
 `;
