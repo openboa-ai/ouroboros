@@ -536,7 +536,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(runner.active(qualificationRun.trading_run_id)).toBe(false);
   });
 
-  it("fails closed and terminalizes recovery when persisted purposes disagree", async () => {
+  it("keeps a purpose mismatch retryable until explicit recovery exhaustion", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await requireFixtureCandidate(store);
@@ -584,13 +584,23 @@ describe("multi-run paper TradingSystem sessions", () => {
       }
     });
 
-    const outcomes = await recoveryService.recoverRunningEvaluations();
+    const outcomes = await recoveryService.recoverRunningEvaluations({
+      persistFailures: false
+    });
 
     expect(outcomes).toEqual(expect.arrayContaining([{
       tradingRunId: researchRun.trading_run_id,
       status: "failed",
       error: "PaperTradingSession recovery purpose does not match the persisted commitment."
     }]));
+    const retryableEvaluation = await requireEvaluation(store, researchRun.trading_run_id);
+    expect(retryableEvaluation).toMatchObject({
+      status: "running",
+      next_observation_at: "2026-07-10T02:40:03.000Z"
+    });
+
+    await recoveryService.finalizeRecoveryFailures(outcomes);
+
     const failedEvaluation = await requireEvaluation(store, researchRun.trading_run_id);
     expect(failedEvaluation.status).toBe("failed");
     expect(failedEvaluation.latest_failure_reason).toBe(

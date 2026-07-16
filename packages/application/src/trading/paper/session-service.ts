@@ -1689,7 +1689,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         ) {
           const error =
             "PaperTradingSession recovery purpose does not match the persisted commitment.";
-          await this.persistRecoveryFailure(evaluation, error);
+          if (options.persistFailures !== false) {
+            await this.persistRecoveryFailure(evaluation, error);
+          }
           outcomes.push({
             tradingRunId,
             status: "failed",
