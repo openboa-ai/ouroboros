@@ -646,7 +646,7 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
     });
   });
 
-  it("waits for an active legacy filesystem lease before switching adapters", async () => {
+  it("waits for active and transitioning legacy leases before switching adapters", async () => {
     const study = studyFixture();
     const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
       now: () => now,
@@ -696,6 +696,36 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
       },
       reason: "transition"
     });
+
+    const legacyTransitionFile = legacyActiveFile.replace(
+      `${path.sep}active${path.sep}`,
+      `${path.sep}transitions${path.sep}`
+    );
+    await mkdir(path.dirname(path.dirname(legacyTransitionFile)), {
+      recursive: true
+    });
+    await rename(
+      path.dirname(legacyActiveFile),
+      path.dirname(legacyTransitionFile)
+    );
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: {
+        lease_token: legacyClaim.lease.lease_token,
+        fencing_token: 1,
+        lease_status: "active"
+      },
+      reason: "transition"
+    });
+    await mkdir(path.dirname(path.dirname(legacyActiveFile)), { recursive: true });
+    await rename(
+      path.dirname(legacyTransitionFile),
+      path.dirname(legacyActiveFile)
+    );
 
     now = "2026-07-13T00:00:31.000Z";
     await expect(sharedAdapter("shared-lease").acquire({

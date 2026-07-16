@@ -98,6 +98,10 @@ implements ResearchControlStudyExecutionLeasePort {
         force: true
       });
     }
+    const legacyTransition = await this.readLegacyTransitionLease(input.study);
+    if (legacyTransition) {
+      return { status: "held", lease: legacyTransition, reason: "transition" };
+    }
     return this.transaction(async (database) => {
       const now = this.readNow();
       const state = this.loadOrCreateState(database, input.study);
@@ -386,7 +390,20 @@ implements ResearchControlStudyExecutionLeasePort {
   private async readLegacyActiveLease(
     study: ResearchControlStudyRecord
   ): Promise<ResearchControlStudyExecutionLeaseRecord | undefined> {
-    const file = this.legacyActiveLeaseFile(study);
+    return this.readLegacyLease(study, "active");
+  }
+
+  private async readLegacyTransitionLease(
+    study: ResearchControlStudyRecord
+  ): Promise<ResearchControlStudyExecutionLeaseRecord | undefined> {
+    return this.readLegacyLease(study, "transitions");
+  }
+
+  private async readLegacyLease(
+    study: ResearchControlStudyRecord,
+    state: "active" | "transitions"
+  ): Promise<ResearchControlStudyExecutionLeaseRecord | undefined> {
+    const file = this.legacyLeaseFile(study, state);
     let serialized: string;
     try {
       serialized = await readFile(file, "utf8");
@@ -394,25 +411,33 @@ implements ResearchControlStudyExecutionLeasePort {
       if (isErrno(error, "ENOENT")) return undefined;
       throw unavailable("legacy filesystem fence is unavailable", error);
     }
-    const lease = parseLegacyActiveLease(serialized);
+    const label = `legacy filesystem ${state} fence`;
+    const lease = parseLegacyLease(serialized, label);
     if (lease.lease_status !== "active" ||
       lease.study_ref.id !== study.research_control_study_id ||
       lease.study_digest !== study.study_digest) {
       throw corruptState(
-        "legacy filesystem active fence differs from its bound study"
+        `legacy filesystem ${state} fence differs from its bound study`
       );
     }
     return lease;
   }
 
   private legacyActiveLeaseFile(study: ResearchControlStudyRecord): string {
+    return this.legacyLeaseFile(study, "active");
+  }
+
+  private legacyLeaseFile(
+    study: ResearchControlStudyRecord,
+    state: "active" | "transitions"
+  ): string {
     const key = createHash("sha256")
       .update(study.research_control_study_id)
       .digest("hex");
     return path.join(
       path.resolve(this.root),
       "research-control-study-execution-leases",
-      "active",
+      state,
       `${key}.lock`,
       "lease.json"
     );
@@ -537,19 +562,20 @@ function parseLease(
   return parsed;
 }
 
-function parseLegacyActiveLease(
-  value: string
+function parseLegacyLease(
+  value: string,
+  label: string
 ): ResearchControlStudyExecutionLeaseRecord {
   let parsed: unknown;
   try { parsed = JSON.parse(value); } catch (error) {
-    throw corruptState("legacy filesystem active fence is unreadable", error);
+    throw corruptState(`${label} is unreadable`, error);
   }
   const { lease } = parsePersistedResearchControlStudyExecutionLease(
     parsed,
-    "legacy filesystem active fence"
+    label
   );
   if (lease.lease_status !== "active") {
-    throw corruptState("legacy filesystem active fence is terminal");
+    throw corruptState(`${label} is terminal`);
   }
   return lease;
 }
