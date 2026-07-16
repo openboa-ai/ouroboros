@@ -126,6 +126,18 @@ implements ResearchControlStudyExecutionLeasePort {
       if (active && Date.parse(now) < Date.parse(active.expires_at)) {
         return { status: "held", lease: active, reason: "lease_unexpired" };
       }
+      if (active && active.owner.host_id === input.owner.host_id) {
+        const liveness = await this.readOwnerLiveness(active.owner);
+        if (liveness !== "absent") {
+          return {
+            status: "held",
+            lease: active,
+            reason: liveness === "alive"
+              ? "owner_alive"
+              : "owner_liveness_unknown"
+          };
+        }
+      }
       if (active) {
         this.archive(database, closeResearchControlStudyExecutionLease({
           lease: active,

@@ -646,6 +646,57 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
     });
   });
 
+  it.each([
+    ["alive", "owner_alive"],
+    ["unknown", "owner_liveness_unknown"]
+  ] as const)("does not displace an expired same-host %s owner", async (
+    liveness,
+    reason
+  ) => {
+    const study = studyFixture();
+    const first = await sharedAdapter("lease-a").acquire({
+      study,
+      owner: owner("server-a", 101),
+      leaseDurationMs: 30_000
+    });
+    expect(first.status).toBe("acquired");
+    now = "2026-07-13T00:00:31.000Z";
+
+    const result = await sharedAdapter("lease-b", liveness).acquire({
+      study,
+      owner: owner("server-b", 202),
+      leaseDurationMs: 30_000
+    });
+
+    expect(result).toMatchObject({ status: "held", reason });
+    expect(result.lease).toEqual(first.lease);
+    expect(await sharedAdapter("unused").listHistory(
+      study.research_control_study_id
+    )).toEqual([]);
+  });
+
+  it("uses the expired fence for a contender on another host", async () => {
+    const study = studyFixture();
+    const first = await sharedAdapter("lease-a").acquire({
+      study,
+      owner: owner("server-a", 101, "host-a"),
+      leaseDurationMs: 30_000
+    });
+    expect(first.status).toBe("acquired");
+    now = "2026-07-13T00:00:31.000Z";
+
+    const result = await sharedAdapter("lease-b", "unknown").acquire({
+      study,
+      owner: owner("server-b", 202, "host-b"),
+      leaseDurationMs: 30_000
+    });
+
+    expect(result).toMatchObject({
+      status: "acquired",
+      lease: { lease_token: "lease-b", fencing_token: 2 }
+    });
+  });
+
   it("waits for active and transitioning legacy leases before switching adapters", async () => {
     const study = studyFixture();
     const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
@@ -979,11 +1030,12 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
 
 function owner(
   serverInstanceId: string,
-  processId: number
+  processId: number,
+  hostId = "test-host"
 ): ResearchControlStudyExecutionLeaseOwner {
   return {
     server_instance_id: serverInstanceId,
-    host_id: "test-host",
+    host_id: hostId,
     process_id: processId,
     process_start_marker: `${serverInstanceId}-process-start`
   };
