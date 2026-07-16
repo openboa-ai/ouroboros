@@ -36,6 +36,7 @@ import { buildServer } from "./server";
 import {
   createLiveRuntimeSoakScenario,
   LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT,
+  liveProviderRecoveryTimeoutMs,
   liveRuntimeSoakControlPlan,
   recordLiveRuntimeSoakEffect,
   sandboxSamples,
@@ -344,8 +345,13 @@ async function injectProviderLoss(config: LiveRuntimeSoakTargetConfig): Promise<
 }
 
 async function recoverProviderAndStartPaper(config: LiveRuntimeSoakTargetConfig): Promise<void> {
+  const recoveryDeadline = Date.now() + liveProviderRecoveryTimeoutMs(config.provider.timeout_ms);
   const candidateId = await recoverProviderGeneratedCandidate(async () => {
-    const tick = await command(config, "arena.tick");
+    const timeoutMs = recoveryDeadline - Date.now();
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error("Codex recovery exhausted its bounded control deadline.");
+    }
+    const tick = await command(config, "arena.tick", undefined, timeoutMs);
     return tick.operator?.candidate_arena?.latest_ticks?.[0]
       ?.created_candidate_ids?.[0];
   }, LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT);
@@ -435,9 +441,31 @@ async function terminalCleanup(config: LiveRuntimeSoakTargetConfig): Promise<voi
     }
   }
   await stopProcess(config, "SIGTERM");
+  const ownership = ownershipAdapter(config);
+  const reconciledAt = new Date().toISOString();
+  await reconcileRuntimeOwnershipRecords(
+    await activeOwnership(config),
+    (record) => ownership.reconcile({
+      expected: ownershipIdentity(record),
+      mode: "terminate",
+      reconciledAt
+    })
+  );
   await waitFor(async () => (await readdir(path.join(
     config.store_root, "runtime-process-ownership", "active"
   )).catch(() => [])).length === 0, 30_000);
+}
+
+export async function reconcileRuntimeOwnershipRecords<T>(
+  records: readonly T[],
+  reconcile: (record: T) => Promise<{ status: string }>
+): Promise<void> {
+  for (const record of records) {
+    const result = await reconcile(record);
+    if (result.status !== "vacant" && result.status !== "terminated") {
+      throw new Error(`Runtime ownership reconciliation failed: ${result.status}`);
+    }
+  }
 }
 
 async function generatedSandboxVerified(
@@ -457,11 +485,13 @@ async function generatedSandboxVerified(
 async function command(
   config: LiveRuntimeSoakTargetConfig,
   commandKind: string,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
+  timeoutMs = LIVE_RUNTIME_API_TIMEOUT_MS
 ): Promise<any> {
   const response = await apiRaw(config, "/api/commands", {
     method: "POST",
-    body: { command_kind: commandKind, ...(payload ? { payload } : {}) }
+    body: { command_kind: commandKind, ...(payload ? { payload } : {}) },
+    timeout_ms: timeoutMs
   });
   if (!response.ok) throw new Error(`Runtime command ${commandKind} failed (${response.status}).`);
   if (response.body?.command?.status !== "succeeded") {
@@ -479,12 +509,12 @@ async function api(config: LiveRuntimeSoakTargetConfig, route: string): Promise<
 async function apiRaw(
   config: LiveRuntimeSoakTargetConfig,
   route: string,
-  options: { method?: string; body?: unknown } = {}
+  options: { method?: string; body?: unknown; timeout_ms?: number } = {}
 ): Promise<{ ok: boolean; status: number; body: any }> {
   const token = (await readFile(config.runtime.token_file, "utf8")).trim();
   return requestLiveRuntimeApi(runtimeOrigin(config), route, token, {
     ...options,
-    timeout_ms: LIVE_RUNTIME_API_TIMEOUT_MS
+    timeout_ms: options.timeout_ms ?? LIVE_RUNTIME_API_TIMEOUT_MS
   });
 }
 

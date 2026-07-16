@@ -103,6 +103,16 @@ export function createLiveRuntimeSoakScenario(runId: string): RuntimeSoakScenari
   };
 }
 
+export function liveProviderRecoveryTimeoutMs(providerTimeoutMs: number): number {
+  const timeoutMs = providerTimeoutMs * LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT +
+    PROVIDER_RECOVERY_OVERHEAD_MS;
+  if (!Number.isSafeInteger(providerTimeoutMs) || providerTimeoutMs <= 0 ||
+    !Number.isSafeInteger(timeoutMs)) {
+    throw new Error("Live runtime soak provider recovery timeout is invalid.");
+  }
+  return timeoutMs;
+}
+
 export function liveRuntimeSoakControlPlan(action: RuntimeSoakAction): string[] {
   const plans: Record<string, string[]> = {
     "runtime-clean-restart": [
@@ -144,9 +154,9 @@ export function createLiveRuntimeSoakHarnessConfig(
     timeout_ms: timeoutMs
   });
   const scenario = createLiveRuntimeSoakScenario(config.run_id);
-  const providerRecoveryTimeoutMs = config.provider.timeout_ms *
-    LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT + PROVIDER_RECOVERY_OVERHEAD_MS;
-  if (!Number.isSafeInteger(providerRecoveryTimeoutMs)) {
+  const providerRecoveryTimeoutMs = liveProviderRecoveryTimeoutMs(config.provider.timeout_ms);
+  const providerRecoveryControlTimeoutMs = providerRecoveryTimeoutMs + CONTROL_TIMEOUT_MS;
+  if (!Number.isSafeInteger(providerRecoveryControlTimeoutMs)) {
     throw new Error("Live runtime soak provider recovery timeout is invalid.");
   }
   return {
@@ -155,7 +165,7 @@ export function createLiveRuntimeSoakHarnessConfig(
     controls: Object.fromEntries(scenario.actions.map((action) => [
       action.action_id,
       control(action.action_id === "provider-recovery"
-        ? providerRecoveryTimeoutMs
+        ? providerRecoveryControlTimeoutMs
         : CONTROL_TIMEOUT_MS)
     ])),
     probe: {

@@ -10,6 +10,7 @@ import {
   buildLiveRuntimeSoakSample,
   createLiveRuntimeSoakHarnessConfig,
   createLiveRuntimeSoakScenario,
+  liveProviderRecoveryTimeoutMs,
   liveRuntimeSoakControlPlan,
   paperObservationStreams,
   parseLiveRuntimeSoakTargetConfig,
@@ -23,6 +24,7 @@ import {
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
 import {
+  reconcileRuntimeOwnershipRecords,
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
   stopRuntimeProcessGroup
@@ -202,8 +204,11 @@ describe("live RuntimeSoakTarget", () => {
       ["terminal-cleanup", ["paper.stop", "sandbox.stop", "runtime.stop"]]
     ]);
     expect(harness.controls["runtime-clean-restart"]?.timeout_ms).toBe(600_000);
-    expect(harness.controls["provider-recovery"]?.timeout_ms).toBe(
+    expect(liveProviderRecoveryTimeoutMs(config.provider.timeout_ms)).toBe(
       config.provider.timeout_ms * 3 + 300_000
+    );
+    expect(harness.controls["provider-recovery"]?.timeout_ms).toBe(
+      liveProviderRecoveryTimeoutMs(config.provider.timeout_ms) + 600_000
     );
   });
 
@@ -241,6 +246,21 @@ describe("live RuntimeSoakTarget", () => {
 
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(waits).toEqual([30_000, 10_000]);
+  });
+
+  it("reconciles stale runtime ownership and rejects a blocked cleanup", async () => {
+    const reconciled: string[] = [];
+
+    await reconcileRuntimeOwnershipRecords(["stale-runtime-owner"], async (record) => {
+      reconciled.push(record);
+      return { status: "vacant" };
+    });
+
+    expect(reconciled).toEqual(["stale-runtime-owner"]);
+    await expect(reconcileRuntimeOwnershipRecords(
+      ["unknown-runtime-owner"],
+      async () => ({ status: "blocked" })
+    )).rejects.toThrow(/ownership reconciliation failed/i);
   });
 
   it("keeps long-running runtime controls on an explicit bounded HTTP transport", async () => {
