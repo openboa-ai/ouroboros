@@ -1333,7 +1333,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       removeResult
     );
     return {
-      lifecycle_status: removed ? "removed" : "failed",
+      lifecycle_status: removed ? "removed" : "stopping",
       stopped_at: stopped ? stopResult.completed_at || stopStartedAt : undefined,
       removed_at: removed ? removeResult.completed_at : undefined,
       command_evidence: [

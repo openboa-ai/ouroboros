@@ -1481,6 +1481,58 @@ describe("sandbox API", () => {
     expect(persisted?.stopped_at).toBeUndefined();
   });
 
+  it("retries incomplete sandbox cleanup through the public stop command", async () => {
+    const baseAdapter = new DeterministicSandboxAdapter();
+    let stopCallCount = 0;
+    const retryingStopAdapter: SandboxAdapter = {
+      kind: "deterministic_test",
+      startArtifactInstance: async (input) => {
+        const started = await baseAdapter.startArtifactInstance(input);
+        return {
+          ...started,
+          instance: {
+            ...started.instance,
+            lifecycle_status: "running",
+            stopped_at: undefined
+          }
+        };
+      },
+      getArtifactInstanceStatus: (instance) => baseAdapter.getArtifactInstanceStatus(instance),
+      getArtifactInstanceLogs: (instance) => baseAdapter.getArtifactInstanceLogs(instance),
+      stopArtifactInstance: async () => {
+        stopCallCount += 1;
+        return stopCallCount === 1
+          ? { lifecycle_status: "stopping" }
+          : {
+              lifecycle_status: "removed",
+              removed_at: "2026-05-10T00:01:00.000Z"
+            };
+      }
+    };
+    const server = await buildSandboxTestServer({
+      store: new LocalStore(tmpDir),
+      sandboxAdapters: {
+        deterministic_test: retryingStopAdapter
+      }
+    });
+
+    await startClockSandbox(server, {
+      idempotency_key: "sandbox-stop-retry",
+      sandbox_id: "sandbox-stop-retry",
+      sandbox_name: "ouro-s5-clock-stop-retry",
+      created_at: "2026-05-10T00:00:00.000Z"
+    });
+    const firstStop = await stopSandboxCommand(server, "sandbox-stop-retry");
+    const retry = await stopSandboxCommand(server, "sandbox-stop-retry");
+
+    expect(firstStop.statusCode).toBe(200);
+    expect(firstStop.json().sandbox.lifecycle_status).toBe("stopping");
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().sandbox.lifecycle_status).toBe("removed");
+    expect(retry.json().sandbox.removed_at).toBe("2026-05-10T00:01:00.000Z");
+    expect(stopCallCount).toBe(2);
+  });
+
   it("does not refresh stopped sandboxes through adapter status or log reads", async () => {
     const baseAdapter = new DeterministicSandboxAdapter();
     let statusCallCount = 0;

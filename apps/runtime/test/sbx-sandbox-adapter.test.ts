@@ -685,7 +685,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     const stop = await adapter.stopArtifactInstance(start.instance);
 
-    expect(stop.lifecycle_status).toBe("failed");
+    expect(stop.lifecycle_status).toBe("stopping");
     expect(stop.stopped_at).toBeUndefined();
     expect(stop.removed_at).toBeUndefined();
     expect(stop.command_evidence?.map((evidence) => evidence.exit_code))
@@ -698,6 +698,14 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
         `stop ${sandboxName}`,
         `rm --force ${sandboxName}`
       ]);
+
+    delete process.env.SBX_FAKE_REMOVE_FAIL;
+    const retry = await adapter.stopArtifactInstance(start.instance);
+
+    expect(retry.lifecycle_status).toBe("removed");
+    expect(retry.stopped_at).toBeUndefined();
+    expect(retry.removed_at).toBeDefined();
+    await expect(readFile(leasePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 
