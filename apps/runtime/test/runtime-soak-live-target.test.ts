@@ -1,5 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,7 +21,7 @@ import {
   createLiveRuntimeSoakLaunchAgent,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
-import { recoverProviderGeneratedCandidate } from
+import { recoverProviderGeneratedCandidate, requestLiveRuntimeApi } from
   "../src/runtime-soak-live-control.js";
 import { runLiveRuntimeSoakTargetCommand } from
   "../src/run-runtime-soak-live-target.js";
@@ -212,6 +214,41 @@ describe("live RuntimeSoakTarget", () => {
       return undefined;
     }, 3)).rejects.toThrow(/3 bounded attempts/i);
     expect(exhausted).toBe(3);
+  });
+
+  it("keeps long-running runtime controls on an explicit bounded HTTP transport", async () => {
+    let authorization: string | undefined;
+    const apiServer = createServer((request, response) => {
+      authorization = request.headers.authorization;
+      setTimeout(() => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ status: "succeeded" }));
+      }, 40);
+    });
+    await new Promise<void>((resolve, reject) => {
+      apiServer.once("error", reject);
+      apiServer.listen(0, "127.0.0.1", resolve);
+    });
+    const address = apiServer.address() as AddressInfo;
+
+    try {
+      await expect(requestLiveRuntimeApi(
+        `http://127.0.0.1:${address.port}`,
+        "/api/commands",
+        "operator-token",
+        { method: "POST", body: { command_kind: "arena.tick" }, timeout_ms: 1_000 }
+      )).resolves.toEqual({
+        ok: true,
+        status: 200,
+        body: { status: "succeeded" }
+      });
+      expect(authorization).toBe("Bearer operator-token");
+    } finally {
+      await new Promise<void>((resolve, reject) => apiServer.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      }));
+    }
   });
 
   it("freezes a secretless environment manifest and crash-only launch agent", () => {

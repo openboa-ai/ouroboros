@@ -10,6 +10,7 @@ import {
   rm,
   writeFile
 } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { hostname } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -42,6 +43,8 @@ import {
 } from "./runtime-soak-live-target";
 
 const execFileAsync = promisify(execFile);
+const LIVE_RUNTIME_API_TIMEOUT_MS = 10 * 60_000;
+const LIVE_RUNTIME_API_RESPONSE_LIMIT_BYTES = 16 * 1024 * 1024;
 const ACTIVE_SANDBOX_STATES = new Set([
   "requested", "created", "starting", "running", "stopping"
 ]);
@@ -451,19 +454,82 @@ async function apiRaw(
   options: { method?: string; body?: unknown } = {}
 ): Promise<{ ok: boolean; status: number; body: any }> {
   const token = (await readFile(config.runtime.token_file, "utf8")).trim();
-  const response = await fetch(runtimeOrigin(config) + route, {
-    method: options.method ?? "GET",
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(options.body ? { "content-type": "application/json" } : {})
-    },
-    ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    signal: AbortSignal.timeout(10 * 60_000)
+  return requestLiveRuntimeApi(runtimeOrigin(config), route, token, {
+    ...options,
+    timeout_ms: LIVE_RUNTIME_API_TIMEOUT_MS
   });
-  const text = await response.text();
-  let body: any;
-  try { body = JSON.parse(text); } catch { body = {}; }
-  return { ok: response.ok, status: response.status, body };
+}
+
+export async function requestLiveRuntimeApi(
+  origin: string,
+  route: string,
+  token: string,
+  options: { method?: string; body?: unknown; timeout_ms?: number } = {}
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const timeoutMs = options.timeout_ms ?? LIVE_RUNTIME_API_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Live runtime API timeout is invalid.");
+  }
+  const url = new URL(route, origin);
+  if (url.protocol !== "http:") {
+    throw new Error("Live runtime API transport must use local HTTP.");
+  }
+  const method = options.method ?? "GET";
+  const requestBody = options.body === undefined
+    ? undefined
+    : JSON.stringify(options.body);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      const detail = error instanceof Error ? error.message : String(error);
+      reject(new Error(`Runtime API ${method} ${route} transport failed: ${detail}`, {
+        cause: error
+      }));
+    };
+    const request = httpRequest(url, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(requestBody === undefined
+          ? {}
+          : {
+              "content-type": "application/json",
+              "content-length": Buffer.byteLength(requestBody)
+            })
+      },
+      signal: AbortSignal.timeout(timeoutMs)
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      let receivedBytes = 0;
+      response.on("data", (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > LIVE_RUNTIME_API_RESPONSE_LIMIT_BYTES) {
+          request.destroy(new Error("response exceeded the bounded size limit"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.once("error", fail);
+      response.once("end", () => {
+        if (settled) return;
+        const status = response.statusCode;
+        if (!Number.isSafeInteger(status)) {
+          fail(new Error("response status is missing"));
+          return;
+        }
+        const text = Buffer.concat(chunks).toString("utf8");
+        let body: any;
+        try { body = JSON.parse(text); } catch { body = {}; }
+        settled = true;
+        resolve({ ok: status! >= 200 && status! < 300, status: status!, body });
+      });
+    });
+    request.once("error", fail);
+    request.end(requestBody);
+  });
 }
 
 async function waitForProviderOwnership(
