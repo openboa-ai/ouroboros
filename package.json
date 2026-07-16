@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "runtime:soak": "tsx apps/runtime/src/run-runtime-soak.ts",
     "trading:research": "tsx apps/cli/src/run-trading-research.ts",
     "trading:arena": "tsx apps/runtime/src/candidate/arena/run.ts",
     "trading:research:ledger": "node scripts/trading-research-ledger.mjs",

@@ -163,6 +163,10 @@ the immutable checkpoint chain for retry/restart state, retry only within the bo
 budget, isolate lane failures, and stop in reverse order. `/health` and `OperatorReadModel` must
 return the same supervisor projection. The supervisor coordinates runtime only; it never ranks,
 qualifies, promotes, submits orders, or widens private/live authority.
+Keep `RuntimeSoakHarness` outside `RuntimeSupervisor`. It is an operational test controller that
+injects operator-configured faults, samples external state, and writes an authority-free
+`RuntimeSoakReport`; it must not become a runtime lane, trading policy, or source of evaluation or
+promotion authority.
 Child provider and deterministic long-running Sandbox processes use separate
 `RuntimeProcessOwnership` scopes. Before any child effect, the runtime durably binds the exact
 host, PID start marker, executable, profile digest, worker/store-root process scope, runtime ref,
@@ -434,6 +438,8 @@ Canonical Ouroboros nouns for the current product surface:
 | `RuntimeSupervisorCheckpoint` | Immutable predecessor-linked RuntimeSupervisor state containing lane desire, status, basis/progress digests, attempts, retry time, and reason. It is restart coordination, not evaluation or promotion evidence. |
 | `RuntimeProcessOwnership` | Same-host operational identity and transition history for one RuntimeSupervisor, provider, or deterministic long-running Sandbox process. It binds host, PID start marker, executable/profile, runtime-supervisor, worker/store-root, or Sandbox process scope, runtime, and session token before effects; exact Sandbox owners may be adopted while provider owners are terminated before a fresh session. It grants no research, evaluation, order, private, or live authority. |
 | `ResearchAllocationPolicyDecision` | Append-only research-only selection record derived separately from one exact ResearchControlStudy and outcome. Version 1 may approve only the studied adaptive policy digest after eligible supported same-baseline evidence; otherwise it records not-approved with no effective mode and never selects static control. |
+| `RuntimeSoakHarness` | External operational test controller for one immutable time-bounded fault schedule, normalized invariant sampling, restart reconstruction, and terminal classification. It is not a RuntimeSupervisor lane and grants no product authority. |
+| `RuntimeSoakReport` | Create-only manifest and predecessor-linked operational-test event chain for one RuntimeSoakHarness run. It preserves elapsed time, action evidence, samples, first failure, and terminal status without evaluation, promotion, order, private, or live authority. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
