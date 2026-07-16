@@ -33,6 +33,7 @@ import type { PrivateReadinessPostureQueryInput } from "./private-readiness-post
 import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-substrate-fixtures";
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
 export * from "./research-control-study-execution-lease-store";
+export * from "./shared-research-control-study-execution-lease-store";
 export * from "./runtime-process-ownership-store";
 export * from "./runtime-supervisor-checkpoint-store";
 export { currentProcessStartMarker } from "./process-start-marker";
@@ -1494,15 +1495,39 @@ interface ResearchMemoryControlPairSourceGraphRecord {
 const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_ATTEMPTS = 5_000;
 const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS = 2;
 
+export interface LocalStoreWriteTransaction {
+  run<T>(write: () => Promise<T>): Promise<T>;
+}
+
+export interface LocalStoreOptions {
+  writeTransaction?: LocalStoreWriteTransaction;
+}
+
 export class LocalStore {
   private candidateProjectionSelfHealPromise?: Promise<void>;
   private projectionRebuildQueue: Promise<void> = Promise.resolve();
   private comparisonEvidenceWriteQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
+  constructor(
+    private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT,
+    private readonly options: LocalStoreOptions = {}
+  ) {
+    if (options.writeTransaction &&
+      typeof options.writeTransaction.run !== "function") {
+      throw new TypeError("LocalStore write transaction is invalid");
+    }
+  }
 
   root(): string {
     return this.storeRoot;
+  }
+
+  atRoot(storeRoot: string): LocalStore {
+    return new LocalStore(storeRoot, this.options);
+  }
+
+  withWriteTransaction(writeTransaction: LocalStoreWriteTransaction): LocalStore {
+    return new LocalStore(this.storeRoot, { writeTransaction });
   }
 
   private withComparisonEvidenceWriteTransaction<T>(task: () => Promise<T>): Promise<T> {
@@ -19692,42 +19717,50 @@ export class LocalStore {
   }
 
   private async writeJson(filePath: string, value: unknown): Promise<void> {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    const tmpPath = `${filePath}.tmp`;
-    // LocalStore writes validated records to encoded paths under storeRoot.
-    // codeql[js/http-to-file-access]
-    await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    await rename(tmpPath, filePath);
+    await this.publish(async () => {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      const tmpPath = `${filePath}.tmp`;
+      // LocalStore writes validated records to encoded paths under storeRoot.
+      // codeql[js/http-to-file-access]
+      await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+      await rename(tmpPath, filePath);
+    });
   }
 
   private async writeJsonCreateOnly(
     filePath: string,
     value: unknown
   ): Promise<"created" | "exists"> {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
-    // LocalStore writes validated records to encoded paths under storeRoot.
-    // codeql[js/http-to-file-access]
-    await writeFile(
-      temporaryPath,
-      `${JSON.stringify(value, null, 2)}\n`,
-      "utf8"
-    );
-    try {
-      await link(temporaryPath, filePath);
-      return "created";
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        return "exists";
-      }
-      throw error;
-    } finally {
+    return this.publish(async () => {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+      // LocalStore writes validated records to encoded paths under storeRoot.
+      // codeql[js/http-to-file-access]
+      await writeFile(
+        temporaryPath,
+        `${JSON.stringify(value, null, 2)}\n`,
+        "utf8"
+      );
       try {
-        await unlink(temporaryPath);
+        await link(temporaryPath, filePath);
+        return "created";
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          return "exists";
+        }
+        throw error;
+      } finally {
+        try {
+          await unlink(temporaryPath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
       }
-    }
+    });
+  }
+
+  private publish<T>(write: () => Promise<T>): Promise<T> {
+    return this.options.writeTransaction?.run(write) ?? write();
   }
 }
 

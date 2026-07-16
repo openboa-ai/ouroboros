@@ -3,11 +3,13 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from
   "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   closeResearchControlStudyExecutionLease,
   decideResearchControlStudyExecutionLease,
+  researchControlStudyExecutionLeaseDigestInput,
   type ResearchControlStudyExecutionLeaseOwner,
   type ResearchControlStudyExecutionLeaseRecord,
   type ResearchControlStudyRecord
@@ -16,6 +18,7 @@ import { decideResearchControlStudy } from
   "@ouroboros/application/candidate/research-control-study";
 import {
   FileSystemResearchControlStudyExecutionLeaseStore,
+  SharedSqliteResearchControlStudyExecutionLeaseStore,
   currentProcessStartMarker,
   researchControlStudyExecutionLeaseOwnerLiveness
 } from "../src/index";
@@ -80,7 +83,12 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     });
     expect(acquired.status).toBe("acquired");
     if (acquired.status !== "acquired") throw new Error("expected acquired lease");
+    expect(acquired.lease.fencing_token).toBe(1);
     expect(await store.assertOwned({ lease: acquired.lease })).toEqual(acquired.lease);
+    await expect(store.withFencedWrite({
+      lease: acquired.lease,
+      async write() { return "published"; }
+    })).resolves.toBe("published");
 
     now = "2026-07-13T00:00:10.000Z";
     const renewed = await store.renew({ lease: acquired.lease });
@@ -96,6 +104,7 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
       study,
       owner: owner("server-a", 101),
       leaseToken: "other-token",
+      fencingToken: 1,
       leaseDurationMs: 30_000,
       acquiredAt: "2026-07-13T00:00:00.000Z"
     });
@@ -121,7 +130,14 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     expect(reacquired).toMatchObject({ status: "acquired" });
     if (reacquired.status !== "acquired") throw new Error("expected reacquisition");
     expect(reacquired.lease.lease_token).toBe("lease-b");
+    expect(reacquired.lease.fencing_token).toBe(2);
     await expect(store.assertOwned({ lease: renewed })).rejects.toMatchObject({
+      code: "research_control_study_execution_lease_ownership_lost"
+    });
+    await expect(store.withFencedWrite({
+      lease: renewed,
+      async write() { throw new Error("stale write entered"); }
+    })).rejects.toMatchObject({
       code: "research_control_study_execution_lease_ownership_lost"
     });
     expect(await readLease(historyFile(released))).toEqual(released);
@@ -146,6 +162,42 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
     expect(await readLease(activeLeaseFile(study))).toEqual(acquired.lease);
   });
 
+  it("starts fencing at one after verified pre-fencing terminal history", async () => {
+    const study = studyFixture();
+    const legacyStore = adapter({ token: "legacy-lease", liveness: "alive" });
+    const acquired = await legacyStore.acquire({
+      study,
+      owner: owner("legacy-server", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected legacy lease");
+    const terminal = await legacyStore.release({ lease: acquired.lease });
+    const {
+      fencing_token: _fencingToken,
+      lease_digest: _leaseDigest,
+      ...legacyPayload
+    } = terminal;
+    const legacyHistory = {
+      ...legacyPayload,
+      lease_digest: sha256(researchControlStudyExecutionLeaseDigestInput(
+        legacyPayload as ResearchControlStudyExecutionLeaseRecord
+      ))
+    };
+    await writeFile(historyFile(terminal), JSON.stringify(legacyHistory), "utf8");
+
+    const upgraded = await adapter({ token: "post-fencing", liveness: "alive" })
+      .acquire({
+        study,
+        owner: owner("upgraded-server", 202),
+        leaseDurationMs: 30_000
+      });
+
+    expect(upgraded).toMatchObject({
+      status: "acquired",
+      lease: { lease_token: "post-fencing", fencing_token: 1 }
+    });
+  });
+
   it("rejects renewal once the active lease window expires", async () => {
     const study = studyFixture();
     const store = adapter({ token: "lease-a", liveness: "alive" });
@@ -163,6 +215,50 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
       code: "research_control_study_execution_lease_ownership_lost"
     });
     expect(await readLease(activeLeaseFile(study))).toEqual(acquired.lease);
+  });
+
+  it("normalizes verified pre-fencing active state before takeover", async () => {
+    const study = studyFixture();
+    const first = adapter({ token: "legacy-active", liveness: "alive" });
+    const acquired = await first.acquire({
+      study,
+      owner: owner("legacy-server", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected legacy lease");
+    const {
+      fencing_token: _fencingToken,
+      lease_digest: _leaseDigest,
+      ...legacyPayload
+    } = acquired.lease;
+    await writeFile(activeLeaseFile(study), JSON.stringify({
+      ...legacyPayload,
+      lease_digest: sha256(researchControlStudyExecutionLeaseDigestInput(
+        legacyPayload as ResearchControlStudyExecutionLeaseRecord
+      ))
+    }), "utf8");
+
+    await expect(adapter({ token: "post-fencing", liveness: "alive" }).acquire({
+      study,
+      owner: owner("upgraded-server", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: { lease_token: "legacy-active", fencing_token: 1 },
+      reason: "owner_alive"
+    });
+
+    now = "2026-07-13T00:00:31.000Z";
+    const takeover = await adapter({ token: "post-fencing", liveness: "absent" })
+      .acquire({
+        study,
+        owner: owner("upgraded-server", 202),
+        leaseDurationMs: 30_000
+      });
+    expect(takeover).toMatchObject({
+      status: "acquired",
+      lease: { lease_token: "post-fencing", fencing_token: 2 }
+    });
   });
 
   it.each([
@@ -330,6 +426,7 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
       study,
       owner: owner("server-a", 101),
       leaseToken: "lease-a",
+      fencingToken: 1,
       leaseDurationMs: 30_000,
       acquiredAt: "2026-07-13T00:00:00.000Z"
     });
@@ -342,6 +439,7 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
       study,
       owner: owner("server-b", 202),
       leaseToken: "lease-b",
+      fencingToken: 2,
       leaseDurationMs: 30_000,
       acquiredAt: "2026-07-13T00:00:31.000Z"
     });
@@ -395,6 +493,7 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
       study,
       owner: owner("server-a", 101),
       leaseToken: "lease-a",
+      fencingToken: 1,
       leaseDurationMs: 30_000,
       acquiredAt: now
     });
@@ -489,21 +588,565 @@ describe("FileSystemResearchControlStudyExecutionLeaseStore", () => {
   }
 });
 
+describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
+  let root: string;
+  let now: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-shared-fence-"));
+    now = "2026-07-13T00:00:00.000Z";
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("elects one host and allocates a monotonic token on fenced takeover", async () => {
+    const study = studyFixture();
+    const first = sharedAdapter("lease-a");
+    const contender = sharedAdapter("lease-b");
+    const raced = await Promise.all([
+      first.acquire({
+        study,
+        owner: owner("host-a", 101),
+        leaseDurationMs: 30_000
+      }),
+      contender.acquire({
+        study,
+        owner: owner("host-b", 202),
+        leaseDurationMs: 30_000
+      })
+    ]);
+
+    expect(raced.map((result) => result.status).sort()).toEqual([
+      "acquired",
+      "held"
+    ]);
+    const acquired = raced.find((result) => result.status === "acquired")!;
+    expect(acquired.lease.fencing_token).toBe(1);
+
+    now = "2026-07-13T00:00:31.000Z";
+    const takeover = await contender.acquire({
+      study,
+      owner: owner("host-b", 202),
+      leaseDurationMs: 30_000
+    });
+    expect(takeover).toMatchObject({
+      status: "acquired",
+      lease: { fencing_token: 2, lease_token: "lease-b" }
+    });
+    const history = await contender.listHistory(
+      study.research_control_study_id
+    );
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      fencing_token: 1,
+      lease_status: "expired",
+      close_reason: "expired_fenced_takeover"
+    });
+  });
+
+  it.each([
+    ["alive", "owner_alive"],
+    ["unknown", "owner_liveness_unknown"]
+  ] as const)("does not displace an expired same-host %s owner", async (
+    liveness,
+    reason
+  ) => {
+    const study = studyFixture();
+    const first = await sharedAdapter("lease-a").acquire({
+      study,
+      owner: owner("server-a", 101),
+      leaseDurationMs: 30_000
+    });
+    expect(first.status).toBe("acquired");
+    now = "2026-07-13T00:00:31.000Z";
+
+    const result = await sharedAdapter("lease-b", liveness).acquire({
+      study,
+      owner: owner("server-b", 202),
+      leaseDurationMs: 30_000
+    });
+
+    expect(result).toMatchObject({ status: "held", reason });
+    expect(result.lease).toEqual(first.lease);
+    expect(await sharedAdapter("unused").listHistory(
+      study.research_control_study_id
+    )).toEqual([]);
+  });
+
+  it("uses the expired fence for a contender on another host", async () => {
+    const study = studyFixture();
+    const first = await sharedAdapter("lease-a").acquire({
+      study,
+      owner: owner("server-a", 101, "host-a"),
+      leaseDurationMs: 30_000
+    });
+    expect(first.status).toBe("acquired");
+    now = "2026-07-13T00:00:31.000Z";
+
+    const result = await sharedAdapter("lease-b", "unknown").acquire({
+      study,
+      owner: owner("server-b", 202, "host-b"),
+      leaseDurationMs: 30_000
+    });
+
+    expect(result).toMatchObject({
+      status: "acquired",
+      lease: { lease_token: "lease-b", fencing_token: 2 }
+    });
+  });
+
+  it("archives an expired absent legacy active lease before shared takeover", async () => {
+    const study = studyFixture();
+    const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
+      now: () => now,
+      leaseToken: () => "legacy-lease",
+      ownerLiveness: async () => "absent"
+    });
+    const legacyClaim = await legacy.acquire({
+      study,
+      owner: owner("legacy-host", 101),
+      leaseDurationMs: 30_000
+    });
+    if (legacyClaim.status !== "acquired") {
+      throw new Error("expected legacy lease acquisition");
+    }
+    now = "2026-07-13T00:00:31.000Z";
+
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({ status: "acquired" });
+
+    const historyFile = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "history",
+      "items",
+      `${encodeURIComponent(
+        legacyClaim.lease.research_control_study_execution_lease_id
+      )}.json`
+    );
+    await expect(readFile(historyFile, "utf8").then(JSON.parse))
+      .resolves.toMatchObject({
+        research_control_study_execution_lease_id:
+          legacyClaim.lease.research_control_study_execution_lease_id,
+        lease_status: "expired",
+        close_reason: "expired_owner_absent",
+        closed_at: now
+      });
+  });
+
+  it("waits for active and transitioning legacy leases before switching adapters", async () => {
+    const study = studyFixture();
+    const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
+      now: () => now,
+      leaseToken: () => "legacy-lease",
+      ownerLiveness: async () => "alive"
+    });
+    const legacyClaim = await legacy.acquire({
+      study,
+      owner: owner("legacy-host", 101),
+      leaseDurationMs: 30_000
+    });
+    if (legacyClaim.status !== "acquired") {
+      throw new Error("expected legacy lease acquisition");
+    }
+    const legacyActiveFile = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "active",
+      `${createHash("sha256").update(study.research_control_study_id).digest("hex")}.lock`,
+      "lease.json"
+    );
+    const {
+      fencing_token: _fencingToken,
+      lease_digest: _leaseDigest,
+      ...legacyPayload
+    } = legacyClaim.lease;
+    const legacyRecord = {
+      ...legacyPayload,
+      lease_digest: sha256(
+        researchControlStudyExecutionLeaseDigestInput(
+          legacyPayload as ResearchControlStudyExecutionLeaseRecord
+        )
+      )
+    };
+    await writeFile(legacyActiveFile, JSON.stringify(legacyRecord), "utf8");
+
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: {
+        lease_token: legacyClaim.lease.lease_token,
+        fencing_token: 1,
+        lease_status: "active"
+      },
+      reason: "transition"
+    });
+
+    now = "2026-07-13T00:00:31.000Z";
+    for (const liveness of ["alive", "unknown"] as const) {
+      await expect(sharedAdapter("unused", liveness).acquire({
+        study,
+        owner: owner("shared-host", 202),
+        leaseDurationMs: 30_000
+      })).resolves.toMatchObject({
+        status: "held",
+        lease: { lease_token: legacyClaim.lease.lease_token },
+        reason: "transition"
+      });
+      await expect(readFile(legacyActiveFile, "utf8")).resolves.toBeTruthy();
+    }
+    now = "2026-07-13T00:00:00.000Z";
+
+    const legacyTransitionFile = legacyActiveFile.replace(
+      `${path.sep}active${path.sep}`,
+      `${path.sep}transitions${path.sep}`
+    );
+    await mkdir(path.dirname(path.dirname(legacyTransitionFile)), {
+      recursive: true
+    });
+    await rename(
+      path.dirname(legacyActiveFile),
+      path.dirname(legacyTransitionFile)
+    );
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: {
+        lease_token: legacyClaim.lease.lease_token,
+        fencing_token: 1,
+        lease_status: "active"
+      },
+      reason: "transition"
+    });
+
+    now = "2026-07-13T00:00:31.000Z";
+    await expect(sharedAdapter("unused", "alive").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: { lease_token: legacyClaim.lease.lease_token },
+      reason: "transition"
+    });
+    const historyFile = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "history",
+      "items",
+      `${encodeURIComponent(
+        legacyClaim.lease.research_control_study_execution_lease_id
+      )}.json`
+    );
+    const terminal = closeResearchControlStudyExecutionLease({
+      lease: legacyClaim.lease,
+      leaseStatus: "expired",
+      closedAt: now
+    });
+    const {
+      fencing_token: _terminalFencingToken,
+      lease_digest: _terminalLeaseDigest,
+      ...legacyTerminalPayload
+    } = terminal;
+    const legacyTerminal = {
+      ...legacyTerminalPayload,
+      lease_digest: sha256(researchControlStudyExecutionLeaseDigestInput(
+        legacyTerminalPayload as ResearchControlStudyExecutionLeaseRecord
+      ))
+    };
+    await mkdir(path.dirname(historyFile), { recursive: true });
+    await writeFile(historyFile, JSON.stringify(legacyTerminal), "utf8");
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "acquired",
+      lease: { lease_token: "shared-lease", fencing_token: 1 }
+    });
+    await expect(readFile(legacyTransitionFile, "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(historyFile, "utf8").then(JSON.parse))
+      .resolves.toMatchObject({
+        lease_status: "expired",
+        close_reason: "expired_owner_absent",
+        closed_at: now
+      });
+  });
+
+  it("never enters a delayed old write after partition heal and takeover", async () => {
+    const study = studyFixture();
+    const oldHost = sharedAdapter("lease-a");
+    const newHost = sharedAdapter("lease-b");
+    const acquired = await oldHost.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected old owner");
+
+    now = "2026-07-13T00:00:31.000Z";
+    const takeover = await newHost.acquire({
+      study,
+      owner: owner("host-b", 202),
+      leaseDurationMs: 30_000
+    });
+    if (takeover.status !== "acquired") throw new Error("expected takeover");
+    let entered = false;
+
+    await expect(oldHost.withFencedWrite({
+      lease: acquired.lease,
+      async write() {
+        entered = true;
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_study_execution_lease_ownership_lost"
+    });
+    expect(entered).toBe(false);
+    await expect(newHost.withFencedWrite({
+      lease: takeover.lease,
+      async write() { return "current-write"; }
+    })).resolves.toBe("current-write");
+  });
+
+  it("orders an admitted old write before takeover without overlap", async () => {
+    const study = studyFixture();
+    const oldHost = sharedAdapter("lease-a");
+    const newHost = sharedAdapter("lease-b");
+    const acquired = await oldHost.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected old owner");
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const write = oldHost.withFencedWrite({
+      lease: acquired.lease,
+      async write() {
+        entered.resolve();
+        await release.promise;
+        return "old-write";
+      }
+    });
+    await entered.promise;
+    now = "2026-07-13T00:00:31.000Z";
+    let takeoverSettled = false;
+    const takeover = newHost.acquire({
+      study,
+      owner: owner("host-b", 202),
+      leaseDurationMs: 30_000
+    }).finally(() => { takeoverSettled = true; });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(takeoverSettled).toBe(false);
+    release.resolve();
+    await expect(write).resolves.toBe("old-write");
+    await expect(takeover).resolves.toMatchObject({
+      status: "acquired",
+      lease: { fencing_token: 2 }
+    });
+  });
+
+  it("rejects a pre-restart token after release and PID reuse", async () => {
+    const study = studyFixture();
+    const first = sharedAdapter("lease-a");
+    const acquired = await first.acquire({
+      study,
+      owner: owner("same-server", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected acquisition");
+    now = "2026-07-13T00:00:01.000Z";
+    await first.release({ lease: acquired.lease });
+    const restarted = sharedAdapter("lease-b");
+    const reacquired = await restarted.acquire({
+      study,
+      owner: owner("same-server", 101),
+      leaseDurationMs: 30_000
+    });
+    if (reacquired.status !== "acquired") throw new Error("expected restart");
+    expect(reacquired.lease.fencing_token).toBe(2);
+
+    await expect(restarted.withFencedWrite({
+      lease: acquired.lease,
+      async write() { throw new Error("old write entered"); }
+    })).rejects.toMatchObject({
+      code: "research_control_study_execution_lease_ownership_lost"
+    });
+  });
+
+  it("fails closed when active state is bound to another study", async () => {
+    const study = studyFixture();
+    const foreignStudy = studyFixture("foreign-execution-lease-study");
+    const store = sharedAdapter("lease-a");
+    const acquired = await store.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected acquisition");
+    const foreignLease = decideResearchControlStudyExecutionLease({
+      study: foreignStudy,
+      owner: owner("host-b", 202),
+      leaseToken: "foreign-lease",
+      fencingToken: acquired.lease.fencing_token,
+      leaseDurationMs: 30_000,
+      acquiredAt: now
+    });
+    const database = new DatabaseSync(sharedDatabaseFile());
+    try {
+      database.prepare(`
+        UPDATE research_control_study_execution_fences
+        SET active_lease_json = ?
+        WHERE study_id = ?
+      `).run(
+        JSON.stringify(foreignLease),
+        study.research_control_study_id
+      );
+    } finally {
+      database.close();
+    }
+
+    await expect(store.acquire({
+      study,
+      owner: owner("host-c", 303),
+      leaseDurationMs: 30_000
+    })).rejects.toMatchObject({
+      code: "research_control_study_execution_lease_state_corrupt"
+    });
+  });
+
+  it("rolls back callback failure without invalidating the current owner", async () => {
+    const study = studyFixture();
+    const store = sharedAdapter("lease-a");
+    const acquired = await store.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected acquisition");
+    const publicationError = Object.assign(new Error("publication failed"), {
+      code: "publication_failed"
+    });
+
+    await expect(store.withFencedWrite({
+      lease: acquired.lease,
+      async write() { throw publicationError; }
+    })).rejects.toBe(publicationError);
+    await expect(store.withFencedWrite({
+      lease: acquired.lease,
+      async write() { return "recovered"; }
+    })).resolves.toBe("recovered");
+  });
+
+  it("archives one exact terminal record across repeated release", async () => {
+    const study = studyFixture();
+    const store = sharedAdapter("lease-a");
+    const acquired = await store.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected acquisition");
+    now = "2026-07-13T00:00:01.000Z";
+
+    const first = await store.release({ lease: acquired.lease });
+    const repeated = await store.release({ lease: acquired.lease });
+    expect(repeated).toEqual(first);
+    await expect(store.listHistory(study.research_control_study_id))
+      .resolves.toEqual([first]);
+  });
+
+  it("maps post-open SQLite failures to fence unavailability", async () => {
+    const study = studyFixture();
+    const store = sharedAdapter("lease-a");
+    const acquired = await store.acquire({
+      study,
+      owner: owner("host-a", 101),
+      leaseDurationMs: 30_000
+    });
+    if (acquired.status !== "acquired") throw new Error("expected acquisition");
+    const database = new DatabaseSync(sharedDatabaseFile());
+    try {
+      database.exec(`
+        DROP TABLE research_control_study_execution_lease_history;
+        CREATE TABLE research_control_study_execution_lease_history (
+          lease_id TEXT PRIMARY KEY
+        );
+      `);
+    } finally {
+      database.close();
+    }
+
+    await expect(store.assertOwned({ lease: acquired.lease }))
+      .rejects.toMatchObject({
+        code: "research_control_study_execution_fence_unavailable"
+      });
+  });
+
+  function sharedDatabaseFile(): string {
+    return path.join(
+      root,
+      "research-control-study-execution-leases",
+      "shared-fence.sqlite"
+    );
+  }
+
+  function sharedAdapter(
+    token: string,
+    ownerLiveness: "alive" | "absent" | "unknown" = "absent"
+  ) {
+    return new SharedSqliteResearchControlStudyExecutionLeaseStore(root, {
+      now: () => now,
+      leaseToken: () => token,
+      ownerLiveness: async () => ownerLiveness,
+      transactionTimeoutMs: 2_000,
+      transactionRetryMs: 2
+    });
+  }
+});
+
 function owner(
   serverInstanceId: string,
-  processId: number
+  processId: number,
+  hostId = "test-host"
 ): ResearchControlStudyExecutionLeaseOwner {
   return {
     server_instance_id: serverInstanceId,
-    host_id: "test-host",
+    host_id: hostId,
     process_id: processId,
     process_start_marker: `${serverInstanceId}-process-start`
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 async function readLease(file: string): Promise<ResearchControlStudyExecutionLeaseRecord> {
   return JSON.parse(await readFile(file, "utf8")) as
     ResearchControlStudyExecutionLeaseRecord;
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 async function writeLease(
@@ -514,13 +1157,15 @@ async function writeLease(
   await writeFile(file, `${JSON.stringify(lease, null, 2)}\n`, "utf8");
 }
 
-function studyFixture(): ResearchControlStudyRecord {
+function studyFixture(
+  idempotencyKey = "execution-lease-study"
+): ResearchControlStudyRecord {
   const allocationPolicy = { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY };
   return decideResearchControlStudy({
-    idempotencyKey: "execution-lease-study",
+    idempotencyKey,
     baselineSnapshotDigest: digest("a"),
     replicationIdempotencyKeys: Array.from({ length: 6 }, (_, index) =>
-      `execution-lease-replication-${index + 1}`
+      `${idempotencyKey}-replication-${index + 1}`
     ),
     committedAt: "2026-07-12T09:00:00.000Z",
     condition: {

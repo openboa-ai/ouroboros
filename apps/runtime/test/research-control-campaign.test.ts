@@ -199,8 +199,15 @@ describe("ResearchControlCampaign runtime", () => {
   it("runs isolated adaptive and static arms from one exact baseline", async () => {
     const sourceRoot = path.join(tmpDir, "source-store");
     const workspaceRoot = path.join(tmpDir, "campaign-workspace");
-    const sourceStore = new LocalStore(sourceRoot);
-    await sourceStore.initialize();
+    const baseStore = new LocalStore(sourceRoot);
+    await baseStore.initialize();
+    let fencedWrites = 0;
+    const sourceStore = baseStore.withWriteTransaction({
+      async run<T>(write: () => Promise<T>): Promise<T> {
+        fencedWrites += 1;
+        return write();
+      }
+    });
     const tickCalls: string[] = [];
 
     const outcome = await runResearchControlCampaign({
@@ -216,7 +223,10 @@ describe("ResearchControlCampaign runtime", () => {
       replayProviderFactory: networklessReplayProvider,
       runTick: async (input) => {
         tickCalls.push(input.tickId!);
-        return runCandidateArenaTick(input);
+        const before = fencedWrites;
+        const result = await runCandidateArenaTick(input);
+        expect(fencedWrites).toBeGreaterThan(before);
+        return result;
       }
     });
 
@@ -238,6 +248,7 @@ describe("ResearchControlCampaign runtime", () => {
       reason: "no_trading_promotion_at_commitment"
     });
     expect(tickCalls).toHaveLength(2);
+    expect(fencedWrites).toBeGreaterThan(0);
     expect(await sourceStore.listCandidateArenaTicks()).toEqual([]);
     expect(await sourceStore.listResearchControlCampaigns()).toEqual([
       outcome.campaign

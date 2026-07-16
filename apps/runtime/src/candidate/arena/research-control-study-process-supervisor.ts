@@ -26,7 +26,11 @@ export type ResearchControlStudyProcessStatus =
       status: "contended";
       completedStudyCount: number;
       studyId: string;
-      reason: "owner_alive" | "owner_liveness_unknown" | "transition";
+      reason:
+        | "owner_alive"
+        | "owner_liveness_unknown"
+        | "lease_unexpired"
+        | "transition";
       leaseExpiresAt: string;
     }
   | {
@@ -47,6 +51,11 @@ export interface ResearchControlStudyProcessRuntime {
     ResearchControlStudyRunner,
     "start" | "drain" | "stop" | "status"
   >;
+}
+
+export interface ResearchControlStudyProcessOwnership {
+  guard(): Promise<void>;
+  runFencedWrite<T>(write: () => Promise<T>): Promise<T>;
 }
 
 export type ResearchControlStudyProcessStore = Pick<
@@ -82,7 +91,7 @@ export class ResearchControlStudyProcessSupervisor {
     leaseSessionFactory?: ResearchControlStudyExecutionLeaseSessionFactory;
     openStudy(
       study: ResearchControlStudyRecord,
-      ownership?: { guard(): Promise<void> }
+      ownership?: ResearchControlStudyProcessOwnership
     ): ResearchControlStudyProcessRuntime |
       Promise<ResearchControlStudyProcessRuntime>;
   }) {}
@@ -180,7 +189,11 @@ export class ResearchControlStudyProcessSupervisor {
     | { status: "stopped" }
     | {
         status: "contended";
-        reason: "owner_alive" | "owner_liveness_unknown" | "transition";
+        reason:
+          | "owner_alive"
+          | "owner_liveness_unknown"
+          | "lease_unexpired"
+          | "transition";
         leaseExpiresAt: string;
       }
   > {
@@ -223,7 +236,12 @@ export class ResearchControlStudyProcessSupervisor {
       }
       runtime = await this.openStudy(
         study,
-        session ? { guard: () => session.guard() } : undefined
+        session
+          ? {
+              guard: () => session.guard(),
+              runFencedWrite: (write) => session.runFencedWrite(write)
+            }
+          : undefined
       );
       if (leaseLoss) throw leaseLoss;
       if (this.stopRequested) {
@@ -303,12 +321,17 @@ export class ResearchControlStudyProcessSupervisor {
 
   private async openStudy(
     study: ResearchControlStudyRecord,
-    ownership?: { guard(): Promise<void> }
+    ownership?: ResearchControlStudyProcessOwnership
   ): Promise<ResearchControlStudyProcessRuntime> {
     try {
       const runtime = await this.options.openStudy(
         structuredClone(study),
-        ownership ? { guard: ownership.guard } : undefined
+        ownership
+          ? {
+              guard: ownership.guard,
+              runFencedWrite: ownership.runFencedWrite
+            }
+          : undefined
       );
       if (!runtime || !runtime.runner ||
         typeof runtime.runner.start !== "function" ||

@@ -48,6 +48,7 @@ export interface ResearchControlStudyExecutionLeaseSessionLifecycle {
     error: ResearchControlStudyExecutionLeaseSessionError
   ) => void): "started" | "already_running";
   guard(): Promise<void>;
+  runFencedWrite<T>(write: () => Promise<T>): Promise<T>;
   stopAndRelease(): Promise<ResearchControlStudyExecutionLeaseRecord>;
   status(): ResearchControlStudyExecutionLeaseSessionStatus;
 }
@@ -100,6 +101,7 @@ export function createResearchControlStudyExecutionLeaseSessionFactory(
         if (!activeLeaseForStudy(result.lease, study) || ![
           "owner_alive",
           "owner_liveness_unknown",
+          "lease_unexpired",
           "transition"
         ].includes(result.reason)) {
           throw sessionInvalid("Lease port returned an invalid held claim.");
@@ -192,6 +194,24 @@ implements ResearchControlStudyExecutionLeaseSessionLifecycle {
     }
     this.lease = structuredClone(asserted);
     this.updateActiveStatus();
+  }
+
+  async runFencedWrite<T>(write: () => Promise<T>): Promise<T> {
+    this.assertUsable();
+    if (typeof write !== "function") {
+      throw sessionInvalid("Lease session fenced write callback is invalid.");
+    }
+    try {
+      return await this.options.port.withFencedWrite({
+        lease: structuredClone(this.lease),
+        write
+      });
+    } catch (error) {
+      if (leaseCoordinationFailure(error)) {
+        throw this.markLost("Lease fenced write was rejected.", error);
+      }
+      throw error;
+    }
   }
 
   stopAndRelease(): Promise<ResearchControlStudyExecutionLeaseRecord> {
@@ -380,6 +400,7 @@ function sameLeaseIdentity(
     left.study_ref.id === right.study_ref.id &&
     left.study_digest === right.study_digest &&
     sameOwner(left.owner, right.owner) && left.lease_token === right.lease_token &&
+    left.fencing_token === right.fencing_token &&
     left.lease_duration_ms === right.lease_duration_ms &&
     left.acquired_at === right.acquired_at;
 }
@@ -405,7 +426,18 @@ function exactPort(value: unknown): value is ResearchControlStudyExecutionLeaseP
   if (!value || typeof value !== "object") return false;
   const port = value as Record<string, unknown>;
   return typeof port.acquire === "function" && typeof port.renew === "function" &&
-    typeof port.assertOwned === "function" && typeof port.release === "function";
+    typeof port.assertOwned === "function" &&
+    typeof port.withFencedWrite === "function" &&
+    typeof port.release === "function";
+}
+
+function leaseCoordinationFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return [
+    "research_control_study_execution_lease_ownership_lost",
+    "research_control_study_execution_lease_state_corrupt",
+    "research_control_study_execution_fence_unavailable"
+  ].includes(String((error as { code?: unknown }).code));
 }
 
 function canonicalString(value: unknown): value is string {

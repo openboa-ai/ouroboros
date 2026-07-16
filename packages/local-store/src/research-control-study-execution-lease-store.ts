@@ -19,6 +19,7 @@ import {
   renewResearchControlStudyExecutionLease,
   researchControlStudyConditionDigestInput,
   researchControlStudyDigestInput,
+  researchControlStudyExecutionLeaseDigestInput,
   researchControlStudyExecutionLeaseHasRuntimeShape,
   researchControlStudyHasRuntimeShape,
   type ResearchControlStudyExecutionLeaseOwner,
@@ -34,7 +35,8 @@ export type ResearchControlStudyExecutionLeaseOwnerLiveness =
 export type ResearchControlStudyExecutionLeaseStoreErrorCode =
   | "invalid_research_control_study_execution_lease_store_input"
   | "research_control_study_execution_lease_state_corrupt"
-  | "research_control_study_execution_lease_ownership_lost";
+  | "research_control_study_execution_lease_ownership_lost"
+  | "research_control_study_execution_fence_unavailable";
 
 export class ResearchControlStudyExecutionLeaseStoreError extends Error {
   constructor(
@@ -183,6 +185,19 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     return active;
   }
 
+  async withFencedWrite<T>(input: {
+    lease: ResearchControlStudyExecutionLeaseRecord;
+    write: () => Promise<T>;
+  }): Promise<T> {
+    if (typeof input?.write !== "function") {
+      throw invalidInput("a guarded write callback is required");
+    }
+    await this.assertOwned({ lease: input.lease });
+    const result = await input.write();
+    await this.assertOwned({ lease: input.lease });
+    return result;
+  }
+
   async release(input: {
     lease: ResearchControlStudyExecutionLeaseRecord;
   }): Promise<ResearchControlStudyExecutionLeaseRecord> {
@@ -268,12 +283,14 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
   }, paths: ResearchControlStudyExecutionLeasePaths): Promise<
     ResearchControlStudyExecutionLeaseRecord | undefined
   > {
+    const fencingToken = await this.nextFencingToken(input.study);
     let lease: ResearchControlStudyExecutionLeaseRecord;
     try {
       lease = decideResearchControlStudyExecutionLease({
         study: input.study,
         owner: input.owner,
         leaseToken: this.leaseToken(),
+        fencingToken,
         leaseDurationMs: input.leaseDurationMs,
         acquiredAt: this.readNow()
       });
@@ -479,9 +496,11 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
   ): Promise<ResearchControlStudyExecutionLeaseRecord | undefined> {
     for (let attempt = 0; attempt < MAX_INCOMPLETE_CLAIM_READS; attempt += 1) {
       try {
-        const lease = JSON.parse(await readFile(file, "utf8")) as unknown;
-        if (!researchControlStudyExecutionLeaseHasRuntimeShape(lease) ||
-          lease.lease_status !== expectedStatus) {
+        const { lease } = parsePersistedResearchControlStudyExecutionLease(
+          JSON.parse(await readFile(file, "utf8")) as unknown,
+          "persisted lease state"
+        );
+        if (lease.lease_status !== expectedStatus) {
           throw corruptState("persisted lease state is malformed or digest-drifted");
         }
         return lease;
@@ -539,6 +558,60 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
     }
   }
 
+  private async nextFencingToken(
+    study: ResearchControlStudyRecord
+  ): Promise<number> {
+    const directory = path.join(
+      this.root,
+      "research-control-study-execution-leases",
+      "history",
+      "items"
+    );
+    let entries: string[];
+    try {
+      entries = await readdir(directory);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return 1;
+      throw error;
+    }
+    let maximum = 0;
+    for (const entry of entries.filter((value) => value.endsWith(".json"))) {
+      const history = await this.readHistoryFencingEntry(
+        path.join(directory, entry)
+      );
+      if (history.studyId === study.research_control_study_id) {
+        maximum = Math.max(maximum, history.fencingToken);
+      }
+    }
+    if (!Number.isSafeInteger(maximum + 1)) {
+      throw corruptState("lease fencing token is exhausted");
+    }
+    return maximum + 1;
+  }
+
+  private async readHistoryFencingEntry(file: string): Promise<{
+    studyId: string;
+    fencingToken: number;
+  }> {
+    let value: unknown;
+    try {
+      value = JSON.parse(await readFile(file, "utf8"));
+    } catch (error) {
+      throw corruptState("terminal lease history is unreadable", error);
+    }
+    const parsed = parsePersistedResearchControlStudyExecutionLease(
+      value,
+      "terminal lease history"
+    );
+    if (parsed.lease.lease_status === "active") {
+      throw corruptState("terminal lease history is malformed or digest-drifted");
+    }
+    return {
+      studyId: parsed.lease.study_ref.id,
+      fencingToken: parsed.legacy ? 0 : parsed.lease.fencing_token
+    };
+  }
+
   private async readHistoryFile(
     file: string
   ): Promise<ResearchControlStudyExecutionLeaseRecord> {
@@ -549,11 +622,14 @@ export class FileSystemResearchControlStudyExecutionLeaseStore {
       if (isErrno(error, "ENOENT")) throw error;
       throw corruptState("terminal lease history is unreadable", error);
     }
-    if (!researchControlStudyExecutionLeaseHasRuntimeShape(value) ||
-      value.lease_status === "active") {
+    const { lease } = parsePersistedResearchControlStudyExecutionLease(
+      value,
+      "terminal lease history"
+    );
+    if (lease.lease_status === "active") {
       throw corruptState("terminal lease history is malformed or digest-drifted");
     }
-    return value;
+    return lease;
   }
 
   private async writeAtomicLease(
@@ -697,6 +773,37 @@ function exactDigest(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+export function parsePersistedResearchControlStudyExecutionLease(
+  value: unknown,
+  label: string
+): { lease: ResearchControlStudyExecutionLeaseRecord; legacy: boolean } {
+  if (researchControlStudyExecutionLeaseHasRuntimeShape(value)) {
+    return { lease: value, legacy: false };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+    "fencing_token" in value) {
+    throw corruptState(`${label} is malformed or digest-drifted`);
+  }
+  const legacy = value as ResearchControlStudyExecutionLeaseRecord;
+  if (legacy.lease_digest !== exactDigest(
+    researchControlStudyExecutionLeaseDigestInput(legacy)
+  )) {
+    throw corruptState(`${label} is malformed or digest-drifted`);
+  }
+  const normalized = {
+    ...legacy,
+    fencing_token: 1,
+    lease_digest: legacy.lease_digest
+  };
+  normalized.lease_digest = exactDigest(
+    researchControlStudyExecutionLeaseDigestInput(normalized)
+  );
+  if (!researchControlStudyExecutionLeaseHasRuntimeShape(normalized)) {
+    throw corruptState(`${label} is malformed or digest-drifted`);
+  }
+  return { lease: normalized, legacy: true };
+}
+
 function sameLeaseIdentity(
   left: ResearchControlStudyExecutionLeaseRecord,
   right: ResearchControlStudyExecutionLeaseRecord
@@ -706,6 +813,7 @@ function sameLeaseIdentity(
     left.study_ref.id === right.study_ref.id &&
     left.study_digest === right.study_digest &&
     left.lease_token === right.lease_token &&
+    left.fencing_token === right.fencing_token &&
     isDeepStrictEqual(left.owner, right.owner);
 }
 

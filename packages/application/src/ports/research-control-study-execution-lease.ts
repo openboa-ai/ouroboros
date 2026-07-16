@@ -12,6 +12,7 @@ export type ResearchControlStudyExecutionLeaseOwnerLiveness =
 export type ResearchControlStudyExecutionLeaseHeldReason =
   | "owner_alive"
   | "owner_liveness_unknown"
+  | "lease_unexpired"
   | "transition";
 
 export type ResearchControlStudyExecutionLeaseAcquireResult =
@@ -37,6 +38,10 @@ export interface ResearchControlStudyExecutionLeasePort {
   assertOwned(input: {
     lease: ResearchControlStudyExecutionLeaseRecord;
   }): Promise<ResearchControlStudyExecutionLeaseRecord>;
+  withFencedWrite<T>(input: {
+    lease: ResearchControlStudyExecutionLeaseRecord;
+    write: () => Promise<T>;
+  }): Promise<T>;
   release(input: {
     lease: ResearchControlStudyExecutionLeaseRecord;
   }): Promise<ResearchControlStudyExecutionLeaseRecord>;

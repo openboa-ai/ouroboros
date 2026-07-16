@@ -45,8 +45,13 @@ describe("ResearchControlStudy server runtime", () => {
     const adapter = agentAdapter(persistedAgent());
     const runtime = {} as ResearchControlStudyRuntime;
     let guardCount = 0;
+    let fencedWriteCount = 0;
     const ownership = {
-      async guard() { guardCount += 1; }
+      async guard() { guardCount += 1; },
+      async runFencedWrite<T>(write: () => Promise<T>): Promise<T> {
+        fencedWriteCount += 1;
+        return write();
+      }
     };
     let captured:
       Parameters<typeof createResearchControlStudyRuntime>[0] | undefined;
@@ -76,6 +81,8 @@ describe("ResearchControlStudy server runtime", () => {
 
     expect(opened).toBe(runtime);
     expect(factoryCount).toBe(1);
+    expect(captured!.store).not.toBe(store);
+    expect(captured!.store.root()).toBe(store.root());
     expect(captured).toMatchObject({
       store,
       campaign: {
@@ -100,6 +107,7 @@ describe("ResearchControlStudy server runtime", () => {
     expect(captured!.beforeAdvance).toBeTypeOf("function");
     await captured!.beforeAdvance!();
     expect(guardCount).toBe(1);
+    expect(fencedWriteCount).toBe(0);
     const { protocol_digest: _digest, ...expectedProtocol } =
       study.condition.paper_evaluation_protocol;
     expect(captured!.campaign.paperEvaluationProtocol).toEqual(expectedProtocol);
