@@ -239,6 +239,7 @@ export async function runResearchControlCampaignToOutcome(
     configuredOpenArm,
     openArmStore,
     createArmSessions,
+    sourceStore: input.store,
     marketData,
     ...(input.now ? { now: input.now } : {})
   });
@@ -320,6 +321,7 @@ function resolveRuntimeArmOpener(input: {
   openArmStore?: RunResearchControlCampaignToOutcomeInput["openArmStore"];
   createArmSessions?:
     RunResearchControlCampaignToOutcomeInput["createArmSessions"];
+  sourceStore: LocalStore;
   marketData: GatewayMarketDataPort;
   now?: () => string;
 }): NonNullable<RunResearchControlCampaignToOutcomeInput["openArm"]> {
@@ -339,7 +341,7 @@ function resolveRuntimeArmOpener(input: {
     );
   }
   const openStore = input.openArmStore ?? ((context: { root: string }) =>
-    new LocalStore(context.root));
+    input.sourceStore.atRoot(context.root));
   return async (context) => {
     let store: LocalStore;
     let sessions: ResearchControlCampaignPaperRuntimeArmSessions;

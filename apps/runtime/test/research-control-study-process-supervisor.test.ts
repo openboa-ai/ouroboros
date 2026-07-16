@@ -627,6 +627,11 @@ implements ResearchControlStudyExecutionLeaseSessionLifecycle {
     if (this.loss) throw this.loss;
   }
 
+  async runFencedWrite<T>(write: () => Promise<T>): Promise<T> {
+    if (this.loss) throw this.loss;
+    return write();
+  }
+
   async stopAndRelease(): Promise<ResearchControlStudyExecutionLeaseRecord> {
     this.releaseCount += 1;
     this.events?.push("release");
@@ -678,6 +683,7 @@ function executionLease(
       process_start_marker: "process-start-a"
     },
     leaseToken: `lease-${study.research_control_study_id}`,
+    fencingToken: 1,
     leaseDurationMs: 30_000,
     acquiredAt: "2026-07-13T00:00:00.000Z"
   });

@@ -550,7 +550,7 @@ describe("runtime canonical operator API", () => {
     const held = claims.find((claim) => claim.status === "held");
 
     expect(acquired?.status).toBe("acquired");
-    expect(held).toMatchObject({ status: "held", reason: "owner_alive" });
+    expect(held).toMatchObject({ status: "held", reason: "lease_unexpired" });
     if (acquired?.status !== "acquired" || held?.status !== "held") {
       throw new Error("expected one acquired and one held server lease claim");
     }
@@ -566,6 +566,7 @@ describe("runtime canonical operator API", () => {
       acquiredLease.owner.server_instance_id
     );
     expect(acquiredLease.lease_duration_ms).toBe(30_000);
+    expect(acquiredLease.fencing_token).toBe(1);
     expect(Date.parse(acquiredLease.expires_at) -
       Date.parse(acquiredLease.acquired_at)).toBe(30_000);
 
@@ -596,6 +597,7 @@ describe("runtime canonical operator API", () => {
             study: input.study,
             owner: input.owner,
             leaseToken: "server-injected-held-token",
+            fencingToken: 1,
             leaseDurationMs: input.leaseDurationMs,
             acquiredAt: "2026-07-13T00:00:00.000Z"
           })
@@ -606,6 +608,9 @@ describe("runtime canonical operator API", () => {
       },
       async assertOwned() {
         throw new Error("unexpected ownership assertion");
+      },
+      async withFencedWrite() {
+        throw new Error("unexpected fenced write");
       },
       async release() {
         throw new Error("unexpected release");

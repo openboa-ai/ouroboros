@@ -63,7 +63,10 @@ export interface OpenResearchControlStudyServerRuntimeInput {
   artifactRunner?: TradingArtifactRunner;
   replayProviderFactory?: ReplayTradingApiProviderFactory;
   createStudyRuntime?: typeof createResearchControlStudyRuntime;
-  ownership?: { guard(): Promise<void> };
+  ownership?: {
+    guard(): Promise<void>;
+    runFencedWrite<T>(write: () => Promise<T>): Promise<T>;
+  };
 }
 
 export interface CreateResearchControlStudyServerSchedulerInput
@@ -108,9 +111,14 @@ export async function openResearchControlStudyServerRuntime(
     condition.paper_evaluation_protocol;
   const createStudyRuntime = input.createStudyRuntime ??
     createResearchControlStudyRuntime;
+  const store = input.ownership
+    ? input.store.withWriteTransaction({
+        run: (write) => input.ownership!.runFencedWrite(write)
+      })
+    : input.store;
 
   return createStudyRuntime({
-    store: input.store,
+    store,
     ...(input.ownership
       ? { beforeAdvance: () => input.ownership!.guard() }
       : {}),

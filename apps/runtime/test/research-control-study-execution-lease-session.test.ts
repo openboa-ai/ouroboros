@@ -143,6 +143,37 @@ describe("ResearchControlStudyExecutionLeaseSession", () => {
     });
   });
 
+  it("runs publications through the exact lease and treats rejection as loss", async () => {
+    const port = new ScriptedLeasePort({
+      status: "acquired",
+      lease: activeLease(studyFixture())
+    });
+    const claim = await factory(port).acquire(studyFixture());
+    if (claim.status !== "acquired") throw new Error("expected acquired session");
+
+    await expect(claim.session.runFencedWrite(async () => "published"))
+      .resolves.toBe("published");
+    expect(port.fencedWriteCount).toBe(1);
+    const publicationError = Object.assign(new Error("publication failed"), {
+      code: "publication_failed"
+    });
+    port.fencedWriteImplementation = async () => { throw publicationError; };
+    await expect(claim.session.runFencedWrite(async () => "never"))
+      .rejects.toBe(publicationError);
+    expect(claim.session.status()).toMatchObject({ status: "acquired" });
+    port.fencedWriteImplementation = async () => {
+      throw Object.assign(new Error("stale token"), {
+        code: "research_control_study_execution_lease_ownership_lost"
+      });
+    };
+
+    await expect(claim.session.runFencedWrite(async () => "never"))
+      .rejects.toMatchObject({
+        code: "research_control_study_execution_lease_lost"
+      });
+    expect(claim.session.status()).toMatchObject({ status: "lost" });
+  });
+
   it("turns renewal failure into one stable loss callback", async () => {
     const clock = new DeferredSleep();
     const port = new ScriptedLeasePort({
@@ -287,6 +318,7 @@ class ScriptedLeasePort implements ResearchControlStudyExecutionLeasePort {
   renewCount = 0;
   assertCount = 0;
   releaseCount = 0;
+  fencedWriteCount = 0;
   releaseInputs: ResearchControlStudyExecutionLeaseRecord[] = [];
   renewImplementation = (
     lease: ResearchControlStudyExecutionLeaseRecord
@@ -302,6 +334,10 @@ class ScriptedLeasePort implements ResearchControlStudyExecutionLeasePort {
       leaseStatus: "released",
       closedAt: lease.renewed_at
     });
+  fencedWriteImplementation = async <T>(
+    _lease: ResearchControlStudyExecutionLeaseRecord,
+    write: () => Promise<T>
+  ): Promise<T> => write();
 
   constructor(
     private readonly acquireResult: ResearchControlStudyExecutionLeaseAcquireResult
@@ -323,6 +359,17 @@ class ScriptedLeasePort implements ResearchControlStudyExecutionLeasePort {
   }): Promise<ResearchControlStudyExecutionLeaseRecord> {
     this.assertCount += 1;
     return structuredClone(this.assertImplementation(structuredClone(input.lease)));
+  }
+
+  async withFencedWrite<T>(input: {
+    lease: ResearchControlStudyExecutionLeaseRecord;
+    write: () => Promise<T>;
+  }): Promise<T> {
+    this.fencedWriteCount += 1;
+    return this.fencedWriteImplementation(
+      structuredClone(input.lease),
+      input.write
+    );
   }
 
   async release(input: {
@@ -389,6 +436,7 @@ function activeLease(
     study,
     owner: ownerFixture(),
     leaseToken,
+    fencingToken: 1,
     leaseDurationMs: 30_000,
     acquiredAt: "2026-07-13T00:00:00.000Z"
   });

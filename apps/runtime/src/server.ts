@@ -29,7 +29,7 @@ import type { RuntimeSupervisorCheckpointStorePort } from
   "@ouroboros/application/ports/runtime-supervisor";
 import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
 import {
-  FileSystemResearchControlStudyExecutionLeaseStore,
+  SharedSqliteResearchControlStudyExecutionLeaseStore,
   FileSystemRuntimeProcessOwnershipStore,
   FileSystemRuntimeSupervisorCheckpointStore,
   FIXTURE_SYSTEM_CODE_ID,
@@ -227,7 +227,7 @@ export function createResearchControlStudyServerLeaseSessionFactory(
 ): ResearchControlStudyExecutionLeaseSessionFactory {
   return createResearchControlStudyExecutionLeaseSessionFactory({
     port: input.port ??
-      new FileSystemResearchControlStudyExecutionLeaseStore(
+      new SharedSqliteResearchControlStudyExecutionLeaseStore(
         input.store.root()
       ),
     owner: input.owner ?? {

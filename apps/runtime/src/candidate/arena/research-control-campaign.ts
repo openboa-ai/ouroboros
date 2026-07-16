@@ -474,6 +474,7 @@ export async function runResearchControlCampaign(
     await prepareArm({
       armKind: "adaptive_treatment",
       campaign,
+      sourceStore: input.store,
       coordinatorService,
       root: paths.armRoots.adaptive_treatment,
       baselineRoot: paths.baselineRoot
@@ -481,6 +482,7 @@ export async function runResearchControlCampaign(
     await prepareArm({
       armKind: "static_control",
       campaign,
+      sourceStore: input.store,
       coordinatorService,
       root: paths.armRoots.static_control,
       baselineRoot: paths.baselineRoot
@@ -870,6 +872,7 @@ async function ensureVerifiedSourceArtifact(input: {
 async function prepareArm(input: {
   armKind: ResearchControlCampaignArmKind;
   campaign: ResearchControlCampaignRecord;
+  sourceStore: LocalStore;
   coordinatorService: ResearchControlCampaignService;
   root: string;
   baselineRoot: string;
@@ -888,7 +891,7 @@ async function prepareArm(input: {
       maximumTotalBytes: input.campaign.policy.maximum_baseline_total_bytes
     });
   }
-  const store = new LocalStore(input.root);
+  const store = input.sourceStore.atRoot(input.root);
   const armCampaign = await store.getResearchControlCampaign(
     input.campaign.research_control_campaign_id
   );

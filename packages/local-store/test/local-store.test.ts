@@ -138,6 +138,31 @@ afterEach(async () => {
 });
 
 describe("LocalStore", () => {
+  it("guards publications and preserves the transaction across child roots", async () => {
+    let allowed = false;
+    let calls = 0;
+    const transaction = {
+      async run<T>(write: () => Promise<T>): Promise<T> {
+        calls += 1;
+        if (!allowed) throw new Error("stale_fencing_token");
+        return write();
+      }
+    };
+    const guarded = new LocalStore(tmpDir, { writeTransaction: transaction });
+
+    await expect(guarded.initialize()).rejects.toThrow("stale_fencing_token");
+    allowed = true;
+    await guarded.initialize();
+    const coordinatorCalls = calls;
+    expect(coordinatorCalls).toBeGreaterThan(1);
+
+    const childRoot = path.join(tmpDir, "fenced-child-root");
+    const child = guarded.atRoot(childRoot);
+    expect(child.root()).toBe(childRoot);
+    await child.initialize();
+    expect(calls).toBeGreaterThan(coordinatorCalls);
+  });
+
   it("seeds fixture data idempotently", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

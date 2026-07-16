@@ -8322,13 +8322,17 @@ export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
   study_digest: string;
   owner: ResearchControlStudyExecutionLeaseOwner;
   lease_token: string;
+  fencing_token: number;
   lease_status: "active" | "released" | "expired";
   lease_duration_ms: number;
   acquired_at: string;
   renewed_at: string;
   expires_at: string;
   closed_at?: string;
-  close_reason?: "owner_released" | "expired_owner_absent";
+  close_reason?:
+    | "owner_released"
+    | "expired_owner_absent"
+    | "expired_fenced_takeover";
   lease_digest: string;
   runtime_coordination_authority: true;
   evaluation_authority: false;
@@ -8836,12 +8840,14 @@ export function decideResearchControlStudyExecutionLease(input: {
   study: ResearchControlStudyRecord;
   owner: ResearchControlStudyExecutionLeaseOwner;
   leaseToken: string;
+  fencingToken: number;
   leaseDurationMs: number;
   acquiredAt: string;
 }): ResearchControlStudyExecutionLeaseRecord {
   try {
     if (!researchControlStudyHasRuntimeShape(input?.study) ||
       !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(input?.owner) ||
+      !researchControlStudyExecutionLeasePositiveInteger(input?.fencingToken) ||
       !researchControlStudyExecutionLeasePositiveInteger(
         input?.leaseDurationMs
       )) {
@@ -8868,6 +8874,7 @@ export function decideResearchControlStudyExecutionLease(input: {
       study_digest: input.study.study_digest,
       owner: { ...input.owner },
       lease_token: leaseToken,
+      fencing_token: input.fencingToken,
       lease_status: "active",
       lease_duration_ms: input.leaseDurationMs,
       acquired_at: acquiredAt,
@@ -8941,12 +8948,17 @@ export function renewResearchControlStudyExecutionLease(input: {
 export function closeResearchControlStudyExecutionLease(input: {
   lease: ResearchControlStudyExecutionLeaseRecord;
   leaseStatus: "released" | "expired";
+  closeReason?: "expired_owner_absent" | "expired_fenced_takeover";
   closedAt: string;
 }): ResearchControlStudyExecutionLeaseRecord {
   try {
     if (!researchControlStudyExecutionLeaseHasRuntimeShape(input?.lease) ||
       input.lease.lease_status !== "active" ||
-      (input.leaseStatus !== "released" && input.leaseStatus !== "expired")) {
+      (input.leaseStatus !== "released" && input.leaseStatus !== "expired") ||
+      (input.leaseStatus === "released" && input.closeReason !== undefined) ||
+      (input.closeReason !== undefined &&
+        input.closeReason !== "expired_owner_absent" &&
+        input.closeReason !== "expired_fenced_takeover")) {
       throw researchControlStudyExecutionLeaseInvalidDecision();
     }
     const closedAt = researchControlStudyExecutionLeaseCanonicalTime(
@@ -8963,7 +8975,7 @@ export function closeResearchControlStudyExecutionLease(input: {
       closed_at: closedAt,
       close_reason: input.leaseStatus === "released"
         ? "owner_released"
-        : "expired_owner_absent",
+        : input.closeReason ?? "expired_owner_absent",
       lease_digest: researchControlStudyExecutionLeasePendingDigest()
     };
     record.lease_digest = researchControlStudyExecutionLeaseExactDigest(record);
@@ -10353,6 +10365,7 @@ export function researchControlStudyExecutionLeaseHasRuntimeShape(
     "study_digest",
     "owner",
     "lease_token",
+    "fencing_token",
     "lease_status",
     "lease_duration_ms",
     "acquired_at",
@@ -10378,6 +10391,7 @@ export function researchControlStudyExecutionLeaseHasRuntimeShape(
     !researchControlCampaignSha256Digest(value.study_digest) ||
     !researchControlStudyExecutionLeaseOwnerHasRuntimeShape(value.owner) ||
     !researchControlStudyExecutionLeaseCanonicalStringShape(value.lease_token) ||
+    !researchControlStudyExecutionLeasePositiveInteger(value.fencing_token) ||
     !researchControlStudyExecutionLeasePositiveInteger(
       value.lease_duration_ms
     ) ||
@@ -10407,9 +10421,10 @@ export function researchControlStudyExecutionLeaseHasRuntimeShape(
       if (lease.closed_at !== undefined || lease.close_reason !== undefined) return false;
     } else if (!comparisonIso(lease.closed_at) ||
       Date.parse(lease.closed_at) < Date.parse(lease.renewed_at) ||
-      lease.close_reason !== (lease.lease_status === "released"
-        ? "owner_released"
-        : "expired_owner_absent")) {
+      (lease.lease_status === "released"
+        ? lease.close_reason !== "owner_released"
+        : lease.close_reason !== "expired_owner_absent" &&
+          lease.close_reason !== "expired_fenced_takeover")) {
       return false;
     }
     return lease.lease_digest ===

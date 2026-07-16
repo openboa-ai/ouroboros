@@ -25,6 +25,7 @@ describe("ResearchControlStudyExecutionLease", () => {
       study_digest: studyFixture().study_digest,
       owner: ownerFixture(),
       lease_token: "lease-token-a",
+      fencing_token: 7,
       lease_status: "active",
       lease_duration_ms: 30_000,
       acquired_at: "2026-07-13T00:00:00.000Z",
@@ -62,6 +63,7 @@ describe("ResearchControlStudyExecutionLease", () => {
       research_control_study_execution_lease_id:
         active.research_control_study_execution_lease_id,
       lease_token: active.lease_token,
+      fencing_token: active.fencing_token,
       lease_status: "active",
       acquired_at: active.acquired_at,
       renewed_at: "2026-07-13T00:00:10.000Z",
@@ -107,6 +109,23 @@ describe("ResearchControlStudyExecutionLease", () => {
     expect(active.lease_status).toBe("active");
   });
 
+  it("closes distributed expiry with explicit fenced-takeover evidence", () => {
+    const active = activeLease();
+    const closed = closeResearchControlStudyExecutionLease({
+      lease: active,
+      leaseStatus: "expired",
+      closeReason: "expired_fenced_takeover",
+      closedAt: "2026-07-13T00:00:31.000Z"
+    });
+
+    expect(closed).toMatchObject({
+      lease_status: "expired",
+      close_reason: "expired_fenced_takeover",
+      fencing_token: 7
+    });
+    expect(researchControlStudyExecutionLeaseHasRuntimeShape(closed)).toBe(true);
+  });
+
   it("keeps digest input independent of envelope identity and digest", () => {
     const lease = activeLease();
     const changed = structuredClone(lease);
@@ -129,6 +148,10 @@ describe("ResearchControlStudyExecutionLease", () => {
       value.owner.process_start_marker = "";
     }],
     ["empty token", (value: any) => { value.lease_token = ""; }],
+    ["zero fencing token", (value: any) => { value.fencing_token = 0; }],
+    ["fractional fencing token", (value: any) => {
+      value.fencing_token = 1.5;
+    }],
     ["zero duration", (value: any) => { value.lease_duration_ms = 0; }],
     ["fractional duration", (value: any) => {
       value.lease_duration_ms = 1.5;
@@ -193,6 +216,7 @@ describe("ResearchControlStudyExecutionLease", () => {
       study: studyFixture(),
       owner: ownerFixture(),
       leaseToken: " lease-token-a ",
+      fencingToken: 7,
       leaseDurationMs: 30_000,
       acquiredAt: "2026-07-13T00:00:00.000Z"
     })).toThrowError(expect.objectContaining({
@@ -230,6 +254,7 @@ function activeLease(): ResearchControlStudyExecutionLeaseRecord {
     study: studyFixture(),
     owner: ownerFixture(),
     leaseToken: "lease-token-a",
+    fencingToken: 7,
     leaseDurationMs: 30_000,
     acquiredAt: "2026-07-13T00:00:00.000Z"
   });
