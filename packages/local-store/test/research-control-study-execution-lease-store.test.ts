@@ -721,13 +721,17 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
       },
       reason: "transition"
     });
-    await mkdir(path.dirname(path.dirname(legacyActiveFile)), { recursive: true });
-    await rename(
-      path.dirname(legacyTransitionFile),
-      path.dirname(legacyActiveFile)
-    );
 
     now = "2026-07-13T00:00:31.000Z";
+    await expect(sharedAdapter("unused", "alive").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({
+      status: "held",
+      lease: { lease_token: legacyClaim.lease.lease_token },
+      reason: "transition"
+    });
     await expect(sharedAdapter("shared-lease").acquire({
       study,
       owner: owner("shared-host", 202),
@@ -736,7 +740,7 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
       status: "acquired",
       lease: { lease_token: "shared-lease", fencing_token: 1 }
     });
-    await expect(readFile(legacyActiveFile, "utf8"))
+    await expect(readFile(legacyTransitionFile, "utf8"))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -959,10 +963,14 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
     );
   }
 
-  function sharedAdapter(token: string) {
+  function sharedAdapter(
+    token: string,
+    ownerLiveness: "alive" | "absent" | "unknown" = "absent"
+  ) {
     return new SharedSqliteResearchControlStudyExecutionLeaseStore(root, {
       now: () => now,
       leaseToken: () => token,
+      ownerLiveness: async () => ownerLiveness,
       transactionTimeoutMs: 2_000,
       transactionRetryMs: 2
     });

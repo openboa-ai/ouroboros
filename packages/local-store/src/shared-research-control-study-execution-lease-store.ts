@@ -21,13 +21,18 @@ import {
 } from "@ouroboros/domain";
 import {
   parsePersistedResearchControlStudyExecutionLease,
-  ResearchControlStudyExecutionLeaseStoreError
+  ResearchControlStudyExecutionLeaseStoreError,
+  researchControlStudyExecutionLeaseOwnerLiveness,
+  type ResearchControlStudyExecutionLeaseOwnerLiveness
 } from
   "./research-control-study-execution-lease-store";
 
 export interface SharedSqliteResearchControlStudyExecutionLeaseStoreOptions {
   now?: () => string;
   leaseToken?: () => string;
+  ownerLiveness?: (
+    owner: ResearchControlStudyExecutionLeaseOwner
+  ) => Promise<ResearchControlStudyExecutionLeaseOwnerLiveness>;
   transactionTimeoutMs?: number;
   transactionRetryMs?: number;
 }
@@ -51,6 +56,9 @@ implements ResearchControlStudyExecutionLeasePort {
   private readonly databaseFile: string;
   private readonly now: () => string;
   private readonly leaseToken: () => string;
+  private readonly ownerLiveness: (
+    owner: ResearchControlStudyExecutionLeaseOwner
+  ) => Promise<ResearchControlStudyExecutionLeaseOwnerLiveness>;
   private readonly transactionTimeoutMs: number;
   private readonly transactionRetryMs: number;
 
@@ -68,6 +76,8 @@ implements ResearchControlStudyExecutionLeasePort {
     );
     this.now = options.now ?? (() => new Date().toISOString());
     this.leaseToken = options.leaseToken ?? (() => randomUUID());
+    this.ownerLiveness = options.ownerLiveness ??
+      researchControlStudyExecutionLeaseOwnerLiveness;
     this.transactionTimeoutMs = options.transactionTimeoutMs ??
       DEFAULT_TRANSACTION_TIMEOUT_MS;
     this.transactionRetryMs = options.transactionRetryMs ??
@@ -100,7 +110,14 @@ implements ResearchControlStudyExecutionLeasePort {
     }
     const legacyTransition = await this.readLegacyTransitionLease(input.study);
     if (legacyTransition) {
-      return { status: "held", lease: legacyTransition, reason: "transition" };
+      if (Date.parse(this.readNow()) < Date.parse(legacyTransition.expires_at) ||
+        await this.readOwnerLiveness(legacyTransition.owner) !== "absent") {
+        return { status: "held", lease: legacyTransition, reason: "transition" };
+      }
+      await rm(path.dirname(this.legacyLeaseFile(input.study, "transitions")), {
+        recursive: true,
+        force: true
+      });
     }
     return this.transaction(async (database) => {
       const now = this.readNow();
@@ -450,6 +467,20 @@ implements ResearchControlStudyExecutionLeasePort {
       throw invalidInput("shared fence clock must return an exact ISO instant");
     }
     return value;
+  }
+
+  private async readOwnerLiveness(
+    owner: ResearchControlStudyExecutionLeaseOwner
+  ): Promise<ResearchControlStudyExecutionLeaseOwnerLiveness> {
+    let liveness: ResearchControlStudyExecutionLeaseOwnerLiveness;
+    try {
+      liveness = await this.ownerLiveness({ ...owner });
+    } catch {
+      return "unknown";
+    }
+    return liveness === "alive" || liveness === "absent" || liveness === "unknown"
+      ? liveness
+      : "unknown";
   }
 
   private async transaction<T>(
