@@ -93,6 +93,25 @@ describe("RuntimeSoakHarness", () => {
     expect(target.actions).toHaveLength(0);
   });
 
+  it("classifies duration exhaustion when the terminal probe crosses the wall-clock bound", async () => {
+    const clock = new FakeClock();
+    const journal = new MemoryJournal();
+    let target!: FakeTarget;
+    target = new FakeTarget(clock, () => {
+      if (target.terminal) clock.advance(1_000);
+      return healthySample(clock.now(), target.terminal);
+    });
+
+    const result = await harness({ clock, journal, target }).run();
+
+    expect(result).toMatchObject({
+      classification: "duration_exhausted",
+      reason_code: "scenario_duration_exhausted"
+    });
+    expect(target.actions.at(-1)?.kind).toBe("terminal_cleanup");
+    expect(result.elapsed_ms).toBeGreaterThanOrEqual(1_110);
+  });
+
   it("derives each event timestamp and elapsed value from one clock reading", async () => {
     let epoch = START;
     const clock = new FakeClock();

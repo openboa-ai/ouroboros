@@ -164,6 +164,32 @@ describe("FileRuntimeSoakJournal", () => {
       payload: { event_type: "sample_recorded", terminal: false, sample: sample() }
     }, terminal.event_digest)).rejects.toMatchObject({ code: "runtime_soak_report_invalid" });
   });
+
+  it("rejects an event timestamp that moves behind its direct predecessor", async () => {
+    const root = path.join(tmpDir, "report");
+    const manifest = createRuntimeSoakManifest(scenario());
+    const journal = new FileRuntimeSoakJournal(root);
+    await journal.initialize(manifest);
+    const started = await journal.append({
+      run_id: manifest.run_id,
+      recorded_at: "2026-07-16T00:00:00.000Z",
+      elapsed_ms: 0,
+      payload: { event_type: "run_started", scenario_digest: manifest.scenario_digest }
+    });
+    const second = await journal.append({
+      run_id: manifest.run_id,
+      recorded_at: "2026-07-16T00:00:02.000Z",
+      elapsed_ms: 2_000,
+      payload: { event_type: "sample_recorded", terminal: false, sample: sample() }
+    }, started.event_digest);
+
+    await expect(journal.append({
+      run_id: manifest.run_id,
+      recorded_at: "2026-07-16T00:00:01.000Z",
+      elapsed_ms: 1_000,
+      payload: { event_type: "sample_recorded", terminal: false, sample: sample() }
+    }, second.event_digest)).rejects.toMatchObject({ code: "runtime_soak_report_invalid" });
+  });
 });
 
 describe("SubprocessRuntimeSoakTarget", () => {

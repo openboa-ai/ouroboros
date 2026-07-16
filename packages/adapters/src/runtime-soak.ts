@@ -301,8 +301,10 @@ function assertEvent(
     throw invalid("Runtime soak event record is invalid or has digest drift.");
   }
   const event = value as unknown as RuntimeSoakEvent;
-  const elapsed = startedAt ? Date.parse(event.recorded_at) - Date.parse(startedAt) : 0;
+  const recordedAt = Date.parse(event.recorded_at);
+  const elapsed = startedAt ? recordedAt - Date.parse(startedAt) : 0;
   if (event.elapsed_ms !== elapsed || elapsed < 0 ||
+    (previous !== undefined && recordedAt < Date.parse(previous.recorded_at)) ||
     (sequence === 1 && (event.payload.event_type !== "run_started" ||
       event.payload.scenario_digest !== manifest.scenario_digest)) ||
     (sequence > 1 && event.payload.event_type === "run_started")) {

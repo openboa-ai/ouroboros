@@ -249,12 +249,14 @@ export class RuntimeSoakHarness {
       }
       const sampled = await this.recordSample(latest.payload.action_kind === "terminal_cleanup");
       if (sampled) return sampled;
-      if (latest.payload.action_kind === "terminal_cleanup") return this.finish("passed");
+      if (latest.payload.action_kind === "terminal_cleanup") {
+        return this.finishAfterTerminalEvidence();
+      }
     } else if (reconstruction.completed.size === this.scenario.actions.length) {
       if (latest?.payload.event_type !== "sample_recorded" || !latest.payload.terminal) {
         throw reportInvalid("Completed runtime soak schedule lacks its terminal sample.");
       }
-      return this.finish("passed");
+      return this.finishAfterTerminalEvidence();
     }
 
     if (!this.events.some((event) => event.payload.event_type === "sample_recorded")) {
@@ -291,11 +293,11 @@ export class RuntimeSoakHarness {
       });
       const sampled = await this.recordSample(action.kind === "terminal_cleanup");
       if (sampled) return sampled;
-      if (action.kind === "terminal_cleanup") return this.finish("passed");
+      if (action.kind === "terminal_cleanup") return this.finishAfterTerminalEvidence();
     }
 
     const terminalSample = await this.recordSample(true);
-    return terminalSample ?? this.finish("passed");
+    return terminalSample ?? this.finishAfterTerminalEvidence();
   }
 
   private async waitUntil(atMs: number): Promise<RuntimeSoakResult | undefined> {
@@ -344,6 +346,16 @@ export class RuntimeSoakHarness {
       ...(failure ? { failure } : {})
     });
     return terminalResult(event);
+  }
+
+  private finishAfterTerminalEvidence(): Promise<RuntimeSoakResult> {
+    const latest = this.events.at(-1);
+    if (latest?.payload.event_type !== "sample_recorded" || !latest.payload.terminal) {
+      throw reportInvalid("Runtime soak cannot pass without terminal sample evidence.");
+    }
+    return latest.elapsed_ms >= this.scenario.duration_ms
+      ? this.finish("duration_exhausted", "scenario_duration_exhausted")
+      : this.finish("passed");
   }
 
   private async appendNow(payload: RuntimeSoakEventPayload): Promise<RuntimeSoakEvent> {
