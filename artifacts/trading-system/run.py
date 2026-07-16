@@ -204,10 +204,18 @@ def run_replay(args):
     account = get_json(base_url, "/account/state")
     append_event(args.output_events, {"event": "account_state", **account})
     intent = build_order_request(market, account)
-    append_event(args.output_events, {"event": "order_request", **intent})
-    validation = post_json(base_url, "/orders/validate", intent)
-    append_event(args.output_events, {"event": "order_validation", **validation})
-    append_event(args.output_events, {"event": "run_complete", "accepted": validation["accepted"]})
+    if intent["side"] == "hold" or intent["order_type"] == "none":
+        append_event(args.output_events, {
+            "event": "hold",
+            "reason": intent.get("reason", "replay decided to hold"),
+        })
+        accepted = True
+    else:
+        append_event(args.output_events, {"event": "order_request", **intent})
+        validation = post_json(base_url, "/orders/validate", intent)
+        append_event(args.output_events, {"event": "order_validation", **validation})
+        accepted = validation["accepted"]
+    append_event(args.output_events, {"event": "run_complete", "accepted": accepted})
     return 0
 
 

@@ -698,7 +698,7 @@ process.exit(17);
     }
   });
 
-  it("scores flat replay scenarios as hold decisions instead of long-only behavior", async () => {
+  it("scores externally observed flat replay holds without synthesizing an OrderRequest", async () => {
     const artifactDir = path.join(tmpDir, "artifact-flat");
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     const manifest = await readTradingSystemManifest(artifactDir);
@@ -717,9 +717,16 @@ process.exit(17);
     expect(run.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          event: "order_request",
-          side: "hold",
-          quantity: 0
+          event: "hold",
+          reason: "fast average is not above slow average"
+        })
+      ])
+    );
+    expect(run.provider_requests).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          path: "/orders/validate"
         })
       ])
     );
@@ -732,7 +739,7 @@ process.exit(17);
         net_revenue_usdt: 0,
         net_return_pct: 0
       },
-      risk_decision: "valid_order_request"
+      risk_decision: "no_order_request"
     });
   });
 
@@ -1898,7 +1905,7 @@ process.exit(17);
       expect.objectContaining({
         scenario_id: "range_flat",
         runner_kind: "docker_sandboxes_sbx",
-        provider_request_count: 3,
+        provider_request_count: 2,
         runner_command_count: 23,
         runner_command_evidence: expect.any(Array)
       })

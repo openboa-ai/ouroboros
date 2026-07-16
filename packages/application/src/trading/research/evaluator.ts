@@ -50,35 +50,46 @@ export function evaluateTradingRun(
     );
   }
 
-  const orderIntent = tradingResearchOrderRequestFrom(
-    latestPayload<Record<string, unknown>>(run.events, "order_request"),
-    true
-  );
+  const decision = latestReplayDecision(run.events, scenario);
   const validationRequest = [...run.provider_requests]
     .reverse()
     .find((request) => request.method === "POST" && request.path === "/orders/validate");
   const submittedOrder = tradingResearchOrderRequestFrom(validationRequest?.body);
-  const usedProviderBoundary = requiredProviderRequestsPresent(run);
+  const usedProviderBoundary = requiredProviderRequestsPresent(
+    run,
+    decision?.kind === "order_request"
+  );
 
-  if (!orderIntent) {
+  if (!decision) {
     return disqualifiedResult(
       "no_order_request",
-      "Artifact did not emit an order request.",
+      "Artifact did not emit an order request, hold, or no-action decision.",
       "no_order_request",
       [
         metric("provider_boundary", usedProviderBoundary ? 0.2 : 0, "provider boundary usage"),
-        metric("order_request", 0, "missing order request event")
+        metric("trading_system_decision", 0, "missing externally observable decision event")
       ]
     );
   }
-  if (!submittedOrder || !sameOrderRequest(orderIntent, submittedOrder)) {
+  const orderIntent = decision.order;
+  if (decision.kind === "order_request" &&
+    (!submittedOrder || !sameOrderRequest(orderIntent, submittedOrder))) {
     return disqualifiedResult(
       "runtime_self_report_only",
       "Candidate order event did not match the externally recorded validation request."
     );
   }
+  if (decision.kind === "no_order" && validationRequest &&
+    (!submittedOrder || !isHoldOrder(submittedOrder))) {
+    return disqualifiedResult(
+      "runtime_self_report_only",
+      "Candidate no-order decision did not match the externally recorded validation request."
+    );
+  }
 
-  const validation = validateOrderRequest(submittedOrder, scenario.market, scenario.account);
+  const validation = decision.kind === "no_order"
+    ? { accepted: true, reason: "no_order_request", notional: 0, risk_fraction: 0 }
+    : validateOrderRequest(submittedOrder!, scenario.market, scenario.account);
   if (!validation.accepted) {
     return disqualifiedResult(
       "risk_validation_failed",
@@ -92,16 +103,16 @@ export function evaluateTradingRun(
     );
   }
 
-  const profitLoss = profitLossForOrder(submittedOrder, validation, scenario);
-  const directionMetric = signalDirectionMetric(scenario.market.expected_direction, submittedOrder.side);
+  const profitLoss = profitLossForOrder(orderIntent, validation, scenario);
+  const directionMetric = signalDirectionMetric(scenario.market.expected_direction, orderIntent.side);
   const providerBoundaryScore = usedProviderBoundary ? 0.2 : 0;
-  const validationScore = validation.accepted ? 0.15 : 0;
+  const validationScore = decision.kind === "order_request" && validation.accepted ? 0.15 : 0;
   const riskScore = riskFitScore(
     validation.risk_fraction,
     scenario.account.target_risk_fraction,
     scenario.market.expected_direction
   );
-  const explanationScore = submittedOrder.reason && submittedOrder.reason.length >= 12 ? 0.1 : 0;
+  const explanationScore = orderIntent.reason && orderIntent.reason.length >= 12 ? 0.1 : 0;
   const complexityPenalty = Math.min(0.1, Math.max(0, run.events.length - 8) * 0.01);
   const score = clampScore(
     providerBoundaryScore +
@@ -115,11 +126,21 @@ export function evaluateTradingRun(
   const accepted = validation.accepted && usedProviderBoundary && score > 0;
 
   const metrics: TradingEvaluationMetric[] = [
-    metric("provider_boundary", providerBoundaryScore, "market/account/order validation went through the external provider"),
+    metric(
+      "provider_boundary",
+      providerBoundaryScore,
+      decision.kind === "no_order"
+        ? "market and account reads went through the external provider"
+        : "market/account/order validation went through the external provider"
+    ),
     metric("signal_direction", directionMetric.score, directionMetric.detail),
     metric("net_revenue", profitScore(profitLoss), `net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs`),
     metric("risk_fit", riskScore, "risk fraction closeness to the hidden replay target"),
-    metric("pre_trade_validation", validationScore, validation.reason),
+    metric(
+      decision.kind === "no_order" ? "no_order_continuity" : "pre_trade_validation",
+      validationScore,
+      validation.reason
+    ),
     metric("rationale", explanationScore, "order request includes a useful rationale")
   ];
   if (complexityPenalty > 0) {
@@ -131,9 +152,13 @@ export function evaluateTradingRun(
     score,
     metrics,
     summary: accepted
-      ? `Accepted order request with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs.`
+      ? decision.kind === "no_order"
+        ? "Accepted explicit no-order decision with externally observed provider reads."
+        : `Accepted order request with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs.`
       : `Rejected order request with score ${score.toFixed(3)}.`,
-    risk_decision: validation.accepted ? "valid_order_request" : "invalid_order_request",
+    risk_decision: decision.kind === "no_order"
+      ? "no_order_request"
+      : validation.accepted ? "valid_order_request" : "invalid_order_request",
     profit_loss: profitLoss
   };
 }
@@ -249,12 +274,18 @@ function normalizeBoundaryFieldName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function requiredProviderRequestsPresent(run: ArtifactRunResult): boolean {
-  return [
+function requiredProviderRequestsPresent(
+  run: ArtifactRunResult,
+  requireOrderValidation: boolean
+): boolean {
+  const requiredRequests = [
     ["GET", "/market/snapshot"],
-    ["GET", "/account/state"],
-    ["POST", "/orders/validate"]
-  ].every(([method, path]) => run.provider_requests.some((request) =>
+    ["GET", "/account/state"]
+  ];
+  if (requireOrderValidation) {
+    requiredRequests.push(["POST", "/orders/validate"]);
+  }
+  return requiredRequests.every(([method, path]) => run.provider_requests.some((request) =>
     request.method === method && request.path === path &&
     request.response_status === 200 &&
     isConformantTradingResearchProviderRequest(request)
@@ -270,10 +301,30 @@ function sameOrderRequest(left: OrderRequest, right: OrderRequest): boolean {
     left.reason === right.reason;
 }
 
-function latestPayload<T>(events: Array<Record<string, unknown>>, eventName: string): T | undefined {
+function isHoldOrder(order: OrderRequest): boolean {
+  return order.side === "hold" && order.order_type === "none" && Object.is(order.quantity, 0);
+}
+
+function latestReplayDecision(
+  events: Array<Record<string, unknown>>,
+  scenario: ReplayTradingScenario
+): { kind: "order_request" | "no_order"; order: OrderRequest } | undefined {
   for (const event of [...events].reverse()) {
-    if (event.event === eventName) {
-      return event as T;
+    if (event.event === "order_request") {
+      const order = tradingResearchOrderRequestFrom(event, true);
+      return order ? { kind: "order_request", order } : undefined;
+    }
+    if (event.event === "hold" || event.event === "no_action") {
+      return {
+        kind: "no_order",
+        order: {
+          symbol: scenario.market.symbol,
+          side: "hold",
+          quantity: 0,
+          order_type: "none",
+          ...(typeof event.reason === "string" ? { reason: event.reason } : {})
+        }
+      };
     }
   }
   return undefined;

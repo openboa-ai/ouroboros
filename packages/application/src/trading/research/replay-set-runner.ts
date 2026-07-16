@@ -488,13 +488,12 @@ function aggregateProfitLoss(items: TradingProfitLoss[]): TradingProfitLoss {
 function aggregateRiskDecision(
   scenarioResults: TradingScenarioEvaluationResult[]
 ): TradingEvaluationResult["risk_decision"] {
-  if (scenarioResults.every((result) => result.risk_decision === "valid_order_request")) {
-    return "valid_order_request";
+  if (scenarioResults.some((result) => result.risk_decision === "invalid_order_request")) {
+    return "invalid_order_request";
   }
-  if (scenarioResults.every((result) => result.risk_decision === "no_order_request")) {
-    return "no_order_request";
-  }
-  return "invalid_order_request";
+  return scenarioResults.some((result) => result.risk_decision === "valid_order_request")
+    ? "valid_order_request"
+    : "no_order_request";
 }
 
 function safeAbsoluteRoot(rootPath: string): string {

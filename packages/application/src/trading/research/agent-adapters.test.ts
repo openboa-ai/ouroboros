@@ -276,6 +276,12 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
     expect(childEvidence.prompt).toContain(
       "may contain only manifest.json and its single declared entrypoint"
     );
+    expect(childEvidence.prompt).toContain(
+      "emit explicit hold or no_action without calling /orders/validate"
+    );
+    expect(childEvidence.prompt).toContain(
+      "Every emitted order_request must call /orders/validate with the exact same request"
+    );
     expect(terminal).toMatchObject({
       subject_ref: {
         record_kind: "research_worker_process_scope",

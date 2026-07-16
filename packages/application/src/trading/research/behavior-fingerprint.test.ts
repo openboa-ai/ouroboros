@@ -13,6 +13,23 @@ import { researchDevelopmentReplayScenarios } from "./replay-trading-api-provide
 import type { TradingScenarioEvaluationResult } from "./types";
 
 describe("ResearchBehaviorFingerprint derivation", () => {
+  it("derives an explicit flat hold without an order-validation request", () => {
+    const record = deriveResearchBehaviorFingerprint(derivationInput([
+      scenarioResult("trend_long", buyDecision(0.02, "directional")),
+      holdScenarioResult("range_flat", "flat continuity")
+    ]));
+
+    expect(record.observations[0]).toEqual({
+      scenario_id: "range_flat",
+      decision: {
+        symbol: "BTCUSDT",
+        side: "hold",
+        quantity: 0,
+        order_type: "none"
+      }
+    });
+  });
+
   it("normalizes only final externally recorded development decisions", () => {
     const first = derivationInput([
       scenarioResult("range_flat", holdDecision("first rationale")),
@@ -254,6 +271,32 @@ function scenarioResult(
     runner_command_count: 1,
     candidate_events: [{ event: "order_request", ...decision }],
     provider_requests: [providerRequest(decision)]
+  };
+}
+
+function holdScenarioResult(
+  scenarioId: string,
+  reason: string
+): TradingScenarioEvaluationResult {
+  return {
+    ...scenarioResult(scenarioId, holdDecision(reason)),
+    risk_decision: "no_order_request",
+    provider_request_count: 2,
+    candidate_events: [{ event: "hold", reason }],
+    provider_requests: [
+      {
+        at: "2026-07-12T10:00:00.100Z",
+        method: "GET",
+        path: "/market/snapshot",
+        response_status: 200
+      },
+      {
+        at: "2026-07-12T10:00:00.200Z",
+        method: "GET",
+        path: "/account/state",
+        response_status: 200
+      }
+    ]
   };
 }
 

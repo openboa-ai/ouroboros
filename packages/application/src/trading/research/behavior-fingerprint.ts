@@ -143,6 +143,17 @@ function effectiveDecision(
     candidate.method === "POST" && candidate.path === "/orders/validate"
   );
   if (!request) {
+    const noOrderDecision = [...result.candidate_events].reverse().find((event) =>
+      event.event === "hold" || event.event === "no_action"
+    );
+    if (noOrderDecision) {
+      return {
+        symbol: "BTCUSDT",
+        side: "hold",
+        quantity: 0,
+        order_type: "none"
+      };
+    }
     unavailable("effective_decision_missing");
   }
   const body = tradingResearchOrderRequestFrom(request.body);
