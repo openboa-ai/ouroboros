@@ -7,7 +7,6 @@ import {
   copyFile,
   mkdir,
   open,
-  readFile,
   realpath,
   writeFile
 } from "node:fs/promises";
@@ -61,6 +60,7 @@ export interface LiveRuntimeSoakEnvironmentManifest {
     profile: "codex";
     command: string;
     version: string;
+    executable_digest: string;
     status: "authenticated";
     auth_digest: string;
     profile_digest: string;
@@ -70,6 +70,7 @@ export interface LiveRuntimeSoakEnvironmentManifest {
     adapter_kind: "docker_sandboxes_sbx";
     command: string;
     version: string;
+    executable_digest: string;
     diagnose_digest: string;
     preflight_digest: string;
     config_digest: string;
@@ -107,12 +108,14 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
   provider: {
     command: string;
     version: string;
+    executable_digest: string;
     auth_digest: string;
     profile_digest: string;
   };
   sandbox: {
     command: string;
     version: string;
+    executable_digest: string;
     diagnose_digest: string;
     preflight_digest: string;
   };
@@ -128,6 +131,8 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
     ![
       input.provider.auth_digest,
       input.provider.profile_digest,
+      input.provider.executable_digest,
+      input.sandbox.executable_digest,
       input.sandbox.diagnose_digest,
       input.sandbox.preflight_digest,
       input.publicMarketProbeDigest,
@@ -178,6 +183,7 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
       profile: "codex",
       command: input.provider.command,
       version: input.provider.version,
+      executable_digest: input.provider.executable_digest,
       status: "authenticated",
       auth_digest: input.provider.auth_digest,
       profile_digest: input.provider.profile_digest,
@@ -187,6 +193,7 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
       adapter_kind: "docker_sandboxes_sbx",
       command: input.sandbox.command,
       version: input.sandbox.version,
+      executable_digest: input.sandbox.executable_digest,
       diagnose_digest: input.sandbox.diagnose_digest,
       preflight_digest: input.sandbox.preflight_digest,
       config_digest: digest(JSON.stringify(sandboxConfig))
@@ -314,10 +321,14 @@ export async function prepareLiveRuntimeSoakRun(input: {
     (input.sandboxHome !== undefined && !path.isAbsolute(input.sandboxHome))) {
     throw new Error("Live runtime soak preparation input is invalid.");
   }
-  const repository = await inspectRepository(repoRoot);
+  const repository = await inspectCleanRuntimeSoakRepository(repoRoot);
   const auth = await readRestrictedAuth(authSource);
   const providerCommand = await executable(input.providerCommand ?? "codex");
   const sandboxCommand = await executable(input.sandboxCommand ?? "sbx");
+  const [providerExecutableDigest, sandboxExecutableDigest] = await Promise.all([
+    digestRuntimeSoakExecutable(providerCommand),
+    digestRuntimeSoakExecutable(sandboxCommand)
+  ]);
   const runRoot = path.join(repoRoot, ".ouroboros", "runtime-soaks", input.runId);
   await mkdir(path.dirname(runRoot), { recursive: true, mode: 0o700 });
   await mkdir(runRoot, { mode: 0o700 });
@@ -365,23 +376,19 @@ export async function prepareLiveRuntimeSoakRun(input: {
   const managedAuth = path.join(configuredProfile.managed_provider_home, "auth.json");
   await copyFile(authSource, managedAuth, constants.COPYFILE_EXCL);
   await chmod(managedAuth, 0o600);
-  const providerProfile = await probeAgentProfile({ store, profileId: "codex" });
+  const providerProfile = await probeAgentProfile({
+    store,
+    profileId: "codex",
+    command: providerCommand
+  });
   if (providerProfile.status !== "authenticated" || !providerProfile.version) {
     throw new Error("Managed Codex profile preflight did not authenticate.");
   }
 
-  const sbxVersion = (await runText(sandboxCommand, ["version"], {
-    cwd: repoRoot,
-    timeout: 10_000
-  })).stdout.trim();
-  const sbxDiagnose = await runText(sandboxCommand, ["diagnose", "--output", "json"], {
-    cwd: repoRoot,
-    timeout: 60_000
-  });
-  assertSbxDiagnose(sbxDiagnose.stdout);
-  const sbxPreflight = await runText("npm", ["run", "validate:s5-sbx:preflight"], {
-    cwd: repoRoot,
-    timeout: 10 * 60_000
+  const sandboxEvidence = await collectLiveRuntimeSoakSandboxEvidence({
+    repoRoot,
+    command: sandboxCommand,
+    home: config.sandbox.home
   });
   const publicMarketProbe = await probePublicMarket(config.gateway.source_origin);
 
@@ -435,14 +442,16 @@ export async function prepareLiveRuntimeSoakRun(input: {
     provider: {
       command: providerCommand,
       version: providerProfile.version,
+      executable_digest: providerExecutableDigest,
       auth_digest: digest(auth),
       profile_digest: digest(JSON.stringify(providerProfile))
     },
     sandbox: {
       command: sandboxCommand,
-      version: sbxVersion,
-      diagnose_digest: digest(sbxDiagnose.stdout),
-      preflight_digest: digest(sbxPreflight.stdout + sbxPreflight.stderr)
+      version: sandboxEvidence.version,
+      executable_digest: sandboxExecutableDigest,
+      diagnose_digest: sandboxEvidence.diagnose_digest,
+      preflight_digest: sandboxEvidence.preflight_digest
     },
     publicMarketProbeDigest: digest(JSON.stringify(publicMarketProbe)),
     harnessConfigDigest: digest(JSON.stringify(harnessConfig)),
@@ -466,7 +475,7 @@ export async function prepareLiveRuntimeSoakRun(input: {
   };
 }
 
-async function inspectRepository(repoRoot: string): Promise<{
+export async function inspectCleanRuntimeSoakRepository(repoRoot: string): Promise<{
   commit: string;
   tree: string;
 }> {
@@ -491,6 +500,51 @@ async function inspectRepository(repoRoot: string): Promise<{
   return { commit, tree };
 }
 
+export function liveRuntimeSoakSandboxEnvironment(
+  command: string,
+  home: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    OUROBOROS_SBX_BIN: command,
+    ...(home ? { HOME: home, OUROBOROS_SBX_HOME: home } : {})
+  };
+}
+
+export async function collectLiveRuntimeSoakSandboxEvidence(input: {
+  repoRoot: string;
+  command: string;
+  home?: string;
+}): Promise<{
+  version: string;
+  diagnose_digest: string;
+  preflight_digest: string;
+}> {
+  const env = liveRuntimeSoakSandboxEnvironment(input.command, input.home);
+  const version = (await runText(input.command, ["version"], {
+    cwd: input.repoRoot,
+    env,
+    timeout: 10_000
+  })).stdout.trim();
+  const diagnose = await runText(input.command, ["diagnose", "--output", "json"], {
+    cwd: input.repoRoot,
+    env,
+    timeout: 60_000
+  });
+  assertSbxDiagnose(diagnose.stdout);
+  const preflight = await runText("npm", ["run", "validate:s5-sbx:preflight"], {
+    cwd: input.repoRoot,
+    env,
+    timeout: 10 * 60_000
+  });
+  return {
+    version,
+    diagnose_digest: digest(diagnose.stdout),
+    preflight_digest: digest(preflight.stdout + preflight.stderr)
+  };
+}
+
 export async function readRestrictedAuth(file: string): Promise<Buffer> {
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -500,6 +554,26 @@ export async function readRestrictedAuth(file: string): Promise<Buffer> {
       throw new Error("Codex auth source must be a restricted regular file.");
     }
     return await handle.readFile();
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function digestRuntimeSoakExecutable(file: string): Promise<string> {
+  if (!path.isAbsolute(file)) {
+    throw new Error("Runtime soak executable path must be absolute.");
+  }
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size <= 0 || metadata.size > 1024 * 1024 * 1024) {
+      throw new Error("Runtime soak executable must be one bounded regular file.");
+    }
+    const hash = createHash("sha256");
+    for await (const chunk of handle.createReadStream({ autoClose: false })) {
+      hash.update(chunk);
+    }
+    return `sha256:${hash.digest("hex")}`;
   } finally {
     await handle.close();
   }
@@ -549,11 +623,11 @@ function assertSbxDiagnose(serialized: string): void {
 async function runText(
   file: string,
   args: string[],
-  options: { cwd?: string; timeout: number }
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeout: number }
 ): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync(file, args, {
     ...(options.cwd ? { cwd: options.cwd } : {}),
-    env: process.env,
+    env: options.env ?? process.env,
     encoding: "utf8",
     timeout: options.timeout,
     maxBuffer: 8 * 1024 * 1024

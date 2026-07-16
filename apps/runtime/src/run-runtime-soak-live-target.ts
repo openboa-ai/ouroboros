@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
+import { probeAgentProfile } from "@ouroboros/application/agent/profiles";
 import { evaluateRuntimeSoakInvariants } from "@ouroboros/application/runtime-soak";
 import { LocalStore } from "@ouroboros/local-store";
 import {
@@ -11,6 +10,9 @@ import {
   serveLiveRuntimeSoakRuntime
 } from "./runtime-soak-live-control";
 import {
+  collectLiveRuntimeSoakSandboxEvidence,
+  digestRuntimeSoakExecutable,
+  inspectCleanRuntimeSoakRepository,
   prepareLiveRuntimeSoakRun,
   verifyLiveRuntimeSoakEnvironmentManifest,
   type LiveRuntimeSoakEnvironmentManifest
@@ -24,7 +26,6 @@ import {
 import { runRuntimeSoakCommand } from "./run-runtime-soak";
 
 type Io = { stdout(line: string): void };
-const execFileAsync = promisify(execFile);
 
 export async function runLiveRuntimeSoakTargetCommand(
   args: string[],
@@ -105,12 +106,26 @@ export async function runLiveRuntimeSoakTargetCommand(
     "--report-root",
     config.report_root
   ], io);
-  io.stdout(JSON.stringify({
-    run_id: config.run_id,
-    status: "completed",
-    classification: result.result.classification
-  }));
-  return { exitCode: 0 };
+  const completion = liveRuntimeSoakLaunchCompletion(config.run_id, result);
+  io.stdout(JSON.stringify(completion.output));
+  return { exitCode: completion.exitCode };
+}
+
+export function liveRuntimeSoakLaunchCompletion(
+  runId: string,
+  result: { exitCode: number; result: { classification: string } }
+): {
+  exitCode: number;
+  output: { run_id: string; status: "completed"; classification: string };
+} {
+  return {
+    exitCode: result.exitCode,
+    output: {
+      run_id: runId,
+      status: "completed",
+      classification: result.result.classification
+    }
+  };
 }
 
 type Mode = "prepare" | "control" | "probe" | "serve-runtime" | "preflight" | "launch";
@@ -176,29 +191,39 @@ async function assertFrozenLaunchBindings(
     path.join(config.run_root, "launch-agent.plist"),
     "utf8"
   );
-  const [commit, tree] = await Promise.all([
-    gitIdentity(config.repo_root, "HEAD"),
-    gitIdentity(config.repo_root, "HEAD^{tree}")
-  ]);
-  const profile = await new LocalStore(config.store_root).getAgentProfile("codex");
+  const store = new LocalStore(config.store_root);
+  const profile = await store.getAgentProfile("codex");
   if (!profile) throw new Error("Managed Codex profile is missing.");
   const auth = await readFile(path.join(profile.managed_provider_home, "auth.json"));
+  const [
+    repository,
+    providerProfile,
+    providerExecutableDigest,
+    sandboxEvidence,
+    sandboxExecutableDigest
+  ] = await Promise.all([
+    inspectCleanRuntimeSoakRepository(config.repo_root),
+    probeAgentProfile({ store, profileId: "codex", command: config.provider.command }),
+    digestRuntimeSoakExecutable(config.provider.command),
+    collectLiveRuntimeSoakSandboxEvidence({
+      repoRoot: config.repo_root,
+      command: config.sandbox.command,
+      home: config.sandbox.home
+    }),
+    digestRuntimeSoakExecutable(config.sandbox.command)
+  ]);
   if (digest(JSON.stringify(harness)) !== manifest.target.harness_config_digest ||
     digest(launchAgent) !== manifest.target.launch_agent_digest ||
-    commit !== manifest.repository.commit || tree !== manifest.repository.tree ||
-    digest(auth) !== manifest.provider.auth_digest) {
+    repository.commit !== manifest.repository.commit ||
+    repository.tree !== manifest.repository.tree ||
+    digest(auth) !== manifest.provider.auth_digest ||
+    providerExecutableDigest !== manifest.provider.executable_digest ||
+    providerProfile.version !== manifest.provider.version ||
+    digest(JSON.stringify(providerProfile)) !== manifest.provider.profile_digest ||
+    sandboxExecutableDigest !== manifest.sandbox.executable_digest ||
+    sandboxEvidence.version !== manifest.sandbox.version) {
     throw new Error("Runtime soak launch binding differs from its frozen manifest.");
   }
-}
-
-async function gitIdentity(repoRoot: string, revision: string): Promise<string> {
-  const result = await execFileAsync("git", ["rev-parse", revision], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    timeout: 10_000,
-    maxBuffer: 64 * 1024
-  });
-  return String(result.stdout).trim();
 }
 
 async function assertRegular(file: string): Promise<void> {

@@ -84,7 +84,7 @@ export function createLiveRuntimeSoakScenario(runId: string): RuntimeSoakScenari
   return {
     version: 1,
     run_id: runId,
-    duration_ms: DAY_MS + 60_000,
+    duration_ms: DAY_MS + CONTROL_TIMEOUT_MS + 60_000,
     sample_interval_ms: 60_000,
     actions: [
       { action_id: "runtime-clean-restart", kind: "clean_restart", at_ms: 0 },
@@ -225,7 +225,7 @@ export async function buildLiveRuntimeSoakSample(
     chains: [
       ...(effects.length > 0 ? [effectChain(config, effects)] : []),
       ...candidateDetails.flatMap((candidate) => candidate?.ledger?.chains.map(
-        ledgerChain
+        runtimeSoakLedgerChain
       ) ?? [])
     ],
     ownership,
@@ -375,7 +375,7 @@ function effectChain(
   };
 }
 
-function ledgerChain(
+export function runtimeSoakLedgerChain(
   chain: LedgerChainReadModel
 ): RuntimeSoakSample["chains"][number] {
   const records = [
@@ -396,7 +396,7 @@ function ledgerChain(
   });
   if (!chain.chain_complete) {
     entries.push({
-      sequence: entries.length + 2,
+      sequence: entries.length + 1,
       digest: sha256(`incomplete:${chain.chain_id}`),
       ...(previous ? { previous_digest: previous } : {})
     });

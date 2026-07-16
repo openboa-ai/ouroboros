@@ -175,6 +175,7 @@ export async function runAgentProfileDeviceLogin(input: {
 export async function probeAgentProfile(input: {
   store: OuroborosStorePort;
   profileId: AgentProfileId;
+  command?: string;
   execFile?: AgentProfileExecFile;
 }): Promise<AgentProfileReadModel> {
   const profile = await ensureConfiguredProfile(input.store, input.profileId);
@@ -191,13 +192,14 @@ export async function probeAgentProfile(input: {
     }));
   }
   const execFileRunner = input.execFile ?? defaultExecFileRunner;
+  const command = input.command ?? "codex";
   try {
-    const version = await execFileRunner("codex", ["--version"], {
+    const version = await execFileRunner(command, ["--version"], {
       env: managedAgentProfileEnv(input.store, input.profileId),
       timeout: 5_000,
       maxBuffer: 1024 * 1024
     });
-    await execFileRunner("codex", ["login", "status"], {
+    await execFileRunner(command, ["login", "status"], {
       env: managedAgentProfileEnv(input.store, input.profileId),
       timeout: 5_000,
       maxBuffer: 1024 * 1024

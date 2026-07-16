@@ -1,10 +1,15 @@
+import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { probeAgentProfile, setupAgentProfile } from
+  "@ouroboros/application/agent/profiles";
+import type { LedgerChainReadModel } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
   buildLiveRuntimeSoakSample,
@@ -15,11 +20,15 @@ import {
   paperObservationStreams,
   parseLiveRuntimeSoakTargetConfig,
   recordLiveRuntimeSoakEffect,
+  runtimeSoakLedgerChain,
   sandboxSamples
 } from "../src/runtime-soak-live-target.js";
 import {
   createLiveRuntimeSoakEnvironmentManifest,
   createLiveRuntimeSoakLaunchAgent,
+  digestRuntimeSoakExecutable,
+  inspectCleanRuntimeSoakRepository,
+  liveRuntimeSoakSandboxEnvironment,
   readRestrictedAuth,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
@@ -31,10 +40,15 @@ import {
   stopRuntimeProcessGroup
 } from
   "../src/runtime-soak-live-control.js";
-import { runLiveRuntimeSoakTargetCommand, runtimeSoakLogMessage } from
+import {
+  liveRuntimeSoakLaunchCompletion,
+  runLiveRuntimeSoakTargetCommand,
+  runtimeSoakLogMessage
+} from
   "../src/run-runtime-soak-live-target.js";
 
 const temporaryRoots: string[] = [];
+const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) =>
@@ -64,7 +78,100 @@ describe("live RuntimeSoakTarget", () => {
       kind: "terminal_cleanup",
       at_ms: 24 * 60 * 60 * 1_000
     });
-    expect(scenario.duration_ms).toBeGreaterThan(24 * 60 * 60 * 1_000);
+    expect(scenario.duration_ms - scenario.actions.at(-1)!.at_ms)
+      .toBeGreaterThanOrEqual(11 * 60 * 1_000);
+  });
+
+  it("keeps incomplete Ledger sample markers contiguous", () => {
+    const chain = runtimeSoakLedgerChain({
+      chain_id: "ledger-chain-incomplete",
+      chain_complete: false,
+      occurred_at: "2026-07-16T12:00:00.000Z",
+      order_request: {
+        order_request_id: "order-request-incomplete",
+        intent_kind: "place_order",
+        market_scope: "external_trading_api_fixture",
+        side: "buy",
+        order_type: "market",
+        quantity: "0.001",
+        status: "proposed",
+        created_at: "2026-07-16T12:00:00.000Z",
+        authority_status: "not_submitted"
+      },
+      gateway_result: null,
+      execution_result: null,
+      authority_status: "not_live"
+    } satisfies LedgerChainReadModel);
+
+    expect(chain.entries.map((entry) => entry.sequence)).toEqual([1, 2]);
+  });
+
+  it("propagates a failed harness classification to the launch process", () => {
+    expect(liveRuntimeSoakLaunchCompletion("runtime-soak-live-001", {
+      exitCode: 1,
+      result: { classification: "target_failed" }
+    })).toEqual({
+      exitCode: 1,
+      output: {
+        run_id: "runtime-soak-live-001",
+        status: "completed",
+        classification: "target_failed"
+      }
+    });
+  });
+
+  it("binds provider and Sandbox probes to the configured commands", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouro-live-soak-provider-"));
+    temporaryRoots.push(root);
+    const store = new LocalStore(path.join(root, "store"));
+    await store.initialize();
+    await setupAgentProfile({ store, profileId: "codex" });
+    const commands: string[] = [];
+
+    await probeAgentProfile({
+      store,
+      profileId: "codex",
+      command: "/configured/codex",
+      async execFile(file, args) {
+        commands.push([file, ...args].join(" "));
+        return { stdout: args[0] === "--version" ? "codex-cli configured\n" : "", stderr: "" };
+      }
+    });
+
+    expect(commands).toEqual([
+      "/configured/codex --version",
+      "/configured/codex login status"
+    ]);
+    expect(liveRuntimeSoakSandboxEnvironment(
+      "/configured/sbx",
+      "/isolated/sbx-home",
+      { PATH: "/usr/bin", OUROBOROS_SBX_BIN: "/stale/sbx", HOME: "/stale/home" }
+    )).toMatchObject({
+      PATH: "/usr/bin",
+      HOME: "/isolated/sbx-home",
+      OUROBOROS_SBX_BIN: "/configured/sbx",
+      OUROBOROS_SBX_HOME: "/isolated/sbx-home"
+    });
+  });
+
+  it("rejects repository changes made after the frozen commit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouro-live-soak-repo-"));
+    temporaryRoots.push(root);
+    await execFileAsync("git", ["init", "--quiet"], { cwd: root });
+    await writeFile(path.join(root, "tracked.txt"), "frozen\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: root });
+    await execFileAsync("git", [
+      "-c", "user.name=Ouroboros Test",
+      "-c", "user.email=ouroboros@example.invalid",
+      "commit", "--quiet", "-m", "frozen"
+    ], { cwd: root });
+
+    await expect(inspectCleanRuntimeSoakRepository(root)).resolves.toMatchObject({
+      commit: expect.stringMatching(/^[a-f0-9]{40}$/),
+      tree: expect.stringMatching(/^[a-f0-9]{40}$/)
+    });
+    await writeFile(path.join(root, "tracked.txt"), "dirty\n", "utf8");
+    await expect(inspectCleanRuntimeSoakRepository(root)).rejects.toThrow(/clean frozen/i);
   });
 
   it("accepts only an authority-free, secretless, public target config", () => {
@@ -348,6 +455,20 @@ describe("live RuntimeSoakTarget", () => {
       .toBe("failed forged line ");
   });
 
+  it("binds frozen toolchains to non-followed executable bytes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouro-live-soak-toolchain-"));
+    temporaryRoots.push(root);
+    const executable = path.join(root, "tool");
+    const executableLink = path.join(root, "tool-link");
+    await writeFile(executable, "toolchain-v1\n", { mode: 0o700 });
+    await chmod(executable, 0o700);
+    await symlink(executable, executableLink);
+
+    await expect(digestRuntimeSoakExecutable(executable))
+      .resolves.toBe(digest("toolchain-v1\n"));
+    await expect(digestRuntimeSoakExecutable(executableLink)).rejects.toThrow();
+  });
+
   it("freezes a secretless environment manifest and crash-only launch agent", () => {
     const config = targetConfig();
     const manifest = createLiveRuntimeSoakEnvironmentManifest({
@@ -364,12 +485,14 @@ describe("live RuntimeSoakTarget", () => {
       provider: {
         command: "/opt/homebrew/bin/codex",
         version: "codex-cli 0.144.2",
+        executable_digest: digest("codex-executable"),
         auth_digest: digest("raw-auth-never-persisted"),
         profile_digest: digest("managed-profile")
       },
       sandbox: {
         command: "/opt/homebrew/bin/sbx",
         version: "sbx version: v0.35.0",
+        executable_digest: digest("sbx-executable"),
         diagnose_digest: digest("diagnose"),
         preflight_digest: digest("preflight")
       },
@@ -382,8 +505,15 @@ describe("live RuntimeSoakTarget", () => {
       record_kind: "runtime_soak_environment_manifest",
       run_id: config.run_id,
       repository: { clean: true, commit: "a".repeat(40) },
-      provider: { status: "authenticated", profile: "codex" },
-      sandbox: { adapter_kind: "docker_sandboxes_sbx" },
+      provider: {
+        status: "authenticated",
+        profile: "codex",
+        executable_digest: digest("codex-executable")
+      },
+      sandbox: {
+        adapter_kind: "docker_sandboxes_sbx",
+        executable_digest: digest("sbx-executable")
+      },
       public_market: {
         gateway_owner: "MarketDataPort",
         source_origin: "https://fapi.binance.com",
@@ -504,12 +634,14 @@ function environmentManifest(config: ReturnType<typeof targetConfig>) {
     provider: {
       command: config.provider.command,
       version: "codex-cli 0.144.2",
+      executable_digest: digest("codex-executable"),
       auth_digest: digest("auth"),
       profile_digest: digest("profile")
     },
     sandbox: {
       command: config.sandbox.command,
       version: "sbx version: v0.35.0",
+      executable_digest: digest("sbx-executable"),
       diagnose_digest: digest("diagnose"),
       preflight_digest: digest("preflight")
     },
