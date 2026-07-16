@@ -312,10 +312,11 @@ async function injectProviderLoss(config: LiveRuntimeSoakTargetConfig): Promise<
 }
 
 async function recoverProviderAndStartPaper(config: LiveRuntimeSoakTargetConfig): Promise<void> {
-  const tick = await command(config, "arena.tick");
-  const candidateId = tick.operator?.candidate_arena?.latest_ticks?.[0]
-    ?.created_candidate_ids?.[0];
-  if (typeof candidateId !== "string") throw new Error("Codex recovery created no candidate.");
+  const candidateId = await recoverProviderGeneratedCandidate(async () => {
+    const tick = await command(config, "arena.tick");
+    return tick.operator?.candidate_arena?.latest_ticks?.[0]
+      ?.created_candidate_ids?.[0];
+  }, 3);
   await command(config, "candidate.select", { candidate_id: candidateId });
   await command(config, "trading_run.start", { candidate_id: candidateId });
   const store = new LocalStore(config.store_root);
@@ -328,6 +329,23 @@ async function recoverProviderAndStartPaper(config: LiveRuntimeSoakTargetConfig)
     system_code_id: systemCodeId
   });
   await waitFor(() => generatedSandboxVerified(config, systemCodeId), 180_000);
+}
+
+export async function recoverProviderGeneratedCandidate(
+  runTick: () => Promise<string | undefined>,
+  attemptLimit: number
+): Promise<string> {
+  if (!Number.isSafeInteger(attemptLimit) || attemptLimit <= 0) {
+    throw new Error("Provider recovery attempt limit is invalid.");
+  }
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+    const candidateId = await runTick();
+    if (typeof candidateId === "string" && candidateId.trim() === candidateId &&
+      candidateId.length > 0) {
+      return candidateId;
+    }
+  }
+  throw new Error(`Codex recovery created no candidate after ${attemptLimit} bounded attempts.`);
 }
 
 async function injectSandboxLoss(config: LiveRuntimeSoakTargetConfig): Promise<void> {

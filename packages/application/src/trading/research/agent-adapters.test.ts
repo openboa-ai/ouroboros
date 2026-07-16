@@ -237,6 +237,7 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       pid: number;
       session_token?: string;
       prompt_bytes: number;
+      prompt: string;
     };
     const terminal = ownership.records.at(-1);
     expect(childEvidence).toMatchObject({
@@ -244,6 +245,9 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       session_token: terminal?.session_token
     });
     expect(childEvidence.prompt_bytes).toBeGreaterThan(0);
+    expect(childEvidence.prompt).toContain(
+      "may contain only manifest.json and its single declared entrypoint"
+    );
     expect(terminal).toMatchObject({
       subject_ref: {
         record_kind: "research_worker_process_scope",
@@ -354,10 +358,12 @@ const fs = require("node:fs");
 const chunks = [];
 process.stdin.on("data", (chunk) => chunks.push(chunk));
 process.stdin.on("end", () => {
+  const prompt = Buffer.concat(chunks).toString("utf8");
   fs.writeFileSync(process.env.TEST_OWNERSHIP_EVIDENCE_PATH, JSON.stringify({
     pid: process.pid,
     session_token: process.env.OUROBOROS_PROCESS_SESSION_TOKEN,
-    prompt_bytes: Buffer.concat(chunks).length
+    prompt_bytes: Buffer.byteLength(prompt),
+    prompt
   }));
   process.exit(0);
 });

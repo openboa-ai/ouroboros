@@ -310,6 +310,7 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
       "External development Evaluation is available only through the generated tool client.",
       "Do not infer hidden evaluator cases, seek credentials, or add live trading authority.",
       "The artifact must keep using the external TradingApiProvider through TRADING_API_BASE_URL.",
+      "The immutable SystemCode closure may contain only manifest.json and its single declared entrypoint; remove generated caches and do not add helper files, directories, or symlinks before submitting.",
       `You may submit at most ${input.submission_limit} development snapshots during this session.`,
       "A submission is an immutable snapshot; later edits do not change it.",
       "Development feedback is aggregate evidence, not final trading or promotion authority.",

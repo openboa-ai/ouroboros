@@ -19,6 +19,8 @@ import {
   createLiveRuntimeSoakLaunchAgent,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
+import { recoverProviderGeneratedCandidate } from
+  "../src/runtime-soak-live-control.js";
 import { runLiveRuntimeSoakTargetCommand } from
   "../src/run-runtime-soak-live-target.js";
 
@@ -182,6 +184,24 @@ describe("live RuntimeSoakTarget", () => {
       ["gateway-recovery", ["gateway.unblock", "market.verify"]],
       ["terminal-cleanup", ["paper.stop", "sandbox.stop", "runtime.stop"]]
     ]);
+  });
+
+  it("keeps provider recovery bounded while preserving failed arena attempts", async () => {
+    const attempted: number[] = [];
+    const candidates = [undefined, undefined, "candidate-provider-003"];
+
+    await expect(recoverProviderGeneratedCandidate(async () => {
+      attempted.push(attempted.length + 1);
+      return candidates.shift();
+    }, 3)).resolves.toBe("candidate-provider-003");
+    expect(attempted).toEqual([1, 2, 3]);
+
+    let exhausted = 0;
+    await expect(recoverProviderGeneratedCandidate(async () => {
+      exhausted += 1;
+      return undefined;
+    }, 3)).rejects.toThrow(/3 bounded attempts/i);
+    expect(exhausted).toBe(3);
   });
 
   it("freezes a secretless environment manifest and crash-only launch agent", () => {
