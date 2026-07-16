@@ -107,11 +107,25 @@ normalizes comparison mode to `champion_challenge`, bounds the queue at one inco
 uses LocalStore create-only publication to resolve same-root process races without overwrite. Its
 committed, existing, or deferred result is operational state only; malformed or drifted evidence
 fails closed and it grants no downstream authority. `ResearchControlStudyScheduler` invokes this
-component before each process-local supervisor cycle under `buildServer`: default startup follows
-Store initialization and paper recovery, a bounded interruptible wait considers later promotions,
-and shutdown drains the study path before CandidateArena and shared paper sessions. The server
+component before each process-local study-supervisor cycle. `buildServer` starts one outer
+`RuntimeSupervisor` after Store initialization; its fixed lanes reconcile selected paper sessions,
+persisted CandidateArena start intent, and this scheduler in dependency order. A bounded
+interruptible scheduler wait considers later promotions, and outer shutdown drains the study path,
+CandidateArena, then shared paper sessions. The server
 runtime reconstructs each campaign only from its persisted study condition and revalidates the
 configured research-agent identity.
+The outer supervisor owns one same-host `RuntimeProcessOwnership` scope and one immutable
+`RuntimeSupervisorCheckpoint` chain under the Store root. Lane checkpoints record desired state,
+basis and progress digests, attempts, no-progress count, retry time, and stable reason. Three
+unchanged failures exhaust the default budget; a changed basis or observed progress opens a new
+bounded attempt. Inspection and recovery failures stay lane-local. The exact same coordination-only
+read model is returned by `/health` and `OperatorReadModel`; it cannot rank, qualify, promote, submit
+orders, or grant private/live authority.
+Runtime `SIGINT` and `SIGTERM` close Fastify through the same reverse-order supervisor drain.
+Operator Desktop requests that graceful termination and waits a bounded interval before a hard-kill
+fallback, so normal restart releases exact ownership instead of relying on stale-owner recovery.
+If a signal-triggered drain fails, the runtime retains ownership and exits non-zero; the next
+process must confirm the old exact PID identity is absent before retiring that owner.
 The internal `ResearchMemoryControlStudy` composition is independent of that allocation-policy
 study. Domain/application decisions own the pre-effect study, pair, and all-pairs outcome;
 LocalStore validates append-only source graphs; runtime owns bounded baseline copies, opaque
@@ -138,10 +152,20 @@ snapshots are operational mutable state, while released or confirmed-dead expire
 immutable terminal history. Alive or liveness-unknown owners fail closed; takeover requires expiry
 and a confirmed-absent PID on the same host. This is runtime coordination only, not evidence or
 policy authority. Multi-host storage, PID namespaces, and distributed fencing remain outside.
-`RuntimeProcessOwnership` is the distinct child-process boundary for provider and deterministic
-long-running Sandbox effects. A filesystem adapter records the exact host, PID start marker,
-executable, profile digest, worker/store-root or Sandbox process scope, runtime ref, and random
-session token before releasing the child's pre-effect gate. The store-root component lets isolated
+Before any selected-paper effect, a non-fixture provider-generated candidate must reload an admitted
+version 2 `PaperTradingHandoffConformance`, verify its external deny-default
+`CandidateEgressAttestation`, and recheck the exact SystemCode, ExperimentRun, Evaluation, and
+artifact digest chain. Explicit `fixture_only` materialization is deterministic test substrate and
+has no evaluation, promotion, order, private, or live authority.
+Eligible non-fixture candidates run through the Docker Sandbox adapter. Successful stop releases
+owned network policy and force-removes the Sandbox. If both stop and force removal fail, the
+Sandbox remains in retryable `stopping` state and its deny policy plus persisted lease stay in
+place until a later stop completes cleanup.
+`RuntimeProcessOwnership` is the same-host process boundary for the outer runtime supervisor,
+provider children, and deterministic long-running Sandbox effects. A filesystem adapter records the
+exact host, PID start marker, executable, profile digest, runtime-supervisor, worker/store-root, or
+Sandbox process scope, runtime ref, and random session token. Child scopes release their pre-effect
+gate only after that record exists. The store-root component lets isolated
 control arms run the same logical ResearchWorker concurrently without sharing process ownership.
 Restart reconciliation never trusts a PID alone: absent owners become
 terminal evidence, reused or unreadable identity fails closed, and mismatched live identity is not

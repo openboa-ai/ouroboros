@@ -96,6 +96,18 @@ opening the same pending study. Every executor advance asserts exact ownership; 
 owners wait, and only an expired owner with a confirmed-absent same-host PID may be replaced. Lease
 history is operational coordination, never study evidence or policy authority. Multi-host fencing,
 real-market replicated outcome evidence, and learned policy parameters remain open.
+`buildServer` now places selected PaperTrading recovery, persisted CandidateArena start intent, and
+the ResearchControlStudyScheduler under one `RuntimeSupervisor`. The supervisor claims one
+store-scoped same-host owner, persists an immutable checkpoint chain, retries unchanged failures
+three times by default, isolates blocked lanes, and stops dependencies in reverse order. Non-fixture
+provider-generated selected-paper candidates must reverify the admitted version 2 egress attestation
+before effects, use the Docker Sandbox adapter, retain deny-default egress policy, and are
+force-removed after stop and policy cleanup. Explicit `fixture_only` materialization remains
+deterministic and authority-free. Runtime signals and Operator Desktop first request the same
+bounded supervisor drain before any hard-kill fallback. This establishes the local
+always-on/restart substrate;
+it does not constitute a long soak, multi-host fencing, deployed service evidence, or economic
+improvement.
 `ResearchGeneralizationProtocol` now supplies the prospective boundary that the same-baseline study
 could not: six precommitted slots with two public `long`, `short`, and `flat` condition-block studies,
 24-hour global spacing, a 90-day deadline, frozen worker/paper/campaign policy, and source-baseline

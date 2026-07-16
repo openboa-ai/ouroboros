@@ -1043,7 +1043,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("keeps S5 sbx completion audit incomplete when runtime API stop response is not stopped", async () => {
+  it("keeps S5 sbx completion audit incomplete when runtime API stop response is not removed", async () => {
     const tempDir = await makeTempDir();
     try {
       const evidencePath = path.join(tempDir, "validate-runtime-api-stop-not-stopped.log");
@@ -1053,7 +1053,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing stopped lifecycle evidence for sandbox-clock-b in transcript section: runtime API stop B response"
+        "missing removed lifecycle evidence for sandbox-clock-b in transcript section: runtime API stop B response"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -3188,7 +3188,7 @@ function fakeCompletionEvidence(
   const stopBResponse = [
     "## runtime API stop B response",
     `{"sandbox":{"sandbox_id":"sandbox-clock-b","lifecycle_status":"${
-      options.failStopBResponse ? "failed" : "stopped"
+      options.failStopBResponse ? "failed" : "removed"
     }"}}`
   ];
   const stopAndRemoveB = options.omitStopB
@@ -3264,7 +3264,7 @@ function fakeCompletionEvidence(
     "## runtime API logs A",
     '{"logs":[{"lines":["runtime_heartbeat sandbox-clock-a"]}]}',
     "## runtime API stop A response",
-    '{"sandbox":{"sandbox_id":"sandbox-clock-a","lifecycle_status":"stopped"}}',
+    '{"sandbox":{"sandbox_id":"sandbox-clock-a","lifecycle_status":"removed"}}',
     "## runtime API stop A command evidence",
     "$ sbx exec ouro-s5-clock-a pkill -TERM -f fixtures/trading-systems/clock.py",
     "exit_code=0",

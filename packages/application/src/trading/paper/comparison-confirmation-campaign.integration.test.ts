@@ -482,6 +482,7 @@ async function integrationFixture(root: string) {
   const eventAtByRun = new Map<string, string>();
   const sessions = new PaperTradingSessionService({
     store,
+    startEligibility: async () => undefined,
     intervalMs: 60_000,
     runner: new PaperTradingEvaluationRunner(),
     marketData: baseMarketData,

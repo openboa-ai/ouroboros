@@ -553,6 +553,7 @@ function fixtureOperator(
   return {
     operator_kind: "ouroboros_operator",
     command_descriptors: OUROBOROS_COMMAND_DESCRIPTORS,
+    runtime_supervisor: stoppedRuntimeSupervisor(),
     candidate_arena: {
       arena_kind: "candidate_arena",
       runner_status: "running",
@@ -1063,6 +1064,23 @@ function fixtureOperator(
     live_disabled: true,
     authority_status: "not_live",
     ...overrides
+  };
+}
+
+function stoppedRuntimeSupervisor(): OperatorReadModel["runtime_supervisor"] {
+  return {
+    status: "stopped",
+    lanes: [],
+    recorded_at: "2026-07-16T00:00:00.000Z",
+    checkpoint_sequence: 0,
+    checkpoint_digest: `sha256:${"0".repeat(64)}`,
+    runtime_coordination_authority: true,
+    evaluation_authority: false,
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "runtime_coordination_only"
   };
 }
 

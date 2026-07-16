@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
+  CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_ATTESTER_ID,
+  CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
+  candidateEgressAttestationDigestInput,
+  candidateEgressAttestationIdForConformance,
+  candidateEgressNetworkPolicyDigestInput,
   decideCandidateAdmission,
   paperTradingHandoffConformanceDigestInput,
   type CandidateAdmissionDecisionRecord,
+  type CandidateEgressAttestation,
   type CandidateInspectReadModel,
   type ExperimentRunRecord,
   type PaperTradingHandoffConformanceRecord,
@@ -57,6 +65,22 @@ describe("PaperTradingCommandService handoff conformance", () => {
       graph.admission.status = "quarantined";
       graph.admission.reason = "paper_handoff_conformance_failed";
       graph.admission.runnable_paper_handoff = false;
+    }],
+    ["legacy egress-free conformance", "paper_handoff_conformance_egress_attestation_missing", (graph: TestGraph) => {
+      const { candidate_egress_attestation: _attestation, ...legacy } = graph.conformance as
+        Extract<PaperTradingHandoffConformanceRecord, { version: 2 }>;
+      graph.conformance = { ...legacy, version: 1 };
+      graph.conformance.evidence_digest = conformanceDigest(graph.conformance);
+      graph.admission.paper_trading_handoff_conformance_digest =
+        graph.conformance.evidence_digest;
+    }],
+    ["tampered egress attestation", "paper_handoff_conformance_egress_attestation_invalid", (graph: TestGraph) => {
+      const conformance = graph.conformance as
+        Extract<PaperTradingHandoffConformanceRecord, { version: 2 }>;
+      conformance.candidate_egress_attestation.cleanup_status = "failed";
+      conformance.evidence_digest = conformanceDigest(conformance);
+      graph.admission.paper_trading_handoff_conformance_digest =
+        conformance.evidence_digest;
     }]
   ])("rejects %s before any paper effect", async (_label, reason, mutate) => {
     const graph = testGraph();
@@ -321,7 +345,7 @@ function systemCodeFixture(): SystemCodeRecord {
     artifact_kind: "python_file",
     runtime_kind: "python",
     artifact_path: "/tmp/generated-system-code.py",
-    artifact_digest: "sha256:generated-system-code",
+    artifact_digest: sha256("generated-system-code"),
     entrypoint: ["python3", "/tmp/generated-system-code.py"],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
@@ -340,10 +364,20 @@ function conformanceFixture(
   systemCode: SystemCodeRecord,
   experiment: ExperimentRunRecord
 ): PaperTradingHandoffConformanceRecord {
+  const conformanceId = "paper-start-conformance";
+  const startedAt = "2026-07-12T10:00:00.000Z";
+  const completedAt = "2026-07-12T10:00:01.000Z";
+  const attestation = egressAttestationFixture(
+    conformanceId,
+    systemCode,
+    experiment,
+    startedAt,
+    completedAt
+  );
   const record: PaperTradingHandoffConformanceRecord = {
     record_kind: "paper_trading_handoff_conformance",
-    version: 1,
-    paper_trading_handoff_conformance_id: "paper-start-conformance",
+    version: 2,
+    paper_trading_handoff_conformance_id: conformanceId,
     system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
     system_code_artifact_digest: systemCode.artifact_digest,
     experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
@@ -356,22 +390,95 @@ function conformanceFixture(
     decision_event_kind: "hold",
     heartbeat_count: 1,
     runtime_stopped: true,
-    started_at: "2026-07-12T10:00:00.000Z",
-    completed_at: "2026-07-12T10:00:01.000Z",
+    started_at: startedAt,
+    completed_at: completedAt,
     evidence_digest: "pending",
     research_preflight_authority: true,
     runnable_paper_handoff: true,
     promotion_authority: false,
     order_submission_authority: false,
     live_exchange_authority: false,
-    authority_status: "not_live"
+    authority_status: "not_live",
+    candidate_egress_attestation: attestation
   };
   record.evidence_digest = conformanceDigest(record);
   return record;
 }
 
+function egressAttestationFixture(
+  conformanceId: string,
+  systemCode: SystemCodeRecord,
+  experiment: ExperimentRunRecord,
+  startedAt: string,
+  completedAt: string
+): CandidateEgressAttestation {
+  const networkPolicy = {
+    protocol_version: CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+    inherited_allow_digest: sha256("inherited-allow"),
+    inherited_allow_count: 0,
+    owned_allow_rule_ids: [],
+    owned_deny_rule_ids: ["deny-default"],
+    deny_targets: [...CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS]
+  };
+  const networkPolicyDigest = sha256(
+    candidateEgressNetworkPolicyDigestInput(networkPolicy)
+  );
+  const attestation: CandidateEgressAttestation = {
+    protocol_version: CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+    attestation_id: candidateEgressAttestationIdForConformance(conformanceId),
+    attested_by: {
+      record_kind: "external_evaluator",
+      id: CANDIDATE_EGRESS_ATTESTER_ID
+    },
+    candidate_authored: false,
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_artifact_digest: systemCode.artifact_digest,
+    execution_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    sandbox: {
+      adapter_kind: "docker_sandboxes_sbx",
+      sandbox_name: "paper-start-conformance-sandbox",
+      implementation_version: "1.0.0"
+    },
+    network_policy: networkPolicy,
+    network_policy_digest: networkPolicyDigest,
+    start: {
+      observed_at: startedAt,
+      policy_digest: networkPolicyDigest
+    },
+    end: {
+      observed_at: "2026-07-12T10:00:00.900Z",
+      policy_digest: networkPolicyDigest
+    },
+    candidate_effect: {
+      started_at: "2026-07-12T10:00:00.100Z",
+      completed_at: "2026-07-12T10:00:00.800Z"
+    },
+    cleanup_status: "released",
+    enforcement_result: "enforced",
+    denial_summary: {
+      required_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      start_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      end_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      unexpected_allow_count: 0
+    },
+    issued_at: completedAt,
+    attestation_digest: "pending",
+    research_preflight_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  attestation.attestation_digest = sha256(
+    candidateEgressAttestationDigestInput(attestation)
+  );
+  return attestation;
+}
+
 function conformanceDigest(record: PaperTradingHandoffConformanceRecord): string {
-  return `sha256:${createHash("sha256")
-    .update(paperTradingHandoffConformanceDigestInput(record))
-    .digest("hex")}`;
+  return sha256(paperTradingHandoffConformanceDigestInput(record));
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }

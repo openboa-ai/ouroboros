@@ -29,6 +29,7 @@ import type {
   SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
 import { buildServer } from "../src/server";
+import type { RuntimeSupervisor } from "../src/runtime-supervisor";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const INTERVAL_MS = 3_600_000;
@@ -535,7 +536,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(runner.active(qualificationRun.trading_run_id)).toBe(false);
   });
 
-  it("fails closed and terminalizes recovery when persisted purposes disagree", async () => {
+  it("keeps a purpose mismatch retryable until explicit recovery exhaustion", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await requireFixtureCandidate(store);
@@ -583,13 +584,23 @@ describe("multi-run paper TradingSystem sessions", () => {
       }
     });
 
-    const outcomes = await recoveryService.recoverRunningEvaluations();
+    const outcomes = await recoveryService.recoverRunningEvaluations({
+      persistFailures: false
+    });
 
     expect(outcomes).toEqual(expect.arrayContaining([{
       tradingRunId: researchRun.trading_run_id,
       status: "failed",
       error: "PaperTradingSession recovery purpose does not match the persisted commitment."
     }]));
+    const retryableEvaluation = await requireEvaluation(store, researchRun.trading_run_id);
+    expect(retryableEvaluation).toMatchObject({
+      status: "running",
+      next_observation_at: "2026-07-10T02:40:03.000Z"
+    });
+
+    await recoveryService.finalizeRecoveryFailures(outcomes);
+
     const failedEvaluation = await requireEvaluation(store, researchRun.trading_run_id);
     expect(failedEvaluation.status).toBe("failed");
     expect(failedEvaluation.latest_failure_reason).toBe(
@@ -828,6 +839,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     const recoveryProviders = runKeyedProviderHarness();
     const recoveryServiceCapture: { service?: PaperTradingSessionService } = {};
     const recoveryOutcomeCapture = paperTradingRecoveryCapture();
+    let runtimeSupervisor: RuntimeSupervisor | undefined;
     const recoveryServer = await buildServer({
       store,
       sandboxAdapters: { deterministic_test: recoverySandbox },
@@ -839,11 +851,15 @@ describe("multi-run paper TradingSystem sessions", () => {
           return ARTIFACT_DIGEST;
         }
       },
+      runtimeSupervisorRetryDelaysMs: [],
       onPaperTradingSessionServiceCreated(service) {
         recoveryServiceCapture.service = service;
       },
       onPaperTradingRecovery(outcomes) {
         recoveryOutcomeCapture.observe(outcomes);
+      },
+      onRuntimeSupervisorCreated(supervisor) {
+        runtimeSupervisor = supervisor;
       }
     });
     const recoveryService = requireCapturedService(recoveryServiceCapture.service);
@@ -865,6 +881,12 @@ describe("multi-run paper TradingSystem sessions", () => {
       ]));
       expect(recoveryService.active(failingRun.trading_run_id)).toBe(false);
       expect(recoveryService.active(healthyRun.trading_run_id)).toBe(true);
+      expect(runtimeSupervisor?.status().lanes.find((lane) =>
+        lane.lane === "selected_paper"
+      )).toMatchObject({
+        status: "blocked",
+        reason_code: "paper_trading_recovery_failed"
+      });
       expect((await store.getTradingRun(failingRun.trading_run_id))?.runtime_lifecycle_status).toBe("stopped");
       expect((await store.getTradingRun(healthyRun.trading_run_id))?.runtime_lifecycle_status).toBe("running");
       expect(recoveryProviders.require(recoverySandbox.providerUrl(failingRun.trading_run_id)!).closed).toBe(true);

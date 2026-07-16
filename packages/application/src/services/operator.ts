@@ -13,6 +13,7 @@ import {
   type PaperTradingObservationRecord,
   type PaperTradingQualificationStatus,
   type ResearcherProviderReadModel,
+  type RuntimeSupervisorReadModel,
   type TradingProfitLossReadModel,
   type TradingPromotionComparisonConfirmationReadModel,
   type TradingPromotionRecord
@@ -77,6 +78,9 @@ export interface OperatorServiceOptions {
     PaperTradingComparisonPromotionService,
     "promote"
   >;
+  runtimeSupervisor?: {
+    status(): RuntimeSupervisorReadModel;
+  };
 }
 
 export class OperatorService {
@@ -132,6 +136,8 @@ export class OperatorService {
     return {
       operator_kind: "ouroboros_operator",
       command_descriptors: OUROBOROS_COMMAND_DESCRIPTORS,
+      runtime_supervisor: this.options.runtimeSupervisor?.status() ??
+        stoppedRuntimeSupervisorReadModel(),
       candidate_arena: arena,
       selected_candidate_id: selectedCandidate?.candidate_id ?? null,
       selected_candidate: selectedCandidateOverview ?? null,
@@ -1968,6 +1974,23 @@ function zeroProfitLoss() {
     cost_usdt: 0,
     net_revenue_usdt: 0,
     net_return_pct: 0
+  };
+}
+
+function stoppedRuntimeSupervisorReadModel(): RuntimeSupervisorReadModel {
+  return {
+    status: "stopped",
+    lanes: [],
+    recorded_at: new Date().toISOString(),
+    checkpoint_sequence: 0,
+    checkpoint_digest: `sha256:${"0".repeat(64)}`,
+    runtime_coordination_authority: true,
+    evaluation_authority: false,
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "runtime_coordination_only"
   };
 }
 

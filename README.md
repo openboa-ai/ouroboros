@@ -156,6 +156,19 @@ scheduler can then consider a later reviewed source without an operator command.
 runtime reconstructs source, agent identity, campaign bounds, and the bound paper protocol from the
 exact persisted study condition. Shutdown stops this scheduler before CandidateArena and
 paper-session dependencies.
+`buildServer` owns those dependencies through one `RuntimeSupervisor`, not three unrelated startup
+effects. After Store initialization it claims one same-host process ownership, reloads the immutable
+checkpoint chain, and reconciles selected PaperTrading sessions, persisted CandidateArena start
+intent, and the ResearchControlStudyScheduler in that order. Each lane records desired state,
+basis/progress digests, bounded no-progress retries, and `recovering`, `running`, `degraded`,
+`blocked`, or `stopped` status. A blocked research lane does not stop a healthy paper lane. Shutdown
+drains the reverse dependency order. `/health` and `OperatorReadModel.runtime_supervisor` expose the
+same coordination-only projection; it carries no evaluation, promotion, order, private, or live
+authority.
+`SIGINT` and `SIGTERM` close Fastify through that same drain path. Operator Desktop sends
+`SIGTERM` first and waits for a bounded graceful stop before using a hard-kill fallback. A failed
+signal drain retains ownership and exits non-zero so exact-PID stale-owner recovery remains the
+only restart path.
 The same default commitment path now first creates or reloads one immutable
 `ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
 Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
@@ -196,14 +209,21 @@ condition-blocked selection protocol and separate approval-only generalization d
 implemented, while complete six-study real-market evidence, generated or tuned policy parameters,
 automatic TradingPromotion, and champion handoff remain separate and outside this path.
 
-Provider and deterministic long-running Sandbox child effects now use same-host
-`RuntimeProcessOwnership`. It durably binds an exact PID start marker, executable/profile,
-worker/store-root or Sandbox process scope, runtime ref, host, and session token before effects.
+The runtime supervisor, provider children, and deterministic long-running Sandbox child effects use
+same-host `RuntimeProcessOwnership` under distinct scopes. It durably binds an exact PID start
+marker, executable/profile, runtime-supervisor, worker/store-root, or Sandbox process scope,
+runtime ref, host, and session token before effects.
 Isolated control arms therefore do not share provider ownership. Restart terminates an exact stale
 provider owner before opening a fresh non-resumable session, while an exact live deterministic
 Sandbox may be adopted without duplication. Missing, reused, unreadable, or mismatched identity
 cannot grant ownership; terminal transitions remain inspectable. External `sbx` resources,
 provider-session resumption, and multi-host fencing remain outside this boundary.
+Before any selected-paper effect, a non-fixture provider-generated candidate must reload an admitted
+version 2 handoff, verify its external deny-default `CandidateEgressAttestation`, and recheck the
+exact SystemCode, ExperimentRun, Evaluation, and artifact digest chain. Explicit `fixture_only`
+materialization remains deterministic, simulated, and authority-free.
+Eligible non-fixture paper runs use the Docker Sandbox adapter. Stop releases policy and
+force-removes the Sandbox; a stop-plus-removal failure retains the deny policy and lease.
 
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
@@ -223,7 +243,7 @@ or cross-suite behavior clustering, external Sandbox ownership and provider-sess
 worker-chosen
 long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
 six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
-long-duration restart soak evidence, deployed always-on paper execution, automatic promotion,
+long-duration restart soak evidence, deployed multi-host always-on operation, automatic promotion,
 champion runner handoff, private/live authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external

@@ -38,6 +38,38 @@ describe("RuntimeProcessOwnership", () => {
     expect(runtimeProcessOwnershipHasRuntimeShape(ownership)).toBe(true);
   });
 
+  it("binds one store-scoped runtime supervisor to the current server process", () => {
+    const ownership = createRuntimeProcessOwnership({
+      ...ownershipInput(),
+      processKind: "runtime_supervisor",
+      subjectRef: {
+        record_kind: "runtime_supervisor",
+        id: "runtime-supervisor-store-a"
+      },
+      runtimeRef: {
+        record_kind: "local_store",
+        id: "store-a"
+      },
+      executable: "/usr/local/bin/node"
+    });
+
+    expect(ownership).toMatchObject({
+      process_kind: "runtime_supervisor",
+      subject_ref: {
+        record_kind: "runtime_supervisor",
+        id: "runtime-supervisor-store-a"
+      },
+      runtime_ref: { record_kind: "local_store", id: "store-a" },
+      ownership_status: "active",
+      runtime_coordination_authority: true,
+      evaluation_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false
+    });
+    expect(runtimeProcessOwnershipHasRuntimeShape(ownership)).toBe(true);
+  });
+
   it("records adoption and immutable terminal outcomes without changing identity", () => {
     const active = activeOwnership();
     const adopted = adoptRuntimeProcessOwnership({

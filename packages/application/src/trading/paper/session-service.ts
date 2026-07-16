@@ -49,6 +49,7 @@ import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-art
 import type {
   PaperOrderRequestFixture,
   SandboxAdapterObservationResult,
+  SandboxAdapterPort,
   SandboxAdapterRegistryPort,
   SandboxStartResult
 } from "../../ports/sandbox";
@@ -82,6 +83,11 @@ import {
   type RecordPaperTradingEvaluationObservationResult,
   tradingRunLifecycleAuditInput
 } from "./observation";
+import {
+  generatedCandidatePaperHandoffConformanceFailure,
+  paperTradingSandboxAdapterKind,
+  type PaperTradingStartEligibility
+} from "./start-eligibility";
 
 export type PaperTradingSessionClock = "scheduled" | "external";
 
@@ -101,6 +107,7 @@ export interface PaperTradingSessionServiceOptions {
   ) => Promise<ReplayTradingApiProviderSession>;
   apiProviderOptions?: Pick<PaperTradingApiProviderOptions, "listen_host" | "sandbox_host">;
   artifactResolver: SystemCodeArtifactResolverPort;
+  startEligibility?: PaperTradingStartEligibility;
   logger?: Pick<Console, "error">;
 }
 
@@ -165,6 +172,10 @@ export type PaperTradingRecoveryOutcome =
       status: "skipped";
       reason: "evaluation_not_running" | "qualification";
     };
+
+export interface PaperTradingRecoveryOptions {
+  persistFailures?: boolean;
+}
 
 export class PaperTradingSessionError extends Error {
   constructor(
@@ -249,6 +260,27 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         {
           expected_evidence_purpose: run.paper_evidence_purpose,
           received_evidence_purpose: input.evidencePurpose,
+          trading_run_id: input.tradingRunId
+        }
+      );
+    }
+
+    const startEligibilityFailure = await (
+      this.options.startEligibility
+        ? this.options.startEligibility(candidate)
+        : generatedCandidatePaperHandoffConformanceFailure(
+            this.options.store,
+            candidate,
+            this.options.artifactResolver
+          )
+    );
+    if (startEligibilityFailure) {
+      throw new PaperTradingSessionError(
+        startEligibilityFailure,
+        "PaperTradingSession start eligibility failed before runtime effects.",
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidate.candidate_version.candidate_version_id,
           trading_run_id: input.tradingRunId
         }
       );
@@ -1617,7 +1649,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     await this.runner.drain();
   }
 
-  async recoverRunningEvaluations(): Promise<PaperTradingRecoveryOutcome[]> {
+  async recoverRunningEvaluations(
+    options: PaperTradingRecoveryOptions = {}
+  ): Promise<PaperTradingRecoveryOutcome[]> {
     const latestByTradingRun = new Map<string, PaperTradingEvaluationRecord>();
     for (const evaluation of await this.options.store.listPaperTradingEvaluations()) {
       const tradingRunId = evaluation.trading_run_ref.id;
@@ -1655,7 +1689,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
         ) {
           const error =
             "PaperTradingSession recovery purpose does not match the persisted commitment.";
-          await this.persistRecoveryFailure(evaluation, error);
+          if (options.persistFailures !== false) {
+            await this.persistRecoveryFailure(evaluation, error);
+          }
           outcomes.push({
             tradingRunId,
             status: "failed",
@@ -1708,7 +1744,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
           }
         }
         const recoveryError = error instanceof Error ? error.message : String(error);
-        await this.persistRecoveryFailure(evaluation, recoveryError);
+        if (options.persistFailures !== false) {
+          await this.persistRecoveryFailure(evaluation, recoveryError);
+        }
         outcomes.push({
           tradingRunId,
           status: "failed",
@@ -1717,6 +1755,18 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       }
     }
     return outcomes;
+  }
+
+  async finalizeRecoveryFailures(
+    outcomes: readonly PaperTradingRecoveryOutcome[]
+  ): Promise<void> {
+    for (const outcome of outcomes) {
+      if (outcome.status !== "failed") continue;
+      const evaluation = await this.options.store
+        .getLatestPaperTradingEvaluationForTradingRun(outcome.tradingRunId);
+      if (!evaluation || evaluation.status !== "running") continue;
+      await this.persistRecoveryFailure(evaluation, outcome.error);
+    }
   }
 
   private async persistRecoveryFailure(
@@ -2630,9 +2680,18 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const idempotencyKey = ["trading-run-sandbox", input.paperOrderRequest, input.tradingRunId, input.candidateVersionId].join(":");
     const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
     const existing = await this.options.store.getSandbox(sandboxId);
-    const adapter = this.options.sandboxAdapters.deterministic_test;
-    if (existing?.lifecycle_status === "running" && input.replaceExistingSandbox) {
-      await this.stopExistingTradingRunSandbox(adapter, existing);
+    const adapterKind = paperTradingSandboxAdapterKind(input.candidate);
+    const adapter = this.options.sandboxAdapters[adapterKind];
+    const existingAdapter = existing
+      ? this.options.sandboxAdapters[existing.adapter_kind]
+      : undefined;
+    if (
+      existing && existingAdapter &&
+      existing.lifecycle_status !== "stopped" &&
+      existing.lifecycle_status !== "removed" &&
+      (input.replaceExistingSandbox || existing.adapter_kind !== adapterKind)
+    ) {
+      await this.stopExistingTradingRunSandbox(existingAdapter, existing);
     } else if (existing?.lifecycle_status === "running" && adapter.getArtifactInstanceStatus) {
       const observations = await adapter.getArtifactInstanceStatus(existing);
       if (
@@ -2665,11 +2724,18 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       paper_order_request: input.paperOrderRequest,
       env: input.tradingApiBaseUrl ? { TRADING_API_BASE_URL: input.tradingApiBaseUrl } : undefined
     });
-    return (await this.options.store.recordSandboxStart(result)).sandbox;
+    const recorded = (await this.options.store.recordSandboxStart(result)).sandbox;
+    if (recorded.lifecycle_status !== "running") {
+      throw new PaperTradingSessionError(
+        "sandbox_start_failed",
+        `sandbox ${recorded.sandbox_id} did not reach running state`
+      );
+    }
+    return recorded;
   }
 
   private async stopExistingTradingRunSandbox(
-    adapter: SandboxAdapterRegistryPort["deterministic_test"],
+    adapter: SandboxAdapterPort,
     sandbox: SandboxDetailReadModel
   ): Promise<void> {
     const stop = adapter.stopArtifactInstance;

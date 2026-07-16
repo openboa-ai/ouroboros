@@ -15,11 +15,13 @@ import {
   candidateEgressAttestationHasRuntimeShape,
   type CandidateEgressAttestation
 } from "./candidate-egress-attestation";
+import type { RuntimeSupervisorReadModel } from "./runtime-supervisor";
 
 export * from "./private-read-gate";
 export * from "./private-readiness-policy";
 export * from "./candidate-admission-policy";
 export * from "./candidate-egress-attestation";
+export * from "./runtime-supervisor";
 
 export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
 
@@ -8337,7 +8339,10 @@ export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
   authority_status: "runtime_coordination_only";
 }
 
-export type RuntimeProcessKind = "research_provider" | "candidate_sandbox";
+export type RuntimeProcessKind =
+  | "research_provider"
+  | "candidate_sandbox"
+  | "runtime_supervisor";
 
 export interface RuntimeProcessOwner {
   host_id: string;
@@ -12641,7 +12646,8 @@ function researchControlStudyExecutionLeaseOwnerHasRuntimeShape(
 }
 
 function runtimeProcessKind(value: unknown): value is RuntimeProcessKind {
-  return value === "research_provider" || value === "candidate_sandbox";
+  return value === "research_provider" || value === "candidate_sandbox" ||
+    value === "runtime_supervisor";
 }
 
 function runtimeProcessTerminalReason(
@@ -14186,6 +14192,7 @@ function tradingReviewPacketRecommendationTone(
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
   command_descriptors: readonly OuroborosCommandDescriptor[];
+  runtime_supervisor: RuntimeSupervisorReadModel;
   candidate_arena: CandidateArenaReadModel;
   selected_candidate_id: string | null;
   selected_candidate: CandidateInspectReadModel | null;

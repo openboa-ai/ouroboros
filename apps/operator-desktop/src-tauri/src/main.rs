@@ -38,6 +38,12 @@ const REQUIRED_LOOP_COMMAND_KINDS: &[&str] = &[
     "trading_run.start",
     "trading_run.observe",
 ];
+const RUNTIME_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn kill(pid: i32, signal: i32) -> i32;
+}
 
 #[derive(Clone)]
 struct RuntimeProcess(Arc<Mutex<Option<Child>>>);
@@ -731,10 +737,42 @@ fn bundled_runtime_executable(resource_dir: Option<&Path>) -> Option<PathBuf> {
 fn stop_runtime(runtime_process: RuntimeProcess) {
     if let Ok(mut guard) = runtime_process.0.lock() {
         if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+            stop_runtime_child(&mut child);
         }
     }
+}
+
+fn stop_runtime_child(child: &mut Child) {
+    if matches!(child.try_wait(), Ok(Some(_))) {
+        return;
+    }
+    if request_runtime_graceful_stop(child) {
+        let deadline = Instant::now() + RUNTIME_GRACEFUL_STOP_TIMEOUT;
+        while Instant::now() < deadline {
+            match child.try_wait() {
+                Ok(Some(_)) => return,
+                Ok(None) => thread::sleep(Duration::from_millis(50)),
+                Err(_) => break,
+            }
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(unix)]
+fn request_runtime_graceful_stop(child: &Child) -> bool {
+    const SIGTERM: i32 = 15;
+    let Ok(pid) = i32::try_from(child.id()) else {
+        return false;
+    };
+    // SAFETY: `pid` belongs to the child owned by this process and SIGTERM has no payload.
+    unsafe { kill(pid, SIGTERM) == 0 }
+}
+
+#[cfg(not(unix))]
+fn request_runtime_graceful_stop(_child: &Child) -> bool {
+    false
 }
 
 fn reap_finished_runtime_child(runtime_process: &RuntimeProcess) {

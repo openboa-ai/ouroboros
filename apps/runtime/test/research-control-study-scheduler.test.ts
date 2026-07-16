@@ -684,14 +684,18 @@ describe("ResearchControlStudyScheduler", () => {
     });
   });
 
-  it("halts on supervisor failure without polling again", async () => {
-    const supervisor = new ScriptedSupervisor([{
-      status: "failed",
-      completedStudyCount: 1,
-      studyId: "research-control-study-failed",
-      errorCode: "research_control_study_executor_action_failed",
-      errorMessage: "injected failure"
-    }]);
+  it("records a supervisor failure and permits a later recovery start", async () => {
+    const clock = new DeferredClock("2026-07-13T00:00:00.000Z");
+    const supervisor = new ScriptedSupervisor([
+      {
+        status: "failed",
+        completedStudyCount: 1,
+        studyId: "research-control-study-failed",
+        errorCode: "research_control_study_executor_action_failed",
+        errorMessage: "injected failure"
+      },
+      { status: "caught_up", completedStudyCount: 1 }
+    ]);
     let decisionCount = 0;
     const scheduler = new ResearchControlStudyScheduler({
       supervisor,
@@ -700,7 +704,9 @@ describe("ResearchControlStudyScheduler", () => {
           decisionCount += 1;
           return { status: "up_to_date", terminalOutcomeCount: 0 } as const;
         }
-      }
+      },
+      now: clock.now,
+      sleep: clock.sleep
     });
 
     scheduler.start();
@@ -716,9 +722,22 @@ describe("ResearchControlStudyScheduler", () => {
       errorCode: "research_control_study_executor_action_failed",
       errorMessage: "injected failure"
     });
-    expect(() => scheduler.start()).toThrowError(expect.objectContaining({
-      code: "research_control_study_scheduler_terminal"
-    }));
+    expect(scheduler.start()).toBe("started");
+    await clock.waiting();
+
+    expect(supervisor.startCount).toBe(2);
+    expect(scheduler.status()).toEqual({
+      status: "waiting",
+      cycleCount: 2,
+      completedStudyCount: 2,
+      nextPollAt: "2026-07-13T00:00:10.000Z",
+      lastPolicyDecision: {
+        status: "up_to_date",
+        terminalOutcomeCount: 0
+      }
+    });
+
+    await scheduler.stop();
   });
 
   it("fails closed when a supervisor cycle has an invalid terminal state", async () => {

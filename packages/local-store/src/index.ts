@@ -34,6 +34,7 @@ import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-subs
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
 export * from "./research-control-study-execution-lease-store";
 export * from "./runtime-process-ownership-store";
+export * from "./runtime-supervisor-checkpoint-store";
 export { currentProcessStartMarker } from "./process-start-marker";
 import {
   compareAccountPositionRiskMirrorSurfaces,

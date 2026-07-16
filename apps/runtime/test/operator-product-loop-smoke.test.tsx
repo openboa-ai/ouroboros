@@ -965,6 +965,15 @@ describe("operator product loop smoke", () => {
 
   it("fails autonomous continuation on missing admitted conformance without paper effects", async () => {
     const store = new LocalStore(tmpDir);
+    const getCandidate = store.getCandidate.bind(store);
+    store.getCandidate = async (candidateId) => {
+      const candidate = await getCandidate(candidateId);
+      if (candidate?.materialization_attempt?.provider_kind === "fixture_only") {
+        candidate.materialization_attempt.provider_kind = "codex_cli";
+        candidate.materialization_attempt.model = "gpt-5-codex";
+      }
+      return candidate;
+    };
     const getConformance = store.getPaperTradingHandoffConformance.bind(store);
     store.getPaperTradingHandoffConformance = async (conformanceId) => {
       await getConformance(conformanceId);
@@ -1585,6 +1594,7 @@ describe("operator product loop smoke", () => {
       expect(humanStatus.stdout).toContain("Paper account: equity");
       expect(humanStatus.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade product-loop-fill");
 
+      await server.close();
       const restartedServer = await buildServer({
         store: new LocalStore(tmpDir),
         sandboxAdapters: {
@@ -1661,23 +1671,22 @@ describe("operator product loop smoke", () => {
             }
           }
         });
+        const candidate = await restartedServer.inject({
+          method: "GET",
+          url: `/api/candidates/${leader.candidate_id}`
+        });
+        expect(candidate.statusCode, candidate.body).toBe(200);
+        expect(candidate.json()).toMatchObject({
+          candidate_id: leader.candidate_id,
+          ledger: {
+            has_activity: true,
+            chain_complete: true,
+            authority_status: "not_live"
+          }
+        });
       } finally {
         await restartedServer.close();
       }
-
-      const candidate = await server.inject({
-        method: "GET",
-        url: `/api/candidates/${leader.candidate_id}`
-      });
-      expect(candidate.statusCode, candidate.body).toBe(200);
-      expect(candidate.json()).toMatchObject({
-        candidate_id: leader.candidate_id,
-        ledger: {
-          has_activity: true,
-          chain_complete: true,
-          authority_status: "not_live"
-        }
-      });
 
       const tui = renderToString(
         <OperatorTuiScreen

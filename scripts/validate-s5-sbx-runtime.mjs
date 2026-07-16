@@ -138,13 +138,13 @@ try {
     });
     printJson("runtime API stop A response", stopA);
     printCommandEvidence("runtime API stop A command evidence", stopA.sandbox.command_evidence);
-    assertLifecycleStopped("runtime API stop A", stopA.sandbox);
+    assertLifecycleRemoved("runtime API stop A", stopA.sandbox);
     const stopB = await commandApi("sandbox.stop", {
       sandbox_id: instanceB
     });
     printJson("runtime API stop B response", stopB);
     printCommandEvidence("runtime API stop B command evidence", stopB.sandbox.command_evidence);
-    assertLifecycleStopped("runtime API stop B", stopB.sandbox);
+    assertLifecycleRemoved("runtime API stop B", stopB.sandbox);
 
     await removeSandbox(sandboxA);
     cleanupSandboxNames.delete(sandboxA);
@@ -377,10 +377,10 @@ function assertLifecycleRunning(label, sandbox) {
   }
 }
 
-function assertLifecycleStopped(label, sandbox) {
-  if (sandbox.lifecycle_status !== "stopped") {
+function assertLifecycleRemoved(label, sandbox) {
+  if (sandbox.lifecycle_status !== "removed") {
     failures.push(`${label} lifecycle ${sandbox.lifecycle_status}`);
-    throw new Error(`${label} did not reach stopped lifecycle`);
+    throw new Error(`${label} did not reach removed lifecycle`);
   }
 }
 

@@ -166,8 +166,9 @@ Current command groups:
 
 ## Read Model Authority
 
-`OperatorReadModel` is the shared operator state for all user surfaces. It must show the
-CandidateArena status, research-preflight leaderboard, selected candidate, selected
+`OperatorReadModel` is the shared operator state for all user surfaces. It must show the exact
+`RuntimeSupervisor` projection also returned by `/health`, CandidateArena status,
+research-preflight leaderboard, selected candidate, selected
 `PaperTradingEvaluation`, product `PaperTradingEvaluation` board, paper evidence readback, runner
 active status, interval, next observation time, latest market snapshot, latest public execution
 snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
