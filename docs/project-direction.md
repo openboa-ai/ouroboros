@@ -106,8 +106,14 @@ force-removed after stop and policy cleanup. Explicit `fixture_only` materializa
 deterministic and authority-free. Runtime signals and Operator Desktop first request the same
 bounded supervisor drain before any hard-kill fallback. This establishes the local
 always-on/restart substrate;
-it does not constitute a long soak, multi-host fencing, deployed service evidence, or economic
+it does not constitute a production-duration soak, multi-host fencing, deployed service evidence, or economic
 improvement.
+An external `RuntimeSoakHarness` now makes that next validation step executable. One immutable
+scenario injects the complete restart and dependency-fault matrix through configurable shell-free
+argv controls, evaluates normalized ownership, retry, continuity, egress, and cleanup invariants,
+and appends one authority-free digest chain. Resume preserves elapsed time and first-failure
+evidence without replaying completed effects. Deterministic CI proves the protocol and report
+classifications; OURO-189 still owns an actual production-duration run and retained evidence.
 `ResearchGeneralizationProtocol` now supplies the prospective boundary that the same-baseline study
 could not: six precommitted slots with two public `long`, `short`, and `flat` condition-block studies,
 24-hour global spacing, a 90-day deadline, frozen worker/paper/campaign policy, and source-baseline

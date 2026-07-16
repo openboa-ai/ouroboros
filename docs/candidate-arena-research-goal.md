@@ -146,6 +146,12 @@ no-progress budget, isolate a blocked lane, and expose the same coordination-onl
 runtime health and OperatorReadModel. This closes the local loop-execution substrate gap; it does
 not prove long-duration autonomy, real-provider research quality, economic improvement, or
 multi-host deployment.
+The authority-free `RuntimeSoakHarness` now provides the reusable validation protocol above that
+substrate. It executes one time-bounded restart and dependency-fault schedule, checks duplicate,
+chain, ownership, retry, no-order, egress, and terminal-cleanup invariants, and persists an immutable
+digest-linked report across harness restarts. A short deterministic fixture proves all terminal
+classifications and no-replay recovery. This is direct evidence that the test environment can run;
+it is not the production-duration soak, deployed always-on evidence, or longitudinal-autonomy pass.
 For selected paper, non-fixture provider-generated candidates must reload the exact admitted
 version 2 handoff, reverify its deny-default `CandidateEgressAttestation` and artifact lineage before
 provider or Sandbox effects, and execute through the Docker Sandbox adapter. `fixture_only` remains
@@ -271,7 +277,7 @@ provider-session resumption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
 and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from deployed real public
 paths,
-long-duration restart soak and deployed multi-host always-on operation, automatic promotion,
+production-duration restart soak and deployed multi-host always-on operation, automatic promotion,
 champion runner handoff,
 private/live authority, and the other completion axes remain open.
 

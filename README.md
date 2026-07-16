@@ -169,6 +169,14 @@ authority.
 `SIGTERM` first and waits for a bounded graceful stop before using a hard-kill fallback. A failed
 signal drain retains ownership and exits non-zero so exact-PID stale-owner recovery remains the
 only restart path.
+`RuntimeSoakHarness` remains outside `RuntimeSupervisor` as an operational test controller. Run it
+with `npm run runtime:soak -- --config <file> --report-root <directory>` to execute one immutable,
+time-bounded clean-restart, crash, delayed-cleanup, provider-loss, Sandbox-loss, Gateway-loss,
+recovery, and terminal-cleanup schedule. It samples normalized external state, stops on the first
+invariant failure, and writes one create-only, digest-linked `RuntimeSoakReport`. Resume preserves
+wall-clock elapsed time, never replays a completed action, repairs a missing post-action sample,
+and restores a failure recorded before terminal publication. The deterministic test fixture proves
+this protocol and all terminal classifications only; no production-duration soak has yet passed.
 The same default commitment path now first creates or reloads one immutable
 `ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
 Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
@@ -243,7 +251,7 @@ or cross-suite behavior clustering, external Sandbox ownership and provider-sess
 worker-chosen
 long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
 six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
-long-duration restart soak evidence, deployed multi-host always-on operation, automatic promotion,
+production-duration restart soak evidence, deployed multi-host always-on operation, automatic promotion,
 champion runner handoff, private/live authority, P0, and the overall Goal remain open.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external

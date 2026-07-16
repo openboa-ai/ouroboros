@@ -126,6 +126,15 @@ Operator Desktop requests that graceful termination and waits a bounded interval
 fallback, so normal restart releases exact ownership instead of relying on stale-owner recovery.
 If a signal-triggered drain fails, the runtime retains ownership and exits non-zero; the next
 process must confirm the old exact PID identity is absent before retiring that owner.
+The application `RuntimeSoakHarness` is a separate operational test use case, not a
+`RuntimeSupervisor` lane. It owns the immutable scenario, normalized sample contract, invariant
+evaluation, resume reconstruction, and terminal classification behind target and journal ports.
+The adapter publishes one create-only manifest and predecessor-linked event chain, executes
+operator-configured argv through `execFile` without a shell, and retains only successful control
+digests. The runtime CLI is the composition root. A dangling action intent fails closed; a completed
+action is never replayed, and resume evaluates persisted samples before any later effect. Every
+record explicitly denies evaluation, promotion, order, private, and live authority. This is the
+bounded protocol used to collect later soak evidence, not production-duration evidence itself.
 The internal `ResearchMemoryControlStudy` composition is independent of that allocation-policy
 study. Domain/application decisions own the pre-effect study, pair, and all-pairs outcome;
 LocalStore validates append-only source graphs; runtime owns bounded baseline copies, opaque
