@@ -289,14 +289,15 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       if (this.options.processOwnership) {
         const reconciliation = await this.reconcileOwnedSandbox(instance);
         const capturedAt = new Date().toISOString();
-        const heartbeatLines = await readSandboxLogLines(
-          deterministicSandboxHeartbeatFile(instanceId)
-        );
+        const [heartbeatLines, logLines] = await Promise.all([
+          readSandboxLogLines(deterministicSandboxHeartbeatFile(instanceId)),
+          readSandboxLogLines(deterministicSandboxLogFile(instanceId))
+        ]);
         return {
           lifecycle_status: await this.recoveredSandboxLifecycle(
             instanceId,
             reconciliation,
-            heartbeatLines
+            [...logLines, ...heartbeatLines]
           ),
           heartbeats: heartbeatRecordsFromLines(
             instanceId,

@@ -390,6 +390,65 @@ describe("sandbox API", () => {
     }
   });
 
+  it("recovers a cleanly exited owned Sandbox as stopped on the first status read", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    };
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-owned-clean-exit",
+      sandbox_name: "ouro-owned-clean-exit",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-clean-exit",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: started.instance.sandbox_id }
+      });
+      if (!active) throw new Error("expected active Sandbox ownership");
+      process.kill(active.owner.process_id, "SIGTERM");
+      const logText = await waitForSandboxLog(
+        initialAdapter,
+        started.instance,
+        "runtime_stopped",
+        1_000
+      );
+      const lastHeartbeat = logText.split("\n").reverse().find((line) =>
+        line.includes("runtime_heartbeat")
+      );
+      if (!lastHeartbeat) throw new Error("expected persisted Sandbox heartbeat");
+      await writeFile(
+        sandboxHeartbeatFileForTest(started.instance.sandbox_id),
+        `${lastHeartbeat}\n`,
+        "utf8"
+      );
+      for (let attempt = 0; attempt < 20 && isPidAlive(active.owner.process_id); attempt += 1) {
+        await sleep(10);
+      }
+      expect(isPidAlive(active.owner.process_id)).toBe(false);
+
+      const restartedAdapter = new DeterministicSandboxAdapter(options);
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "stopped" });
+    } finally {
+      await initialAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
+    }
+  });
+
   it("retires a cached dead owner before changed-profile replacement", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1691,6 +1750,11 @@ function isPidAlive(pid: number): boolean {
 function sandboxPidFileForTest(instanceId: string): string {
   const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
   return path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${safeRuntimeIdForTest(instanceId)}-${digest}.pid`);
+}
+
+function sandboxHeartbeatFileForTest(instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
+  return `/tmp/ouroboros-${safeRuntimeIdForTest(instanceId)}-${digest}.heartbeat.json`;
 }
 
 function safeRuntimeIdForTest(value: string): string {
