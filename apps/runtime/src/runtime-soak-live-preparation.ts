@@ -505,11 +505,16 @@ export function liveRuntimeSoakSandboxEnvironment(
   home: string | undefined,
   environment: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
-  return {
+  const configured: NodeJS.ProcessEnv = {
     ...environment,
-    OUROBOROS_SBX_BIN: command,
-    ...(home ? { HOME: home, OUROBOROS_SBX_HOME: home } : {})
+    OUROBOROS_SBX_BIN: command
   };
+  delete configured.OUROBOROS_SBX_HOME;
+  if (home) {
+    configured.HOME = home;
+    configured.OUROBOROS_SBX_HOME = home;
+  }
+  return configured;
 }
 
 export async function collectLiveRuntimeSoakSandboxEvidence(input: {

@@ -113,7 +113,7 @@ export async function serveLiveRuntimeSoakRuntime(
   process.env.OUROBOROS_SANDBOX_ADAPTER = "docker_sandboxes_sbx";
   process.env.OUROBOROS_SBX_BIN = config.sandbox.command;
   process.env.OUROBOROS_SBX_WORKSPACE = config.repo_root;
-  if (config.sandbox.home) process.env.OUROBOROS_SBX_HOME = config.sandbox.home;
+  applyLiveRuntimeSoakSandboxHome(config.sandbox.home);
   const baseline = loadTradingGatewayEnvironment({});
   const marketData = faultGatedMarketData(
     new BinancePublicMarketSdkAdapter({
@@ -157,6 +157,14 @@ export async function serveLiveRuntimeSoakRuntime(
   });
   installRuntimeShutdownHandlers(server);
   await server.listen({ host: config.runtime.host, port: config.runtime.port });
+}
+
+export function applyLiveRuntimeSoakSandboxHome(
+  home: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env
+): void {
+  delete environment.OUROBOROS_SBX_HOME;
+  if (home) environment.OUROBOROS_SBX_HOME = home;
 }
 
 function faultGatedMarketData(

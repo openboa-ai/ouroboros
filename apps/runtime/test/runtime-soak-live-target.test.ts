@@ -33,6 +33,7 @@ import {
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
 import {
+  applyLiveRuntimeSoakSandboxHome,
   reconcileRuntimeOwnershipRecords,
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
@@ -152,6 +153,19 @@ describe("live RuntimeSoakTarget", () => {
       OUROBOROS_SBX_BIN: "/configured/sbx",
       OUROBOROS_SBX_HOME: "/isolated/sbx-home"
     });
+    expect(liveRuntimeSoakSandboxEnvironment(
+      "/configured/sbx",
+      undefined,
+      {
+        PATH: "/usr/bin",
+        HOME: "/operator/home",
+        OUROBOROS_SBX_HOME: "/stale/sbx-home"
+      }
+    )).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/operator/home",
+      OUROBOROS_SBX_BIN: "/configured/sbx"
+    });
   });
 
   it("rejects repository changes made after the frozen commit", async () => {
@@ -172,6 +186,14 @@ describe("live RuntimeSoakTarget", () => {
     });
     await writeFile(path.join(root, "tracked.txt"), "dirty\n", "utf8");
     await expect(inspectCleanRuntimeSoakRepository(root)).rejects.toThrow(/clean frozen/i);
+  });
+
+  it("removes an ambient Sandbox home from the live runtime", () => {
+    const environment = { OUROBOROS_SBX_HOME: "/stale/sbx-home" };
+
+    applyLiveRuntimeSoakSandboxHome(undefined, environment);
+
+    expect(environment).toEqual({});
   });
 
   it("accepts only an authority-free, secretless, public target config", () => {
