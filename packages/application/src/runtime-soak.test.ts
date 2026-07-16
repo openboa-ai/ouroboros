@@ -339,6 +339,25 @@ describe("RuntimeSoak invariants", () => {
     })).toThrowError(expect.objectContaining({ code: "runtime_soak_sample_invalid" }));
   });
 
+  it("constructs a canonical sample without unknown probe fields", () => {
+    const expected = healthySample("2026-07-16T00:00:00.000Z");
+    const parsed = parseRuntimeSoakSample({
+      ...expected,
+      debug_environment: { API_TOKEN: "must-not-persist" },
+      effects: expected.effects.map((effect) => ({
+        ...effect,
+        debug_output: "must-not-persist"
+      })),
+      chains: expected.chains.map((chain) => ({
+        ...chain,
+        entries: chain.entries.map((entry) => ({ ...entry, raw_line: "must-not-persist" }))
+      }))
+    });
+
+    expect(parsed).toEqual(expected);
+    expect(JSON.stringify(parsed)).not.toContain("must-not-persist");
+  });
+
   it("requires an absent identity when an ownership scope has no active owner", () => {
     const sample = healthySample("2026-07-16T00:00:00.000Z", true);
     sample.ownership[0]!.identity_status = "unknown";

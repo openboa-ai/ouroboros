@@ -541,7 +541,59 @@ export function parseRuntimeSoakSample(value: unknown): RuntimeSoakSample {
   if (!sampleShape(value)) {
     throw new RuntimeSoakError("runtime_soak_sample_invalid", "Runtime soak probe sample is invalid.");
   }
-  return structuredClone(value);
+  return {
+    version: 1,
+    sampled_at: value.sampled_at,
+    effects: value.effects.map((effect) => ({
+      effect_id: effect.effect_id,
+      occurrence_count: effect.occurrence_count
+    })),
+    chains: value.chains.map((chain) => ({
+      chain_id: chain.chain_id,
+      chain_kind: chain.chain_kind,
+      entries: chain.entries.map((entry) => ({
+        sequence: entry.sequence,
+        digest: entry.digest,
+        ...(entry.previous_digest === undefined ? {} : { previous_digest: entry.previous_digest })
+      }))
+    })),
+    ownership: value.ownership.map((item) => ({
+      scope: item.scope,
+      active_owner_count: item.active_owner_count,
+      identity_status: item.identity_status
+    })),
+    retries: value.retries.map((item) => ({
+      lane: item.lane,
+      attempt_count: item.attempt_count,
+      no_progress_count: item.no_progress_count,
+      retry_budget: item.retry_budget,
+      status: item.status
+    })),
+    paper_observations: value.paper_observations.map((stream) => ({
+      stream_id: stream.stream_id,
+      entries: stream.entries.map((entry) => ({
+        sequence: entry.sequence,
+        emitted_order_request_count: entry.emitted_order_request_count,
+        no_order_recorded: entry.no_order_recorded
+      }))
+    })),
+    sandboxes: value.sandboxes.map((item) => ({
+      sandbox_id: item.sandbox_id,
+      provider_generated: item.provider_generated,
+      lifecycle_status: item.lifecycle_status,
+      ...(item.egress_attestation_version === undefined
+        ? {}
+        : { egress_attestation_version: item.egress_attestation_version }),
+      ...(item.egress_attestation_status === undefined
+        ? {}
+        : { egress_attestation_status: item.egress_attestation_status })
+    })),
+    resources: value.resources.map((item) => ({
+      resource_id: item.resource_id,
+      resource_kind: item.resource_kind,
+      status: item.status
+    }))
+  };
 }
 
 const REQUIRED_ACTION_KINDS: RuntimeSoakActionKind[] = [

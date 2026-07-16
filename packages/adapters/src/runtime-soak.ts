@@ -362,7 +362,8 @@ function payload(value: unknown): boolean {
   }
   if (value.event_type === "sample_recorded") {
     try {
-      return typeof value.terminal === "boolean" && Boolean(parseRuntimeSoakSample(value.sample));
+      const sample = parseRuntimeSoakSample(value.sample);
+      return typeof value.terminal === "boolean" && isDeepStrictEqual(value.sample, sample);
     } catch { return false; }
   }
   return value.event_type === "terminal" &&

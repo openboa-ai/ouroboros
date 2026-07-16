@@ -190,6 +190,35 @@ describe("FileRuntimeSoakJournal", () => {
       payload: { event_type: "sample_recorded", terminal: false, sample: sample() }
     }, second.event_digest)).rejects.toMatchObject({ code: "runtime_soak_report_invalid" });
   });
+
+  it("rejects noncanonical sample fields at the journal boundary", async () => {
+    const root = path.join(tmpDir, "report");
+    const manifest = createRuntimeSoakManifest(scenario());
+    const journal = new FileRuntimeSoakJournal(root);
+    await journal.initialize(manifest);
+    const started = await journal.append({
+      run_id: manifest.run_id,
+      recorded_at: "2026-07-16T00:00:00.000Z",
+      elapsed_ms: 0,
+      payload: { event_type: "run_started", scenario_digest: manifest.scenario_digest }
+    });
+    const expected = sample();
+    const polluted = {
+      ...expected,
+      debug_environment: { API_TOKEN: "must-not-persist" },
+      effects: expected.effects.map((effect) => ({
+        ...effect,
+        raw_output: "must-not-persist"
+      }))
+    } as RuntimeSoakSample;
+
+    await expect(journal.append({
+      run_id: manifest.run_id,
+      recorded_at: "2026-07-16T00:00:01.000Z",
+      elapsed_ms: 1_000,
+      payload: { event_type: "sample_recorded", terminal: false, sample: polluted }
+    }, started.event_digest)).rejects.toMatchObject({ code: "runtime_soak_report_invalid" });
+  });
 });
 
 describe("SubprocessRuntimeSoakTarget", () => {
