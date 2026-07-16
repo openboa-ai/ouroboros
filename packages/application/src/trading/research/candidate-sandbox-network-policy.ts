@@ -7,6 +7,9 @@ import {
 } from "@ouroboros/domain";
 
 export const CANDIDATE_SBX_MINIMUM_VERSION = "0.35.0";
+const SBX_DOCKER_AUTOMATION_RATE_LIMIT_WARNING =
+  "WARN: Docker Hub automation credential refresh failed, keeping existing token: " +
+  "docker login service unavailable: status 429";
 
 export const CANDIDATE_NETWORK_DENY_PROBES =
   CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS;
@@ -901,8 +904,19 @@ function missingScopedPolicy(
   result: CandidateSandboxNetworkCommandResult,
   sandboxName: string
 ): boolean {
-  return result.stdout.trim() === "" && result.stderr.trim() ===
+  const stderr = result.stderr.endsWith("\n")
+    ? result.stderr.slice(0, -1)
+    : result.stderr;
+  const lines = stderr.split("\n");
+  const missing =
     `ERROR: remove network rule: no scoped policy found for sandbox "${sandboxName}"`;
+  return result.stdout.trim() === "" &&
+    lines.length >= 1 &&
+    lines.length <= 3 &&
+    lines.at(-1) === missing &&
+    lines.slice(0, -1).every((line) =>
+      line === SBX_DOCKER_AUTOMATION_RATE_LIMIT_WARNING
+    );
 }
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {

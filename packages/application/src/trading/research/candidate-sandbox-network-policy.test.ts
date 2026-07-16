@@ -68,6 +68,28 @@ describe("candidate Sandbox network policy", () => {
     });
   });
 
+  it("accepts only bounded Docker rate-limit warnings before stale-lease absence", async () => {
+    const warning = "WARN: Docker Hub automation credential refresh failed, keeping existing " +
+      "token: docker login service unavailable: status 429";
+    const missing =
+      'ERROR: remove network rule: no scoped policy found for sandbox "ouro-candidate-stale"';
+    const release = (stderr: string) => releaseCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-stale",
+      owned_allow_rule_ids: ["stale-allow"],
+      owned_deny_rule_ids: [],
+      async run_command(command) {
+        return command[2] === "log"
+          ? commandResult(command, 0, "{}\n")
+          : commandResult(command, 1, "", stderr);
+      }
+    });
+
+    await expect(release(`${warning}\n${warning}\n${missing}\n`)).resolves.toHaveLength(2);
+    await expect(release(`WARN: unrecognized credential failure\n${missing}\n`))
+      .rejects.toMatchObject({ code: "policy_cleanup_failed" });
+  });
+
   it("permits only the exact injected host Gateway and removes its scoped rule", async () => {
     const fake = fakePolicyRuntime();
     const lease = await acquireCandidateSandboxNetworkPolicy({
