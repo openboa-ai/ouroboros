@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import {
   link,
   lstat,
   mkdir,
   open,
-  readFile,
   readdir,
   unlink
 } from "node:fs/promises";
@@ -272,13 +272,16 @@ async function publishExclusive(pendingDir: string, target: string, body: string
 }
 
 async function readRegularJson(file: string): Promise<unknown> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    const stat = await lstat(file);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("not a regular file");
-    return JSON.parse(await readFile(file, "utf8"));
+    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!(await handle.stat()).isFile()) throw new Error("not a regular file");
+    return JSON.parse(await handle.readFile("utf8"));
   } catch (error) {
     if (error instanceof RuntimeSoakJournalError) throw error;
     throw invalid("Runtime soak report contains an unreadable JSON record.");
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 
