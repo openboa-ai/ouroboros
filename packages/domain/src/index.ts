@@ -8337,6 +8337,58 @@ export interface ResearchControlStudyExecutionLeaseRecord extends BaseRecord {
   authority_status: "runtime_coordination_only";
 }
 
+export type RuntimeProcessKind = "research_provider" | "candidate_sandbox";
+
+export interface RuntimeProcessOwner {
+  host_id: string;
+  process_id: number;
+  process_start_marker: string;
+}
+
+export type RuntimeProcessTerminalReason =
+  | "completed"
+  | "crashed"
+  | "timed_out"
+  | "shutdown"
+  | "restart_terminated"
+  | "owner_absent"
+  | "pid_reused";
+
+export interface RuntimeProcessOwnershipRecord extends BaseRecord {
+  record_kind: "runtime_process_ownership";
+  runtime_process_ownership_id: string;
+  process_kind: RuntimeProcessKind;
+  subject_ref: Ref;
+  runtime_ref: Ref;
+  owner: RuntimeProcessOwner;
+  executable: string;
+  profile_digest: string;
+  session_token: string;
+  ownership_status: "active" | "terminal";
+  adoption_count: number;
+  started_at: string;
+  last_adopted_at?: string;
+  closed_at?: string;
+  terminal_reason?: RuntimeProcessTerminalReason;
+  ownership_digest: string;
+  runtime_coordination_authority: true;
+  evaluation_authority: false;
+  policy_replacement_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "runtime_coordination_only";
+}
+
+export class RuntimeProcessOwnershipDecisionError extends Error {
+  readonly code = "invalid_runtime_process_ownership_input";
+
+  constructor() {
+    super("Invalid runtime process ownership input");
+    this.name = "RuntimeProcessOwnershipDecisionError";
+  }
+}
+
 export class ResearchControlStudyExecutionLeaseDecisionError extends Error {
   readonly code = "invalid_research_control_study_execution_lease_input";
 
@@ -8920,6 +8972,223 @@ export function closeResearchControlStudyExecutionLease(input: {
     }
     throw researchControlStudyExecutionLeaseInvalidDecision();
   }
+}
+
+export function runtimeProcessOwnershipDigestInput(
+  record: RuntimeProcessOwnershipRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    runtime_process_ownership_id: _id,
+    ownership_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function createRuntimeProcessOwnership(input: {
+  processKind: RuntimeProcessKind;
+  subjectRef: Ref;
+  runtimeRef: Ref;
+  owner: RuntimeProcessOwner;
+  executable: string;
+  profileDigest: string;
+  sessionToken: string;
+  startedAt: string;
+}): RuntimeProcessOwnershipRecord {
+  try {
+    if (!runtimeProcessKind(input?.processKind) ||
+      !runtimeProcessRef(input?.subjectRef) ||
+      !runtimeProcessRef(input?.runtimeRef) ||
+      !runtimeProcessOwnerHasRuntimeShape(input?.owner) ||
+      !runtimeProcessCanonicalString(input?.executable) ||
+      !runtimeProcessDigest(input?.profileDigest) ||
+      !runtimeProcessCanonicalString(input?.sessionToken) ||
+      !comparisonIso(input?.startedAt)) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    const record: RuntimeProcessOwnershipRecord = {
+      record_kind: "runtime_process_ownership",
+      version: 1,
+      runtime_process_ownership_id: runtimeProcessOwnershipId(
+        input.processKind,
+        input.subjectRef,
+        input.sessionToken
+      ),
+      process_kind: input.processKind,
+      subject_ref: { ...input.subjectRef },
+      runtime_ref: { ...input.runtimeRef },
+      owner: { ...input.owner },
+      executable: input.executable,
+      profile_digest: input.profileDigest,
+      session_token: input.sessionToken,
+      ownership_status: "active",
+      adoption_count: 0,
+      started_at: input.startedAt,
+      ownership_digest: runtimeProcessPendingDigest(),
+      runtime_coordination_authority: true,
+      evaluation_authority: false,
+      policy_replacement_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "runtime_coordination_only"
+    };
+    record.ownership_digest = runtimeProcessOwnershipExactDigest(record);
+    if (!runtimeProcessOwnershipHasRuntimeShape(record)) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof RuntimeProcessOwnershipDecisionError) throw error;
+    throw runtimeProcessOwnershipInvalidDecision();
+  }
+}
+
+export function adoptRuntimeProcessOwnership(input: {
+  ownership: RuntimeProcessOwnershipRecord;
+  adoptedAt: string;
+}): RuntimeProcessOwnershipRecord {
+  try {
+    if (!runtimeProcessOwnershipHasRuntimeShape(input?.ownership) ||
+      input.ownership.ownership_status !== "active" ||
+      !comparisonIso(input?.adoptedAt) ||
+      Date.parse(input.adoptedAt) < Date.parse(
+        input.ownership.last_adopted_at ?? input.ownership.started_at
+      )) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    const record: RuntimeProcessOwnershipRecord = {
+      ...input.ownership,
+      subject_ref: { ...input.ownership.subject_ref },
+      runtime_ref: { ...input.ownership.runtime_ref },
+      owner: { ...input.ownership.owner },
+      adoption_count: input.ownership.adoption_count + 1,
+      last_adopted_at: input.adoptedAt,
+      ownership_digest: runtimeProcessPendingDigest()
+    };
+    record.ownership_digest = runtimeProcessOwnershipExactDigest(record);
+    if (!runtimeProcessOwnershipHasRuntimeShape(record)) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof RuntimeProcessOwnershipDecisionError) throw error;
+    throw runtimeProcessOwnershipInvalidDecision();
+  }
+}
+
+export function closeRuntimeProcessOwnership(input: {
+  ownership: RuntimeProcessOwnershipRecord;
+  terminalReason: RuntimeProcessTerminalReason;
+  closedAt: string;
+}): RuntimeProcessOwnershipRecord {
+  try {
+    if (!runtimeProcessOwnershipHasRuntimeShape(input?.ownership) ||
+      input.ownership.ownership_status !== "active" ||
+      !runtimeProcessTerminalReason(input?.terminalReason) ||
+      !comparisonIso(input?.closedAt) ||
+      Date.parse(input.closedAt) < Date.parse(
+        input.ownership.last_adopted_at ?? input.ownership.started_at
+      )) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    const record: RuntimeProcessOwnershipRecord = {
+      ...input.ownership,
+      subject_ref: { ...input.ownership.subject_ref },
+      runtime_ref: { ...input.ownership.runtime_ref },
+      owner: { ...input.ownership.owner },
+      ownership_status: "terminal",
+      closed_at: input.closedAt,
+      terminal_reason: input.terminalReason,
+      ownership_digest: runtimeProcessPendingDigest()
+    };
+    record.ownership_digest = runtimeProcessOwnershipExactDigest(record);
+    if (!runtimeProcessOwnershipHasRuntimeShape(record)) {
+      throw runtimeProcessOwnershipInvalidDecision();
+    }
+    return record;
+  } catch (error) {
+    if (error instanceof RuntimeProcessOwnershipDecisionError) throw error;
+    throw runtimeProcessOwnershipInvalidDecision();
+  }
+}
+
+export function runtimeProcessOwnershipHasRuntimeShape(
+  value: unknown
+): value is RuntimeProcessOwnershipRecord {
+  if (!comparisonObject(value)) return false;
+  const optionalKeys = [
+    ...(value.last_adopted_at === undefined ? [] : ["last_adopted_at"]),
+    ...(value.closed_at === undefined ? [] : ["closed_at"]),
+    ...(value.terminal_reason === undefined ? [] : ["terminal_reason"])
+  ];
+  if (!comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "runtime_process_ownership_id",
+    "process_kind",
+    "subject_ref",
+    "runtime_ref",
+    "owner",
+    "executable",
+    "profile_digest",
+    "session_token",
+    "ownership_status",
+    "adoption_count",
+    "started_at",
+    ...optionalKeys,
+    "ownership_digest",
+    "runtime_coordination_authority",
+    "evaluation_authority",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) || value.record_kind !== "runtime_process_ownership" || value.version !== 1 ||
+    !runtimeProcessCanonicalString(value.runtime_process_ownership_id) ||
+    !runtimeProcessKind(value.process_kind) || !runtimeProcessRef(value.subject_ref) ||
+    !runtimeProcessRef(value.runtime_ref) ||
+    !runtimeProcessOwnerHasRuntimeShape(value.owner) ||
+    !runtimeProcessCanonicalString(value.executable) ||
+    !runtimeProcessDigest(value.profile_digest) ||
+    !runtimeProcessCanonicalString(value.session_token) ||
+    (value.ownership_status !== "active" && value.ownership_status !== "terminal") ||
+    !comparisonNonNegative(value.adoption_count) || !comparisonIso(value.started_at) ||
+    (value.last_adopted_at !== undefined && !comparisonIso(value.last_adopted_at)) ||
+    (value.closed_at !== undefined && !comparisonIso(value.closed_at)) ||
+    (value.terminal_reason !== undefined &&
+      !runtimeProcessTerminalReason(value.terminal_reason)) ||
+    !runtimeProcessDigest(value.ownership_digest) ||
+    value.runtime_coordination_authority !== true ||
+    value.evaluation_authority !== false ||
+    value.policy_replacement_authority !== false ||
+    value.promotion_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.authority_status !== "runtime_coordination_only") {
+    return false;
+  }
+  const ownership = value as unknown as RuntimeProcessOwnershipRecord;
+  const active = ownership.ownership_status === "active";
+  const adoptionConsistent = ownership.adoption_count === 0
+    ? ownership.last_adopted_at === undefined
+    : ownership.last_adopted_at !== undefined &&
+      Date.parse(ownership.last_adopted_at) >= Date.parse(ownership.started_at);
+  const terminalConsistent = active
+    ? ownership.closed_at === undefined && ownership.terminal_reason === undefined
+    : ownership.closed_at !== undefined && ownership.terminal_reason !== undefined &&
+      Date.parse(ownership.closed_at) >= Date.parse(
+        ownership.last_adopted_at ?? ownership.started_at
+      );
+  return adoptionConsistent && terminalConsistent &&
+    ownership.runtime_process_ownership_id === runtimeProcessOwnershipId(
+      ownership.process_kind,
+      ownership.subject_ref,
+      ownership.session_token
+    ) && ownership.ownership_digest === runtimeProcessOwnershipExactDigest(ownership);
 }
 
 export function researchControlStudyOutcomeDigestInput(
@@ -12369,6 +12638,74 @@ function researchControlStudyExecutionLeaseOwnerHasRuntimeShape(
     researchControlStudyExecutionLeaseCanonicalStringShape(
       value.process_start_marker
     );
+}
+
+function runtimeProcessKind(value: unknown): value is RuntimeProcessKind {
+  return value === "research_provider" || value === "candidate_sandbox";
+}
+
+function runtimeProcessTerminalReason(
+  value: unknown
+): value is RuntimeProcessTerminalReason {
+  return value === "completed" || value === "crashed" ||
+    value === "timed_out" || value === "shutdown" ||
+    value === "restart_terminated" || value === "owner_absent" ||
+    value === "pid_reused";
+}
+
+function runtimeProcessRef(value: unknown): value is Ref {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "record_kind",
+    "id"
+  ]) && comparisonRef(value) && runtimeProcessCanonicalString(value.record_kind) &&
+    runtimeProcessCanonicalString(value.id);
+}
+
+function runtimeProcessOwnerHasRuntimeShape(
+  value: unknown
+): value is RuntimeProcessOwner {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "host_id",
+    "process_id",
+    "process_start_marker"
+  ]) && runtimeProcessCanonicalString(value.host_id) &&
+    Number.isSafeInteger(value.process_id) && Number(value.process_id) > 0 &&
+    runtimeProcessCanonicalString(value.process_start_marker);
+}
+
+function runtimeProcessCanonicalString(value: unknown): value is string {
+  return comparisonString(value) && value.trim() === value;
+}
+
+function runtimeProcessDigest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function runtimeProcessOwnershipId(
+  processKind: RuntimeProcessKind,
+  subjectRef: Ref,
+  sessionToken: string
+): string {
+  return `runtime-process-ownership-${researchControlStudyExecutionLeaseSha256Hex(
+    `${processKind}:${subjectRef.record_kind}:${subjectRef.id}:${sessionToken}`
+  ).slice(0, 32)}`;
+}
+
+function runtimeProcessOwnershipExactDigest(
+  record: RuntimeProcessOwnershipRecord
+): string {
+  return `sha256:${researchControlStudyExecutionLeaseSha256Hex(
+    runtimeProcessOwnershipDigestInput(record)
+  )}`;
+}
+
+function runtimeProcessPendingDigest(): string {
+  return `sha256:${"0".repeat(64)}`;
+}
+
+function runtimeProcessOwnershipInvalidDecision():
+  RuntimeProcessOwnershipDecisionError {
+  return new RuntimeProcessOwnershipDecisionError();
 }
 
 function researchControlStudyExecutionLeaseCanonicalStringShape(

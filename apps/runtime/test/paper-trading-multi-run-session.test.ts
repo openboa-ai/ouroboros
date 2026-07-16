@@ -429,6 +429,50 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(await requireEvaluation(store, defaultRunId)).toEqual(defaultEvaluationBeforeCleanup);
   });
 
+  it("restarts a running Sandbox when recovery creates a new provider URL", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await requireFixtureCandidate(store);
+    const tradingRunId = candidate.runtime.ref.id;
+    const sandbox = runKeyedSandboxHarness();
+    const providers = runKeyedProviderHarness();
+    const initialService = paperSessionService({
+      store,
+      sandbox,
+      providers,
+      runner: new PaperTradingEvaluationRunner(),
+      digest: () => ARTIFACT_DIGEST
+    });
+    const prepared = await initialService.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    await initialService.activate(prepared);
+    const initialProviderUrl = sandbox.providerUrl(tradingRunId);
+    expect(initialProviderUrl).toBeDefined();
+
+    const recoveryService = paperSessionService({
+      store,
+      sandbox,
+      providers,
+      runner: new PaperTradingEvaluationRunner(),
+      digest: () => ARTIFACT_DIGEST
+    });
+
+    await expect(recoveryService.recoverRunningEvaluations()).resolves.toContainEqual({
+      tradingRunId,
+      status: "recovered",
+      clock: "scheduled"
+    });
+    expect(providers.starts()).toBe(2);
+    expect(sandbox.starts(tradingRunId)).toBe(2);
+    expect(sandbox.totalStops()).toBe(1);
+    expect(sandbox.providerUrl(tradingRunId)).not.toBe(initialProviderUrl);
+  });
+
   it("skips a persisted running qualification before resolving artifacts or mutating session state", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

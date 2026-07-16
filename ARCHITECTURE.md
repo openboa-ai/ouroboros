@@ -138,6 +138,18 @@ snapshots are operational mutable state, while released or confirmed-dead expire
 immutable terminal history. Alive or liveness-unknown owners fail closed; takeover requires expiry
 and a confirmed-absent PID on the same host. This is runtime coordination only, not evidence or
 policy authority. Multi-host storage, PID namespaces, and distributed fencing remain outside.
+`RuntimeProcessOwnership` is the distinct child-process boundary for provider and deterministic
+long-running Sandbox effects. A filesystem adapter records the exact host, PID start marker,
+executable, profile digest, worker/store-root or Sandbox process scope, runtime ref, and random
+session token before releasing the child's pre-effect gate. The store-root component lets isolated
+control arms run the same logical ResearchWorker concurrently without sharing process ownership.
+Restart reconciliation never trusts a PID alone: absent owners become
+terminal evidence, reused or unreadable identity fails closed, and mismatched live identity is not
+adopted. Provider sessions terminate an exact stale owner before starting fresh because their
+pipes and tool capabilities cannot be reconstructed. Deterministic long-running Sandboxes may
+adopt one exact live owner and reuse its process group; shutdown, timeout, crash, and restart
+termination remain inspectable terminal history. This boundary does not claim external `sbx`
+container ownership, multi-host fencing, provider-session resumption, or private/live authority.
 Application services separately derive `ResearchAllocationPolicyDecision` from one exact persisted
 study and outcome. Only eligible supported same-baseline adaptive evidence can approve the studied
 policy digest; every other valid outcome is not approved and cannot select static control. Before

@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "trading:research": "tsx packages/application/src/trading/research/run-trading-research.ts",
+    "trading:research": "tsx apps/cli/src/run-trading-research.ts",
     "trading:arena": "tsx apps/runtime/src/candidate/arena/run.ts",
     "trading:research:ledger": "node scripts/trading-research-ledger.mjs",
     "trading:research:best-artifact": "node scripts/trading-research-best-artifact.mjs",

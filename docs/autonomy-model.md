@@ -144,7 +144,8 @@ The next level of detail should improve the autonomous loop without widening aut
   exact approved `ResearchGeneralizationPolicyDecision`.
 - Allocation remains deterministic research scheduling authority, not a calibrated bandit, profit
   signal, rank, qualification, Trading review, or promotion gate. Provider-dollar cost, learned
-  allocation, and durable provider-process/sandbox adoption remain future detail.
+  allocation, external Sandbox ownership, provider-session resumption, and multi-host fencing
+  remain future detail.
 - `ResearchControlCampaign` now freezes one exact LocalStore and research-artifact baseline, then
   runs independent adaptive and static arm stores under exact tick sequences and equal maximum
   bounds. Its terminal report contains only research diagnostics and deterministic prospective
@@ -194,7 +195,9 @@ The next level of detail should improve the autonomous loop without widening aut
   future detail; a query cap is not treated as a reward-hacking proof. The implemented bounded
   Codex/fixture session supports worker-chosen submission timing, aggregate-feedback adaptation,
   explicit non-best selection, no submission, immutable in-flight snapshots, and fail-closed fresh
-  restart without adopting provider state.
+  restart. Same-host ownership terminates an exact stale provider process before starting fresh;
+  deterministic long-running Sandboxes may adopt only an exact live owner after durable pre-effect
+  identity binding. External `sbx` resources and provider sessions are not adopted.
 - CandidateArena and next-worker context now share `ResearchPopulationDiversity` over the latest
   ten completed ticks. Top-level distributions measure rolling coverage and `tick_series` preserves
   each exact worker cross-section newest first. Assigned-direction and exact same-suite behavior

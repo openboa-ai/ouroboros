@@ -33,6 +33,7 @@ import type { PrivateReadinessPostureQueryInput } from "./private-readiness-post
 import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-substrate-fixtures";
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
 export * from "./research-control-study-execution-lease-store";
+export * from "./runtime-process-ownership-store";
 export { currentProcessStartMarker } from "./process-start-marker";
 import {
   compareAccountPositionRiskMirrorSurfaces,

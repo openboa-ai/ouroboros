@@ -2,13 +2,20 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { LocalStore } from "@ouroboros/local-store";
+import {
+  FileSystemRuntimeProcessOwnershipStore,
+  LocalStore
+} from "@ouroboros/local-store";
+import type { RuntimeProcessOwnershipPort } from
+  "@ouroboros/application/ports/runtime-process-ownership";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/server";
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
-  type SandboxAdapter
+  type SandboxAdapter,
+  type SandboxAdapterStartInput,
+  type SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
 
 let tmpDir: string;
@@ -205,7 +212,7 @@ describe("sandbox API", () => {
     ]));
   });
 
-  it("stops a deterministic long-running paper session through persisted PID after adapter restart", async () => {
+  it("stops a legacy persisted-PID session after ownership-enabled adapter restart", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
@@ -226,9 +233,24 @@ describe("sandbox API", () => {
     try {
       expect(started.instance.lifecycle_status).toBe("running");
       const runningLogText = await waitForSandboxLog(adapter, started.instance, "runtime_heartbeat", 1_000);
-      const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+      const legacyPid = Number((await readFile(
+        sandboxPidFileForTest(started.instance.sandbox_id),
+        "utf8"
+      )).trim());
+      const restartedAdapter = new DeterministicSandboxAdapter({
+        commandTimeoutMs: 5_000,
+        processOwnership: new FileSystemRuntimeProcessOwnershipStore(
+          path.join(tmpDir, "runtime-process-ownership")
+        ),
+        hostId: "host-a"
+      });
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
+      await expect(restartedAdapter.getArtifactInstanceLogs(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
+      expect(isPidAlive(legacyPid)).toBe(false);
       expect(runningLogText).toContain("runtime_heartbeat");
       expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_stopped");
     } finally {
@@ -236,14 +258,416 @@ describe("sandbox API", () => {
     }
   });
 
-  it("reaps an existing long-running paper session before replacing its handle", async () => {
+  it("adopts one exact owned Sandbox process across adapter restarts without duplicate effects", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    let blockActiveRead = false;
+    let signalActiveRead!: () => void;
+    let releaseActiveRead!: () => void;
+    const activeReadStarted = new Promise<void>((resolve) => {
+      signalActiveRead = resolve;
+    });
+    const activeReadReleased = new Promise<void>((resolve) => {
+      releaseActiveRead = resolve;
+    });
+    const delayedProcessOwnership: RuntimeProcessOwnershipPort = {
+      active: async (scope) => {
+        if (blockActiveRead) {
+          signalActiveRead();
+          await activeReadReleased;
+        }
+        return processOwnership.active(scope);
+      },
+      inspect: (expected) => processOwnership.inspect(expected),
+      claim: (input) => processOwnership.claim(input),
+      reconcile: (input) => processOwnership.reconcile(input),
+      close: (input) => processOwnership.close(input),
+      terminate: (input) => processOwnership.terminate(input),
+      history: (scope) => processOwnership.history(scope)
+    };
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership: delayedProcessOwnership,
+      hostId: "host-a"
+    };
+    const input = {
+      artifact,
+      instance_id: "sandbox-owned-restart",
+      sandbox_name: "ouro-owned-restart",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-restart",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance(input);
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const firstHistory = await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      const firstPid = firstHistory.at(-1)?.owner.process_id;
+      expect(firstPid).toBeTypeOf("number");
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      const restartedAdapter = new DeterministicSandboxAdapter(options);
+      const concurrentObservations = await Promise.all([
+        restartedAdapter.getArtifactInstanceStatus(started.instance),
+        restartedAdapter.getArtifactInstanceStatus(started.instance),
+        restartedAdapter.getArtifactInstanceLogs(started.instance),
+        restartedAdapter.getArtifactInstanceLogs(started.instance)
+      ]);
+      expect(concurrentObservations).toHaveLength(4);
+      for (const observation of concurrentObservations) {
+        expect(observation.lifecycle_status).toBe("running");
+      }
+      const adopted = await restartedAdapter.startArtifactInstance({
+        ...input,
+        created_at: "2026-05-21T00:00:10.000Z"
+      });
+      expect(adopted.instance.lifecycle_status).toBe("running");
+
+      const adoptedHistory = await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(adoptedHistory.at(-1)).toMatchObject({
+        owner: { process_id: firstPid },
+        ownership_status: "active",
+        adoption_count: 1
+      });
+      expect(adoptedHistory).toHaveLength(2);
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      const mismatchedAdapter = new DeterministicSandboxAdapter(options);
+      await expect(mismatchedAdapter.startArtifactInstance({
+        ...input,
+        interval_ms: 25
+      })).rejects.toThrow("identity_mismatch");
+      expect(isPidAlive(firstPid!)).toBe(true);
+
+      blockActiveRead = true;
+      const stopPromise = initialAdapter.stopArtifactInstance(started.instance);
+      await activeReadStarted;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const activeBeforeRace = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      if (!activeBeforeRace) throw new Error("expected active Sandbox ownership");
+      await processOwnership.reconcile({
+        expected: {
+          process_kind: activeBeforeRace.process_kind,
+          subject_ref: activeBeforeRace.subject_ref,
+          runtime_ref: activeBeforeRace.runtime_ref,
+          host_id: activeBeforeRace.owner.host_id,
+          executable: activeBeforeRace.executable,
+          profile_digest: activeBeforeRace.profile_digest
+        },
+        mode: "adopt",
+        reconciledAt: new Date().toISOString()
+      });
+      releaseActiveRead();
+      const stopped = await stopPromise;
+      expect(stopped.lifecycle_status).toBe("stopped");
+      expect(isPidAlive(firstPid!)).toBe(false);
+      expect((await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      })).at(-1)).toMatchObject({
+        ownership_status: "terminal",
+        terminal_reason: "shutdown"
+      });
+    } finally {
+      await initialAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
+    }
+  });
+
+  it("recovers a cleanly exited owned Sandbox as stopped on the first status read", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const scriptPath = path.join(tmpDir, "clean-exit-sandbox.py");
+    await writeFile(scriptPath, cleanExitSandboxScript(), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const artifact = {
+      ...fixtureArtifact,
+      system_code_id: "system-code-clean-exit-recovery",
+      artifact_path: scriptPath,
+      artifact_digest: "sha256:clean-exit-recovery",
+      entrypoint: ["python3", scriptPath],
+      capability_policy_ref: { record_kind: "capability_policy" as const, id: capabilityPolicyId }
+    };
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a",
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    };
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-owned-clean-exit",
+      sandbox_name: "ouro-owned-clean-exit",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-clean-exit",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: started.instance.sandbox_id }
+      });
+      if (!active) throw new Error("expected active Sandbox ownership");
+      process.kill(active.owner.process_id, "SIGTERM");
+      const logText = await waitForSandboxLog(
+        initialAdapter,
+        started.instance,
+        "runtime_stopped",
+        1_000
+      );
+      expect(logText).toContain("runtime_heartbeat");
+      for (let attempt = 0; attempt < 20 && isPidAlive(active.owner.process_id); attempt += 1) {
+        await sleep(10);
+      }
+      expect(isPidAlive(active.owner.process_id)).toBe(false);
+
+      const restartedAdapter = new DeterministicSandboxAdapter(options);
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "stopped" });
+    } finally {
+      await initialAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
+    }
+  });
+
+  it("retires a cached dead owner before changed-profile replacement", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const options = {
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    };
+    const input = {
+      artifact,
+      instance_id: "sandbox-cached-dead-owner",
+      sandbox_name: "ouro-cached-dead-owner",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-cached-dead-owner",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const initialAdapter = new DeterministicSandboxAdapter(options);
+    const restartedAdapter = new DeterministicSandboxAdapter(options);
+    const started = await initialAdapter.startArtifactInstance(input);
+    let replacement: Awaited<ReturnType<SandboxAdapter["startArtifactInstance"]>> | undefined;
+
+    try {
+      await expect(restartedAdapter.getArtifactInstanceStatus(started.instance))
+        .resolves.toMatchObject({ lifecycle_status: "running" });
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      if (!active) throw new Error("expected active Sandbox ownership");
+      process.kill(active.owner.process_id, "SIGKILL");
+      for (let attempt = 0; attempt < 20 && isPidAlive(active.owner.process_id); attempt += 1) {
+        await sleep(10);
+      }
+      expect(isPidAlive(active.owner.process_id)).toBe(false);
+
+      replacement = await restartedAdapter.startArtifactInstance({
+        ...input,
+        interval_ms: 25
+      });
+      expect(replacement.instance.lifecycle_status).toBe("running");
+      const replacementOwnership = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(replacementOwnership).toMatchObject({
+        ownership_status: "active",
+        owner: { process_id: expect.any(Number) }
+      });
+      expect(replacementOwnership?.profile_digest).not.toBe(active.profile_digest);
+      expect(replacementOwnership?.owner.process_id).not.toBe(active.owner.process_id);
+      expect((await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      })).some((record) =>
+        record.ownership_status === "terminal" &&
+        record.terminal_reason === "owner_absent"
+      )).toBe(true);
+    } finally {
+      if (replacement) {
+        await restartedAdapter.stopArtifactInstance(replacement.instance)
+          .catch(() => undefined);
+      }
+      await initialAdapter.stopArtifactInstance(started.instance)
+        .catch(() => undefined);
+    }
+  });
+
+  it("fails closed when the ownership gate is not consumed before startup timeout", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) throw new Error("expected fixture SystemCode");
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a",
+      ownershipGateReleaseTimeoutMs: 0
+    });
+    const input = {
+      artifact,
+      instance_id: "sandbox-owned-gate-timeout",
+      sandbox_name: "ouro-owned-gate-timeout",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-gate-timeout",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const scope = {
+      process_kind: "candidate_sandbox" as const,
+      subject_ref: { record_kind: "sandbox", id: input.instance_id }
+    };
+
+    try {
+      await expect(adapter.startArtifactInstance(input)).rejects.toThrow(
+        "sandbox_ownership_gate_consumption_timeout"
+      );
+      const history = await processOwnership.history(scope);
+      const claimedPid = history[0]?.owner.process_id;
+      expect(claimedPid).toBeTypeOf("number");
+      expect(isPidAlive(claimedPid!)).toBe(false);
+      expect(history.at(-1)).toMatchObject({ ownership_status: "terminal" });
+      await expect(processOwnership.active(scope)).resolves.toBeUndefined();
+    } finally {
+      const active = await processOwnership.active(scope).catch(() => undefined);
+      if (active) {
+        await processOwnership.terminate({
+          ownership: active,
+          terminalReason: "timed_out",
+          closedAt: new Date().toISOString()
+        }).catch(() => undefined);
+      }
+    }
+  });
+
+  it("adopts a consumed ownership gate before the first heartbeat", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const delayedScriptPath = path.join(tmpDir, "sandbox-delayed-heartbeat.py");
+    await writeFile(delayedScriptPath, delayedHeartbeatSandboxScript(2_000), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const adapterOptions = {
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId],
+      processOwnership,
+      hostId: "host-a"
+    } as const;
+    const firstAdapter = new DeterministicSandboxAdapter(adapterOptions);
+    const restartedAdapter = new DeterministicSandboxAdapter(adapterOptions);
+    const input: SandboxAdapterStartInput = {
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-delayed-heartbeat",
+        artifact_path: delayedScriptPath,
+        artifact_digest: "sha256:delayed-heartbeat",
+        entrypoint: ["python3", delayedScriptPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: "sandbox-owned-consumed-gate",
+      sandbox_name: "ouro-owned-consumed-gate",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-owned-consumed-gate",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    };
+    let started: SandboxAdapterStartResult | undefined;
+
+    try {
+      started = await firstAdapter.startArtifactInstance(input);
+      expect(started.instance.lifecycle_status).toBe("running");
+      expect(started.heartbeats).toHaveLength(0);
+
+      const adopted = await restartedAdapter.startArtifactInstance(input);
+
+      expect(adopted.instance.lifecycle_status).toBe("running");
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      });
+      expect(active).toBeDefined();
+      expect(isPidAlive(active!.owner.process_id)).toBe(true);
+    } finally {
+      if (started) {
+        await firstAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
+      }
+      const active = await processOwnership.active({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: input.instance_id }
+      }).catch(() => undefined);
+      if (active) {
+        await processOwnership.terminate({
+          ownership: active,
+          terminalReason: "shutdown",
+          closedAt: new Date().toISOString()
+        }).catch(() => undefined);
+      }
+    }
+  });
+
+  it("reaps a legacy persisted-PID session before ownership-enabled replacement", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
     if (!artifact) {
       throw new Error("expected fixture SystemCode");
     }
-    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const legacyAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const processOwnership = new FileSystemRuntimeProcessOwnershipStore(
+      path.join(tmpDir, "runtime-process-ownership")
+    );
+    const ownershipAdapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      processOwnership,
+      hostId: "host-a"
+    });
     const instanceId = "sandbox-deterministic-replaced-session";
     const pidFile = sandboxPidFileForTest(instanceId);
     const startInput = {
@@ -255,20 +679,25 @@ describe("sandbox API", () => {
       created_at: "2026-05-21T00:00:00.000Z",
       interval_ms: 10
     } as const;
-    const started = await adapter.startArtifactInstance(startInput);
+    const started = await legacyAdapter.startArtifactInstance(startInput);
     let activeInstance = started.instance;
 
     try {
       const firstPid = Number((await readFile(pidFile, "utf8")).trim());
-      const replaced = await adapter.startArtifactInstance(startInput);
+      const replaced = await ownershipAdapter.startArtifactInstance(startInput);
       activeInstance = replaced.instance;
-      const secondPid = Number((await readFile(pidFile, "utf8")).trim());
+      const secondPid = (await processOwnership.history({
+        process_kind: "candidate_sandbox",
+        subject_ref: { record_kind: "sandbox", id: instanceId }
+      })).at(-1)?.owner.process_id;
 
       expect(secondPid).not.toBe(firstPid);
       expect(isPidAlive(firstPid)).toBe(false);
-      expect(isPidAlive(secondPid)).toBe(true);
+      expect(secondPid).toBeTypeOf("number");
+      expect(isPidAlive(secondPid!)).toBe(true);
     } finally {
-      await adapter.stopArtifactInstance(activeInstance);
+      await ownershipAdapter.stopArtifactInstance(activeInstance).catch(() => undefined);
+      await legacyAdapter.stopArtifactInstance(started.instance).catch(() => undefined);
     }
   });
 
@@ -1351,6 +1780,75 @@ args, _ = parser.parse_known_args()
 
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
 pathlib.Path(${JSON.stringify(helperPidFile)}).write_text(str(child.pid), encoding="utf8")
+event = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z"
+}
+pathlib.Path(args.log_file).write_text(json.dumps(event) + "\\n", encoding="utf8")
+pathlib.Path(args.heartbeat_file).write_text(json.dumps(event), encoding="utf8")
+while True:
+    time.sleep(1)
+`;
+}
+
+function cleanExitSandboxScript(): string {
+  return `import argparse
+import json
+import pathlib
+import signal
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+log_path = pathlib.Path(args.log_file)
+heartbeat_path = pathlib.Path(args.heartbeat_file)
+heartbeat = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z",
+}
+heartbeat_line = json.dumps(heartbeat)
+log_path.write_text(heartbeat_line + "\\n", encoding="utf8")
+heartbeat_path.write_text(heartbeat_line + "\\n", encoding="utf8")
+
+def stop(_signum, _frame):
+    stopped = {
+        "event": "runtime_stopped",
+        "instance_id": args.instance_id,
+        "at": "2026-05-21T00:00:01.000Z",
+    }
+    with log_path.open("a", encoding="utf8") as log_file:
+        log_file.write(json.dumps(stopped) + "\\n")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, stop)
+while True:
+    time.sleep(1)
+`;
+}
+
+function delayedHeartbeatSandboxScript(delayMs: number): string {
+  return `import argparse
+import json
+import pathlib
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+time.sleep(${delayMs / 1_000})
 event = {
     "event": "runtime_heartbeat",
     "instance_id": args.instance_id,

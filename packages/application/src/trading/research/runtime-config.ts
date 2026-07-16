@@ -5,6 +5,8 @@ import {
   FixtureTradingResearchAgentAdapter
 } from "./agent-adapters";
 import type { TradingResearchAgentAdapter } from "./types";
+import type { RuntimeProcessOwnershipPort } from
+  "../../ports/runtime-process-ownership";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,7 +91,11 @@ export function fixtureTradingResearchRuntimeConfig(): TradingResearchRuntimeCon
 export function createTradingResearchAgentAdapter(
   config: TradingResearchRuntimeConfig,
   agent: TradingResearchRuntimeAgent = config.default_agent,
-  options: { env?: NodeJS.ProcessEnv } = {}
+  options: {
+    env?: NodeJS.ProcessEnv;
+    processOwnership?: RuntimeProcessOwnershipPort;
+    hostId?: string;
+  } = {}
 ): TradingResearchAgentAdapter {
   if (agent === "fixture") {
     return new FixtureTradingResearchAgentAdapter();
@@ -99,7 +105,9 @@ export function createTradingResearchAgentAdapter(
     model: config.codex.model,
     timeout_ms: config.codex.timeout_ms,
     reasoning_effort: config.codex.reasoning_effort,
-    env: options.env
+    env: options.env,
+    process_ownership: options.processOwnership,
+    host_id: options.hostId
   });
 }
 

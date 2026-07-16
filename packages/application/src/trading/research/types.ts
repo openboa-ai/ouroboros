@@ -378,6 +378,10 @@ export interface ResearchWorkerSessionInput {
   submission_limit: number;
   timeout_ms: number;
   arena_context?: string;
+  process_ownership?: {
+    subject_ref: Ref;
+    runtime_ref: Ref;
+  };
   tools: ResearchWorkerToolPort;
 }
 

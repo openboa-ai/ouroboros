@@ -196,6 +196,15 @@ condition-blocked selection protocol and separate approval-only generalization d
 implemented, while complete six-study real-market evidence, generated or tuned policy parameters,
 automatic TradingPromotion, and champion handoff remain separate and outside this path.
 
+Provider and deterministic long-running Sandbox child effects now use same-host
+`RuntimeProcessOwnership`. It durably binds an exact PID start marker, executable/profile,
+worker/store-root or Sandbox process scope, runtime ref, host, and session token before effects.
+Isolated control arms therefore do not share provider ownership. Restart terminates an exact stale
+provider owner before opening a fresh non-resumable session, while an exact live deterministic
+Sandbox may be adopted without duplication. Missing, reused, unreadable, or mismatched identity
+cannot grant ownership; terminal transitions remain inspectable. External `sbx` resources,
+provider-session resumption, and multi-host fencing remain outside this boundary.
+
 One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
 managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
 artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
@@ -210,7 +219,8 @@ old worker, artifact, provider, sandbox, budget, evaluator seed, or sealed suite
 This isolation and diversity measurement reduce direct evaluator reuse and make population
 concentration observable; they do not prove that a
 query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
-or cross-suite behavior clustering, durable provider-process or sandbox adoption, worker-chosen
+or cross-suite behavior clustering, external Sandbox ownership and provider-session resumption,
+worker-chosen
 long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
 six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
 long-duration restart soak evidence, deployed always-on paper execution, automatic promotion,
