@@ -22,6 +22,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
+  delete process.env.SBX_FAKE_MISSING;
   delete process.env.SBX_FAKE_REMOVE_FAIL;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
@@ -747,6 +748,37 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(retry.removed_at).toBeDefined();
     await expect(readFile(leasePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("treats an exactly absent sbx Sandbox as idempotently removed", async () => {
+    const commandLog = path.join(tmpDir, "missing-stop-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-missing-stop");
+    await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-missing-stop-sbx";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: "."
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-missing-stop-sbx",
+      sandbox_name: "ouro-s5-clock-missing-stop",
+      sandbox_placement_id: "sandbox-placement-missing-stop-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+    process.env.SBX_FAKE_MISSING = "1";
+
+    const stop = await adapter.stopArtifactInstance(start.instance);
+
+    expect(stop).toMatchObject({
+      lifecycle_status: "removed",
+      removed_at: expect.any(String)
+    });
+    expect(stop.stopped_at).toBeUndefined();
+  });
 });
 
 function clockArtifactFixture(): SystemCodeRecord {
@@ -1006,10 +1038,18 @@ case "$1" in
     fi
     ;;
   stop)
+    if [ "\${SBX_FAKE_MISSING:-}" = "1" ]; then
+      echo "ERROR: no sandbox named '$2'" >&2
+      exit 43
+    fi
     echo "stop runtime failed" >&2
     exit 43
     ;;
   rm)
+    if [ "\${SBX_FAKE_MISSING:-}" = "1" ]; then
+      echo "Error: sandbox '$3' not found (run 'sbx ls' to see your sandboxes)" >&2
+      exit 44
+    fi
     if [ "\${SBX_FAKE_REMOVE_FAIL:-}" = "1" ]; then
       echo "remove failed" >&2
       exit 44

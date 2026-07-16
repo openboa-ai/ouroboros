@@ -69,6 +69,10 @@ describe("live RuntimeSoakTarget", () => {
     })).toThrow(/target config/i);
     expect(() => parseLiveRuntimeSoakTargetConfig({
       ...config,
+      gateway: { ...config.gateway, sandbox_host: "127.0.0.1" }
+    })).toThrow(/target config/i);
+    expect(() => parseLiveRuntimeSoakTargetConfig({
+      ...config,
       raw_api_token: "must-not-be-accepted"
     })).toThrow(/target config/i);
     expect(() => parseLiveRuntimeSoakTargetConfig({
@@ -289,7 +293,8 @@ describe("live RuntimeSoakTarget", () => {
       sandbox: { adapter_kind: "docker_sandboxes_sbx" },
       public_market: {
         gateway_owner: "MarketDataPort",
-        source_origin: "https://fapi.binance.com"
+        source_origin: "https://fapi.binance.com",
+        sandbox_gateway_host: "host.docker.internal"
       },
       authority: config.authority
     });
@@ -362,6 +367,7 @@ function targetConfig(root = "/run") {
     },
     gateway: {
       source_origin: "https://fapi.binance.com" as const,
+      sandbox_host: "host.docker.internal" as const,
       gate_file: path.join(root, "state/gateway-unavailable")
     },
     provider: {

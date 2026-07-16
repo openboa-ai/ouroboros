@@ -145,6 +145,7 @@ export async function serveLiveRuntimeSoakRuntime(
     candidateArenaDirections: ["trend_following"],
     paperTradingEvaluationIntervalMs: 30_000,
     paperTradingSandboxIntervalMs: 1_000,
+    tradingApiProviderSandboxHost: config.gateway.sandbox_host,
     runtimeSupervisorMonitorIntervalMs: 1_000,
     runtimeSupervisorRetryDelaysMs: [1_000, 5_000],
     runResearchControlStudiesOnStart: false,

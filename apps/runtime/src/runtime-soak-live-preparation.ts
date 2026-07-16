@@ -78,6 +78,7 @@ export interface LiveRuntimeSoakEnvironmentManifest {
     gateway_owner: "MarketDataPort";
     adapter_kind: "binance_public_market_sdk";
     source_origin: "https://fapi.binance.com";
+    sandbox_gateway_host: "host.docker.internal";
     probe_digest: string;
     adapter_digest: string;
     policy_digest: string;
@@ -192,10 +193,12 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
     },
     public_market: {
       ...adapter,
+      sandbox_gateway_host: config.gateway.sandbox_host,
       probe_digest: input.publicMarketProbeDigest,
       adapter_digest: digest(JSON.stringify(adapter)),
       policy_digest: digest(JSON.stringify({
         source_origin: config.gateway.source_origin,
+        sandbox_gateway_host: config.gateway.sandbox_host,
         authority: config.authority
       }))
     },
@@ -338,6 +341,7 @@ export async function prepareLiveRuntimeSoakRun(input: {
     },
     gateway: {
       source_origin: "https://fapi.binance.com",
+      sandbox_host: "host.docker.internal",
       gate_file: path.join(runRoot, "state", "gateway-unavailable")
     },
     provider: {

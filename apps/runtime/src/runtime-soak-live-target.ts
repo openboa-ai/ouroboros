@@ -26,6 +26,7 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const PUBLIC_BINANCE_ORIGIN = "https://fapi.binance.com";
+const SANDBOX_GATEWAY_HOST = "host.docker.internal";
 export const LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT = 3;
 const CONTROL_TIMEOUT_MS = 10 * 60_000;
 const PROVIDER_RECOVERY_OVERHEAD_MS = 5 * 60_000;
@@ -54,6 +55,7 @@ export interface LiveRuntimeSoakTargetConfig {
   };
   gateway: {
     source_origin: typeof PUBLIC_BINANCE_ORIGIN;
+    sandbox_host: typeof SANDBOX_GATEWAY_HOST;
     gate_file: string;
   };
   provider: {
@@ -486,8 +488,9 @@ function runtimeConfig(value: unknown): value is LiveRuntimeSoakTargetConfig["ru
 }
 
 function gatewayConfig(value: unknown): value is LiveRuntimeSoakTargetConfig["gateway"] {
-  return record(value) && exactKeys(value, ["source_origin", "gate_file"]) &&
+  return record(value) && exactKeys(value, ["source_origin", "sandbox_host", "gate_file"]) &&
     value.source_origin === PUBLIC_BINANCE_ORIGIN &&
+    value.sandbox_host === SANDBOX_GATEWAY_HOST &&
     absoluteStrings(value, ["gate_file"]);
 }
 

@@ -1307,21 +1307,25 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     ]);
     let policyRelease: Awaited<ReturnType<typeof this.releaseNetworkPolicy>>;
     let removeResult: CommandResult;
+    let alreadyAbsent = false;
     if (stopped) {
       policyRelease = await this.releaseNetworkPolicy(sandboxName);
       removeResult = await remove();
     } else {
       removeResult = await remove();
+      alreadyAbsent = commandReportsMissingSandbox(stopResult, sandboxName) &&
+        commandReportsMissingSandbox(removeResult, sandboxName);
       // The candidate may still be running when stop and removal both fail.
       // Retain its deny policy and persisted lease until a later cleanup succeeds.
-      policyRelease = removeResult.exit_code === 0
+      policyRelease = removeResult.exit_code === 0 || alreadyAbsent
         ? await this.releaseNetworkPolicy(sandboxName)
         : {
             results: [],
             failure: new Error("candidate_sandbox_policy_retained_after_remove_failed")
           };
     }
-    const removed = removeResult.exit_code === 0 && !policyRelease.failure;
+    const removed = (removeResult.exit_code === 0 || alreadyAbsent) &&
+      !policyRelease.failure;
     const policyEvidence = policyRelease.results.map((result, index) =>
       commandEvidenceRecord(
         instanceId,
@@ -1723,6 +1727,17 @@ interface CommandResult {
   started_at: string;
   completed_at: string;
   timed_out?: boolean;
+}
+
+function commandReportsMissingSandbox(result: CommandResult, sandboxName: string): boolean {
+  const exactLines = new Set((result.stdout + "\n" + result.stderr)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean));
+  return exactLines.has(`ERROR: no sandbox named '${sandboxName}'`) ||
+    exactLines.has(
+      `Error: sandbox '${sandboxName}' not found (run 'sbx ls' to see your sandboxes)`
+    );
 }
 
 function sandboxSandboxRecord(input: {
