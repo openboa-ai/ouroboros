@@ -222,6 +222,60 @@ describe("SubprocessRuntimeSoakTarget", () => {
     await expect(target.sample()).resolves.toEqual(sample());
   });
 
+  it("binds the effective subprocess context into control evidence", async () => {
+    const action = scenario().actions[0]!;
+    const argv = [process.execPath, "-e", "process.stdout.write('stable-output')"];
+    const execute = async (options: { runId: string; cwd: string; timeoutMs: number }) =>
+      new SubprocessRuntimeSoakTarget({
+        runId: options.runId,
+        controls: {
+          [action.action_id]: {
+            argv,
+            cwd: options.cwd,
+            timeout_ms: options.timeoutMs
+          }
+        },
+        probe: nodeJsonCommand(sample())
+      }).execute(action);
+    const inheritedContext = process.env.OUROBOROS_TEST_EXECUTION_CONTEXT;
+    let baseline;
+    let changedRun;
+    let changedCwd;
+    let changedTimeout;
+    let changedEnvironment;
+    try {
+      process.env.OUROBOROS_TEST_EXECUTION_CONTEXT = "baseline";
+      baseline = await execute({ runId: "runtime-soak-001", cwd: tmpDir, timeoutMs: 1_000 });
+      changedRun = await execute({ runId: "runtime-soak-002", cwd: tmpDir, timeoutMs: 1_000 });
+      changedCwd = await execute({
+        runId: "runtime-soak-001",
+        cwd: path.dirname(tmpDir),
+        timeoutMs: 1_000
+      });
+      changedTimeout = await execute({
+        runId: "runtime-soak-001",
+        cwd: tmpDir,
+        timeoutMs: 2_000
+      });
+      process.env.OUROBOROS_TEST_EXECUTION_CONTEXT = "changed";
+      changedEnvironment = await execute({
+        runId: "runtime-soak-001",
+        cwd: tmpDir,
+        timeoutMs: 1_000
+      });
+    } finally {
+      restoreEnvironment("OUROBOROS_TEST_EXECUTION_CONTEXT", inheritedContext);
+    }
+
+    expect(new Set([
+      baseline.evidence_digest,
+      changedRun.evidence_digest,
+      changedCwd.evidence_digest,
+      changedTimeout.evidence_digest,
+      changedEnvironment.evidence_digest
+    ])).toHaveLength(5);
+  });
+
   it("clears inherited soak action metadata before controls and probes", async () => {
     const controlMetadataPath = path.join(tmpDir, "control-metadata.json");
     const probeMetadataPath = path.join(tmpDir, "probe-metadata.json");

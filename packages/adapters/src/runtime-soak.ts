@@ -28,6 +28,7 @@ import {
 const EVENT_FILE = /^(\d{12})\.json$/;
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 
 export class RuntimeSoakJournalError extends Error {
   constructor(
@@ -196,9 +197,12 @@ export class SubprocessRuntimeSoakTarget implements RuntimeSoakTargetPort {
     }
     return {
       evidence_digest: digest(JSON.stringify({
+        run_id: this.options.runId,
         action_id: action.action_id,
         action_kind: action.kind,
+        recovers: action.recovers ?? null,
         argv: command.argv,
+        execution_context: output.executionContext,
         stdout: output.stdout,
         stderr: output.stderr
       }))
@@ -222,22 +226,44 @@ export class SubprocessRuntimeSoakTarget implements RuntimeSoakTargetPort {
   }
 }
 
-interface CommandOutput { stdout: string; stderr: string }
+interface CommandOutput {
+  stdout: string;
+  stderr: string;
+  executionContext: {
+    executor: "exec_file";
+    shell: false;
+    cwd: string;
+    timeout_ms: number;
+    max_output_bytes: number;
+    encoding: "utf8";
+    environment_digest: string;
+  };
+}
 
 function runCommand(command: RuntimeSoakCommand, metadata: Record<string, string>): Promise<CommandOutput> {
   if (!validCommand(command)) return Promise.reject(new Error("invalid command"));
   const [file, ...args] = command.argv;
+  const environment = commandEnvironment(metadata);
+  const executionContext: CommandOutput["executionContext"] = {
+    executor: "exec_file",
+    shell: false,
+    cwd: command.cwd ?? process.cwd(),
+    timeout_ms: command.timeout_ms ?? DEFAULT_COMMAND_TIMEOUT_MS,
+    max_output_bytes: MAX_OUTPUT_BYTES,
+    encoding: "utf8",
+    environment_digest: environmentDigest(environment)
+  };
   return new Promise((resolve, reject) => {
     execFile(file!, args, {
-      cwd: command.cwd,
-      env: commandEnvironment(metadata),
-      encoding: "utf8",
-      maxBuffer: MAX_OUTPUT_BYTES,
-      timeout: command.timeout_ms ?? 30_000,
+      cwd: executionContext.cwd,
+      env: environment,
+      encoding: executionContext.encoding,
+      maxBuffer: executionContext.max_output_bytes,
+      timeout: executionContext.timeout_ms,
       windowsHide: true
     }, (error, stdout, stderr) => {
       if (error) reject(error);
-      else resolve({ stdout, stderr });
+      else resolve({ stdout, stderr, executionContext });
     });
   });
 }
@@ -248,6 +274,13 @@ function commandEnvironment(metadata: Record<string, string>): NodeJS.ProcessEnv
     if (!name.toUpperCase().startsWith("OUROBOROS_SOAK_")) environment[name] = value;
   }
   return { ...environment, ...metadata };
+}
+
+function environmentDigest(environment: NodeJS.ProcessEnv): string {
+  const entries = Object.entries(environment)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
+  return digest(JSON.stringify(entries));
 }
 
 function validCommand(command: RuntimeSoakCommand): boolean {
