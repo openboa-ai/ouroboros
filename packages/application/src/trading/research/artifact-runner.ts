@@ -24,6 +24,7 @@ import {
 } from "./candidate-sandbox-network-policy";
 
 const execFileAsync = promisify(execFile);
+const SBX_SANDBOX_REMOVE_ATTEMPT_LIMIT = 3;
 
 export interface TradingArtifactRunnerInput {
   artifact_dir: string;
@@ -271,21 +272,27 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         sandboxImplementationVersion
       );
     } catch (error) {
-      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "stop", sandboxName]));
-      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "rm", "--force", sandboxName]));
+      const cleanup = await this.cleanupSandbox(sandboxName);
+      commandEvidence.push(...cleanup.command_evidence);
       return {
         ...baseResult,
         status: "crashed",
         stdout: "",
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: [
+          error instanceof Error ? error.message : String(error),
+          cleanup.failure ? sandboxCleanupFailureMessage(cleanup.failure) : ""
+        ].filter(Boolean).join("\n"),
         events: await readEventsIfPresent(eventsPath),
         provider_requests: input.provider.requests(),
-        error: "candidate_sandbox_network_policy_failed"
+        error: cleanup.failure
+          ? "candidate_sandbox_cleanup_failed"
+          : "candidate_sandbox_network_policy_failed"
       };
     }
 
     let runResult: ArtifactRunResult;
     let networkPolicyCleanupFailure: unknown;
+    let sandboxCleanupFailure: TradingArtifactCommandEvidence | undefined;
     try {
       const [command, ...args] = input.manifest.entrypoint;
       if (!command) {
@@ -372,11 +379,12 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       } catch (error) {
         networkPolicyCleanupFailure = error;
       }
-      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "stop", sandboxName]));
-      commandEvidence.push(await this.runSbxCommand([this.sbxPath, "rm", "--force", sandboxName]));
+      const cleanup = await this.cleanupSandbox(sandboxName);
+      commandEvidence.push(...cleanup.command_evidence);
+      sandboxCleanupFailure = cleanup.failure;
     }
 
-    if (networkPolicyCleanupFailure) {
+    if (networkPolicyCleanupFailure || sandboxCleanupFailure) {
       return {
         ...runResult,
         status: "crashed",
@@ -384,9 +392,16 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
           runResult.stderr,
           networkPolicyCleanupFailure instanceof Error
             ? networkPolicyCleanupFailure.message
-            : String(networkPolicyCleanupFailure)
+            : networkPolicyCleanupFailure
+              ? String(networkPolicyCleanupFailure)
+              : "",
+          sandboxCleanupFailure
+            ? sandboxCleanupFailureMessage(sandboxCleanupFailure)
+            : ""
         ].filter(Boolean).join("\n"),
-        error: "candidate_sandbox_network_policy_cleanup_failed"
+        error: sandboxCleanupFailure
+          ? "candidate_sandbox_cleanup_failed"
+          : "candidate_sandbox_network_policy_cleanup_failed"
       };
     }
     return runResult;
@@ -546,19 +561,15 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
           );
         }
       }
-      const stop = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
-      const remove = await this.runSbxCommand([
-        this.sbxPath,
-        "rm",
-        "--force",
-        sandboxName
-      ]);
-      commandEvidence.push(stop, remove);
-      if (!infrastructureFailure && (stop.exit_code !== 0 || remove.exit_code !== 0)) {
+      const cleanup = await this.cleanupSandbox(sandboxName);
+      commandEvidence.push(...cleanup.command_evidence);
+      if (cleanup.failure) {
         infrastructureFailure = new PaperTradingHandoffConformanceInfrastructureError(
           "probe_cleanup_failed",
-          stop.error_message ?? stop.stderr ?? remove.error_message ?? remove.stderr ??
-            "paper handoff sandbox cleanup failed"
+          [
+            infrastructureFailure?.message ?? "",
+            sandboxCleanupFailureMessage(cleanup.failure)
+          ].filter(Boolean).join("\n")
         );
       }
     }
@@ -645,6 +656,30 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
     timeoutMs = this.commandTimeoutMs
   ): Promise<TradingArtifactCommandEvidence> {
     return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private async cleanupSandbox(sandboxName: string): Promise<{
+    command_evidence: TradingArtifactCommandEvidence[];
+    failure?: TradingArtifactCommandEvidence;
+  }> {
+    const commandEvidence = [
+      await this.runSbxCommand([this.sbxPath, "stop", sandboxName])
+    ];
+    let failure: TradingArtifactCommandEvidence | undefined;
+    for (let attempt = 0; attempt < SBX_SANDBOX_REMOVE_ATTEMPT_LIMIT; attempt += 1) {
+      const remove = await this.runSbxCommand([
+        this.sbxPath,
+        "rm",
+        "--force",
+        sandboxName
+      ]);
+      commandEvidence.push(remove);
+      if (remove.exit_code === 0) {
+        return { command_evidence: commandEvidence };
+      }
+      failure = remove;
+    }
+    return { command_evidence: commandEvidence, failure };
   }
 
   private acquireNetworkPolicy(
@@ -826,6 +861,12 @@ async function probeOutputLines(outputPath: string, stdout: string): Promise<str
 
 function textLines(value: string): string[] {
   return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+function sandboxCleanupFailureMessage(result: TradingArtifactCommandEvidence): string {
+  return result.error_message ?? (result.stderr.trim() ||
+    `sbx sandbox removal failed with exit code ${String(result.exit_code)}`
+  );
 }
 
 async function prepareSandboxWorkspace(

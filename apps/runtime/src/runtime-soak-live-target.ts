@@ -128,7 +128,9 @@ export function liveRuntimeSoakControlPlan(action: RuntimeSoakAction): string[] 
     "sandbox-recovery": ["paper.restart", "sandbox.verify"],
     "gateway-unavailable": ["gateway.block", "gateway.verify"],
     "gateway-recovery": ["gateway.unblock", "market.verify"],
-    "terminal-cleanup": ["paper.stop", "sandbox.stop", "runtime.stop"]
+    "terminal-cleanup": [
+      "paper.stop", "sandbox.stop", "runtime.stop", "sandbox.run-owned.cleanup"
+    ]
   };
   const plan = plans[action.action_id];
   if (!plan) throw new Error(`Unknown live runtime soak action: ${action.action_id}`);

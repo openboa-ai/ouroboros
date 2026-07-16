@@ -2008,6 +2008,77 @@ process.exit(17);
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
+  it("retries transient sbx removal before reporting a replay result", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-transient-remove");
+    const commandLog = path.join(tmpDir, "sbx-transient-remove.log");
+    const removeFailures = path.join(tmpDir, "sbx-transient-remove.failures");
+    const artifactDir = path.join(tmpDir, "sbx-transient-remove-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(removeFailures, "1\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_REMOVE_FAILURES_FILE = removeFailures;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-transient-remove"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-transient-remove-output")
+      });
+
+      expect(run.status, run.stderr).toBe("completed");
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands.filter((command) => command.startsWith("rm --force "))).toHaveLength(2);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+      delete process.env.SBX_FAKE_REMOVE_FAILURES_FILE;
+    }
+  });
+
+  it("fails closed when bounded sbx removal cannot clean up a replay", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-permanent-remove-failure");
+    const commandLog = path.join(tmpDir, "sbx-permanent-remove-failure.log");
+    const removeFailures = path.join(tmpDir, "sbx-permanent-remove-failure.failures");
+    const artifactDir = path.join(tmpDir, "sbx-permanent-remove-failure-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(removeFailures, "99\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_REMOVE_FAILURES_FILE = removeFailures;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-permanent-remove-failure"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-permanent-remove-failure-output")
+      });
+
+      expect(run).toMatchObject({
+        status: "crashed",
+        error: "candidate_sandbox_cleanup_failed"
+      });
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands.filter((command) => command.startsWith("rm --force "))).toHaveLength(3);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+      delete process.env.SBX_FAKE_REMOVE_FAILURES_FILE;
+    }
+  });
+
   it("probes paper handoff through sandbox-local candidate-only sbx input and cleans up", async () => {
     const fakeSbx = path.join(tmpDir, "sbx-paper-handoff");
     const commandLog = path.join(tmpDir, "sbx-paper-handoff.log");
@@ -3184,6 +3255,14 @@ case "$1" in
     exit 0
     ;;
   rm)
+    if [ -n "\${SBX_FAKE_REMOVE_FAILURES_FILE:-}" ] && [ -f "$SBX_FAKE_REMOVE_FAILURES_FILE" ]; then
+      remaining="$(cat "$SBX_FAKE_REMOVE_FAILURES_FILE")"
+      if [ "$remaining" -gt 0 ]; then
+        printf '%s\n' "$((remaining - 1))" > "$SBX_FAKE_REMOVE_FAILURES_FILE"
+        printf 'remove failed: transient run-control unavailable\n' >&2
+        exit 75
+      fi
+    fi
     exit 0
     ;;
   *)

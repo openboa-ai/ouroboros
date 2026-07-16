@@ -27,6 +27,7 @@ import {
   reconcileRuntimeOwnershipRecords,
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
+  runOwnedSandboxNames,
   stopRuntimeProcessGroup
 } from
   "../src/runtime-soak-live-control.js";
@@ -201,7 +202,9 @@ describe("live RuntimeSoakTarget", () => {
       ["sandbox-recovery", ["paper.restart", "sandbox.verify"]],
       ["gateway-unavailable", ["gateway.block", "gateway.verify"]],
       ["gateway-recovery", ["gateway.unblock", "market.verify"]],
-      ["terminal-cleanup", ["paper.stop", "sandbox.stop", "runtime.stop"]]
+      ["terminal-cleanup", [
+        "paper.stop", "sandbox.stop", "runtime.stop", "sandbox.run-owned.cleanup"
+      ]]
     ]);
     expect(harness.controls["runtime-clean-restart"]?.timeout_ms).toBe(600_000);
     expect(liveProviderRecoveryTimeoutMs(config.provider.timeout_ms)).toBe(
@@ -261,6 +264,31 @@ describe("live RuntimeSoakTarget", () => {
       ["unknown-runtime-owner"],
       async () => ({ status: "blocked" })
     )).rejects.toThrow(/ownership reconciliation failed/i);
+  });
+
+  it("selects only exact run-owned sbx sandboxes for terminal cleanup", () => {
+    const runRoot = "/tmp/ouro-runtime-soak/run-001";
+
+    expect(runOwnedSandboxNames({
+      sandboxes: [
+        {
+          name: "ouro-run-owned",
+          workspaces: [`${runRoot}/store/candidate-arena/scenario-001`]
+        },
+        {
+          name: "ouro-sibling-run",
+          workspaces: ["/tmp/ouro-runtime-soak/run-001-other/store"]
+        },
+        {
+          name: "hydra-unrelated",
+          workspaces: ["/tmp/hydra/workspace"]
+        }
+      ]
+    }, runRoot)).toEqual(["ouro-run-owned"]);
+
+    expect(() => runOwnedSandboxNames({
+      sandboxes: [{ name: "../unsafe", workspaces: [`${runRoot}/store`] }]
+    }, runRoot)).toThrow(/sandbox list/i);
   });
 
   it("keeps long-running runtime controls on an explicit bounded HTTP transport", async () => {

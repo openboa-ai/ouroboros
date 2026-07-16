@@ -49,6 +49,7 @@ const LIVE_RUNTIME_API_RESPONSE_LIMIT_BYTES = 16 * 1024 * 1024;
 const ACTIVE_SANDBOX_STATES = new Set([
   "requested", "created", "starting", "running", "stopping"
 ]);
+const RUN_OWNED_SANDBOX_REMOVE_ATTEMPT_LIMIT = 3;
 
 export async function executeLiveRuntimeSoakControl(
   config: LiveRuntimeSoakTargetConfig,
@@ -454,6 +455,7 @@ async function terminalCleanup(config: LiveRuntimeSoakTargetConfig): Promise<voi
   await waitFor(async () => (await readdir(path.join(
     config.store_root, "runtime-process-ownership", "active"
   )).catch(() => [])).length === 0, 30_000);
+  await cleanupRunOwnedSandboxes(config);
 }
 
 export async function reconcileRuntimeOwnershipRecords<T>(
@@ -642,6 +644,77 @@ async function runSbx(config: LiveRuntimeSoakTargetConfig, args: string[]): Prom
     timeout: 120_000,
     maxBuffer: 2 * 1024 * 1024
   });
+}
+
+async function cleanupRunOwnedSandboxes(config: LiveRuntimeSoakTargetConfig): Promise<void> {
+  for (const sandboxName of await listRunOwnedSandboxes(config)) {
+    await runSbx(config, ["stop", sandboxName]).catch(() => undefined);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < RUN_OWNED_SANDBOX_REMOVE_ATTEMPT_LIMIT; attempt += 1) {
+      try {
+        await runSbx(config, ["rm", "--force", sandboxName]);
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) {
+      throw new Error(`Run-owned Sandbox cleanup failed: ${sandboxName}`, {
+        cause: lastError
+      });
+    }
+  }
+  const remaining = await listRunOwnedSandboxes(config);
+  if (remaining.length > 0) {
+    throw new Error(`Run-owned Sandbox cleanup left residual resources: ${remaining.join(", ")}`);
+  }
+}
+
+async function listRunOwnedSandboxes(config: LiveRuntimeSoakTargetConfig): Promise<string[]> {
+  const { stdout } = await execFileAsync(config.sandbox.command, ["ls", "--json"], {
+    cwd: config.repo_root,
+    env: { ...process.env, ...(config.sandbox.home ? { HOME: config.sandbox.home } : {}) },
+    timeout: 120_000,
+    maxBuffer: 2 * 1024 * 1024,
+    encoding: "utf8"
+  });
+  return runOwnedSandboxNames(JSON.parse(stdout), config.run_root);
+}
+
+export function runOwnedSandboxNames(value: unknown, runRoot: string): string[] {
+  if (!isRecord(value) || !Array.isArray(value.sandboxes) ||
+    value.sandboxes.length > 4_096 || !path.isAbsolute(runRoot)) {
+    throw new Error("Sandbox list response is invalid.");
+  }
+  const root = path.resolve(runRoot);
+  const names = new Set<string>();
+  for (const sandbox of value.sandboxes) {
+    if (!isRecord(sandbox) || typeof sandbox.name !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(sandbox.name) ||
+      !Array.isArray(sandbox.workspaces) || sandbox.workspaces.length > 64 ||
+      sandbox.workspaces.some((workspace) =>
+        typeof workspace !== "string" || workspace.length > 4_096 ||
+        !path.isAbsolute(workspace)
+      )) {
+      throw new Error("Sandbox list response is invalid.");
+    }
+    if (sandbox.workspaces.some((workspace) => pathInside(root, workspace as string))) {
+      names.add(sandbox.name);
+    }
+  }
+  return [...names].sort();
+}
+
+function pathInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, path.resolve(candidate));
+  return relative === "" || (
+    relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function readSelection(config: LiveRuntimeSoakTargetConfig): Promise<{
