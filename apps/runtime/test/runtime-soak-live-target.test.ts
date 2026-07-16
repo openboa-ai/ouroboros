@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -19,11 +19,12 @@ import {
 import {
   createLiveRuntimeSoakEnvironmentManifest,
   createLiveRuntimeSoakLaunchAgent,
+  readRestrictedAuth,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
 import { recoverProviderGeneratedCandidate, requestLiveRuntimeApi } from
   "../src/runtime-soak-live-control.js";
-import { runLiveRuntimeSoakTargetCommand } from
+import { runLiveRuntimeSoakTargetCommand, runtimeSoakLogMessage } from
   "../src/run-runtime-soak-live-target.js";
 
 const temporaryRoots: string[] = [];
@@ -247,12 +248,34 @@ describe("live RuntimeSoakTarget", () => {
         body: { status: "succeeded" }
       });
       expect(authorization).toBe("Bearer operator-token");
+      await expect(requestLiveRuntimeApi(
+        "http://192.0.2.1:43190",
+        "/api/commands",
+        "operator-token"
+      )).rejects.toThrow(/loopback/i);
     } finally {
       await new Promise<void>((resolve, reject) => apiServer.close((error) => {
         if (error) reject(error);
         else resolve();
       }));
     }
+  });
+
+  it("reads restricted auth through one non-following handle and bounds log lines", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouro-live-soak-auth-"));
+    temporaryRoots.push(root);
+    const authFile = path.join(root, "auth.json");
+    const authLink = path.join(root, "auth-link.json");
+    await writeFile(authFile, "{\"token\":\"test\"}\n", { mode: 0o600 });
+    await chmod(authFile, 0o600);
+    await symlink(authFile, authLink);
+
+    await expect(readRestrictedAuth(authFile)).resolves.toEqual(
+      Buffer.from("{\"token\":\"test\"}\n")
+    );
+    await expect(readRestrictedAuth(authLink)).rejects.toThrow();
+    expect(runtimeSoakLogMessage(new Error("failed\nforged\rline\u0000")))
+      .toBe("failed forged line ");
   });
 
   it("freezes a secretless environment manifest and crash-only launch agent", () => {

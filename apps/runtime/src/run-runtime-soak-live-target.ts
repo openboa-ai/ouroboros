@@ -230,11 +230,19 @@ function digest(value: string | Buffer): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+export function runtimeSoakLogMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/[\r\n]/g, " ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/g, " ")
+    .slice(0, 4_096);
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   runLiveRuntimeSoakTargetCommand(process.argv.slice(2))
     .then(({ exitCode }) => { process.exitCode = exitCode; })
     .catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(runtimeSoakLogMessage(error));
       process.exitCode = 2;
     });
 }

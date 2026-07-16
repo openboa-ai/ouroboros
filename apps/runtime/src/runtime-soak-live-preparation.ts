@@ -5,8 +5,8 @@ import {
   access,
   chmod,
   copyFile,
-  lstat,
   mkdir,
+  open,
   readFile,
   realpath,
   writeFile
@@ -491,13 +491,18 @@ async function inspectRepository(repoRoot: string): Promise<{
   return { commit, tree };
 }
 
-async function readRestrictedAuth(file: string): Promise<Buffer> {
-  const metadata = await lstat(file);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size <= 0 ||
-    metadata.size > 10 * 1024 * 1024 || (metadata.mode & 0o077) !== 0) {
-    throw new Error("Codex auth source must be a restricted regular file.");
+export async function readRestrictedAuth(file: string): Promise<Buffer> {
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size <= 0 ||
+      metadata.size > 10 * 1024 * 1024 || (metadata.mode & 0o077) !== 0) {
+      throw new Error("Codex auth source must be a restricted regular file.");
+    }
+    return await handle.readFile();
+  } finally {
+    await handle.close();
   }
-  return readFile(file);
 }
 
 async function executable(command: string): Promise<string> {

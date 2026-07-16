@@ -472,8 +472,11 @@ export async function requestLiveRuntimeApi(
     throw new Error("Live runtime API timeout is invalid.");
   }
   const url = new URL(route, origin);
-  if (url.protocol !== "http:") {
-    throw new Error("Live runtime API transport must use local HTTP.");
+  const port = Number(url.port);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" ||
+    url.username !== "" || url.password !== "" || !url.port ||
+    !Number.isInteger(port) || port < 1_024 || port > 65_535) {
+    throw new Error("Live runtime API transport must use exact unprivileged loopback HTTP.");
   }
   const method = options.method ?? "GET";
   const requestBody = options.body === undefined
