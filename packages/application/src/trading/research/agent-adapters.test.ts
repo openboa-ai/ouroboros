@@ -1,4 +1,4 @@
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -201,6 +201,34 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       tools: idleTools()
     })).rejects.toThrow("research_provider_process_ownership_required");
     expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("routes provider Python bytecode outside the immutable artifact closure", async () => {
+    let pythonCachePrefix: string | undefined;
+    const execFile = vi.fn(async (
+      _file: string,
+      _args: string[],
+      options?: { env?: NodeJS.ProcessEnv }
+    ) => {
+      pythonCachePrefix = options?.env?.PYTHONPYCACHEPREFIX;
+      expect(pythonCachePrefix).toBeDefined();
+      expect(path.relative(tmpDir, pythonCachePrefix!)).toMatch(/^\.\./);
+      await mkdir(pythonCachePrefix!, { recursive: true });
+      await writeFile(path.join(pythonCachePrefix!, "run.pyc"), "derived", "utf8");
+      return { stdout: "", stderr: "" };
+    });
+    const adapter = new CodexTradingResearchAgentAdapter({ execFile });
+
+    await expect(adapter.runSession({
+      artifact_dir: tmpDir,
+      program_path: path.join(tmpDir, "program.md"),
+      notebook_path: path.join(tmpDir, "notebook.json"),
+      submission_limit: 1,
+      timeout_ms: 1_000,
+      tools: idleTools()
+    })).resolves.toMatchObject({ status: "finished_without_submission" });
+
+    await expect(access(pythonCachePrefix!)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("claims the exact provider process before releasing its prompt and records completion", async () => {

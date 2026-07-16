@@ -2448,7 +2448,7 @@ process.exit(17);
         "-c",
         "shell_environment_policy.ignore_default_excludes=true",
         "-c",
-        "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]",
+        "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"PYTHONDONTWRITEBYTECODE\",\"PYTHONPYCACHEPREFIX\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]",
         "--cd",
         artifactDir,
         "--model",
@@ -2600,7 +2600,7 @@ process.exit(17);
       "features.goals=false",
       "default_permissions=\"ouroboros-research-worker\"",
       "shell_environment_policy.ignore_default_excludes=true",
-      "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]"
+      "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"PYTHONDONTWRITEBYTECODE\",\"PYTHONPYCACHEPREFIX\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]"
     ]));
     expect(calls[0]).not.toContain("--sandbox");
     const permissionConfig = calls[0].find((arg) =>

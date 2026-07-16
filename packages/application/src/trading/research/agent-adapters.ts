@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import type { Ref, RuntimeProcessTerminalReason } from "@ouroboros/domain";
 import type {
@@ -48,6 +48,7 @@ const CODEX_RESEARCH_SHELL_ENVIRONMENT_CONFIG =
   "shell_environment_policy.include_only=[" +
   "\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\"," +
   "\"SystemRoot\",\"COMSPEC\",\"PATHEXT\"," +
+  "\"PYTHONDONTWRITEBYTECODE\",\"PYTHONPYCACHEPREFIX\"," +
   "\"OUROBOROS_RESEARCH_TOOL_BASE_URL\"," +
   "\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\"," +
   "\"OUROBOROS_RESEARCH_TOOL_TOKEN\"," +
@@ -142,9 +143,14 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
     if (input.process_ownership && !this.processOwnership) {
       throw new Error("research_provider_process_ownership_required");
     }
-    const client = await createResearchWorkerToolClient();
+    const pythonCachePrefix = await mkdtemp(path.join(
+      tmpdir(),
+      "ouroboros-research-pycache-"
+    ));
+    let client: Awaited<ReturnType<typeof createResearchWorkerToolClient>> | undefined;
     let server: ResearchWorkerToolServerHandle | undefined;
     try {
+      client = await createResearchWorkerToolClient();
       server = await startResearchWorkerToolServer(input.tools);
       const command = this.buildCommandForArtifact(input.artifact_dir, server);
       const prompt = await this.buildSessionPrompt(input);
@@ -158,6 +164,8 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
         stdin: prompt,
         env: {
           ...this.env,
+          PYTHONDONTWRITEBYTECODE: "1",
+          PYTHONPYCACHEPREFIX: pythonCachePrefix,
           OUROBOROS_RESEARCH_TOOL_BASE_URL:
             server.transport === "loopback_tcp" ? server.base_url : undefined,
           OUROBOROS_RESEARCH_TOOL_SOCKET_PATH:
@@ -191,7 +199,11 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
       try {
         await server?.close();
       } finally {
-        await client.close();
+        try {
+          await client?.close();
+        } finally {
+          await rm(pythonCachePrefix, { recursive: true, force: true });
+        }
       }
     }
   }
