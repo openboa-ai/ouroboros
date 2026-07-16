@@ -332,6 +332,33 @@ describe("RuntimeSoak invariants", () => {
     expect(evaluateRuntimeSoakInvariants(sample, { terminal: true })).toMatchObject({ kind });
   });
 
+  it("rejects duplicate chain identities as forked continuity", () => {
+    const sample = healthySample("2026-07-16T00:00:00.000Z");
+    sample.chains.push(structuredClone(sample.chains[0]!));
+
+    expect(evaluateRuntimeSoakInvariants(sample, { terminal: false })).toMatchObject({
+      kind: "contiguous_chains",
+      subject: "ledger-run-001"
+    });
+  });
+
+  it.each([
+    ["bounded_retries", "candidate_arena", (sample: RuntimeSoakSample) => {
+      sample.retries.push(structuredClone(sample.retries[0]!));
+    }],
+    ["no_order_continuity", "paper-evaluation-001", (sample: RuntimeSoakSample) => {
+      sample.paper_observations.push(structuredClone(sample.paper_observations[0]!));
+    }]
+  ] as const)("rejects duplicate scoped identity as %s", (kind, subject, duplicate) => {
+    const sample = healthySample("2026-07-16T00:00:00.000Z");
+    duplicate(sample);
+
+    expect(evaluateRuntimeSoakInvariants(sample, { terminal: false })).toMatchObject({
+      kind,
+      subject
+    });
+  });
+
   it("rejects malformed probe output instead of inferring healthy state", () => {
     expect(() => parseRuntimeSoakSample({
       version: 1,

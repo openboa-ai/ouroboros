@@ -481,7 +481,12 @@ export function evaluateRuntimeSoakInvariants(
     }
     effects.add(effect.effect_id);
   }
+  const chainIds = new Set<string>();
   for (const chain of sample.chains) {
+    if (chainIds.has(chain.chain_id)) {
+      return failure("contiguous_chains", chain.chain_id, "chain identity is duplicated or forked");
+    }
+    chainIds.add(chain.chain_id);
     for (const [index, entry] of chain.entries.entries()) {
       const previous = chain.entries[index - 1];
       if ((index === 0 && (entry.sequence !== 1 || entry.previous_digest !== undefined)) ||
@@ -500,13 +505,21 @@ export function evaluateRuntimeSoakInvariants(
     }
     ownershipScopes.add(owner.scope);
   }
+  const retryLanes = new Set<string>();
   for (const retry of sample.retries) {
-    if (retry.attempt_count > retry.retry_budget || retry.no_progress_count > retry.retry_budget ||
+    if (retryLanes.has(retry.lane) || retry.attempt_count > retry.retry_budget ||
+      retry.no_progress_count > retry.retry_budget ||
       (retry.no_progress_count === retry.retry_budget && retry.status !== "blocked")) {
       return failure("bounded_retries", retry.lane, "retry counters exceed or contradict the bounded budget");
     }
+    retryLanes.add(retry.lane);
   }
+  const observationStreams = new Set<string>();
   for (const stream of sample.paper_observations) {
+    if (observationStreams.has(stream.stream_id)) {
+      return failure("no_order_continuity", stream.stream_id, "paper observation identity is duplicated or forked");
+    }
+    observationStreams.add(stream.stream_id);
     for (const [index, entry] of stream.entries.entries()) {
       if (entry.sequence !== index + 1 ||
         (entry.emitted_order_request_count === 0 && !entry.no_order_recorded)) {
