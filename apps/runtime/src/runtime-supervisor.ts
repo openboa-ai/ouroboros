@@ -169,51 +169,72 @@ export class RuntimeSupervisor {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
-    await this.cycle;
+    let cycleError: unknown;
+    try {
+      await this.cycle;
+    } catch (error) {
+      cycleError = error;
+    }
 
     const prior = laneMap(this.currentCheckpoint?.lanes ?? []);
     const stopped: RuntimeSupervisorLaneReadModel[] = [];
-    let shutdownError: unknown;
+    let laneError: unknown;
     for (const lane of [...this.options.lanes].reverse()) {
       try {
         await lane.stop();
       } catch (error) {
-        shutdownError ??= error;
+        laneError ??= error;
       }
     }
+    const statusError = laneError ?? cycleError;
     for (const lane of this.options.lanes) {
       const existing = prior.get(lane.lane);
       stopped.push({
         lane: lane.lane,
         desired: existing?.desired ?? false,
-        status: shutdownError ? "blocked" : "stopped",
+        status: statusError ? "blocked" : "stopped",
         basis_digest: existing?.basis_digest ?? PENDING_DIGEST,
         progress_digest: existing?.progress_digest ?? PENDING_DIGEST,
         attempt_count: existing?.attempt_count ?? 0,
         no_progress_count: existing?.no_progress_count ?? 0,
-        reason_code: shutdownError
-          ? stableErrorCode(shutdownError, "runtime_supervisor_shutdown_failed")
+        reason_code: statusError
+          ? stableErrorCode(statusError, "runtime_supervisor_shutdown_failed")
           : "shutdown"
       });
     }
-    await this.publish(shutdownError ? "blocked" : "stopped", stopped);
+    let publicationError: unknown;
+    try {
+      await this.publish(statusError ? "blocked" : "stopped", stopped);
+    } catch (error) {
+      publicationError = error;
+    }
+
+    let ownershipError: unknown;
+    if (!laneError && this.ownership) {
+      try {
+        await this.options.processOwnership.close({
+          ownership: this.ownership,
+          terminalReason: "shutdown",
+          closedAt: this.exactNow()
+        });
+      } catch (error) {
+        ownershipError = error;
+      }
+    }
+    if (!laneError && !ownershipError) {
+      this.ownership = undefined;
+      this.active = false;
+    }
+    this.stopping = false;
+
+    const shutdownError = laneError ?? ownershipError ?? cycleError ?? publicationError;
     if (shutdownError) {
       throw new RuntimeSupervisorError(
         "runtime_supervisor_shutdown_failed",
-        "Runtime supervisor dependencies did not stop cleanly.",
+        "Runtime supervisor shutdown did not complete cleanly.",
         { cause: shutdownError }
       );
     }
-    if (this.ownership) {
-      await this.options.processOwnership.close({
-        ownership: this.ownership,
-        terminalReason: "shutdown",
-        closedAt: this.exactNow()
-      });
-    }
-    this.ownership = undefined;
-    this.active = false;
-    this.stopping = false;
   }
 
   private async runCycle(): Promise<void> {

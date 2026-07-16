@@ -244,6 +244,39 @@ describe("RuntimeSupervisor", () => {
     expect(harness.ownership.closed?.terminal_reason).toBe("shutdown");
   });
 
+  it("drains lanes and releases ownership after an in-flight cycle fails", async () => {
+    const events: string[] = [];
+    const paper = new ScriptedLane("selected_paper", events);
+    const harness = createHarness(events, {
+      lanes: [
+        paper,
+        new ScriptedLane("candidate_arena", events),
+        new ScriptedLane("research_control_study_scheduler", events)
+      ]
+    });
+    await harness.supervisor.start();
+    events.length = 0;
+    paper.inspectFailures.push(new CodedError("paper_store_unavailable"));
+    harness.checkpoints.failAppendAt = harness.checkpoints.records.length + 1;
+
+    const reconcile = expect(harness.supervisor.reconcile()).rejects.toMatchObject({
+      code: "runtime_supervisor_checkpoint_write_failed"
+    });
+    const stop = expect(harness.supervisor.stop()).rejects.toMatchObject({
+      code: "runtime_supervisor_shutdown_failed"
+    });
+    await Promise.all([reconcile, stop]);
+
+    expect(events).toEqual([
+      "stop:research_control_study_scheduler",
+      "stop:candidate_arena",
+      "stop:selected_paper",
+      "ownership:close"
+    ]);
+    expect(harness.ownership.closed?.terminal_reason).toBe("shutdown");
+    await expect(harness.supervisor.stop()).resolves.toBeUndefined();
+  });
+
   it("fails before lane effects when current-process ownership is held", async () => {
     const events: string[] = [];
     const ownership = new RecordingOwnership(events);
