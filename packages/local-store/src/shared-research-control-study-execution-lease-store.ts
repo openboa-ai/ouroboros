@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { DatabaseSync } from "node:sqlite";
@@ -100,10 +100,12 @@ implements ResearchControlStudyExecutionLeasePort {
     }
     const legacyActive = await this.readLegacyActiveLease(input.study);
     if (legacyActive) {
-      if (Date.parse(this.readNow()) < Date.parse(legacyActive.expires_at) ||
+      const now = this.readNow();
+      if (Date.parse(now) < Date.parse(legacyActive.expires_at) ||
         await this.readOwnerLiveness(legacyActive.owner) !== "absent") {
         return { status: "held", lease: legacyActive, reason: "transition" };
       }
+      await this.archiveLegacyExpiredLease(legacyActive, now);
       await rm(path.dirname(this.legacyActiveLeaseFile(input.study)), {
         recursive: true,
         force: true
@@ -111,10 +113,12 @@ implements ResearchControlStudyExecutionLeasePort {
     }
     const legacyTransition = await this.readLegacyTransitionLease(input.study);
     if (legacyTransition) {
-      if (Date.parse(this.readNow()) < Date.parse(legacyTransition.expires_at) ||
+      const now = this.readNow();
+      if (Date.parse(now) < Date.parse(legacyTransition.expires_at) ||
         await this.readOwnerLiveness(legacyTransition.owner) !== "absent") {
         return { status: "held", lease: legacyTransition, reason: "transition" };
       }
+      await this.archiveLegacyExpiredLease(legacyTransition, now);
       await rm(path.dirname(this.legacyLeaseFile(input.study, "transitions")), {
         recursive: true,
         force: true
@@ -457,6 +461,56 @@ implements ResearchControlStudyExecutionLeasePort {
     return this.legacyLeaseFile(study, "active");
   }
 
+  private async archiveLegacyExpiredLease(
+    lease: ResearchControlStudyExecutionLeaseRecord,
+    closedAt: string
+  ): Promise<void> {
+    let expired: ResearchControlStudyExecutionLeaseRecord;
+    try {
+      expired = closeResearchControlStudyExecutionLease({
+        lease,
+        leaseStatus: "expired",
+        closedAt
+      });
+    } catch (error) {
+      throw corruptState("legacy filesystem lease cannot be closed exactly", error);
+    }
+    const file = path.join(
+      path.resolve(this.root),
+      "research-control-study-execution-leases",
+      "history",
+      "items",
+      `${encodeURIComponent(expired.research_control_study_execution_lease_id)}.json`
+    );
+    await mkdir(path.dirname(file), { recursive: true });
+    const prepared = path.join(
+      path.dirname(file),
+      `.lease-history-${process.pid}-${randomUUID()}.tmp`
+    );
+    try {
+      await writeFile(prepared, serialize(expired), {
+        encoding: "utf8",
+        flag: "wx"
+      });
+      try {
+        await link(prepared, file);
+      } catch (error) {
+        if (!isErrno(error, "EEXIST")) throw error;
+        const existing = parsePersistedLease(
+          await readFile(file, "utf8"),
+          "legacy filesystem terminal history"
+        );
+        if (existing.lease_status !== "expired" ||
+          existing.close_reason !== "expired_owner_absent" ||
+          !sameLeaseSource(existing, lease)) {
+          throw corruptState("legacy filesystem terminal history is immutable");
+        }
+      }
+    } finally {
+      await rm(prepared, { force: true });
+    }
+  }
+
   private legacyLeaseFile(
     study: ResearchControlStudyRecord,
     state: "active" | "transitions"
@@ -610,6 +664,17 @@ function parseLegacyLease(
   value: string,
   label: string
 ): ResearchControlStudyExecutionLeaseRecord {
+  const lease = parsePersistedLease(value, label);
+  if (lease.lease_status !== "active") {
+    throw corruptState(`${label} is terminal`);
+  }
+  return lease;
+}
+
+function parsePersistedLease(
+  value: string,
+  label: string
+): ResearchControlStudyExecutionLeaseRecord {
   let parsed: unknown;
   try { parsed = JSON.parse(value); } catch (error) {
     throw corruptState(`${label} is unreadable`, error);
@@ -618,9 +683,6 @@ function parseLegacyLease(
     parsed,
     label
   );
-  if (lease.lease_status !== "active") {
-    throw corruptState(`${label} is terminal`);
-  }
   return lease;
 }
 

@@ -697,6 +697,48 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
     });
   });
 
+  it("archives an expired absent legacy active lease before shared takeover", async () => {
+    const study = studyFixture();
+    const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
+      now: () => now,
+      leaseToken: () => "legacy-lease",
+      ownerLiveness: async () => "absent"
+    });
+    const legacyClaim = await legacy.acquire({
+      study,
+      owner: owner("legacy-host", 101),
+      leaseDurationMs: 30_000
+    });
+    if (legacyClaim.status !== "acquired") {
+      throw new Error("expected legacy lease acquisition");
+    }
+    now = "2026-07-13T00:00:31.000Z";
+
+    await expect(sharedAdapter("shared-lease").acquire({
+      study,
+      owner: owner("shared-host", 202),
+      leaseDurationMs: 30_000
+    })).resolves.toMatchObject({ status: "acquired" });
+
+    const historyFile = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "history",
+      "items",
+      `${encodeURIComponent(
+        legacyClaim.lease.research_control_study_execution_lease_id
+      )}.json`
+    );
+    await expect(readFile(historyFile, "utf8").then(JSON.parse))
+      .resolves.toMatchObject({
+        research_control_study_execution_lease_id:
+          legacyClaim.lease.research_control_study_execution_lease_id,
+        lease_status: "expired",
+        close_reason: "expired_owner_absent",
+        closed_at: now
+      });
+  });
+
   it("waits for active and transitioning legacy leases before switching adapters", async () => {
     const study = studyFixture();
     const legacy = new FileSystemResearchControlStudyExecutionLeaseStore(root, {
@@ -798,6 +840,33 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
       lease: { lease_token: legacyClaim.lease.lease_token },
       reason: "transition"
     });
+    const historyFile = path.join(
+      root,
+      "research-control-study-execution-leases",
+      "history",
+      "items",
+      `${encodeURIComponent(
+        legacyClaim.lease.research_control_study_execution_lease_id
+      )}.json`
+    );
+    const terminal = closeResearchControlStudyExecutionLease({
+      lease: legacyClaim.lease,
+      leaseStatus: "expired",
+      closedAt: now
+    });
+    const {
+      fencing_token: _terminalFencingToken,
+      lease_digest: _terminalLeaseDigest,
+      ...legacyTerminalPayload
+    } = terminal;
+    const legacyTerminal = {
+      ...legacyTerminalPayload,
+      lease_digest: sha256(researchControlStudyExecutionLeaseDigestInput(
+        legacyTerminalPayload as ResearchControlStudyExecutionLeaseRecord
+      ))
+    };
+    await mkdir(path.dirname(historyFile), { recursive: true });
+    await writeFile(historyFile, JSON.stringify(legacyTerminal), "utf8");
     await expect(sharedAdapter("shared-lease").acquire({
       study,
       owner: owner("shared-host", 202),
@@ -808,6 +877,12 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
     });
     await expect(readFile(legacyTransitionFile, "utf8"))
       .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(historyFile, "utf8").then(JSON.parse))
+      .resolves.toMatchObject({
+        lease_status: "expired",
+        close_reason: "expired_owner_absent",
+        closed_at: now
+      });
   });
 
   it("never enters a delayed old write after partition heal and takeover", async () => {
