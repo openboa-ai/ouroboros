@@ -247,8 +247,35 @@ async function stopProcess(
   if (!state || !await processStateAlive(stateFile)) {
     throw new Error("runtime process is not the exact live target.");
   }
-  process.kill(process.platform === "win32" ? state.pid : -state.pid, signal);
-  await waitFor(async () => !await processStateAlive(stateFile), signal === "SIGTERM" ? 30_000 : 10_000);
+  await stopRuntimeProcessGroup(state.pid, signal, {
+    signalProcessGroup(nextSignal) {
+      process.kill(process.platform === "win32" ? state.pid : -state.pid, nextSignal);
+    },
+    waitUntilStopped(timeoutMs) {
+      return waitFor(async () => !await processStateAlive(stateFile), timeoutMs);
+    }
+  });
+}
+
+export async function stopRuntimeProcessGroup(
+  pid: number,
+  signal: "SIGTERM" | "SIGKILL",
+  dependencies: {
+    signalProcessGroup(signal: "SIGTERM" | "SIGKILL"): void;
+    waitUntilStopped(timeoutMs: number): Promise<void>;
+  }
+): Promise<void> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    throw new Error("Runtime process group pid is invalid.");
+  }
+  dependencies.signalProcessGroup(signal);
+  try {
+    await dependencies.waitUntilStopped(signal === "SIGTERM" ? 30_000 : 10_000);
+  } catch (error) {
+    if (signal !== "SIGTERM") throw error;
+    dependencies.signalProcessGroup("SIGKILL");
+    await dependencies.waitUntilStopped(10_000);
+  }
 }
 
 async function bindProvider(config: LiveRuntimeSoakTargetConfig): Promise<void> {

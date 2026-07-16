@@ -22,7 +22,11 @@ import {
   readRestrictedAuth,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
-import { recoverProviderGeneratedCandidate, requestLiveRuntimeApi } from
+import {
+  recoverProviderGeneratedCandidate,
+  requestLiveRuntimeApi,
+  stopRuntimeProcessGroup
+} from
   "../src/runtime-soak-live-control.js";
 import { runLiveRuntimeSoakTargetCommand, runtimeSoakLogMessage } from
   "../src/run-runtime-soak-live-target.js";
@@ -219,6 +223,24 @@ describe("live RuntimeSoakTarget", () => {
       return undefined;
     }, 3)).rejects.toThrow(/3 bounded attempts/i);
     expect(exhausted).toBe(3);
+  });
+
+  it("force-stops the exact runtime process group when graceful shutdown stalls", async () => {
+    const signals: string[] = [];
+    const waits: number[] = [];
+
+    await stopRuntimeProcessGroup(42, "SIGTERM", {
+      signalProcessGroup(signal) {
+        signals.push(signal);
+      },
+      async waitUntilStopped(timeoutMs) {
+        waits.push(timeoutMs);
+        if (waits.length === 1) throw new Error("graceful timeout");
+      }
+    });
+
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(waits).toEqual([30_000, 10_000]);
   });
 
   it("keeps long-running runtime controls on an explicit bounded HTTP transport", async () => {
