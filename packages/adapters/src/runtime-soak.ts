@@ -230,7 +230,7 @@ function runCommand(command: RuntimeSoakCommand, metadata: Record<string, string
   return new Promise((resolve, reject) => {
     execFile(file!, args, {
       cwd: command.cwd,
-      env: { ...process.env, ...metadata },
+      env: commandEnvironment(metadata),
       encoding: "utf8",
       maxBuffer: MAX_OUTPUT_BYTES,
       timeout: command.timeout_ms ?? 30_000,
@@ -240,6 +240,14 @@ function runCommand(command: RuntimeSoakCommand, metadata: Record<string, string
       else resolve({ stdout, stderr });
     });
   });
+}
+
+function commandEnvironment(metadata: Record<string, string>): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (!name.toUpperCase().startsWith("OUROBOROS_SOAK_")) environment[name] = value;
+  }
+  return { ...environment, ...metadata };
 }
 
 function validCommand(command: RuntimeSoakCommand): boolean {

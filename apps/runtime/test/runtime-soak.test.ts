@@ -222,6 +222,68 @@ describe("SubprocessRuntimeSoakTarget", () => {
     await expect(target.sample()).resolves.toEqual(sample());
   });
 
+  it("clears inherited soak action metadata before controls and probes", async () => {
+    const controlMetadataPath = path.join(tmpDir, "control-metadata.json");
+    const probeMetadataPath = path.join(tmpDir, "probe-metadata.json");
+    const action = scenario().actions[0]!;
+    const inspectEnvironment = `JSON.stringify({ run: process.env.OUROBOROS_SOAK_RUN_ID ?? null, action: process.env.OUROBOROS_SOAK_ACTION_ID ?? null, kind: process.env.OUROBOROS_SOAK_ACTION_KIND ?? null, recovers: process.env.OUROBOROS_SOAK_RECOVERS ?? null })`;
+    const target = new SubprocessRuntimeSoakTarget({
+      runId: "runtime-soak-001",
+      controls: {
+        [action.action_id]: {
+          argv: [
+            process.execPath,
+            "-e",
+            `require("node:fs").writeFileSync(process.argv[1], ${inspectEnvironment})`,
+            controlMetadataPath
+          ]
+        }
+      },
+      probe: {
+        argv: [
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(process.argv[1], ${inspectEnvironment}); process.stdout.write(process.argv[2])`,
+          probeMetadataPath,
+          JSON.stringify(sample())
+        ]
+      }
+    });
+    const inherited = {
+      run: process.env.OUROBOROS_SOAK_RUN_ID,
+      action: process.env.OUROBOROS_SOAK_ACTION_ID,
+      kind: process.env.OUROBOROS_SOAK_ACTION_KIND,
+      recovers: process.env.OUROBOROS_SOAK_RECOVERS
+    };
+    process.env.OUROBOROS_SOAK_RUN_ID = "stale-run";
+    process.env.OUROBOROS_SOAK_ACTION_ID = "stale-action";
+    process.env.OUROBOROS_SOAK_ACTION_KIND = "stale-kind";
+    process.env.OUROBOROS_SOAK_RECOVERS = "stale-recovery";
+
+    try {
+      await target.execute(action);
+      await target.sample();
+    } finally {
+      restoreEnvironment("OUROBOROS_SOAK_RUN_ID", inherited.run);
+      restoreEnvironment("OUROBOROS_SOAK_ACTION_ID", inherited.action);
+      restoreEnvironment("OUROBOROS_SOAK_ACTION_KIND", inherited.kind);
+      restoreEnvironment("OUROBOROS_SOAK_RECOVERS", inherited.recovers);
+    }
+
+    expect(JSON.parse(await readFile(controlMetadataPath, "utf8"))).toEqual({
+      run: "runtime-soak-001",
+      action: action.action_id,
+      kind: action.kind,
+      recovers: null
+    });
+    expect(JSON.parse(await readFile(probeMetadataPath, "utf8"))).toEqual({
+      run: "runtime-soak-001",
+      action: null,
+      kind: null,
+      recovers: null
+    });
+  });
+
   it("rejects malformed probe output and non-zero controls with stable errors", async () => {
     const action = scenario().actions[0]!;
     const malformed = new SubprocessRuntimeSoakTarget({
@@ -338,4 +400,9 @@ function nodeJsonCommand(value: unknown) {
 
 function digest(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
