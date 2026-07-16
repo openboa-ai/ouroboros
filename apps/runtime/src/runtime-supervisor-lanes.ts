@@ -34,7 +34,9 @@ export function createRuntimeSupervisorLanes(options: {
   candidateArenaRunner: Pick<CandidateArenaRunner, "health" | "stopAndDrain">;
   operatorService: Pick<
     OperatorService,
-    "resumeAutonomousArenaLoop" | "drainAutonomousPaperStarts"
+    | "readResearcherProvider"
+    | "resumeAutonomousArenaLoop"
+    | "drainAutonomousPaperStarts"
   >;
   researchControlStudyScheduler: ResearchControlStudySchedulerLifecycle;
   runSelectedPaper?: boolean;
@@ -128,7 +130,10 @@ export function createRuntimeSupervisorLanes(options: {
       const commands = await options.store.listOuroborosCommands();
       const desired = autonomousArenaLoopDesiredStatus(commands) === "running";
       const health = options.candidateArenaRunner.health();
-      const provider = await options.store.getResearcherProviderSelection();
+      const provider = await options.operatorService.readResearcherProvider();
+      const profile = provider.selected_provider === "fixture"
+        ? undefined
+        : await options.store.getAgentProfile(provider.selected_provider);
       return {
         desired,
         satisfied: !desired || (
@@ -148,7 +153,15 @@ export function createRuntimeSupervisorLanes(options: {
               requested_at: command.requested_at,
               completed_at: command.completed_at
             })),
-          selected_provider: provider?.selected_provider ?? null
+          selected_provider: provider.selected_provider,
+          provider_readiness: provider.selected_provider === "fixture"
+            ? { status: "fixture_only" }
+            : {
+                status: profile?.status ?? "not_configured",
+                updated_at: profile?.updated_at ?? null,
+                provider_version: profile?.provider_version ?? null,
+                failure_reason: profile?.failure_reason ?? null
+              }
         }),
         progressDigest: digest(health),
         ...(!desired

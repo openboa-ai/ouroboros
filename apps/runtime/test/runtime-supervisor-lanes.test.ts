@@ -65,6 +65,13 @@ describe("runtime supervisor lanes", () => {
         }
       },
       operatorService: {
+        async readResearcherProvider() {
+          return {
+            selected_provider: "fixture" as const,
+            available_providers: ["codex" as const, "fixture" as const],
+            authority_status: "research_only" as const
+          };
+        },
         async resumeAutonomousArenaLoop() {
           arenaRunning = true;
           return "resumed" as const;
@@ -207,6 +214,13 @@ describe("runtime supervisor lanes", () => {
         stopAndDrain
       },
       operatorService: {
+        async readResearcherProvider() {
+          return {
+            selected_provider: "fixture" as const,
+            available_providers: ["codex" as const, "fixture" as const],
+            authority_status: "research_only" as const
+          };
+        },
         resumeAutonomousArenaLoop,
         async drainAutonomousPaperStarts() {}
       },
@@ -232,6 +246,58 @@ describe("runtime supervisor lanes", () => {
       desired: true,
       satisfied: true
     });
+  });
+
+  it("changes the Arena basis when selected provider readiness changes", async () => {
+    let profile: {
+      agent_profile_id: "codex";
+      status: "login_required" | "authenticated";
+      updated_at: string;
+    } = {
+      agent_profile_id: "codex",
+      status: "login_required",
+      updated_at: "2026-07-16T00:00:00.000Z"
+    };
+    const [, arena] = createRuntimeSupervisorLanes({
+      store: {
+        ...emptyStore(),
+        async listOuroborosCommands() {
+          return [arenaStartCommand()];
+        },
+        async getAgentProfile() {
+          return profile;
+        }
+      } as never,
+      paperTradingSessions: inactivePaperSessions(),
+      candidateArenaRunner: inactiveArenaRunner(),
+      operatorService: {
+        async readResearcherProvider() {
+          return {
+            selected_provider: "codex" as const,
+            available_providers: ["codex" as const, "fixture" as const],
+            authority_status: "research_only" as const
+          };
+        },
+        async resumeAutonomousArenaLoop() {
+          return profile.status === "authenticated"
+            ? "resumed" as const
+            : "blocked" as const;
+        },
+        async drainAutonomousPaperStarts() {}
+      },
+      researchControlStudyScheduler: inactiveScheduler(),
+      runResearchControlStudies: false
+    });
+
+    const blocked = await arena!.inspect();
+    profile = {
+      ...profile,
+      status: "authenticated",
+      updated_at: "2026-07-16T00:01:00.000Z"
+    };
+    const authenticated = await arena!.inspect();
+
+    expect(authenticated.basisDigest).not.toBe(blocked.basisDigest);
   });
 
   it("accepts a scheduler restart while commitment coordination is still pending", async () => {
@@ -337,6 +403,13 @@ function inactiveArenaRunner() {
 
 function inactiveOperatorService() {
   return {
+    async readResearcherProvider() {
+      return {
+        selected_provider: "fixture" as const,
+        available_providers: ["codex" as const, "fixture" as const],
+        authority_status: "research_only" as const
+      };
+    },
     async resumeAutonomousArenaLoop() {
       return "not_requested" as const;
     },
