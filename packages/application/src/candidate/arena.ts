@@ -214,9 +214,27 @@ export type CandidateArenaTickContinuation = (
   | CandidateArenaTickPaperTradingContinuationReadModel
   | void;
 
+export interface CandidateArenaRunnerHealthReadModel {
+  status: "running" | "stopped";
+  tick_count: number;
+  completed_tick_count: number;
+  active_tick: boolean;
+  consecutive_failure_count: number;
+  last_error_code?: string;
+  runtime_coordination_authority: true;
+  evaluation_authority: false;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "runtime_coordination_only";
+}
+
 export class CandidateArenaRunner {
   private running = false;
   private tickCount = 0;
+  private completedTickCount = 0;
+  private consecutiveFailureCount = 0;
+  private lastErrorCode?: string;
   private loopActive = false;
   private activeTick?: Promise<CandidateArenaTickOutcome>;
   private tickContinuation?: CandidateArenaTickContinuation;
@@ -232,6 +250,23 @@ export class CandidateArenaRunner {
 
   ticks(): number {
     return this.tickCount;
+  }
+
+  health(): CandidateArenaRunnerHealthReadModel {
+    return {
+      status: this.status(),
+      tick_count: this.tickCount,
+      completed_tick_count: this.completedTickCount,
+      active_tick: this.activeTick !== undefined,
+      consecutive_failure_count: this.consecutiveFailureCount,
+      ...(this.lastErrorCode ? { last_error_code: this.lastErrorCode } : {}),
+      runtime_coordination_authority: true,
+      evaluation_authority: false,
+      promotion_authority: false,
+      order_submission_authority: false,
+      live_exchange_authority: false,
+      authority_status: "runtime_coordination_only"
+    };
   }
 
   restoreTickCount(tickCount: number): void {
@@ -285,6 +320,17 @@ export class CandidateArenaRunner {
       tickId: `tick-${this.tickCount}`
     }, this.status(), this.tickCount)
       .then((outcome) => this.applyTickContinuation(outcome))
+      .then((outcome) => {
+        this.completedTickCount += 1;
+        this.consecutiveFailureCount = 0;
+        this.lastErrorCode = undefined;
+        return outcome;
+      })
+      .catch((error) => {
+        this.consecutiveFailureCount += 1;
+        this.lastErrorCode = candidateArenaRunnerErrorCode(error);
+        throw error;
+      })
       .finally(() => {
         this.activeTick = undefined;
       });
@@ -342,6 +388,8 @@ export class CandidateArenaRunner {
         }
         try {
           await this.tick();
+        } catch {
+          // Health retains the failure; the bounded runtime supervisor decides retry policy.
         } finally {
           if (this.running) {
             schedule();
@@ -353,6 +401,13 @@ export class CandidateArenaRunner {
     };
     schedule();
   }
+}
+
+function candidateArenaRunnerErrorCode(error: unknown): string {
+  return error !== null && typeof error === "object" &&
+      typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : "candidate_arena_tick_failed";
 }
 
 export function candidateArenaRunnerTickCountFromTicks(

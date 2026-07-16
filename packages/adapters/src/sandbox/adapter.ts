@@ -1296,23 +1296,53 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       "fixtures/trading-systems/clock.py"
     ]);
     const stopResult = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
-    const policyRelease = await this.releaseNetworkPolicy(sandboxName);
-    const stopped = stopResult.exit_code === 0 &&
-      !policyRelease.failure;
+    const stopped = stopResult.exit_code === 0;
+    const remove = () => this.runSbxCommand([
+      this.sbxPath,
+      "rm",
+      "--force",
+      sandboxName
+    ]);
+    let policyRelease: Awaited<ReturnType<typeof this.releaseNetworkPolicy>>;
+    let removeResult: CommandResult;
+    if (stopped) {
+      policyRelease = await this.releaseNetworkPolicy(sandboxName);
+      removeResult = await remove();
+    } else {
+      removeResult = await remove();
+      // The candidate may still be running when stop and removal both fail.
+      // Retain its deny policy and persisted lease until a later cleanup succeeds.
+      policyRelease = removeResult.exit_code === 0
+        ? await this.releaseNetworkPolicy(sandboxName)
+        : {
+            results: [],
+            failure: new Error("candidate_sandbox_policy_retained_after_remove_failed")
+          };
+    }
+    const removed = removeResult.exit_code === 0 && !policyRelease.failure;
+    const policyEvidence = policyRelease.results.map((result, index) =>
+      commandEvidenceRecord(
+        instanceId,
+        commandEvidenceSuffix("network-policy-stop-" + String(index + 1), result),
+        result
+      )
+    );
+    const removeEvidence = commandEvidenceRecord(
+      instanceId,
+      commandEvidenceSuffix("remove", removeResult),
+      removeResult
+    );
     return {
-      lifecycle_status: stopped ? "stopped" : "failed",
+      lifecycle_status: removed ? "removed" : "failed",
       stopped_at: stopped ? stopResult.completed_at || stopStartedAt : undefined,
+      removed_at: removed ? removeResult.completed_at : undefined,
       command_evidence: [
         versionObservation.evidence,
         commandEvidenceRecord(instanceId, commandEvidenceSuffix("terminate", terminateResult), terminateResult),
         commandEvidenceRecord(instanceId, commandEvidenceSuffix("stop", stopResult), stopResult),
-        ...policyRelease.results.map((result, index) =>
-          commandEvidenceRecord(
-            instanceId,
-            commandEvidenceSuffix("network-policy-stop-" + String(index + 1), result),
-            result
-          )
-        )
+        ...(stopped
+          ? [...policyEvidence, removeEvidence]
+          : [removeEvidence, ...policyEvidence])
       ]
     };
   }

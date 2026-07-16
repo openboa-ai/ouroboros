@@ -139,6 +139,19 @@ create-only publication for one exact same-root winner. Missing prerequisites de
 drift fails before effects. The process-local scheduler then starts the supervisor, waits on a
 bounded interruptible poll after post-catch-up decision reconciliation, and reconstructs each
 runtime from the persisted study condition.
+The server-level `RuntimeSupervisor` now keeps that scheduler, persisted CandidateArena start
+intent, and selected PaperTrading sessions under one fixed dependency order. Its immutable
+checkpoints distinguish desired state from satisfied runtime state, retry only within a bounded
+no-progress budget, isolate a blocked lane, and expose the same coordination-only projection to
+runtime health and OperatorReadModel. This closes the local loop-execution substrate gap; it does
+not prove long-duration autonomy, real-provider research quality, economic improvement, or
+multi-host deployment.
+For selected paper, non-fixture provider-generated candidates must reload the exact admitted
+version 2 handoff, reverify its deny-default `CandidateEgressAttestation` and artifact lineage before
+provider or Sandbox effects, and execute through the Docker Sandbox adapter. `fixture_only` remains
+deterministic test substrate with no downstream authority.
+Docker stop releases owned policy only after the candidate is stopped or force-removed. If both
+operations fail, failed lifecycle evidence is retained with the deny policy and lease still active.
 The first cross-generation-memory control is now executable as an internal
 `ResearchMemoryControlStudy`: six or more fresh same-baseline pairs share one source, managed-agent
 identity, direction schedule, budget, and exact development/sealed opportunity. Treatment and
@@ -257,7 +270,8 @@ provider-session resumption,
 worker-chosen research sequences, controlled directed/undirected, memory, prospective allocation,
 and AI-agent ablations, a complete eligible ResearchGeneralizationOutcome from deployed real public
 paths,
-deployed always-on paper execution, automatic promotion, champion runner handoff,
+long-duration restart soak and deployed multi-host always-on operation, automatic promotion,
+champion runner handoff,
 private/live authority, and the other completion axes remain open.
 
 Frozen paper-comparison qualification now closes one concrete outcome-aware early-stop path. It

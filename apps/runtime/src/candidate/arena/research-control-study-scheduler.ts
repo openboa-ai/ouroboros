@@ -49,6 +49,7 @@ export type ResearchControlStudySchedulerStatus = (
 
 export interface ResearchControlStudySchedulerLifecycle {
   start(): "started" | "already_running";
+  active?(): boolean;
   stop(): Promise<void>;
   drain(): Promise<void>;
   status(): ResearchControlStudySchedulerStatus;
@@ -59,8 +60,7 @@ export class ResearchControlStudySchedulerError extends Error {
     readonly code:
       | "research_control_study_scheduler_clock_invalid"
       | "research_control_study_scheduler_interval_invalid"
-      | "research_control_study_scheduler_supervisor_invalid"
-      | "research_control_study_scheduler_terminal",
+      | "research_control_study_scheduler_supervisor_invalid",
     message: string,
     options?: ErrorOptions
   ) {
@@ -124,12 +124,6 @@ implements ResearchControlStudySchedulerLifecycle {
 
   start(): "started" | "already_running" {
     if (this.runPromise) return "already_running";
-    if (this.currentStatus.status === "failed") {
-      throw new ResearchControlStudySchedulerError(
-        "research_control_study_scheduler_terminal",
-        "A failed ResearchControlStudy scheduler cannot restart in the same process."
-      );
-    }
     this.stopRequested = false;
     this.stopSignal = deferredSignal();
     const running = this.run();
@@ -166,6 +160,10 @@ implements ResearchControlStudySchedulerLifecycle {
         ? { lastPolicyDecision: structuredClone(this.lastPolicyDecision) }
         : {})
     };
+  }
+
+  active(): boolean {
+    return this.runPromise !== undefined;
   }
 
   async drain(): Promise<void> {

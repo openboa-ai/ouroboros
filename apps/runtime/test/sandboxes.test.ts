@@ -19,18 +19,30 @@ import {
 } from "@ouroboros/adapters/sandbox/adapter";
 
 let tmpDir: string;
+const servers: Array<Awaited<ReturnType<typeof buildServer>>> = [];
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-sandboxes-"));
 });
 
 afterEach(async () => {
+  for (const server of servers.splice(0).reverse()) {
+    await server.close();
+  }
   await rm(tmpDir, { recursive: true, force: true });
 });
 
+async function buildSandboxTestServer(
+  options: Parameters<typeof buildServer>[0]
+) {
+  const server = await buildServer(options);
+  servers.push(server);
+  return server;
+}
+
 describe("sandbox API", () => {
   it("proves two opaque clock artifact instances have distinct lifecycle, logs, and persisted projections", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
 
     const first = await startClockSandbox(server, {
       idempotency_key: "sandbox-clock-a",
@@ -113,7 +125,7 @@ describe("sandbox API", () => {
   });
 
   it("executes fixture SystemCode through the deterministic Sandbox boundary", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
 
     const started = await startClockSandbox(server, {
       idempotency_key: "sandbox-system-code-execution",
@@ -194,7 +206,7 @@ describe("sandbox API", () => {
   });
 
   it("keeps public sandbox.start finite when test tick limit is omitted", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
 
     const started = await startSandboxCommand(server, {
       idempotency_key: "sandbox-standalone-finite-default",
@@ -935,7 +947,7 @@ describe("sandbox API", () => {
     const originalCwd = process.cwd();
     process.chdir(path.join(originalCwd, "apps/runtime"));
     try {
-      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
       const started = await startClockSandbox(server, {
         idempotency_key: "sandbox-system-code-runtime-cwd",
         sandbox_id: "sandbox-system-code-runtime-cwd",
@@ -973,7 +985,7 @@ describe("sandbox API", () => {
       entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
       created_at: "2026-05-21T00:00:00.000Z"
     });
-    const server = await buildServer({ store });
+    const server = await buildSandboxTestServer({ store });
 
     const response = await startSandboxCommand(server, {
       idempotency_key: "sandbox-reject-non-fixture",
@@ -1030,7 +1042,7 @@ describe("sandbox API", () => {
       created_at: "2026-05-21T00:00:00.000Z",
       authority_status: "not_live"
     });
-    const server = await buildServer({ store });
+    const server = await buildSandboxTestServer({ store });
 
     const response = await startSandboxCommand(server, {
       idempotency_key: "sandbox-generated-relative-entrypoint",
@@ -1233,7 +1245,7 @@ describe("sandbox API", () => {
   });
 
   it("rejects raw secret material in sandbox requests", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
 
     const response = await startSandboxCommand(server, {
       idempotency_key: "sandbox-with-secret",
@@ -1256,7 +1268,7 @@ describe("sandbox API", () => {
     delete process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
     delete process.env.OUROBOROS_SANDBOX_ADAPTER;
     try {
-      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
       const response = await startSandboxCommand(server, {
         idempotency_key: "sandbox-sbx-disabled",
         adapter_kind: "docker_sandboxes_sbx"
@@ -1286,7 +1298,7 @@ describe("sandbox API", () => {
     process.env.OUROBOROS_SBX_BIN = fakeSdx;
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     try {
-      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
       const response = await startSandboxCommand(server, {
         idempotency_key: "sandbox-sdx-api-rejected",
         adapter_kind: "docker_sandboxes_sbx",
@@ -1327,7 +1339,7 @@ describe("sandbox API", () => {
     process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-evidence";
     try {
       const store = new LocalStore(tmpDir);
-      const server = await buildServer({ store });
+      const server = await buildSandboxTestServer({ store });
       const start = await startSandboxCommand(server, {
         idempotency_key: "sandbox-real-adapter-evidence",
         adapter_kind: "docker_sandboxes_sbx",
@@ -1389,7 +1401,7 @@ describe("sandbox API", () => {
     const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
     process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
     try {
-      const server = await buildServer({
+      const server = await buildSandboxTestServer({
         store: new LocalStore(tmpDir),
         sandboxAdapters: {
           docker_sandboxes_sbx: new DockerSandboxesSbxSandboxAdapter({
@@ -1442,7 +1454,7 @@ describe("sandbox API", () => {
         lifecycle_status: "failed"
       })
     };
-    const server = await buildServer({
+    const server = await buildSandboxTestServer({
       store: new LocalStore(tmpDir),
       sandboxAdapters: {
         deterministic_test: failingStopAdapter
@@ -1486,7 +1498,7 @@ describe("sandbox API", () => {
       },
       stopArtifactInstance: (instance) => baseAdapter.stopArtifactInstance(instance)
     };
-    const server = await buildServer({
+    const server = await buildSandboxTestServer({
       store: new LocalStore(tmpDir),
       sandboxAdapters: {
         deterministic_test: countingAdapter
@@ -1552,7 +1564,7 @@ describe("sandbox API", () => {
         return await baseAdapter.stopArtifactInstance(instance);
       }
     };
-    const server = await buildServer({
+    const server = await buildSandboxTestServer({
       store: new LocalStore(tmpDir),
       sandboxAdapters: {
         deterministic_test: failingStartAdapter

@@ -20,12 +20,18 @@ import type {
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import type { ResearchControlStudyExecutionLeasePort } from
   "@ouroboros/application/ports/research-control-study-execution-lease";
-import type { RuntimeProcessOwnershipPort } from
+import type {
+  RuntimeProcessExpectedIdentity,
+  RuntimeProcessOwnershipPort
+} from
   "@ouroboros/application/ports/runtime-process-ownership";
+import type { RuntimeSupervisorCheckpointStorePort } from
+  "@ouroboros/application/ports/runtime-supervisor";
 import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
 import {
   FileSystemResearchControlStudyExecutionLeaseStore,
   FileSystemRuntimeProcessOwnershipStore,
+  FileSystemRuntimeSupervisorCheckpointStore,
   FIXTURE_SYSTEM_CODE_ID,
   LocalStore,
   LocalStoreError,
@@ -132,6 +138,11 @@ import type { ResearchControlStudySchedulerLifecycle } from
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
+import { RuntimeSupervisor } from "./runtime-supervisor";
+import {
+  createRuntimeSupervisorLanes,
+  notifyPaperTradingRecoveryObserver
+} from "./runtime-supervisor-lanes";
 
 const RUNTIME_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -185,6 +196,10 @@ export interface BuildServerOptions {
   researchControlStudyExecutionLeaseRenewalIntervalMs?: number;
   runtimeProcessOwnershipPort?: RuntimeProcessOwnershipPort;
   runtimeProcessHostId?: string;
+  runtimeSupervisorCheckpointStore?: RuntimeSupervisorCheckpointStorePort;
+  runtimeSupervisorRetryDelaysMs?: readonly number[];
+  runtimeSupervisorMonitorIntervalMs?: number;
+  onRuntimeSupervisorCreated?: (supervisor: RuntimeSupervisor) => void;
   researchControlStudyCommitmentCoordinator?:
     ResearchControlStudyCommitmentCoordinatorLifecycle;
   researchGeneralizationOutcomeCoordinator?:
@@ -449,9 +464,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     artifactResolver: paperTradingArtifactResolver
   });
   await store.initialize();
-  const paperTradingRecoveryOutcomes = options.recoverPaperTradingSessionsOnStart === false
-    ? []
-    : await paperTradingSessionService.recoverRunningEvaluations();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
   if (
     persistedResearcherProvider
@@ -1388,10 +1400,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return { statusCode: 200, body: outcome as unknown as Record<string, unknown> };
   }
 
+  let runtimeSupervisor!: RuntimeSupervisor;
+  const runtimeSupervisorProjection = {
+    status: () => runtimeSupervisor.status()
+  };
   const operatorService = new OperatorService({
     store,
     candidateArenaRunner,
     paperTradingEvaluationRunner: paperTradingSessionService,
+    runtimeSupervisor: runtimeSupervisorProjection,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
       run: async (candidateId) => paperTradingCommandService.start(candidateId, {})
@@ -1435,19 +1452,47 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
     }
   });
-  server.addHook("onClose", async () => {
-    await researchControlStudyScheduler.stop();
-    await candidateArenaRunner.stopAndDrain();
-    await operatorService.drainAutonomousPaperStarts();
-    await paperTradingSessionService.stopAllSessions();
+  runtimeSupervisor = new RuntimeSupervisor({
+    lanes: createRuntimeSupervisorLanes({
+      store,
+      paperTradingSessions: paperTradingSessionService,
+      candidateArenaRunner,
+      operatorService,
+      researchControlStudyScheduler,
+      runSelectedPaper:
+        options.recoverPaperTradingSessionsOnStart !== false,
+      runResearchControlStudies:
+        options.runResearchControlStudiesOnStart !== false,
+      ...(options.onPaperTradingRecovery
+        ? { onPaperTradingRecovery: options.onPaperTradingRecovery }
+        : {}),
+      logger: console
+    }),
+    checkpoints: options.runtimeSupervisorCheckpointStore ??
+      new FileSystemRuntimeSupervisorCheckpointStore(store.root()),
+    processOwnership: runtimeProcessOwnership,
+    processIdentity: runtimeSupervisorProcessIdentity(
+      store.root(),
+      runtimeProcessHostId
+    ),
+    ...(options.runtimeSupervisorRetryDelaysMs === undefined
+      ? {}
+      : { retryDelaysMs: options.runtimeSupervisorRetryDelaysMs }),
+    ...(options.runtimeSupervisorMonitorIntervalMs === undefined
+      ? {}
+      : { monitorIntervalMs: options.runtimeSupervisorMonitorIntervalMs })
   });
-  await operatorService.resumeAutonomousArenaLoop();
+  options.onRuntimeSupervisorCreated?.(runtimeSupervisor);
+  server.addHook("onClose", async () => {
+    await runtimeSupervisor.stop();
+  });
   const operatorController = createOperatorController(operatorService);
 
   await registerRuntimeRouteModules(server, [
     registerCoreControllerRoutes({
       operatorController,
       tradingGatewayEnvironment,
+      runtimeSupervisor: runtimeSupervisorProjection,
       storeRoot: store.root(),
       filesystemReadRateLimit,
       commandMutationRateLimit,
@@ -1476,31 +1521,49 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     })
   ]);
 
-  if (options.runResearchControlStudiesOnStart !== false) {
-    researchControlStudyScheduler.start();
+  await runtimeSupervisor.start();
+  if (!runtimeSupervisor.status().lanes.find((lane) =>
+    lane.lane === "selected_paper"
+  )?.desired) {
+    notifyPaperTradingRecoveryObserver({
+      ...(options.onPaperTradingRecovery
+        ? { onPaperTradingRecovery: options.onPaperTradingRecovery }
+        : {}),
+      logger: console
+    }, []);
   }
-
-  notifyPaperTradingRecovery(
-    options.onPaperTradingRecovery,
-    paperTradingRecoveryOutcomes
-  );
   return server;
 }
 
-function notifyPaperTradingRecovery(
-  observer: BuildServerOptions["onPaperTradingRecovery"],
-  outcomes: readonly PaperTradingRecoveryOutcome[]
-): void {
-  if (!observer) {
-    return;
-  }
-  try {
-    void Promise.resolve(observer(outcomes)).catch((error) => {
-      console.error("PaperTrading recovery observer failed.", error);
-    });
-  } catch (error) {
-    console.error("PaperTrading recovery observer failed.", error);
-  }
+function runtimeSupervisorProcessIdentity(
+  storeRoot: string,
+  hostId: string
+): RuntimeProcessExpectedIdentity {
+  const storeScope = createHash("sha256")
+    .update(path.resolve(storeRoot))
+    .digest("hex");
+  return {
+    process_kind: "runtime_supervisor",
+    subject_ref: {
+      record_kind: "runtime_supervisor",
+      id: `runtime-supervisor-${storeScope.slice(0, 24)}`
+    },
+    runtime_ref: {
+      record_kind: "local_store",
+      id: `local-store-${storeScope.slice(0, 24)}`
+    },
+    host_id: hostId,
+    executable: process.execPath,
+    profile_digest: `sha256:${createHash("sha256").update(JSON.stringify({
+      version: 1,
+      store_scope: storeScope,
+      lanes: [
+        "selected_paper",
+        "candidate_arena",
+        "research_control_study_scheduler"
+      ]
+    })).digest("hex")}`
+  };
 }
 
 function resolveOperatorApiToken(

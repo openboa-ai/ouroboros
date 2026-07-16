@@ -104,6 +104,25 @@ implements ResearchControlStudySchedulerLifecycle {
 }
 
 describe("runtime canonical operator API", () => {
+  it("fences concurrent supervisors for one store and releases ownership on close", async () => {
+    const first = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    await expect(buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    })).rejects.toMatchObject({ code: "runtime_process_ownership_held" });
+
+    await first.close();
+    const replacement = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    });
+    await replacement.close();
+  });
+
   it("binds the paper runtime provider to a sandbox-reachable interface when sandbox host is configured", () => {
     expect(paperTradingApiProviderNetworkOptions({
       sandboxHost: "host.docker.internal"
@@ -630,10 +649,29 @@ describe("runtime canonical operator API", () => {
     try {
       const health = await server.inject({ method: "GET", url: "/health" });
       expect(health.statusCode).toBe(200);
-      expect(health.json()).toMatchObject({
+      const healthBody = health.json();
+      expect(healthBody).toMatchObject({
         status: "ok",
         service: "ouroboros-runtime",
         operator_loop_contract_version: "paper-loop-continuation-v2",
+        runtime_supervisor: {
+          status: "running",
+          lanes: [
+            { lane: "selected_paper", desired: false, status: "running" },
+            { lane: "candidate_arena", desired: false, status: "running" },
+            {
+              lane: "research_control_study_scheduler",
+              desired: false,
+              status: "running"
+            }
+          ],
+          runtime_coordination_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "runtime_coordination_only"
+        },
         trading_gateway_environment: {
           authority_status: "not_live"
         }
@@ -680,7 +718,8 @@ describe("runtime canonical operator API", () => {
 
       const operator = await server.inject({ method: "GET", url: "/api/operator" });
       expect(operator.statusCode).toBe(200);
-      expect(operator.json()).toMatchObject({
+      const operatorBody = operator.json();
+      expect(operatorBody).toMatchObject({
         operator: {
           command_descriptors: expect.arrayContaining(
             OUROBOROS_COMMAND_KINDS.map((commandKind) => expect.objectContaining({
@@ -704,6 +743,9 @@ describe("runtime canonical operator API", () => {
           authority_status: "not_live"
         }
       });
+      expect(operatorBody.operator.runtime_supervisor).toEqual(
+        healthBody.runtime_supervisor
+      );
 
       const candidates = await server.inject({ method: "GET", url: "/api/candidates" });
       expect(candidates.statusCode).toBe(200);

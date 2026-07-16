@@ -3299,6 +3299,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: "candidate-profitable",
           selected_candidate: arenaSelectedCandidate(),
@@ -3585,6 +3586,7 @@ describe("CandidateDetail", () => {
     const operator: OperatorReadModel = {
       operator_kind: "ouroboros_operator",
       command_descriptors: [],
+      runtime_supervisor: runtimeSupervisorFixture(),
       candidate_arena: fixtureCandidateArena,
       selected_candidate_id: "candidate-profitable",
       selected_candidate: arenaSelectedCandidate(),
@@ -3748,6 +3750,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -3867,6 +3870,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -3954,6 +3958,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4023,6 +4028,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4106,6 +4112,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4210,6 +4217,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4301,6 +4309,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4433,6 +4442,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: fixtureCandidateArena,
           selected_candidate_id: candidate.candidate_id,
           selected_candidate: candidate,
@@ -4571,6 +4581,7 @@ describe("CandidateDetail", () => {
         operator={{
           operator_kind: "ouroboros_operator",
           command_descriptors: [],
+          runtime_supervisor: runtimeSupervisorFixture(),
           candidate_arena: {
             ...fixtureCandidateArena,
             finding_clusters: [
@@ -7164,6 +7175,7 @@ function operatorReadModelFixture(overrides: Partial<OperatorReadModel> = {}): O
   return {
     operator_kind: "ouroboros_operator",
     command_descriptors: [],
+    runtime_supervisor: runtimeSupervisorFixture(),
     candidate_arena: fixtureCandidateArena,
     selected_candidate_id: "candidate-profitable",
     selected_candidate: arenaSelectedCandidate(),
@@ -7185,6 +7197,23 @@ function operatorReadModelFixture(overrides: Partial<OperatorReadModel> = {}): O
     live_disabled: true,
     authority_status: "not_live",
     ...overrides
+  };
+}
+
+function runtimeSupervisorFixture(): OperatorReadModel["runtime_supervisor"] {
+  return {
+    status: "stopped",
+    lanes: [],
+    recorded_at: "2026-07-16T00:00:00.000Z",
+    checkpoint_sequence: 0,
+    checkpoint_digest: `sha256:${"0".repeat(64)}`,
+    runtime_coordination_authority: true,
+    evaluation_authority: false,
+    policy_replacement_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "runtime_coordination_only"
   };
 }
 

@@ -32,6 +32,7 @@ import {
   type PaperTradingComparisonTickRecord,
   type PaperTradingEvaluationCommitmentRecord,
   type PaperTradingEvaluationRecord,
+  type SandboxAdapterKind,
   type SandboxDetailReadModel,
   type TradingRunRecord
 } from "@ouroboros/domain";
@@ -93,6 +94,139 @@ describe("PaperTradingSessionService", () => {
       net_revenue_usdt: -0.158043,
       net_return_pct: -0.00158
     });
+  });
+
+  it("rechecks generated start eligibility before artifact or runtime effects", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) throw new Error("fixture candidate was not materialized");
+    const effects = {
+      eligibilityChecks: 0,
+      artifactReads: 0,
+      providerStarts: 0,
+      sandboxStarts: 0
+    };
+    const service = new PaperTradingSessionService({
+      store,
+      startEligibility: async () => {
+        effects.eligibilityChecks += 1;
+        return "paper_handoff_conformance_missing";
+      },
+      artifactResolver: {
+        async resolveArtifactDigest() {
+          effects.artifactReads += 1;
+          return "sha256:must-not-resolve";
+        }
+      },
+      sandboxAdapters: {
+        deterministic_test: {
+          async startArtifactInstance() {
+            effects.sandboxStarts += 1;
+            throw new Error("sandbox must not start");
+          }
+        }
+      } as never,
+      marketData: {} as never,
+      async apiProviderFactory() {
+        effects.providerStarts += 1;
+        throw new Error("provider must not start");
+      }
+    });
+
+    await expect(service.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: candidate.runtime.ref.id,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    })).rejects.toMatchObject({
+      code: "paper_handoff_conformance_missing"
+    });
+    expect(effects).toEqual({
+      eligibilityChecks: 1,
+      artifactReads: 0,
+      providerStarts: 0,
+      sandboxStarts: 0
+    });
+  });
+
+  it("activates a materialized candidate only through the Docker Sandbox adapter", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!fixture) throw new Error("fixture candidate was not materialized");
+    const generated = structuredClone(fixture);
+    generated.candidate_version.materialization_attempt_ref = {
+      record_kind: "candidate_materialization_attempt",
+      id: "generated-materialization"
+    };
+    generated.materialization_attempt = {
+      attempt_id: "generated-materialization",
+      idempotency_key: "generated-materialization",
+      provider_kind: "codex_cli",
+      model: "gpt-5-codex",
+      agent_run_ref: { record_kind: "agent_run", id: "generated-agent-run" },
+      trace_ref: { record_kind: "trace", id: "generated-trace" },
+      status: "materialized",
+      validation_status: "accepted",
+      resulting_candidate_ref: {
+        record_kind: "trading_system_candidate",
+        id: fixture.candidate_id
+      },
+      artifact_refs: [],
+      created_at: "2026-07-16T00:00:00.000Z",
+      authority_label: "provider_output_not_evidence"
+    };
+    const generatedStore = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === "getCandidate" || property === "getCandidateForTradingRun") {
+          return async () => structuredClone(generated);
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as OuroborosStorePort;
+    const starts = { deterministic: 0, docker: 0 };
+    const service = new PaperTradingSessionService({
+      store: generatedStore,
+      startEligibility: async () => undefined,
+      artifactResolver: {
+        async resolveArtifactDigest(systemCode) {
+          return systemCode.artifact_digest;
+        }
+      },
+      sandboxAdapters: {
+        deterministic_test: sandboxAdapter("deterministic_test", () => {
+          starts.deterministic += 1;
+        }),
+        docker_sandboxes_sbx: sandboxAdapter("docker_sandboxes_sbx", () => {
+          starts.docker += 1;
+        })
+      },
+      marketData: paperSessionMarketData(),
+      async apiProviderFactory() {
+        return {
+          base_url: "http://paper-provider.test",
+          sandbox_base_url: "http://paper-provider.internal",
+          async close() {},
+          requests: () => [],
+          candidate_input: {} as never
+        };
+      }
+    });
+    const prepared = await service.prepare({
+      candidateId: generated.candidate_id,
+      candidateVersionId: generated.candidate_version.candidate_version_id,
+      tradingRunId: generated.runtime.ref.id,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+
+    await service.activate(prepared);
+
+    expect(starts).toEqual({ deterministic: 0, docker: 1 });
+    await service.stopAllSessions();
   });
 
   it("repairs a commitment-only qualification preparation without runtime effects", async () => {
@@ -329,6 +463,49 @@ describe("PaperTradingSessionService", () => {
       invalidation_reason: "resolved_artifact_digest_mismatch"
     });
     expect(invalidated?.next_observation_at).toBeUndefined();
+  });
+
+  it("keeps transient recovery failure retryable until explicit exhaustion", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) throw new Error("fixture candidate was not materialized");
+    const effects = { providerStarts: 0, sandboxStarts: 0, marketReads: 0 };
+    const initial = activatableResearchSessionService(store, effects);
+    const prepared = await initial.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: candidate.runtime.ref.id,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    await initial.activate(prepared);
+    await initial.stopAllSessions();
+    const recovery = transientlyFailingRecoverySessionService(store, effects);
+
+    const outcomes = await recovery.recoverRunningEvaluations({
+      persistFailures: false
+    });
+
+    expect(outcomes).toEqual([{
+      tradingRunId: candidate.runtime.ref.id,
+      status: "failed",
+      error: "sandbox recovery unavailable"
+    }]);
+    expect(await store.getLatestPaperTradingEvaluationForTradingRun(
+      candidate.runtime.ref.id
+    )).toMatchObject({ status: "running" });
+
+    await recovery.finalizeRecoveryFailures(outcomes);
+
+    const exhausted = await store.getLatestPaperTradingEvaluationForTradingRun(
+      candidate.runtime.ref.id
+    );
+    expect(exhausted).toMatchObject({
+      status: "failed",
+      latest_failure_reason: "sandbox recovery unavailable"
+    });
+    expect(exhausted?.next_observation_at).toBeUndefined();
   });
 
   it.each(["running", "stopped", "failed", "invalidated"] as const)(
@@ -3220,6 +3397,113 @@ function activatableResearchSessionService(
       effects.providerStarts += 1;
       return {
         base_url: "http://research-replay.test",
+        async close() {},
+        requests: () => [],
+        candidate_input: {} as never
+      };
+    }
+  });
+}
+
+function sandboxAdapter(kind: SandboxAdapterKind, onStart: () => void) {
+  return {
+    async startArtifactInstance(input: SandboxStartInput) {
+      onStart();
+      return {
+        placement: {
+          record_kind: "sandbox_placement" as const,
+          version: 1 as const,
+          sandbox_placement_id: input.sandbox_placement_id,
+          placement_kind: "fixture_local_placeholder" as const,
+          authority_status: "not_launched" as const
+        },
+        instance: {
+          record_kind: "sandbox" as const,
+          version: 1 as const,
+          sandbox_id: input.instance_id,
+          adapter_kind: kind,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: input.artifact.system_code_id
+          },
+          runtime_ref: input.runtime_ref,
+          sandbox_placement_ref: {
+            record_kind: "sandbox_placement",
+            id: input.sandbox_placement_id
+          },
+          lifecycle_status: "running" as const,
+          sandbox_name: input.sandbox_name,
+          created_at: input.created_at,
+          started_at: input.created_at,
+          log_refs: [],
+          heartbeat_refs: [],
+          authority_status: "not_live" as const
+        },
+        logs: [],
+        heartbeats: [],
+        command_evidence: []
+      };
+    },
+    async stopArtifactInstance() {
+      return {
+        lifecycle_status: "removed" as const,
+        stopped_at: "2026-07-16T00:00:00.000Z",
+        removed_at: "2026-07-16T00:00:00.000Z"
+      };
+    }
+  };
+}
+
+function paperSessionMarketData(): GatewayMarketDataPort {
+  return {
+    provider_kind: "binance_production_public_market_data",
+    source_kind: "binance_production_public_hybrid",
+    rest_base_url: "https://example.invalid",
+    required_endpoints: [],
+    authority_status: "read_only",
+    async readMarketSnapshot() {
+      throw new Error("market snapshot was not expected");
+    },
+    async readPublicMarketLivenessSurface() {
+      throw new Error("market liveness was not expected");
+    },
+    async readPublicExecutionSnapshot() {
+      throw new Error("public execution was not expected");
+    }
+  };
+}
+
+function transientlyFailingRecoverySessionService(
+  store: OuroborosStorePort,
+  effects: { providerStarts: number; sandboxStarts: number; marketReads: number }
+): PaperTradingSessionService {
+  return new PaperTradingSessionService({
+    store,
+    intervalMs: 60_000,
+    artifactResolver: {
+      async resolveArtifactDigest() {
+        return "sha256:session-service-fixture";
+      }
+    },
+    sandboxAdapters: {
+      deterministic_test: {
+        async startArtifactInstance() {
+          effects.sandboxStarts += 1;
+          throw new Error("sandbox recovery unavailable");
+        },
+        async stopArtifactInstance() {
+          return {
+            lifecycle_status: "stopped" as const,
+            stopped_at: "2026-07-16T00:00:00.000Z"
+          };
+        }
+      }
+    } as never,
+    marketData: paperSessionMarketData(),
+    async apiProviderFactory() {
+      effects.providerStarts += 1;
+      return {
+        base_url: "http://paper-recovery.test",
         async close() {},
         requests: () => [],
         candidate_input: {} as never

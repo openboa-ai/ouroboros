@@ -21,6 +21,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
+  delete process.env.SBX_FAKE_REMOVE_FAIL;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
   delete process.env.OUROBOROS_SBX_HOME;
@@ -94,14 +95,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     );
 
     const stop = await adapter.stopArtifactInstance(start.instance);
-    expect(stop.lifecycle_status).toBe("stopped");
+    expect(stop.lifecycle_status).toBe("removed");
     expect(stop.command_evidence?.map((evidence) => evidence.command[1])).toEqual([
       "version",
       "exec",
       "stop",
       ...Array.from({ length: CANDIDATE_NETWORK_DENY_PROBES.length + 3 }, () =>
         "policy"
-      )
+      ),
+      "rm"
     ]);
 
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
@@ -123,7 +125,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-fake",
       ...terminalDenyPolicyCommands("ouro-s5-clock-fake"),
-      "policy log ouro-s5-clock-fake --json --limit 100"
+      "policy log ouro-s5-clock-fake --json --limit 100",
+      "rm --force ouro-s5-clock-fake"
     ]);
   });
 
@@ -349,15 +352,25 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     });
     const stop = await stopAdapter.stopArtifactInstance(start.instance);
     expect(stop).toMatchObject({
-      lifecycle_status: "stopped"
+      lifecycle_status: "removed",
+      removed_at: expect.any(String)
     });
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
-    expect(commands).toContain(
+    const stopIndex = commands.lastIndexOf("stop ouro-s5-network-policy");
+    const allowCleanupIndex = commands.lastIndexOf(
       "policy rm network --sandbox ouro-s5-network-policy --id owned-allow"
     );
-    expect(commands.at(-1)).toBe(
+    const denyCleanupIndex = commands.lastIndexOf(
       "policy rm network --sandbox ouro-s5-network-policy --id owned-deny"
     );
+    const removeIndex = commands.lastIndexOf(
+      "rm --force ouro-s5-network-policy"
+    );
+    expect(stopIndex).toBeGreaterThan(0);
+    expect(allowCleanupIndex).toBeGreaterThan(stopIndex);
+    expect(denyCleanupIndex).toBeGreaterThan(allowCleanupIndex);
+    expect(removeIndex).toBeGreaterThan(denyCleanupIndex);
+    expect(commands.at(-1)).toBe("rm --force ouro-s5-network-policy");
   });
 
   it("migrates a v1 Gateway lease by resolving its scoped rule ID", async () => {
@@ -586,7 +599,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     ]);
   });
 
-  it("does not report stopped when sbx stop fails", async () => {
+  it("force-removes the Sandbox before releasing policy when sbx stop fails", async () => {
     const commandLog = path.join(tmpDir, "stop-failed-commands.log");
     const fakeSbx = path.join(tmpDir, "sbx-fail-stop");
     await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
@@ -608,12 +621,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     });
     const stop = await adapter.stopArtifactInstance(start.instance);
 
-    expect(stop.lifecycle_status).toBe("failed");
+    expect(stop.lifecycle_status).toBe("removed");
     expect(stop.stopped_at).toBeUndefined();
     expect(stop.command_evidence?.map((evidence) => evidence.exit_code)).toEqual([
       0,
       0,
       43,
+      0,
       0,
       0,
       ...CANDIDATE_NETWORK_DENY_PROBES.map(() => 1),
@@ -629,9 +643,61 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-stop-failed",
+      "rm --force ouro-s5-clock-stop-failed",
       ...terminalDenyPolicyCommands("ouro-s5-clock-stop-failed"),
       "policy log ouro-s5-clock-stop-failed --json --limit 100"
     ]);
+  });
+
+  it("retains the deny-policy lease when stop and force removal both fail", async () => {
+    const commandLog = path.join(tmpDir, "stop-remove-failed-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-fail-stop-remove");
+    const policyStatePath = path.join(tmpDir, "network-policy-leases");
+    const sandboxName = "ouro-s5-clock-stop-remove-failed";
+    await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-stop-remove-failed-sbx";
+    process.env.SBX_FAKE_REMOVE_FAIL = "1";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      networkPolicyStatePath: policyStatePath
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-stop-remove-failed-sbx",
+      sandbox_name: sandboxName,
+      sandbox_placement_id: "sandbox-placement-stop-remove-failed-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+    await mkdir(policyStatePath, { recursive: true });
+    const leasePath = path.join(policyStatePath, `${sandboxName}.json`);
+    await writeFile(leasePath, JSON.stringify({
+      version: 2,
+      sandbox_name: sandboxName,
+      inherited_allowed_resources: [],
+      owned_allow_rule_ids: ["owned-allow"],
+      owned_deny_rule_ids: ["owned-deny"]
+    }) + "\n", "utf8");
+
+    const stop = await adapter.stopArtifactInstance(start.instance);
+
+    expect(stop.lifecycle_status).toBe("failed");
+    expect(stop.stopped_at).toBeUndefined();
+    expect(stop.removed_at).toBeUndefined();
+    expect(stop.command_evidence?.map((evidence) => evidence.exit_code))
+      .toEqual([0, 0, 43, 44]);
+    await expect(readFile(leasePath, "utf8")).resolves.toContain(
+      '"owned_deny_rule_ids":["owned-deny"]'
+    );
+    expect((await readFile(commandLog, "utf8")).trim().split("\n").slice(-2))
+      .toEqual([
+        `stop ${sandboxName}`,
+        `rm --force ${sandboxName}`
+      ]);
   });
 });
 
@@ -893,6 +959,10 @@ case "$1" in
     exit 43
     ;;
   rm)
+    if [ "\${SBX_FAKE_REMOVE_FAIL:-}" = "1" ]; then
+      echo "remove failed" >&2
+      exit 44
+    fi
     exit 0
     ;;
   *)

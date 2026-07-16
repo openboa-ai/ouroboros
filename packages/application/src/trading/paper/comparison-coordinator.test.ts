@@ -360,6 +360,7 @@ describe("PaperTradingComparisonCoordinator", () => {
     const runtimeSessions = (store: OuroborosStorePort = fixture.store) =>
       new PaperTradingSessionService({
       store,
+      startEligibility: async () => undefined,
       intervalMs: comparisonPolicy.interval_ms,
       marketData: fixture.marketData,
       artifactResolver: {
@@ -1197,6 +1198,7 @@ describe("PaperTradingComparisonCoordinator", () => {
       captureProviderUrls: boolean
     ) => new PaperTradingSessionService({
       store,
+      startEligibility: async () => undefined,
       intervalMs: comparisonPolicy.interval_ms,
       marketData: fixture.marketData,
       artifactResolver: {
@@ -3317,6 +3319,7 @@ async function comparisonFixture(options: ComparisonFixtureOptions = {}) {
   const runner = new PaperTradingEvaluationRunner();
   const sessions = new PaperTradingSessionService({
     store,
+    startEligibility: async () => undefined,
     intervalMs: 60_000,
     runner,
     marketData,

@@ -29,6 +29,7 @@ import type {
   SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
 import { buildServer } from "../src/server";
+import type { RuntimeSupervisor } from "../src/runtime-supervisor";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const INTERVAL_MS = 3_600_000;
@@ -828,6 +829,7 @@ describe("multi-run paper TradingSystem sessions", () => {
     const recoveryProviders = runKeyedProviderHarness();
     const recoveryServiceCapture: { service?: PaperTradingSessionService } = {};
     const recoveryOutcomeCapture = paperTradingRecoveryCapture();
+    let runtimeSupervisor: RuntimeSupervisor | undefined;
     const recoveryServer = await buildServer({
       store,
       sandboxAdapters: { deterministic_test: recoverySandbox },
@@ -839,11 +841,15 @@ describe("multi-run paper TradingSystem sessions", () => {
           return ARTIFACT_DIGEST;
         }
       },
+      runtimeSupervisorRetryDelaysMs: [],
       onPaperTradingSessionServiceCreated(service) {
         recoveryServiceCapture.service = service;
       },
       onPaperTradingRecovery(outcomes) {
         recoveryOutcomeCapture.observe(outcomes);
+      },
+      onRuntimeSupervisorCreated(supervisor) {
+        runtimeSupervisor = supervisor;
       }
     });
     const recoveryService = requireCapturedService(recoveryServiceCapture.service);
@@ -865,6 +871,12 @@ describe("multi-run paper TradingSystem sessions", () => {
       ]));
       expect(recoveryService.active(failingRun.trading_run_id)).toBe(false);
       expect(recoveryService.active(healthyRun.trading_run_id)).toBe(true);
+      expect(runtimeSupervisor?.status().lanes.find((lane) =>
+        lane.lane === "selected_paper"
+      )).toMatchObject({
+        status: "blocked",
+        reason_code: "paper_trading_recovery_failed"
+      });
       expect((await store.getTradingRun(failingRun.trading_run_id))?.runtime_lifecycle_status).toBe("stopped");
       expect((await store.getTradingRun(healthyRun.trading_run_id))?.runtime_lifecycle_status).toBe("running");
       expect(recoveryProviders.require(recoverySandbox.providerUrl(failingRun.trading_run_id)!).closed).toBe(true);

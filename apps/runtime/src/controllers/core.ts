@@ -1,6 +1,7 @@
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type {
   OuroborosCommandRequest,
+  RuntimeSupervisorReadModel,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { OperatorController } from "@ouroboros/application/controllers/operator";
@@ -11,6 +12,9 @@ export const OPERATOR_LOOP_CONTRACT_VERSION = "paper-loop-continuation-v2";
 export interface CoreControllerRoutesContext {
   operatorController: OperatorController;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
+  runtimeSupervisor: {
+    status(): RuntimeSupervisorReadModel;
+  };
   storeRoot: string;
   filesystemReadRateLimit: object;
   commandMutationRateLimit: object;
@@ -25,6 +29,7 @@ export function registerCoreControllerRoutes(context: CoreControllerRoutesContex
       mode: "fixture_convenience_mode",
       operator_loop_contract_version: OPERATOR_LOOP_CONTRACT_VERSION,
       store_root: context.storeRoot,
+      runtime_supervisor: context.runtimeSupervisor.status(),
       trading_gateway_environment: context.tradingGatewayEnvironment,
       projections: "rebuilt_from_authoritative_item_files"
     }));

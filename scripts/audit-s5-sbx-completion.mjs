@@ -148,12 +148,12 @@ await check("real two-sandbox validation transcript is present and complete", as
   assertSectionHasHeartbeatJson(transcript, "direct sbx log B", "sandbox-clock-b");
   assertSectionContains(transcript, "runtime API start A response", ["fixture-system-code-clock-python-001"]);
   assertSectionContains(transcript, "runtime API start B response", ["fixture-system-code-clock-python-001"]);
-  assertSectionContainsStoppedLifecycle(
+  assertSectionContainsRemovedLifecycle(
     transcript,
     "runtime API stop A response",
     "sandbox-clock-a"
   );
-  assertSectionContainsStoppedLifecycle(
+  assertSectionContainsRemovedLifecycle(
     transcript,
     "runtime API stop B response",
     "sandbox-clock-b"
@@ -353,15 +353,15 @@ function assertSectionContainsRuntimeHeartbeat(value, sectionLabel, expectedInst
   }
 }
 
-function assertSectionContainsStoppedLifecycle(value, sectionLabel, expectedInstanceId) {
+function assertSectionContainsRemovedLifecycle(value, sectionLabel, expectedInstanceId) {
   const section = sectionText(value, sectionLabel);
   if (
     !section.includes(expectedInstanceId) ||
     !section.includes('"lifecycle_status"') ||
-    !section.includes('"stopped"')
+    !section.includes('"removed"')
   ) {
     throw new IncompleteCheck(
-      `missing stopped lifecycle evidence for ${expectedInstanceId} in transcript section: ${sectionLabel}`
+      `missing removed lifecycle evidence for ${expectedInstanceId} in transcript section: ${sectionLabel}`
     );
   }
 }

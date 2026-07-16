@@ -157,8 +157,14 @@ LocalStore root, guards every executor advance, and releases on terminal paths. 
 owners wait; takeover requires expiry and confirmed absence of the same-host PID. Lease records
 carry runtime-coordination authority only and are never research or policy evidence. Multi-host
 fencing and public commands remain outside.
-Child provider and deterministic long-running Sandbox processes use a separate
-`RuntimeProcessOwnership` boundary. Before any child effect, the runtime durably binds the exact
+`buildServer` must own selected PaperTrading recovery, persisted CandidateArena start intent, and
+the ResearchControlStudyScheduler through one `RuntimeSupervisor`. Keep the lane order fixed, use
+the immutable checkpoint chain for retry/restart state, retry only within the bounded no-progress
+budget, isolate lane failures, and stop in reverse order. `/health` and `OperatorReadModel` must
+return the same supervisor projection. The supervisor coordinates runtime only; it never ranks,
+qualifies, promotes, submits orders, or widens private/live authority.
+Child provider and deterministic long-running Sandbox processes use separate
+`RuntimeProcessOwnership` scopes. Before any child effect, the runtime durably binds the exact
 host, PID start marker, executable, profile digest, worker/store-root process scope, runtime ref,
 and session token. A
 restarted provider session terminates an exact stale owner before starting fresh because its pipes
@@ -424,7 +430,9 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchControlStudyExecutor` | Internal derived-state orchestrator, assembled by `createResearchControlStudyRuntime`, that completes or resumes one exact planned campaign per advance and adjudicates only after every terminal outcome. It persists no parallel progress record and owns no policy-replacement, promotion, order, private, or live authority. |
 | `ResearchControlStudyProcessSupervisor` | Internal single-owner process scheduler that discovers incomplete ResearchControlStudies from exact store evidence, drains them oldest first through existing runtimes, rescans after each completion, and persists no separate progress or downstream authority. |
 | `ResearchControlStudyExecutionLease` | Renewable same-host filesystem ownership for one pending ResearchControlStudy under one shared LocalStore root. It guards runtime advances, waits for alive or liveness-unknown owners, permits takeover only after expiry plus confirmed PID absence, archives terminal ownership, and grants runtime coordination only. |
-| `RuntimeProcessOwnership` | Same-host operational identity and transition history for one provider or deterministic long-running Sandbox process. It binds host, PID start marker, executable/profile, worker/store-root or Sandbox process scope, runtime, and session token before effects; exact Sandbox owners may be adopted while provider owners are terminated before a fresh session. It grants no research, evaluation, order, private, or live authority. |
+| `RuntimeSupervisor` | Store-scoped runtime coordinator for selected PaperTrading sessions, persisted CandidateArena start intent, and the ResearchControlStudyScheduler. It owns bounded progress-aware retry and reverse-order shutdown, with runtime-coordination authority only. |
+| `RuntimeSupervisorCheckpoint` | Immutable predecessor-linked RuntimeSupervisor state containing lane desire, status, basis/progress digests, attempts, retry time, and reason. It is restart coordination, not evaluation or promotion evidence. |
+| `RuntimeProcessOwnership` | Same-host operational identity and transition history for one RuntimeSupervisor, provider, or deterministic long-running Sandbox process. It binds host, PID start marker, executable/profile, runtime-supervisor, worker/store-root, or Sandbox process scope, runtime, and session token before effects; exact Sandbox owners may be adopted while provider owners are terminated before a fresh session. It grants no research, evaluation, order, private, or live authority. |
 | `ResearchAllocationPolicyDecision` | Append-only research-only selection record derived separately from one exact ResearchControlStudy and outcome. Version 1 may approve only the studied adaptive policy digest after eligible supported same-baseline evidence; otherwise it records not-approved with no effective mode and never selects static control. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
