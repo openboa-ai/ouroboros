@@ -100,7 +100,8 @@ implements ResearchControlStudyExecutionLeasePort {
     }
     const legacyActive = await this.readLegacyActiveLease(input.study);
     if (legacyActive) {
-      if (Date.parse(this.readNow()) < Date.parse(legacyActive.expires_at)) {
+      if (Date.parse(this.readNow()) < Date.parse(legacyActive.expires_at) ||
+        await this.readOwnerLiveness(legacyActive.owner) !== "absent") {
         return { status: "held", lease: legacyActive, reason: "transition" };
       }
       await rm(path.dirname(this.legacyActiveLeaseFile(input.study)), {

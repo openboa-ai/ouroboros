@@ -748,6 +748,21 @@ describe("SharedSqliteResearchControlStudyExecutionLeaseStore", () => {
       reason: "transition"
     });
 
+    now = "2026-07-13T00:00:31.000Z";
+    for (const liveness of ["alive", "unknown"] as const) {
+      await expect(sharedAdapter("unused", liveness).acquire({
+        study,
+        owner: owner("shared-host", 202),
+        leaseDurationMs: 30_000
+      })).resolves.toMatchObject({
+        status: "held",
+        lease: { lease_token: legacyClaim.lease.lease_token },
+        reason: "transition"
+      });
+      await expect(readFile(legacyActiveFile, "utf8")).resolves.toBeTruthy();
+    }
+    now = "2026-07-13T00:00:00.000Z";
+
     const legacyTransitionFile = legacyActiveFile.replace(
       `${path.sep}active${path.sep}`,
       `${path.sep}transitions${path.sep}`
