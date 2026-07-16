@@ -913,6 +913,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       sbxHome?: string;
       workspacePath?: string;
       commandTimeoutMs?: number;
+      detachedCommandTimeoutMs?: number;
       startupHeartbeatTimeoutMs?: number;
       startupHeartbeatPollIntervalMs?: number;
       networkPolicyStatePath?: string;
@@ -1118,14 +1119,15 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       input.paper_order_request ?? "valid",
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
-    const execResult = await this.runSbxCommand(execCommand);
-    const startupEvidence = createResult.exit_code === 0 && execResult.exit_code === 0
+    const execResult = await this.runSbxCommand(execCommand, this.detachedCommandTimeoutMs);
+    const detachedLaunchAccepted = execResult.exit_code === 0 || execResult.timed_out === true;
+    const startupEvidence = createResult.exit_code === 0 && detachedLaunchAccepted
       ? await this.readStartupEvidence(input.instance_id, input.sandbox_name, {
         allowStoppedLog: input.test_ticks !== undefined
       })
       : { heartbeats: [], logs: [], commandEvidence: [] };
     const lifecycleStatus = createResult.exit_code === 0 &&
-      execResult.exit_code === 0
+      detachedLaunchAccepted
       ? startupEvidence.heartbeats.length > 0
         ? "running"
         : startupEvidence.stopped_at
@@ -1363,6 +1365,12 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return this.options.commandTimeoutMs ?? Number(process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS ?? 30_000);
   }
 
+  private get detachedCommandTimeoutMs(): number {
+    const configured = this.options.detachedCommandTimeoutMs ??
+      Number(process.env.OUROBOROS_SBX_DETACHED_COMMAND_TIMEOUT_MS ?? 5_000);
+    return Math.min(configured, this.commandTimeoutMs);
+  }
+
   private get startupHeartbeatTimeoutMs(): number {
     return this.options.startupHeartbeatTimeoutMs ?? this.commandTimeoutMs;
   }
@@ -1380,8 +1388,11 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       path.join(this.sbxHome ?? os.homedir(), ".ouroboros", "candidate-network-policy-leases");
   }
 
-  private runSbxCommand(command: string[]): Promise<CommandResult> {
-    return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  private runSbxCommand(
+    command: string[],
+    timeoutMs = this.commandTimeoutMs
+  ): Promise<CommandResult> {
+    return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
   }
 
   private async persistNetworkPolicyLease(
@@ -1711,6 +1722,7 @@ interface CommandResult {
   stderr: string;
   started_at: string;
   completed_at: string;
+  timed_out?: boolean;
 }
 
 function sandboxSandboxRecord(input: {
@@ -2576,7 +2588,8 @@ function runCommand(
             stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
             stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
             started_at: startedAt,
-            completed_at: completedAt
+            completed_at: completedAt,
+            timed_out: Boolean(error && "killed" in error && error.killed)
           });
         }
       );

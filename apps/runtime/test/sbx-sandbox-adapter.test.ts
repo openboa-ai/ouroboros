@@ -18,6 +18,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
   delete process.env.SBX_FAKE_HEARTBEAT_AFTER;
   delete process.env.SBX_FAKE_HEARTBEAT_COUNTER;
+  delete process.env.SBX_FAKE_DETACHED_HANG;
   delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
@@ -127,6 +128,45 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       ...terminalDenyPolicyCommands("ouro-s5-clock-fake"),
       "policy log ouro-s5-clock-fake --json --limit 100",
       "rm --force ouro-s5-clock-fake"
+    ]);
+  });
+
+  it("uses heartbeat evidence when the detached sbx client outlives its launch timeout", async () => {
+    const commandLog = path.join(tmpDir, "detached-timeout-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-detached-timeout");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_DETACHED_HANG = "1";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      commandTimeoutMs: 1_000,
+      detachedCommandTimeoutMs: 25,
+      startupHeartbeatTimeoutMs: 200,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-detached-timeout-sbx",
+      sandbox_name: "ouro-s5-clock-detached-timeout",
+      sandbox_placement_id: "sandbox-placement-detached-timeout-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    expect(start.heartbeats).toHaveLength(1);
+    expect(start.command_evidence.find((evidence) =>
+      evidence.sandbox_command_evidence_id.endsWith("-exec-detached")
+    )?.exit_code).toBeNull();
+    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+      "version",
+      "create --name ouro-s5-clock-detached-timeout shell .",
+      ...denyPolicyCommands("ouro-s5-clock-detached-timeout"),
+      "exec -d -w . ouro-s5-clock-detached-timeout python3 fixtures/trading-systems/clock.py --instance-id sandbox-detached-timeout-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-detached-timeout-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-detached-timeout-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec ouro-s5-clock-detached-timeout cat /tmp/ouroboros-sandbox-detached-timeout-sbx.heartbeat.json"
     ]);
   });
 
@@ -829,6 +869,9 @@ case "$1" in
     ;;
 	  exec)
 	    if [ "$2" = "-d" ]; then
+	      if [ "\${SBX_FAKE_DETACHED_HANG:-}" = "1" ]; then
+	        while :; do :; done
+	      fi
 	      echo "detached $3"
 	    elif [ "$3" = "cat" ]; then
 	      cat_path="$4"

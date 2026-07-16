@@ -134,7 +134,8 @@ export async function serveLiveRuntimeSoakRuntime(
         sbxPath: config.sandbox.command,
         sbxHome: config.sandbox.home,
         workspacePath: config.repo_root,
-        commandTimeoutMs: 120_000
+        commandTimeoutMs: 120_000,
+        detachedCommandTimeoutMs: 5_000
       })
     },
     candidateArenaDirections: ["trend_following"],
