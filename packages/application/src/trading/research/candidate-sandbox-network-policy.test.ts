@@ -6,6 +6,7 @@ import {
   CANDIDATE_NETWORK_DENY_PROBES,
   CandidateSandboxNetworkPolicyError,
   parseCandidateSandboxSbxVersion,
+  releaseCandidateSandboxNetworkPolicy,
   type CandidateSandboxNetworkCommandResult
 } from "./candidate-sandbox-network-policy";
 
@@ -39,6 +40,32 @@ describe("candidate Sandbox network policy", () => {
     })).rejects.toMatchObject({ code: "unsupported_sbx_version" });
 
     expect(fake.commands).toEqual([]);
+  });
+
+  it("treats an exact missing scoped policy as an idempotent stale-lease cleanup", async () => {
+    const results = await releaseCandidateSandboxNetworkPolicy({
+      sbx_path: "sbx",
+      sandbox_name: "ouro-candidate-stale",
+      owned_allow_rule_ids: ["stale-allow"],
+      owned_deny_rule_ids: [],
+      async run_command(command) {
+        if (command[2] === "log") {
+          return commandResult(command, 0, "{}\n");
+        }
+        return commandResult(
+          command,
+          1,
+          "",
+          'ERROR: remove network rule: no scoped policy found for sandbox "ouro-candidate-stale"\n'
+        );
+      }
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[1]).toMatchObject({
+      exit_code: 1,
+      stderr: expect.stringContaining("no scoped policy found")
+    });
   });
 
   it("permits only the exact injected host Gateway and removes its scoped rule", async () => {

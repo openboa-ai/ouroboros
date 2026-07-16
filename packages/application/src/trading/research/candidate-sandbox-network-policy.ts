@@ -888,11 +888,21 @@ async function removeOwnedRuleIds<Result extends CandidateSandboxNetworkCommandR
   let firstFailure: Result | undefined;
   for (const ruleId of ruleIds) {
     const cleanup = await execute(removeRuleByIdCommand(input, ruleId));
-    if (cleanup.exit_code !== 0 && !firstFailure) {
+    if (cleanup.exit_code !== 0 &&
+      !missingScopedPolicy(cleanup, input.sandbox_name) &&
+      !firstFailure) {
       firstFailure = cleanup;
     }
   }
   return firstFailure;
+}
+
+function missingScopedPolicy(
+  result: CandidateSandboxNetworkCommandResult,
+  sandboxName: string
+): boolean {
+  return result.stdout.trim() === "" && result.stderr.trim() ===
+    `ERROR: remove network rule: no scoped policy found for sandbox "${sandboxName}"`;
 }
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
