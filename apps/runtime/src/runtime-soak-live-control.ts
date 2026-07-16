@@ -34,6 +34,7 @@ import { installRuntimeShutdownHandlers } from "./runtime-shutdown";
 import { buildServer } from "./server";
 import {
   createLiveRuntimeSoakScenario,
+  LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT,
   liveRuntimeSoakControlPlan,
   recordLiveRuntimeSoakEffect,
   sandboxSamples,
@@ -316,7 +317,7 @@ async function recoverProviderAndStartPaper(config: LiveRuntimeSoakTargetConfig)
     const tick = await command(config, "arena.tick");
     return tick.operator?.candidate_arena?.latest_ticks?.[0]
       ?.created_candidate_ids?.[0];
-  }, 3);
+  }, LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT);
   await command(config, "candidate.select", { candidate_id: candidateId });
   await command(config, "trading_run.start", { candidate_id: candidateId });
   const store = new LocalStore(config.store_root);

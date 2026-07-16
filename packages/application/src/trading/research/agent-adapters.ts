@@ -66,6 +66,7 @@ export interface CodexTradingResearchAgentOptions {
 export class CodexTradingResearchAgentAdapter
 implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
   readonly agent: ManagedResearchAgent;
+  readonly session_timeout_ms: number;
   private readonly command: string;
   private readonly timeoutMs: number;
   private readonly reasoningEffort: "low" | "medium" | "high" | "xhigh";
@@ -83,6 +84,7 @@ implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
     };
     this.command = options.command ?? "codex";
     this.timeoutMs = options.timeout_ms ?? 120_000;
+    this.session_timeout_ms = this.timeoutMs;
     this.reasoningEffort = options.reasoning_effort ?? "low";
     this.env = options.env;
     this.execFile = options.execFile ?? defaultExecFileRunner;

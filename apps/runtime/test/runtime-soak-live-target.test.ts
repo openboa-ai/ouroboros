@@ -163,6 +163,12 @@ describe("live RuntimeSoakTarget", () => {
 
   it("maps every scheduled action to one bounded external operation plan", () => {
     const scenario = createLiveRuntimeSoakScenario("runtime-soak-live-001");
+    const config = targetConfig();
+    const harness = createLiveRuntimeSoakHarnessConfig(
+      config,
+      "/repo/run-runtime-soak-live-target.ts",
+      "/repo/tsx.mjs"
+    );
 
     expect(scenario.actions.map((action) => [
       action.action_id,
@@ -184,6 +190,10 @@ describe("live RuntimeSoakTarget", () => {
       ["gateway-recovery", ["gateway.unblock", "market.verify"]],
       ["terminal-cleanup", ["paper.stop", "sandbox.stop", "runtime.stop"]]
     ]);
+    expect(harness.controls["runtime-clean-restart"]?.timeout_ms).toBe(600_000);
+    expect(harness.controls["provider-recovery"]?.timeout_ms).toBe(
+      config.provider.timeout_ms * 3 + 300_000
+    );
   });
 
   it("keeps provider recovery bounded while preserving failed arena attempts", async () => {

@@ -263,6 +263,7 @@ describe("Trading research research loop MVP", () => {
     const runRoot = path.join(tmpDir, "autonomous-selected-session");
     const feedbackSurfaces: string[] = [];
     const sessionAdapter: ResearchWorkerSessionAdapter = {
+      session_timeout_ms: 600_000,
       agent: {
         id: "managed-agent-autonomous-selection",
         provider: "fixture",
@@ -270,6 +271,7 @@ describe("Trading research research loop MVP", () => {
         permission_policy: "fixture_only"
       },
       async runSession(input) {
+        expect(input.timeout_ms).toBe(600_000);
         const runPath = path.join(input.artifact_dir, "run.py");
         const source = await readFile(runPath, "utf8");
         await writeFile(

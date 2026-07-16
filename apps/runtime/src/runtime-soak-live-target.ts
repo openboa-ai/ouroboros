@@ -26,6 +26,9 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const PUBLIC_BINANCE_ORIGIN = "https://fapi.binance.com";
+export const LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT = 3;
+const CONTROL_TIMEOUT_MS = 10 * 60_000;
+const PROVIDER_RECOVERY_OVERHEAD_MS = 5 * 60_000;
 const ACTIVE_SANDBOX_STATES = new Set([
   "requested",
   "created",
@@ -133,18 +136,25 @@ export function createLiveRuntimeSoakHarnessConfig(
   tsxCli: string
 ): LiveRuntimeSoakHarnessConfig {
   const targetConfig = path.join(config.run_root, "config", "target.json");
-  const control: RuntimeSoakCommand = {
+  const control = (timeoutMs: number): RuntimeSoakCommand => ({
     argv: [process.execPath, tsxCli, entrypoint, "control", "--config", targetConfig],
     cwd: config.repo_root,
-    timeout_ms: 10 * 60_000
-  };
+    timeout_ms: timeoutMs
+  });
   const scenario = createLiveRuntimeSoakScenario(config.run_id);
+  const providerRecoveryTimeoutMs = config.provider.timeout_ms *
+    LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT + PROVIDER_RECOVERY_OVERHEAD_MS;
+  if (!Number.isSafeInteger(providerRecoveryTimeoutMs)) {
+    throw new Error("Live runtime soak provider recovery timeout is invalid.");
+  }
   return {
     version: 1,
     scenario,
     controls: Object.fromEntries(scenario.actions.map((action) => [
       action.action_id,
-      structuredClone(control)
+      control(action.action_id === "provider-recovery"
+        ? providerRecoveryTimeoutMs
+        : CONTROL_TIMEOUT_MS)
     ])),
     probe: {
       argv: [process.execPath, tsxCli, entrypoint, "probe", "--config", targetConfig],
