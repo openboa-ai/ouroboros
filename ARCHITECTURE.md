@@ -159,7 +159,8 @@ artifact digest chain. Explicit `fixture_only` materialization is deterministic 
 has no evaluation, promotion, order, private, or live authority.
 Eligible non-fixture candidates run through the Docker Sandbox adapter. Successful stop releases
 owned network policy and force-removes the Sandbox. If both stop and force removal fail, the
-Sandbox remains failed and its deny policy plus persisted lease stay in place for later cleanup.
+Sandbox remains in retryable `stopping` state and its deny policy plus persisted lease stay in
+place until a later stop completes cleanup.
 `RuntimeProcessOwnership` is the same-host process boundary for the outer runtime supervisor,
 provider children, and deterministic long-running Sandbox effects. A filesystem adapter records the
 exact host, PID start marker, executable, profile digest, runtime-supervisor, worker/store-root, or

@@ -147,8 +147,9 @@ loss, rank, strategy behavior, and candidate quality cannot degrade or block thi
   `stopped`.
 - A signal-triggered drain failure retains ownership and exits non-zero so only exact-PID
   stale-owner recovery can admit the replacement process.
-- If Docker stop and force removal both fail, preserve failed lifecycle evidence and retain the
-  deny policy plus lease while candidate execution may still exist.
+- If Docker stop and force removal both fail, preserve command failure evidence under retryable
+  `stopping` lifecycle and retain the deny policy plus lease while candidate execution may still
+  exist.
 - No lane grants promotion, order submission, private exchange access, or live authority.
 
 ## Verification

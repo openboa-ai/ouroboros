@@ -151,7 +151,8 @@ version 2 handoff, reverify its deny-default `CandidateEgressAttestation` and ar
 provider or Sandbox effects, and execute through the Docker Sandbox adapter. `fixture_only` remains
 deterministic test substrate with no downstream authority.
 Docker stop releases owned policy only after the candidate is stopped or force-removed. If both
-operations fail, failed lifecycle evidence is retained with the deny policy and lease still active.
+operations fail, command failure evidence is retained under retryable `stopping` lifecycle with
+the deny policy and lease still active until a later stop completes cleanup.
 The first cross-generation-memory control is now executable as an internal
 `ResearchMemoryControlStudy`: six or more fresh same-baseline pairs share one source, managed-agent
 identity, direction schedule, budget, and exact development/sealed opportunity. Treatment and
