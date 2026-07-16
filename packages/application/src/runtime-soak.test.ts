@@ -244,6 +244,60 @@ describe("RuntimeSoakHarness", () => {
     expect(target.actions.some((executed) => executed.action_id === action.action_id)).toBe(false);
   });
 
+  it("records the missing post-action sample before classifying resume duration exhaustion", async () => {
+    const clock = new FakeClock();
+    const journal = new MemoryJournal();
+    const scenario = healthyScenario();
+    const manifest = createRuntimeSoakManifest(scenario);
+    await journal.initialize(manifest);
+    let previous = await journal.append({
+      run_id: scenario.run_id,
+      recorded_at: clock.now(),
+      elapsed_ms: 0,
+      payload: { event_type: "run_started", scenario_digest: manifest.scenario_digest }
+    });
+    previous = await journal.append({
+      run_id: scenario.run_id,
+      recorded_at: clock.now(),
+      elapsed_ms: 0,
+      payload: { event_type: "sample_recorded", terminal: false, sample: healthySample(clock.now()) }
+    }, previous.event_digest);
+    const action = scenario.actions[0]!;
+    previous = await journal.append({
+      run_id: scenario.run_id,
+      recorded_at: clock.now(),
+      elapsed_ms: 0,
+      payload: { event_type: "action_started", action_id: action.action_id, action_kind: action.kind }
+    }, previous.event_digest);
+    await journal.append({
+      run_id: scenario.run_id,
+      recorded_at: clock.now(),
+      elapsed_ms: 0,
+      payload: {
+        event_type: "action_completed",
+        action_id: action.action_id,
+        action_kind: action.kind,
+        evidence_digest: digest(`control:${action.action_id}`)
+      }
+    }, previous.event_digest);
+    clock.advance(scenario.duration_ms + 1);
+    const target = new FakeTarget(clock, () => {
+      const sample = healthySample(clock.now());
+      sample.effects[0]!.occurrence_count = 2;
+      return sample;
+    });
+
+    const result = await harness({ clock, journal, target }).run();
+
+    expect(result).toMatchObject({
+      classification: "invariant_failed",
+      reason_code: "no_duplicate_effects",
+      failure: { subject: "effect-001" }
+    });
+    expect(target.sampleCount).toBe(1);
+    expect((await journal.history()).at(-2)?.payload.event_type).toBe("sample_recorded");
+  });
+
   it("restores a recorded invariant failure when restart preceded terminal publication", async () => {
     const clock = new FakeClock();
     const journal = new MemoryJournal();

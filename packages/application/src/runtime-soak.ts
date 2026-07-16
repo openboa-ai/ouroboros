@@ -244,9 +244,6 @@ export class RuntimeSoakHarness {
 
     const latest = this.events.at(-1);
     if (latest?.payload.event_type === "action_completed") {
-      if (this.elapsed() >= this.scenario.duration_ms) {
-        return this.finish("duration_exhausted", "scenario_duration_exhausted");
-      }
       const sampled = await this.recordSample(latest.payload.action_kind === "terminal_cleanup");
       if (sampled) return sampled;
       if (latest.payload.action_kind === "terminal_cleanup") {
