@@ -116,6 +116,7 @@ describe("RuntimeSupervisor", () => {
     const clock = new TestClock();
     const events: string[] = [];
     const paper = new ScriptedLane("selected_paper", events);
+    paper.progressDigestAfterBlock = digest("selected-paper-stopped-progress");
     paper.failures.push(
       new CodedError("paper_sandbox_unavailable"),
       new CodedError("paper_sandbox_unavailable")
@@ -383,6 +384,7 @@ class ScriptedLane implements RuntimeSupervisorLaneAdapter {
   readonly stopFailures: Error[] = [];
   basisDigest: string;
   progressDigest: string;
+  progressDigestAfterBlock?: string;
   recoverCount = 0;
   stopCount = 0;
   blockCount = 0;
@@ -421,6 +423,9 @@ class ScriptedLane implements RuntimeSupervisorLaneAdapter {
   async block(): Promise<void> {
     this.blockCount += 1;
     this.events.push(`block:${this.lane}`);
+    if (this.progressDigestAfterBlock) {
+      this.progressDigest = this.progressDigestAfterBlock;
+    }
   }
 
   async stop(): Promise<void> {

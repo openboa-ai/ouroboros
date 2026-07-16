@@ -292,7 +292,7 @@ export class RuntimeSupervisor {
       } else if (inspection.satisfied) {
         due = false;
         state = healthyLane(adapter.lane, inspection, true);
-      } else if (prior?.status === "blocked" && sameBasis && sameProgress) {
+      } else if (prior?.status === "blocked" && sameBasis) {
         due = false;
         state = structuredClone(prior);
       } else if (
