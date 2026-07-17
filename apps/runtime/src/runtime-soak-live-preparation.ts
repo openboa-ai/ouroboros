@@ -90,6 +90,8 @@ export interface LiveRuntimeSoakEnvironmentManifest {
     scenario_digest: string;
     harness_config_digest: string;
     launch_agent_digest: string;
+    node_executable_digest: string;
+    tsx_cli_digest: string;
   };
   authority: LiveRuntimeSoakTargetConfig["authority"];
   manifest_digest: string;
@@ -123,6 +125,8 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
   publicMarketProbeDigest: string;
   harnessConfigDigest: string;
   launchAgentDigest: string;
+  nodeExecutableDigest: string;
+  tsxCliDigest: string;
 }): LiveRuntimeSoakEnvironmentManifest {
   const config = parseLiveRuntimeSoakTargetConfig(input.config);
   if (!exactIso(input.frozenAt) || !GIT_OBJECT.test(input.repositoryCommit) ||
@@ -138,7 +142,9 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
       input.sandbox.preflight_digest,
       input.publicMarketProbeDigest,
       input.harnessConfigDigest,
-      input.launchAgentDigest
+      input.launchAgentDigest,
+      input.nodeExecutableDigest,
+      input.tsxCliDigest
     ].every((value) => SHA256.test(value))) {
     throw new Error("Live runtime soak environment evidence is invalid.");
   }
@@ -214,7 +220,9 @@ export function createLiveRuntimeSoakEnvironmentManifest(input: {
       config_digest: digest(JSON.stringify(config)),
       scenario_digest: digest(JSON.stringify(scenario)),
       harness_config_digest: input.harnessConfigDigest,
-      launch_agent_digest: input.launchAgentDigest
+      launch_agent_digest: input.launchAgentDigest,
+      node_executable_digest: input.nodeExecutableDigest,
+      tsx_cli_digest: input.tsxCliDigest
     },
     authority: structuredClone(config.authority)
   };
@@ -407,6 +415,10 @@ export async function prepareLiveRuntimeSoakRun(input: {
   );
   const tsxCli = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
   await Promise.all([access(entrypoint), access(tsxCli)]);
+  const [nodeExecutableDigest, tsxCliDigest] = await Promise.all([
+    digestRuntimeSoakExecutable(process.execPath),
+    digestRuntimeSoakExecutable(tsxCli)
+  ]);
   const targetConfigPath = path.join(runRoot, "config", "target.json");
   const harnessConfigPath = path.join(runRoot, "config", "harness.json");
   const manifestPath = path.join(runRoot, "environment-manifest.json");
@@ -456,7 +468,9 @@ export async function prepareLiveRuntimeSoakRun(input: {
     },
     publicMarketProbeDigest: digest(JSON.stringify(publicMarketProbe)),
     harnessConfigDigest: digest(JSON.stringify(harnessConfig)),
-    launchAgentDigest: digest(launchAgent)
+    launchAgentDigest: digest(launchAgent),
+    nodeExecutableDigest,
+    tsxCliDigest
   });
   await writeExclusiveJson(targetConfigPath, config);
   await writeExclusiveJson(harnessConfigPath, harnessConfig);

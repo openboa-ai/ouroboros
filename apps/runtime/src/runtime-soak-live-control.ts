@@ -19,6 +19,8 @@ import { BinancePublicMarketSdkAdapter } from
   "@ouroboros/adapters/binance/public-market-adapter";
 import type { GatewayMarketDataPort } from
   "@ouroboros/application/ports/market-data";
+import type { AgentProfileExecFile } from
+  "@ouroboros/application/agent/profiles";
 import { loadTradingGatewayEnvironment } from
   "@ouroboros/application/trading/gateway/environment";
 import { loadTradingResearchRuntimeConfig } from
@@ -53,6 +55,8 @@ const ACTIVE_SANDBOX_STATES = new Set([
   "requested", "created", "starting", "running", "stopping"
 ]);
 const RUN_OWNED_SANDBOX_REMOVE_ATTEMPT_LIMIT = 3;
+export const LIVE_RUNTIME_SOAK_GATEWAY_FAILURE_REASON =
+  "market data unavailable: runtime_soak_gateway_unavailable";
 
 export async function executeLiveRuntimeSoakControl(
   config: LiveRuntimeSoakTargetConfig,
@@ -131,6 +135,7 @@ export async function serveLiveRuntimeSoakRuntime(
     repoRoot: config.repo_root,
     tradingGatewayEnvironment: baseline,
     marketDataPort: marketData,
+    agentProfileExecFile: liveRuntimeSoakAgentProfileExecFile(config.provider.command),
     tradingResearchRuntimeConfig: loadTradingResearchRuntimeConfig({
       ...process.env,
       OUROBOROS_TRADING_RESEARCH_AGENT: "codex",
@@ -170,12 +175,23 @@ export function applyLiveRuntimeSoakSandboxHome(
   if (home) environment.OUROBOROS_SBX_HOME = home;
 }
 
+export function liveRuntimeSoakAgentProfileExecFile(
+  providerCommand: string,
+  execute: AgentProfileExecFile = execFileAsync as AgentProfileExecFile
+): AgentProfileExecFile {
+  return (file, args, options) => execute(
+    file === "codex" ? providerCommand : file,
+    args,
+    options
+  );
+}
+
 function faultGatedMarketData(
   delegate: BinancePublicMarketSdkAdapter,
   gateFile: string
 ): GatewayMarketDataPort {
   const guard = async () => {
-    if (await exists(gateFile)) throw new Error("runtime_soak_gateway_unavailable");
+    if (await exists(gateFile)) throw new Error(LIVE_RUNTIME_SOAK_GATEWAY_FAILURE_REASON);
   };
   return {
     provider_kind: delegate.provider_kind,
@@ -497,16 +513,7 @@ async function resetSelectedSandbox(
     }
   }
   await cleanupRunOwnedSandboxes(config);
-  await waitFor(async () => {
-    const current = (await store.listSandboxes()).filter((sandbox) =>
-      sandbox.system_code_ref.id === systemCodeId
-    );
-    const names = new Set(current.map((sandbox) => sandbox.sandbox_name));
-    const daemonSandboxes = await readLiveRuntimeSoakSbxSandboxes(config);
-    return current.length > 0 && current.every((sandbox) =>
-      sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed"
-    ) && daemonSandboxes.every((sandbox) => !names.has(sandbox.name));
-  }, 180_000, 1_000);
+  await waitFor(() => selectedSandboxTerminal(config, systemCodeId), 180_000, 1_000);
 }
 
 async function injectGatewayLoss(config: LiveRuntimeSoakTargetConfig): Promise<void> {
@@ -518,6 +525,17 @@ async function injectGatewayLoss(config: LiveRuntimeSoakTargetConfig): Promise<v
     );
     return !response.ok || response.body?.refresh_status === "failed";
   }, 45_000, 2_000);
+  const selection = await readSelection(config);
+  const candidate = await new LocalStore(config.store_root).getCandidate(selection.candidate_id);
+  const tradingRunId = candidate?.trading_run?.ref.id;
+  if (!tradingRunId) throw new Error("Selected candidate has no TradingRun for Gateway loss.");
+  await waitFor(async () => {
+    const store = new LocalStore(config.store_root);
+    const evaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    return evaluation?.status === "failed" &&
+      evaluation.latest_failure_reason?.includes("runtime_soak_gateway_unavailable") === true &&
+      await selectedSandboxTerminal(config, selection.system_code_id);
+  }, 180_000, 1_000);
 }
 
 async function recoverGateway(config: LiveRuntimeSoakTargetConfig): Promise<void> {
@@ -529,6 +547,21 @@ async function recoverGateway(config: LiveRuntimeSoakTargetConfig): Promise<void
     );
     return response.ok && response.body?.refresh_status === "recorded";
   }, 45_000, 2_000);
+  await recoverSandbox(config);
+}
+
+async function selectedSandboxTerminal(
+  config: LiveRuntimeSoakTargetConfig,
+  systemCodeId: string
+): Promise<boolean> {
+  const current = (await new LocalStore(config.store_root).listSandboxes()).filter((sandbox) =>
+    sandbox.system_code_ref.id === systemCodeId
+  );
+  const names = new Set(current.map((sandbox) => sandbox.sandbox_name));
+  const daemonSandboxes = await readLiveRuntimeSoakSbxSandboxes(config);
+  return current.length > 0 && current.every((sandbox) =>
+    sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed"
+  ) && daemonSandboxes.every((sandbox) => !names.has(sandbox.name));
 }
 
 async function terminalCleanup(config: LiveRuntimeSoakTargetConfig): Promise<void> {

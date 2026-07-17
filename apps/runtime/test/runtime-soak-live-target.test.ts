@@ -9,6 +9,8 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { probeAgentProfile, setupAgentProfile } from
   "@ouroboros/application/agent/profiles";
+import { classifyPaperTradingFailure } from
+  "@ouroboros/application/trading/paper/failures";
 import type { LedgerChainReadModel } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
@@ -19,6 +21,7 @@ import {
   liveRuntimeSoakControlPlan,
   liveRuntimeSoakSandboxEnvironment,
   liveRuntimeSoakSelectedSandboxResource,
+  expectedSelectedSandboxStatus,
   paperObservationStreams,
   parseLiveRuntimeSoakTargetConfig,
   recordLiveRuntimeSoakEffect,
@@ -35,6 +38,8 @@ import {
 } from "../src/runtime-soak-live-preparation.js";
 import {
   applyLiveRuntimeSoakSandboxHome,
+  LIVE_RUNTIME_SOAK_GATEWAY_FAILURE_REASON,
+  liveRuntimeSoakAgentProfileExecFile,
   reconcileRuntimeOwnershipRecords,
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
@@ -45,6 +50,7 @@ import {
 } from
   "../src/runtime-soak-live-control.js";
 import {
+  executeFrozenLiveRuntimeSoakControl,
   liveRuntimeSoakLaunchCompletion,
   runLiveRuntimeSoakTargetCommand,
   runtimeSoakLogMessage
@@ -169,6 +175,59 @@ describe("live RuntimeSoakTarget", () => {
       HOME: "/operator/home",
       OUROBOROS_SBX_BIN: "/configured/sbx"
     });
+  });
+
+  it("binds runtime profile probes to the configured provider executable", async () => {
+    const commands: string[] = [];
+    const execute = liveRuntimeSoakAgentProfileExecFile(
+      "/configured/codex",
+      async (file, args) => {
+        commands.push([file, ...args].join(" "));
+        return { stdout: "", stderr: "" };
+      }
+    );
+
+    await execute("codex", ["--version"]);
+    await execute("claude", ["--version"]);
+
+    expect(commands).toEqual([
+      "/configured/codex --version",
+      "claude --version"
+    ]);
+  });
+
+  it("verifies frozen bindings before every effectful control", async () => {
+    const calls: string[] = [];
+
+    await executeFrozenLiveRuntimeSoakControl({
+      verify: async () => { calls.push("verify"); },
+      execute: async () => { calls.push("execute"); }
+    });
+    expect(calls).toEqual(["verify", "execute"]);
+
+    calls.length = 0;
+    await expect(executeFrozenLiveRuntimeSoakControl({
+      verify: async () => {
+        calls.push("verify");
+        throw new Error("frozen binding changed");
+      },
+      execute: async () => { calls.push("execute"); }
+    })).rejects.toThrow(/frozen binding changed/i);
+    expect(calls).toEqual(["verify"]);
+  });
+
+  it("models intentional Gateway loss as a restartable terminal paper interval", () => {
+    expect(classifyPaperTradingFailure(LIVE_RUNTIME_SOAK_GATEWAY_FAILURE_REASON))
+      .toMatchObject({ failure_kind: "market_data_gap" });
+    expect(expectedSelectedSandboxStatus([
+      { effect_id: "provider-recovery", occurrence_count: 1 },
+      { effect_id: "gateway-unavailable", occurrence_count: 1 }
+    ])).toBe("terminal");
+    expect(expectedSelectedSandboxStatus([
+      { effect_id: "provider-recovery", occurrence_count: 1 },
+      { effect_id: "gateway-unavailable", occurrence_count: 1 },
+      { effect_id: "gateway-recovery", occurrence_count: 1 }
+    ])).toBe("active");
   });
 
   it("rejects repository changes made after the frozen commit", async () => {
@@ -336,8 +395,13 @@ describe("live RuntimeSoakTarget", () => {
       ["provider-recovery", ["arena.tick", "paper.start", "egress.verify"]],
       ["sandbox-loss", ["sandbox.generated.remove", "sandbox.refresh"]],
       ["sandbox-recovery", ["paper.stop", "sandbox.reset", "paper.start", "sandbox.verify"]],
-      ["gateway-unavailable", ["gateway.block", "gateway.verify"]],
-      ["gateway-recovery", ["gateway.unblock", "market.verify"]],
+      ["gateway-unavailable", [
+        "gateway.block", "gateway.verify", "paper.failure.verify", "sandbox.stop.verify"
+      ]],
+      ["gateway-recovery", [
+        "gateway.unblock", "market.verify", "paper.stop", "sandbox.reset",
+        "paper.start", "sandbox.verify"
+      ]],
       ["terminal-cleanup", [
         "paper.stop", "sandbox.stop", "runtime.stop", "sandbox.run-owned.cleanup"
       ]]
@@ -618,6 +682,8 @@ describe("live RuntimeSoakTarget", () => {
         auth_digest: digest("raw-auth-never-persisted"),
         profile_digest: digest("managed-profile")
       },
+      nodeExecutableDigest: digest("node-executable"),
+      tsxCliDigest: digest("tsx-cli"),
       sandbox: {
         command: "/opt/homebrew/bin/sbx",
         version: "sbx version: v0.35.0",
@@ -647,6 +713,10 @@ describe("live RuntimeSoakTarget", () => {
         gateway_owner: "MarketDataPort",
         source_origin: "https://fapi.binance.com",
         sandbox_gateway_host: "host.docker.internal"
+      },
+      target: {
+        node_executable_digest: digest("node-executable"),
+        tsx_cli_digest: digest("tsx-cli")
       },
       authority: config.authority
     });
@@ -776,6 +846,8 @@ function environmentManifest(config: ReturnType<typeof targetConfig>) {
       auth_digest: digest("auth"),
       profile_digest: digest("profile")
     },
+    nodeExecutableDigest: digest("node-executable"),
+    tsxCliDigest: digest("tsx-cli"),
     sandbox: {
       command: config.sandbox.command,
       version: "sbx version: v0.35.0",

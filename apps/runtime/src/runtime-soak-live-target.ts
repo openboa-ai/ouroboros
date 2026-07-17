@@ -153,8 +153,13 @@ export function liveRuntimeSoakControlPlan(action: RuntimeSoakAction): string[] 
     "provider-recovery": ["arena.tick", "paper.start", "egress.verify"],
     "sandbox-loss": ["sandbox.generated.remove", "sandbox.refresh"],
     "sandbox-recovery": ["paper.stop", "sandbox.reset", "paper.start", "sandbox.verify"],
-    "gateway-unavailable": ["gateway.block", "gateway.verify"],
-    "gateway-recovery": ["gateway.unblock", "market.verify"],
+    "gateway-unavailable": [
+      "gateway.block", "gateway.verify", "paper.failure.verify", "sandbox.stop.verify"
+    ],
+    "gateway-recovery": [
+      "gateway.unblock", "market.verify", "paper.stop", "sandbox.reset",
+      "paper.start", "sandbox.verify"
+    ],
     "terminal-cleanup": [
       "paper.stop", "sandbox.stop", "runtime.stop", "sandbox.run-owned.cleanup"
     ]
@@ -413,11 +418,13 @@ export function sandboxSamples(
   });
 }
 
-function expectedSelectedSandboxStatus(
+export function expectedSelectedSandboxStatus(
   effects: RuntimeSoakSample["effects"]
 ): "active" | "terminal" | undefined {
   const completed = new Set(effects.map((effect) => effect.effect_id));
   if (completed.has("terminal-cleanup")) return "terminal";
+  if (completed.has("gateway-recovery")) return "active";
+  if (completed.has("gateway-unavailable")) return "terminal";
   if (completed.has("sandbox-recovery")) return "active";
   if (completed.has("sandbox-loss")) return "terminal";
   if (completed.has("provider-recovery")) return "active";

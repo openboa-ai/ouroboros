@@ -68,7 +68,10 @@ export async function runLiveRuntimeSoakTargetCommand(
     if (!canonical(actionId) || environment.OUROBOROS_SOAK_RUN_ID !== config.run_id) {
       throw new Error("Runtime soak control requires exact harness action metadata.");
     }
-    await executeLiveRuntimeSoakControl(config, actionId, entrypoint, tsxCli);
+    await executeFrozenLiveRuntimeSoakControl({
+      verify: () => assertFrozenControlBindings(config, verified.manifest),
+      execute: () => executeLiveRuntimeSoakControl(config, actionId, entrypoint, tsxCli)
+    });
     io.stdout(JSON.stringify({ run_id: config.run_id, action_id: actionId, status: "completed" }));
     return { exitCode: 0 };
   }
@@ -109,6 +112,14 @@ export async function runLiveRuntimeSoakTargetCommand(
   const completion = liveRuntimeSoakLaunchCompletion(config.run_id, result);
   io.stdout(JSON.stringify(completion.output));
   return { exitCode: completion.exitCode };
+}
+
+export async function executeFrozenLiveRuntimeSoakControl(input: {
+  verify(): Promise<void>;
+  execute(): Promise<void>;
+}): Promise<void> {
+  await input.verify();
+  await input.execute();
 }
 
 export function liveRuntimeSoakLaunchCompletion(
@@ -183,6 +194,31 @@ async function assertFrozenLaunchBindings(
   config: LiveRuntimeSoakTargetConfig,
   manifest: LiveRuntimeSoakEnvironmentManifest
 ): Promise<void> {
+  await assertFrozenControlBindings(config, manifest);
+  const store = new LocalStore(config.store_root);
+  const profile = await store.getAgentProfile("codex");
+  if (!profile) throw new Error("Managed Codex profile is missing.");
+  const [providerProfile, sandboxEvidence] = await Promise.all([
+    probeAgentProfile({ store, profileId: "codex", command: config.provider.command }),
+    collectLiveRuntimeSoakSandboxEvidence({
+      repoRoot: config.repo_root,
+      command: config.sandbox.command,
+      home: config.sandbox.home
+    })
+  ]);
+  if (providerProfile.version !== manifest.provider.version ||
+    digest(JSON.stringify(providerProfile)) !== manifest.provider.profile_digest ||
+    sandboxEvidence.version !== manifest.sandbox.version ||
+    sandboxEvidence.diagnose_digest !== manifest.sandbox.diagnose_digest ||
+    sandboxEvidence.preflight_digest !== manifest.sandbox.preflight_digest) {
+    throw new Error("Runtime soak launch binding differs from its frozen manifest.");
+  }
+}
+
+async function assertFrozenControlBindings(
+  config: LiveRuntimeSoakTargetConfig,
+  manifest: LiveRuntimeSoakEnvironmentManifest
+): Promise<void> {
   const harness = JSON.parse(await readFile(
     path.join(config.run_root, "config", "harness.json"),
     "utf8"
@@ -191,38 +227,27 @@ async function assertFrozenLaunchBindings(
     path.join(config.run_root, "launch-agent.plist"),
     "utf8"
   );
-  const store = new LocalStore(config.store_root);
-  const profile = await store.getAgentProfile("codex");
+  const profile = await new LocalStore(config.store_root).getAgentProfile("codex");
   if (!profile) throw new Error("Managed Codex profile is missing.");
   const auth = await readFile(path.join(profile.managed_provider_home, "auth.json"));
-  const [
-    repository,
-    providerProfile,
-    providerExecutableDigest,
-    sandboxEvidence,
-    sandboxExecutableDigest
-  ] = await Promise.all([
+  const tsxCli = path.join(config.repo_root, "node_modules", "tsx", "dist", "cli.mjs");
+  const [repository, providerDigest, sandboxDigest, nodeDigest, tsxDigest] = await Promise.all([
     inspectCleanRuntimeSoakRepository(config.repo_root),
-    probeAgentProfile({ store, profileId: "codex", command: config.provider.command }),
     digestRuntimeSoakExecutable(config.provider.command),
-    collectLiveRuntimeSoakSandboxEvidence({
-      repoRoot: config.repo_root,
-      command: config.sandbox.command,
-      home: config.sandbox.home
-    }),
-    digestRuntimeSoakExecutable(config.sandbox.command)
+    digestRuntimeSoakExecutable(config.sandbox.command),
+    digestRuntimeSoakExecutable(process.execPath),
+    digestRuntimeSoakExecutable(tsxCli)
   ]);
   if (digest(JSON.stringify(harness)) !== manifest.target.harness_config_digest ||
     digest(launchAgent) !== manifest.target.launch_agent_digest ||
     repository.commit !== manifest.repository.commit ||
     repository.tree !== manifest.repository.tree ||
     digest(auth) !== manifest.provider.auth_digest ||
-    providerExecutableDigest !== manifest.provider.executable_digest ||
-    providerProfile.version !== manifest.provider.version ||
-    digest(JSON.stringify(providerProfile)) !== manifest.provider.profile_digest ||
-    sandboxExecutableDigest !== manifest.sandbox.executable_digest ||
-    sandboxEvidence.version !== manifest.sandbox.version) {
-    throw new Error("Runtime soak launch binding differs from its frozen manifest.");
+    providerDigest !== manifest.provider.executable_digest ||
+    sandboxDigest !== manifest.sandbox.executable_digest ||
+    nodeDigest !== manifest.target.node_executable_digest ||
+    tsxDigest !== manifest.target.tsx_cli_digest) {
+    throw new Error("Runtime soak control binding differs from its frozen manifest.");
   }
 }
 
