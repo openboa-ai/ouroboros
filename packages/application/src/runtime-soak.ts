@@ -67,6 +67,7 @@ export interface RuntimeSoakSample {
     resource_id: string;
     resource_kind: string;
     status: "active" | "stopping" | "terminal";
+    expected_status?: "active" | "terminal";
   }>;
 }
 
@@ -77,6 +78,7 @@ export type RuntimeSoakInvariantKind =
   | "bounded_retries"
   | "no_order_continuity"
   | "egress_attestation"
+  | "required_resource_state"
   | "terminal_cleanup";
 
 export interface RuntimeSoakInvariantFailure {
@@ -530,6 +532,27 @@ export function evaluateRuntimeSoakInvariants(
       return failure("egress_attestation", sandbox.sandbox_id, "active generated Sandbox lacks verified v2 attestation");
     }
   }
+  if (!options.terminal) {
+    const resourceIds = new Set<string>();
+    for (const resource of sample.resources) {
+      if (resourceIds.has(resource.resource_id)) {
+        return failure(
+          "required_resource_state",
+          resource.resource_id,
+          "required resource identity is duplicated"
+        );
+      }
+      resourceIds.add(resource.resource_id);
+      if (resource.expected_status !== undefined &&
+        resource.status !== resource.expected_status) {
+        return failure(
+          "required_resource_state",
+          resource.resource_id,
+          `required resource is ${resource.status}; expected ${resource.expected_status}`
+        );
+      }
+    }
+  }
   if (options.terminal) {
     const owner = sample.ownership.find((item) => item.active_owner_count !== 0);
     const resource = sample.resources.find((item) => item.status !== "terminal");
@@ -601,7 +624,10 @@ export function parseRuntimeSoakSample(value: unknown): RuntimeSoakSample {
     resources: value.resources.map((item) => ({
       resource_id: item.resource_id,
       resource_kind: item.resource_kind,
-      status: item.status
+      status: item.status,
+      ...(item.expected_status === undefined
+        ? {}
+        : { expected_status: item.expected_status })
     }))
   };
 }
@@ -700,7 +726,9 @@ function sampleShape(value: unknown): value is RuntimeSoakSample {
       (item.egress_attestation_version === undefined || positiveInteger(item.egress_attestation_version)) &&
       (item.egress_attestation_status === undefined || ["verified", "missing", "invalid"].includes(String(item.egress_attestation_status)))) &&
     resources.every((item) => object(item) && canonical(item.resource_id) && canonical(item.resource_kind) &&
-      ["active", "stopping", "terminal"].includes(String(item.status)));
+      ["active", "stopping", "terminal"].includes(String(item.status)) &&
+      (item.expected_status === undefined ||
+        ["active", "terminal"].includes(String(item.expected_status))));
 }
 
 function actionShape(value: unknown): value is RuntimeSoakAction {

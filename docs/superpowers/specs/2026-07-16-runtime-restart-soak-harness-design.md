@@ -124,9 +124,12 @@ harness checks a fixed infrastructure protocol, not TradingSystem behavior:
 5. `no_order_continuity`: paper observation sequences are contiguous and zero-order observations
    explicitly record no-order continuity;
 6. `egress_attestation`: active provider-generated Sandboxes carry verified version 2 attestation;
-7. `terminal_cleanup`: the final sample has no active owner, nonterminal resource, or active
+7. `required_resource_state`: each nonterminal required resource matches its declared active or
+   terminal state, including selected paper Sandbox agreement between LocalStore and the `sbx`
+   daemon;
+8. `terminal_cleanup`: the final sample has no active owner, nonterminal resource, or active
    Sandbox; and
-8. `sample_contract`: malformed or incomplete probe output is a target failure before authority is
+9. `sample_contract`: malformed or incomplete probe output is a target failure before authority is
    inferred.
 
 Invariant priority is stable. The first failed invariant is appended to the report and immediately

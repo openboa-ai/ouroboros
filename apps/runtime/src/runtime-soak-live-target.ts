@@ -80,6 +80,29 @@ export interface LiveRuntimeSoakTargetConfig {
   };
 }
 
+export interface LiveRuntimeSoakDaemonSandbox {
+  name: string;
+  status: string;
+  workspaces: string[];
+}
+
+export function liveRuntimeSoakSandboxEnvironment(
+  command: string,
+  home: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const configured: NodeJS.ProcessEnv = {
+    ...environment,
+    OUROBOROS_SBX_BIN: command
+  };
+  delete configured.OUROBOROS_SBX_HOME;
+  if (home) {
+    configured.HOME = home;
+    configured.OUROBOROS_SBX_HOME = home;
+  }
+  return configured;
+}
+
 export function createLiveRuntimeSoakScenario(runId: string): RuntimeSoakScenario {
   return {
     version: 1,
@@ -222,6 +245,15 @@ export async function buildLiveRuntimeSoakSample(
     new FileSystemRuntimeSupervisorCheckpointStore(config.store_root).latest(),
     readResources(config)
   ]);
+  const expectedSandboxStatus = expectedSelectedSandboxStatus(effects);
+  const selectedSandboxResource = expectedSandboxStatus === undefined
+    ? []
+    : [liveRuntimeSoakSelectedSandboxResource({
+        systemCodeId: await readSelectedSystemCodeId(config),
+        expectedStatus: expectedSandboxStatus,
+        sandboxes,
+        daemonSandboxes: await readLiveRuntimeSoakSbxSandboxes(config)
+      })];
   return parseRuntimeSoakSample({
     version: 1,
     sampled_at: new Date().toISOString(),
@@ -242,8 +274,59 @@ export async function buildLiveRuntimeSoakSample(
     })) ?? [],
     paper_observations: paperObservationStreams(observations),
     sandboxes: sandboxSamples(sandboxes, conformances),
-    resources
+    resources: [...resources, ...selectedSandboxResource]
   });
+}
+
+export async function readLiveRuntimeSoakSbxSandboxes(
+  config: LiveRuntimeSoakTargetConfig
+): Promise<LiveRuntimeSoakDaemonSandbox[]> {
+  const { stdout } = await execFileAsync(config.sandbox.command, ["ls", "--json"], {
+    cwd: config.repo_root,
+    env: liveRuntimeSoakSandboxEnvironment(config.sandbox.command, config.sandbox.home),
+    timeout: 20_000,
+    maxBuffer: 2 * 1024 * 1024,
+    encoding: "utf8"
+  });
+  return parseLiveRuntimeSoakDaemonSandboxes(JSON.parse(String(stdout)));
+}
+
+export function liveRuntimeSoakSelectedSandboxResource(input: {
+  systemCodeId: string;
+  expectedStatus: "active" | "terminal";
+  sandboxes: Array<{
+    sandbox_id: string;
+    sandbox_name: string;
+    system_code_ref: { id: string };
+    lifecycle_status: string;
+  }>;
+  daemonSandboxes: LiveRuntimeSoakDaemonSandbox[];
+}): RuntimeSoakSample["resources"][number] {
+  if (!canonical(input.systemCodeId)) {
+    throw new Error("Live runtime soak selected SystemCode ID is invalid.");
+  }
+  const candidates = input.sandboxes.filter((item) =>
+    item.system_code_ref.id === input.systemCodeId
+  );
+  const daemonFor = (sandbox: typeof candidates[number]) =>
+    input.daemonSandboxes.find((item) => item.name === sandbox.sandbox_name);
+  const sandbox = candidates.find((item) =>
+    item.lifecycle_status === "running" && daemonFor(item)?.status === "running"
+  ) ?? candidates.find((item) => daemonFor(item) !== undefined) ?? candidates.at(-1);
+  const daemonSandbox = sandbox
+    ? daemonFor(sandbox)
+    : undefined;
+  const status = !daemonSandbox
+    ? "terminal" as const
+    : sandbox?.lifecycle_status === "running" && daemonSandbox.status === "running"
+      ? "active" as const
+      : "stopping" as const;
+  return {
+    resource_id: sandbox?.sandbox_id ?? `selected-paper-sandbox:${input.systemCodeId}`,
+    resource_kind: "selected_paper_sandbox",
+    status,
+    expected_status: input.expectedStatus
+  };
 }
 
 export function parseLiveRuntimeSoakTargetConfig(
@@ -328,6 +411,54 @@ export function sandboxSamples(
         : {})
     };
   });
+}
+
+function expectedSelectedSandboxStatus(
+  effects: RuntimeSoakSample["effects"]
+): "active" | "terminal" | undefined {
+  const completed = new Set(effects.map((effect) => effect.effect_id));
+  if (completed.has("terminal-cleanup")) return "terminal";
+  if (completed.has("sandbox-recovery")) return "active";
+  if (completed.has("sandbox-loss")) return "terminal";
+  if (completed.has("provider-recovery")) return "active";
+  return undefined;
+}
+
+function parseLiveRuntimeSoakDaemonSandboxes(
+  value: unknown
+): LiveRuntimeSoakDaemonSandbox[] {
+  if (!record(value) || !Array.isArray(value.sandboxes) ||
+    value.sandboxes.length > 4_096) {
+    throw new Error("Live runtime soak Sandbox list response is invalid.");
+  }
+  return value.sandboxes.map((sandbox) => {
+    if (!record(sandbox) || !canonical(sandbox.name) ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(sandbox.name) ||
+      !canonical(sandbox.status) || !Array.isArray(sandbox.workspaces) ||
+      sandbox.workspaces.length > 64 || sandbox.workspaces.some((workspace) =>
+        typeof workspace !== "string" || workspace.length > 4_096 ||
+        !path.isAbsolute(workspace)
+      )) {
+      throw new Error("Live runtime soak Sandbox list response is invalid.");
+    }
+    return {
+      name: sandbox.name,
+      status: sandbox.status,
+      workspaces: [...sandbox.workspaces] as string[]
+    };
+  });
+}
+
+async function readSelectedSystemCodeId(
+  config: LiveRuntimeSoakTargetConfig
+): Promise<string> {
+  const value = await readJson(path.join(config.state_root, "selection.json"));
+  if (!record(value) || !exactKeys(value, ["version", "candidate_id", "system_code_id"]) ||
+    value.version !== 1 || !canonical(value.candidate_id) ||
+    !canonical(value.system_code_id)) {
+    throw new Error("Live runtime soak selection state is invalid.");
+  }
+  return value.system_code_id;
 }
 
 async function readEffects(

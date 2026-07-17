@@ -148,7 +148,8 @@ not prove long-duration autonomy, real-provider research quality, economic impro
 multi-host deployment.
 The authority-free `RuntimeSoakHarness` now provides the reusable validation protocol above that
 substrate. It executes one time-bounded restart and dependency-fault schedule, checks duplicate,
-chain, ownership, retry, no-order, egress, and terminal-cleanup invariants, and persists an immutable
+chain, ownership, retry, no-order, egress, required-resource, and terminal-cleanup invariants, and
+persists an immutable
 digest-linked report across harness restarts. A short deterministic fixture proves all terminal
 classifications and no-replay recovery. This is direct evidence that the test environment can run;
 it is not the production-duration soak, deployed always-on evidence, or longitudinal-autonomy pass.

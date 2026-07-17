@@ -110,7 +110,8 @@ it does not constitute a production-duration soak, multi-host fencing, deployed 
 improvement.
 An external `RuntimeSoakHarness` now makes that next validation step executable. One immutable
 scenario injects the complete restart and dependency-fault matrix through configurable shell-free
-argv controls, evaluates normalized ownership, retry, continuity, egress, and cleanup invariants,
+argv controls, evaluates normalized ownership, retry, continuity, egress, required-resource, and
+cleanup invariants,
 and appends one authority-free digest chain. Resume preserves elapsed time and first-failure
 evidence without replaying completed effects. Deterministic CI proves the protocol and report
 classifications; OURO-189 still owns an actual production-duration run and retained evidence.

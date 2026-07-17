@@ -38,6 +38,9 @@ import {
   LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT,
   liveProviderRecoveryTimeoutMs,
   liveRuntimeSoakControlPlan,
+  liveRuntimeSoakSandboxEnvironment,
+  liveRuntimeSoakSelectedSandboxResource,
+  readLiveRuntimeSoakSbxSandboxes,
   recordLiveRuntimeSoakEffect,
   sandboxSamples,
   type LiveRuntimeSoakTargetConfig
@@ -409,8 +412,41 @@ async function injectSandboxLoss(config: LiveRuntimeSoakTargetConfig): Promise<v
 
 async function recoverSandbox(config: LiveRuntimeSoakTargetConfig): Promise<void> {
   const selection = await readSelection(config);
-  await command(config, "trading_run.start", { candidate_id: selection.candidate_id });
-  await waitFor(() => generatedSandboxVerified(config, selection.system_code_id), 180_000);
+  const candidate = await new LocalStore(config.store_root).getCandidate(selection.candidate_id);
+  const tradingRunId = candidate?.trading_run?.ref.id;
+  if (!tradingRunId) {
+    throw new Error("Selected candidate has no TradingRun to recover.");
+  }
+  await restartLiveRuntimeSoakPaper({
+    tradingRunId,
+    candidateId: selection.candidate_id,
+    stop: async (id) => {
+      await command(config, "trading_run.stop", { trading_run_id: id });
+    },
+    start: async (id) => {
+      await command(config, "trading_run.start", { candidate_id: id });
+    },
+    waitForVerified: () => waitFor(
+      () => generatedSandboxVerified(config, selection.system_code_id),
+      180_000,
+      1_000
+    )
+  });
+}
+
+export async function restartLiveRuntimeSoakPaper(input: {
+  tradingRunId: string;
+  candidateId: string;
+  stop(tradingRunId: string): Promise<void>;
+  start(candidateId: string): Promise<void>;
+  waitForVerified(): Promise<void>;
+}): Promise<void> {
+  if (!input.tradingRunId.trim() || !input.candidateId.trim()) {
+    throw new Error("Live runtime soak PaperTrading recovery identity is invalid.");
+  }
+  await input.stop(input.tradingRunId);
+  await input.start(input.candidateId);
+  await input.waitForVerified();
 }
 
 async function injectGatewayLoss(config: LiveRuntimeSoakTargetConfig): Promise<void> {
@@ -483,11 +519,21 @@ async function generatedSandboxVerified(
   systemCodeId: string
 ): Promise<boolean> {
   const store = new LocalStore(config.store_root);
+  const sandboxes = (await store.listSandboxes()).filter((item) =>
+    item.system_code_ref.id === systemCodeId
+  );
   const samples = sandboxSamples(
-    (await store.listSandboxes()).filter((item) => item.system_code_ref.id === systemCodeId),
+    sandboxes,
     await store.listPaperTradingHandoffConformances()
   );
-  return samples.some((sample) => sample.lifecycle_status === "running" &&
+  const resource = liveRuntimeSoakSelectedSandboxResource({
+    systemCodeId,
+    expectedStatus: "active",
+    sandboxes,
+    daemonSandboxes: await readLiveRuntimeSoakSbxSandboxes(config)
+  });
+  return resource.status === "active" && samples.some((sample) =>
+    sample.lifecycle_status === "running" &&
     sample.egress_attestation_version === 2 &&
     sample.egress_attestation_status === "verified");
 }
@@ -648,7 +694,7 @@ function ownershipIdentity(record: RuntimeProcessOwnershipRecord) {
 async function runSbx(config: LiveRuntimeSoakTargetConfig, args: string[]): Promise<void> {
   await execFileAsync(config.sandbox.command, args, {
     cwd: config.repo_root,
-    env: { ...process.env, ...(config.sandbox.home ? { HOME: config.sandbox.home } : {}) },
+    env: liveRuntimeSoakSandboxEnvironment(config.sandbox.command, config.sandbox.home),
     timeout: 120_000,
     maxBuffer: 2 * 1024 * 1024
   });
@@ -682,20 +728,31 @@ async function cleanupRunOwnedSandboxes(config: LiveRuntimeSoakTargetConfig): Pr
 async function listRunOwnedSandboxes(config: LiveRuntimeSoakTargetConfig): Promise<string[]> {
   const { stdout } = await execFileAsync(config.sandbox.command, ["ls", "--json"], {
     cwd: config.repo_root,
-    env: { ...process.env, ...(config.sandbox.home ? { HOME: config.sandbox.home } : {}) },
+    env: liveRuntimeSoakSandboxEnvironment(config.sandbox.command, config.sandbox.home),
     timeout: 120_000,
     maxBuffer: 2 * 1024 * 1024,
     encoding: "utf8"
   });
-  return runOwnedSandboxNames(JSON.parse(stdout), config.run_root);
+  const recordedNames = (await new LocalStore(config.store_root).listSandboxes()).map(
+    (sandbox) => sandbox.sandbox_name
+  );
+  return runOwnedSandboxNames(JSON.parse(stdout), config.run_root, recordedNames);
 }
 
-export function runOwnedSandboxNames(value: unknown, runRoot: string): string[] {
+export function runOwnedSandboxNames(
+  value: unknown,
+  runRoot: string,
+  recordedNames: readonly string[] = []
+): string[] {
   if (!isRecord(value) || !Array.isArray(value.sandboxes) ||
-    value.sandboxes.length > 4_096 || !path.isAbsolute(runRoot)) {
+    value.sandboxes.length > 4_096 || !path.isAbsolute(runRoot) ||
+    recordedNames.length > 4_096 || recordedNames.some((name) =>
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)
+    )) {
     throw new Error("Sandbox list response is invalid.");
   }
   const root = path.resolve(runRoot);
+  const recorded = new Set(recordedNames);
   const names = new Set<string>();
   for (const sandbox of value.sandboxes) {
     if (!isRecord(sandbox) || typeof sandbox.name !== "string" ||
@@ -707,7 +764,8 @@ export function runOwnedSandboxNames(value: unknown, runRoot: string): string[] 
       )) {
       throw new Error("Sandbox list response is invalid.");
     }
-    if (sandbox.workspaces.some((workspace) => pathInside(root, workspace as string))) {
+    if (recorded.has(sandbox.name) ||
+      sandbox.workspaces.some((workspace) => pathInside(root, workspace as string))) {
       names.add(sandbox.name);
     }
   }

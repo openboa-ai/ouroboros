@@ -19,6 +19,7 @@ import { LocalStore } from "@ouroboros/local-store";
 import {
   createLiveRuntimeSoakHarnessConfig,
   createLiveRuntimeSoakScenario,
+  liveRuntimeSoakSandboxEnvironment,
   parseLiveRuntimeSoakTargetConfig,
   type LiveRuntimeSoakTargetConfig
 } from "./runtime-soak-live-target";
@@ -498,23 +499,6 @@ export async function inspectCleanRuntimeSoakRepository(repoRoot: string): Promi
     throw new Error("Live runtime soak repository identity is invalid.");
   }
   return { commit, tree };
-}
-
-export function liveRuntimeSoakSandboxEnvironment(
-  command: string,
-  home: string | undefined,
-  environment: NodeJS.ProcessEnv = process.env
-): NodeJS.ProcessEnv {
-  const configured: NodeJS.ProcessEnv = {
-    ...environment,
-    OUROBOROS_SBX_BIN: command
-  };
-  delete configured.OUROBOROS_SBX_HOME;
-  if (home) {
-    configured.HOME = home;
-    configured.OUROBOROS_SBX_HOME = home;
-  }
-  return configured;
 }
 
 export async function collectLiveRuntimeSoakSandboxEvidence(input: {

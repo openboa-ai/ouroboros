@@ -386,6 +386,17 @@ describe("RuntimeSoak invariants", () => {
     expect(evaluateRuntimeSoakInvariants(sample, { terminal: true })).toMatchObject({ kind });
   });
 
+  it("fails when a required nonterminal resource is not in its expected state", () => {
+    const sample = healthySample("2026-07-16T00:00:00.000Z");
+    sample.resources[0]!.status = "terminal";
+    sample.resources[0]!.expected_status = "active";
+
+    expect(evaluateRuntimeSoakInvariants(sample, { terminal: false })).toMatchObject({
+      kind: "required_resource_state",
+      subject: "runtime-001"
+    });
+  });
+
   it("rejects duplicate chain identities as forked continuity", () => {
     const sample = healthySample("2026-07-16T00:00:00.000Z");
     sample.chains.push(structuredClone(sample.chains[0]!));

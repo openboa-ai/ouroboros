@@ -17,6 +17,8 @@ import {
   createLiveRuntimeSoakScenario,
   liveProviderRecoveryTimeoutMs,
   liveRuntimeSoakControlPlan,
+  liveRuntimeSoakSandboxEnvironment,
+  liveRuntimeSoakSelectedSandboxResource,
   paperObservationStreams,
   parseLiveRuntimeSoakTargetConfig,
   recordLiveRuntimeSoakEffect,
@@ -28,7 +30,6 @@ import {
   createLiveRuntimeSoakLaunchAgent,
   digestRuntimeSoakExecutable,
   inspectCleanRuntimeSoakRepository,
-  liveRuntimeSoakSandboxEnvironment,
   readRestrictedAuth,
   verifyLiveRuntimeSoakEnvironmentManifest
 } from "../src/runtime-soak-live-preparation.js";
@@ -37,6 +38,7 @@ import {
   reconcileRuntimeOwnershipRecords,
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
+  restartLiveRuntimeSoakPaper,
   runOwnedSandboxNames,
   stopRuntimeProcessGroup
 } from
@@ -418,6 +420,76 @@ describe("live RuntimeSoakTarget", () => {
     expect(() => runOwnedSandboxNames({
       sandboxes: [{ name: "../unsafe", workspaces: [`${runRoot}/store`] }]
     }, runRoot)).toThrow(/sandbox list/i);
+
+    expect(runOwnedSandboxNames({
+      sandboxes: [
+        { name: "ouro-recorded", status: "running", workspaces: ["/repo"] },
+        { name: "ouro-unrelated", status: "running", workspaces: ["/repo"] }
+      ]
+    }, runRoot, ["ouro-recorded"])).toEqual(["ouro-recorded"]);
+  });
+
+  it("requires selected paper Sandbox state from both LocalStore and the sbx daemon", () => {
+    const input = {
+      systemCodeId: "system-code-provider-generated",
+      expectedStatus: "active" as const,
+      sandboxes: [{
+        sandbox_id: "sandbox-selected-paper",
+        sandbox_name: "ouro-selected-paper",
+        system_code_ref: { id: "system-code-provider-generated" },
+        lifecycle_status: "running"
+      }]
+    };
+
+    expect(liveRuntimeSoakSelectedSandboxResource({
+      ...input,
+      daemonSandboxes: []
+    })).toMatchObject({
+      resource_id: "sandbox-selected-paper",
+      resource_kind: "selected_paper_sandbox",
+      status: "terminal",
+      expected_status: "active"
+    });
+    expect(liveRuntimeSoakSelectedSandboxResource({
+      ...input,
+      daemonSandboxes: [{ name: "ouro-selected-paper", status: "running", workspaces: ["/repo"] }]
+    })).toMatchObject({ status: "active", expected_status: "active" });
+
+    expect(liveRuntimeSoakSelectedSandboxResource({
+      ...input,
+      sandboxes: [
+        {
+          ...input.sandboxes[0]!,
+          sandbox_id: "sandbox-stale-paper",
+          sandbox_name: "ouro-stale-paper",
+          lifecycle_status: "removed"
+        },
+        input.sandboxes[0]!
+      ],
+      daemonSandboxes: [{ name: "ouro-selected-paper", status: "running", workspaces: ["/repo"] }]
+    })).toMatchObject({
+      resource_id: "sandbox-selected-paper",
+      status: "active",
+      expected_status: "active"
+    });
+  });
+
+  it("stops the stale paper session before starting Sandbox recovery", async () => {
+    const calls: string[] = [];
+
+    await restartLiveRuntimeSoakPaper({
+      tradingRunId: "trading-run-selected",
+      candidateId: "candidate-selected",
+      stop: async (tradingRunId) => { calls.push(`stop:${tradingRunId}`); },
+      start: async (candidateId) => { calls.push(`start:${candidateId}`); },
+      waitForVerified: async () => { calls.push("verify"); }
+    });
+
+    expect(calls).toEqual([
+      "stop:trading-run-selected",
+      "start:candidate-selected",
+      "verify"
+    ]);
   });
 
   it("keeps long-running runtime controls on an explicit bounded HTTP transport", async () => {
