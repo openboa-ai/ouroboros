@@ -219,6 +219,10 @@ describe("live RuntimeSoakTarget", () => {
       ...config,
       authority: { ...config.authority, live_exchange_authority: true }
     })).toThrow(/target config/i);
+    expect(() => parseLiveRuntimeSoakTargetConfig({
+      ...config,
+      runtime: { ...config.runtime, port: 80 }
+    })).toThrow(/target config/i);
   });
 
   it("preserves explicit no-order continuity without synthesizing decisions", () => {
@@ -331,7 +335,7 @@ describe("live RuntimeSoakTarget", () => {
       ["provider-loss", ["arena.tick", "provider.kill", "ownership.verify"]],
       ["provider-recovery", ["arena.tick", "paper.start", "egress.verify"]],
       ["sandbox-loss", ["sandbox.generated.remove", "sandbox.refresh"]],
-      ["sandbox-recovery", ["paper.restart", "sandbox.verify"]],
+      ["sandbox-recovery", ["paper.stop", "sandbox.reset", "paper.start", "sandbox.verify"]],
       ["gateway-unavailable", ["gateway.block", "gateway.verify"]],
       ["gateway-recovery", ["gateway.unblock", "market.verify"]],
       ["terminal-cleanup", [
@@ -394,6 +398,21 @@ describe("live RuntimeSoakTarget", () => {
       ["stale", "vacant"],
       inspect
     )).resolves.toBe(true);
+  });
+
+  it("treats an already-dead runtime process group as stopped", async () => {
+    const waits: number[] = [];
+
+    await stopRuntimeProcessGroup(42, "SIGKILL", {
+      signalProcessGroup() {
+        throw Object.assign(new Error("already dead"), { code: "ESRCH" });
+      },
+      async waitUntilStopped(timeoutMs) {
+        waits.push(timeoutMs);
+      }
+    });
+
+    expect(waits).toEqual([10_000]);
   });
 
   it("reconciles stale runtime ownership and rejects a blocked cleanup", async () => {
@@ -495,12 +514,14 @@ describe("live RuntimeSoakTarget", () => {
       tradingRunId: "trading-run-selected",
       candidateId: "candidate-selected",
       stop: async (tradingRunId) => { calls.push(`stop:${tradingRunId}`); },
+      resetSandbox: async () => { calls.push("reset"); },
       start: async (candidateId) => { calls.push(`start:${candidateId}`); },
       waitForVerified: async () => { calls.push("verify"); }
     });
 
     expect(calls).toEqual([
       "stop:trading-run-selected",
+      "reset",
       "start:candidate-selected",
       "verify"
     ]);
@@ -678,6 +699,15 @@ describe("live RuntimeSoakTarget", () => {
       { stdout: () => undefined },
       {}
     )).rejects.toThrow(/action metadata/i);
+  });
+
+  it("rejects a privileged runtime port before live preparation", async () => {
+    await expect(runLiveRuntimeSoakTargetCommand([
+      "prepare",
+      "--run-id", "runtime-soak-live-privileged-port",
+      "--runtime-port", "80",
+      "--auth-source", "/missing/auth.json"
+    ], { stdout: () => undefined }, {})).rejects.toThrow(/preparation input/i);
   });
 });
 

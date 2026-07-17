@@ -680,7 +680,7 @@ function exactIso(value: string): boolean {
 }
 
 function portNumber(value: unknown): value is number {
-  return Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 65_535;
+  return Number.isSafeInteger(value) && Number(value) >= 1_024 && Number(value) <= 65_535;
 }
 
 function record(value: unknown): value is Record<string, unknown> {

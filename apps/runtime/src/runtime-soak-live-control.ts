@@ -288,13 +288,24 @@ export async function stopRuntimeProcessGroup(
   if (!Number.isSafeInteger(pid) || pid <= 0) {
     throw new Error("Runtime process group pid is invalid.");
   }
-  dependencies.signalProcessGroup(signal);
+  signalRuntimeProcessGroup(dependencies.signalProcessGroup, signal);
   try {
     await dependencies.waitUntilStopped(signal === "SIGTERM" ? 30_000 : 10_000);
   } catch (error) {
     if (signal !== "SIGTERM") throw error;
-    dependencies.signalProcessGroup("SIGKILL");
+    signalRuntimeProcessGroup(dependencies.signalProcessGroup, "SIGKILL");
     await dependencies.waitUntilStopped(10_000);
+  }
+}
+
+function signalRuntimeProcessGroup(
+  signal: (value: "SIGTERM" | "SIGKILL") => void,
+  value: "SIGTERM" | "SIGKILL"
+): void {
+  try {
+    signal(value);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
 }
 
@@ -440,6 +451,7 @@ async function recoverSandbox(config: LiveRuntimeSoakTargetConfig): Promise<void
     stop: async (id) => {
       await command(config, "trading_run.stop", { trading_run_id: id });
     },
+    resetSandbox: () => resetSelectedSandbox(config, selection.system_code_id),
     start: async (id) => {
       await command(config, "trading_run.start", { candidate_id: id });
     },
@@ -455,6 +467,7 @@ export async function restartLiveRuntimeSoakPaper(input: {
   tradingRunId: string;
   candidateId: string;
   stop(tradingRunId: string): Promise<void>;
+  resetSandbox(): Promise<void>;
   start(candidateId: string): Promise<void>;
   waitForVerified(): Promise<void>;
 }): Promise<void> {
@@ -462,8 +475,38 @@ export async function restartLiveRuntimeSoakPaper(input: {
     throw new Error("Live runtime soak PaperTrading recovery identity is invalid.");
   }
   await input.stop(input.tradingRunId);
+  await input.resetSandbox();
   await input.start(input.candidateId);
   await input.waitForVerified();
+}
+
+async function resetSelectedSandbox(
+  config: LiveRuntimeSoakTargetConfig,
+  systemCodeId: string
+): Promise<void> {
+  const store = new LocalStore(config.store_root);
+  const sandboxes = (await store.listSandboxes()).filter((sandbox) =>
+    sandbox.system_code_ref.id === systemCodeId
+  );
+  if (sandboxes.length === 0) {
+    throw new Error("Selected candidate has no Sandbox to reset.");
+  }
+  for (const sandbox of sandboxes) {
+    if (ACTIVE_SANDBOX_STATES.has(sandbox.lifecycle_status)) {
+      await command(config, "sandbox.stop", { sandbox_id: sandbox.sandbox_id });
+    }
+  }
+  await cleanupRunOwnedSandboxes(config);
+  await waitFor(async () => {
+    const current = (await store.listSandboxes()).filter((sandbox) =>
+      sandbox.system_code_ref.id === systemCodeId
+    );
+    const names = new Set(current.map((sandbox) => sandbox.sandbox_name));
+    const daemonSandboxes = await readLiveRuntimeSoakSbxSandboxes(config);
+    return current.length > 0 && current.every((sandbox) =>
+      sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed"
+    ) && daemonSandboxes.every((sandbox) => !names.has(sandbox.name));
+  }, 180_000, 1_000);
 }
 
 async function injectGatewayLoss(config: LiveRuntimeSoakTargetConfig): Promise<void> {

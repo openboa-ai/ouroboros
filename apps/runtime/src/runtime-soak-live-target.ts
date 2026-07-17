@@ -152,7 +152,7 @@ export function liveRuntimeSoakControlPlan(action: RuntimeSoakAction): string[] 
     "provider-loss": ["arena.tick", "provider.kill", "ownership.verify"],
     "provider-recovery": ["arena.tick", "paper.start", "egress.verify"],
     "sandbox-loss": ["sandbox.generated.remove", "sandbox.refresh"],
-    "sandbox-recovery": ["paper.restart", "sandbox.verify"],
+    "sandbox-recovery": ["paper.stop", "sandbox.reset", "paper.start", "sandbox.verify"],
     "gateway-unavailable": ["gateway.block", "gateway.verify"],
     "gateway-recovery": ["gateway.unblock", "market.verify"],
     "terminal-cleanup": [
@@ -691,7 +691,7 @@ function positiveInteger(value: unknown): value is number {
 }
 
 function portNumber(value: unknown): value is number {
-  return positiveInteger(value) && Number(value) <= 65_535;
+  return positiveInteger(value) && Number(value) >= 1_024 && Number(value) <= 65_535;
 }
 
 function boundRunPaths(value: Record<string, unknown>): boolean {
