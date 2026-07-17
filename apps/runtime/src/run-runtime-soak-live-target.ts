@@ -137,7 +137,10 @@ export function liveRuntimeSoakLaunchCompletion(
   output: { run_id: string; status: "completed"; classification: string };
 } {
   return {
-    exitCode: result.exitCode,
+    // A published terminal result completes the launchd job even when the
+    // operational classification failed. Pre-terminal process errors still
+    // reject and remain restartable under SuccessfulExit=false.
+    exitCode: 0,
     output: {
       run_id: runId,
       status: "completed",

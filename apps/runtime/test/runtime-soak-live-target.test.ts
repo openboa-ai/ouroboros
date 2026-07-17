@@ -116,12 +116,12 @@ describe("live RuntimeSoakTarget", () => {
     expect(chain.entries.map((entry) => entry.sequence)).toEqual([1, 2]);
   });
 
-  it("propagates a failed harness classification to the launch process", () => {
+  it("stops LaunchAgent retries after a terminal classification is published", () => {
     expect(liveRuntimeSoakLaunchCompletion("runtime-soak-live-001", {
       exitCode: 1,
       result: { classification: "target_failed" }
     })).toEqual({
-      exitCode: 1,
+      exitCode: 0,
       output: {
         run_id: "runtime-soak-live-001",
         status: "completed",
@@ -420,6 +420,7 @@ describe("live RuntimeSoakTarget", () => {
     expect(harness.controls["provider-recovery"]?.timeout_ms).toBe(
       liveProviderRecoveryTimeoutMs(config.provider.timeout_ms) + 600_000
     );
+    expect(harness.probe.timeout_ms).toBe(120_000);
   });
 
   it("keeps provider recovery bounded while preserving failed arena attempts", async () => {

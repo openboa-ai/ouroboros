@@ -38,6 +38,7 @@ const ACTIVE_SANDBOX_STATES = new Set([
   "stopping"
 ]);
 const execFileAsync = promisify(execFile);
+const PROBE_TIMEOUT_MS = 2 * 60_000;
 
 export interface LiveRuntimeSoakTargetConfig {
   version: 1;
@@ -205,7 +206,7 @@ export function createLiveRuntimeSoakHarnessConfig(
     probe: {
       argv: [process.execPath, tsxCli, entrypoint, "probe", "--config", targetConfig],
       cwd: config.repo_root,
-      timeout_ms: 30_000
+      timeout_ms: PROBE_TIMEOUT_MS
     }
   };
 }
