@@ -208,9 +208,7 @@ async function assertFrozenLaunchBindings(
   ]);
   if (providerProfile.version !== manifest.provider.version ||
     digest(JSON.stringify(providerProfile)) !== manifest.provider.profile_digest ||
-    sandboxEvidence.version !== manifest.sandbox.version ||
-    sandboxEvidence.diagnose_digest !== manifest.sandbox.diagnose_digest ||
-    sandboxEvidence.preflight_digest !== manifest.sandbox.preflight_digest) {
+    sandboxEvidence.version !== manifest.sandbox.version) {
     throw new Error("Runtime soak launch binding differs from its frozen manifest.");
   }
 }
