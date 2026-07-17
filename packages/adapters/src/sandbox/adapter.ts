@@ -902,6 +902,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
 export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   readonly kind = "docker_sandboxes_sbx" as const;
+  private readonly attachedSessions = new Map<string, ReturnType<typeof spawn>>();
   private readonly networkPolicyLeases = new Map<
     string,
     CandidateSandboxNetworkPolicyLease<CommandResult>
@@ -1098,7 +1099,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     const execCommand = [
       this.sbxPath,
       "exec",
-      "-d",
+      ...(input.test_ticks === undefined ? [] : ["-d"]),
       "-w",
       this.workspacePath,
       input.sandbox_name,
@@ -1119,15 +1120,20 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       input.paper_order_request ?? "valid",
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
-    const execResult = await this.runSbxCommand(execCommand, this.detachedCommandTimeoutMs);
-    const detachedLaunchAccepted = execResult.exit_code === 0 || execResult.timed_out === true;
-    const startupEvidence = createResult.exit_code === 0 && detachedLaunchAccepted
+    const attachedSession = input.test_ticks === undefined;
+    const execResult = attachedSession
+      ? await this.startAttachedSbxSession(input.instance_id, execCommand)
+      : await this.runSbxCommand(execCommand, this.detachedCommandTimeoutMs);
+    const launchAccepted = attachedSession
+      ? execResult.exit_code === null
+      : execResult.exit_code === 0 || execResult.timed_out === true;
+    const startupEvidence = createResult.exit_code === 0 && launchAccepted
       ? await this.readStartupEvidence(input.instance_id, input.sandbox_name, {
         allowStoppedLog: input.test_ticks !== undefined
       })
       : { heartbeats: [], logs: [], commandEvidence: [] };
     const lifecycleStatus = createResult.exit_code === 0 &&
-      detachedLaunchAccepted
+      launchAccepted
       ? startupEvidence.heartbeats.length > 0
         ? "running"
         : startupEvidence.stopped_at
@@ -1156,6 +1162,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       if (!terminalPolicyFailure && removeResult.exit_code === 0) {
         await this.removePersistedNetworkPolicyLease(input.sandbox_name);
       }
+      await this.stopAttachedSbxSession(input.instance_id);
     }
     const terminalPolicyEvidence = networkPolicyResults
       .slice(terminalPolicyResultStart)
@@ -1174,7 +1181,11 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       versionEvidence,
       createEvidence,
       ...networkPolicyEvidence,
-      commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
+      commandEvidenceRecord(
+        input.instance_id,
+        attachedSession ? "exec-attached" : "exec-detached",
+        execResult
+      ),
       ...startupEvidence.commandEvidence,
       ...(stopResult
         ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
@@ -1326,6 +1337,9 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     }
     const removed = (removeResult.exit_code === 0 || alreadyAbsent) &&
       !policyRelease.failure;
+    if (stopped || removeResult.exit_code === 0 || alreadyAbsent) {
+      await this.stopAttachedSbxSession(instanceId);
+    }
     const policyEvidence = policyRelease.results.map((result, index) =>
       commandEvidenceRecord(
         instanceId,
@@ -1397,6 +1411,82 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     timeoutMs = this.commandTimeoutMs
   ): Promise<CommandResult> {
     return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private async startAttachedSbxSession(
+    instanceId: string,
+    command: string[]
+  ): Promise<CommandResult> {
+    await this.stopAttachedSbxSession(instanceId);
+    const startedAt = new Date().toISOString();
+    const [file, ...args] = command;
+    if (!file) {
+      return {
+        command,
+        exit_code: 2,
+        stdout: "",
+        stderr: "empty sbx session command",
+        started_at: startedAt,
+        completed_at: startedAt
+      };
+    }
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(file, args, {
+        cwd: REPO_ROOT,
+        detached: true,
+        stdio: "ignore",
+        env: sandboxToolProcessEnv(this.sbxHome ? { HOME: this.sbxHome } : undefined)
+      });
+    } catch (error) {
+      const spawnError = error instanceof Error ? error : new Error(String(error));
+      return {
+        command,
+        exit_code: exitCodeFor(spawnError),
+        stdout: "",
+        stderr: spawnError.message,
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      };
+    }
+    const spawnError = await new Promise<Error | undefined>((resolve) => {
+      child.once("spawn", () => resolve(undefined));
+      child.once("error", resolve);
+    });
+    if (spawnError) {
+      return {
+        command,
+        exit_code: exitCodeFor(spawnError),
+        stdout: "",
+        stderr: spawnError.message,
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      };
+    }
+    this.attachedSessions.set(instanceId, child);
+    child.once("exit", () => {
+      if (this.attachedSessions.get(instanceId) === child) {
+        this.attachedSessions.delete(instanceId);
+      }
+    });
+    child.unref();
+    return {
+      command,
+      exit_code: null,
+      stdout: "",
+      stderr: "",
+      started_at: startedAt,
+      completed_at: new Date().toISOString()
+    };
+  }
+
+  private async stopAttachedSbxSession(instanceId: string): Promise<void> {
+    const child = this.attachedSessions.get(instanceId);
+    if (!child) return;
+    await terminateChildProcess(child);
+    if (this.attachedSessions.get(instanceId) === child) {
+      this.attachedSessions.delete(instanceId);
+    }
   }
 
   private async persistNetworkPolicyLease(

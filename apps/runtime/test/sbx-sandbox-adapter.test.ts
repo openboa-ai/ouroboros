@@ -24,6 +24,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
   delete process.env.SBX_FAKE_MISSING;
   delete process.env.SBX_FAKE_REMOVE_FAIL;
+  delete process.env.SBX_FAKE_SESSION_MARKER;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
   delete process.env.OUROBOROS_SBX_HOME;
@@ -154,6 +155,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       sandbox_name: "ouro-s5-clock-detached-timeout",
       sandbox_placement_id: "sandbox-placement-detached-timeout-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
+      test_ticks: 2,
       interval_ms: 1
     });
 
@@ -166,9 +168,53 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "create --name ouro-s5-clock-detached-timeout shell .",
       ...denyPolicyCommands("ouro-s5-clock-detached-timeout"),
-      "exec -d -w . ouro-s5-clock-detached-timeout python3 fixtures/trading-systems/clock.py --instance-id sandbox-detached-timeout-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-detached-timeout-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-detached-timeout-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec -d -w . ouro-s5-clock-detached-timeout python3 fixtures/trading-systems/clock.py --instance-id sandbox-detached-timeout-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-detached-timeout-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-detached-timeout-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
       "exec ouro-s5-clock-detached-timeout cat /tmp/ouroboros-sandbox-detached-timeout-sbx.heartbeat.json"
     ]);
+  });
+
+  it("keeps one attached sbx session alive for an unbounded candidate across adapter restart", async () => {
+    const commandLog = path.join(tmpDir, "attached-session-commands.log");
+    const sessionMarker = path.join(tmpDir, "attached-session.pid");
+    const fakeSbx = path.join(tmpDir, "sbx-attached-session");
+    await writeFile(fakeSbx, fakeSbxAttachedSessionScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_SESSION_MARKER = sessionMarker;
+
+    const startAdapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      startupHeartbeatTimeoutMs: 1_000,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await startAdapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-attached-session",
+      sandbox_name: "ouro-s5-clock-attached-session",
+      sandbox_placement_id: "sandbox-placement-attached-session",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    await expectFileState(sessionMarker, true);
+    const startCommands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(startCommands.some((command) => command.startsWith(
+      "exec -w . ouro-s5-clock-attached-session python3 "
+    ))).toBe(true);
+    expect(startCommands.some((command) => command.startsWith(
+      "exec -d -w . ouro-s5-clock-attached-session "
+    ))).toBe(false);
+
+    const stopAdapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: "."
+    });
+    const stop = await stopAdapter.stopArtifactInstance(start.instance);
+
+    expect(stop.lifecycle_status).toBe("removed");
+    await expectFileState(sessionMarker, false);
   });
 
   it("waits under the startup timeout for a delayed first heartbeat", async () => {
@@ -193,6 +239,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       sandbox_name: "ouro-s5-clock-slow-startup",
       sandbox_placement_id: "sandbox-placement-slow-startup-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
+      test_ticks: 2,
       interval_ms: 1
     });
 
@@ -322,11 +369,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     });
 
     expect(start.instance.lifecycle_status).toBe("running");
-    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+    expect(normalizeAttachedStartCommands(
+      (await readFile(commandLog, "utf8")).trim().split("\n")
+    )).toEqual([
       "version",
       "create --name ouro-s5-clock-home shell .",
       ...denyPolicyCommands("ouro-s5-clock-home"),
-      "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-home cat /tmp/ouroboros-sandbox-home-sbx.heartbeat.json"
     ]);
   });
@@ -360,7 +409,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(start.instance.lifecycle_status).toBe("running");
     const startCommands = (await readFile(commandLog, "utf8")).trim().split("\n");
-    const execIndex = startCommands.findIndex((command) => command.startsWith("exec -d "));
+    const execIndex = startCommands.findIndex((command) => command.startsWith("exec -w "));
     expect(startCommands.findIndex((command) =>
       command === "policy deny network --sandbox ouro-s5-network-policy registry.npmjs.org:443"
     )).toBeGreaterThan(0);
@@ -488,11 +537,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       command: [fakeAliasedSdx, "version"],
       stdout: expect.stringContaining("Client Version:")
     });
-    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+    expect(normalizeAttachedStartCommands(
+      (await readFile(commandLog, "utf8")).trim().split("\n")
+    )).toEqual([
       "version",
       "create --name ouro-s5-clock-aliased-sdx shell .",
       ...denyPolicyCommands("ouro-s5-clock-aliased-sdx"),
-      "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-aliased-sdx cat /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json"
     ]);
   });
@@ -519,11 +570,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(start.instance.lifecycle_status).toBe("running");
     expect(start.command_evidence[0]?.command).toEqual([fakeAliasedSdx, "version"]);
-    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+    expect(normalizeAttachedStartCommands(
+      (await readFile(commandLog, "utf8")).trim().split("\n")
+    )).toEqual([
       "version",
       "create --name ouro-s5-clock-sdx-env-alias shell .",
       ...denyPolicyCommands("ouro-s5-clock-sdx-env-alias"),
-      "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-sdx-env-alias cat /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json"
     ]);
   });
@@ -552,11 +605,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(start.instance.lifecycle_status).toBe("running");
     expect(start.command_evidence[0]?.command).toEqual([fakeAliasedSdx, "version"]);
-    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+    expect(normalizeAttachedStartCommands(
+      (await readFile(commandLog, "utf8")).trim().split("\n")
+    )).toEqual([
       "version",
       `create --name ouro-s5-clock-relative-sdx-env-alias shell ${tmpDir}`,
       ...denyPolicyCommands("ouro-s5-clock-relative-sdx-env-alias"),
-      `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid`,
+      `exec -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid`,
       "exec ouro-s5-clock-relative-sdx-env-alias cat /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json"
     ]);
   });
@@ -675,11 +730,13 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       0
     ]);
     expect(stop.command_evidence?.[2]?.stderr).toBe("stop runtime failed\n");
-    expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
+    expect(normalizeAttachedStartCommands(
+      (await readFile(commandLog, "utf8")).trim().split("\n")
+    )).toEqual([
       "version",
       "create --name ouro-s5-clock-stop-failed shell .",
       ...denyPolicyCommands("ouro-s5-clock-stop-failed"),
-      "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
       "exec ouro-s5-clock-stop-failed cat /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json",
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
@@ -958,6 +1015,84 @@ case "$1" in
     ;;
 esac
 `;
+}
+
+function fakeSbxAttachedSessionScript(): string {
+  return `#!/bin/sh
+set -eu
+printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
+case "$1" in
+  version)
+    echo "Client Version:  v0.35.0 test"
+    echo "Server Version:  v0.35.0 test"
+    ;;
+  create)
+    echo "created $4"
+    ;;
+  policy)
+    case "$2" in
+      ls) printf '{"rules":[]}\\n' ;;
+      check) printf '{"decision":"deny"}\\n'; exit 1 ;;
+      log) printf '{"entries":[]}\\n' ;;
+      *) exit 2 ;;
+    esac
+    ;;
+  exec)
+    if [ "$2" = "-d" ]; then
+      echo "detached $3"
+    elif [ "$2" = "-w" ]; then
+      printf '%s\\n' "$$" > "$SBX_FAKE_SESSION_MARKER"
+      trap 'rm -f "$SBX_FAKE_SESSION_MARKER"; exit 0' TERM INT EXIT
+      while :; do sleep 1; done
+    elif [ "$3" = "cat" ]; then
+      printf '{"event":"runtime_heartbeat","instance_id":"sandbox-attached-session","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n'
+    fi
+    ;;
+  stop)
+    if [ -f "$SBX_FAKE_SESSION_MARKER" ]; then
+      kill -TERM "$(cat "$SBX_FAKE_SESSION_MARKER")"
+    fi
+    echo "stopped $2"
+    ;;
+  rm)
+    echo "removed $3"
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+`;
+}
+
+async function expectFileState(file: string, expected: boolean): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    const exists = await readFile(file, "utf8").then(
+      () => true,
+      (error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw error;
+      }
+    );
+    if (exists === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`expected file state ${String(expected)} for ${file}`);
+}
+
+function normalizeAttachedStartCommands(commands: string[]): string[] {
+  const normalized = [...commands];
+  const attachedIndex = normalized.findIndex((command) => command.startsWith("exec -w "));
+  const heartbeatIndex = normalized.findIndex((command) => (
+    command.startsWith("exec ") && command.includes(" cat /tmp/") &&
+    command.endsWith(".heartbeat.json")
+  ));
+  if (attachedIndex < 0 || heartbeatIndex < 0 || attachedIndex < heartbeatIndex) {
+    return normalized;
+  }
+  const [attached] = normalized.splice(attachedIndex, 1);
+  if (attached) normalized.splice(heartbeatIndex, 0, attached);
+  return normalized;
 }
 
 function fakeSbxCreateFailureScript(): string {
