@@ -39,6 +39,7 @@ import {
   recoverProviderGeneratedCandidate,
   requestLiveRuntimeApi,
   restartLiveRuntimeSoakPaper,
+  runtimeOwnershipRecordsReleased,
   runOwnedSandboxNames,
   stopRuntimeProcessGroup
 } from
@@ -380,6 +381,19 @@ describe("live RuntimeSoakTarget", () => {
 
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(waits).toEqual([30_000, 10_000]);
+  });
+
+  it("waits for terminated runtime ownership to become stale or vacant", async () => {
+    const inspect = async (status: string) => ({ status });
+
+    await expect(runtimeOwnershipRecordsReleased(
+      ["stale", "owned"],
+      inspect
+    )).resolves.toBe(false);
+    await expect(runtimeOwnershipRecordsReleased(
+      ["stale", "vacant"],
+      inspect
+    )).resolves.toBe(true);
   });
 
   it("reconciles stale runtime ownership and rejects a blocked cleanup", async () => {

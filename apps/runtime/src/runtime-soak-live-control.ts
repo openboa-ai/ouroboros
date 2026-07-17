@@ -268,6 +268,13 @@ async function stopProcess(
       return waitFor(async () => !await processStateAlive(stateFile), timeoutMs);
     }
   });
+  const ownership = ownershipAdapter(config);
+  await waitFor(async () => runtimeOwnershipRecordsReleased(
+    (await activeOwnership(config)).filter((record) =>
+      record.process_kind === "runtime_supervisor"
+    ),
+    (record) => ownership.inspect(ownershipIdentity(record))
+  ), 10_000);
 }
 
 export async function stopRuntimeProcessGroup(
@@ -289,6 +296,16 @@ export async function stopRuntimeProcessGroup(
     dependencies.signalProcessGroup("SIGKILL");
     await dependencies.waitUntilStopped(10_000);
   }
+}
+
+export async function runtimeOwnershipRecordsReleased<T>(
+  records: readonly T[],
+  inspect: (record: T) => Promise<{ status: string }>
+): Promise<boolean> {
+  const inspections = await Promise.all(records.map(inspect));
+  return inspections.every((inspection) =>
+    inspection.status === "stale" || inspection.status === "vacant"
+  );
 }
 
 async function bindProvider(config: LiveRuntimeSoakTargetConfig): Promise<void> {
