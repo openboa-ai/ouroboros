@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 describe("live RuntimeSoakTarget", () => {
-  it("keeps the selected PaperTradingEvaluation running until exact 24-hour cleanup", () => {
+  it("keeps the selected PaperTradingEvaluation running until exact 2-hour cleanup", () => {
     const scenario = createLiveRuntimeSoakScenario("runtime-soak-live-001");
 
     expect(scenario.actions.map((action) => action.kind)).toEqual([
@@ -77,7 +77,7 @@ describe("live RuntimeSoakTarget", () => {
     ]);
     expect(scenario.actions.at(-1)).toMatchObject({
       kind: "terminal_cleanup",
-      at_ms: 24 * 60 * 60 * 1_000
+      at_ms: 2 * 60 * 60 * 1_000
     });
     expect(scenario.duration_ms - scenario.actions.at(-1)!.at_ms)
       .toBeGreaterThanOrEqual(11 * 60 * 1_000);

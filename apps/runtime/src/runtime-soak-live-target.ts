@@ -24,7 +24,7 @@ import {
   LocalStore
 } from "@ouroboros/local-store";
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
+const SOAK_DURATION_MS = 2 * 60 * 60 * 1_000;
 const PUBLIC_BINANCE_ORIGIN = "https://fapi.binance.com";
 const SANDBOX_GATEWAY_HOST = "host.docker.internal";
 export const LIVE_PROVIDER_RECOVERY_ATTEMPT_LIMIT = 3;
@@ -84,7 +84,7 @@ export function createLiveRuntimeSoakScenario(runId: string): RuntimeSoakScenari
   return {
     version: 1,
     run_id: runId,
-    duration_ms: DAY_MS + CONTROL_TIMEOUT_MS + 60_000,
+    duration_ms: SOAK_DURATION_MS + CONTROL_TIMEOUT_MS + 60_000,
     sample_interval_ms: 60_000,
     actions: [
       { action_id: "runtime-clean-restart", kind: "clean_restart", at_ms: 0 },
@@ -98,7 +98,11 @@ export function createLiveRuntimeSoakScenario(runId: string): RuntimeSoakScenari
       { action_id: "sandbox-recovery", kind: "recovery", recovers: "sandbox", at_ms: 960_000 },
       { action_id: "gateway-unavailable", kind: "gateway_unavailable", at_ms: 1_200_000 },
       { action_id: "gateway-recovery", kind: "recovery", recovers: "gateway", at_ms: 1_260_000 },
-      { action_id: "terminal-cleanup", kind: "terminal_cleanup", at_ms: DAY_MS }
+      {
+        action_id: "terminal-cleanup",
+        kind: "terminal_cleanup",
+        at_ms: SOAK_DURATION_MS
+      }
     ]
   };
 }
