@@ -196,24 +196,31 @@ describe("live RuntimeSoakTarget", () => {
     ]);
   });
 
-  it("verifies frozen bindings before every effectful control", async () => {
+  it("uses cleanup bindings only for terminal cleanup and strict bindings otherwise", async () => {
     const calls: string[] = [];
 
     await executeFrozenLiveRuntimeSoakControl({
-      verify: async () => { calls.push("verify"); },
+      actionId: "terminal-cleanup",
+      verifyControl: async () => {
+        calls.push("strict");
+        throw new Error("provider executable changed");
+      },
+      verifyCleanup: async () => { calls.push("cleanup"); },
       execute: async () => { calls.push("execute"); }
     });
-    expect(calls).toEqual(["verify", "execute"]);
+    expect(calls).toEqual(["cleanup", "execute"]);
 
     calls.length = 0;
     await expect(executeFrozenLiveRuntimeSoakControl({
-      verify: async () => {
-        calls.push("verify");
+      actionId: "sandbox-loss",
+      verifyControl: async () => {
+        calls.push("strict");
         throw new Error("frozen binding changed");
       },
+      verifyCleanup: async () => { calls.push("cleanup"); },
       execute: async () => { calls.push("execute"); }
     })).rejects.toThrow(/frozen binding changed/i);
-    expect(calls).toEqual(["verify"]);
+    expect(calls).toEqual(["strict"]);
   });
 
   it("models intentional Gateway loss as a restartable terminal paper interval", () => {
@@ -746,7 +753,7 @@ describe("live RuntimeSoakTarget", () => {
     expect(launchAgent).not.toContain("auth.json");
   });
 
-  it("probes only a manifest-bound config and requires harness action metadata", async () => {
+  it("rejects probes without frozen runtime bindings and requires action metadata", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "ouro-live-soak-cli-"));
     temporaryRoots.push(root);
     const config = targetConfig(root);
@@ -762,8 +769,8 @@ describe("live RuntimeSoakTarget", () => {
       ["probe", "--config", configPath],
       { stdout: (line) => output.push(line) },
       {}
-    )).resolves.toEqual({ exitCode: 0 });
-    expect(JSON.parse(output[0]!)).toMatchObject({ version: 1, effects: [] });
+    )).rejects.toThrow();
+    expect(output).toEqual([]);
     await expect(runLiveRuntimeSoakTargetCommand(
       ["control", "--config", configPath],
       { stdout: () => undefined },

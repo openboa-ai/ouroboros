@@ -69,13 +69,16 @@ export async function runLiveRuntimeSoakTargetCommand(
       throw new Error("Runtime soak control requires exact harness action metadata.");
     }
     await executeFrozenLiveRuntimeSoakControl({
-      verify: () => assertFrozenControlBindings(config, verified.manifest),
+      actionId,
+      verifyControl: () => assertFrozenControlBindings(config, verified.manifest),
+      verifyCleanup: () => assertFrozenCleanupBindings(config, verified.manifest),
       execute: () => executeLiveRuntimeSoakControl(config, actionId, entrypoint, tsxCli)
     });
     io.stdout(JSON.stringify({ run_id: config.run_id, action_id: actionId, status: "completed" }));
     return { exitCode: 0 };
   }
   if (input.mode === "probe") {
+    await assertFrozenControlBindings(config, verified.manifest);
     io.stdout(JSON.stringify(await buildLiveRuntimeSoakSample(config)));
     return { exitCode: 0 };
   }
@@ -115,10 +118,14 @@ export async function runLiveRuntimeSoakTargetCommand(
 }
 
 export async function executeFrozenLiveRuntimeSoakControl(input: {
-  verify(): Promise<void>;
+  actionId: string;
+  verifyControl(): Promise<void>;
+  verifyCleanup(): Promise<void>;
   execute(): Promise<void>;
 }): Promise<void> {
-  await input.verify();
+  await (input.actionId === "terminal-cleanup"
+    ? input.verifyCleanup()
+    : input.verifyControl());
   await input.execute();
 }
 
@@ -217,6 +224,23 @@ async function assertFrozenControlBindings(
   config: LiveRuntimeSoakTargetConfig,
   manifest: LiveRuntimeSoakEnvironmentManifest
 ): Promise<void> {
+  await assertFrozenCleanupBindings(config, manifest);
+  const profile = await new LocalStore(config.store_root).getAgentProfile("codex");
+  if (!profile) throw new Error("Managed Codex profile is missing.");
+  const [auth, providerDigest] = await Promise.all([
+    readFile(path.join(profile.managed_provider_home, "auth.json")),
+    digestRuntimeSoakExecutable(config.provider.command)
+  ]);
+  if (digest(auth) !== manifest.provider.auth_digest ||
+    providerDigest !== manifest.provider.executable_digest) {
+    throw new Error("Runtime soak control binding differs from its frozen manifest.");
+  }
+}
+
+async function assertFrozenCleanupBindings(
+  config: LiveRuntimeSoakTargetConfig,
+  manifest: LiveRuntimeSoakEnvironmentManifest
+): Promise<void> {
   const harness = JSON.parse(await readFile(
     path.join(config.run_root, "config", "harness.json"),
     "utf8"
@@ -225,13 +249,9 @@ async function assertFrozenControlBindings(
     path.join(config.run_root, "launch-agent.plist"),
     "utf8"
   );
-  const profile = await new LocalStore(config.store_root).getAgentProfile("codex");
-  if (!profile) throw new Error("Managed Codex profile is missing.");
-  const auth = await readFile(path.join(profile.managed_provider_home, "auth.json"));
   const tsxCli = path.join(config.repo_root, "node_modules", "tsx", "dist", "cli.mjs");
-  const [repository, providerDigest, sandboxDigest, nodeDigest, tsxDigest] = await Promise.all([
+  const [repository, sandboxDigest, nodeDigest, tsxDigest] = await Promise.all([
     inspectCleanRuntimeSoakRepository(config.repo_root),
-    digestRuntimeSoakExecutable(config.provider.command),
     digestRuntimeSoakExecutable(config.sandbox.command),
     digestRuntimeSoakExecutable(process.execPath),
     digestRuntimeSoakExecutable(tsxCli)
@@ -240,12 +260,10 @@ async function assertFrozenControlBindings(
     digest(launchAgent) !== manifest.target.launch_agent_digest ||
     repository.commit !== manifest.repository.commit ||
     repository.tree !== manifest.repository.tree ||
-    digest(auth) !== manifest.provider.auth_digest ||
-    providerDigest !== manifest.provider.executable_digest ||
     sandboxDigest !== manifest.sandbox.executable_digest ||
     nodeDigest !== manifest.target.node_executable_digest ||
     tsxDigest !== manifest.target.tsx_cli_digest) {
-    throw new Error("Runtime soak control binding differs from its frozen manifest.");
+    throw new Error("Runtime soak cleanup binding differs from its frozen manifest.");
   }
 }
 
