@@ -903,6 +903,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   readonly kind = "docker_sandboxes_sbx" as const;
   private readonly attachedSessions = new Map<string, ReturnType<typeof spawn>>();
+  private readonly stopOperations = new Map<
+    string,
+    Promise<SandboxAdapterObservationResult>
+  >();
   private readonly networkPolicyLeases = new Map<
     string,
     CandidateSandboxNetworkPolicyLease<CommandResult>
@@ -1293,21 +1297,42 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     instance: SandboxRecord | SandboxDetailReadModel
   ): Promise<SandboxAdapterObservationResult> {
     const instanceId = instanceIdFor(instance);
+    const existingOperation = this.stopOperations.get(instanceId);
+    if (existingOperation) {
+      return existingOperation;
+    }
+    const operation = this.stopArtifactInstanceOnce(instance);
+    this.stopOperations.set(instanceId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.stopOperations.get(instanceId) === operation) {
+        this.stopOperations.delete(instanceId);
+      }
+    }
+  }
+
+  private async stopArtifactInstanceOnce(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
     const sandboxName = sandboxNameFor(instance);
     const versionObservation = await this.versionObservation(instanceId, "stop-version");
     if (versionObservation.failure) {
       return versionObservation.failure;
     }
     const stopStartedAt = new Date().toISOString();
-    const terminateResult = await this.runSbxCommand([
-      this.sbxPath,
-      "exec",
-      sandboxName,
-      "pkill",
-      "-TERM",
-      "-f",
-      "fixtures/trading-systems/clock.py"
-    ]);
+    const terminateResult = instance.lifecycle_status === "running"
+      ? await this.runSbxCommand([
+          this.sbxPath,
+          "exec",
+          sandboxName,
+          "pkill",
+          "-TERM",
+          "-f",
+          "fixtures/trading-systems/clock.py"
+        ])
+      : undefined;
     const stopResult = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
     const stopped = stopResult.exit_code === 0;
     const remove = () => this.runSbxCommand([
@@ -1322,6 +1347,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     if (stopped) {
       policyRelease = await this.releaseNetworkPolicy(sandboxName);
       removeResult = await remove();
+      alreadyAbsent = commandReportsMissingSandbox(removeResult, sandboxName);
     } else {
       removeResult = await remove();
       alreadyAbsent = commandReportsMissingSandbox(stopResult, sandboxName) &&
@@ -1358,7 +1384,13 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       removed_at: removed ? removeResult.completed_at : undefined,
       command_evidence: [
         versionObservation.evidence,
-        commandEvidenceRecord(instanceId, commandEvidenceSuffix("terminate", terminateResult), terminateResult),
+        ...(terminateResult
+          ? [commandEvidenceRecord(
+              instanceId,
+              commandEvidenceSuffix("terminate", terminateResult),
+              terminateResult
+            )]
+          : []),
         commandEvidenceRecord(instanceId, commandEvidenceSuffix("stop", stopResult), stopResult),
         ...(stopped
           ? [...policyEvidence, removeEvidence]

@@ -24,6 +24,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_INHERITED_ALLOW_JSON;
   delete process.env.SBX_FAKE_MISSING;
   delete process.env.SBX_FAKE_REMOVE_FAIL;
+  delete process.env.SBX_FAKE_STOPPED_THEN_MISSING;
   delete process.env.SBX_FAKE_SESSION_MARKER;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
@@ -836,6 +837,78 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     });
     expect(stop.stopped_at).toBeUndefined();
   });
+
+  it("coalesces concurrent stop requests without restarting a stopping Sandbox", async () => {
+    const commandLog = path.join(tmpDir, "concurrent-stop-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-concurrent-stop");
+    const sandboxName = "ouro-s5-clock-concurrent-stop";
+    await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-concurrent-stop-sbx";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: "."
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-concurrent-stop-sbx",
+      sandbox_name: sandboxName,
+      sandbox_placement_id: "sandbox-placement-concurrent-stop-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+    process.env.SBX_FAKE_MISSING = "1";
+    const stopping = { ...start.instance, lifecycle_status: "stopping" as const };
+
+    const [first, second] = await Promise.all([
+      adapter.stopArtifactInstance(stopping),
+      adapter.stopArtifactInstance(stopping)
+    ]);
+
+    expect(first.lifecycle_status).toBe("removed");
+    expect(second.lifecycle_status).toBe("removed");
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands.filter((command) => command.includes(" pkill "))).toEqual([]);
+    expect(commands.filter((command) => command === `stop ${sandboxName}`)).toHaveLength(1);
+    expect(commands.filter((command) => command === `rm --force ${sandboxName}`)).toHaveLength(1);
+  });
+
+  it("converges when another cleanup removes a successfully stopped Sandbox", async () => {
+    const commandLog = path.join(tmpDir, "stopped-then-missing-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-stopped-then-missing");
+    const sandboxName = "ouro-s5-clock-stopped-then-missing";
+    await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-stopped-then-missing-sbx";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: "."
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-stopped-then-missing-sbx",
+      sandbox_name: sandboxName,
+      sandbox_placement_id: "sandbox-placement-stopped-then-missing-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+    process.env.SBX_FAKE_STOPPED_THEN_MISSING = "1";
+    const stopping = { ...start.instance, lifecycle_status: "stopping" as const };
+
+    const stop = await adapter.stopArtifactInstance(stopping);
+
+    expect(stop).toMatchObject({
+      lifecycle_status: "removed",
+      stopped_at: expect.any(String),
+      removed_at: expect.any(String)
+    });
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands.filter((command) => command.includes(" pkill "))).toEqual([]);
+  });
 });
 
 function clockArtifactFixture(): SystemCodeRecord {
@@ -1173,6 +1246,9 @@ case "$1" in
     fi
     ;;
   stop)
+    if [ "\${SBX_FAKE_STOPPED_THEN_MISSING:-}" = "1" ]; then
+      exit 0
+    fi
     if [ "\${SBX_FAKE_MISSING:-}" = "1" ]; then
       echo "ERROR: no sandbox named '$2'" >&2
       exit 43
@@ -1181,6 +1257,10 @@ case "$1" in
     exit 43
     ;;
   rm)
+    if [ "\${SBX_FAKE_STOPPED_THEN_MISSING:-}" = "1" ]; then
+      echo "Error: sandbox '$3' not found (run 'sbx ls' to see your sandboxes)" >&2
+      exit 44
+    fi
     if [ "\${SBX_FAKE_MISSING:-}" = "1" ]; then
       echo "Error: sandbox '$3' not found (run 'sbx ls' to see your sandboxes)" >&2
       exit 44
