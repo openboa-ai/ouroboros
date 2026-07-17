@@ -2339,8 +2339,11 @@ export function paperTradingHandoffConformanceHasRuntimeShape(
     return false;
   }
   if (value.status === "passed") {
+    const minimumProviderRequestCount = value.decision_event_kind === "order_request"
+      ? 3
+      : 2;
     return value.reason === "passed" &&
-      value.provider_request_count >= 3 &&
+      value.provider_request_count >= minimumProviderRequestCount &&
       value.decision_event_kind !== undefined &&
       value.heartbeat_count > 0 &&
       value.runtime_stopped === true &&
