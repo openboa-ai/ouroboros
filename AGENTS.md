@@ -10,14 +10,15 @@ Start every non-trivial task from:
 1. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
 2. [Development Workflow](docs/development-workflow.md)
 3. [Project Direction](docs/project-direction.md)
-4. [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
-5. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
-6. [Autonomy Model](docs/autonomy-model.md)
-7. [Product Quality Design](docs/product-quality-design.md)
-8. [Architecture Governance](docs/architecture-governance.md)
-9. [API And Command Contract](docs/api-command-contract.md)
-10. [Naming Taxonomy](docs/naming-taxonomy.md)
-11. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
+4. [Research And Arena Product Loop](docs/research-arena-product-loop.md)
+5. [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+6. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
+7. [Autonomy Model](docs/autonomy-model.md)
+8. [Product Quality Design](docs/product-quality-design.md)
+9. [Architecture Governance](docs/architecture-governance.md)
+10. [API And Command Contract](docs/api-command-contract.md)
+11. [Naming Taxonomy](docs/naming-taxonomy.md)
+12. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.
@@ -60,11 +61,17 @@ problem
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> terminal ResearchWorkerCheckpoint
--> leaderboard
+-> admitted TradingSystem into bounded isolated paper Arena
+-> comparable paper leaderboard
 -> findings and lineage
 -> next generation
--> selected candidate continuous PaperTradingEvaluation
+-> explicit qualified handoff for later Trading review
 ```
+
+Research is the candidate-generation process; Arena is the paper execution and evaluation process.
+Actual Research sessions and admitted paper systems must remain separately observable. The detailed
+product, read-model, UX, and always-on contract is in
+[Research And Arena Product Loop](docs/research-arena-product-loop.md).
 
 Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
 exact submitted-artifact paper handoff conformance, provider/risk validation, selected-candidate

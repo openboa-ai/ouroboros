@@ -2,10 +2,10 @@
 
 Ouroboros is an automated weak-to-strong trading-system laboratory. It connects improving AI agents
 to a hard, dynamic trading problem where `revenue - cost` is observable but noisy, path-dependent,
-and non-stationary. The product center is the `CandidateArena`: researchers generate parallel
-TradingSystem candidates, research-time replay/backtest helps create and preflight them, findings
-and lineage feed the next generation, and only selected candidates can move into continuous paper
-trading `Gateway` and `Ledger` evidence.
+and non-stationary. Researchers generate parallel TradingSystem candidates, research-time
+replay/backtest helps create and preflight them, admitted systems enter bounded isolated paper
+sessions, and external findings and lineage feed the next generation. Research is the generation
+process; Arena is the paper execution and evaluation process.
 
 Trading must be made outcome-gradable under a precommitted evaluation protocol. Raw PnL alone is
 not a stable answer because candidate identity, market opportunity, costs, risk, evidence purpose,
@@ -16,14 +16,16 @@ Read [CandidateArena And Research Goal](candidate-arena-research-goal.md) for th
 Star, completion rubric, veto gates, and implementation priorities. Read
 [CandidateArena Evaluation Protocol](candidate-arena-evaluation-protocol.md) for the P0 target
 contract that separates adaptive research feedback from prospective qualification evidence.
+Read [Research And Arena Product Loop](research-arena-product-loop.md) for the always-on product,
+operator UX, list/detail projection, comparability, and recovery contract.
 Read [Autonomy Model](autonomy-model.md) for the detailed boundary between autonomous research,
 selected paper evaluation, paper qualification, Trading review promotion, and future live authority.
 Read [Product Quality Design](product-quality-design.md) for the product-quality contract that
 turns that direction into review-packet, UX, eval, and implementation-frontier detail.
 
 Two names keep the evaluation boundary stable: `ResearchPreflight` is replay, backtest, or
-simulation inside candidate creation; `PaperTradingEvaluation` is selected-candidate continuous
-paper trading over live public market data. Between them,
+simulation inside candidate creation; `PaperTradingEvaluation` is exact admitted-candidate paper
+trading over live public market data. Between them,
 `PaperTradingHandoffConformance` is external research-only proof that the exact submitted artifact
 satisfies the bounded target paper event protocol before admission and generated-candidate start.
 `ResearchPreflightCommitment` is the pre-effect record that keeps adaptive development feedback

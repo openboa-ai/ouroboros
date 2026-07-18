@@ -8,7 +8,9 @@ that pack every axis into one identifier.
 
 | Canonical noun | Meaning |
 | --- | --- |
-| `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
+| `CandidateArena` | Compatibility aggregate over Research generation and Arena paper evidence; new operator work must keep those two processes separately observable. |
+| `Research` | Continuing bounded process that turns goals and sanitized immutable evidence into admitted TradingSystem candidates through observable ResearchWorkerSessions. |
+| `Arena` | Continuing bounded process that queues and runs admitted TradingSystems in isolated paper sessions and ranks only comparable external paper evidence. |
 | `ResearchWorker` | Stable logical candidate generator bound to one ResearchDirection and exact managed-agent profile across CandidateArena ticks; provider processes and isolated candidate runs remain disposable. |
 | `ResearchWorkerSession` | Disposable runtime lifetime of one ResearchWorker under one exact ResearchPreflightCommitment. It owns one bounded working artifact and provider process plus development submission, selection, and finish capabilities; it is not a persisted worker identity or trading authority. |
 | `ResearchWorkerCheckpoint` | Append-only lifecycle closure for one stable ResearchWorker and exact ResearchPreflightCommitment. It carries bounded sanitized development notebook continuity and closed budget history into a later new commitment, but cannot resume old effects or grant evaluation, admission, promotion, order, private, or live authority. |
@@ -48,7 +50,8 @@ that pack every axis into one identifier.
 | `ResearchPreflight` | Candidate-creation evaluation family: bounded adaptive development feedback plus one evaluator-owned rotating sealed admission over an explicitly selected frozen development artifact. It is not prospective economic or promotion authority. |
 | `PaperTradingHandoffConformance` | External research-only proof that one exact submitted SystemCode artifact closure satisfies the bounded target paper event protocol before admission, materialization, and generated-candidate paper start; it carries no economic, qualification, promotion, order, private, or live authority. |
 | `CandidateEgressAttestation` | Evaluator-owned, canonical start/end proof embedded in version 2 PaperTradingHandoffConformance for one exact SystemCode, ExperimentRun, Docker Sandbox implementation, network-policy identity, candidate-effect window, denial summary, and owned-rule cleanup. It is not candidate self-report or paper, promotion, order, private, or live authority. |
-| `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
+| `PaperTradingEvaluation` | One exact admitted-candidate paper TradingRun evidence window; Arena ranks accumulated `revenue - cost` only inside a comparable cohort. |
+| `ResearchEvidenceArtifact` | Immutable sanitized Research input derived from released Arena, Finding, or future live evidence; it carries no hidden qualification, credential, private-data, promotion, order, or live authority. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
 | `PaperTradingComparisonCommitment` | Append-only champion/challenger qualification envelope that binds two frozen, distinct, inert paper sessions and one comparison policy before market outcomes exist. |
 | `PaperTradingComparisonTick` | Append-only Gateway-owned market and public-execution checkpoint for one comparison sequence; shared input evidence does not prove activation, consumption, a verdict, or promotion. |
@@ -81,7 +84,7 @@ that pack every axis into one identifier.
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed or explicitly released campaign findings by direction, blocker, market regime, protocol failure, and release kind for the next ResearchWorker context. |
 | `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
-| `PaperEvidence` | Selected-candidate proof from the paper TradingRun, Gateway, and Ledger path. |
+| `PaperEvidence` | Exact-session proof from the paper TradingRun, Gateway, and Ledger path. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate CandidateArena. |
 | `TradingRun` | One execution session for a TradingSystem. |
 | `Sandbox` | Isolated execution boundary for a TradingRun. |

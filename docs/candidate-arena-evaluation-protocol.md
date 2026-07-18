@@ -9,6 +9,11 @@ bounded adaptive ResearchWorker allocation, and durable logical ResearchWorker c
 tests demonstrate only the explicitly listed partial conformance; they do not establish production
 composition, automatic champion operation, or P0 completion.
 
+The operator-facing split is defined in
+[Research And Arena Product Loop](research-arena-product-loop.md): Research owns observable bounded
+candidate-generation sessions; Arena owns observable isolated admitted-system paper execution.
+This evidence protocol remains authoritative when either surface summarizes the underlying records.
+
 ## Purpose
 
 AI-agent hill climbing is only useful when the evaluator is harder to exploit than the search is to
@@ -80,6 +85,13 @@ persisted schema names. Any future public or persisted fields require a separate
 
 Research feedback and qualification are different evidence purposes even when both use
 `PaperTradingEvaluation`. One physical observation or window cannot carry both purposes.
+
+Multiple admitted systems may have concurrent or queued PaperTradingEvaluations. A displayed Arena
+rank is valid only inside an exact comparable cohort whose market opportunity, evidence purpose,
+account, cost, risk, and evaluation policies match. Running sessions may receive a provisional
+rank at an exact common observation boundary; qualification remains separate. Queued, invalidated,
+boundary-missing, and cross-cohort sessions remain visible but unranked. ResearchPreflight score or
+revenue never defines Arena rank.
 
 `ResearchPreflightCommitment` is append-only and precedes every worker effect. It stores canonical
 digests and a seed commitment, not the raw evaluator seed or sealed scenarios. The evaluator-owned
