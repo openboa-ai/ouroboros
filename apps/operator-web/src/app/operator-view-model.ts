@@ -1,15 +1,18 @@
 import type {
   ArenaOperationsReadModel,
+  CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
   OperatorReadModel,
   PaperTradingBoardEntryReadModel,
+  PaperTradingLearningSummaryReadModel,
+  ResearchGeneralizationReadModel,
   ResearchOperationsReadModel
 } from "@ouroboros/domain";
 
 export type OperatorProjectionInput = Pick<
   OperatorReadModel,
   "arena_operations" | "research_operations" | "paper_trading_board" | "candidate_arena"
->;
+> & Partial<Pick<OperatorReadModel, "trading_review">>;
 
 export type ProjectionAvailability =
   | "authoritative"
@@ -29,7 +32,7 @@ export interface ArenaSystemViewModel {
   rank?: number;
   comparability: string;
   unrankedReasons: string[];
-  qualificationStatus?: PaperTradingBoardEntryReadModel["qualification_status"];
+  qualificationStatus?: PaperTradingBoardEntryReadModel["qualification_status"] | "unavailable";
   qualificationReasons: PaperTradingBoardEntryReadModel["qualification_reasons"];
   netRevenueUsdt?: number;
   netReturnPct?: number;
@@ -98,6 +101,9 @@ export interface ResearchWorkspaceViewModel {
   sessions: ResearchSessionViewModel[];
   latestSessionId?: string;
   history: ResearchHistoryViewModel[];
+  paperLearning?: PaperTradingLearningSummaryReadModel;
+  generalization?: ResearchGeneralizationReadModel;
+  findingClusters: CandidateArenaFindingClusterReadModel[];
   emptyState: "none" | "available_empty" | "projection_unavailable";
 }
 
@@ -105,31 +111,41 @@ export function buildArenaWorkspaceViewModel(
   operator: OperatorProjectionInput
 ): ArenaWorkspaceViewModel {
   if (operator.arena_operations) {
-    const systems = operator.arena_operations.systems.map((system): ArenaSystemViewModel => ({
-      id: system.candidate_id,
-      versionId: system.candidate_version_id,
-      evaluationId: system.evaluation_id,
-      tradingRunId: system.trading_run_id,
-      name: system.display_name,
-      direction: system.direction_kind,
-      lifecycle: system.session_status,
-      rankStatus: system.rank_status,
-      rank: system.rank_status === "unranked" ? undefined : system.rank,
-      comparability: system.comparability_status,
-      unrankedReasons: [...system.unranked_reasons],
-      qualificationReasons: [],
-      netRevenueUsdt: system.profit_loss?.net_revenue_usdt,
-      netReturnPct: system.profit_loss?.net_return_pct,
-      revenueUsdt: system.profit_loss?.revenue_usdt,
-      costUsdt: system.profit_loss?.cost_usdt,
-      observationCount: system.observation_count,
-      failedObservationCount: system.failed_observation_count,
-      lastObservedAt: system.last_observed_at,
-      nextObservationAt: system.next_observation_at,
-      latestFailure: system.latest_failure?.reason,
-      source: "arena_operations",
-      detailAvailability: "summary_only"
-    }));
+    const paperBoardGates = new Map(operator.paper_trading_board.entries.map((entry) => [
+      paperBoardGateKey(entry.candidate_id, entry.evaluation_id),
+      entry
+    ]));
+    const systems = operator.arena_operations.systems.map((system): ArenaSystemViewModel => {
+      const paperBoardGate = system.evaluation_id
+        ? paperBoardGates.get(paperBoardGateKey(system.candidate_id, system.evaluation_id))
+        : undefined;
+      return {
+        id: system.candidate_id,
+        versionId: system.candidate_version_id,
+        evaluationId: system.evaluation_id,
+        tradingRunId: system.trading_run_id,
+        name: system.display_name,
+        direction: system.direction_kind,
+        lifecycle: system.session_status,
+        rankStatus: system.rank_status,
+        rank: system.rank_status === "unranked" ? undefined : system.rank,
+        comparability: system.comparability_status,
+        unrankedReasons: [...system.unranked_reasons],
+        qualificationStatus: paperBoardGate?.qualification_status ?? "unavailable",
+        qualificationReasons: paperBoardGate ? [...paperBoardGate.qualification_reasons] : [],
+        netRevenueUsdt: system.profit_loss?.net_revenue_usdt,
+        netReturnPct: system.profit_loss?.net_return_pct,
+        revenueUsdt: system.profit_loss?.revenue_usdt,
+        costUsdt: system.profit_loss?.cost_usdt,
+        observationCount: system.observation_count,
+        failedObservationCount: system.failed_observation_count,
+        lastObservedAt: system.last_observed_at,
+        nextObservationAt: system.next_observation_at,
+        latestFailure: system.latest_failure?.reason,
+        source: "arena_operations",
+        detailAvailability: "summary_only"
+      };
+    });
 
     return {
       availability: "authoritative",
@@ -161,6 +177,17 @@ export function buildArenaWorkspaceViewModel(
 export function buildResearchWorkspaceViewModel(
   operator: OperatorProjectionInput
 ): ResearchWorkspaceViewModel {
+  const paperLearning = operator.trading_review?.review_packet.lineage.paper_board_learning;
+  const context = {
+    paperLearning: paperLearning
+      ? { ...paperLearning, qualification_reasons: [...paperLearning.qualification_reasons] }
+      : undefined,
+    generalization: operator.candidate_arena.research_generalization,
+    findingClusters: (operator.candidate_arena.finding_clusters ?? []).map((cluster) => ({
+      ...cluster,
+      candidate_ids: [...cluster.candidate_ids]
+    }))
+  };
   const history = operator.candidate_arena.latest_ticks.map((tick): ResearchHistoryViewModel => ({
     id: tick.tick_id,
     status: tick.status,
@@ -207,6 +234,7 @@ export function buildResearchWorkspaceViewModel(
       sessions,
       latestSessionId: operator.research_operations.latest_session_id,
       history,
+      ...context,
       emptyState: sessions.length === 0 ? "available_empty" : "none"
     };
   }
@@ -217,6 +245,7 @@ export function buildResearchWorkspaceViewModel(
       loopStatus: operator.candidate_arena.runner_status ?? "unavailable",
       sessions: [],
       history,
+      ...context,
       emptyState: "projection_unavailable"
     };
   }
@@ -226,6 +255,7 @@ export function buildResearchWorkspaceViewModel(
     loopStatus: operator.candidate_arena.runner_status ?? "unavailable",
     sessions: [],
     history: [],
+    ...context,
     emptyState: "projection_unavailable"
   };
 }
@@ -241,7 +271,7 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     rank: entry.rank,
     comparability: "legacy_paper_board",
     unrankedReasons: [],
-    qualificationStatus: entry.qualification_status,
+    qualificationStatus: entry.qualification_status ?? "unavailable",
     qualificationReasons: [...entry.qualification_reasons],
     netRevenueUsdt: entry.profit_loss.net_revenue_usdt,
     netReturnPct: entry.profit_loss.net_return_pct,
@@ -257,6 +287,10 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     source: "paper_trading_board",
     detailAvailability: "summary_only"
   };
+}
+
+function paperBoardGateKey(candidateId: string, evaluationId: string): string {
+  return `${candidateId}\u0000${evaluationId}`;
 }
 
 function paperBoardLifecycle(status: PaperTradingBoardEntryReadModel["runner_status"]): string {

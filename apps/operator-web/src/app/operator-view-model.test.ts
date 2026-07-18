@@ -208,6 +208,27 @@ describe("Operator projection view models", () => {
       rank: 1,
       rankStatus: "provisional_ranked",
       netRevenueUsdt: 15,
+      qualificationStatus: "unavailable",
+      source: "arena_operations"
+    });
+  });
+
+  it("joins exact paper-board qualification gates into authoritative Arena rows", () => {
+    const board = paperBoard();
+    board.entries[0].candidate_id = "arena-candidate";
+    board.entries[0].evaluation_id = "evaluation-1";
+    board.entries[0].qualification_status = "blocked_by_quality";
+    board.entries[0].qualification_reasons = ["failed_observation_ratio_exceeded"];
+
+    const view = buildArenaWorkspaceViewModel(projectionInput({
+      arena_operations: arenaOperations(),
+      paper_trading_board: board
+    }));
+
+    expect(view.systems[0]).toMatchObject({
+      id: "arena-candidate",
+      qualificationStatus: "blocked_by_quality",
+      qualificationReasons: ["failed_observation_ratio_exceeded"],
       source: "arena_operations"
     });
   });
@@ -306,5 +327,64 @@ describe("Operator projection view models", () => {
       completedExperimentCount: 2,
       maxExperimentCount: 4
     });
+  });
+
+  it("carries paper learning, generalization, and finding clusters as read-only Research context", () => {
+    const baseArena = projectionInput().candidate_arena;
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      candidate_arena: {
+        ...baseArena,
+        research_generalization: {
+          status: "collecting",
+          protocol_count: 1,
+          outcome_count: 0,
+          active_protocol: null,
+          latest_outcome: null,
+          latest_policy_decision: null,
+          effective_policy_decision: null,
+          authority_status: "not_promotion_authority"
+        },
+        finding_clusters: [{
+          direction_kind: "trend_following",
+          top_blocker: "min_observation_count_not_met",
+          blocker_group_kind: "evidence_window",
+          market_regime: "long",
+          candidate_count: 2,
+          candidate_ids: ["candidate-1", "candidate-2"],
+          latest_finding: "Needs a longer evidence window.",
+          next_research_focus: "Test slower cadence variants.",
+          authority_status: "not_promotion_authority"
+        }]
+      } as unknown as CandidateArenaReadModel,
+      trading_review: {
+        review_packet: {
+          lineage: {
+            paper_board_learning: {
+              rank: 2,
+              net_revenue_usdt: 7,
+              net_return_pct: 0.7,
+              observation_count: 18,
+              qualification_status: "collecting_evidence",
+              qualification_reasons: ["min_observation_count_not_met"],
+              top_blocker: "min_observation_count_not_met",
+              summary: "Paper evidence is positive but incomplete.",
+              next_research_focus: "Test slower cadence variants.",
+              authority_status: "lineage_only"
+            }
+          }
+        }
+      } as unknown as OperatorProjectionInput["trading_review"]
+    }));
+
+    expect(view.paperLearning).toMatchObject({
+      rank: 2,
+      qualification_status: "collecting_evidence"
+    });
+    expect(view.generalization?.status).toBe("collecting");
+    expect(view.findingClusters[0]).toMatchObject({
+      direction_kind: "trend_following",
+      market_regime: "long"
+    });
+    expect(view.sessions).toEqual([]);
   });
 });

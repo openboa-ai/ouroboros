@@ -3,9 +3,12 @@ import type { OuroborosCommandRequest } from "@ouroboros/domain";
 import {
   ArrowLeft,
   Beaker,
+  BookOpenCheck,
   BrainCircuit,
   FileClock,
   FlaskConical,
+  GitBranch,
+  Layers3,
   Pause,
   Play,
   Search,
@@ -25,7 +28,7 @@ import { CommandConfirmation } from "@/components/command-confirmation";
 import { OperatorMetricStrip } from "@/components/operator-metrics";
 import { StatusBadge } from "@/components/operator-status";
 import { focusNarrowDetail } from "@/lib/operator-focus";
-import { formatCompactId, formatStatus, formatTimestamp } from "@/lib/operator-format";
+import { formatCompactId, formatMoney, formatPercent, formatStatus, formatTimestamp } from "@/lib/operator-format";
 import { cn } from "@/lib/utils";
 
 export function ResearchScreen({
@@ -151,6 +154,8 @@ export function ResearchScreen({
         { label: "Authority", value: "Research only", detail: "No admission self-authority" }
       ]} />
 
+      <ResearchContext view={view} />
+
       {view.emptyState === "available_empty" && view.history.length === 0 ? (
         <Empty className="min-h-72 border-b">
           <EmptyHeader>
@@ -176,6 +181,7 @@ export function ResearchScreen({
           />
         </div>
       ) : null}
+
     </div>
   );
 }
@@ -401,6 +407,246 @@ function ResearchDetail({
         </Alert>
       </div>
     </section>
+  );
+}
+
+function ResearchContext({ view }: { view: ResearchWorkspaceViewModel }) {
+  if (!view.paperLearning && !view.generalization && view.findingClusters.length === 0) {
+    return null;
+  }
+
+  return (
+    <div aria-label="Research evidence context">
+      {view.paperLearning ? <PaperLearningReadback learning={view.paperLearning} /> : null}
+      {view.generalization ? <ResearchGeneralizationReadback generalization={view.generalization} /> : null}
+      {view.findingClusters.length > 0 ? <FindingClustersReadback view={view} /> : null}
+    </div>
+  );
+}
+
+function PaperLearningReadback({
+  learning
+}: {
+  learning: NonNullable<ResearchWorkspaceViewModel["paperLearning"]>;
+}) {
+  return (
+    <section className="border-b px-4 py-4" aria-labelledby="paper-learning-title">
+      <div className="flex flex-wrap items-center gap-2">
+        <BookOpenCheck className="size-4 text-brand" aria-hidden="true" />
+        <h3 id="paper-learning-title" className="text-sm font-semibold">Paper evidence learning</h3>
+        <StatusBadge status={learning.authority_status} />
+      </div>
+      <p className="mt-2 max-w-4xl text-sm">{learning.summary}</p>
+      <ResearchFields fields={[
+        { label: "Paper rank", value: learning.rank !== undefined ? `#${learning.rank}` : "Unranked" },
+        { label: "Net revenue", value: formatMoney(learning.net_revenue_usdt) },
+        { label: "Net return", value: formatPercent(learning.net_return_pct) },
+        { label: "Qualification", value: formatStatus(learning.qualification_status ?? "unavailable") },
+        { label: "Observations", value: String(learning.observation_count) },
+        { label: "Top blocker", value: formatStatus(learning.top_blocker ?? "none") },
+        { label: "Latest failure", value: learning.latest_failure_summary ?? formatStatus(learning.latest_failure_kind ?? "none") },
+        { label: "Next research focus", value: learning.next_research_focus }
+      ]} />
+      {learning.qualification_reasons.length > 0 ? (
+        <div className="mt-4">
+          <p className="text-xs font-medium text-muted-foreground">Qualification blockers</p>
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {learning.qualification_reasons.map((reason) => (
+              <li key={reason}>{formatStatus(reason)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ResearchGeneralizationReadback({
+  generalization
+}: {
+  generalization: NonNullable<ResearchWorkspaceViewModel["generalization"]>;
+}) {
+  const active = generalization.active_protocol;
+  const latest = generalization.latest_outcome;
+  const latestDecision = generalization.latest_policy_decision;
+  const effectiveDecision = generalization.effective_policy_decision;
+
+  return (
+    <section className="border-b px-4 py-4" aria-labelledby="research-generalization-title">
+      <div className="flex flex-wrap items-center gap-2">
+        <GitBranch className="size-4 text-brand" aria-hidden="true" />
+        <h3 id="research-generalization-title" className="text-sm font-semibold">Research generalization</h3>
+        <StatusBadge status={generalization.status} />
+        <StatusBadge status={generalization.authority_status} />
+      </div>
+      <ResearchFields fields={[
+        { label: "Lifecycle", value: formatStatus(generalization.status) },
+        { label: "Protocols", value: String(generalization.protocol_count) },
+        { label: "Outcomes", value: String(generalization.outcome_count) },
+        {
+          label: "Effective policy",
+          value: effectiveDecision?.effective_default_mode
+            ? formatStatus(effectiveDecision.effective_default_mode)
+            : "Unavailable"
+        }
+      ]} />
+
+      {active ? (
+        <div className="mt-4 border-t pt-4">
+          <h4 className="text-sm font-semibold">Active prospective protocol</h4>
+          <ResearchFields fields={[
+            { label: "Protocol", value: active.research_generalization_protocol_id, mono: true },
+            { label: "Committed", value: formatTimestamp(active.committed_at) },
+            { label: "Collection deadline", value: formatTimestamp(active.collection_deadline_at) },
+            { label: "Assigned", value: `${active.assigned_study_count} / ${active.planned_study_count}` },
+            { label: "Terminal", value: `${active.terminal_study_count} / ${active.planned_study_count}` },
+            { label: "Next action", value: formatStatus(active.next_action) },
+            { label: "Authority", value: formatStatus(active.authority_status) }
+          ]} />
+          {active.condition_blocks.length > 0 ? (
+            <div className="mt-4 divide-y border-y">
+              {active.condition_blocks.map((block) => (
+                <div className="grid gap-1 py-2 text-sm sm:grid-cols-[minmax(8rem,0.6fr)_1fr]" key={block.condition_block}>
+                  <span className="font-medium">{formatStatus(block.condition_block)}</span>
+                  <span className="text-muted-foreground">
+                    {block.assigned_study_count} / {block.planned_study_count} assigned; {block.terminal_study_count} / {block.planned_study_count} terminal
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {latest ? (
+        <div className="mt-4 border-t pt-4">
+          <h4 className="text-sm font-semibold">Latest prospective outcome</h4>
+          <ResearchFields fields={[
+            { label: "Inference", value: formatStatus(latest.inference_status) },
+            { label: "Adjudicated", value: formatTimestamp(latest.adjudicated_at) },
+            { label: "Completed studies", value: `${latest.completed_study_count} / ${latest.planned_study_count}` },
+            { label: "Missing / ineligible", value: `${latest.missing_study_count} / ${latest.ineligible_study_count}` },
+            { label: "Non-tied / tied", value: `${latest.non_tied_study_count} / ${latest.tied_study_count}` },
+            { label: "Exact sign-test p", value: String(latest.exact_sign_test_p_value) },
+            {
+              label: "Equal-weight mean",
+              value: latest.equal_weight_mean_rate_difference === null
+                ? "Unavailable"
+                : String(latest.equal_weight_mean_rate_difference)
+            },
+            { label: "Distinct baselines", value: String(latest.distinct_baseline_count) },
+            {
+              label: "Harmful blocks",
+              value: latest.harmful_condition_blocks.length > 0
+                ? latest.harmful_condition_blocks.map(formatStatus).join(", ")
+                : "None"
+            },
+            { label: "Decision eligibility", value: formatStatus(latest.policy_decision_eligibility) },
+            { label: "Next action", value: formatStatus(latest.next_action) },
+            {
+              label: "Authority",
+              value: `policy replacement ${latest.policy_replacement_authority}; promotion ${latest.promotion_authority}; order ${latest.order_submission_authority}; live ${latest.live_exchange_authority}`
+            }
+          ]} />
+        </div>
+      ) : null}
+
+      {latestDecision ? (
+        <div className="mt-4 border-t pt-4">
+          <h4 className="text-sm font-semibold">Latest research-policy decision</h4>
+          <ResearchFields fields={[
+            { label: "Decision", value: latestDecision.research_generalization_policy_decision_id, mono: true },
+            { label: "Protocol", value: latestDecision.research_generalization_protocol_id, mono: true },
+            { label: "Outcome", value: latestDecision.research_generalization_outcome_id, mono: true },
+            { label: "Status", value: formatStatus(latestDecision.decision_status) },
+            { label: "Reason", value: formatStatus(latestDecision.decision_reason) },
+            { label: "Effective mode", value: formatStatus(latestDecision.effective_default_mode ?? "none") },
+            { label: "Decided", value: formatTimestamp(latestDecision.decided_at) },
+            { label: "Authority", value: formatStatus(latestDecision.authority_status) }
+          ]} />
+        </div>
+      ) : null}
+
+      {effectiveDecision ? (
+        <div className="mt-4 border-t pt-4">
+          <h4 className="text-sm font-semibold">Effective policy application</h4>
+          <ResearchFields fields={[
+            { label: "Decision", value: effectiveDecision.research_generalization_policy_decision_id, mono: true },
+            { label: "Mode", value: formatStatus(effectiveDecision.effective_default_mode) },
+            { label: "Application", value: formatStatus(effectiveDecision.application.application_status) },
+            { label: "Allocations", value: String(effectiveDecision.application.allocation_count) },
+            { label: "Completed ticks", value: String(effectiveDecision.application.completed_tick_count) },
+            {
+              label: "Latest allocation",
+              value: formatCompactId(effectiveDecision.application.latest_allocation?.candidate_arena_research_allocation_id),
+              mono: true
+            },
+            { label: "Authority", value: formatStatus(effectiveDecision.authority_status) }
+          ]} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FindingClustersReadback({ view }: { view: ResearchWorkspaceViewModel }) {
+  const visibleClusters = view.findingClusters.slice(0, 6);
+  return (
+    <section className="border-b px-4 py-4" aria-labelledby="finding-clusters-title">
+      <div className="flex flex-wrap items-center gap-2">
+        <Layers3 className="size-4 text-brand" aria-hidden="true" />
+        <h3 id="finding-clusters-title" className="text-sm font-semibold">Research learning clusters</h3>
+        <StatusBadge status="not_promotion_authority" />
+      </div>
+      <div className="mt-3 divide-y border-y">
+        {visibleClusters.map((cluster) => (
+          <article
+            className="grid gap-3 py-3 lg:grid-cols-[minmax(12rem,0.7fr)_minmax(0,1.3fr)]"
+            key={`${cluster.direction_kind}:${cluster.top_blocker ?? "none"}:${cluster.market_regime}:${cluster.protocol_failure_kind ?? "none"}`}
+          >
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-semibold">{formatStatus(cluster.direction_kind)} / {formatStatus(cluster.market_regime)}</h4>
+                <StatusBadge status={cluster.blocker_group_kind ?? "no_blocker_group"} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {cluster.candidate_count} {cluster.candidate_count === 1 ? "candidate" : "candidates"}
+              </p>
+            </div>
+            <ResearchFields fields={[
+              { label: "Top blocker", value: formatStatus(cluster.top_blocker ?? "none") },
+              { label: "Protocol failure", value: formatStatus(cluster.protocol_failure_kind ?? "none") },
+              { label: "Latest finding", value: cluster.latest_finding ?? "None" },
+              { label: "Next research focus", value: cluster.next_research_focus }
+            ]} compact />
+          </article>
+        ))}
+      </div>
+      {visibleClusters.length < view.findingClusters.length ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Showing {visibleClusters.length} of {view.findingClusters.length} clusters
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ResearchFields({
+  fields,
+  compact = false
+}: {
+  fields: Array<{ label: string; value: string; mono?: boolean }>;
+  compact?: boolean;
+}) {
+  return (
+    <dl className={cn(
+      "mt-3 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4",
+      compact && "mt-0 xl:grid-cols-2"
+    )}>
+      {fields.map((field) => (
+        <ResearchField key={field.label} label={field.label} value={field.value} mono={field.mono} />
+      ))}
+    </dl>
   );
 }
 

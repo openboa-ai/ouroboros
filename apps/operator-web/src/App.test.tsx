@@ -164,6 +164,7 @@ describe("greenfield Operator entrypoint", () => {
         createdCandidateIds: ["candidate-1"],
         directionCount: 2
       }],
+      findingClusters: [],
       emptyState: "projection_unavailable"
     };
 
@@ -181,6 +182,65 @@ describe("greenfield Operator entrypoint", () => {
     expect(markup).toContain("1 candidates across 2 directions");
     expect(markup).not.toContain("Filter Research sessions");
     expect(markup).not.toContain("configured-only");
+  });
+
+  it("renders read-only Research learning context without inventing a session", () => {
+    const view = {
+      availability: "history_only",
+      loopStatus: "stopped",
+      sessions: [],
+      history: [],
+      emptyState: "projection_unavailable",
+      paperLearning: {
+        rank: 2,
+        net_revenue_usdt: 7,
+        net_return_pct: 0.7,
+        observation_count: 18,
+        qualification_status: "collecting_evidence",
+        qualification_reasons: ["min_observation_count_not_met"],
+        top_blocker: "min_observation_count_not_met",
+        summary: "Paper evidence is positive but incomplete.",
+        next_research_focus: "Test slower cadence variants.",
+        authority_status: "lineage_only"
+      },
+      generalization: {
+        status: "collecting",
+        protocol_count: 1,
+        outcome_count: 0,
+        active_protocol: null,
+        latest_outcome: null,
+        latest_policy_decision: null,
+        effective_policy_decision: null,
+        authority_status: "not_promotion_authority"
+      },
+      findingClusters: [{
+        direction_kind: "trend_following",
+        top_blocker: "min_observation_count_not_met",
+        blocker_group_kind: "evidence_window",
+        market_regime: "long",
+        candidate_count: 2,
+        candidate_ids: ["candidate-1", "candidate-2"],
+        latest_finding: "Needs a longer evidence window.",
+        next_research_focus: "Test slower cadence variants.",
+        authority_status: "not_promotion_authority"
+      }]
+    } as unknown as ResearchWorkspaceViewModel;
+
+    const markup = renderToStaticMarkup(
+      <ResearchScreen
+        view={view}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("Paper evidence learning");
+    expect(markup).toContain("Paper evidence is positive but incomplete.");
+    expect(markup).toContain("Research generalization");
+    expect(markup).toContain("Research learning clusters");
+    expect(markup).toContain("Test slower cadence variants.");
+    expect(markup).not.toContain("Filter Research sessions");
   });
 
   it("distinguishes loop state from projection availability", () => {

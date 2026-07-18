@@ -444,9 +444,7 @@ function ArenaSystemDetail({
             })}
             trigger={(
               <Button
-                disabled={commandRunning || Boolean(
-                  system.qualificationStatus && system.qualificationStatus !== "qualified"
-                )}
+                disabled={commandRunning || system.qualificationStatus !== "qualified"}
               >
                 <Trophy data-icon="inline-start" aria-hidden="true" /> Promote
               </Button>
