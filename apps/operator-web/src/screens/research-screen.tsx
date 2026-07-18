@@ -280,8 +280,35 @@ function ResearchMaster({
                 <StatusBadge status={tick.status} />
               </div>
               <p className="mt-2 text-sm">
-                {tick.createdCandidateCount} candidates across {tick.directionCount} directions
+                {tick.createdCandidateCount} generated · {tick.failedDirectionCount} failed · {tick.directionCount} directions
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {tick.sourceCandidate
+                  ? `Source ${formatStatus(tick.sourceCandidate.sourceKind)} · ${tick.sourceCandidate.displayName} · ${formatCompactId(tick.sourceCandidate.candidateId)}${tick.sourceCandidate.netRevenueUsdt === undefined ? "" : ` · ${formatMoney(tick.sourceCandidate.netRevenueUsdt)}`}`
+                  : "Source candidate not recorded"}
+              </p>
+              {tick.directions.length > 0 ? (
+                <div className="mt-3 divide-y border-y">
+                  {tick.directions.map((direction) => {
+                    const outcome = direction.candidateId ?? direction.error ?? direction.finding ?? "No output recorded";
+                    const efficiency = direction.researchEfficiency;
+                    return (
+                      <div className="py-2" key={direction.direction}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-medium">{formatStatus(direction.direction)}</span>
+                          <StatusBadge status={direction.status} />
+                        </div>
+                        <p className="mt-1 break-words text-xs text-muted-foreground">{outcome}</p>
+                        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                          {efficiency
+                            ? `${efficiency.providerRequestTotal} provider · ${efficiency.runnerCommandTotal} runner · ${efficiency.scenarioCount} scenarios · ${efficiency.elapsedMs}ms · ${formatStatus(efficiency.authorityStatus)}`
+                            : "Research efficiency not recorded"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">Completed {formatTimestamp(tick.completedAt)}</p>
             </div>
           ))}

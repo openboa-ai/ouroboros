@@ -1,7 +1,8 @@
-import type {
-  OperatorReadModel,
-  OuroborosCommandRequest,
-  TradingGatewayEnvironmentReadModel
+import {
+  commandRemediation,
+  type OperatorReadModel,
+  type OuroborosCommandRequest,
+  type TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import {
   Activity,
@@ -45,6 +46,7 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
   const evaluation = subject.evaluation;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
+  const canStartPaperRun = !review.active_candidate_id && Boolean(candidateId) && !evaluation.runner_active;
   const canStopPaperRun = Boolean(tradingRunId) && (
     evaluation.runner_active ||
     evaluation.status === "running" ||
@@ -64,7 +66,8 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={commandRunning || !candidateId || evaluation.runner_active}
+            disabled={commandRunning || !canStartPaperRun}
+            title={review.active_candidate_id ? "Exact Trading review run restart is unavailable" : undefined}
             onClick={() => candidateId && onCommand("Start paper TradingRun", {
               command_kind: "trading_run.start",
               payload: { candidate_id: candidateId }
@@ -241,14 +244,25 @@ export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operato
               </TableRow>
             </TableHeader>
             <TableBody>
-              {operator.latest_commands.map((command) => (
-                <TableRow key={command.command_id}>
-                  <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatTimestamp(command.completed_at)}</TableCell>
-                  <TableCell className="whitespace-nowrap font-mono text-xs">{command.command_kind}</TableCell>
-                  <TableCell><StatusBadge status={command.status} /></TableCell>
-                  <TableCell className="min-w-56 text-sm text-muted-foreground">{command.summary ?? command.error ?? "No summary"}</TableCell>
-                </TableRow>
-              ))}
+              {operator.latest_commands.map((command) => {
+                const remediation = commandRemediation(command);
+                return (
+                  <TableRow key={command.command_id}>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatTimestamp(command.completed_at)}</TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">{command.command_kind}</TableCell>
+                    <TableCell><StatusBadge status={command.status} /></TableCell>
+                    <TableCell className="min-w-72 text-sm text-muted-foreground">
+                      <p>{command.summary ?? command.error ?? "No summary"}</p>
+                      {remediation ? (
+                        <div className="mt-2 border-t pt-2">
+                          <p className="font-medium text-foreground">Review {remediation.surface}</p>
+                          <p className="mt-1">{remediation.remediation}</p>
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {operator.latest_commands.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">No command outcomes recorded.</TableCell>

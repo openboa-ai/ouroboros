@@ -207,7 +207,30 @@ describe("greenfield Operator entrypoint", () => {
         completedAt: "2026-07-18T00:05:00.000Z",
         createdCandidateCount: 1,
         createdCandidateIds: ["candidate-1"],
-        directionCount: 2
+        directionCount: 2,
+        failedDirectionCount: 1,
+        sourceCandidate: {
+          sourceKind: "paper_board_leader",
+          candidateId: "source-candidate",
+          displayName: "Source candidate",
+          netRevenueUsdt: 12
+        },
+        directions: [{
+          direction: "trend_following",
+          status: "created",
+          candidateId: "candidate-1",
+          researchEfficiency: {
+            providerRequestTotal: 2,
+            runnerCommandTotal: 3,
+            scenarioCount: 4,
+            elapsedMs: 500,
+            authorityStatus: "not_promotion_authority"
+          }
+        }, {
+          direction: "mean_reversion",
+          status: "failed",
+          error: "provider_unavailable"
+        }]
       }],
       findingClusters: [],
       emptyState: "projection_unavailable"
@@ -224,7 +247,12 @@ describe("greenfield Operator entrypoint", () => {
 
     expect(markup).toContain("Research session projection pending");
     expect(markup).toContain("Tick history 1");
-    expect(markup).toContain("1 candidates across 2 directions");
+    expect(markup).toContain("1 generated · 1 failed · 2 directions");
+    expect(markup).toContain("Source candidate");
+    expect(markup).toContain("Trend Following");
+    expect(markup).toContain("candidate-1");
+    expect(markup).toContain("2 provider · 3 runner · 4 scenarios · 500ms");
+    expect(markup).toContain("provider_unavailable");
     expect(markup).not.toContain("Filter Research sessions");
     expect(markup).not.toContain("configured-only");
   });

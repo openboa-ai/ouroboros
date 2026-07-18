@@ -114,6 +114,22 @@ describe("review-scoped secondary screens", () => {
     expect(markup).not.toContain("selected-run");
   });
 
+  it("does not start a candidate-default paper run from an active Trading review", () => {
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={mismatchedReviewOperator()}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+    const startButton = Array.from(markup.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g))
+      .map((match) => match[0])
+      .find((button) => button.includes("Start paper"));
+
+    expect(startButton).toContain('disabled=""');
+    expect(startButton).toContain("Exact Trading review run restart is unavailable");
+  });
+
   it("binds Evidence readback to the active review evaluation", () => {
     const markup = renderToStaticMarkup(
       <EvidenceScreen operator={mismatchedReviewOperator()} />
@@ -226,5 +242,24 @@ describe("review-scoped secondary screens", () => {
     expect(markup).toContain("Failed Observation Ratio Exceeded");
     expect(markup).toContain("Too many paper observations failed.");
     expect(markup).toContain("Stabilize the runner before collecting more evidence.");
+  });
+
+  it("renders the shared remediation pointer for failed commands", () => {
+    const operator = mismatchedReviewOperator();
+    operator.latest_commands = [{
+      command_id: "command-1",
+      command_kind: "trading_candidate.promote",
+      status: "failed",
+      requested_at: "2026-07-18T00:00:00.000Z",
+      completed_at: "2026-07-18T00:00:01.000Z",
+      error: "paper_qualification_required",
+      authority_status: "not_live"
+    }];
+
+    const markup = renderToStaticMarkup(<EvidenceScreen operator={operator} />);
+
+    expect(markup).toContain("paper_qualification_required");
+    expect(markup).toContain("Review Trading review packet, Paper Board");
+    expect(markup).toContain("Review the Trading review packet blockers and Paper Board qualification before retrying promotion.");
   });
 });

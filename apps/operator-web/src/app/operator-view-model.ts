@@ -108,6 +108,27 @@ export interface ResearchHistoryViewModel {
   createdCandidateCount: number;
   createdCandidateIds: string[];
   directionCount: number;
+  failedDirectionCount: number;
+  sourceCandidate?: {
+    sourceKind: string;
+    candidateId: string;
+    displayName: string;
+    netRevenueUsdt?: number;
+  };
+  directions: Array<{
+    direction: string;
+    status: string;
+    candidateId?: string;
+    finding?: string;
+    error?: string;
+    researchEfficiency?: {
+      providerRequestTotal: number;
+      runnerCommandTotal: number;
+      scenarioCount: number;
+      elapsedMs: number;
+      authorityStatus: string;
+    };
+  }>;
 }
 
 export interface ResearchWorkspaceViewModel {
@@ -204,15 +225,42 @@ export function buildResearchWorkspaceViewModel(
       candidate_ids: [...cluster.candidate_ids]
     }))
   };
-  const history = operator.candidate_arena.latest_ticks.map((tick): ResearchHistoryViewModel => ({
-    id: tick.tick_id,
-    status: tick.status,
-    startedAt: tick.started_at,
-    completedAt: tick.completed_at,
-    createdCandidateCount: tick.created_candidate_ids.length,
-    createdCandidateIds: [...tick.created_candidate_ids],
-    directionCount: tick.direction_results.length
-  }));
+  const history = operator.candidate_arena.latest_ticks.map((tick): ResearchHistoryViewModel => {
+    const source = tick.source_candidate;
+    return {
+      id: tick.tick_id,
+      status: tick.status,
+      startedAt: tick.started_at,
+      completedAt: tick.completed_at,
+      createdCandidateCount: tick.created_candidate_ids.length,
+      createdCandidateIds: [...tick.created_candidate_ids],
+      directionCount: tick.direction_results.length,
+      failedDirectionCount: tick.direction_results.filter((result) => result.status === "failed").length,
+      sourceCandidate: source ? {
+        sourceKind: source.source_kind,
+        candidateId: source.candidate_id,
+        displayName: source.display_name,
+        netRevenueUsdt: source.net_revenue_usdt
+      } : undefined,
+      directions: tick.direction_results.map((result) => {
+        const efficiency = result.research_efficiency;
+        return {
+          direction: result.direction_kind,
+          status: result.status,
+          candidateId: result.candidate_id,
+          finding: result.finding,
+          error: result.error,
+          researchEfficiency: efficiency ? {
+            providerRequestTotal: efficiency.provider_request_total,
+            runnerCommandTotal: efficiency.runner_command_total,
+            scenarioCount: efficiency.scenario_count,
+            elapsedMs: efficiency.elapsed_ms,
+            authorityStatus: efficiency.authority_status
+          } : undefined
+        };
+      })
+    };
+  });
 
   if (operator.research_operations) {
     const sessions = operator.research_operations.sessions.map((session): ResearchSessionViewModel => ({

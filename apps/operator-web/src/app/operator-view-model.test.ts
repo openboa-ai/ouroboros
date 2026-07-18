@@ -335,8 +335,30 @@ describe("Operator projection view models", () => {
           status: "completed",
           started_at: "2026-07-18T00:00:00.000Z",
           completed_at: "2026-07-18T00:05:00.000Z",
+          source_candidate: {
+            source_kind: "paper_board_leader",
+            candidate_id: "source-candidate",
+            display_name: "Source candidate",
+            net_revenue_usdt: 12,
+            authority_status: "not_live"
+          },
           created_candidate_ids: ["candidate-7"],
-          direction_results: [],
+          direction_results: [{
+            direction_kind: "trend_following",
+            status: "created",
+            candidate_id: "candidate-7",
+            research_efficiency: {
+              provider_request_total: 2,
+              runner_command_total: 3,
+              scenario_count: 4,
+              elapsed_ms: 500,
+              authority_status: "not_promotion_authority"
+            }
+          }, {
+            direction_kind: "mean_reversion",
+            status: "failed",
+            error: "provider_unavailable"
+          }],
           authority_status: "not_live"
         }]
       } as unknown as CandidateArenaReadModel
@@ -345,7 +367,30 @@ describe("Operator projection view models", () => {
     const view = buildResearchWorkspaceViewModel(input);
     expect(view.availability).toBe("history_only");
     expect(view.sessions).toEqual([]);
-    expect(view.history[0]).toMatchObject({ id: "tick-7", createdCandidateCount: 1 });
+    expect(view.history[0]).toMatchObject({
+      id: "tick-7",
+      createdCandidateCount: 1,
+      failedDirectionCount: 1,
+      sourceCandidate: {
+        candidateId: "source-candidate",
+        displayName: "Source candidate"
+      },
+      directions: [{
+        direction: "trend_following",
+        status: "created",
+        candidateId: "candidate-7",
+        researchEfficiency: {
+          providerRequestTotal: 2,
+          runnerCommandTotal: 3,
+          scenarioCount: 4,
+          elapsedMs: 500
+        }
+      }, {
+        direction: "mean_reversion",
+        status: "failed",
+        error: "provider_unavailable"
+      }]
+    });
   });
 
   it("maps only research_operations records into active methodology sessions", () => {
