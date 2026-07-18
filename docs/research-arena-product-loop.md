@@ -62,6 +62,11 @@ Each session exposes:
 - resulting admission, duplicate, quarantine, no-submission, or failed-closed state;
 - exact admitted candidate and SystemCode link when one exists.
 
+Development submissions and the selected result bind only `system_code` records. The terminal
+Research detail links bind the exact `candidate_admission_decision` and
+`paper_trading_handoff_conformance` records; consumers never infer those edges from an arbitrary
+reference.
+
 The supported lifecycle is `queued`, `allocating`, `running`, `awaiting_selection`,
 `sealed_admission`, `admitted`, `duplicate`, `quarantined`, `finished_without_submission`,
 `failed_closed`, or `recovering`. Process loss never changes old evidence or resumes an old sealed

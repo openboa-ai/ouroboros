@@ -5,6 +5,7 @@ import type {
   ArenaOperationsReadModel,
   ArenaTradingSystemSummaryReadModel,
   ArenaTradingSystemDetailReadModel,
+  ResearchDevelopmentSubmissionReadModel,
   ResearchOperationsReadModel,
   ResearchSessionDetailReadModel
 } from "./index";
@@ -277,6 +278,32 @@ describe("Research and Arena operations read-model contracts", () => {
       logs_truncated: false
     };
 
+    const invalidSelectedSystemCode: ResearchSessionDetailReadModel = {
+      ...researchDetail,
+      // @ts-expect-error Research selection must bind an exact SystemCode record.
+      selected_system_code_ref: { record_kind: "finding", id: "finding-1" }
+    };
+    const invalidAdmissionDecision: ResearchSessionDetailReadModel = {
+      ...researchDetail,
+      // @ts-expect-error Research admission must bind an exact admission decision record.
+      admission_decision_ref: { record_kind: "finding", id: "finding-1" }
+    };
+    const invalidHandoffConformance: ResearchSessionDetailReadModel = {
+      ...researchDetail,
+      // @ts-expect-error Research handoff must bind exact paper conformance evidence.
+      paper_handoff_conformance_ref: { record_kind: "finding", id: "finding-1" }
+    };
+    const invalidDevelopmentSubmission: ResearchDevelopmentSubmissionReadModel = {
+      submission_sequence: 1,
+      // @ts-expect-error A development submission points to exact SystemCode.
+      system_code_ref: { record_kind: "finding", id: "finding-1" },
+      system_code_digest: "sha256:system-code",
+      submitted_at: "2026-07-18T00:01:30.000Z",
+      status: "evaluated",
+      selected: false,
+      authority_status: "research_only"
+    };
+
     const arenaDetail = {
       candidate_admission_decision_ref: {
         record_kind: "candidate_admission_decision",
@@ -313,6 +340,10 @@ describe("Research and Arena operations read-model contracts", () => {
       sanitization_status: "sanitized",
       qualification_evidence_hidden: true
     });
+    expect(invalidSelectedSystemCode.selected_system_code_ref?.record_kind).toBe("finding");
+    expect(invalidAdmissionDecision.admission_decision_ref?.record_kind).toBe("finding");
+    expect(invalidHandoffConformance.paper_handoff_conformance_ref?.record_kind).toBe("finding");
+    expect(invalidDevelopmentSubmission.system_code_ref.record_kind).toBe("finding");
     expect(arenaDetail.isolation.network_policy_status).toBe("verified");
     expect(arenaDetail.candidate_admission_decision_ref.record_kind)
       .toBe("candidate_admission_decision");

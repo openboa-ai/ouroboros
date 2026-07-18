@@ -14136,7 +14136,7 @@ export interface ResearchSessionSummaryReadModel {
 
 export interface ResearchDevelopmentSubmissionReadModel {
   submission_sequence: number;
-  system_code_ref: Ref;
+  system_code_ref: Ref & { record_kind: "system_code" };
   system_code_digest: string;
   submitted_at: string;
   status: "evaluated" | "failed";
@@ -14149,9 +14149,13 @@ export interface ResearchSessionDetailReadModel
   extends ResearchSessionSummaryReadModel {
   evidence_inputs: ResearchEvidenceArtifactReadModel[];
   development_submissions: ResearchDevelopmentSubmissionReadModel[];
-  selected_system_code_ref?: Ref;
-  admission_decision_ref?: Ref;
-  paper_handoff_conformance_ref?: Ref;
+  selected_system_code_ref?: Ref & { record_kind: "system_code" };
+  admission_decision_ref?: Ref & {
+    record_kind: "candidate_admission_decision";
+  };
+  paper_handoff_conformance_ref?: Ref & {
+    record_kind: "paper_trading_handoff_conformance";
+  };
   notebook_summary: string[];
   log_entries: Array<{
     sequence: number;
