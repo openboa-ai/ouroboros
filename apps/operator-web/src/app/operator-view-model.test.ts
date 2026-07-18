@@ -213,8 +213,11 @@ describe("Operator projection view models", () => {
   });
 
   it("uses actual paper board rows only as an explicit compatibility surface", () => {
+    const board = paperBoard();
+    board.entries[0].qualification_status = "blocked_by_quality";
+    board.entries[0].qualification_reasons = ["failed_observation_ratio_exceeded"];
     const view = buildArenaWorkspaceViewModel(projectionInput({
-      paper_trading_board: paperBoard()
+      paper_trading_board: board
     }));
 
     expect(view.availability).toBe("compatibility");
@@ -223,6 +226,8 @@ describe("Operator projection view models", () => {
       rank: 9,
       lifecycle: "running",
       netRevenueUsdt: 8,
+      qualificationStatus: "blocked_by_quality",
+      qualificationReasons: ["failed_observation_ratio_exceeded"],
       source: "paper_trading_board"
     });
   });

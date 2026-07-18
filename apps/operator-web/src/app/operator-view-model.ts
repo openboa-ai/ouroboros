@@ -29,6 +29,8 @@ export interface ArenaSystemViewModel {
   rank?: number;
   comparability: string;
   unrankedReasons: string[];
+  qualificationStatus?: PaperTradingBoardEntryReadModel["qualification_status"];
+  qualificationReasons: PaperTradingBoardEntryReadModel["qualification_reasons"];
   netRevenueUsdt?: number;
   netReturnPct?: number;
   revenueUsdt?: number;
@@ -115,6 +117,7 @@ export function buildArenaWorkspaceViewModel(
       rank: system.rank_status === "unranked" ? undefined : system.rank,
       comparability: system.comparability_status,
       unrankedReasons: [...system.unranked_reasons],
+      qualificationReasons: [],
       netRevenueUsdt: system.profit_loss?.net_revenue_usdt,
       netReturnPct: system.profit_loss?.net_return_pct,
       revenueUsdt: system.profit_loss?.revenue_usdt,
@@ -238,6 +241,8 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     rank: entry.rank,
     comparability: "legacy_paper_board",
     unrankedReasons: [],
+    qualificationStatus: entry.qualification_status,
+    qualificationReasons: [...entry.qualification_reasons],
     netRevenueUsdt: entry.profit_loss.net_revenue_usdt,
     netReturnPct: entry.profit_loss.net_return_pct,
     revenueUsdt: entry.profit_loss.revenue_usdt,

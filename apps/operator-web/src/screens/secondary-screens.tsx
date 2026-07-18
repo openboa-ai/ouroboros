@@ -41,8 +41,8 @@ interface SecondaryScreenProps {
 
 export function TradingScreen({ operator, commandRunning, onCommand }: SecondaryScreenProps) {
   const review = operator.trading_review;
-  const packet = review.review_packet;
-  const evaluation = evaluationForTradingSubject(operator);
+  const subject = tradingSubjectEvidence(operator);
+  const evaluation = subject.evaluation;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
 
@@ -108,12 +108,12 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
       <OperatorMetricStrip metrics={[
         {
           label: "Net revenue",
-          value: formatMoney(packet.performance.profit_loss?.net_revenue_usdt),
-          tone: (packet.performance.profit_loss?.net_revenue_usdt ?? 0) > 0 ? "positive" : (packet.performance.profit_loss?.net_revenue_usdt ?? 0) < 0 ? "negative" : "default"
+          value: formatMoney(subject.profitLoss?.net_revenue_usdt),
+          tone: (subject.profitLoss?.net_revenue_usdt ?? 0) > 0 ? "positive" : (subject.profitLoss?.net_revenue_usdt ?? 0) < 0 ? "negative" : "default"
         },
-        { label: "Net return", value: formatPercent(packet.performance.profit_loss?.net_return_pct) },
+        { label: "Net return", value: formatPercent(subject.profitLoss?.net_return_pct) },
         { label: "Observations", value: String(evaluation.observation_count), detail: evaluation.runner_active ? "Runner active" : "Runner inactive" },
-        { label: "Ledger", value: formatStatus(packet.ledger.evidence_status), detail: packet.ledger.ledger_chain_complete ? "Chain complete" : "Chain incomplete" }
+        { label: "Ledger", value: formatStatus(subject.ledgerStatus), detail: subject.ledgerChainComplete ? "Chain complete" : "Chain incomplete" }
       ]} />
 
       <div className="grid divide-y border-b xl:grid-cols-3 xl:divide-x xl:divide-y-0">
@@ -123,22 +123,22 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
             <ReadField label="Candidate" value={formatCompactId(candidateId)} mono />
             <ReadField label="Evaluation" value={formatCompactId(evaluation.evaluation_id)} mono />
             <ReadField label="TradingRun" value={formatCompactId(tradingRunId)} mono />
-            <ReadField label="Selected matches review" value={packet.subject.selected_matches_trading_review ? "Yes" : "No"} />
+            <ReadField label="Selected matches review" value={subject.selectedMatchesReview === undefined ? "Not applicable" : subject.selectedMatchesReview ? "Yes" : "No"} />
           </dl>
         </section>
         <section className="p-4">
           <h3 className="text-sm font-semibold">Evidence quality</h3>
           <dl className="mt-3 space-y-3 text-sm">
-            <ReadField label="Qualification" value={formatStatus(review.paper_qualification_status ?? "unavailable")} />
-            <ReadField label="Verdict" value={formatStatus(packet.verdict.severity)} />
-            <ReadField label="Top blocker" value={packet.verdict.top_blocker ? formatStatus(packet.verdict.top_blocker) : "None"} />
+            <ReadField label="Qualification" value={formatStatus(subject.qualificationStatus ?? "unavailable")} />
+            <ReadField label="Verdict" value={formatStatus(subject.verdict)} />
+            <ReadField label="Top blocker" value={subject.topBlocker ? formatStatus(subject.topBlocker) : "None"} />
             <ReadField label="Market source" value={formatStatus(evaluation.market_data_source)} />
           </dl>
         </section>
         <section className="p-4">
           <h3 className="text-sm font-semibold">Runner</h3>
           <dl className="mt-3 space-y-3 text-sm">
-            <ReadField label="Status" value={formatStatus(packet.runner.runner_status ?? evaluation.status)} />
+            <ReadField label="Status" value={formatStatus(subject.runnerStatus)} />
             <ReadField label="Last observed" value={formatTimestamp(evaluation.last_observed_at)} />
             <ReadField label="Next observation" value={formatTimestamp(evaluation.next_observation_at)} />
             <ReadField label="Latest failure" value={evaluation.latest_failure_reason ?? "None observed"} />
@@ -150,24 +150,23 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
 }
 
 export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operator">) {
-  const review = operator.trading_review;
-  const packet = review.review_packet;
-  const evaluation = evaluationForTradingSubject(operator);
+  const subject = tradingSubjectEvidence(operator);
+  const evaluation = subject.evaluation;
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
       <section className="px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">Durable evidence readback</h2>
-          <StatusBadge status={packet.ledger.evidence_status} />
+          <StatusBadge status={subject.ledgerStatus} />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">Evaluation, Gateway, Ledger, lineage, and command provenance.</p>
       </section>
 
       <OperatorMetricStrip metrics={[
         { label: "Evaluation", value: formatCompactId(evaluation.evaluation_id), detail: formatStatus(evaluation.status) },
-        { label: "Ledger chain", value: packet.ledger.ledger_chain_complete ? "Complete" : "Incomplete", detail: formatStatus(packet.ledger.evidence_status) },
-        { label: "Order requests", value: packet.ledger.latest_order_request_id ? "Observed" : "None", detail: formatCompactId(packet.ledger.latest_order_request_id) },
+        { label: "Ledger chain", value: subject.ledgerChainComplete ? "Complete" : "Incomplete", detail: formatStatus(subject.ledgerStatus) },
+        { label: "Order requests", value: subject.latestOrderRequestId ? "Observed" : "None", detail: formatCompactId(subject.latestOrderRequestId) },
         { label: "Commands", value: String(operator.latest_commands.length), detail: "Latest durable results" }
       ]} />
 
@@ -176,11 +175,11 @@ export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operato
           <h3 className="text-sm font-semibold">Provenance chain</h3>
           <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
             <ReadField label="Market data" value={formatStatus(evaluation.market_data_source)} />
-            <ReadField label="Public execution" value={packet.provenance.latest_public_execution_source ? formatStatus(packet.provenance.latest_public_execution_source) : "Unavailable"} />
-            <ReadField label="Latest decision" value={packet.ledger.latest_decision_kind ? formatStatus(packet.ledger.latest_decision_kind) : "No order decision"} />
-            <ReadField label="Gateway outcome" value={packet.ledger.latest_gateway_outcome ?? "Unavailable"} />
-            <ReadField label="Execution status" value={packet.ledger.latest_execution_status ?? "Unavailable"} />
-            <ReadField label="Lineage" value={formatStatus(packet.lineage.lineage_status)} />
+            <ReadField label="Public execution" value={subject.latestPublicExecutionSource ? formatStatus(subject.latestPublicExecutionSource) : "Unavailable"} />
+            <ReadField label="Latest decision" value={subject.latestDecisionKind ? formatStatus(subject.latestDecisionKind) : "No order decision"} />
+            <ReadField label="Gateway outcome" value={subject.latestGatewayOutcome ?? "Unavailable"} />
+            <ReadField label="Execution status" value={subject.latestExecutionStatus ?? "Unavailable"} />
+            <ReadField label="Lineage" value={formatStatus(subject.lineageStatus)} />
           </dl>
         </section>
         <section className="p-4">
@@ -233,10 +232,77 @@ export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operato
   );
 }
 
-function evaluationForTradingSubject(operator: OperatorReadModel) {
-  return operator.trading_review.active_candidate_id
-    ? operator.trading_review.paper_trading_evaluation
+function tradingSubjectEvidence(operator: OperatorReadModel) {
+  const review = operator.trading_review;
+  const activeReview = Boolean(review.active_candidate_id);
+  const evaluation = activeReview
+    ? review.paper_trading_evaluation
     : operator.selected_paper_trading_evaluation;
+  const boardEntry = activeReview
+    ? review.paper_board_entry
+    : operator.paper_trading_board.entries.find((entry) =>
+        entry.candidate_id === evaluation.candidate_id &&
+        (!evaluation.evaluation_id || entry.evaluation_id === evaluation.evaluation_id)
+      );
+  const packet = activeReview ? review.review_packet : undefined;
+  const qualificationStatus = packet?.verdict.qualification_status ?? boardEntry?.qualification_status;
+  const qualificationReasons = packet?.evidence_quality.qualification_reasons ??
+    boardEntry?.qualification_reasons ??
+    [];
+
+  return {
+    evaluation,
+    profitLoss: packet?.performance.profit_loss ?? boardEntry?.profit_loss ?? evaluation.profit_loss,
+    qualificationStatus,
+    verdict: packet?.verdict.severity ?? qualificationStatus ?? "unavailable",
+    topBlocker: packet?.verdict.top_blocker ??
+      boardEntry?.blocker_density.top_blocker ??
+      qualificationReasons[0],
+    runnerStatus: packet?.runner.runner_status ??
+      boardEntry?.runner_status ??
+      paperEvaluationRunnerStatus(evaluation),
+    ledgerStatus: packet?.ledger.evidence_status ?? paperEvaluationLedgerStatus(evaluation),
+    ledgerChainComplete: packet?.ledger.ledger_chain_complete ?? evaluation.ledger_chain_complete,
+    latestOrderRequestId: packet?.ledger.latest_order_request_id ?? evaluation.latest_order_request_id,
+    latestGatewayOutcome: packet?.ledger.latest_gateway_outcome ?? evaluation.latest_gateway_outcome,
+    latestExecutionStatus: packet?.ledger.latest_execution_status ?? evaluation.latest_execution_status,
+    latestDecisionKind: packet?.ledger.latest_decision_kind ?? evaluation.latest_decision?.decision_kind,
+    latestPublicExecutionSource: packet?.provenance.latest_public_execution_source ??
+      boardEntry?.latest_public_execution_source ??
+      evaluation.latest_public_execution_snapshot?.source_priority,
+    lineageStatus: packet?.lineage.lineage_status ?? "unavailable",
+    selectedMatchesReview: packet?.subject.selected_matches_trading_review
+  };
+}
+
+function paperEvaluationRunnerStatus(
+  evaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): NonNullable<OperatorReadModel["trading_review"]["review_packet"]["runner"]["runner_status"]> {
+  if (evaluation.runner_active) {
+    return "active";
+  }
+  return evaluation.status === "running" ? "needs_resume" : "inactive";
+}
+
+function paperEvaluationLedgerStatus(
+  evaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): OperatorReadModel["trading_review"]["review_packet"]["ledger"]["evidence_status"] {
+  if (evaluation.ledger_chain_complete) {
+    return "complete_chain";
+  }
+  const latestDecisionKind = evaluation.latest_decision?.decision_kind;
+  if (latestDecisionKind === "hold" || latestDecisionKind === "no_action") {
+    return "no_order_checkpoint";
+  }
+  if (
+    evaluation.latest_order_request_id ||
+    evaluation.latest_gateway_outcome ||
+    evaluation.latest_execution_status ||
+    evaluation.latest_fill
+  ) {
+    return "incomplete_chain";
+  }
+  return "not_observed";
 }
 
 export function SystemScreen({

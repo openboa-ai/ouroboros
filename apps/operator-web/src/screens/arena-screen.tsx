@@ -311,6 +311,7 @@ function ArenaSystemList({
               </span>
               <span className="mt-1 block text-xs text-muted-foreground tabular-nums">
                 {system.rank ? `#${system.rank}` : formatStatus(system.rankStatus)}
+                {system.qualificationStatus ? ` · ${formatStatus(system.qualificationStatus)}` : ""}
               </span>
             </span>
           </button>
@@ -397,6 +398,7 @@ function ArenaSystemDetail({
             <h3 className="min-w-0 break-words text-base font-semibold [overflow-wrap:anywhere]">{system.name}</h3>
             <StatusBadge status={system.lifecycle} />
             <StatusBadge status={system.rankStatus} />
+            {system.qualificationStatus ? <StatusBadge status={system.qualificationStatus} /> : null}
           </div>
           <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{system.id}</p>
         </div>
@@ -430,7 +432,11 @@ function ArenaSystemDetail({
               payload: { candidate_id: system.id }
             })}
             trigger={(
-              <Button disabled={commandRunning}>
+              <Button
+                disabled={commandRunning || Boolean(
+                  system.qualificationStatus && system.qualificationStatus !== "qualified"
+                )}
+              >
                 <Trophy data-icon="inline-start" aria-hidden="true" /> Promote
               </Button>
             )}
@@ -476,12 +482,21 @@ function ArenaSystemDetail({
             <DetailField label="Source" value={formatStatus(system.source)} />
             <DetailField label="Comparability" value={formatStatus(system.comparability)} />
             <DetailField label="Rank" value={system.rank ? `#${system.rank}` : formatStatus(system.rankStatus)} />
+            <DetailField label="Qualification" value={formatStatus(system.qualificationStatus ?? "unavailable")} />
           </dl>
           {system.unrankedReasons.length > 0 ? (
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground">Unranked reasons</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {system.unrankedReasons.map((reason) => <li key={reason}>{formatStatus(reason)}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {system.qualificationReasons.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-xs font-medium text-muted-foreground">Qualification blockers</p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {system.qualificationReasons.map((reason) => <li key={reason}>{formatStatus(reason)}</li>)}
               </ul>
             </div>
           ) : null}

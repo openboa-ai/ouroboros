@@ -49,6 +49,9 @@ function mismatchedReviewOperator(): OperatorReadModel {
   return {
     selected_candidate_id: "selected-candidate",
     selected_paper_trading_evaluation: selectedEvaluation,
+    paper_trading_board: {
+      entries: []
+    },
     latest_commands: [],
     trading_review: {
       active_candidate_id: "review-candidate",
@@ -67,6 +70,10 @@ function mismatchedReviewOperator(): OperatorReadModel {
           primary_rank_metric: "net_revenue_usdt",
           secondary_rank_metric: "net_return_pct",
           profit_loss: reviewEvaluation.profit_loss
+        },
+        evidence_quality: {
+          qualification_reasons: [],
+          blocker_groups: []
         },
         verdict: {
           readiness_status: "collecting_paper_evidence",
@@ -119,6 +126,35 @@ describe("review-scoped secondary screens", () => {
   it("uses the selected paper evaluation before a Trading review target exists", () => {
     const operator = mismatchedReviewOperator();
     operator.trading_review.active_candidate_id = undefined;
+    operator.selected_paper_trading_evaluation.profit_loss = {
+      revenue_usdt: 100,
+      cost_usdt: 9,
+      net_revenue_usdt: 91,
+      net_return_pct: 9.1
+    };
+    operator.selected_paper_trading_evaluation.latest_order_request_id = "selected-order";
+    operator.selected_paper_trading_evaluation.latest_gateway_outcome = "selected-gateway";
+    operator.selected_paper_trading_evaluation.latest_execution_status = "selected-execution";
+    operator.trading_review.review_packet.performance.profit_loss = {
+      revenue_usdt: 5,
+      cost_usdt: 1,
+      net_revenue_usdt: 4,
+      net_return_pct: 0.4
+    };
+    operator.trading_review.review_packet.ledger = {
+      evidence_status: "not_observed",
+      ledger_chain_complete: false,
+      authority_status: "not_live"
+    };
+    operator.paper_trading_board.entries = [{
+      candidate_id: "selected-candidate",
+      evaluation_id: "selected-evaluation",
+      qualification_status: "blocked_by_quality",
+      qualification_reasons: ["failed_observation_ratio_exceeded"],
+      blocker_density: {
+        top_blocker: "failed_observation_ratio_exceeded"
+      }
+    }] as never;
 
     const tradingMarkup = renderToStaticMarkup(
       <TradingScreen
@@ -135,5 +171,13 @@ describe("review-scoped secondary screens", () => {
       expect(markup).toContain("selected-evaluation");
       expect(markup).not.toContain("review-evaluation");
     }
+    expect(tradingMarkup).toContain("91.00 USDT");
+    expect(tradingMarkup).not.toContain("4.00 USDT");
+    expect(tradingMarkup).toContain("Blocked By Quality");
+    expect(tradingMarkup).toContain("Failed Observation Ratio Exceeded");
+    expect(tradingMarkup).toContain("Chain complete");
+    expect(evidenceMarkup).toContain("selected-order");
+    expect(evidenceMarkup).toContain("selected-gateway");
+    expect(evidenceMarkup).toContain("selected-execution");
   });
 });
