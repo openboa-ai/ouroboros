@@ -59,7 +59,13 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
   const risk = subject.risk;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
-  const canStartPaperRun = !review.active_candidate_id && Boolean(candidateId) && !evaluation.runner_active;
+  const canResumeActiveReview = Boolean(review.active_candidate_id) &&
+    evaluation.status === "running" &&
+    !evaluation.runner_active &&
+    subject.runnerStatus === "needs_resume";
+  const canStartPaperRun = Boolean(candidateId) &&
+    !evaluation.runner_active &&
+    (!review.active_candidate_id || canResumeActiveReview);
   const canStopPaperRun = Boolean(tradingRunId) && (
     evaluation.runner_active ||
     evaluation.status === "running" ||
@@ -80,13 +86,17 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
         <div className="flex flex-wrap gap-2">
           <Button
             disabled={commandRunning || !canStartPaperRun}
-            title={review.active_candidate_id ? "Exact Trading review run restart is unavailable" : undefined}
+            title={canResumeActiveReview
+              ? "Resume the persisted exact review TradingRun"
+              : review.active_candidate_id
+                ? "Exact Trading review run restart is unavailable"
+                : undefined}
             onClick={() => candidateId && onCommand("Start paper TradingRun", {
               command_kind: "trading_run.start",
               payload: { candidate_id: candidateId }
             })}
           >
-            <Play data-icon="inline-start" aria-hidden="true" /> Start paper
+            <Play data-icon="inline-start" aria-hidden="true" /> {canResumeActiveReview ? "Resume paper" : "Start paper"}
           </Button>
           <Button
             disabled={commandRunning || !tradingRunId}

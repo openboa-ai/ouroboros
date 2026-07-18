@@ -258,6 +258,29 @@ describe("review-scoped secondary screens", () => {
     expect(stopButton).not.toContain(' disabled=""');
   });
 
+  it("allows an active review persisted paper evaluation to resume only when its runner needs resume", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.paper_trading_evaluation.status = "running";
+    operator.trading_review.paper_trading_evaluation.runner_active = false;
+    operator.trading_review.review_packet.runner.runner_status = "needs_resume";
+    operator.trading_review.review_packet.runner.runner_active = false;
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+    const resumeButton = Array.from(markup.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g))
+      .map((match) => match[0])
+      .find((button) => button.includes("Resume paper"));
+
+    expect(resumeButton).toBeDefined();
+    expect(resumeButton).not.toContain(' disabled=""');
+    expect(resumeButton).toContain("Resume the persisted exact review TradingRun");
+  });
+
   it("renders actionable blocker-group details for the active Trading review", () => {
     const operator = mismatchedReviewOperator();
     operator.trading_review.review_packet.evidence_quality.blocker_groups = [{
