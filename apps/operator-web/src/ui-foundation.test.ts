@@ -74,7 +74,7 @@ describe("Ouroboros shadcn foundation", () => {
     expect(styles.match(/#F37021/gi)).toHaveLength(1);
     expect(styles).toContain("--brand: #F37021;");
     expect(styles).toContain("--brand-foreground: #17120F;");
-    expect(styles).toContain("--primary: var(--brand);");
+    expect(styles).toContain("--primary: var(--foreground);");
     expect(styles).toContain("--sidebar-primary: var(--brand);");
     expect(styles).toContain("--chart-1: var(--brand);");
     expect(styles).toContain("--radius: 0.5rem;");
@@ -112,12 +112,18 @@ describe("Ouroboros shadcn foundation", () => {
     expect(existsSync(join(repoRoot, "docs", "operator-design-system.md"))).toBe(true);
 
     const badgeSource = readFileSync(join(srcRoot, "components", "ui", "badge.tsx"), "utf8");
+    const buttonSource = readFileSync(join(srcRoot, "components", "ui", "button.tsx"), "utf8");
     const alertSource = readFileSync(join(srcRoot, "components", "ui", "alert.tsx"), "utf8");
+    const progressSource = readFileSync(join(srcRoot, "components", "ui", "progress.tsx"), "utf8");
     const sidebarSource = readFileSync(join(srcRoot, "components", "ui", "sidebar.tsx"), "utf8");
     for (const variant of ["success", "warning", "info", "destructive"]) {
       expect(badgeSource).toContain(`${variant}:`);
       expect(alertSource).toContain(`${variant}:`);
     }
+    expect(buttonSource).toContain("bg-brand text-brand-foreground");
+    expect(buttonSource).toContain("link: \"text-primary");
+    expect(badgeSource).toContain("bg-brand text-brand-foreground");
+    expect(progressSource).toContain("bg-brand");
     expect(sidebarSource).toContain("relative flex min-w-0 w-full flex-1");
   });
 });

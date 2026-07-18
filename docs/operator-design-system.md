@@ -60,6 +60,11 @@ required filled-control pairing. Do not introduce a second brand hue or substitu
 Tailwind orange. Derived hover, selected, and subtle states use alpha or `color-mix` from the one
 brand token.
 
+shadcn's `primary` token is also used as foreground text by link-style variants, so it remains the
+contrast-safe neutral foreground. Filled primary Button, Badge, selection, Progress, sidebar
+identity, and the leading chart series use the separate exact `brand` and `brand-foreground`
+tokens. A primitive must not use the brand token as normal text on a light surface.
+
 Success, warning, destructive, and information colors are semantic state signals, not brand
 colors. They may not be used for navigation identity, decoration, or data series that lack the
 corresponding meaning. Neutral mist surfaces carry the majority of the interface.
