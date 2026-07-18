@@ -405,6 +405,16 @@ function ArenaSystemDetail({
     );
   }
 
+  const hasPaperQuality = Boolean(
+    system.evidenceWindow ||
+    system.trend ||
+    system.blockerDensity ||
+    system.marketDataSource ||
+    system.latestPublicExecutionSource ||
+    system.latestFillStatus ||
+    system.openOrderCount !== undefined
+  );
+
   return (
     <section className="min-w-0">
       <div className="flex flex-col gap-3 border-b px-4 py-4 xl:flex-row xl:items-start xl:justify-between">
@@ -457,7 +467,11 @@ function ArenaSystemDetail({
               </Button>
             )}
           />
-          {system.tradingRunId && (system.lifecycle === "running" || system.lifecycle === "recovering") ? (
+          {system.tradingRunId && (
+            system.lifecycle === "running" ||
+            system.lifecycle === "recovering" ||
+            system.lifecycle === "waiting_resume"
+          ) ? (
             <CommandConfirmation
               title="Stop this paper TradingRun?"
               description="The exact paper run will stop. Existing observations, Ledger records, and evaluation evidence remain durable."
@@ -528,6 +542,74 @@ function ArenaSystemDetail({
         </section>
       </div>
 
+      {hasPaperQuality ? (
+        <section className="border-t p-4" aria-labelledby="arena-paper-quality-title">
+          <h4 id="arena-paper-quality-title" className="text-sm font-semibold">Paper evidence quality</h4>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+            <DetailField
+              label="Evidence window"
+              value={system.evidenceWindow
+                ? `${system.evidenceWindow.observation_count} observations / ${system.evidenceWindow.failed_observation_count} failed`
+                : "Unavailable"}
+            />
+            <DetailField
+              label="Elapsed"
+              value={system.evidenceWindow ? `${system.evidenceWindow.elapsed_ms} ms` : "Unavailable"}
+            />
+            <DetailField label="First observed" value={formatTimestamp(system.evidenceWindow?.first_observed_at)} />
+            <DetailField label="Last observed" value={formatTimestamp(system.evidenceWindow?.last_observed_at)} />
+            <DetailField label="Trend" value={system.trend ? formatStatus(system.trend.direction) : "Unavailable"} />
+            <DetailField label="Revenue delta" value={formatMoney(system.trend?.net_revenue_delta_usdt)} />
+            <DetailField label="Return delta" value={formatPercent(system.trend?.net_return_delta_pct)} />
+            <DetailField label="Observation delta" value={formatSignedCount(system.trend?.observation_count_delta)} />
+            <DetailField
+              label="Blockers"
+              value={system.blockerDensity ? `${system.blockerDensity.blocker_count} blockers` : "Unavailable"}
+            />
+            <DetailField
+              label="Blocker density"
+              value={formatRatioPercent(system.blockerDensity?.blocker_density)}
+            />
+            <DetailField
+              label="Failed observation ratio"
+              value={formatRatioPercent(system.blockerDensity?.failed_observation_ratio)}
+            />
+            <DetailField
+              label="Top blocker"
+              value={system.blockerDensity?.top_blocker
+                ? formatStatus(system.blockerDensity.top_blocker)
+                : "None"}
+            />
+            <DetailField
+              label="Market source"
+              value={system.marketDataSource ? formatStatus(system.marketDataSource) : "Unavailable"}
+            />
+            <DetailField
+              label="Public execution"
+              value={system.latestPublicExecutionSource
+                ? formatStatus(system.latestPublicExecutionSource)
+                : "Unavailable"}
+            />
+            <DetailField
+              label="Latest fill"
+              value={system.latestFillStatus ? formatStatus(system.latestFillStatus) : "None"}
+            />
+            <DetailField
+              label="Open orders"
+              value={system.openOrderCount === undefined
+                ? "Unavailable"
+                : `${system.openOrderCount} open ${system.openOrderCount === 1 ? "order" : "orders"}`}
+            />
+            <DetailField
+              label="Signal authority"
+              value={system.blockerDensity?.authority_status || system.trend?.authority_status
+                ? formatStatus(system.blockerDensity?.authority_status ?? system.trend!.authority_status)
+                : "Unavailable"}
+            />
+          </dl>
+        </section>
+      ) : null}
+
       <div className="border-t p-4">
         <Alert variant="info">
           <FileCheck2 aria-hidden="true" />
@@ -548,4 +630,15 @@ function DetailField({ label, value, mono = false }: { label: string; value: str
       <dd className={cn("mt-1 break-words", mono && "font-mono text-xs")}>{value}</dd>
     </div>
   );
+}
+
+function formatRatioPercent(value: number | undefined): string {
+  return formatPercent(value === undefined ? undefined : value * 100);
+}
+
+function formatSignedCount(value: number | undefined): string {
+  if (value === undefined) {
+    return "Unavailable";
+  }
+  return value > 0 ? `+${value}` : String(value);
 }

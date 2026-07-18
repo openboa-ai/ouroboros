@@ -110,7 +110,13 @@ function paperBoard(): PaperTradingBoardReadModel {
         promotion_gate_status: "collecting_paper_evidence",
         qualification_status: "collecting_evidence",
         qualification_reasons: [],
-        evidence_window: {} as never,
+        evidence_window: {
+          observation_count: 12,
+          elapsed_ms: 720_000,
+          failed_observation_count: 2,
+          first_observed_at: "2026-07-18T00:01:00.000Z",
+          last_observed_at: "2026-07-18T00:12:00.000Z"
+        },
         risk_summary: {} as never,
         trend: {
           direction: "improving",
@@ -120,9 +126,10 @@ function paperBoard(): PaperTradingBoardReadModel {
           authority_status: "not_promotion_authority"
         },
         blocker_density: {
-          blocker_count: 0,
-          blocker_density: 0,
-          failed_observation_ratio: 0,
+          blocker_count: 2,
+          blocker_density: 0.1667,
+          failed_observation_ratio: 0.1667,
+          top_blocker: "failed_observation_ratio_exceeded",
           authority_status: "not_promotion_authority"
         },
         observation_count: 12,
@@ -136,7 +143,9 @@ function paperBoard(): PaperTradingBoardReadModel {
           net_return_pct: 0.8
         },
         market_data_source: "binance_production_public_rest",
-        open_order_count: 0,
+        latest_public_execution_source: "rest_fallback",
+        latest_fill_status: "partially_filled",
+        open_order_count: 2,
         authority_status: "not_live"
       }
     ],
@@ -284,6 +293,27 @@ describe("Operator projection view models", () => {
       netRevenueUsdt: 8,
       qualificationStatus: "blocked_by_quality",
       qualificationReasons: ["failed_observation_ratio_exceeded"],
+      evidenceWindow: {
+        observation_count: 12,
+        elapsed_ms: 720_000,
+        failed_observation_count: 2
+      },
+      trend: {
+        direction: "improving",
+        net_revenue_delta_usdt: 2,
+        net_return_delta_pct: 0.2,
+        observation_count_delta: 3
+      },
+      blockerDensity: {
+        blocker_count: 2,
+        blocker_density: 0.1667,
+        failed_observation_ratio: 0.1667,
+        top_blocker: "failed_observation_ratio_exceeded"
+      },
+      marketDataSource: "binance_production_public_rest",
+      latestPublicExecutionSource: "rest_fallback",
+      latestFillStatus: "partially_filled",
+      openOrderCount: 2,
       source: "paper_trading_board"
     });
   });

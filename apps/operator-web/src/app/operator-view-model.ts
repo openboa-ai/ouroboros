@@ -34,6 +34,13 @@ export interface ArenaSystemViewModel {
   unrankedReasons: string[];
   qualificationStatus?: PaperTradingBoardEntryReadModel["qualification_status"] | "unavailable";
   qualificationReasons: PaperTradingBoardEntryReadModel["qualification_reasons"];
+  evidenceWindow?: PaperTradingBoardEntryReadModel["evidence_window"];
+  trend?: PaperTradingBoardEntryReadModel["trend"];
+  blockerDensity?: PaperTradingBoardEntryReadModel["blocker_density"];
+  marketDataSource?: PaperTradingBoardEntryReadModel["market_data_source"];
+  latestPublicExecutionSource?: PaperTradingBoardEntryReadModel["latest_public_execution_source"];
+  latestFillStatus?: PaperTradingBoardEntryReadModel["latest_fill_status"];
+  openOrderCount?: PaperTradingBoardEntryReadModel["open_order_count"];
   netRevenueUsdt?: number;
   netReturnPct?: number;
   revenueUsdt?: number;
@@ -170,6 +177,7 @@ export function buildArenaWorkspaceViewModel(
         unrankedReasons: [...system.unranked_reasons],
         qualificationStatus: paperBoardGate?.qualification_status ?? "unavailable",
         qualificationReasons: paperBoardGate ? [...paperBoardGate.qualification_reasons] : [],
+        ...(paperBoardGate ? paperBoardQualityViewModel(paperBoardGate) : {}),
         netRevenueUsdt: system.profit_loss?.net_revenue_usdt,
         netReturnPct: system.profit_loss?.net_return_pct,
         revenueUsdt: system.profit_loss?.revenue_usdt,
@@ -337,6 +345,7 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     unrankedReasons: [],
     qualificationStatus: entry.qualification_status ?? "unavailable",
     qualificationReasons: [...entry.qualification_reasons],
+    ...paperBoardQualityViewModel(entry),
     netRevenueUsdt: entry.profit_loss.net_revenue_usdt,
     netReturnPct: entry.profit_loss.net_return_pct,
     revenueUsdt: entry.profit_loss.revenue_usdt,
@@ -350,6 +359,18 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     latestFailure: entry.latest_failure_reason,
     source: "paper_trading_board",
     detailAvailability: "summary_only"
+  };
+}
+
+function paperBoardQualityViewModel(entry: PaperTradingBoardEntryReadModel) {
+  return {
+    evidenceWindow: { ...entry.evidence_window },
+    trend: { ...entry.trend },
+    blockerDensity: { ...entry.blocker_density },
+    marketDataSource: entry.market_data_source,
+    latestPublicExecutionSource: entry.latest_public_execution_source,
+    latestFillStatus: entry.latest_fill_status,
+    openOrderCount: entry.open_order_count
   };
 }
 
