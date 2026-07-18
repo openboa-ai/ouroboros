@@ -123,6 +123,8 @@ describe("Ouroboros shadcn foundation", () => {
     expect(buttonSource).toContain("bg-brand text-brand-foreground");
     expect(buttonSource).toContain("link: \"text-primary");
     expect(badgeSource).toContain("bg-brand text-brand-foreground");
+    expect(alertSource).toContain("*:[svg]:text-warning");
+    expect(alertSource).not.toContain("*:[svg]:text-warning-foreground");
     expect(progressSource).toContain("bg-brand");
     expect(sidebarSource).toContain("relative flex min-w-0 w-full flex-1");
   });
