@@ -59,14 +59,25 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
   const risk = subject.risk;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
+  const activeReviewDefaultRunId = review.active_candidate_id &&
+    operator.selected_candidate?.candidate_id === review.active_candidate_id
+    ? operator.selected_candidate.trading_run?.ref.id
+    : undefined;
+  const reviewRunCommandsSupported = !review.active_candidate_id ||
+    Boolean(tradingRunId && tradingRunId === activeReviewDefaultRunId);
+  const reviewRunUnavailableTitle = review.active_candidate_id && !reviewRunCommandsSupported
+    ? "Review qualification TradingRun is read-only in Operator controls"
+    : undefined;
   const canResumeActiveReview = Boolean(review.active_candidate_id) &&
+    reviewRunCommandsSupported &&
     evaluation.status === "running" &&
     !evaluation.runner_active &&
     subject.runnerStatus === "needs_resume";
   const canStartPaperRun = Boolean(candidateId) &&
     !evaluation.runner_active &&
     (!review.active_candidate_id || canResumeActiveReview);
-  const canStopPaperRun = Boolean(tradingRunId) && (
+  const canObservePaperRun = Boolean(tradingRunId) && reviewRunCommandsSupported;
+  const canStopPaperRun = Boolean(tradingRunId) && reviewRunCommandsSupported && (
     evaluation.runner_active ||
     evaluation.status === "running" ||
     subject.runnerStatus === "needs_resume"
@@ -99,7 +110,8 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
             <Play data-icon="inline-start" aria-hidden="true" /> {canResumeActiveReview ? "Resume paper" : "Start paper"}
           </Button>
           <Button
-            disabled={commandRunning || !tradingRunId}
+            disabled={commandRunning || !canObservePaperRun}
+            title={reviewRunUnavailableTitle}
             variant="outline"
             onClick={() => tradingRunId && onCommand("Observe paper TradingRun", {
               command_kind: "trading_run.observe",
@@ -118,7 +130,11 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
               payload: { trading_run_id: tradingRunId }
             })}
             trigger={(
-              <Button disabled={commandRunning || !canStopPaperRun} variant="destructive">
+              <Button
+                disabled={commandRunning || !canStopPaperRun}
+                title={reviewRunUnavailableTitle}
+                variant="destructive"
+              >
                 <Square data-icon="inline-start" aria-hidden="true" /> Stop
               </Button>
             )}

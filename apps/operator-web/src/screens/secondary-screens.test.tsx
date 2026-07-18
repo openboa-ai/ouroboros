@@ -98,6 +98,25 @@ function mismatchedReviewOperator(): OperatorReadModel {
   } as unknown as OperatorReadModel;
 }
 
+function bindSelectedCandidateDefaultRun(
+  operator: OperatorReadModel,
+  tradingRunId = "review-run"
+): void {
+  operator.selected_candidate_id = "review-candidate";
+  operator.selected_candidate = {
+    candidate_id: "review-candidate",
+    trading_run: {
+      ref: {
+        id: tradingRunId
+      }
+    }
+  } as never;
+  operator.trading_review.selected_candidate_id = "review-candidate";
+  operator.trading_review.selected_matches_trading_review = true;
+  operator.trading_review.review_packet.subject.selected_candidate_id = "review-candidate";
+  operator.trading_review.review_packet.subject.selected_matches_trading_review = true;
+}
+
 describe("review-scoped secondary screens", () => {
   it("binds Trading commands and readback to the active review evaluation", () => {
     const markup = renderToStaticMarkup(
@@ -238,6 +257,7 @@ describe("review-scoped secondary screens", () => {
 
   it("allows a persisted running paper evaluation to be stopped while its runner needs resume", () => {
     const operator = mismatchedReviewOperator();
+    bindSelectedCandidateDefaultRun(operator);
     operator.trading_review.paper_trading_evaluation.status = "running";
     operator.trading_review.paper_trading_evaluation.runner_active = false;
     operator.trading_review.review_packet.runner.runner_status = "needs_resume";
@@ -260,6 +280,7 @@ describe("review-scoped secondary screens", () => {
 
   it("allows an active review persisted paper evaluation to resume only when its runner needs resume", () => {
     const operator = mismatchedReviewOperator();
+    bindSelectedCandidateDefaultRun(operator);
     operator.trading_review.paper_trading_evaluation.status = "running";
     operator.trading_review.paper_trading_evaluation.runner_active = false;
     operator.trading_review.review_packet.runner.runner_status = "needs_resume";
@@ -279,6 +300,32 @@ describe("review-scoped secondary screens", () => {
     expect(resumeButton).toBeDefined();
     expect(resumeButton).not.toContain(' disabled=""');
     expect(resumeButton).toContain("Resume the persisted exact review TradingRun");
+  });
+
+  it("disables Observe and Stop for an active review qualification TradingRun", () => {
+    const operator = mismatchedReviewOperator();
+    bindSelectedCandidateDefaultRun(operator, "review-default-run");
+    operator.trading_review.paper_trading_evaluation.status = "running";
+    operator.trading_review.paper_trading_evaluation.runner_active = true;
+    operator.trading_review.review_packet.runner.runner_status = "active";
+    operator.trading_review.review_packet.runner.runner_active = true;
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+    const buttons = Array.from(markup.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g))
+      .map((match) => match[0]);
+    const observeButton = buttons.find((button) => button.includes("Observe"));
+    const stopButton = buttons.find((button) => button.includes("Stop"));
+
+    expect(observeButton).toContain('disabled=""');
+    expect(observeButton).toContain("Review qualification TradingRun is read-only in Operator controls");
+    expect(stopButton).toContain('disabled=""');
+    expect(stopButton).toContain("Review qualification TradingRun is read-only in Operator controls");
   });
 
   it("renders actionable blocker-group details for the active Trading review", () => {
