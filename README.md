@@ -8,19 +8,22 @@ search.
 AI agents improve over time. Trading is hard, dynamic, and adversarial. `revenue - cost`, return,
 costs, risk, and paper evidence provide objective accounting, but strategy quality remains noisy,
 path-dependent, and non-stationary. Ouroboros exists to make that combination compound: generate
-many candidates, evaluate externally, keep findings and lineage, and prove only the selected
-candidate under a precommitted evidence policy.
+many candidates, evaluate admitted systems in isolated paper sessions, keep findings and lineage,
+and reserve qualification claims for comparable precommitted evidence.
 
 ## Core Doctrine
 
 The researcher is a candidate generator, not the authority. Researcher cannot grade, candidate
-cannot grade itself, and selected paper evidence is proof gathering, not live promotion.
+cannot grade itself, and paper evidence is proof gathering, not live promotion. Research and Arena
+are separate operator surfaces: Research shows how candidates are being created; Arena shows how
+admitted TradingSystems are actually running and performing in isolated paper sessions. See
+[Research And Arena Product Loop](docs/research-arena-product-loop.md).
 
 Replay and backtest are research tools, not final evaluation authority. They belong inside the
 candidate creation stage as fast ways to explore, sanity-check, and reject weak ideas. The primary
-product score must come from continuous paper trading: selected candidates run against live public
-market data with fake account, fake execution, and fake Ledger, and are judged by accumulated
-`revenue - cost` over time.
+product score must come from continuous paper trading: admitted candidates run against live public
+market data with isolated fake accounts, fake execution, and fake Ledgers, and are ranked only
+inside comparable cohorts by accumulated `revenue - cost` over time.
 
 ```text
 parallel TradingSystem candidates
@@ -33,11 +36,11 @@ parallel TradingSystem candidates
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> terminal ResearchWorkerCheckpoint
--> leaderboard
+-> bounded isolated paper Arena
+-> comparable paper leaderboard
 -> findings and lineage
 -> next generation
--> selected continuous paper trading evaluation
--> PaperTradingEvaluation board
+-> explicit qualified handoff for later Trading review
 ```
 
 `TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or

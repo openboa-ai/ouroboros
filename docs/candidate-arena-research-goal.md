@@ -7,6 +7,8 @@ already satisfies the contract.
 Read [CandidateArena Evaluation Protocol](candidate-arena-evaluation-protocol.md) for the first
 required implementation frontier. Read [Project Direction](project-direction.md) and
 [Autonomy Model](autonomy-model.md) for the current product and authority boundaries.
+Read [Research And Arena Product Loop](research-arena-product-loop.md) for the concrete continuous
+Research generation, isolated paper Arena, operator UX, and recovery contract.
 
 ## North Star
 
@@ -46,7 +48,8 @@ changing during evaluation is invalid rather than superior.
 | Role | Responsibility | Must not do |
 | --- | --- | --- |
 | Ouroboros | Operate the continuing research, evaluation, memory, and recovery loop. | Hide a fixed strategy behind an autonomous label. |
-| `CandidateArena` | Maintain candidate population, admission, external evaluation, comparison, findings, and lineage. | Grant authority from provider output or candidate self-report. |
+| Research | Maintain bounded generation sessions, methodology, submissions, admission, findings, lineage, and sanitized evidence inputs. | Rank paper performance or gain paper, private, or live authority. |
+| Arena | Maintain admitted-system paper queues, isolated sessions, comparable rank, traces, logs, findings, and recovery state. | Generate candidates, expose hidden qualification evidence, or grant live authority. |
 | `ResearchWorker` | Explore one broad `ResearchDirection`, choose experiments, inspect process evidence, and produce candidate versions and findings. | Read qualification outcomes before release or grade its own candidate. |
 | `TradingSystem` | Own decision cadence and use a bounded combination of agents, models, tools, technical analysis, rules, and thresholds. | Attach directly to exchange authority or mutate its evaluated identity without a new version. |
 | Gateway and evaluator | Provide market inputs, validate actions, fake execute, account for costs, and record external evidence. | Synthesize a trade decision or accept candidate-authored proof. |

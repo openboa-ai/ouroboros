@@ -15,16 +15,21 @@ CandidateArena
 -> development-only ResearchBehaviorFingerprint comparison
 -> CandidateAdmissionDecision and materialization
 -> terminal ResearchWorkerCheckpoint
--> leaderboard, findings, and lineage
--> selected continuous Paper Trading
+-> admitted SystemCode into bounded isolated Paper Trading
+-> comparable Arena rank, findings, and lineage
+-> next Research generation
+-> explicit qualified handoff for later Trading review
 -> Gateway
 -> Ledger
 ```
 
-Canonical naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
+Compatibility naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
+The operational product surface separates Research generation from a bounded isolated Paper Arena,
+then returns sanitized external evidence to the next Research generation.
 Inside that compact product-facing sequence, the enforced evidence spine inserts
 `PaperTradingHandoffConformance`, `ResearchBehaviorFingerprint`, and
-`CandidateAdmissionDecision` between ResearchPreflight and selected Paper Trading.
+`CandidateAdmissionDecision` between ResearchPreflight and Paper Trading. The operator and
+always-on contract is in [Research And Arena Product Loop](docs/research-arena-product-loop.md).
 
 Researchers and LLM agents are candidate generators. Development replay/backtest is an adaptive
 research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
@@ -42,9 +47,10 @@ fails that commitment closed rather than resampling. Exact terminal
 commitment/SystemCode/suite linkage and external paper handoff conformance gate new admission and
 generated paper start without becoming economic evidence. Generated CandidateArena Python SystemCode uses a
 canonical manifest-plus-entrypoint closure digest, and both research and paper resolution reject
-undeclared closure state. Continuous paper trading is the product evaluation
-authority for selected candidates, and paper `Gateway`/`Ledger` evidence belongs only to selected
-Trading Runs, not to every candidate.
+undeclared closure state. Continuous paper trading is the product evaluation authority for
+admitted candidates in bounded isolated sessions. Paper `Gateway`/`Ledger` evidence belongs only to
+an exact TradingRun, and rank requires an exact comparable cohort. Queued or incomplete sessions
+remain visible but unranked.
 CandidateArena separately derives an append-only `ResearchBehaviorFingerprint` from normalized
 effective orders on the exact development suite. LocalStore compares only protocol- and
 suite-compatible fingerprints linked from earlier admitted decisions. An exact match keeps its

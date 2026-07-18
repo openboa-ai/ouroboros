@@ -13835,6 +13835,292 @@ export interface PaperTradingBoardReadModel {
   authority_status: "not_live";
 }
 
+export type ArenaOperationsLoopStatus =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "degraded"
+  | "stopping";
+
+export type ArenaPaperSessionStatus =
+  | "queued"
+  | "starting"
+  | "running"
+  | "recovering"
+  | "stopped"
+  | "completed"
+  | "failed"
+  | "invalidated";
+
+export type ArenaRankStatus =
+  | "provisional_ranked"
+  | "ranked"
+  | "unranked";
+
+export type ArenaComparabilityStatus =
+  | "comparable"
+  | "ineligible"
+  | "incomparable";
+
+export type ArenaUnrankedReason =
+  | "paper_evaluation_not_started"
+  | "comparison_cohort_missing"
+  | "comparison_cohort_mismatch"
+  | "common_observation_boundary_missing"
+  | "evidence_purpose_not_rankable"
+  | "paper_evaluation_invalidated"
+  | "comparison_evidence_incomplete";
+
+export interface ArenaComparisonCohortReadModel {
+  cohort_id: string;
+  symbol: string;
+  evidence_purpose: PaperTradingEvidencePurpose;
+  market_opportunity_policy_digest: string;
+  account_policy_digest: string;
+  cost_policy_digest: string;
+  risk_policy_digest: string;
+  authority_status: "not_live";
+}
+
+export interface ArenaIsolationReadModel {
+  isolation_id?: string;
+  sandbox_status:
+    | "not_started"
+    | "starting"
+    | "running"
+    | "stopping"
+    | "stopped"
+    | "failed";
+  workspace_identity?: string;
+  network_policy_status: "pending" | "verified" | "failed";
+  egress_attestation_status: "not_required" | "pending" | "verified" | "failed";
+  authority_status: "not_live";
+}
+
+export interface ArenaTradingSystemSummaryReadModel {
+  candidate_id: string;
+  candidate_version_id: string;
+  system_code_ref: Ref;
+  display_name: string;
+  direction_kind: ResearchDirectionKind;
+  session_status: ArenaPaperSessionStatus;
+  evaluation_id?: string;
+  trading_run_id?: string;
+  rank_status: ArenaRankStatus;
+  rank?: number;
+  comparability_status: ArenaComparabilityStatus;
+  unranked_reasons: ArenaUnrankedReason[];
+  comparison_cohort?: ArenaComparisonCohortReadModel;
+  comparison_sequence?: number;
+  comparison_cutoff_at?: string;
+  profit_loss?: TradingProfitLossReadModel;
+  observation_count: number;
+  failed_observation_count: number;
+  queued_at: string;
+  started_at?: string;
+  last_observed_at?: string;
+  next_observation_at?: string;
+  stopped_at?: string;
+  latest_failure?: PaperTradingFailureReadModel;
+  authority_status: "not_live";
+}
+
+export type ArenaTraceEventKind =
+  | "lifecycle"
+  | "market_observation"
+  | "trading_system_decision"
+  | "gateway_outcome"
+  | "ledger_entry"
+  | "recovery";
+
+export interface ArenaTraceEventReadModel {
+  sequence: number;
+  occurred_at: string;
+  event_kind: ArenaTraceEventKind;
+  summary: string;
+  sanitized: true;
+  record_ref?: Ref;
+  authority_status: "read_only";
+}
+
+export interface ArenaLogEntryReadModel {
+  sequence: number;
+  occurred_at: string;
+  level: "debug" | "info" | "warn" | "error";
+  source: "trading_system" | "sandbox" | "gateway" | "ledger" | "supervisor";
+  message: string;
+  sanitized: true;
+  authority_status: "read_only";
+}
+
+export interface ArenaTradingSystemDetailReadModel
+  extends ArenaTradingSystemSummaryReadModel {
+  isolation: ArenaIsolationReadModel;
+  latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
+  latest_decision?: PaperTradingDecisionSummary;
+  paper_account_snapshot?: PaperTradingAccountSnapshot;
+  open_orders: PaperTradingOrderSummary[];
+  latest_fill?: PaperTradingFillSummary;
+  trace_events: ArenaTraceEventReadModel[];
+  log_entries: ArenaLogEntryReadModel[];
+  artifact_refs: Ref[];
+  trace_truncated: boolean;
+  logs_truncated: boolean;
+}
+
+export interface ArenaOperationsReadModel {
+  projection_kind: "arena_operations";
+  loop_status: ArenaOperationsLoopStatus;
+  capacity: {
+    max_concurrent_sessions: number;
+    active_session_count: number;
+    queued_session_count: number;
+  };
+  systems: ArenaTradingSystemSummaryReadModel[];
+  latest_system_id?: string;
+  live_disabled: true;
+  authority_status: "not_live";
+}
+
+export type ResearchOperationsLoopStatus =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "degraded"
+  | "stopping";
+
+export type ResearchTriggerKind =
+  | "goal"
+  | "time"
+  | "arena_event"
+  | "live_event"
+  | "recovery";
+
+export type ResearchSessionStatus =
+  | "queued"
+  | "allocating"
+  | "running"
+  | "awaiting_selection"
+  | "sealed_admission"
+  | "admitted"
+  | "duplicate"
+  | "quarantined"
+  | "finished_without_submission"
+  | "failed_closed"
+  | "recovering";
+
+export interface ResearchTriggerReadModel {
+  trigger_kind: ResearchTriggerKind;
+  trigger_id: string;
+  goal: string;
+  triggered_at: string;
+  source_ref?: Ref;
+  authority_status: "research_only";
+}
+
+export type ResearchEvidenceArtifactSourceKind =
+  | "arena_paper_result"
+  | "arena_trace"
+  | "arena_failure"
+  | "research_finding"
+  | "live_result"
+  | "live_trace";
+
+export interface ResearchEvidenceArtifactReadModel {
+  evidence_artifact_id: string;
+  source_kind: ResearchEvidenceArtifactSourceKind;
+  subject_ref: Ref;
+  artifact_ref: Ref;
+  artifact_digest: string;
+  captured_at: string;
+  sanitization_status: "sanitized";
+  qualification_evidence_hidden: true;
+  authority_status: "research_only";
+}
+
+export interface ResearchMethodologyReadModel {
+  direction_kind: ResearchDirectionKind;
+  hypothesis: string;
+  method: string;
+  source_candidate_id?: string;
+  evidence_artifact_ids: string[];
+  authority_status: "research_only";
+}
+
+export interface ResearchSessionBudgetReadModel {
+  max_experiment_count: number;
+  completed_experiment_count: number;
+  max_development_submission_count: number;
+  development_submission_count: number;
+  remaining_development_submission_count: number;
+  authority_status: "research_only";
+}
+
+export interface ResearchSessionSummaryReadModel {
+  research_work_item_id: string;
+  research_allocation_id: string;
+  research_worker_id?: string;
+  research_worker_session_id?: string;
+  commitment_id?: string;
+  status: ResearchSessionStatus;
+  trigger: ResearchTriggerReadModel;
+  methodology: ResearchMethodologyReadModel;
+  provider: AgentProfileProviderKind;
+  model?: string;
+  budget: ResearchSessionBudgetReadModel;
+  started_at?: string;
+  last_progress_at?: string;
+  completed_at?: string;
+  selected_submission_sequence?: number;
+  admitted_candidate_id?: string;
+  latest_progress_summary: string;
+  authority_status: "research_only";
+}
+
+export interface ResearchDevelopmentSubmissionReadModel {
+  submission_sequence: number;
+  system_code_ref: Ref;
+  system_code_digest: string;
+  submitted_at: string;
+  status: "evaluated" | "failed";
+  selected: boolean;
+  aggregate_feedback_summary?: string;
+  authority_status: "research_only";
+}
+
+export interface ResearchSessionDetailReadModel
+  extends ResearchSessionSummaryReadModel {
+  evidence_inputs: ResearchEvidenceArtifactReadModel[];
+  development_submissions: ResearchDevelopmentSubmissionReadModel[];
+  selected_system_code_ref?: Ref;
+  admission_decision_ref?: Ref;
+  paper_handoff_conformance_ref?: Ref;
+  notebook_summary: string[];
+  log_entries: Array<{
+    sequence: number;
+    occurred_at: string;
+    level: "debug" | "info" | "warn" | "error";
+    source: "research_worker" | "provider" | "evaluator" | "supervisor";
+    message: string;
+    sanitized: true;
+    authority_status: "read_only";
+  }>;
+  logs_truncated: boolean;
+}
+
+export interface ResearchOperationsReadModel {
+  projection_kind: "research_operations";
+  loop_status: ResearchOperationsLoopStatus;
+  capacity: {
+    max_concurrent_sessions: number;
+    active_session_count: number;
+    queued_session_count: number;
+  };
+  sessions: ResearchSessionSummaryReadModel[];
+  latest_session_id?: string;
+  authority_status: "research_only";
+}
+
 export type TradingPromotionStatus =
   | "not_promoted"
   | "promoted_for_trading_review";
@@ -14214,6 +14500,8 @@ export interface OperatorReadModel {
   selected_paper_evidence: SelectedPaperEvidenceReadModel;
   selected_paper_trading_evaluation: PaperTradingEvaluationReadModel;
   paper_trading_board: PaperTradingBoardReadModel;
+  arena_operations?: ArenaOperationsReadModel;
+  research_operations?: ResearchOperationsReadModel;
   trading_promotion?: TradingPromotionReadModel;
   trading_review: TradingReviewReadModel;
   researcher_provider: ResearcherProviderReadModel;
