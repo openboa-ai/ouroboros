@@ -115,4 +115,25 @@ describe("review-scoped secondary screens", () => {
     expect(markup).toContain("review-evaluation");
     expect(markup).not.toContain("selected-evaluation");
   });
+
+  it("uses the selected paper evaluation before a Trading review target exists", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.active_candidate_id = undefined;
+
+    const tradingMarkup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+    const evidenceMarkup = renderToStaticMarkup(
+      <EvidenceScreen operator={operator} />
+    );
+
+    for (const markup of [tradingMarkup, evidenceMarkup]) {
+      expect(markup).toContain("selected-evaluation");
+      expect(markup).not.toContain("review-evaluation");
+    }
+  });
 });

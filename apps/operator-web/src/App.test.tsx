@@ -43,6 +43,13 @@ describe("greenfield Operator entrypoint", () => {
     expect(mainSource).toContain('aria-label="Ouroboros Operator render failure"');
   });
 
+  it("skips automatic runtime polling while the document is hidden", () => {
+    const source = readFileSync(join(srcRoot, "app", "use-operator-runtime.ts"), "utf8");
+
+    expect(source).toContain("document.visibilityState");
+    expect(source).toContain('"hidden"');
+  });
+
   it("renders actual Arena summary evidence with inspectable commands", () => {
     const view: ArenaWorkspaceViewModel = {
       availability: "authoritative",
@@ -91,6 +98,44 @@ describe("greenfield Operator entrypoint", () => {
     expect(markup).toContain("12.00 USDT");
     expect(markup).toContain("> Evidence</button>");
     expect(markup).toContain("Trace, logs, and sandbox detail unavailable");
+  });
+
+  it("bounds Arena rows while preserving a selected system outside the first page", () => {
+    const systems: ArenaWorkspaceViewModel["systems"] = Array.from(
+      { length: 65 },
+      (_, index) => ({
+        id: `candidate-${String(index).padStart(3, "0")}`,
+        name: `Candidate ${String(index).padStart(3, "0")}`,
+        lifecycle: "stopped",
+        rankStatus: "unranked",
+        comparability: "comparable",
+        unrankedReasons: [],
+        observationCount: 0,
+        failedObservationCount: 0,
+        source: "arena_operations",
+        detailAvailability: "summary_only"
+      })
+    );
+    const view: ArenaWorkspaceViewModel = {
+      availability: "authoritative",
+      loopStatus: "stopped",
+      emptyState: "none",
+      systems
+    };
+
+    const markup = renderToStaticMarkup(
+      <ArenaScreen
+        view={view}
+        selectedId="candidate-064"
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain(">Candidate 058<");
+    expect(markup).not.toContain(">Candidate 059<");
+    expect(markup.split(">Candidate 064<")).toHaveLength(3);
   });
 
   it("renders completed Research ticks as history without inventing sessions", () => {

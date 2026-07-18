@@ -11,6 +11,15 @@ describe("Operator hash routes", () => {
     expect(parseOperatorRoute("#/unknown?system=ignored")).toEqual({ section: "arena" });
   });
 
+  it("redirects documented query entrypoints into the new hash sections", () => {
+    expect(parseOperatorRoute("", "?view=trading")).toEqual({ section: "trading" });
+    expect(parseOperatorRoute("", "?view=arena")).toEqual({ section: "arena" });
+    expect(parseOperatorRoute("", "?view=research")).toEqual({ section: "research" });
+    expect(parseOperatorRoute("", "?view=details")).toEqual({ section: "evidence" });
+    expect(parseOperatorRoute("", "?view=unknown")).toEqual({ section: "arena" });
+    expect(parseOperatorRoute("#/research", "?view=trading")).toEqual({ section: "research" });
+  });
+
   it("keeps Arena and Research selections URL-stable", () => {
     expect(parseOperatorRoute("#/arena?system=candidate%2Fone")).toEqual({
       section: "arena",

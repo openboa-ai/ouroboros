@@ -131,6 +131,9 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     mountedRef.current = true;
     void refresh();
     const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
       void refresh();
     }, OPERATOR_REFRESH_INTERVAL_MS);
 

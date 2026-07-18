@@ -33,6 +33,8 @@ const ARENA_CHART_CONFIG = {
   }
 } satisfies ChartConfig;
 
+const OPERATOR_LEADERBOARD_RENDER_LIMIT = 60;
+
 export function ArenaScreen({
   view,
   selectedId,
@@ -246,6 +248,10 @@ function ArenaSystemList({
       (!normalized || `${system.name} ${system.id} ${system.direction ?? ""}`.toLowerCase().includes(normalized))
     ));
   }, [lifecycle, query, systems]);
+  const visibleSystems = useMemo(
+    () => boundedArenaSystems(filtered, selectedId),
+    [filtered, selectedId]
+  );
   const lifecycleOptions = [...new Set(systems.map((system) => system.lifecycle))];
 
   return (
@@ -273,7 +279,7 @@ function ArenaSystemList({
         </NativeSelect>
       </div>
       <div className="divide-y">
-        {filtered.map((system) => (
+        {visibleSystems.map((system) => (
           <button
             className={cn(
               "grid min-h-20 w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -312,9 +318,33 @@ function ArenaSystemList({
         {filtered.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">No systems match this filter.</p>
         ) : null}
+        {visibleSystems.length < filtered.length ? (
+          <p className="px-4 py-3 text-center text-xs text-muted-foreground">
+            Showing {visibleSystems.length} of {filtered.length} matching systems
+          </p>
+        ) : null}
       </div>
     </section>
   );
+}
+
+function boundedArenaSystems(
+  systems: ArenaSystemViewModel[],
+  selectedId?: string
+): ArenaSystemViewModel[] {
+  if (systems.length <= OPERATOR_LEADERBOARD_RENDER_LIMIT) {
+    return systems;
+  }
+
+  const visible = systems.slice(0, OPERATOR_LEADERBOARD_RENDER_LIMIT);
+  if (!selectedId || visible.some((system) => system.id === selectedId)) {
+    return visible;
+  }
+
+  const selected = systems.find((system) => system.id === selectedId);
+  return selected
+    ? [...visible.slice(0, OPERATOR_LEADERBOARD_RENDER_LIMIT - 1), selected]
+    : visible;
 }
 
 function ArenaSystemDetail({

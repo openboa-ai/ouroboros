@@ -19,7 +19,9 @@ import { EvidenceScreen, SystemScreen, TradingScreen } from "@/screens/secondary
 import "./styles.css";
 
 export function App() {
-  const [route, setRoute] = useState<OperatorRoute>(() => parseOperatorRoute(window.location.hash));
+  const [route, setRoute] = useState<OperatorRoute>(() => (
+    parseOperatorRoute(window.location.hash, window.location.search)
+  ));
   const runtime = useOperatorRuntime();
   const arenaView = useMemo(
     () => runtime.operator ? buildArenaWorkspaceViewModel(runtime.operator) : undefined,
@@ -32,7 +34,7 @@ export function App() {
 
   useEffect(() => {
     const synchronizeRoute = () => {
-      const parsed = parseOperatorRoute(window.location.hash);
+      const parsed = parseOperatorRoute(window.location.hash, window.location.search);
       const canonical = operatorRouteHref(parsed);
       if (window.location.hash !== canonical) {
         window.history.replaceState(null, "", canonical);

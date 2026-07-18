@@ -14,15 +14,22 @@ export interface OperatorRoute {
 }
 
 const OPERATOR_SECTION_SET = new Set<string>(OPERATOR_SECTIONS);
+const LEGACY_VIEW_SECTIONS: Record<string, OperatorSection> = {
+  trading: "trading",
+  arena: "arena",
+  research: "research",
+  details: "evidence"
+};
 
-export function parseOperatorRoute(hash: string): OperatorRoute {
+export function parseOperatorRoute(hash: string, search = ""): OperatorRoute {
   const normalized = hash.startsWith("#") ? hash.slice(1) : hash;
   const [pathname = "", query = ""] = normalized.split("?", 2);
   const candidateSection = pathname.replace(/^\/+/, "");
   const hasKnownSection = OPERATOR_SECTION_SET.has(candidateSection);
+  const legacyView = new URLSearchParams(search).get("view") ?? "";
   const section = hasKnownSection
     ? candidateSection as OperatorSection
-    : "arena";
+    : LEGACY_VIEW_SECTIONS[legacyView] ?? "arena";
 
   if (!hasKnownSection) {
     return { section };
