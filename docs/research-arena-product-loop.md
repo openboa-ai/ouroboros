@@ -125,6 +125,11 @@ reason. Unranked rows reject rank, sequence, and cutoff fields and require at le
 unranked row may retain an exact cohort only when it is otherwise comparable but lacks a common
 boundary; ineligible and incomparable rows do not assert a cohort.
 
+Lifecycle is part of the same discriminator. Only `running` and `recovering` rows may be
+`provisional_ranked`; only `stopped`, `completed`, and `failed` rows may be finally `ranked`.
+`queued`, `starting`, and `invalidated` rows can only be unranked, and any other lifecycle may also
+remain unranked while its comparison evidence is incomplete.
+
 The cohort preserves the complete `PaperTradingEvaluationCommitmentRecord.policy_identity` and
 `window_policy` as `evaluation_policy_identity` and `evaluation_window_policy`. A display label or
 digest assembled from only a subset of those fields cannot establish comparability.

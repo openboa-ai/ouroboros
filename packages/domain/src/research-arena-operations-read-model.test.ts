@@ -99,7 +99,7 @@ describe("Research and Arena operations read-model contracts", () => {
       system_code_ref: { record_kind: "system_code", id: "system-code-ranked" },
       display_name: "Ranked candidate",
       direction_kind: "trend_following",
-      session_status: "running",
+      session_status: "completed",
       rank_status: "ranked",
       rank: 1,
       comparability_status: "comparable",
@@ -165,11 +165,17 @@ describe("Research and Arena operations read-model contracts", () => {
     const invalidRanked: ArenaTradingSystemSummaryReadModel = rankedWithoutComparisonBoundary;
     // @ts-expect-error Unranked rows cannot carry an implied leaderboard rank.
     const invalidUnranked: ArenaTradingSystemSummaryReadModel = { ...unranked, rank: 1 };
+    // @ts-expect-error Queued sessions cannot enter a ranked Arena branch.
+    const invalidQueuedRanked: ArenaTradingSystemSummaryReadModel = {
+      ...ranked,
+      session_status: "queued"
+    };
 
     expect(ranked.rank).toBe(1);
     expect(unranked.unranked_reasons).toEqual(["paper_evaluation_not_started"]);
     expect(invalidRanked.rank_status).toBe("ranked");
     expect(invalidUnranked.rank_status).toBe("unranked");
+    expect(invalidQueuedRanked.session_status).toBe("queued");
   });
 
   it("separates Research methodology and sanitized evidence from Arena execution detail", () => {

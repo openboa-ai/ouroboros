@@ -13905,7 +13905,6 @@ interface ArenaTradingSystemSummaryBaseReadModel {
   system_code_ref: Ref;
   display_name: string;
   direction_kind: ResearchDirectionKind;
-  session_status: ArenaPaperSessionStatus;
   evaluation_id?: string;
   trading_run_id?: string;
   profit_loss?: TradingProfitLossReadModel;
@@ -13920,9 +13919,8 @@ interface ArenaTradingSystemSummaryBaseReadModel {
   authority_status: "not_live";
 }
 
-export interface ArenaRankedTradingSystemSummaryReadModel
+interface ArenaRankedTradingSystemSummaryBaseReadModel
   extends ArenaTradingSystemSummaryBaseReadModel {
-  rank_status: Exclude<ArenaRankStatus, "unranked">;
   rank: number;
   comparability_status: "comparable";
   unranked_reasons: [];
@@ -13931,8 +13929,25 @@ export interface ArenaRankedTradingSystemSummaryReadModel
   comparison_cutoff_at: string;
 }
 
+export interface ArenaProvisionallyRankedTradingSystemSummaryReadModel
+  extends ArenaRankedTradingSystemSummaryBaseReadModel {
+  session_status: "running" | "recovering";
+  rank_status: "provisional_ranked";
+}
+
+export interface ArenaFinallyRankedTradingSystemSummaryReadModel
+  extends ArenaRankedTradingSystemSummaryBaseReadModel {
+  session_status: "stopped" | "completed" | "failed";
+  rank_status: "ranked";
+}
+
+export type ArenaRankedTradingSystemSummaryReadModel =
+  | ArenaProvisionallyRankedTradingSystemSummaryReadModel
+  | ArenaFinallyRankedTradingSystemSummaryReadModel;
+
 export interface ArenaComparableUnrankedTradingSystemSummaryReadModel
   extends ArenaTradingSystemSummaryBaseReadModel {
+  session_status: ArenaPaperSessionStatus;
   rank_status: "unranked";
   rank?: never;
   comparability_status: "comparable";
@@ -13944,6 +13959,7 @@ export interface ArenaComparableUnrankedTradingSystemSummaryReadModel
 
 export interface ArenaNonComparableUnrankedTradingSystemSummaryReadModel
   extends ArenaTradingSystemSummaryBaseReadModel {
+  session_status: ArenaPaperSessionStatus;
   rank_status: "unranked";
   rank?: never;
   comparability_status: Exclude<ArenaComparabilityStatus, "comparable">;
