@@ -47,6 +47,7 @@ describe("Ouroboros shadcn foundation", () => {
       devDependencies: Record<string, string>;
       scripts: Record<string, string>;
     };
+    const styles = readFileSync(join(srcRoot, "styles.css"), "utf8");
 
     expect(config).toMatchObject({
       style: "radix-nova",
@@ -60,6 +61,9 @@ describe("Ouroboros shadcn foundation", () => {
     });
     expect(packageJson.dependencies.shadcn).toBeUndefined();
     expect(packageJson.devDependencies.shadcn).toBe("4.13.1");
+    expect(styles).not.toContain('@import "shadcn/tailwind.css"');
+    expect(styles).toContain("/* ejected from shadcn@4.13.1 */");
+    expect(styles).toContain("@custom-variant data-open");
     expect(packageJson.dependencies["@fontsource-variable/inter"]).toBeDefined();
     expect(packageJson.dependencies["@fontsource-variable/geist"]).toBeUndefined();
     expect(packageJson.scripts["ui:add"]).toBe("shadcn add");

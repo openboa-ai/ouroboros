@@ -46,6 +46,12 @@ npm run ui:add -w @ouroboros/operator-web -- <component> --diff
 An upstream component update is reviewed as source code. Never overwrite a locally changed
 primitive without reading the CLI diff and rerunning the Operator checks.
 
+The shared `shadcn/tailwind.css` source is intentionally ejected into `styles.css`. This keeps
+production builds independent from the CLI package while the exact `shadcn` version remains a
+development dependency for component maintenance. Review the upstream CSS diff before re-ejecting
+it during a CLI upgrade; do not restore the package import without also changing the production
+dependency contract.
+
 ## Color Contract
 
 Ouroboros has one brand color:
