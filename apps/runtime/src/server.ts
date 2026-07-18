@@ -12,6 +12,7 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
+  ResearchDirectionKind,
   ResearchControlStudyExecutionLeaseOwner,
   RunControlAuditInput,
   SandboxAdapterKind,
@@ -165,6 +166,7 @@ export interface BuildServerOptions {
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
   agentProfileExecFile?: AgentProfileExecFile;
   candidateArenaTickIntervalMs?: number;
+  candidateArenaDirections?: ResearchDirectionKind[];
   binancePublicMarketClient?: BinancePublicMarketDataClient;
   marketDataPort?: GatewayMarketDataPort;
   paperTradingEvaluationIntervalMs?: number;
@@ -423,6 +425,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     });
   const candidateArenaRunner = new CandidateArenaRunner({
     store,
+    ...(options.candidateArenaDirections
+      ? { directions: [...options.candidateArenaDirections] }
+      : {}),
     researchAgent: tradingResearchRuntimeConfig.default_agent,
     agentFactory: tradingResearchAgentFactory,
     artifactRunner: options.candidateArenaArtifactRunner,

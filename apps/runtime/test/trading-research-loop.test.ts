@@ -263,6 +263,7 @@ describe("Trading research research loop MVP", () => {
     const runRoot = path.join(tmpDir, "autonomous-selected-session");
     const feedbackSurfaces: string[] = [];
     const sessionAdapter: ResearchWorkerSessionAdapter = {
+      session_timeout_ms: 600_000,
       agent: {
         id: "managed-agent-autonomous-selection",
         provider: "fixture",
@@ -270,6 +271,7 @@ describe("Trading research research loop MVP", () => {
         permission_policy: "fixture_only"
       },
       async runSession(input) {
+        expect(input.timeout_ms).toBe(600_000);
         const runPath = path.join(input.artifact_dir, "run.py");
         const source = await readFile(runPath, "utf8");
         await writeFile(
@@ -696,7 +698,7 @@ process.exit(17);
     }
   });
 
-  it("scores flat replay scenarios as hold decisions instead of long-only behavior", async () => {
+  it("scores externally observed flat replay holds without synthesizing an OrderRequest", async () => {
     const artifactDir = path.join(tmpDir, "artifact-flat");
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     const manifest = await readTradingSystemManifest(artifactDir);
@@ -715,9 +717,16 @@ process.exit(17);
     expect(run.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          event: "order_request",
-          side: "hold",
-          quantity: 0
+          event: "hold",
+          reason: "fast average is not above slow average"
+        })
+      ])
+    );
+    expect(run.provider_requests).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          path: "/orders/validate"
         })
       ])
     );
@@ -730,7 +739,7 @@ process.exit(17);
         net_revenue_usdt: 0,
         net_return_pct: 0
       },
-      risk_decision: "valid_order_request"
+      risk_decision: "no_order_request"
     });
   });
 
@@ -1896,7 +1905,7 @@ process.exit(17);
       expect.objectContaining({
         scenario_id: "range_flat",
         runner_kind: "docker_sandboxes_sbx",
-        provider_request_count: 3,
+        provider_request_count: 2,
         runner_command_count: 23,
         runner_command_evidence: expect.any(Array)
       })
@@ -1997,6 +2006,77 @@ process.exit(17);
     expect(commands.join("\n")).toContain("replay-provider-ready.txt");
     expect(commands.join("\n")).not.toContain("--provider-base-url");
     delete process.env.SBX_FAKE_COMMAND_LOG;
+  });
+
+  it("retries transient sbx removal before reporting a replay result", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-transient-remove");
+    const commandLog = path.join(tmpDir, "sbx-transient-remove.log");
+    const removeFailures = path.join(tmpDir, "sbx-transient-remove.failures");
+    const artifactDir = path.join(tmpDir, "sbx-transient-remove-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(removeFailures, "1\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_REMOVE_FAILURES_FILE = removeFailures;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-transient-remove"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-transient-remove-output")
+      });
+
+      expect(run.status, run.stderr).toBe("completed");
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands.filter((command) => command.startsWith("rm --force "))).toHaveLength(2);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+      delete process.env.SBX_FAKE_REMOVE_FAILURES_FILE;
+    }
+  });
+
+  it("fails closed when bounded sbx removal cannot clean up a replay", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-permanent-remove-failure");
+    const commandLog = path.join(tmpDir, "sbx-permanent-remove-failure.log");
+    const removeFailures = path.join(tmpDir, "sbx-permanent-remove-failure.failures");
+    const artifactDir = path.join(tmpDir, "sbx-permanent-remove-failure-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(removeFailures, "99\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_REMOVE_FAILURES_FILE = removeFailures;
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-permanent-remove-failure"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "sbx-permanent-remove-failure-output")
+      });
+
+      expect(run).toMatchObject({
+        status: "crashed",
+        error: "candidate_sandbox_cleanup_failed"
+      });
+      const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+      expect(commands.filter((command) => command.startsWith("rm --force "))).toHaveLength(3);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+      delete process.env.SBX_FAKE_REMOVE_FAILURES_FILE;
+    }
   });
 
   it("probes paper handoff through sandbox-local candidate-only sbx input and cleans up", async () => {
@@ -2446,7 +2526,7 @@ process.exit(17);
         "-c",
         "shell_environment_policy.ignore_default_excludes=true",
         "-c",
-        "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]",
+        "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"PYTHONDONTWRITEBYTECODE\",\"PYTHONPYCACHEPREFIX\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]",
         "--cd",
         artifactDir,
         "--model",
@@ -2598,7 +2678,7 @@ process.exit(17);
       "features.goals=false",
       "default_permissions=\"ouroboros-research-worker\"",
       "shell_environment_policy.ignore_default_excludes=true",
-      "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]"
+      "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"TMPDIR\",\"TEMP\",\"TMP\",\"SystemRoot\",\"COMSPEC\",\"PATHEXT\",\"PYTHONDONTWRITEBYTECODE\",\"PYTHONPYCACHEPREFIX\",\"OUROBOROS_RESEARCH_TOOL_BASE_URL\",\"OUROBOROS_RESEARCH_TOOL_SOCKET_PATH\",\"OUROBOROS_RESEARCH_TOOL_TOKEN\",\"OUROBOROS_RESEARCH_TOOL_CLIENT\"]"
     ]));
     expect(calls[0]).not.toContain("--sandbox");
     const permissionConfig = calls[0].find((arg) =>
@@ -3175,6 +3255,14 @@ case "$1" in
     exit 0
     ;;
   rm)
+    if [ -n "\${SBX_FAKE_REMOVE_FAILURES_FILE:-}" ] && [ -f "$SBX_FAKE_REMOVE_FAILURES_FILE" ]; then
+      remaining="$(cat "$SBX_FAKE_REMOVE_FAILURES_FILE")"
+      if [ "$remaining" -gt 0 ]; then
+        printf '%s\n' "$((remaining - 1))" > "$SBX_FAKE_REMOVE_FAILURES_FILE"
+        printf 'remove failed: transient run-control unavailable\n' >&2
+        exit 75
+      fi
+    fi
     exit 0
     ;;
   *)

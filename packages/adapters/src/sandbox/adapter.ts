@@ -902,6 +902,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
 export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   readonly kind = "docker_sandboxes_sbx" as const;
+  private readonly attachedSessions = new Map<string, ReturnType<typeof spawn>>();
+  private readonly stopOperations = new Map<
+    string,
+    Promise<SandboxAdapterObservationResult>
+  >();
   private readonly networkPolicyLeases = new Map<
     string,
     CandidateSandboxNetworkPolicyLease<CommandResult>
@@ -913,6 +918,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       sbxHome?: string;
       workspacePath?: string;
       commandTimeoutMs?: number;
+      detachedCommandTimeoutMs?: number;
       startupHeartbeatTimeoutMs?: number;
       startupHeartbeatPollIntervalMs?: number;
       networkPolicyStatePath?: string;
@@ -1097,7 +1103,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     const execCommand = [
       this.sbxPath,
       "exec",
-      "-d",
+      ...(input.test_ticks === undefined ? [] : ["-d"]),
       "-w",
       this.workspacePath,
       input.sandbox_name,
@@ -1118,14 +1124,20 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       input.paper_order_request ?? "valid",
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
-    const execResult = await this.runSbxCommand(execCommand);
-    const startupEvidence = createResult.exit_code === 0 && execResult.exit_code === 0
+    const attachedSession = input.test_ticks === undefined;
+    const execResult = attachedSession
+      ? await this.startAttachedSbxSession(input.instance_id, execCommand)
+      : await this.runSbxCommand(execCommand, this.detachedCommandTimeoutMs);
+    const launchAccepted = attachedSession
+      ? execResult.exit_code === null
+      : execResult.exit_code === 0 || execResult.timed_out === true;
+    const startupEvidence = createResult.exit_code === 0 && launchAccepted
       ? await this.readStartupEvidence(input.instance_id, input.sandbox_name, {
         allowStoppedLog: input.test_ticks !== undefined
       })
       : { heartbeats: [], logs: [], commandEvidence: [] };
     const lifecycleStatus = createResult.exit_code === 0 &&
-      execResult.exit_code === 0
+      launchAccepted
       ? startupEvidence.heartbeats.length > 0
         ? "running"
         : startupEvidence.stopped_at
@@ -1154,6 +1166,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       if (!terminalPolicyFailure && removeResult.exit_code === 0) {
         await this.removePersistedNetworkPolicyLease(input.sandbox_name);
       }
+      await this.stopAttachedSbxSession(input.instance_id);
     }
     const terminalPolicyEvidence = networkPolicyResults
       .slice(terminalPolicyResultStart)
@@ -1172,7 +1185,11 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       versionEvidence,
       createEvidence,
       ...networkPolicyEvidence,
-      commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
+      commandEvidenceRecord(
+        input.instance_id,
+        attachedSession ? "exec-attached" : "exec-detached",
+        execResult
+      ),
       ...startupEvidence.commandEvidence,
       ...(stopResult
         ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
@@ -1280,21 +1297,42 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     instance: SandboxRecord | SandboxDetailReadModel
   ): Promise<SandboxAdapterObservationResult> {
     const instanceId = instanceIdFor(instance);
+    const existingOperation = this.stopOperations.get(instanceId);
+    if (existingOperation) {
+      return existingOperation;
+    }
+    const operation = this.stopArtifactInstanceOnce(instance);
+    this.stopOperations.set(instanceId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.stopOperations.get(instanceId) === operation) {
+        this.stopOperations.delete(instanceId);
+      }
+    }
+  }
+
+  private async stopArtifactInstanceOnce(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
     const sandboxName = sandboxNameFor(instance);
     const versionObservation = await this.versionObservation(instanceId, "stop-version");
     if (versionObservation.failure) {
       return versionObservation.failure;
     }
     const stopStartedAt = new Date().toISOString();
-    const terminateResult = await this.runSbxCommand([
-      this.sbxPath,
-      "exec",
-      sandboxName,
-      "pkill",
-      "-TERM",
-      "-f",
-      "fixtures/trading-systems/clock.py"
-    ]);
+    const terminateResult = instance.lifecycle_status === "running"
+      ? await this.runSbxCommand([
+          this.sbxPath,
+          "exec",
+          sandboxName,
+          "pkill",
+          "-TERM",
+          "-f",
+          "fixtures/trading-systems/clock.py"
+        ])
+      : undefined;
     const stopResult = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
     const stopped = stopResult.exit_code === 0;
     const remove = () => this.runSbxCommand([
@@ -1305,21 +1343,29 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     ]);
     let policyRelease: Awaited<ReturnType<typeof this.releaseNetworkPolicy>>;
     let removeResult: CommandResult;
+    let alreadyAbsent = false;
     if (stopped) {
       policyRelease = await this.releaseNetworkPolicy(sandboxName);
       removeResult = await remove();
+      alreadyAbsent = commandReportsMissingSandbox(removeResult, sandboxName);
     } else {
       removeResult = await remove();
+      alreadyAbsent = commandReportsMissingSandbox(stopResult, sandboxName) &&
+        commandReportsMissingSandbox(removeResult, sandboxName);
       // The candidate may still be running when stop and removal both fail.
       // Retain its deny policy and persisted lease until a later cleanup succeeds.
-      policyRelease = removeResult.exit_code === 0
+      policyRelease = removeResult.exit_code === 0 || alreadyAbsent
         ? await this.releaseNetworkPolicy(sandboxName)
         : {
             results: [],
             failure: new Error("candidate_sandbox_policy_retained_after_remove_failed")
           };
     }
-    const removed = removeResult.exit_code === 0 && !policyRelease.failure;
+    const removed = (removeResult.exit_code === 0 || alreadyAbsent) &&
+      !policyRelease.failure;
+    if (stopped || removeResult.exit_code === 0 || alreadyAbsent) {
+      await this.stopAttachedSbxSession(instanceId);
+    }
     const policyEvidence = policyRelease.results.map((result, index) =>
       commandEvidenceRecord(
         instanceId,
@@ -1338,7 +1384,13 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       removed_at: removed ? removeResult.completed_at : undefined,
       command_evidence: [
         versionObservation.evidence,
-        commandEvidenceRecord(instanceId, commandEvidenceSuffix("terminate", terminateResult), terminateResult),
+        ...(terminateResult
+          ? [commandEvidenceRecord(
+              instanceId,
+              commandEvidenceSuffix("terminate", terminateResult),
+              terminateResult
+            )]
+          : []),
         commandEvidenceRecord(instanceId, commandEvidenceSuffix("stop", stopResult), stopResult),
         ...(stopped
           ? [...policyEvidence, removeEvidence]
@@ -1363,6 +1415,12 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return this.options.commandTimeoutMs ?? Number(process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS ?? 30_000);
   }
 
+  private get detachedCommandTimeoutMs(): number {
+    const configured = this.options.detachedCommandTimeoutMs ??
+      Number(process.env.OUROBOROS_SBX_DETACHED_COMMAND_TIMEOUT_MS ?? 5_000);
+    return Math.min(configured, this.commandTimeoutMs);
+  }
+
   private get startupHeartbeatTimeoutMs(): number {
     return this.options.startupHeartbeatTimeoutMs ?? this.commandTimeoutMs;
   }
@@ -1380,8 +1438,87 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       path.join(this.sbxHome ?? os.homedir(), ".ouroboros", "candidate-network-policy-leases");
   }
 
-  private runSbxCommand(command: string[]): Promise<CommandResult> {
-    return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  private runSbxCommand(
+    command: string[],
+    timeoutMs = this.commandTimeoutMs
+  ): Promise<CommandResult> {
+    return runCommand(command, timeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private async startAttachedSbxSession(
+    instanceId: string,
+    command: string[]
+  ): Promise<CommandResult> {
+    await this.stopAttachedSbxSession(instanceId);
+    const startedAt = new Date().toISOString();
+    const [file, ...args] = command;
+    if (!file) {
+      return {
+        command,
+        exit_code: 2,
+        stdout: "",
+        stderr: "empty sbx session command",
+        started_at: startedAt,
+        completed_at: startedAt
+      };
+    }
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(file, args, {
+        cwd: REPO_ROOT,
+        detached: true,
+        stdio: "ignore",
+        env: sandboxToolProcessEnv(this.sbxHome ? { HOME: this.sbxHome } : undefined)
+      });
+    } catch (error) {
+      const spawnError = error instanceof Error ? error : new Error(String(error));
+      return {
+        command,
+        exit_code: exitCodeFor(spawnError),
+        stdout: "",
+        stderr: spawnError.message,
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      };
+    }
+    const spawnError = await new Promise<Error | undefined>((resolve) => {
+      child.once("spawn", () => resolve(undefined));
+      child.once("error", resolve);
+    });
+    if (spawnError) {
+      return {
+        command,
+        exit_code: exitCodeFor(spawnError),
+        stdout: "",
+        stderr: spawnError.message,
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      };
+    }
+    this.attachedSessions.set(instanceId, child);
+    child.once("exit", () => {
+      if (this.attachedSessions.get(instanceId) === child) {
+        this.attachedSessions.delete(instanceId);
+      }
+    });
+    child.unref();
+    return {
+      command,
+      exit_code: null,
+      stdout: "",
+      stderr: "",
+      started_at: startedAt,
+      completed_at: new Date().toISOString()
+    };
+  }
+
+  private async stopAttachedSbxSession(instanceId: string): Promise<void> {
+    const child = this.attachedSessions.get(instanceId);
+    if (!child) return;
+    await terminateChildProcess(child);
+    if (this.attachedSessions.get(instanceId) === child) {
+      this.attachedSessions.delete(instanceId);
+    }
   }
 
   private async persistNetworkPolicyLease(
@@ -1711,6 +1848,18 @@ interface CommandResult {
   stderr: string;
   started_at: string;
   completed_at: string;
+  timed_out?: boolean;
+}
+
+function commandReportsMissingSandbox(result: CommandResult, sandboxName: string): boolean {
+  const exactLines = new Set((result.stdout + "\n" + result.stderr)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean));
+  return exactLines.has(`ERROR: no sandbox named '${sandboxName}'`) ||
+    exactLines.has(
+      `Error: sandbox '${sandboxName}' not found (run 'sbx ls' to see your sandboxes)`
+    );
 }
 
 function sandboxSandboxRecord(input: {
@@ -2576,7 +2725,8 @@ function runCommand(
             stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
             stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
             started_at: startedAt,
-            completed_at: completedAt
+            completed_at: completedAt,
+            timed_out: Boolean(error && "killed" in error && error.killed)
           });
         }
       );

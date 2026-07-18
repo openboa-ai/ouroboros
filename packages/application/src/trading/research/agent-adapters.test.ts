@@ -1,4 +1,4 @@
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -203,6 +203,34 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
     expect(execFile).not.toHaveBeenCalled();
   });
 
+  it("routes provider Python bytecode outside the immutable artifact closure", async () => {
+    let pythonCachePrefix: string | undefined;
+    const execFile = vi.fn(async (
+      _file: string,
+      _args: string[],
+      options?: { env?: NodeJS.ProcessEnv }
+    ) => {
+      pythonCachePrefix = options?.env?.PYTHONPYCACHEPREFIX;
+      expect(pythonCachePrefix).toBeDefined();
+      expect(path.relative(tmpDir, pythonCachePrefix!)).toMatch(/^\.\./);
+      await mkdir(pythonCachePrefix!, { recursive: true });
+      await writeFile(path.join(pythonCachePrefix!, "run.pyc"), "derived", "utf8");
+      return { stdout: "", stderr: "" };
+    });
+    const adapter = new CodexTradingResearchAgentAdapter({ execFile });
+
+    await expect(adapter.runSession({
+      artifact_dir: tmpDir,
+      program_path: path.join(tmpDir, "program.md"),
+      notebook_path: path.join(tmpDir, "notebook.json"),
+      submission_limit: 1,
+      timeout_ms: 1_000,
+      tools: idleTools()
+    })).resolves.toMatchObject({ status: "finished_without_submission" });
+
+    await expect(access(pythonCachePrefix!)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("claims the exact provider process before releasing its prompt and records completion", async () => {
     const executablePath = path.join(tmpDir, "fake-codex-owned.cjs");
     const evidencePath = path.join(tmpDir, "owned-process.json");
@@ -237,6 +265,7 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       pid: number;
       session_token?: string;
       prompt_bytes: number;
+      prompt: string;
     };
     const terminal = ownership.records.at(-1);
     expect(childEvidence).toMatchObject({
@@ -244,6 +273,15 @@ describe("CodexTradingResearchAgentAdapter process lifecycle", () => {
       session_token: terminal?.session_token
     });
     expect(childEvidence.prompt_bytes).toBeGreaterThan(0);
+    expect(childEvidence.prompt).toContain(
+      "may contain only manifest.json and its single declared entrypoint"
+    );
+    expect(childEvidence.prompt).toContain(
+      "emit explicit hold or no_action without calling /orders/validate"
+    );
+    expect(childEvidence.prompt).toContain(
+      "Every emitted order_request must call /orders/validate with the exact same request"
+    );
     expect(terminal).toMatchObject({
       subject_ref: {
         record_kind: "research_worker_process_scope",
@@ -354,10 +392,12 @@ const fs = require("node:fs");
 const chunks = [];
 process.stdin.on("data", (chunk) => chunks.push(chunk));
 process.stdin.on("end", () => {
+  const prompt = Buffer.concat(chunks).toString("utf8");
   fs.writeFileSync(process.env.TEST_OWNERSHIP_EVIDENCE_PATH, JSON.stringify({
     pid: process.pid,
     session_token: process.env.OUROBOROS_PROCESS_SESSION_TOKEN,
-    prompt_bytes: Buffer.concat(chunks).length
+    prompt_bytes: Buffer.byteLength(prompt),
+    prompt
   }));
   process.exit(0);
 });

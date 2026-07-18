@@ -407,6 +407,7 @@ export type ResearchWorkerSessionResult =
 
 export interface ResearchWorkerSessionAdapter {
   readonly agent: ManagedResearchAgent;
+  readonly session_timeout_ms?: number;
   runSession(input: ResearchWorkerSessionInput): Promise<ResearchWorkerSessionResult>;
 }
 

@@ -12,6 +12,24 @@ describe("PaperTradingHandoffConformance", () => {
     expect(paperTradingHandoffConformanceHasRuntimeShape(rejectedFixture())).toBe(true);
   });
 
+  it.each(["hold", "no_action"] as const)(
+    "accepts passed %s evidence without a synthesized order-validation request",
+    (decisionKind) => {
+      const record = passedFixture();
+      record.provider_request_count = 2;
+      record.decision_event_kind = decisionKind;
+
+      expect(paperTradingHandoffConformanceHasRuntimeShape(record)).toBe(true);
+    }
+  );
+
+  it("rejects passed order evidence without external order validation", () => {
+    const record = passedFixture();
+    record.provider_request_count = 2;
+
+    expect(paperTradingHandoffConformanceHasRuntimeShape(record)).toBe(false);
+  });
+
   it("accepts version 2 Docker evidence only with canonical egress attestation", () => {
     expect(paperTradingHandoffConformanceHasRuntimeShape(attestedFixture())).toBe(true);
 

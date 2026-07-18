@@ -403,7 +403,8 @@ async function runAutonomousTradingResearchSession(input: {
       program_path: input.programPath,
       notebook_path: input.notebookPath,
       submission_limit: input.iterations,
-      timeout_ms: input.input.agent_timeout_ms ?? 120_000,
+      timeout_ms: input.input.agent_timeout_ms ??
+        input.sessionAdapter.session_timeout_ms ?? 120_000,
       ...(input.input.arena_context
         ? { arena_context: input.input.arena_context }
         : {}),
