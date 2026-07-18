@@ -283,6 +283,75 @@ describe("review-scoped secondary screens", () => {
     expect(markup).toContain("Stabilize the runner before collecting more evidence.");
   });
 
+  it("renders the shared first-viewport recommendation from the active review packet", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.review_packet.next_action =
+      "Open the active Trading review candidate before running Trading controls.";
+    operator.trading_review.review_packet.verdict.severity = "mismatch";
+    operator.trading_review.review_packet.verdict.top_blocker = "arena_selection_mismatch";
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("Recommended action");
+    expect(markup).toContain("Open the active Trading review candidate before running Trading controls.");
+    expect(markup).toContain("mismatch / arena_selection_mismatch / runner inactive / selected target mismatch");
+  });
+
+  it("renders account, position, order, fill, and failure context from the review packet risk", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.review_packet.risk = {
+      open_order_count: 2,
+      account: {
+        equity_usdt: "1004",
+        available_balance_usdt: "900",
+        wallet_balance_usdt: "1000",
+        margin_reserved_usdt: "100",
+        authority_status: "not_live"
+      },
+      position: {
+        symbol: "BTCUSDT",
+        side: "long",
+        quantity: "0.01",
+        notional_usdt: "600",
+        average_entry_price: "59000",
+        mark_price: "60000",
+        authority_status: "not_live"
+      },
+      latest_fill_status: "partially_filled",
+      latest_failure_reason: "risk-check-lag",
+      latest_failure: {
+        failure_kind: "risk_rejection",
+        reason: "risk-check-lag",
+        summary: "Risk readback lagged the latest fill.",
+        next_action: "Refresh paper risk before another observation.",
+        authority_status: "not_live"
+      }
+    };
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("Paper risk");
+    expect(markup).toContain("1004 USDT");
+    expect(markup).toContain("900 USDT");
+    expect(markup).toContain("Long 0.01 BTCUSDT");
+    expect(markup).toContain("600 USDT");
+    expect(markup).toContain("Partially Filled");
+    expect(markup).toContain("Risk readback lagged the latest fill.");
+    expect(markup).toContain("Refresh paper risk before another observation.");
+  });
+
   it("renders the shared remediation pointer for failed commands", () => {
     const operator = mismatchedReviewOperator();
     operator.latest_commands = [{

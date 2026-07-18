@@ -1,7 +1,9 @@
 import {
+  buildTradingFirstViewportRecommendation,
   commandRemediation,
   type OperatorReadModel,
   type OuroborosCommandRequest,
+  type PaperTradingRiskSummaryReadModel,
   type TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import {
@@ -44,6 +46,17 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
   const review = operator.trading_review;
   const subject = tradingSubjectEvidence(operator);
   const evaluation = subject.evaluation;
+  const recommendation = buildTradingFirstViewportRecommendation({
+    trading_review_packet: review.review_packet
+  });
+  const recommendationVariant = recommendation.tone === "good"
+    ? "success"
+    : recommendation.tone === "danger"
+      ? "destructive"
+      : recommendation.tone === "warning"
+        ? "warning"
+        : "info";
+  const risk = subject.risk;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
   const canStartPaperRun = !review.active_candidate_id && Boolean(candidateId) && !evaluation.runner_active;
@@ -62,7 +75,7 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
             <StatusBadge status={review.readiness_status} />
             <StatusBadge status={evaluation.status} />
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{review.next_action}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Paper evidence, risk, and review authority for the exact active handoff.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -103,7 +116,12 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
         </div>
       </section>
 
-      <div className="px-4 pb-4">
+      <div className="grid gap-2 px-4 pb-4 lg:grid-cols-2">
+        <Alert variant={recommendationVariant}>
+          <Activity aria-hidden="true" />
+          <AlertTitle>{recommendation.label}: {recommendation.value}</AlertTitle>
+          <AlertDescription>{recommendation.detail}</AlertDescription>
+        </Alert>
         <Alert variant="warning">
           <Shield aria-hidden="true" />
           <AlertTitle>Live trading is disabled</AlertTitle>
@@ -158,6 +176,34 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
           </dl>
         </section>
       </div>
+
+      <section className="border-b p-4" aria-labelledby="trading-paper-risk-title">
+        <h3 id="trading-paper-risk-title" className="text-sm font-semibold">Paper risk</h3>
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <ReadField label="Equity" value={risk.account ? `${risk.account.equity_usdt} USDT` : "Unavailable"} />
+          <ReadField label="Available balance" value={risk.account ? `${risk.account.available_balance_usdt} USDT` : "Unavailable"} />
+          <ReadField label="Wallet balance" value={risk.account ? `${risk.account.wallet_balance_usdt} USDT` : "Unavailable"} />
+          <ReadField label="Margin reserved" value={risk.account ? `${risk.account.margin_reserved_usdt} USDT` : "Unavailable"} />
+          <ReadField
+            label="Position"
+            value={risk.position
+              ? `${formatStatus(risk.position.side)} ${risk.position.quantity} ${risk.position.symbol}`
+              : "Unavailable"}
+          />
+          <ReadField label="Notional" value={risk.position ? `${risk.position.notional_usdt} USDT` : "Unavailable"} />
+          <ReadField label="Average entry" value={risk.position?.average_entry_price ?? "Unavailable"} />
+          <ReadField label="Mark price" value={risk.position?.mark_price ?? "Unavailable"} />
+          <ReadField label="Open orders" value={String(risk.open_order_count)} />
+          <ReadField label="Latest fill" value={risk.latest_fill_status ? formatStatus(risk.latest_fill_status) : "None observed"} />
+          <ReadField
+            label="Latest failure"
+            value={risk.latest_failure
+              ? `${formatStatus(risk.latest_failure.failure_kind)}: ${risk.latest_failure.summary}`
+              : risk.latest_failure_reason ?? "None observed"}
+          />
+          <ReadField label="Risk next action" value={risk.latest_failure?.next_action ?? "No risk remediation required"} />
+        </dl>
+      </section>
 
       {subject.blockerGroups.length > 0 ? (
         <section className="border-b p-4" aria-labelledby="trading-review-blockers-title">
@@ -312,6 +358,13 @@ function tradingSubjectEvidence(operator: OperatorReadModel) {
     boardEntry?.qualification_reasons ??
     [];
   const publicExecutionSnapshot = evaluation.latest_public_execution_snapshot;
+  const risk: PaperTradingRiskSummaryReadModel = packet?.risk ??
+    boardEntry?.risk_summary ?? {
+      open_order_count: boardEntry?.open_order_count ?? 0,
+      latest_fill_status: boardEntry?.latest_fill_status ?? evaluation.latest_fill?.fill_status,
+      latest_failure_reason: boardEntry?.latest_failure_reason ?? evaluation.latest_failure_reason,
+      latest_failure: boardEntry?.latest_failure
+    };
   const provenance = activeReview && packet
     ? {
         marketDataSource: packet.provenance.market_data_source,
@@ -337,6 +390,7 @@ function tradingSubjectEvidence(operator: OperatorReadModel) {
   return {
     evaluation,
     provenance,
+    risk,
     profitLoss: packet?.performance.profit_loss ?? boardEntry?.profit_loss ?? evaluation.profit_loss,
     qualificationStatus,
     verdict: packet?.verdict.severity ?? qualificationStatus ?? "unavailable",

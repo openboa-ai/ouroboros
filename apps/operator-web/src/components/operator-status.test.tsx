@@ -21,6 +21,7 @@ describe("StatusBadge", () => {
     expect(statusVariant("configured")).toBe("success");
     expect(statusVariant("awaiting_selection")).toBe("warning");
     expect(statusVariant("running_degraded")).toBe("warning");
+    expect(statusVariant("completed_with_errors")).toBe("warning");
     expect(statusVariant("failed_closed")).toBe("destructive");
   });
 });

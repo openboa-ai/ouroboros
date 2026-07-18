@@ -6,7 +6,7 @@ import { formatStatus } from "@/lib/operator-format";
 type BadgeVariant = NonNullable<ComponentProps<typeof Badge>["variant"]>;
 
 const SUCCESS_TERMS = ["active", "admitted", "authenticated", "completed", "configured", "passed", "qualified", "ready", "running", "succeeded"];
-const WARNING_TERMS = ["allocating", "awaiting", "collecting", "degraded", "needs_resume", "pending", "provisional", "queued", "recovering", "starting", "stopping", "waiting"];
+const WARNING_TERMS = ["allocating", "awaiting", "collecting", "degraded", "errors", "needs_resume", "pending", "provisional", "queued", "recovering", "starting", "stopping", "waiting"];
 const DESTRUCTIVE_TERMS = ["blocked", "failed", "failed_closed", "invalidated", "quarantined"];
 const OUTLINE_TERMS = ["disabled", "inactive", "missing", "unavailable", "unauthenticated", "unconfigured", "unknown", "unranked", "unsupported"];
 
