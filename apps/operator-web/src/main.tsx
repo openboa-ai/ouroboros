@@ -14,9 +14,12 @@ function renderFatalError(error: unknown) {
     return;
   }
   const message = error instanceof Error ? error.message : String(error);
-  rootElement.innerHTML = `<main style="font-family: system-ui, sans-serif; padding: 24px; color: #111827;">
-    <h1 style="font-size: 20px; margin: 0 0 12px;">Ouroboros Operator failed to render</h1>
-    <pre style="white-space: pre-wrap; line-height: 1.5;">${escapeHtml(message)}</pre>
+  rootElement.innerHTML = `<main aria-label="Ouroboros Operator render failure" style="min-height: 100vh; display: grid; place-items: center; box-sizing: border-box; padding: 24px; background: #F8F7F5; color: #17120F; font-family: Inter, ui-sans-serif, system-ui, sans-serif;">
+    <section style="width: min(100%, 720px); border-top: 4px solid #F37021; padding-top: 20px;">
+      <p style="margin: 0 0 8px; color: #F37021; font-size: 12px; font-weight: 700;">Ouroboros</p>
+      <h1 style="margin: 0 0 12px; font-size: 20px; line-height: 1.3;">Operator failed to render</h1>
+      <pre style="margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #57534E; font-size: 14px; line-height: 1.5;">${escapeHtml(message)}</pre>
+    </section>
   </main>`;
 }
 
@@ -49,9 +52,39 @@ class OperatorRenderBoundary extends Component<
         ? this.state.error.message
         : String(this.state.error);
       return (
-        <main style={{ fontFamily: "system-ui, sans-serif", padding: 24, color: "#111827" }}>
-          <h1 style={{ fontSize: 20, margin: "0 0 12px" }}>Ouroboros Operator failed to render</h1>
-          <pre style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</pre>
+        <main
+          aria-label="Ouroboros Operator render failure"
+          style={{
+            minHeight: "100vh",
+            display: "grid",
+            placeItems: "center",
+            boxSizing: "border-box",
+            padding: 24,
+            background: "#F8F7F5",
+            color: "#17120F",
+            fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+          }}
+        >
+          <section style={{ width: "min(100%, 720px)", borderTop: "4px solid #F37021", paddingTop: 20 }}>
+            <p style={{ margin: "0 0 8px", color: "#F37021", fontSize: 12, fontWeight: 700 }}>
+              Ouroboros
+            </p>
+            <h1 style={{ margin: "0 0 12px", fontSize: 20, lineHeight: 1.3 }}>
+              Operator failed to render
+            </h1>
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                color: "#57534E",
+                fontSize: 14,
+                lineHeight: 1.5
+              }}
+            >
+              {message}
+            </pre>
+          </section>
         </main>
       );
     }

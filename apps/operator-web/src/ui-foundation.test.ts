@@ -93,6 +93,7 @@ describe("Ouroboros shadcn foundation", () => {
   it("keeps the required open-code primitives in the shadcn directory", () => {
     const requiredPrimitives = [
       "alert",
+      "alert-dialog",
       "badge",
       "button",
       "card",
