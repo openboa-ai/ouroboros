@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ArenaIsolationReadModel,
   ArenaOperationsReadModel,
+  ArenaTradingSystemSummaryReadModel,
   ArenaTradingSystemDetailReadModel,
   ResearchOperationsReadModel,
   ResearchSessionDetailReadModel
@@ -88,6 +90,86 @@ describe("Research and Arena operations read-model contracts", () => {
         }
       }
     });
+  });
+
+  it("makes ranked and unranked Arena rows incompatible states", () => {
+    const ranked = {
+      candidate_id: "candidate-ranked",
+      candidate_version_id: "candidate-ranked-v1",
+      system_code_ref: { record_kind: "system_code", id: "system-code-ranked" },
+      display_name: "Ranked candidate",
+      direction_kind: "trend_following",
+      session_status: "running",
+      rank_status: "ranked",
+      rank: 1,
+      comparability_status: "comparable",
+      unranked_reasons: [],
+      comparison_cohort: {
+        cohort_id: "cohort-ranked",
+        symbol: "BTCUSDT",
+        evidence_purpose: "research_feedback",
+        market_opportunity_policy_digest: "sha256:market",
+        account_policy_digest: "sha256:account",
+        cost_policy_digest: "sha256:cost",
+        risk_policy_digest: "sha256:risk",
+        evaluation_policy_identity: {
+          market_data_policy_version: "market-v1",
+          gateway_policy_version: "gateway-v1",
+          cost_policy_version: "cost-v1",
+          funding_policy_version: "funding-v1",
+          slippage_policy_version: "slippage-v1",
+          fill_policy_version: "fill-v1",
+          risk_policy_version: "risk-v1",
+          paper_account_policy_version: "account-v1",
+          decision_event_protocol_version: "decision-v1",
+          persistent_state_boundary_version: "state-v1"
+        },
+        evaluation_window_policy: {
+          interval_ms: 60_000,
+          release_policy: "closed_observation",
+          eligibility_policy_version: "eligibility-v1"
+        },
+        authority_status: "not_live"
+      },
+      comparison_sequence: 12,
+      comparison_cutoff_at: "2026-07-18T00:12:00.000Z",
+      observation_count: 12,
+      failed_observation_count: 0,
+      queued_at: "2026-07-18T00:00:00.000Z",
+      authority_status: "not_live"
+    } satisfies ArenaTradingSystemSummaryReadModel;
+
+    const unranked = {
+      candidate_id: "candidate-unranked",
+      candidate_version_id: "candidate-unranked-v1",
+      system_code_ref: { record_kind: "system_code", id: "system-code-unranked" },
+      display_name: "Queued candidate",
+      direction_kind: "mean_reversion",
+      session_status: "queued",
+      rank_status: "unranked",
+      comparability_status: "ineligible",
+      unranked_reasons: ["paper_evaluation_not_started"],
+      observation_count: 0,
+      failed_observation_count: 0,
+      queued_at: "2026-07-18T00:00:00.000Z",
+      authority_status: "not_live"
+    } satisfies ArenaTradingSystemSummaryReadModel;
+
+    const {
+      comparison_cohort: _cohort,
+      comparison_sequence: _sequence,
+      comparison_cutoff_at: _cutoff,
+      ...rankedWithoutComparisonBoundary
+    } = ranked;
+    // @ts-expect-error Ranked rows require an exact cohort, sequence, and cutoff.
+    const invalidRanked: ArenaTradingSystemSummaryReadModel = rankedWithoutComparisonBoundary;
+    // @ts-expect-error Unranked rows cannot carry an implied leaderboard rank.
+    const invalidUnranked: ArenaTradingSystemSummaryReadModel = { ...unranked, rank: 1 };
+
+    expect(ranked.rank).toBe(1);
+    expect(unranked.unranked_reasons).toEqual(["paper_evaluation_not_started"]);
+    expect(invalidRanked.rank_status).toBe("ranked");
+    expect(invalidUnranked.rank_status).toBe("unranked");
   });
 
   it("separates Research methodology and sanitized evidence from Arena execution detail", () => {
@@ -183,6 +265,13 @@ describe("Research and Arena operations read-model contracts", () => {
       logs_truncated: false
     } satisfies Omit<ArenaTradingSystemDetailReadModel, keyof ArenaOperationsReadModel["systems"][number]>;
 
+    const deterministicIsolation = {
+      sandbox_status: "stopped",
+      network_policy_status: "not_required",
+      egress_attestation_status: "not_required",
+      authority_status: "not_live"
+    } satisfies ArenaIsolationReadModel;
+
     expect(researchDetail.evidence_inputs[0]).toMatchObject({
       sanitization_status: "sanitized",
       qualification_evidence_hidden: true
@@ -192,5 +281,6 @@ describe("Research and Arena operations read-model contracts", () => {
       .toBe("candidate_admission_decision");
     expect(arenaDetail.paper_trading_handoff_conformance_ref.record_kind)
       .toBe("paper_trading_handoff_conformance");
+    expect(deterministicIsolation.network_policy_status).toBe("not_required");
   });
 });

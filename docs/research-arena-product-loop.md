@@ -119,6 +119,12 @@ separate evidence-quality decision. A session that is queued, invalidated, missi
 boundary, or from a different cohort remains visible but unranked with an explicit reason. The UI
 must not sort incomparable values into one implied leaderboard.
 
+The read model encodes those states as a discriminated union. Ranked and provisionally ranked rows
+require a positive rank, exact cohort, comparison sequence, and cutoff and carry no unranked
+reason. Unranked rows reject rank, sequence, and cutoff fields and require at least one reason. An
+unranked row may retain an exact cohort only when it is otherwise comparable but lacks a common
+boundary; ineligible and incomparable rows do not assert a cohort.
+
 The cohort preserves the complete `PaperTradingEvaluationCommitmentRecord.policy_identity` and
 `window_policy` as `evaluation_policy_identity` and `evaluation_window_policy`. A display label or
 digest assembled from only a subset of those fields cannot establish comparability.
@@ -126,6 +132,10 @@ digest assembled from only a subset of those fields cannot establish comparabili
 Negative and failed systems remain visible as research evidence. Malformed, boundary-bypassing,
 or otherwise invalid systems remain quarantined or invalidated and cannot gain rank or downstream
 authority.
+
+`network_policy_status: not_required` is valid only for execution paths, such as deterministic
+fixture compatibility, that do not create a Docker Sandbox network boundary. It is an explicit
+absence of that policy surface, not evidence that a policy was verified.
 
 ## Operator UX Contract
 

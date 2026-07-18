@@ -13894,12 +13894,12 @@ export interface ArenaIsolationReadModel {
     | "stopped"
     | "failed";
   workspace_identity?: string;
-  network_policy_status: "pending" | "verified" | "failed";
+  network_policy_status: "not_required" | "pending" | "verified" | "failed";
   egress_attestation_status: "not_required" | "pending" | "verified" | "failed";
   authority_status: "not_live";
 }
 
-export interface ArenaTradingSystemSummaryReadModel {
+interface ArenaTradingSystemSummaryBaseReadModel {
   candidate_id: string;
   candidate_version_id: string;
   system_code_ref: Ref;
@@ -13908,13 +13908,6 @@ export interface ArenaTradingSystemSummaryReadModel {
   session_status: ArenaPaperSessionStatus;
   evaluation_id?: string;
   trading_run_id?: string;
-  rank_status: ArenaRankStatus;
-  rank?: number;
-  comparability_status: ArenaComparabilityStatus;
-  unranked_reasons: ArenaUnrankedReason[];
-  comparison_cohort?: ArenaComparisonCohortReadModel;
-  comparison_sequence?: number;
-  comparison_cutoff_at?: string;
   profit_loss?: TradingProfitLossReadModel;
   observation_count: number;
   failed_observation_count: number;
@@ -13926,6 +13919,44 @@ export interface ArenaTradingSystemSummaryReadModel {
   latest_failure?: PaperTradingFailureReadModel;
   authority_status: "not_live";
 }
+
+export interface ArenaRankedTradingSystemSummaryReadModel
+  extends ArenaTradingSystemSummaryBaseReadModel {
+  rank_status: Exclude<ArenaRankStatus, "unranked">;
+  rank: number;
+  comparability_status: "comparable";
+  unranked_reasons: [];
+  comparison_cohort: ArenaComparisonCohortReadModel;
+  comparison_sequence: number;
+  comparison_cutoff_at: string;
+}
+
+export interface ArenaComparableUnrankedTradingSystemSummaryReadModel
+  extends ArenaTradingSystemSummaryBaseReadModel {
+  rank_status: "unranked";
+  rank?: never;
+  comparability_status: "comparable";
+  unranked_reasons: [ArenaUnrankedReason, ...ArenaUnrankedReason[]];
+  comparison_cohort: ArenaComparisonCohortReadModel;
+  comparison_sequence?: never;
+  comparison_cutoff_at?: never;
+}
+
+export interface ArenaNonComparableUnrankedTradingSystemSummaryReadModel
+  extends ArenaTradingSystemSummaryBaseReadModel {
+  rank_status: "unranked";
+  rank?: never;
+  comparability_status: Exclude<ArenaComparabilityStatus, "comparable">;
+  unranked_reasons: [ArenaUnrankedReason, ...ArenaUnrankedReason[]];
+  comparison_cohort?: never;
+  comparison_sequence?: never;
+  comparison_cutoff_at?: never;
+}
+
+export type ArenaTradingSystemSummaryReadModel =
+  | ArenaRankedTradingSystemSummaryReadModel
+  | ArenaComparableUnrankedTradingSystemSummaryReadModel
+  | ArenaNonComparableUnrankedTradingSystemSummaryReadModel;
 
 export type ArenaTraceEventKind =
   | "lifecycle"
@@ -13955,8 +13986,7 @@ export interface ArenaLogEntryReadModel {
   authority_status: "read_only";
 }
 
-export interface ArenaTradingSystemDetailReadModel
-  extends ArenaTradingSystemSummaryReadModel {
+export type ArenaTradingSystemDetailReadModel = ArenaTradingSystemSummaryReadModel & {
   candidate_admission_decision_ref: Ref & {
     record_kind: "candidate_admission_decision";
   };
@@ -13974,7 +14004,7 @@ export interface ArenaTradingSystemDetailReadModel
   artifact_refs: Ref[];
   trace_truncated: boolean;
   logs_truncated: boolean;
-}
+};
 
 export interface ArenaOperationsReadModel {
   projection_kind: "arena_operations";
