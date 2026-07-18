@@ -4,6 +4,10 @@ This page turns the Ouroboros direction into a product-quality contract. The tar
 surface area. The target is a product where every element has a clear role, clear authority,
 clear evidence, and clear maintenance boundary.
 
+The concrete visual, interaction, shadcn, brand, accessibility, and responsive implementation
+contract is [Operator Design System](operator-design-system.md). This page continues to own product
+quality and evidence meaning; the design-system page owns how those meanings are rendered.
+
 Ouroboros should feel autonomous because the loop keeps moving without the operator hand-holding
 every step. It should feel trustworthy because no generated candidate, provider trace, replay
 result, UI label, or convenient score can promote itself.

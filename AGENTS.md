@@ -15,10 +15,11 @@ Start every non-trivial task from:
 6. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
 7. [Autonomy Model](docs/autonomy-model.md)
 8. [Product Quality Design](docs/product-quality-design.md)
-9. [Architecture Governance](docs/architecture-governance.md)
-10. [API And Command Contract](docs/api-command-contract.md)
-11. [Naming Taxonomy](docs/naming-taxonomy.md)
-12. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
+9. [Operator Design System](docs/operator-design-system.md), for Operator UI and UX work
+10. [Architecture Governance](docs/architecture-governance.md)
+11. [API And Command Contract](docs/api-command-contract.md)
+12. [Naming Taxonomy](docs/naming-taxonomy.md)
+13. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.
