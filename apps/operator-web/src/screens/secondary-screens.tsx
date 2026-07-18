@@ -45,6 +45,11 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
   const evaluation = subject.evaluation;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
+  const canStopPaperRun = Boolean(tradingRunId) && (
+    evaluation.runner_active ||
+    evaluation.status === "running" ||
+    subject.runnerStatus === "needs_resume"
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
@@ -87,7 +92,7 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
               payload: { trading_run_id: tradingRunId }
             })}
             trigger={(
-              <Button disabled={commandRunning || !tradingRunId || !evaluation.runner_active} variant="destructive">
+              <Button disabled={commandRunning || !canStopPaperRun} variant="destructive">
                 <Square data-icon="inline-start" aria-hidden="true" /> Stop
               </Button>
             )}
@@ -145,6 +150,31 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
           </dl>
         </section>
       </div>
+
+      {subject.blockerGroups.length > 0 ? (
+        <section className="border-b p-4" aria-labelledby="trading-review-blockers-title">
+          <h3 id="trading-review-blockers-title" className="text-sm font-semibold">Review blocker groups</h3>
+          <div className="mt-3 divide-y border-y">
+            {subject.blockerGroups.map((group) => (
+              <article className="grid gap-3 py-3 lg:grid-cols-[minmax(12rem,0.65fr)_minmax(0,1.35fr)]" key={group.group_kind}>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{formatStatus(group.group_kind)}</span>
+                    <StatusBadge status={group.severity} />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {group.blockers.map(formatStatus).join(", ")}
+                  </p>
+                </div>
+                <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                  <ReadField label="Summary" value={group.summary} />
+                  <ReadField label="Next action" value={group.next_action} />
+                </dl>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -255,6 +285,7 @@ function tradingSubjectEvidence(operator: OperatorReadModel) {
     profitLoss: packet?.performance.profit_loss ?? boardEntry?.profit_loss ?? evaluation.profit_loss,
     qualificationStatus,
     verdict: packet?.verdict.severity ?? qualificationStatus ?? "unavailable",
+    blockerGroups: packet?.evidence_quality.blocker_groups ?? [],
     topBlocker: packet?.verdict.top_blocker ??
       boardEntry?.blocker_density.top_blocker ??
       qualificationReasons[0],

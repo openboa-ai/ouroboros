@@ -13,7 +13,11 @@ import {
   Zap
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts";
-import type { ArenaSystemViewModel, ArenaWorkspaceViewModel } from "@/app/operator-view-model";
+import {
+  isComparableArenaRevenueSystem,
+  type ArenaSystemViewModel,
+  type ArenaWorkspaceViewModel
+} from "@/app/operator-view-model";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -54,7 +58,11 @@ export function ArenaScreen({
     ? view.systems.find((system) => system.id === selectedId)
     : undefined;
   const rankedSystems = view.systems.filter((system) => system.rank !== undefined);
-  const netRevenue = view.systems.reduce((sum, system) => sum + (system.netRevenueUsdt ?? 0), 0);
+  const comparableRevenueSystems = view.systems.filter(isComparableArenaRevenueSystem);
+  const netRevenue = comparableRevenueSystems.reduce(
+    (sum, system) => sum + system.netRevenueUsdt,
+    0
+  );
 
   useEffect(() => {
     if (selectedId) {
@@ -162,7 +170,7 @@ export function ArenaScreen({
         },
         {
           label: "Net revenue",
-          value: formatMoney(view.systems.some((system) => system.netRevenueUsdt !== undefined) ? netRevenue : undefined),
+          value: formatMoney(comparableRevenueSystems.length > 0 ? netRevenue : undefined),
           tone: netRevenue > 0 ? "positive" : netRevenue < 0 ? "negative" : "default"
         },
         {
@@ -172,7 +180,7 @@ export function ArenaScreen({
         }
       ]} />
 
-      {view.systems.some((system) => system.netRevenueUsdt !== undefined) ? (
+      {comparableRevenueSystems.length > 0 ? (
         <section className="border-b px-4 py-4" aria-labelledby="arena-performance-title">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -183,8 +191,7 @@ export function ArenaScreen({
           <ChartContainer config={ARENA_CHART_CONFIG} className="h-40 w-full">
             <BarChart
               accessibilityLayer
-              data={view.systems
-                .filter((system) => system.netRevenueUsdt !== undefined)
+              data={comparableRevenueSystems
                 .slice(0, 8)
                 .map((system) => ({ name: system.name, netRevenue: system.netRevenueUsdt }))}
               layout="vertical"

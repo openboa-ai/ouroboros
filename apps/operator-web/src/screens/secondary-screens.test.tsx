@@ -180,4 +180,51 @@ describe("review-scoped secondary screens", () => {
     expect(evidenceMarkup).toContain("selected-gateway");
     expect(evidenceMarkup).toContain("selected-execution");
   });
+
+  it("allows a persisted running paper evaluation to be stopped while its runner needs resume", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.paper_trading_evaluation.status = "running";
+    operator.trading_review.paper_trading_evaluation.runner_active = false;
+    operator.trading_review.review_packet.runner.runner_status = "needs_resume";
+    operator.trading_review.review_packet.runner.runner_active = false;
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+    const stopButton = Array.from(markup.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g))
+      .map((match) => match[0])
+      .find((button) => button.includes("Stop"));
+
+    expect(stopButton).toBeDefined();
+    expect(stopButton).not.toContain(' disabled=""');
+  });
+
+  it("renders actionable blocker-group details for the active Trading review", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.review_packet.evidence_quality.blocker_groups = [{
+      group_kind: "observation_quality",
+      severity: "blocked",
+      blockers: ["failed_observation_ratio_exceeded"],
+      summary: "Too many paper observations failed.",
+      next_action: "Stabilize the runner before collecting more evidence."
+    }];
+
+    const markup = renderToStaticMarkup(
+      <TradingScreen
+        operator={operator}
+        commandRunning={false}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("Review blocker groups");
+    expect(markup).toContain("Observation Quality");
+    expect(markup).toContain("Failed Observation Ratio Exceeded");
+    expect(markup).toContain("Too many paper observations failed.");
+    expect(markup).toContain("Stabilize the runner before collecting more evidence.");
+  });
 });

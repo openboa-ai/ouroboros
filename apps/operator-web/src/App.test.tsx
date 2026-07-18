@@ -111,6 +111,51 @@ describe("greenfield Operator entrypoint", () => {
     expect(markup).toContain("Trace, logs, and sandbox detail unavailable");
   });
 
+  it("excludes unranked Arena revenue from the comparable headline", () => {
+    const ranked: ArenaWorkspaceViewModel["systems"][number] = {
+      id: "ranked-candidate",
+      name: "Ranked candidate",
+      lifecycle: "running",
+      rankStatus: "provisional_ranked",
+      rank: 1,
+      comparability: "comparable",
+      unrankedReasons: [],
+      qualificationReasons: [],
+      netRevenueUsdt: 4,
+      observationCount: 10,
+      failedObservationCount: 0,
+      source: "arena_operations",
+      detailAvailability: "summary_only"
+    };
+    const view: ArenaWorkspaceViewModel = {
+      availability: "authoritative",
+      loopStatus: "running",
+      emptyState: "none",
+      systems: [ranked, {
+        ...ranked,
+        id: "ineligible-candidate",
+        name: "Ineligible candidate",
+        rankStatus: "unranked",
+        rank: undefined,
+        comparability: "ineligible",
+        unrankedReasons: ["evidence_purpose_not_rankable"],
+        netRevenueUsdt: 999
+      }]
+    };
+
+    const markup = renderToStaticMarkup(
+      <ArenaScreen
+        view={view}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("4.00 USDT");
+    expect(markup).not.toContain("1,003.00 USDT");
+  });
+
   it("bounds Arena rows while preserving a selected system outside the first page", () => {
     const systems: ArenaWorkspaceViewModel["systems"] = Array.from(
       { length: 65 },

@@ -56,6 +56,22 @@ export interface ArenaWorkspaceViewModel {
   emptyState: "none" | "available_empty" | "projection_unavailable";
 }
 
+export function isComparableArenaRevenueSystem(
+  system: ArenaSystemViewModel
+): system is ArenaSystemViewModel & { netRevenueUsdt: number } {
+  if (system.netRevenueUsdt === undefined || system.rank === undefined) {
+    return false;
+  }
+
+  if (system.source === "paper_trading_board") {
+    return system.rankStatus === "paper_board_ranked" &&
+      system.comparability === "legacy_paper_board";
+  }
+
+  return (system.rankStatus === "provisional_ranked" || system.rankStatus === "ranked") &&
+    system.comparability === "comparable";
+}
+
 export interface ResearchSessionViewModel {
   id: string;
   allocationId: string;

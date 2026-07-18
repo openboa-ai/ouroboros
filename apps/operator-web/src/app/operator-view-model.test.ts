@@ -8,6 +8,8 @@ import type {
 import {
   buildArenaWorkspaceViewModel,
   buildResearchWorkspaceViewModel,
+  isComparableArenaRevenueSystem,
+  type ArenaSystemViewModel,
   type OperatorProjectionInput
 } from "./operator-view-model";
 
@@ -196,6 +198,39 @@ function researchOperations(): ResearchOperationsReadModel {
 }
 
 describe("Operator projection view models", () => {
+  it("classifies Arena revenue as comparable only for explicitly ranked evidence", () => {
+    const ranked: ArenaSystemViewModel = {
+      id: "candidate-1",
+      name: "Ranked candidate",
+      lifecycle: "running",
+      rankStatus: "provisional_ranked",
+      rank: 1,
+      comparability: "comparable",
+      unrankedReasons: [],
+      qualificationReasons: [],
+      netRevenueUsdt: 4,
+      observationCount: 10,
+      failedObservationCount: 0,
+      source: "arena_operations",
+      detailAvailability: "summary_only"
+    };
+
+    expect(isComparableArenaRevenueSystem(ranked)).toBe(true);
+    expect(isComparableArenaRevenueSystem({
+      ...ranked,
+      rankStatus: "unranked",
+      rank: undefined,
+      comparability: "ineligible",
+      unrankedReasons: ["evidence_purpose_not_rankable"]
+    })).toBe(false);
+    expect(isComparableArenaRevenueSystem({
+      ...ranked,
+      source: "paper_trading_board",
+      rankStatus: "paper_board_ranked",
+      comparability: "legacy_paper_board"
+    })).toBe(true);
+  });
+
   it("treats arena_operations as authoritative over paper board membership", () => {
     const view = buildArenaWorkspaceViewModel(projectionInput({
       arena_operations: arenaOperations(),
