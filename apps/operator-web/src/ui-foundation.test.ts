@@ -64,6 +64,8 @@ describe("Ouroboros shadcn foundation", () => {
     expect(styles).not.toContain('@import "shadcn/tailwind.css"');
     expect(styles).toContain("/* ejected from shadcn@4.13.1 */");
     expect(styles).toContain("@custom-variant data-open");
+    expect(styles.indexOf('@import "@fontsource-variable/inter"'))
+      .toBeLessThan(styles.indexOf("/* ejected from shadcn@4.13.1 */"));
     expect(packageJson.dependencies["@fontsource-variable/inter"]).toBeDefined();
     expect(packageJson.dependencies["@fontsource-variable/geist"]).toBeUndefined();
     expect(packageJson.scripts["ui:add"]).toBe("shadcn add");
