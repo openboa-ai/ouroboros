@@ -13873,7 +13873,7 @@ export type ArenaUnrankedReason =
 
 export interface ArenaComparisonCohortReadModel {
   cohort_id: string;
-  symbol: string;
+  symbol: "BTCUSDT";
   evidence_purpose: PaperTradingEvidencePurpose;
   market_opportunity_policy_digest: string;
   account_policy_digest: string;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ArenaComparisonCohortReadModel,
   ArenaIsolationReadModel,
   ArenaOperationsReadModel,
   ArenaTradingSystemSummaryReadModel,
@@ -191,6 +192,11 @@ describe("Research and Arena operations read-model contracts", () => {
       // @ts-expect-error Arena identity must bind an exact SystemCode record.
       system_code_ref: { record_kind: "finding", id: "finding-not-system-code" }
     };
+    const invalidCohortSymbol: ArenaComparisonCohortReadModel = {
+      ...ranked.comparison_cohort,
+      // @ts-expect-error The paper market identity is fixed to BTCUSDT.
+      symbol: "ETHUSDT"
+    };
 
     expect(ranked.rank).toBe(1);
     expect(unranked.unranked_reasons).toEqual(["paper_evaluation_not_started"]);
@@ -200,6 +206,7 @@ describe("Research and Arena operations read-model contracts", () => {
     expect(invalidRankedEvidence.rank_status).toBe("ranked");
     expect(invalidFailedRanked.session_status).toBe("failed");
     expect(invalidSystemCodeRef.system_code_ref.record_kind).toBe("finding");
+    expect(invalidCohortSymbol.symbol).toBe("ETHUSDT");
   });
 
   it("separates Research methodology and sanitized evidence from Arena execution detail", () => {

@@ -113,7 +113,8 @@ Arena rank is based on externally calculated paper `net_revenue_usdt`; `net_retu
 secondary metric. ResearchPreflight revenue or score never defines Arena rank.
 
 Ranked systems must share an exact comparison cohort that binds market opportunity, evidence
-purpose, account, cost, risk, and relevant evaluation policy. Running sessions may receive a
+purpose, the repository-fixed `BTCUSDT` symbol, account, cost, risk, and relevant evaluation
+policy. Running sessions may receive a
 provisional rank only at an exact common observation sequence and cutoff. Qualification remains a
 separate evidence-quality decision. A session that is queued, invalidated, missing a common
 boundary, or from a different cohort remains visible but unranked with an explicit reason. The UI
