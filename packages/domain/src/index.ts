@@ -13879,6 +13879,8 @@ export interface ArenaComparisonCohortReadModel {
   account_policy_digest: string;
   cost_policy_digest: string;
   risk_policy_digest: string;
+  evaluation_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  evaluation_window_policy: PaperTradingEvaluationWindowPolicy;
   authority_status: "not_live";
 }
 
@@ -13955,6 +13957,12 @@ export interface ArenaLogEntryReadModel {
 
 export interface ArenaTradingSystemDetailReadModel
   extends ArenaTradingSystemSummaryReadModel {
+  candidate_admission_decision_ref: Ref & {
+    record_kind: "candidate_admission_decision";
+  };
+  paper_trading_handoff_conformance_ref: Ref & {
+    record_kind: "paper_trading_handoff_conformance";
+  };
   isolation: ArenaIsolationReadModel;
   latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
   latest_decision?: PaperTradingDecisionSummary;

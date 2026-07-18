@@ -103,6 +103,10 @@ The supported lifecycle is `queued`, `starting`, `running`, `recovering`, `stopp
 - bounded sanitized TradingSystem, Sandbox, Gateway, Ledger, and supervisor logs;
 - explicit truncation, failure, next observation, and restart state.
 
+The detail identity carries the exact `candidate_admission_decision_ref` and
+`paper_trading_handoff_conformance_ref`; consumers do not reconstruct either admission edge from
+candidate, SystemCode, Evaluation, or TradingRun identifiers.
+
 ### Comparability And Rank
 
 Arena rank is based on externally calculated paper `net_revenue_usdt`; `net_return_pct` is the
@@ -114,6 +118,10 @@ provisional rank only at an exact common observation sequence and cutoff. Qualif
 separate evidence-quality decision. A session that is queued, invalidated, missing a common
 boundary, or from a different cohort remains visible but unranked with an explicit reason. The UI
 must not sort incomparable values into one implied leaderboard.
+
+The cohort preserves the complete `PaperTradingEvaluationCommitmentRecord.policy_identity` and
+`window_policy` as `evaluation_policy_identity` and `evaluation_window_policy`. A display label or
+digest assembled from only a subset of those fields cannot establish comparability.
 
 Negative and failed systems remain visible as research evidence. Malformed, boundary-bypassing,
 or otherwise invalid systems remain quarantined or invalidated and cannot gain rank or downstream

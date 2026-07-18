@@ -37,6 +37,23 @@ describe("Research and Arena operations read-model contracts", () => {
           account_policy_digest: "sha256:account",
           cost_policy_digest: "sha256:cost",
           risk_policy_digest: "sha256:risk",
+          evaluation_policy_identity: {
+            market_data_policy_version: "market-v1",
+            gateway_policy_version: "gateway-v1",
+            cost_policy_version: "cost-v1",
+            funding_policy_version: "funding-v1",
+            slippage_policy_version: "slippage-v1",
+            fill_policy_version: "fill-v1",
+            risk_policy_version: "risk-v1",
+            paper_account_policy_version: "account-v1",
+            decision_event_protocol_version: "decision-v1",
+            persistent_state_boundary_version: "state-v1"
+          },
+          evaluation_window_policy: {
+            interval_ms: 60_000,
+            release_policy: "closed_observation",
+            eligibility_policy_version: "eligibility-v1"
+          },
           authority_status: "not_live"
         },
         comparison_sequence: 12,
@@ -61,7 +78,15 @@ describe("Research and Arena operations read-model contracts", () => {
     expect(arena.systems[0]).toMatchObject({
       rank_status: "provisional_ranked",
       comparability_status: "comparable",
-      session_status: "running"
+      session_status: "running",
+      comparison_cohort: {
+        evaluation_policy_identity: {
+          decision_event_protocol_version: "decision-v1"
+        },
+        evaluation_window_policy: {
+          interval_ms: 60_000
+        }
+      }
     });
   });
 
@@ -134,6 +159,14 @@ describe("Research and Arena operations read-model contracts", () => {
     };
 
     const arenaDetail = {
+      candidate_admission_decision_ref: {
+        record_kind: "candidate_admission_decision",
+        id: "admission-1"
+      },
+      paper_trading_handoff_conformance_ref: {
+        record_kind: "paper_trading_handoff_conformance",
+        id: "handoff-1"
+      },
       isolation: {
         isolation_id: "isolation-1",
         sandbox_status: "running",
@@ -155,5 +188,9 @@ describe("Research and Arena operations read-model contracts", () => {
       qualification_evidence_hidden: true
     });
     expect(arenaDetail.isolation.network_policy_status).toBe("verified");
+    expect(arenaDetail.candidate_admission_decision_ref.record_kind)
+      .toBe("candidate_admission_decision");
+    expect(arenaDetail.paper_trading_handoff_conformance_ref.record_kind)
+      .toBe("paper_trading_handoff_conformance");
   });
 });
