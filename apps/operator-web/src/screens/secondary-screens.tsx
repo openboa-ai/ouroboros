@@ -42,7 +42,7 @@ interface SecondaryScreenProps {
 export function TradingScreen({ operator, commandRunning, onCommand }: SecondaryScreenProps) {
   const review = operator.trading_review;
   const packet = review.review_packet;
-  const evaluation = operator.selected_paper_trading_evaluation;
+  const evaluation = review.paper_trading_evaluation;
   const candidateId = review.active_candidate_id ?? evaluation.candidate_id ?? operator.selected_candidate_id ?? undefined;
   const tradingRunId = evaluation.trading_run_id ?? review.paper_board_entry?.trading_run_id;
 
@@ -150,8 +150,9 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
 }
 
 export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operator">) {
-  const packet = operator.trading_review.review_packet;
-  const evaluation = operator.selected_paper_trading_evaluation;
+  const review = operator.trading_review;
+  const packet = review.review_packet;
+  const evaluation = review.paper_trading_evaluation;
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
