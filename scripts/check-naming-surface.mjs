@@ -241,10 +241,29 @@ checkRequired("apps/runtime/src/controllers/resources.ts", [
   "/api/trading-substrate/account-position-risk/latest"
 ]);
 checkRequired("apps/operator-web/src/App.tsx", [
-  "Start trading run",
+  "OperatorShell",
+  "ArenaScreen",
+  "ResearchScreen",
+  "TradingScreen",
+  "EvidenceScreen",
+  "SystemScreen"
+]);
+checkRequired("apps/operator-web/src/screens/arena-screen.tsx", [
+  "Paper evaluation field",
+  "TradingSystems",
+  "Arena operations projection pending",
+  "Paper only"
+]);
+checkRequired("apps/operator-web/src/screens/research-screen.tsx", [
+  "Methodology workspace",
+  "ResearchWorker",
+  "Research only"
+]);
+checkRequired("apps/operator-web/src/screens/secondary-screens.tsx", [
+  "Start paper TradingRun",
   "Ledger",
-  "Improvement",
-  "Run Control"
+  "Live trading is disabled",
+  "Runtime and provider control"
 ]);
 
 if (problems.length) {

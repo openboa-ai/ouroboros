@@ -1,0 +1,500 @@
+import { describe, expect, it } from "vitest";
+import type {
+  ArenaOperationsReadModel,
+  CandidateArenaReadModel,
+  PaperTradingBoardReadModel,
+  ResearchOperationsReadModel
+} from "@ouroboros/domain";
+import {
+  buildArenaWorkspaceViewModel,
+  buildResearchWorkspaceViewModel,
+  isComparableArenaRevenueSystem,
+  type ArenaSystemViewModel,
+  type OperatorProjectionInput
+} from "./operator-view-model";
+
+function projectionInput(
+  overrides: Partial<OperatorProjectionInput> = {}
+): OperatorProjectionInput {
+  return {
+    paper_trading_board: {
+      board_kind: "paper_trading_board",
+      primary_rank_metric: "net_revenue_usdt",
+      secondary_rank_metric: "net_return_pct",
+      evaluation_authority: "continuous_paper_trading",
+      entries: [],
+      live_disabled: true,
+      authority_status: "not_live"
+    },
+    candidate_arena: {
+      runner_status: "stopped",
+      active_researchers: [],
+      latest_ticks: []
+    } as unknown as CandidateArenaReadModel,
+    ...overrides
+  };
+}
+
+function arenaOperations(): ArenaOperationsReadModel {
+  return {
+    projection_kind: "arena_operations",
+    loop_status: "running",
+    capacity: {
+      max_concurrent_sessions: 4,
+      active_session_count: 1,
+      queued_session_count: 0
+    },
+    systems: [
+      {
+        candidate_id: "arena-candidate",
+        candidate_version_id: "arena-candidate-v1",
+        system_code_ref: { record_kind: "system_code", id: "code-1" },
+        display_name: "Adaptive trend",
+        direction_kind: "trend_following",
+        evaluation_id: "evaluation-1",
+        trading_run_id: "run-1",
+        profit_loss: {
+          revenue_usdt: 18,
+          cost_usdt: 3,
+          net_revenue_usdt: 15,
+          net_return_pct: 1.5
+        },
+        observation_count: 20,
+        failed_observation_count: 1,
+        queued_at: "2026-07-18T00:00:00.000Z",
+        started_at: "2026-07-18T00:01:00.000Z",
+        last_observed_at: "2026-07-18T00:20:00.000Z",
+        next_observation_at: "2026-07-18T00:21:00.000Z",
+        session_status: "running",
+        rank_status: "provisional_ranked",
+        rank: 1,
+        comparability_status: "comparable",
+        unranked_reasons: [],
+        comparison_cohort: {
+          cohort_id: "cohort-1",
+          symbol: "BTCUSDT",
+          evidence_purpose: "qualification",
+          market_opportunity_policy_digest: "market-policy",
+          account_policy_digest: "account-policy",
+          cost_policy_digest: "cost-policy",
+          risk_policy_digest: "risk-policy",
+          evaluation_policy_identity: {} as never,
+          evaluation_window_policy: {} as never,
+          authority_status: "not_live"
+        },
+        comparison_sequence: 20,
+        comparison_cutoff_at: "2026-07-18T00:20:00.000Z",
+        authority_status: "not_live"
+      }
+    ],
+    latest_system_id: "arena-candidate",
+    live_disabled: true,
+    authority_status: "not_live"
+  };
+}
+
+function paperBoard(): PaperTradingBoardReadModel {
+  return {
+    board_kind: "paper_trading_board",
+    primary_rank_metric: "net_revenue_usdt",
+    secondary_rank_metric: "net_return_pct",
+    evaluation_authority: "continuous_paper_trading",
+    entries: [
+      {
+        rank: 9,
+        candidate_id: "board-candidate",
+        display_name: "Board fallback",
+        evaluation_id: "board-evaluation",
+        status: "running",
+        runner_status: "active",
+        promotion_gate_status: "collecting_paper_evidence",
+        qualification_status: "collecting_evidence",
+        qualification_reasons: [],
+        evidence_window: {
+          observation_count: 12,
+          elapsed_ms: 720_000,
+          failed_observation_count: 2,
+          first_observed_at: "2026-07-18T00:01:00.000Z",
+          last_observed_at: "2026-07-18T00:12:00.000Z"
+        },
+        risk_summary: {} as never,
+        trend: {
+          direction: "improving",
+          net_revenue_delta_usdt: 2,
+          net_return_delta_pct: 0.2,
+          observation_count_delta: 3,
+          authority_status: "not_promotion_authority"
+        },
+        blocker_density: {
+          blocker_count: 2,
+          blocker_density: 0.1667,
+          failed_observation_ratio: 0.1667,
+          top_blocker: "failed_observation_ratio_exceeded",
+          authority_status: "not_promotion_authority"
+        },
+        observation_count: 12,
+        trading_run_id: "board-run",
+        last_observed_at: "2026-07-18T00:12:00.000Z",
+        next_observation_at: "2026-07-18T00:13:00.000Z",
+        profit_loss: {
+          revenue_usdt: 10,
+          cost_usdt: 2,
+          net_revenue_usdt: 8,
+          net_return_pct: 0.8
+        },
+        market_data_source: "binance_production_public_rest",
+        latest_public_execution_source: "rest_fallback",
+        latest_fill_status: "partially_filled",
+        open_order_count: 2,
+        authority_status: "not_live"
+      }
+    ],
+    live_disabled: true,
+    authority_status: "not_live"
+  };
+}
+
+function researchOperations(): ResearchOperationsReadModel {
+  return {
+    projection_kind: "research_operations",
+    loop_status: "running",
+    capacity: {
+      max_concurrent_sessions: 3,
+      active_session_count: 1,
+      queued_session_count: 0
+    },
+    sessions: [
+      {
+        research_work_item_id: "research-1",
+        research_allocation_id: "allocation-1",
+        research_worker_id: "worker-1",
+        research_worker_session_id: "session-1",
+        commitment_id: "commitment-1",
+        status: "running",
+        trigger: {
+          trigger_kind: "arena_event",
+          trigger_id: "trigger-1",
+          goal: "Reduce execution-cost sensitivity",
+          triggered_at: "2026-07-18T00:00:00.000Z",
+          authority_status: "research_only"
+        },
+        methodology: {
+          direction_kind: "execution_cost_robustness",
+          hypothesis: "A slower cadence survives public execution costs.",
+          method: "Compare bounded cadence variants against Arena traces.",
+          evidence_artifact_ids: ["artifact-1"],
+          authority_status: "research_only"
+        },
+        provider: "codex",
+        model: "gpt-5",
+        budget: {
+          max_experiment_count: 4,
+          completed_experiment_count: 2,
+          max_development_submission_count: 3,
+          development_submission_count: 1,
+          remaining_development_submission_count: 2,
+          authority_status: "research_only"
+        },
+        started_at: "2026-07-18T00:01:00.000Z",
+        last_progress_at: "2026-07-18T00:10:00.000Z",
+        latest_progress_summary: "Evaluating the second cadence variant.",
+        authority_status: "research_only"
+      }
+    ],
+    latest_session_id: "research-1",
+    authority_status: "research_only"
+  };
+}
+
+describe("Operator projection view models", () => {
+  it("classifies Arena revenue as comparable only for explicitly ranked evidence", () => {
+    const ranked: ArenaSystemViewModel = {
+      id: "candidate-1",
+      name: "Ranked candidate",
+      lifecycle: "running",
+      rankStatus: "provisional_ranked",
+      rank: 1,
+      comparability: "comparable",
+      unrankedReasons: [],
+      qualificationReasons: [],
+      netRevenueUsdt: 4,
+      observationCount: 10,
+      failedObservationCount: 0,
+      source: "arena_operations",
+      detailAvailability: "summary_only"
+    };
+
+    expect(isComparableArenaRevenueSystem(ranked)).toBe(true);
+    expect(isComparableArenaRevenueSystem({
+      ...ranked,
+      rankStatus: "unranked",
+      rank: undefined,
+      comparability: "ineligible",
+      unrankedReasons: ["evidence_purpose_not_rankable"]
+    })).toBe(false);
+    expect(isComparableArenaRevenueSystem({
+      ...ranked,
+      source: "paper_trading_board",
+      rankStatus: "paper_board_ranked",
+      comparability: "legacy_paper_board"
+    })).toBe(true);
+  });
+
+  it("treats arena_operations as authoritative over paper board membership", () => {
+    const view = buildArenaWorkspaceViewModel(projectionInput({
+      arena_operations: arenaOperations(),
+      paper_trading_board: paperBoard()
+    }));
+
+    expect(view.availability).toBe("authoritative");
+    expect(view.systems.map((system) => system.id)).toEqual(["arena-candidate"]);
+    expect(view.systems[0]).toMatchObject({
+      rank: 1,
+      rankStatus: "provisional_ranked",
+      netRevenueUsdt: 15,
+      qualificationStatus: "unavailable",
+      source: "arena_operations"
+    });
+  });
+
+  it("joins exact paper-board qualification gates into authoritative Arena rows", () => {
+    const board = paperBoard();
+    board.entries[0].candidate_id = "arena-candidate";
+    board.entries[0].evaluation_id = "evaluation-1";
+    board.entries[0].qualification_status = "blocked_by_quality";
+    board.entries[0].qualification_reasons = ["failed_observation_ratio_exceeded"];
+
+    const view = buildArenaWorkspaceViewModel(projectionInput({
+      arena_operations: arenaOperations(),
+      paper_trading_board: board
+    }));
+
+    expect(view.systems[0]).toMatchObject({
+      id: "arena-candidate",
+      qualificationStatus: "blocked_by_quality",
+      qualificationReasons: ["failed_observation_ratio_exceeded"],
+      source: "arena_operations"
+    });
+  });
+
+  it("uses actual paper board rows only as an explicit compatibility surface", () => {
+    const board = paperBoard();
+    board.entries[0].qualification_status = "blocked_by_quality";
+    board.entries[0].qualification_reasons = ["failed_observation_ratio_exceeded"];
+    const view = buildArenaWorkspaceViewModel(projectionInput({
+      paper_trading_board: board
+    }));
+
+    expect(view.availability).toBe("compatibility");
+    expect(view.systems[0]).toMatchObject({
+      id: "board-candidate",
+      rank: 9,
+      lifecycle: "running",
+      netRevenueUsdt: 8,
+      qualificationStatus: "blocked_by_quality",
+      qualificationReasons: ["failed_observation_ratio_exceeded"],
+      evidenceWindow: {
+        observation_count: 12,
+        elapsed_ms: 720_000,
+        failed_observation_count: 2
+      },
+      trend: {
+        direction: "improving",
+        net_revenue_delta_usdt: 2,
+        net_return_delta_pct: 0.2,
+        observation_count_delta: 3
+      },
+      blockerDensity: {
+        blocker_count: 2,
+        blocker_density: 0.1667,
+        failed_observation_ratio: 0.1667,
+        top_blocker: "failed_observation_ratio_exceeded"
+      },
+      marketDataSource: "binance_production_public_rest",
+      latestPublicExecutionSource: "rest_fallback",
+      latestFillStatus: "partially_filled",
+      openOrderCount: 2,
+      source: "paper_trading_board"
+    });
+  });
+
+  it("distinguishes a missing Arena projection from an authoritative empty Arena", () => {
+    expect(buildArenaWorkspaceViewModel(projectionInput())).toMatchObject({
+      availability: "unavailable",
+      emptyState: "projection_unavailable"
+    });
+
+    const emptyOperations = arenaOperations();
+    emptyOperations.systems = [];
+    expect(buildArenaWorkspaceViewModel(projectionInput({
+      arena_operations: emptyOperations
+    }))).toMatchObject({
+      availability: "authoritative",
+      emptyState: "available_empty"
+    });
+  });
+
+  it("keeps the actual CandidateArena runner status when operation projections are unavailable", () => {
+    const input = projectionInput();
+
+    expect(buildArenaWorkspaceViewModel(input).loopStatus).toBe("stopped");
+    expect(buildResearchWorkspaceViewModel(input).loopStatus).toBe("stopped");
+  });
+
+  it("never presents configured researchers as running sessions", () => {
+    const input = projectionInput({
+      candidate_arena: {
+        active_researchers: [{ researcher_id: "configured-only" }],
+        latest_ticks: []
+      } as unknown as CandidateArenaReadModel
+    });
+
+    expect(buildResearchWorkspaceViewModel(input)).toMatchObject({
+      availability: "unavailable",
+      sessions: [],
+      emptyState: "projection_unavailable"
+    });
+  });
+
+  it("keeps completed ticks as history rather than synthesizing sessions", () => {
+    const input = projectionInput({
+      candidate_arena: {
+        active_researchers: [],
+        latest_ticks: [{
+          tick_id: "tick-7",
+          status: "completed",
+          started_at: "2026-07-18T00:00:00.000Z",
+          completed_at: "2026-07-18T00:05:00.000Z",
+          source_candidate: {
+            source_kind: "paper_board_leader",
+            candidate_id: "source-candidate",
+            display_name: "Source candidate",
+            net_revenue_usdt: 12,
+            authority_status: "not_live"
+          },
+          created_candidate_ids: ["candidate-7"],
+          direction_results: [{
+            direction_kind: "trend_following",
+            status: "created",
+            candidate_id: "candidate-7",
+            research_efficiency: {
+              provider_request_total: 2,
+              runner_command_total: 3,
+              scenario_count: 4,
+              elapsed_ms: 500,
+              authority_status: "not_promotion_authority"
+            }
+          }, {
+            direction_kind: "mean_reversion",
+            status: "failed",
+            error: "provider_unavailable"
+          }],
+          authority_status: "not_live"
+        }]
+      } as unknown as CandidateArenaReadModel
+    });
+
+    const view = buildResearchWorkspaceViewModel(input);
+    expect(view.availability).toBe("history_only");
+    expect(view.sessions).toEqual([]);
+    expect(view.history[0]).toMatchObject({
+      id: "tick-7",
+      createdCandidateCount: 1,
+      failedDirectionCount: 1,
+      sourceCandidate: {
+        candidateId: "source-candidate",
+        displayName: "Source candidate"
+      },
+      directions: [{
+        direction: "trend_following",
+        status: "created",
+        candidateId: "candidate-7",
+        researchEfficiency: {
+          providerRequestTotal: 2,
+          runnerCommandTotal: 3,
+          scenarioCount: 4,
+          elapsedMs: 500
+        }
+      }, {
+        direction: "mean_reversion",
+        status: "failed",
+        error: "provider_unavailable"
+      }]
+    });
+  });
+
+  it("maps only research_operations records into active methodology sessions", () => {
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      research_operations: researchOperations()
+    }));
+
+    expect(view.availability).toBe("authoritative");
+    expect(view.sessions[0]).toMatchObject({
+      id: "research-1",
+      status: "running",
+      triggerKind: "arena_event",
+      direction: "execution_cost_robustness",
+      completedExperimentCount: 2,
+      maxExperimentCount: 4
+    });
+  });
+
+  it("carries paper learning, generalization, and finding clusters as read-only Research context", () => {
+    const baseArena = projectionInput().candidate_arena;
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      candidate_arena: {
+        ...baseArena,
+        research_generalization: {
+          status: "collecting",
+          protocol_count: 1,
+          outcome_count: 0,
+          active_protocol: null,
+          latest_outcome: null,
+          latest_policy_decision: null,
+          effective_policy_decision: null,
+          authority_status: "not_promotion_authority"
+        },
+        finding_clusters: [{
+          direction_kind: "trend_following",
+          top_blocker: "min_observation_count_not_met",
+          blocker_group_kind: "evidence_window",
+          market_regime: "long",
+          candidate_count: 2,
+          candidate_ids: ["candidate-1", "candidate-2"],
+          latest_finding: "Needs a longer evidence window.",
+          next_research_focus: "Test slower cadence variants.",
+          authority_status: "not_promotion_authority"
+        }]
+      } as unknown as CandidateArenaReadModel,
+      trading_review: {
+        review_packet: {
+          lineage: {
+            paper_board_learning: {
+              rank: 2,
+              net_revenue_usdt: 7,
+              net_return_pct: 0.7,
+              observation_count: 18,
+              qualification_status: "collecting_evidence",
+              qualification_reasons: ["min_observation_count_not_met"],
+              top_blocker: "min_observation_count_not_met",
+              summary: "Paper evidence is positive but incomplete.",
+              next_research_focus: "Test slower cadence variants.",
+              authority_status: "lineage_only"
+            }
+          }
+        }
+      } as unknown as OperatorProjectionInput["trading_review"]
+    }));
+
+    expect(view.paperLearning).toMatchObject({
+      rank: 2,
+      qualification_status: "collecting_evidence"
+    });
+    expect(view.generalization?.status).toBe("collecting");
+    expect(view.findingClusters[0]).toMatchObject({
+      direction_kind: "trend_following",
+      market_regime: "long"
+    });
+    expect(view.sessions).toEqual([]);
+  });
+});
