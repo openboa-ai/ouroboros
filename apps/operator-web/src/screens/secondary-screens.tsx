@@ -140,7 +140,12 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
             <ReadField label="Qualification" value={formatStatus(subject.qualificationStatus ?? "unavailable")} />
             <ReadField label="Verdict" value={formatStatus(subject.verdict)} />
             <ReadField label="Top blocker" value={subject.topBlocker ? formatStatus(subject.topBlocker) : "None"} />
-            <ReadField label="Market source" value={formatStatus(evaluation.market_data_source)} />
+            <ReadField
+              label="Market source"
+              value={subject.provenance.marketDataSource
+                ? formatStatus(subject.provenance.marketDataSource)
+                : "Unavailable"}
+            />
           </dl>
         </section>
         <section className="p-4">
@@ -185,6 +190,8 @@ export function TradingScreen({ operator, commandRunning, onCommand }: Secondary
 export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operator">) {
   const subject = tradingSubjectEvidence(operator);
   const evaluation = subject.evaluation;
+  const provenance = subject.provenance;
+  const orderBook = provenance.orderBook;
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
@@ -207,17 +214,28 @@ export function EvidenceScreen({ operator }: Pick<SecondaryScreenProps, "operato
         <section className="p-4">
           <h3 className="text-sm font-semibold">Provenance chain</h3>
           <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-            <ReadField label="Market data" value={formatStatus(evaluation.market_data_source)} />
-            <ReadField label="Public execution" value={subject.latestPublicExecutionSource ? formatStatus(subject.latestPublicExecutionSource) : "Unavailable"} />
+            <ReadField label="Market data" value={provenance.marketDataSource ? formatStatus(provenance.marketDataSource) : "Unavailable"} />
+            <ReadField label="Public execution" value={provenance.publicExecutionSource ? formatStatus(provenance.publicExecutionSource) : "Unavailable"} />
+            <ReadField label="Freshness" value={provenance.publicExecutionFreshness ? formatStatus(provenance.publicExecutionFreshness) : "Unavailable"} />
+            <ReadField label="WebSocket" value={formatBooleanEvidence(provenance.wsConnected, "Connected", "Disconnected")} />
+            <ReadField label="REST fallback" value={formatBooleanEvidence(provenance.restFallbackUsed, "Used", "Not used")} />
+            <ReadField label="Stream marker" value={provenance.streamMarker ?? "Unavailable"} mono />
+            <ReadField label="Fill status" value={provenance.latestFillStatus ? formatStatus(provenance.latestFillStatus) : "None"} />
+            <ReadField label="Order book sync" value={orderBook ? formatStatus(orderBook.sync_status) : "Unavailable"} />
+            <ReadField label="Last update" value={orderBook?.last_update_id ?? "Unavailable"} mono />
+            <ReadField label="Previous final update" value={orderBook?.previous_final_update_id ?? "Unavailable"} mono />
+            <ReadField label="Depth" value={orderBook?.depth_level_count === undefined ? "Unavailable" : `${orderBook.depth_level_count} levels`} />
+            <ReadField label="Gap" value={formatBooleanEvidence(orderBook?.gap_detected, "Detected", "Not detected")} />
+            <ReadField label="Order book authority" value={orderBook ? formatStatus(orderBook.authority_status) : "Unavailable"} />
+          </dl>
+        </section>
+        <section className="p-4">
+          <h3 className="text-sm font-semibold">Evidence outcome and authority</h3>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
             <ReadField label="Latest decision" value={subject.latestDecisionKind ? formatStatus(subject.latestDecisionKind) : "No order decision"} />
             <ReadField label="Gateway outcome" value={subject.latestGatewayOutcome ?? "Unavailable"} />
             <ReadField label="Execution status" value={subject.latestExecutionStatus ?? "Unavailable"} />
             <ReadField label="Lineage" value={formatStatus(subject.lineageStatus)} />
-          </dl>
-        </section>
-        <section className="p-4">
-          <h3 className="text-sm font-semibold">Evidence authority</h3>
-          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
             <ReadField label="Evaluation authority" value="External to TradingSystem" />
             <ReadField label="Live exchange" value="Disabled" />
             <ReadField label="Private read" value="Disabled" />
@@ -293,9 +311,32 @@ function tradingSubjectEvidence(operator: OperatorReadModel) {
   const qualificationReasons = packet?.evidence_quality.qualification_reasons ??
     boardEntry?.qualification_reasons ??
     [];
+  const publicExecutionSnapshot = evaluation.latest_public_execution_snapshot;
+  const provenance = activeReview && packet
+    ? {
+        marketDataSource: packet.provenance.market_data_source,
+        publicExecutionSource: packet.provenance.latest_public_execution_source,
+        publicExecutionFreshness: packet.provenance.latest_public_execution_freshness,
+        wsConnected: packet.provenance.latest_public_execution_ws_connected,
+        restFallbackUsed: packet.provenance.latest_public_execution_rest_fallback_used,
+        streamMarker: packet.provenance.latest_public_execution_stream_marker,
+        latestFillStatus: packet.provenance.latest_fill_status,
+        orderBook: packet.provenance.order_book
+      }
+    : {
+        marketDataSource: evaluation.market_data_source,
+        publicExecutionSource: boardEntry?.latest_public_execution_source ?? publicExecutionSnapshot?.source_priority,
+        publicExecutionFreshness: publicExecutionSnapshot?.freshness,
+        wsConnected: publicExecutionSnapshot?.ws_connected,
+        restFallbackUsed: publicExecutionSnapshot?.rest_fallback_used,
+        streamMarker: publicExecutionSnapshot?.stream_marker,
+        latestFillStatus: boardEntry?.latest_fill_status ?? evaluation.latest_fill?.fill_status,
+        orderBook: publicExecutionSnapshot?.order_book
+      };
 
   return {
     evaluation,
+    provenance,
     profitLoss: packet?.performance.profit_loss ?? boardEntry?.profit_loss ?? evaluation.profit_loss,
     qualificationStatus,
     verdict: packet?.verdict.severity ?? qualificationStatus ?? "unavailable",
@@ -312,9 +353,6 @@ function tradingSubjectEvidence(operator: OperatorReadModel) {
     latestGatewayOutcome: packet?.ledger.latest_gateway_outcome ?? evaluation.latest_gateway_outcome,
     latestExecutionStatus: packet?.ledger.latest_execution_status ?? evaluation.latest_execution_status,
     latestDecisionKind: packet?.ledger.latest_decision_kind ?? evaluation.latest_decision?.decision_kind,
-    latestPublicExecutionSource: packet?.provenance.latest_public_execution_source ??
-      boardEntry?.latest_public_execution_source ??
-      evaluation.latest_public_execution_snapshot?.source_priority,
     lineageStatus: packet?.lineage.lineage_status ?? "unavailable",
     selectedMatchesReview: packet?.subject.selected_matches_trading_review
   };
@@ -534,4 +572,15 @@ function ReadField({ label, value, mono = false }: { label: string; value: strin
       <dd className={mono ? "mt-1 break-words font-mono text-xs" : "mt-1 break-words"}>{value}</dd>
     </div>
   );
+}
+
+function formatBooleanEvidence(
+  value: boolean | undefined,
+  trueLabel: string,
+  falseLabel: string
+): string {
+  if (value === undefined) {
+    return "Unavailable";
+  }
+  return value ? trueLabel : falseLabel;
 }

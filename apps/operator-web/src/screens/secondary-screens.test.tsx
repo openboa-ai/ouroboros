@@ -139,6 +139,45 @@ describe("review-scoped secondary screens", () => {
     expect(markup).not.toContain("selected-evaluation");
   });
 
+  it("renders the active Trading review provenance packet", () => {
+    const operator = mismatchedReviewOperator();
+    operator.trading_review.review_packet.provenance = {
+      market_data_source: "binance_production_public_websocket",
+      latest_public_execution_source: "rest_fallback",
+      latest_public_execution_freshness: "stale",
+      latest_public_execution_ws_connected: false,
+      latest_public_execution_rest_fallback_used: true,
+      latest_public_execution_stream_marker: "review-stream-marker",
+      latest_fill_status: "partially_filled",
+      order_book: {
+        sync_status: "recovering",
+        last_update_id: "order-book-update-42",
+        previous_final_update_id: "order-book-update-40",
+        gap_detected: true,
+        depth_level_count: 12,
+        authority_status: "read_only"
+      }
+    };
+
+    const markup = renderToStaticMarkup(
+      <EvidenceScreen operator={operator} />
+    );
+
+    expect(markup).toContain("Binance Production Public Websocket");
+    expect(markup).toContain("Rest Fallback");
+    expect(markup).toContain("Stale");
+    expect(markup).toContain("Disconnected");
+    expect(markup).toContain("Used");
+    expect(markup).toContain("review-stream-marker");
+    expect(markup).toContain("Partially Filled");
+    expect(markup).toContain("Recovering");
+    expect(markup).toContain("order-book-update-42");
+    expect(markup).toContain("order-book-update-40");
+    expect(markup).toContain("12 levels");
+    expect(markup).toContain("Detected");
+    expect(markup).toContain("Read Only");
+  });
+
   it("uses the selected paper evaluation before a Trading review target exists", () => {
     const operator = mismatchedReviewOperator();
     operator.trading_review.active_candidate_id = undefined;
