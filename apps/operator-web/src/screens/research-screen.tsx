@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { OuroborosCommandRequest } from "@ouroboros/domain";
 import {
   ArrowLeft,
@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CommandConfirmation } from "@/components/command-confirmation";
 import { OperatorMetricStrip } from "@/components/operator-metrics";
 import { StatusBadge } from "@/components/operator-status";
+import { focusNarrowDetail } from "@/lib/operator-focus";
 import { formatCompactId, formatStatus, formatTimestamp } from "@/lib/operator-format";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,7 @@ export function ResearchScreen({
   onSelect: (id?: string) => void;
   onCommand: (label: string, request: OuroborosCommandRequest) => void;
 }) {
+  const detailFocusRef = useRef<HTMLButtonElement>(null);
   const selected = selectedId
     ? view.sessions.find((session) => session.id === selectedId)
     : undefined;
@@ -50,6 +52,12 @@ export function ResearchScreen({
     "sealed_admission",
     "recovering"
   ].includes(session.status));
+
+  useEffect(() => {
+    if (selectedId) {
+      focusNarrowDetail(detailFocusRef.current);
+    }
+  }, [selectedId]);
 
   return (
     <div className="mx-auto w-full max-w-[1800px]">
@@ -161,6 +169,7 @@ export function ResearchScreen({
             onSelect={onSelect}
           />
           <ResearchDetail
+            backButtonRef={detailFocusRef}
             session={selected}
             selectedId={selectedId}
             onBack={() => onSelect(undefined)}
@@ -280,10 +289,12 @@ function ResearchMaster({
 }
 
 function ResearchDetail({
+  backButtonRef,
   session,
   selectedId,
   onBack
 }: {
+  backButtonRef: RefObject<HTMLButtonElement | null>;
   session?: ResearchSessionViewModel;
   selectedId?: string;
   onBack: () => void;
@@ -303,7 +314,7 @@ function ResearchDetail({
   if (!session) {
     return (
       <div className="p-4">
-        <Button className="mb-4 lg:hidden" variant="ghost" onClick={onBack}>
+        <Button ref={backButtonRef} className="mb-4 lg:hidden" variant="ghost" onClick={onBack}>
           <ArrowLeft data-icon="inline-start" aria-hidden="true" /> Back
         </Button>
         <Alert variant="warning">
@@ -321,7 +332,7 @@ function ResearchDetail({
   return (
     <section className="min-w-0">
       <div className="border-b px-4 py-4">
-        <Button className="mb-2 -ml-2 lg:hidden" variant="ghost" onClick={onBack}>
+        <Button ref={backButtonRef} className="mb-2 -ml-2 lg:hidden" variant="ghost" onClick={onBack}>
           <ArrowLeft data-icon="inline-start" aria-hidden="true" /> Back
         </Button>
         <div className="flex flex-wrap items-center gap-2">

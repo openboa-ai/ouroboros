@@ -50,6 +50,16 @@ describe("greenfield Operator entrypoint", () => {
     expect(source).toContain('"hidden"');
   });
 
+  it("moves focus into narrow Arena and Research detail panes", () => {
+    for (const screen of ["arena-screen.tsx", "research-screen.tsx"]) {
+      const source = readFileSync(join(srcRoot, "screens", screen), "utf8");
+
+      expect(source).toContain("focusNarrowDetail(detailFocusRef.current)");
+      expect(source).toContain("backButtonRef={detailFocusRef}");
+      expect(source).toContain("ref={backButtonRef}");
+    }
+  });
+
   it("renders actual Arena summary evidence with inspectable commands", () => {
     const view: ArenaWorkspaceViewModel = {
       availability: "authoritative",

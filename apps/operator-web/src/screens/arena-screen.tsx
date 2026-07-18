@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { OuroborosCommandRequest } from "@ouroboros/domain";
 import {
   ArrowLeft,
@@ -23,6 +23,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { CommandConfirmation } from "@/components/command-confirmation";
 import { OperatorMetricStrip } from "@/components/operator-metrics";
 import { StatusBadge } from "@/components/operator-status";
+import { focusNarrowDetail } from "@/lib/operator-focus";
 import { formatCompactId, formatMoney, formatPercent, formatStatus, formatTimestamp } from "@/lib/operator-format";
 import { cn } from "@/lib/utils";
 
@@ -48,11 +49,18 @@ export function ArenaScreen({
   onSelect: (id?: string) => void;
   onCommand: (label: string, request: OuroborosCommandRequest) => void;
 }) {
+  const detailFocusRef = useRef<HTMLButtonElement>(null);
   const selected = selectedId
     ? view.systems.find((system) => system.id === selectedId)
     : undefined;
   const rankedSystems = view.systems.filter((system) => system.rank !== undefined);
   const netRevenue = view.systems.reduce((sum, system) => sum + (system.netRevenueUsdt ?? 0), 0);
+
+  useEffect(() => {
+    if (selectedId) {
+      focusNarrowDetail(detailFocusRef.current);
+    }
+  }, [selectedId]);
 
   return (
     <div className="mx-auto w-full max-w-[1800px]">
@@ -218,6 +226,7 @@ export function ArenaScreen({
             onSelect={onSelect}
           />
           <ArenaSystemDetail
+            backButtonRef={detailFocusRef}
             system={selected}
             selectedId={selectedId}
             commandRunning={commandRunning}
@@ -349,12 +358,14 @@ function boundedArenaSystems(
 }
 
 function ArenaSystemDetail({
+  backButtonRef,
   system,
   selectedId,
   commandRunning,
   onBack,
   onCommand
 }: {
+  backButtonRef: RefObject<HTMLButtonElement | null>;
   system?: ArenaSystemViewModel;
   selectedId?: string;
   commandRunning: boolean;
@@ -376,7 +387,7 @@ function ArenaSystemDetail({
   if (!system) {
     return (
       <div className="p-4">
-        <Button className="mb-4 lg:hidden" variant="ghost" onClick={onBack}>
+        <Button ref={backButtonRef} className="mb-4 lg:hidden" variant="ghost" onClick={onBack}>
           <ArrowLeft data-icon="inline-start" aria-hidden="true" /> Back
         </Button>
         <Alert variant="warning">
@@ -391,7 +402,7 @@ function ArenaSystemDetail({
     <section className="min-w-0">
       <div className="flex flex-col gap-3 border-b px-4 py-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
-          <Button className="mb-2 -ml-2 lg:hidden" variant="ghost" onClick={onBack}>
+          <Button ref={backButtonRef} className="mb-2 -ml-2 lg:hidden" variant="ghost" onClick={onBack}>
             <ArrowLeft data-icon="inline-start" aria-hidden="true" /> Back
           </Button>
           <div className="flex flex-wrap items-center gap-2">
