@@ -100,6 +100,8 @@ describe("Research and Arena operations read-model contracts", () => {
       display_name: "Ranked candidate",
       direction_kind: "trend_following",
       session_status: "completed",
+      evaluation_id: "paper-ranked",
+      trading_run_id: "run-ranked",
       rank_status: "ranked",
       rank: 1,
       comparability_status: "comparable",
@@ -133,6 +135,12 @@ describe("Research and Arena operations read-model contracts", () => {
       },
       comparison_sequence: 12,
       comparison_cutoff_at: "2026-07-18T00:12:00.000Z",
+      profit_loss: {
+        revenue_usdt: 10,
+        cost_usdt: 2,
+        net_revenue_usdt: 8,
+        net_return_pct: 0.8
+      },
       observation_count: 12,
       failed_observation_count: 0,
       queued_at: "2026-07-18T00:00:00.000Z",
@@ -170,12 +178,28 @@ describe("Research and Arena operations read-model contracts", () => {
       ...ranked,
       session_status: "queued"
     };
+    const { profit_loss: _profitLoss, ...rankedWithoutProfitLoss } = ranked;
+    // @ts-expect-error A rank cannot exist without externally calculated paper profit and loss.
+    const invalidRankedEvidence: ArenaTradingSystemSummaryReadModel = rankedWithoutProfitLoss;
+    // @ts-expect-error Failed paper sessions remain visible but cannot hold final rank.
+    const invalidFailedRanked: ArenaTradingSystemSummaryReadModel = {
+      ...ranked,
+      session_status: "failed"
+    };
+    const invalidSystemCodeRef: ArenaTradingSystemSummaryReadModel = {
+      ...ranked,
+      // @ts-expect-error Arena identity must bind an exact SystemCode record.
+      system_code_ref: { record_kind: "finding", id: "finding-not-system-code" }
+    };
 
     expect(ranked.rank).toBe(1);
     expect(unranked.unranked_reasons).toEqual(["paper_evaluation_not_started"]);
     expect(invalidRanked.rank_status).toBe("ranked");
     expect(invalidUnranked.rank_status).toBe("unranked");
     expect(invalidQueuedRanked.session_status).toBe("queued");
+    expect(invalidRankedEvidence.rank_status).toBe("ranked");
+    expect(invalidFailedRanked.session_status).toBe("failed");
+    expect(invalidSystemCodeRef.system_code_ref.record_kind).toBe("finding");
   });
 
   it("separates Research methodology and sanitized evidence from Arena execution detail", () => {

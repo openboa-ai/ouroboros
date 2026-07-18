@@ -120,14 +120,15 @@ boundary, or from a different cohort remains visible but unranked with an explic
 must not sort incomparable values into one implied leaderboard.
 
 The read model encodes those states as a discriminated union. Ranked and provisionally ranked rows
-require a positive rank, exact cohort, comparison sequence, and cutoff and carry no unranked
-reason. Unranked rows reject rank, sequence, and cutoff fields and require at least one reason. An
-unranked row may retain an exact cohort only when it is otherwise comparable but lacks a common
-boundary; ineligible and incomparable rows do not assert a cohort.
+require an Evaluation, TradingRun, externally calculated paper profit and loss, positive rank,
+exact cohort, comparison sequence, and cutoff and carry no unranked reason. Unranked rows reject
+rank, sequence, and cutoff fields and require at least one reason. An unranked row may retain an
+exact cohort only when it is otherwise comparable but lacks a common boundary; ineligible and
+incomparable rows do not assert a cohort.
 
 Lifecycle is part of the same discriminator. Only `running` and `recovering` rows may be
-`provisional_ranked`; only `stopped`, `completed`, and `failed` rows may be finally `ranked`.
-`queued`, `starting`, and `invalidated` rows can only be unranked, and any other lifecycle may also
+`provisional_ranked`; only `stopped` and `completed` rows may be finally `ranked`. `queued`,
+`starting`, `failed`, and `invalidated` rows can only be unranked, and any other lifecycle may also
 remain unranked while its comparison evidence is incomplete.
 
 The cohort preserves the complete `PaperTradingEvaluationCommitmentRecord.policy_identity` and

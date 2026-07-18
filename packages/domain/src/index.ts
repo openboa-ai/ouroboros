@@ -13902,7 +13902,7 @@ export interface ArenaIsolationReadModel {
 interface ArenaTradingSystemSummaryBaseReadModel {
   candidate_id: string;
   candidate_version_id: string;
-  system_code_ref: Ref;
+  system_code_ref: Ref & { record_kind: "system_code" };
   display_name: string;
   direction_kind: ResearchDirectionKind;
   evaluation_id?: string;
@@ -13921,6 +13921,9 @@ interface ArenaTradingSystemSummaryBaseReadModel {
 
 interface ArenaRankedTradingSystemSummaryBaseReadModel
   extends ArenaTradingSystemSummaryBaseReadModel {
+  evaluation_id: string;
+  trading_run_id: string;
+  profit_loss: TradingProfitLossReadModel;
   rank: number;
   comparability_status: "comparable";
   unranked_reasons: [];
@@ -13937,7 +13940,7 @@ export interface ArenaProvisionallyRankedTradingSystemSummaryReadModel
 
 export interface ArenaFinallyRankedTradingSystemSummaryReadModel
   extends ArenaRankedTradingSystemSummaryBaseReadModel {
-  session_status: "stopped" | "completed" | "failed";
+  session_status: "stopped" | "completed";
   rank_status: "ranked";
 }
 
