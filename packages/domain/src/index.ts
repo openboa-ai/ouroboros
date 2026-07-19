@@ -2607,6 +2607,9 @@ export type PaperTradingEvaluationInvalidationReason =
   | "initial_account_identity_mismatch"
   | "paper_only_authority_violation";
 
+export type PaperTradingEvaluationRuntimeCoordinationStatus =
+  | "arena_capacity_deferred";
+
 export interface PaperTradingEvaluationRuntimeIdentity {
   artifact_kind: SystemCodeKind;
   runtime_kind: SystemCodeRuntimeKind;
@@ -5490,6 +5493,8 @@ export interface PaperTradingEvaluationRecord extends BaseRecord {
   latest_public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
   invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   latest_failure_reason?: string;
+  runtime_coordination_status?:
+    PaperTradingEvaluationRuntimeCoordinationStatus;
   authority_status: "not_live";
 }
 

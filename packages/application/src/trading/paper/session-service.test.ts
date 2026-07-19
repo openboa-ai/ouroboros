@@ -932,6 +932,61 @@ describe("PaperTradingSessionService", () => {
     expect(await guardedSessionState(fixture.store, fixture.tradingRunId)).toEqual(stateBeforeStop);
   });
 
+  it("persists an Arena capacity deferral as a resumable stopped evaluation", async () => {
+    const fixture = await prepareGuardedSession("research_feedback");
+
+    const stopped = await fixture.service.stop(fixture.tradingRunId, {
+      reason: "arena_capacity_deferred"
+    });
+
+    expect(stopped).toMatchObject({
+      status: "stopped",
+      runtime_coordination_status: "arena_capacity_deferred"
+    });
+    await expect(fixture.store.getTradingRun(fixture.tradingRunId)).resolves
+      .toMatchObject({
+        runtime_lifecycle_status: "stopped",
+        run_control_command_refs: [
+          { record_kind: "run_control_command", id: expect.any(String) }
+        ],
+        runtime_audit_event_refs: [
+          { record_kind: "runtime_audit_event", id: expect.any(String) }
+        ]
+      });
+
+    const resumedEffects = {
+      providerStarts: 0,
+      sandboxStarts: 0,
+      marketReads: 0
+    };
+    const resumedService = activatableResearchSessionService(
+      fixture.store,
+      resumedEffects,
+      undefined,
+      {
+        async resolveArtifactDigest() {
+          return "sha256:session-service-guard";
+        }
+      }
+    );
+    const prepared = await resumedService.prepare({
+      candidateId: fixture.prepared.candidate.candidate_id,
+      candidateVersionId:
+        fixture.prepared.candidate.candidate_version.candidate_version_id,
+      tradingRunId: fixture.tradingRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    const resumed = await resumedService.activate(prepared);
+    expect(resumed).toMatchObject({ status: "running" });
+    expect(resumed.runtime_coordination_status).toBeUndefined();
+    expect(resumedEffects).toMatchObject({
+      providerStarts: 1,
+      sandboxStarts: 1
+    });
+    await resumedService.stop(fixture.tradingRunId);
+  });
+
   it("rejects observation of an unactivated research-feedback run before runtime effects", async () => {
     const fixture = await prepareGuardedSession("research_feedback");
 

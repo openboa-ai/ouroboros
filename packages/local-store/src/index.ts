@@ -17415,6 +17415,16 @@ export class LocalStore {
         { paper_trading_evaluation_id: evaluation.paper_trading_evaluation_id }
       );
     }
+    if (evaluation.runtime_coordination_status !== undefined && (
+      evaluation.status !== "stopped" ||
+      evaluation.runtime_coordination_status !== "arena_capacity_deferred"
+    )) {
+      throw new LocalStoreError(
+        "paper_trading_evaluation_identity_mismatch",
+        "paper trading runtime coordination status requires a stopped evaluation",
+        { paper_trading_evaluation_id: evaluation.paper_trading_evaluation_id }
+      );
+    }
     if (!existing) {
       return;
     }

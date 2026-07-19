@@ -825,6 +825,7 @@ describe("operator product loop smoke", () => {
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
     let queuedCandidateId: string | undefined;
+    let restartedArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const firstServer = await buildServer({
       store,
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
@@ -847,6 +848,7 @@ describe("operator product loop smoke", () => {
         }]
       }),
       candidateArenaTickIntervalMs: 60_000,
+      arenaPaperCapacity: 2,
       paperTradingEvaluationIntervalMs: 60_000,
       paperTradingSandboxIntervalMs: 1_000
     });
@@ -872,6 +874,9 @@ describe("operator product loop smoke", () => {
         operator.candidate_arena.runner_status === "running"
         && operator.selected_paper_trading_evaluation.status === "running"
         && operator.selected_paper_trading_evaluation.runner_active
+        && operator.paper_trading_board.entries.filter((entry) =>
+          entry.status === "running" && entry.runner_status === "active"
+        ).length === 2
       );
       expect(runningOperator.latest_commands[0]?.command_kind).toBe("arena.start");
       expect(runningOperator.candidate_arena.latest_ticks.map((tick) => tick.tick_id)).toContain("tick-1");
@@ -901,8 +906,12 @@ describe("operator product loop smoke", () => {
         }]
       }),
       candidateArenaTickIntervalMs: 60_000,
+      arenaPaperCapacity: 1,
       paperTradingEvaluationIntervalMs: 60_000,
-      paperTradingSandboxIntervalMs: 1_000
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        restartedArenaPaperRuntime = service;
+      }
     });
 
     try {
@@ -913,9 +922,9 @@ describe("operator product loop smoke", () => {
           tick.tick_id === "tick-2"
           && tick.paper_trading_continuation?.status === "queued"
         )
-        && operator.paper_trading_board.entries.some((entry) =>
-          entry.runner_status === "active"
-        )
+        && operator.paper_trading_board.entries.filter((entry) =>
+          entry.status === "running" && entry.runner_status === "active"
+        ).length === 1
       );
 
       expect(resumedOperator.latest_commands[0]?.command_kind).toBe("arena.start");
@@ -926,6 +935,20 @@ describe("operator product loop smoke", () => {
       expect(resumedOperator.paper_trading_board.entries.some((entry) =>
         entry.status === "running" && entry.runner_status === "active"
       )).toBe(true);
+      if (!restartedArenaPaperRuntime) {
+        throw new Error("expected restarted Arena Paper runtime");
+      }
+      await expect(restartedArenaPaperRuntime.snapshot()).resolves.toMatchObject({
+        capacity: 1,
+        occupied_count: 1,
+        running_count: 1,
+        systems: expect.arrayContaining([
+          expect.objectContaining({
+            lifecycle_status: "queued",
+            runtime_coordination_status: "arena_capacity_deferred"
+          })
+        ])
+      });
       queuedCandidateId = resumedOperator.candidate_arena.latest_ticks.find((tick) =>
         tick.tick_id === "tick-2"
       )?.paper_trading_continuation?.selected_candidate_id;

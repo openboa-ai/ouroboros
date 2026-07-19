@@ -34,6 +34,9 @@ describe("runtime supervisor lanes", () => {
       store: store as never,
       paperTradingSessions: {
         active: () => paperActive,
+        async stop() {
+          return undefined;
+        },
         async recoverRunningEvaluations() {
           paperActive = true;
           return [{
@@ -159,6 +162,9 @@ describe("runtime supervisor lanes", () => {
       } as never,
       paperTradingSessions: {
         active: () => false,
+        async stop() {
+          return undefined;
+        },
         async recoverRunningEvaluations() {
           return [failedOutcome];
         },
@@ -199,6 +205,9 @@ describe("runtime supervisor lanes", () => {
       } as never,
       paperTradingSessions: {
         active: () => paperActive,
+        async stop() {
+          return undefined;
+        },
         async recoverRunningEvaluations() {
           paperActive = true;
           return [{
@@ -234,6 +243,70 @@ describe("runtime supervisor lanes", () => {
       desired: true,
       satisfied: true
     });
+  });
+
+  it("defers persisted Arena recovery overflow before restoring capacity", async () => {
+    const calls: string[] = [];
+    const active = new Set<string>();
+    let overflowDeferred = false;
+    const paperTradingSessions = {
+      active: (tradingRunId: string) => active.has(tradingRunId),
+      async stop(
+        tradingRunId: string,
+        options: { reason?: string } = {}
+      ) {
+        calls.push(`defer:${tradingRunId}:${options.reason ?? "unknown"}`);
+        overflowDeferred = true;
+        return undefined;
+      },
+      async recoverRunningEvaluations() {
+        calls.push("recover");
+        active.add("trading-run-1");
+        return [{
+          tradingRunId: "trading-run-1",
+          status: "recovered" as const,
+          clock: "scheduled" as const
+        }];
+      },
+      async finalizeRecoveryFailures() {},
+      async stopAllSessions() {}
+    };
+    const reconcile = vi.fn(async () => {
+      calls.push("reconcile");
+      return arenaRecoveryCapacitySnapshot({ overflowDeferred, active: true });
+    });
+    const [paper] = createRuntimeSupervisorLanes({
+      store: {
+        ...emptyStore(),
+        async listPaperTradingEvaluations() {
+          return [runningEvaluation("1"), runningEvaluation("2")];
+        },
+        async getTradingRun() {
+          return { paper_evidence_purpose: "research_feedback" };
+        }
+      } as never,
+      paperTradingSessions,
+      arenaPaperRuntime: {
+        snapshot: async () => arenaRecoveryCapacitySnapshot({
+          overflowDeferred,
+          active: active.has("trading-run-1")
+        }),
+        reconcile,
+        fencePendingStarts: vi.fn()
+      },
+      candidateArenaRunner: inactiveArenaRunner(),
+      operatorService: inactiveOperatorService(),
+      researchControlStudyScheduler: inactiveScheduler(),
+      runResearchControlStudies: false
+    });
+
+    await paper!.recover();
+
+    expect(calls).toEqual([
+      "defer:trading-run-2:arena_capacity_deferred",
+      "recover",
+      "reconcile"
+    ]);
   });
 
   it("accepts an Arena restart while the first replacement tick is still active", async () => {
@@ -403,15 +476,18 @@ describe("runtime supervisor lanes", () => {
   });
 });
 
-function runningEvaluation() {
+function runningEvaluation(suffix = "1") {
   return {
-    paper_trading_evaluation_id: "evaluation-1",
-    candidate_ref: { record_kind: "candidate", id: "candidate-1" },
+    paper_trading_evaluation_id: `evaluation-${suffix}`,
+    candidate_ref: { record_kind: "candidate", id: `candidate-${suffix}` },
     candidate_version_ref: {
       record_kind: "candidate_version",
-      id: "candidate-version-1"
+      id: `candidate-version-${suffix}`
     },
-    trading_run_ref: { record_kind: "trading_run", id: "trading-run-1" },
+    trading_run_ref: {
+      record_kind: "trading_run",
+      id: `trading-run-${suffix}`
+    },
     status: "running" as const,
     interval_ms: 60_000,
     observation_count: 2,
@@ -423,6 +499,83 @@ function runningEvaluation() {
       net_return_pct: 0
     },
     authority_status: "not_live" as const
+  };
+}
+
+function arenaRecoveryCapacitySnapshot(input: {
+  overflowDeferred: boolean;
+  active: boolean;
+}) {
+  const systems = ["1", "2"].map((suffix, index) => ({
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: `candidate-${suffix}`
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: `candidate-version-${suffix}`
+    },
+    system_code_ref: {
+      record_kind: "system_code",
+      id: `system-code-${suffix}`
+    },
+    candidate_admission_decision_ref: {
+      record_kind: "candidate_admission_decision",
+      id: `admission-${suffix}`
+    },
+    paper_trading_handoff_conformance_ref: {
+      record_kind: "paper_trading_handoff_conformance",
+      id: `conformance-${suffix}`
+    },
+    trading_run_ref: {
+      record_kind: "trading_run",
+      id: `trading-run-${suffix}`
+    },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: `evaluation-${suffix}`
+    },
+    admission_decided_at: `2026-07-16T00:0${index}:00.000Z`,
+    lifecycle_status: index === 0
+      ? input.active ? "running" as const : "recovering" as const
+      : input.overflowDeferred ? "queued" as const : "recovering" as const,
+    active: index === 0 && input.active,
+    ...(index === 1 && input.overflowDeferred
+      ? { runtime_coordination_status: "arena_capacity_deferred" as const }
+      : {}),
+    authority_status: "not_live" as const
+  }));
+  const recoveringCount = systems.filter((system) =>
+    system.lifecycle_status === "recovering"
+  ).length;
+  const runningCount = systems.filter((system) =>
+    system.lifecycle_status === "running"
+  ).length;
+  const queuedCount = systems.filter((system) =>
+    system.lifecycle_status === "queued"
+  ).length;
+  return {
+    runtime_kind: "arena_paper_runtime" as const,
+    capacity: 1,
+    eligible_count: 2,
+    occupied_count: recoveringCount + runningCount,
+    available_capacity: Math.max(0, 1 - recoveringCount - runningCount),
+    queued_count: queuedCount,
+    starting_count: 0,
+    running_count: runningCount,
+    recovering_count: recoveringCount,
+    stopped_count: 0,
+    failed_count: 0,
+    invalidated_count: 0,
+    startable_count: queuedCount,
+    needs_reconcile: queuedCount > 0 && runningCount + recoveringCount < 1,
+    systems,
+    evaluation_authority: false as const,
+    promotion_authority: false as const,
+    order_submission_authority: false as const,
+    private_read_authority: false as const,
+    live_exchange_authority: false as const,
+    authority_status: "runtime_coordination_only" as const
   };
 }
 
@@ -476,6 +629,9 @@ function inactiveOperatorService() {
 function inactivePaperSessions() {
   return {
     active: () => false,
+    async stop() {
+      return undefined;
+    },
     async recoverRunningEvaluations() {
       return [];
     },

@@ -381,6 +381,52 @@ describe("ArenaPaperRuntimeService", () => {
       stopped_count: 1
     });
   });
+
+  it("requeues a capacity-deferred stopped evaluation when a slot is free", async () => {
+    const fixture = runtimeFixture([
+      candidate("candidate-a", "system-code-a")
+    ], [
+      admission("admission-a", "system-code-a", "2026-07-19T00:00:00.000Z")
+    ], [{
+      ...runningEvaluation("candidate-a"),
+      status: "stopped",
+      stopped_at: "2026-07-19T00:05:00.000Z",
+      next_observation_at: undefined,
+      runtime_coordination_status: "arena_capacity_deferred"
+    }]);
+    fixture.paperTrading.start.mockImplementation(async (candidateId: string) => {
+      fixture.running.add("trading-run-a");
+      fixture.evaluations[0] = runningEvaluation(candidateId);
+      return {
+        statusCode: 201,
+        body: {
+          status: "started",
+          runner_status: "running",
+          paper_trading_evaluation: fixture.evaluations[0]
+        }
+      };
+    });
+    const runtime = new ArenaPaperRuntimeService({
+      store: fixture.store,
+      paperTrading: fixture.paperTrading,
+      capacity: 1
+    });
+
+    await expect(runtime.snapshot()).resolves.toMatchObject({
+      queued_count: 1,
+      stopped_count: 0,
+      needs_reconcile: true,
+      systems: [{
+        runtime_coordination_status: "arena_capacity_deferred"
+      }]
+    });
+    await expect(runtime.reconcile()).resolves.toMatchObject({
+      queued_count: 0,
+      running_count: 1,
+      occupied_count: 1
+    });
+    expect(fixture.paperTrading.start).toHaveBeenCalledWith("candidate-a", {});
+  });
 });
 
 describe("loadArenaPaperCapacity", () => {

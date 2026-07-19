@@ -31,6 +31,7 @@ export function createRuntimeSupervisorLanes(options: {
     | "active"
     | "recoverRunningEvaluations"
     | "finalizeRecoveryFailures"
+    | "stop"
     | "stopAllSessions"
   >;
   arenaPaperRuntime?: Pick<
@@ -126,6 +127,7 @@ export function createRuntimeSupervisorLanes(options: {
       };
     },
     async recover() {
+      await deferArenaRecoveryOverflow(options);
       const outcomes = await options.paperTradingSessions
         .recoverRunningEvaluations({ persistFailures: false });
       latestPaperFailures = outcomes.filter((outcome) =>
@@ -276,6 +278,23 @@ export function createRuntimeSupervisorLanes(options: {
   };
 
   return [selectedPaper, candidateArena, researchScheduler];
+}
+
+async function deferArenaRecoveryOverflow(options: {
+  paperTradingSessions: Pick<PaperTradingSessionService, "stop">;
+  arenaPaperRuntime?: Pick<ArenaPaperRuntimeService, "snapshot">;
+}): Promise<void> {
+  const arena = await options.arenaPaperRuntime?.snapshot();
+  if (!arena) return;
+  const recoverable = arena.systems.filter((system) =>
+    system.lifecycle_status === "running" ||
+    system.lifecycle_status === "recovering"
+  );
+  for (const system of recoverable.slice(arena.capacity)) {
+    await options.paperTradingSessions.stop(system.trading_run_ref.id, {
+      reason: "arena_capacity_deferred"
+    });
+  }
 }
 
 async function latestPaperEvaluations(

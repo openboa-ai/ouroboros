@@ -32,6 +32,7 @@ import {
   type PaperTradingEvaluationRecord,
   type PaperTradingEvidencePurpose,
   type PaperTradingObservationRecord,
+  type RunControlAuditInput,
   type SandboxDetailReadModel,
   type SystemCodeRecord,
   type TradingRunRecord
@@ -176,6 +177,13 @@ export type PaperTradingRecoveryOutcome =
 
 export interface PaperTradingRecoveryOptions {
   persistFailures?: boolean;
+}
+
+export const ARENA_PAPER_CAPACITY_DEFERRED_STATUS =
+  "arena_capacity_deferred";
+
+export interface PaperTradingStopOptions {
+  reason?: "arena_capacity_deferred";
 }
 
 export class PaperTradingSessionError extends Error {
@@ -1535,7 +1543,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     };
   }
 
-  async stop(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined> {
+  async stop(
+    tradingRunId: string,
+    options: PaperTradingStopOptions = {}
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
     const candidate = await this.options.store.getCandidateForTradingRun(tradingRunId);
     if (!candidate) {
       return undefined;
@@ -1588,17 +1599,24 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       );
     }
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
-    await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-      idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
-      candidateId: candidate.candidate_id,
-      candidateVersionId,
-      tradingRunId,
-      action: "stop",
-      lifecycleStatus: "stopped",
-      actorId: "runtime-api",
-      reasonSummary: "Operator requested trading run stop.",
-      message: "Trading run stop recorded."
-    }));
+    const capacityDeferred = options.reason === "arena_capacity_deferred";
+    await this.options.store.recordRunControlAudit(capacityDeferred
+      ? arenaPaperCapacityDeferralAuditInput({
+          candidateId: candidate.candidate_id,
+          candidateVersionId,
+          tradingRunId
+        })
+      : tradingRunLifecycleAuditInput({
+          idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
+          candidateId: candidate.candidate_id,
+          candidateVersionId,
+          tradingRunId,
+          action: "stop",
+          lifecycleStatus: "stopped",
+          actorId: "runtime-api",
+          reasonSummary: "Operator requested trading run stop.",
+          message: "Trading run stop recorded."
+        }));
     await this.stopTerminalSession(tradingRunId);
     const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(
       tradingRunId
@@ -1610,7 +1628,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       ...existing,
       status: "stopped",
       next_observation_at: undefined,
-      stopped_at: new Date().toISOString()
+      stopped_at: new Date().toISOString(),
+      runtime_coordination_status: capacityDeferred
+        ? ARENA_PAPER_CAPACITY_DEFERRED_STATUS
+        : undefined
     });
   }
 
@@ -2603,6 +2624,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       stopped_at: undefined,
       next_observation_at: new Date(Date.parse(startedAt) + this.intervalMs).toISOString(),
       latest_failure_reason: undefined,
+      runtime_coordination_status: undefined,
       processed_trading_system_event_ids: [...new Set([
         ...(evaluation.processed_trading_system_event_ids ?? []),
         ...restartFailedEventIds
@@ -3049,6 +3071,42 @@ function comparisonRunControlAuditInput(
     reasonSummary: `Authorized paper comparison runtime ${operation}${reasonLabel}.`,
     message: `Paper comparison runtime ${operation} recorded.`
   });
+}
+
+function arenaPaperCapacityDeferralAuditInput(input: {
+  candidateId: string;
+  candidateVersionId: string;
+  tradingRunId: string;
+}): RunControlAuditInput {
+  return {
+    idempotency_key: [
+      "arena-paper-capacity-deferred",
+      input.tradingRunId,
+      input.candidateVersionId
+    ].join(":"),
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    runtime_id: input.tradingRunId,
+    command: {
+      action: "stop",
+      requested_lifecycle_status: "stopped",
+      actor_kind: "policy_engine",
+      reason: "safety_intervention",
+      reason_summary: "Arena paper recovery exceeded the configured capacity."
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      resulting_lifecycle_status: "stopped"
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "policy_engine",
+      runtime_lifecycle_status: "stopped",
+      message: "Arena paper session deferred until capacity is available."
+    }
+  };
 }
 
 function comparisonTransientSandboxDetail(

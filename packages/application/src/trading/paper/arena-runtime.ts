@@ -2,6 +2,7 @@ import type {
   CandidateAdmissionDecisionRecord,
   CandidateInspectReadModel,
   PaperTradingEvaluationRecord,
+  PaperTradingEvaluationRuntimeCoordinationStatus,
   Ref,
   RunControlAuditInput,
   TradingRunRecord
@@ -12,6 +13,7 @@ import type {
   PaperTradingCommandResponse,
   PaperTradingCommandService
 } from "./commands";
+import { ARENA_PAPER_CAPACITY_DEFERRED_STATUS } from "./session-service";
 
 export const DEFAULT_ARENA_PAPER_CAPACITY = 2;
 
@@ -35,6 +37,8 @@ export interface ArenaPaperRuntimeSystem {
   sandbox_ref?: Ref;
   workspace_key?: string;
   sandbox_generation?: number;
+  runtime_coordination_status?:
+    PaperTradingEvaluationRuntimeCoordinationStatus;
   admission_decided_at: string;
   lifecycle_status: ArenaPaperRuntimeLifecycle;
   active: boolean;
@@ -364,6 +368,12 @@ export class ArenaPaperRuntimeService {
         ...base,
         paper_trading_evaluation_ref: evaluationRef(evaluation),
         lifecycle_status: lifecycleStatus,
+        ...(evaluation.runtime_coordination_status
+          ? {
+              runtime_coordination_status:
+                evaluation.runtime_coordination_status
+            }
+          : {}),
         ...(evaluation.latest_failure_reason
           ? { failure_reason: evaluation.latest_failure_reason }
           : {})
@@ -512,7 +522,10 @@ function evaluationLifecycle(
     case "running":
       return active ? "running" : "recovering";
     case "stopped":
-      return "stopped";
+      return !active && evaluation.runtime_coordination_status ===
+          ARENA_PAPER_CAPACITY_DEFERRED_STATUS
+        ? "queued"
+        : "stopped";
     case "failed":
       return "failed";
     case "invalidated":
