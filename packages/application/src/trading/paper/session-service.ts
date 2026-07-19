@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import {
   paperTradingComparisonBaselineEvaluation,
   paperTradingComparisonEvaluationRecordDigestInput,
@@ -31,6 +32,7 @@ import {
   type PaperTradingEvaluationRecord,
   type PaperTradingEvidencePurpose,
   type PaperTradingObservationRecord,
+  type RunControlAuditInput,
   type SandboxDetailReadModel,
   type SystemCodeRecord,
   type TradingRunRecord
@@ -175,6 +177,13 @@ export type PaperTradingRecoveryOutcome =
 
 export interface PaperTradingRecoveryOptions {
   persistFailures?: boolean;
+}
+
+export const ARENA_PAPER_CAPACITY_DEFERRED_STATUS =
+  "arena_capacity_deferred";
+
+export interface PaperTradingStopOptions {
+  reason?: "arena_capacity_deferred";
 }
 
 export class PaperTradingSessionError extends Error {
@@ -460,6 +469,13 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const tradingRunId = prepared.commitment.trading_run_ref.id;
     try {
       const candidate = await this.requireCandidateForRun(tradingRunId);
+      const run = await this.options.store.getTradingRun(tradingRunId);
+      if (!run) {
+        throw new PaperTradingSessionError(
+          "trading_run_not_found",
+          `trading run ${tradingRunId} was not found`
+        );
+      }
       const binding = this.gatewayBinding();
       const replaceExistingSandbox = !this.apiProviderSessions.has(tradingRunId);
       const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, binding);
@@ -474,9 +490,16 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       });
       const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
       const evaluation = existing ?? prepared.evaluation;
-      if (evaluation.status !== "running") {
+      if (evaluation.status !== "running" &&
+        run.runtime_lifecycle_status !== "running") {
         await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidate.candidate_version.candidate_version_id}`,
+          idempotencyKey: [
+            "trading-run-start",
+            paperOrderRequest,
+            tradingRunId,
+            candidate.candidate_version.candidate_version_id,
+            tradingRunLifecycleTransitionBasis(run)
+          ].join(":"),
           candidateId: candidate.candidate_id,
           candidateVersionId: candidate.candidate_version.candidate_version_id,
           tradingRunId,
@@ -1534,7 +1557,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     };
   }
 
-  async stop(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined> {
+  async stop(
+    tradingRunId: string,
+    options: PaperTradingStopOptions = {}
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
     const candidate = await this.options.store.getCandidateForTradingRun(tradingRunId);
     if (!candidate) {
       return undefined;
@@ -1587,17 +1613,33 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       );
     }
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
-    await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-      idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
-      candidateId: candidate.candidate_id,
-      candidateVersionId,
-      tradingRunId,
-      action: "stop",
-      lifecycleStatus: "stopped",
-      actorId: "runtime-api",
-      reasonSummary: "Operator requested trading run stop.",
-      message: "Trading run stop recorded."
-    }));
+    const capacityDeferred = options.reason === "arena_capacity_deferred";
+    if (run.runtime_lifecycle_status !== "stopped") {
+      const lifecycleBasis = tradingRunLifecycleTransitionBasis(run);
+      await this.options.store.recordRunControlAudit(capacityDeferred
+        ? arenaPaperCapacityDeferralAuditInput({
+            candidateId: candidate.candidate_id,
+            candidateVersionId,
+            tradingRunId,
+            lifecycleBasis
+          })
+        : tradingRunLifecycleAuditInput({
+            idempotencyKey: [
+              "trading-run-stop",
+              tradingRunId,
+              candidateVersionId,
+              lifecycleBasis
+            ].join(":"),
+            candidateId: candidate.candidate_id,
+            candidateVersionId,
+            tradingRunId,
+            action: "stop",
+            lifecycleStatus: "stopped",
+            actorId: "runtime-api",
+            reasonSummary: "Operator requested trading run stop.",
+            message: "Trading run stop recorded."
+          }));
+    }
     await this.stopTerminalSession(tradingRunId);
     const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(
       tradingRunId
@@ -1609,7 +1651,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       ...existing,
       status: "stopped",
       next_observation_at: undefined,
-      stopped_at: new Date().toISOString()
+      stopped_at: new Date().toISOString(),
+      runtime_coordination_status: capacityDeferred
+        ? ARENA_PAPER_CAPACITY_DEFERRED_STATUS
+        : undefined
     });
   }
 
@@ -2602,6 +2647,7 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       stopped_at: undefined,
       next_observation_at: new Date(Date.parse(startedAt) + this.intervalMs).toISOString(),
       latest_failure_reason: undefined,
+      runtime_coordination_status: undefined,
       processed_trading_system_event_ids: [...new Set([
         ...(evaluation.processed_trading_system_event_ids ?? []),
         ...restartFailedEventIds
@@ -2680,8 +2726,23 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const idempotencyKey = ["trading-run-sandbox", input.paperOrderRequest, input.tradingRunId, input.candidateVersionId].join(":");
     const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
     const existing = await this.options.store.getSandbox(sandboxId);
+    const workspaceKey = paperTradingWorkspaceKey({
+      candidateId: input.candidate.candidate_id,
+      candidateVersionId: input.candidateVersionId,
+      systemCodeId: artifact.system_code_id,
+      artifactDigest: artifact.artifact_digest
+    });
+    if (existing?.workspace_key && existing.workspace_key !== workspaceKey) {
+      throw new PaperTradingSessionError(
+        "sandbox_workspace_identity_mismatch",
+        `sandbox ${sandboxId} workspace identity does not match its candidate`
+      );
+    }
     const adapterKind = paperTradingSandboxAdapterKind(input.candidate);
     const adapter = this.options.sandboxAdapters[adapterKind];
+    const runtimeArtifact = adapterKind === "docker_sandboxes_sbx"
+      ? await resolvePaperRuntimeArtifact(this.options.artifactResolver, artifact)
+      : artifact;
     const existingAdapter = existing
       ? this.options.sandboxAdapters[existing.adapter_kind]
       : undefined;
@@ -2705,7 +2766,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       const verified = await this.options.store.getSandbox(existing.sandbox_id) ?? existing;
       if (
         verified.lifecycle_status === "running" &&
-        (observations.lifecycle_status === "running" || hasFreshSandboxHeartbeat(existing, observations))
+        verified.workspace_key === workspaceKey &&
+        verified.generation !== undefined &&
+        (observations.lifecycle_status === "running" ||
+          hasFreshSandboxHeartbeat(existing, observations))
       ) {
         return verified;
       }
@@ -2714,11 +2778,20 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       }
     }
     const result = await adapter.startArtifactInstance({
-      artifact,
+      artifact: runtimeArtifact,
       instance_id: sandboxId,
       sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 34)}-${input.paperOrderRequest}`,
       runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
       sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
+      ...(runtimeArtifact.artifact_kind === "python_file"
+        ? {
+            workspace_path: path.dirname(
+              path.resolve(runtimeArtifact.artifact_path)
+            )
+          }
+        : {}),
+      workspace_key: workspaceKey,
+      generation: (existing?.generation ?? 0) + 1,
       created_at: existing?.created_at ?? new Date().toISOString(),
       interval_ms: this.sandboxIntervalMs,
       paper_order_request: input.paperOrderRequest,
@@ -3030,6 +3103,48 @@ function comparisonRunControlAuditInput(
   });
 }
 
+function arenaPaperCapacityDeferralAuditInput(input: {
+  candidateId: string;
+  candidateVersionId: string;
+  tradingRunId: string;
+  lifecycleBasis: string;
+}): RunControlAuditInput {
+  return {
+    idempotency_key: [
+      "arena-paper-capacity-deferred",
+      input.tradingRunId,
+      input.candidateVersionId,
+      input.lifecycleBasis
+    ].join(":"),
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    runtime_id: input.tradingRunId,
+    command: {
+      action: "stop",
+      requested_lifecycle_status: "stopped",
+      actor_kind: "policy_engine",
+      reason: "safety_intervention",
+      reason_summary: "Arena paper recovery exceeded the configured capacity."
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      resulting_lifecycle_status: "stopped"
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "policy_engine",
+      runtime_lifecycle_status: "stopped",
+      message: "Arena paper session deferred until capacity is available."
+    }
+  };
+}
+
+function tradingRunLifecycleTransitionBasis(run: TradingRunRecord): string {
+  return run.runtime_audit_event_refs?.at(-1)?.id ?? "initial";
+}
+
 function comparisonTransientSandboxDetail(
   result: SandboxStartResult
 ): SandboxDetailReadModel {
@@ -3105,6 +3220,59 @@ function safeRouteId(value: string): string {
   const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
+}
+
+async function resolvePaperRuntimeArtifact(
+  resolver: SystemCodeArtifactResolverPort,
+  artifact: SystemCodeRecord
+): Promise<SystemCodeRecord> {
+  if (artifact.artifact_kind !== "python_file") {
+    return artifact;
+  }
+  const resolution = resolver.resolveArtifact
+    ? await resolver.resolveArtifact(artifact)
+    : {
+        artifact_digest: await resolver.resolveArtifactDigest(artifact),
+        artifact_path: path.resolve(artifact.artifact_path)
+      };
+  const resolvedArtifactPath = resolution.artifact_path;
+  if (resolution.artifact_digest !== artifact.artifact_digest) {
+    throw new PaperTradingSessionError(
+      "system_code_artifact_digest_mismatch",
+      "Paper runtime SystemCode artifact changed before sandbox start."
+    );
+  }
+  if (!resolvedArtifactPath || !path.isAbsolute(resolvedArtifactPath)) {
+    throw new PaperTradingSessionError(
+      "system_code_artifact_path_unresolved",
+      "Paper runtime SystemCode artifact path could not be resolved."
+    );
+  }
+  const normalizedArtifactPath = path.normalize(resolvedArtifactPath);
+  const entrypoint = [...artifact.entrypoint];
+  if ((entrypoint[0] === "python" || entrypoint[0] === "python3") &&
+    entrypoint[1] === artifact.artifact_path) {
+    entrypoint[1] = normalizedArtifactPath;
+  }
+  return {
+    ...artifact,
+    artifact_path: normalizedArtifactPath,
+    entrypoint
+  };
+}
+
+function paperTradingWorkspaceKey(input: {
+  candidateId: string;
+  candidateVersionId: string;
+  systemCodeId: string;
+  artifactDigest: string;
+}): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    system_code_id: input.systemCodeId,
+    artifact_digest: input.artifactDigest
+  })).digest("hex")}`;
 }
 
 function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {

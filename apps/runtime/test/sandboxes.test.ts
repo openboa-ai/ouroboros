@@ -205,6 +205,58 @@ describe("sandbox API", () => {
     }
   });
 
+  it("starts independently owned long-running sandboxes concurrently", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode(
+      "fixture-system-code-clock-python-001"
+    );
+    if (!artifact || artifact.artifact_kind !== "python_file") {
+      throw new Error("expected Python fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      processOwnership: new FileSystemRuntimeProcessOwnershipStore(
+        path.join(tmpDir, "runtime-process-ownership")
+      ),
+      hostId: "host-a"
+    });
+    const workspaceKey = `sha256:${"b".repeat(64)}`;
+    const input = (suffix: string): SandboxAdapterStartInput => ({
+      artifact,
+      instance_id: `sandbox-concurrent-${suffix}`,
+      sandbox_name: `ouro-concurrent-${suffix}`,
+      workspace_path: path.dirname(path.resolve(artifact.artifact_path)),
+      workspace_key: workspaceKey,
+      generation: 1,
+      runtime_ref: {
+        record_kind: "trading_run",
+        id: `trading-run-concurrent-${suffix}`
+      },
+      sandbox_placement_id: `sandbox-placement-concurrent-${suffix}`,
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+    const started: SandboxAdapterStartResult[] = [];
+
+    try {
+      started.push(...await Promise.all([
+        adapter.startArtifactInstance(input("a")),
+        adapter.startArtifactInstance(input("b"))
+      ]));
+      expect(started.map((result) => result.instance.lifecycle_status))
+        .toEqual(["running", "running"]);
+      expect(started.map((result) => result.instance.workspace_key))
+        .toEqual([workspaceKey, workspaceKey]);
+      expect(started.map((result) => result.instance.generation))
+        .toEqual([1, 1]);
+    } finally {
+      await Promise.allSettled(started.map((result) =>
+        adapter.stopArtifactInstance(result.instance)
+      ));
+    }
+  });
+
   it("keeps public sandbox.start finite when test tick limit is omitted", async () => {
     const server = await buildSandboxTestServer({ store: new LocalStore(tmpDir) });
 

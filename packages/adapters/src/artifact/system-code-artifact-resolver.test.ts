@@ -126,6 +126,10 @@ describe("FileSystemCodeArtifactResolver", () => {
 
     await expect(armResolver.resolveArtifactDigest(sourceSystemCode))
       .resolves.toBe(expectedArmDigest);
+    await expect(armResolver.resolveArtifact(sourceSystemCode)).resolves.toEqual({
+      artifact_digest: expectedArmDigest,
+      artifact_path: path.normalize(armScript)
+    });
     expect(expectedArmDigest).not.toBe(sourceDigest);
     await expect(armResolver.resolveArtifactDigest({
       ...sourceSystemCode,
@@ -135,6 +139,10 @@ describe("FileSystemCodeArtifactResolver", () => {
     await rm(path.join(tmpDir, "source"), { recursive: true, force: true });
     await expect(armResolver.resolveArtifactDigest(sourceSystemCode))
       .resolves.toBe(expectedArmDigest);
+    await expect(armResolver.resolveArtifact(sourceSystemCode)).resolves.toEqual({
+      artifact_digest: expectedArmDigest,
+      artifact_path: path.normalize(armScript)
+    });
   });
 
   it("rejects generated artifact manifest drift before resolving paper bytes", async () => {

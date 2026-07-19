@@ -151,11 +151,22 @@ describe("PaperTradingSessionService", () => {
     });
   });
 
-  it("activates a materialized candidate only through the Docker Sandbox adapter", async () => {
+  it.each([
+    { label: "resolver-owned path", resolverOwnsPath: true },
+    { label: "digest-only relative path", resolverOwnsPath: false }
+  ])("activates a materialized candidate through Docker with a $label workspace", async ({
+    resolverOwnsPath
+  }) => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const fixture = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     if (!fixture) throw new Error("fixture candidate was not materialized");
+    const storedArtifact = fixture.system_code?.ref?.id
+      ? await store.getSystemCode(fixture.system_code.ref.id)
+      : undefined;
+    if (!storedArtifact || storedArtifact.artifact_kind !== "python_file") {
+      throw new Error("fixture Python SystemCode was not materialized");
+    }
     const generated = structuredClone(fixture);
     generated.candidate_version.materialization_attempt_ref = {
       record_kind: "candidate_materialization_attempt",
@@ -188,20 +199,47 @@ describe("PaperTradingSessionService", () => {
       }
     }) as OuroborosStorePort;
     const starts = { deterministic: 0, docker: 0 };
+    const resolvedArtifactPath = resolverOwnsPath
+      ? path.join(
+          tmpDir,
+          "arm",
+          "candidate-arena-runs",
+          "tick-1",
+          "candidate-1",
+          "run.py"
+        )
+      : path.resolve(storedArtifact.artifact_path);
+    let dockerStart: SandboxStartInput | undefined;
+    const artifactResolver: SystemCodeArtifactResolverPort = {
+      async resolveArtifactDigest(systemCode: Parameters<
+        SystemCodeArtifactResolverPort["resolveArtifactDigest"]
+      >[0]) {
+        return systemCode.artifact_digest;
+      },
+      ...(resolverOwnsPath
+        ? {
+            async resolveArtifact(systemCode: Parameters<
+              SystemCodeArtifactResolverPort["resolveArtifactDigest"]
+            >[0]) {
+              return {
+                artifact_digest: systemCode.artifact_digest,
+                artifact_path: resolvedArtifactPath
+              };
+            }
+          }
+        : {})
+    };
     const service = new PaperTradingSessionService({
       store: generatedStore,
       startEligibility: async () => undefined,
-      artifactResolver: {
-        async resolveArtifactDigest(systemCode) {
-          return systemCode.artifact_digest;
-        }
-      },
+      artifactResolver,
       sandboxAdapters: {
         deterministic_test: sandboxAdapter("deterministic_test", () => {
           starts.deterministic += 1;
         }),
-        docker_sandboxes_sbx: sandboxAdapter("docker_sandboxes_sbx", () => {
+        docker_sandboxes_sbx: sandboxAdapter("docker_sandboxes_sbx", (input) => {
           starts.docker += 1;
+          dockerStart = input;
         })
       },
       marketData: paperSessionMarketData(),
@@ -226,6 +264,12 @@ describe("PaperTradingSessionService", () => {
     await service.activate(prepared);
 
     expect(starts).toEqual({ deterministic: 0, docker: 1 });
+    expect(dockerStart).toMatchObject({
+      artifact: {
+        artifact_path: resolvedArtifactPath
+      },
+      workspace_path: path.dirname(resolvedArtifactPath)
+    });
     await service.stopAllSessions();
   });
 
@@ -930,6 +974,121 @@ describe("PaperTradingSessionService", () => {
     expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
     expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
     expect(await guardedSessionState(fixture.store, fixture.tradingRunId)).toEqual(stateBeforeStop);
+  });
+
+  it("persists repeated Arena capacity deferrals as resumable stopped evaluations", async () => {
+    const fixture = await prepareGuardedSession("research_feedback");
+
+    const stopped = await fixture.service.stop(fixture.tradingRunId, {
+      reason: "arena_capacity_deferred"
+    });
+
+    expect(stopped).toMatchObject({
+      status: "stopped",
+      runtime_coordination_status: "arena_capacity_deferred"
+    });
+    const firstDeferredRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(firstDeferredRun).toMatchObject({
+      runtime_lifecycle_status: "stopped",
+      run_control_command_refs: [
+        { record_kind: "run_control_command", id: expect.any(String) }
+      ],
+      runtime_audit_event_refs: [
+        { record_kind: "runtime_audit_event", id: expect.any(String) }
+      ]
+    });
+
+    const resumedEffects = {
+      providerStarts: 0,
+      sandboxStarts: 0,
+      marketReads: 0
+    };
+    const resumedService = activatableResearchSessionService(
+      fixture.store,
+      resumedEffects,
+      undefined,
+      {
+        async resolveArtifactDigest() {
+          return "sha256:session-service-guard";
+        }
+      }
+    );
+    const prepared = await resumedService.prepare({
+      candidateId: fixture.prepared.candidate.candidate_id,
+      candidateVersionId:
+        fixture.prepared.candidate.candidate_version.candidate_version_id,
+      tradingRunId: fixture.tradingRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    const resumed = await resumedService.activate(prepared);
+    expect(resumed).toMatchObject({ status: "running" });
+    expect(resumed.runtime_coordination_status).toBeUndefined();
+    const firstResumedRun = await fixture.store.getTradingRun(fixture.tradingRunId);
+    expect(firstResumedRun).toMatchObject({ runtime_lifecycle_status: "running" });
+    expect(firstResumedRun?.runtime_audit_event_refs).toHaveLength(
+      (firstDeferredRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
+    expect(resumedEffects).toMatchObject({
+      providerStarts: 1,
+      sandboxStarts: 1
+    });
+    await resumedService.stop(fixture.tradingRunId, {
+      reason: "arena_capacity_deferred"
+    });
+    const repeatedDeferredRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(repeatedDeferredRun).toMatchObject({
+      runtime_lifecycle_status: "stopped"
+    });
+    expect(repeatedDeferredRun?.runtime_audit_event_refs).toHaveLength(
+      (firstResumedRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
+
+    const repeatedResumeEffects = {
+      providerStarts: 0,
+      sandboxStarts: 0,
+      marketReads: 0
+    };
+    const repeatedResumeService = activatableResearchSessionService(
+      fixture.store,
+      repeatedResumeEffects,
+      undefined,
+      {
+        async resolveArtifactDigest() {
+          return "sha256:session-service-guard";
+        }
+      }
+    );
+    const repeatedPrepared = await repeatedResumeService.prepare({
+      candidateId: fixture.prepared.candidate.candidate_id,
+      candidateVersionId:
+        fixture.prepared.candidate.candidate_version.candidate_version_id,
+      tradingRunId: fixture.tradingRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    const repeatedResume = await repeatedResumeService.activate(repeatedPrepared);
+
+    expect(repeatedResume).toMatchObject({ status: "running" });
+    expect(repeatedResume.runtime_coordination_status).toBeUndefined();
+    const repeatedResumedRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(repeatedResumedRun).toMatchObject({
+      runtime_lifecycle_status: "running"
+    });
+    expect(repeatedResumedRun?.runtime_audit_event_refs).toHaveLength(
+      (repeatedDeferredRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
+    expect(repeatedResumeEffects).toMatchObject({
+      providerStarts: 1,
+      sandboxStarts: 1
+    });
+    await repeatedResumeService.stop(fixture.tradingRunId);
   });
 
   it("rejects observation of an unactivated research-feedback run before runtime effects", async () => {
@@ -3405,10 +3564,13 @@ function activatableResearchSessionService(
   });
 }
 
-function sandboxAdapter(kind: SandboxAdapterKind, onStart: () => void) {
+function sandboxAdapter(
+  kind: SandboxAdapterKind,
+  onStart: (input: SandboxStartInput) => void
+) {
   return {
     async startArtifactInstance(input: SandboxStartInput) {
-      onStart();
+      onStart(input);
       return {
         placement: {
           record_kind: "sandbox_placement" as const,

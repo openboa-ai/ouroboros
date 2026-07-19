@@ -1,11 +1,14 @@
 import { buildServer } from "./server";
 import { loadTradingResearchRuntimeConfig } from "@ouroboros/application/trading/research/runtime-config";
 import { installRuntimeShutdownHandlers } from "./runtime-shutdown";
+import { loadArenaPaperCapacity } from
+  "@ouroboros/application/trading/paper/arena-runtime";
 
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST ?? "127.0.0.1";
 
 const server = await buildServer({
+  arenaPaperCapacity: loadArenaPaperCapacity(process.env),
   tradingResearchRuntimeConfig: loadTradingResearchRuntimeConfig(process.env)
 });
 const shutdown = installRuntimeShutdownHandlers(server);
