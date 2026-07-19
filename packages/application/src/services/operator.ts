@@ -791,7 +791,8 @@ export function autonomousArenaLoopDesiredStatus(
 
 function selectedPaperContinuationCandidateId(arena: CandidateArenaReadModel): string | undefined {
   return arena.latest_ticks.find((tick) =>
-    tick.paper_trading_continuation?.status === "started"
+    (tick.paper_trading_continuation?.status === "started"
+      || tick.paper_trading_continuation?.status === "queued")
     && tick.paper_trading_continuation.selected_candidate_id
   )?.paper_trading_continuation?.selected_candidate_id;
 }

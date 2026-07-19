@@ -824,6 +824,7 @@ describe("operator product loop smoke", () => {
 
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
+    let queuedCandidateId: string | undefined;
     const firstServer = await buildServer({
       store,
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
@@ -925,6 +926,10 @@ describe("operator product loop smoke", () => {
       expect(resumedOperator.paper_trading_board.entries.some((entry) =>
         entry.status === "running" && entry.runner_status === "active"
       )).toBe(true);
+      queuedCandidateId = resumedOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.tick_id === "tick-2"
+      )?.paper_trading_continuation?.selected_candidate_id;
+      expect(queuedCandidateId).toEqual(expect.any(String));
 
       const stopped = await postCommand(restartedServer, {
         command_kind: "arena.stop"
@@ -932,6 +937,27 @@ describe("operator product loop smoke", () => {
       expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
     } finally {
       await restartedServer.close();
+    }
+
+    const readbackServer = await buildServer({
+      store: new LocalStore(tmpDir),
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort(),
+      recoverPaperTradingSessionsOnStart: false,
+      runResearchControlStudiesOnStart: false
+    });
+    try {
+      const response = await readbackServer.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect((response.json() as { operator: OperatorReadModel }).operator.selected_candidate_id)
+        .toBe(queuedCandidateId);
+    } finally {
+      await readbackServer.close();
     }
   });
 
