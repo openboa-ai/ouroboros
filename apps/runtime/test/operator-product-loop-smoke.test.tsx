@@ -410,8 +410,11 @@ describe("operator product loop smoke", () => {
         running_count: 0
       });
       expect(recovering).toHaveLength(2);
+      const retained = recovering[0];
       const overflow = recovering[1];
-      if (!overflow) throw new Error("expected Arena recovery overflow");
+      if (!retained || !overflow) {
+        throw new Error("expected retained and overflow Arena recovery systems");
+      }
 
       const response = await restartedServer.inject({
         method: "POST",
@@ -437,6 +440,40 @@ describe("operator product loop smoke", () => {
         lifecycle_status: "queued",
         active: false,
         runtime_coordination_status: "arena_capacity_deferred"
+      });
+
+      const retainedStart = await restartedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: retained.candidate_ref.id }
+        }
+      });
+      expect(retainedStart.statusCode, retainedStart.body).toBe(200);
+      expect(retainedStart.json()).toMatchObject({
+        result: {
+          status: "resumed",
+          trading_run_id: retained.trading_run_ref.id,
+          runner_status: "running"
+        }
+      });
+      await postCommand(restartedServer, {
+        command_kind: "trading_run.stop",
+        payload: { trading_run_id: retained.trading_run_ref.id }
+      });
+
+      expect(await restartedArenaPaperRuntime.reconcile()).toMatchObject({
+        capacity: 1,
+        running_count: 1,
+        queued_count: 1,
+        systems: expect.arrayContaining([
+          expect.objectContaining({
+            candidate_ref: overflow.candidate_ref,
+            lifecycle_status: "running",
+            active: true
+          })
+        ])
       });
     } finally {
       await restartedServer.close();

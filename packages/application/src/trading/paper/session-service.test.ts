@@ -976,7 +976,7 @@ describe("PaperTradingSessionService", () => {
     expect(await guardedSessionState(fixture.store, fixture.tradingRunId)).toEqual(stateBeforeStop);
   });
 
-  it("persists an Arena capacity deferral as a resumable stopped evaluation", async () => {
+  it("persists repeated Arena capacity deferrals as resumable stopped evaluations", async () => {
     const fixture = await prepareGuardedSession("research_feedback");
 
     const stopped = await fixture.service.stop(fixture.tradingRunId, {
@@ -987,16 +987,18 @@ describe("PaperTradingSessionService", () => {
       status: "stopped",
       runtime_coordination_status: "arena_capacity_deferred"
     });
-    await expect(fixture.store.getTradingRun(fixture.tradingRunId)).resolves
-      .toMatchObject({
-        runtime_lifecycle_status: "stopped",
-        run_control_command_refs: [
-          { record_kind: "run_control_command", id: expect.any(String) }
-        ],
-        runtime_audit_event_refs: [
-          { record_kind: "runtime_audit_event", id: expect.any(String) }
-        ]
-      });
+    const firstDeferredRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(firstDeferredRun).toMatchObject({
+      runtime_lifecycle_status: "stopped",
+      run_control_command_refs: [
+        { record_kind: "run_control_command", id: expect.any(String) }
+      ],
+      runtime_audit_event_refs: [
+        { record_kind: "runtime_audit_event", id: expect.any(String) }
+      ]
+    });
 
     const resumedEffects = {
       providerStarts: 0,
@@ -1024,11 +1026,69 @@ describe("PaperTradingSessionService", () => {
     const resumed = await resumedService.activate(prepared);
     expect(resumed).toMatchObject({ status: "running" });
     expect(resumed.runtime_coordination_status).toBeUndefined();
+    const firstResumedRun = await fixture.store.getTradingRun(fixture.tradingRunId);
+    expect(firstResumedRun).toMatchObject({ runtime_lifecycle_status: "running" });
+    expect(firstResumedRun?.runtime_audit_event_refs).toHaveLength(
+      (firstDeferredRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
     expect(resumedEffects).toMatchObject({
       providerStarts: 1,
       sandboxStarts: 1
     });
-    await resumedService.stop(fixture.tradingRunId);
+    await resumedService.stop(fixture.tradingRunId, {
+      reason: "arena_capacity_deferred"
+    });
+    const repeatedDeferredRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(repeatedDeferredRun).toMatchObject({
+      runtime_lifecycle_status: "stopped"
+    });
+    expect(repeatedDeferredRun?.runtime_audit_event_refs).toHaveLength(
+      (firstResumedRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
+
+    const repeatedResumeEffects = {
+      providerStarts: 0,
+      sandboxStarts: 0,
+      marketReads: 0
+    };
+    const repeatedResumeService = activatableResearchSessionService(
+      fixture.store,
+      repeatedResumeEffects,
+      undefined,
+      {
+        async resolveArtifactDigest() {
+          return "sha256:session-service-guard";
+        }
+      }
+    );
+    const repeatedPrepared = await repeatedResumeService.prepare({
+      candidateId: fixture.prepared.candidate.candidate_id,
+      candidateVersionId:
+        fixture.prepared.candidate.candidate_version.candidate_version_id,
+      tradingRunId: fixture.tradingRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    const repeatedResume = await repeatedResumeService.activate(repeatedPrepared);
+
+    expect(repeatedResume).toMatchObject({ status: "running" });
+    expect(repeatedResume.runtime_coordination_status).toBeUndefined();
+    const repeatedResumedRun = await fixture.store.getTradingRun(
+      fixture.tradingRunId
+    );
+    expect(repeatedResumedRun).toMatchObject({
+      runtime_lifecycle_status: "running"
+    });
+    expect(repeatedResumedRun?.runtime_audit_event_refs).toHaveLength(
+      (repeatedDeferredRun?.runtime_audit_event_refs?.length ?? 0) + 1
+    );
+    expect(repeatedResumeEffects).toMatchObject({
+      providerStarts: 1,
+      sandboxStarts: 1
+    });
+    await repeatedResumeService.stop(fixture.tradingRunId);
   });
 
   it("rejects observation of an unactivated research-feedback run before runtime effects", async () => {

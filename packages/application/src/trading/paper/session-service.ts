@@ -469,6 +469,13 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const tradingRunId = prepared.commitment.trading_run_ref.id;
     try {
       const candidate = await this.requireCandidateForRun(tradingRunId);
+      const run = await this.options.store.getTradingRun(tradingRunId);
+      if (!run) {
+        throw new PaperTradingSessionError(
+          "trading_run_not_found",
+          `trading run ${tradingRunId} was not found`
+        );
+      }
       const binding = this.gatewayBinding();
       const replaceExistingSandbox = !this.apiProviderSessions.has(tradingRunId);
       const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, binding);
@@ -483,9 +490,16 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       });
       const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
       const evaluation = existing ?? prepared.evaluation;
-      if (evaluation.status !== "running") {
+      if (evaluation.status !== "running" &&
+        run.runtime_lifecycle_status !== "running") {
         await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidate.candidate_version.candidate_version_id}`,
+          idempotencyKey: [
+            "trading-run-start",
+            paperOrderRequest,
+            tradingRunId,
+            candidate.candidate_version.candidate_version_id,
+            tradingRunLifecycleTransitionBasis(run)
+          ].join(":"),
           candidateId: candidate.candidate_id,
           candidateVersionId: candidate.candidate_version.candidate_version_id,
           tradingRunId,
@@ -1600,23 +1614,32 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     }
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     const capacityDeferred = options.reason === "arena_capacity_deferred";
-    await this.options.store.recordRunControlAudit(capacityDeferred
-      ? arenaPaperCapacityDeferralAuditInput({
-          candidateId: candidate.candidate_id,
-          candidateVersionId,
-          tradingRunId
-        })
-      : tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
-          candidateId: candidate.candidate_id,
-          candidateVersionId,
-          tradingRunId,
-          action: "stop",
-          lifecycleStatus: "stopped",
-          actorId: "runtime-api",
-          reasonSummary: "Operator requested trading run stop.",
-          message: "Trading run stop recorded."
-        }));
+    if (run.runtime_lifecycle_status !== "stopped") {
+      const lifecycleBasis = tradingRunLifecycleTransitionBasis(run);
+      await this.options.store.recordRunControlAudit(capacityDeferred
+        ? arenaPaperCapacityDeferralAuditInput({
+            candidateId: candidate.candidate_id,
+            candidateVersionId,
+            tradingRunId,
+            lifecycleBasis
+          })
+        : tradingRunLifecycleAuditInput({
+            idempotencyKey: [
+              "trading-run-stop",
+              tradingRunId,
+              candidateVersionId,
+              lifecycleBasis
+            ].join(":"),
+            candidateId: candidate.candidate_id,
+            candidateVersionId,
+            tradingRunId,
+            action: "stop",
+            lifecycleStatus: "stopped",
+            actorId: "runtime-api",
+            reasonSummary: "Operator requested trading run stop.",
+            message: "Trading run stop recorded."
+          }));
+    }
     await this.stopTerminalSession(tradingRunId);
     const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(
       tradingRunId
@@ -3084,12 +3107,14 @@ function arenaPaperCapacityDeferralAuditInput(input: {
   candidateId: string;
   candidateVersionId: string;
   tradingRunId: string;
+  lifecycleBasis: string;
 }): RunControlAuditInput {
   return {
     idempotency_key: [
       "arena-paper-capacity-deferred",
       input.tradingRunId,
-      input.candidateVersionId
+      input.candidateVersionId,
+      input.lifecycleBasis
     ].join(":"),
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
@@ -3114,6 +3139,10 @@ function arenaPaperCapacityDeferralAuditInput(input: {
       message: "Arena paper session deferred until capacity is available."
     }
   };
+}
+
+function tradingRunLifecycleTransitionBasis(run: TradingRunRecord): string {
+  return run.runtime_audit_event_refs?.at(-1)?.id ?? "initial";
 }
 
 function comparisonTransientSandboxDetail(
