@@ -268,11 +268,15 @@ export class ArenaPaperRuntimeService {
     try {
       const evaluation = await this.options.store
         .getLatestPaperTradingEvaluationForTradingRun(system.trading_run_ref.id);
-      if (evaluation?.status === "not_started") {
+      if (evaluation?.status === "not_started" ||
+        evaluation?.status === "stopped" &&
+          evaluation.runtime_coordination_status ===
+            ARENA_PAPER_CAPACITY_DEFERRED_STATUS) {
         await this.options.store.recordPaperTradingEvaluation({
           ...evaluation,
           status: "failed",
           next_observation_at: undefined,
+          runtime_coordination_status: undefined,
           latest_failure_reason: failureReason
         });
         this.startFailures.delete(failureKey);

@@ -825,6 +825,7 @@ describe("operator product loop smoke", () => {
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
     let queuedCandidateId: string | undefined;
+    let previouslyRunningCandidateIds: string[] = [];
     let restartedArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const firstServer = await buildServer({
       store,
@@ -880,6 +881,10 @@ describe("operator product loop smoke", () => {
       );
       expect(runningOperator.latest_commands[0]?.command_kind).toBe("arena.start");
       expect(runningOperator.candidate_arena.latest_ticks.map((tick) => tick.tick_id)).toContain("tick-1");
+      previouslyRunningCandidateIds = runningOperator.paper_trading_board.entries
+        .filter((entry) => entry.status === "running" && entry.runner_status === "active")
+        .map((entry) => entry.candidate_id);
+      expect(previouslyRunningCandidateIds).toHaveLength(2);
     } finally {
       await firstServer.close();
     }
@@ -938,17 +943,26 @@ describe("operator product loop smoke", () => {
       if (!restartedArenaPaperRuntime) {
         throw new Error("expected restarted Arena Paper runtime");
       }
-      await expect(restartedArenaPaperRuntime.snapshot()).resolves.toMatchObject({
+      const restartedSnapshot = await restartedArenaPaperRuntime.snapshot();
+      expect(restartedSnapshot).toMatchObject({
         capacity: 1,
         occupied_count: 1,
-        running_count: 1,
-        systems: expect.arrayContaining([
-          expect.objectContaining({
-            lifecycle_status: "queued",
-            runtime_coordination_status: "arena_capacity_deferred"
-          })
-        ])
+        running_count: 1
       });
+      const previouslyRunningSystems = restartedSnapshot.systems.filter((system) =>
+        previouslyRunningCandidateIds.includes(system.candidate_ref.id)
+      );
+      expect(previouslyRunningSystems).toHaveLength(2);
+      expect(previouslyRunningSystems.filter((system) =>
+        system.lifecycle_status === "running" && system.active
+      )).toHaveLength(1);
+      expect(previouslyRunningSystems.filter((system) =>
+        system.lifecycle_status !== "running"
+      ).every((system) =>
+        system.lifecycle_status === "stopped" ||
+        system.lifecycle_status === "queued" &&
+          system.runtime_coordination_status === "arena_capacity_deferred"
+      )).toBe(true);
       queuedCandidateId = resumedOperator.candidate_arena.latest_ticks.find((tick) =>
         tick.tick_id === "tick-2"
       )?.paper_trading_continuation?.selected_candidate_id;

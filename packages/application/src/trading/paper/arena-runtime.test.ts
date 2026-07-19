@@ -427,6 +427,56 @@ describe("ArenaPaperRuntimeService", () => {
     });
     expect(fixture.paperTrading.start).toHaveBeenCalledWith("candidate-a", {});
   });
+
+  it("persists a failed deferred restart and does not retry it after restart", async () => {
+    const fixture = runtimeFixture([
+      candidate("candidate-a", "system-code-a")
+    ], [
+      admission("admission-a", "system-code-a", "2026-07-19T00:00:00.000Z")
+    ], [{
+      ...runningEvaluation("candidate-a"),
+      status: "stopped",
+      stopped_at: "2026-07-19T00:05:00.000Z",
+      next_observation_at: undefined,
+      runtime_coordination_status: "arena_capacity_deferred"
+    }]);
+    fixture.paperTrading.start.mockResolvedValue({
+      statusCode: 409,
+      body: {
+        error: "trading_run_failed",
+        reason: "paper_handoff_artifact_digest_mismatch"
+      }
+    });
+    const firstRuntime = new ArenaPaperRuntimeService({
+      store: fixture.store,
+      paperTrading: fixture.paperTrading,
+      capacity: 1
+    });
+
+    await expect(firstRuntime.reconcile()).resolves.toMatchObject({
+      failed_count: 1,
+      queued_count: 0,
+      needs_reconcile: false
+    });
+    expect(fixture.evaluations[0]).toMatchObject({
+      status: "failed",
+      next_observation_at: undefined,
+      runtime_coordination_status: undefined,
+      latest_failure_reason: "paper_handoff_artifact_digest_mismatch"
+    });
+
+    const restartedRuntime = new ArenaPaperRuntimeService({
+      store: fixture.store,
+      paperTrading: fixture.paperTrading,
+      capacity: 1
+    });
+    await expect(restartedRuntime.reconcile()).resolves.toMatchObject({
+      failed_count: 1,
+      queued_count: 0,
+      needs_reconcile: false
+    });
+    expect(fixture.paperTrading.start).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("loadArenaPaperCapacity", () => {
