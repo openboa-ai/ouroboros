@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   CandidateAdmissionDecisionRecord,
   CandidateInspectReadModel,
-  PaperTradingEvaluationRecord
+  PaperTradingEvaluationRecord,
+  RunControlAuditInput
 } from "@ouroboros/domain";
 import {
   ArenaPaperRuntimeService,
@@ -167,6 +168,60 @@ describe("ArenaPaperRuntimeService", () => {
       status: "failed",
       latest_failure_reason: "sandbox_unavailable"
     });
+  });
+
+  it("persists pre-evaluation start failures across runtime restarts", async () => {
+    const fixture = runtimeFixture([
+      candidate("candidate-a", "system-code-a")
+    ], [
+      admission("admission-a", "system-code-a", "2026-07-19T00:00:00.000Z")
+    ]);
+    fixture.paperTrading.start.mockResolvedValue({
+      statusCode: 409,
+      body: {
+        error: "trading_run_failed",
+        reason: "paper_handoff_artifact_digest_mismatch"
+      }
+    });
+    const firstRuntime = new ArenaPaperRuntimeService({
+      store: fixture.store,
+      paperTrading: fixture.paperTrading,
+      capacity: 1
+    });
+
+    await expect(firstRuntime.reconcile()).resolves.toMatchObject({
+      failed_count: 1,
+      queued_count: 0,
+      needs_reconcile: false
+    });
+    expect(fixture.evaluations).toEqual([]);
+
+    const restartedRuntime = new ArenaPaperRuntimeService({
+      store: fixture.store,
+      paperTrading: fixture.paperTrading,
+      capacity: 1
+    });
+    await expect(restartedRuntime.reconcile()).resolves.toMatchObject({
+      failed_count: 1,
+      queued_count: 0,
+      needs_reconcile: false
+    });
+    expect(fixture.paperTrading.start).toHaveBeenCalledTimes(1);
+    expect(fixture.runControlAudits).toEqual([
+      expect.objectContaining({
+        candidate_id: "candidate-a",
+        candidate_version_id: "candidate-version-a",
+        runtime_id: "trading-run-a",
+        decision: expect.objectContaining({
+          decision_outcome: "rejected",
+          resulting_lifecycle_status: "failed"
+        }),
+        audit_event: expect.objectContaining({
+          runtime_lifecycle_status: "failed",
+          message: "Arena paper start failed: paper_handoff_artifact_digest_mismatch."
+        })
+      })
+    ]);
   });
 
   it("starts every available slot without waiting for a slow sibling", async () => {
@@ -346,6 +401,8 @@ function runtimeFixture(
 ) {
   const evaluations = [...initialEvaluations];
   const running = new Set<string>();
+  const runControlAudits: RunControlAuditInput[] = [];
+  const runLifecycles = new Map<string, "registered" | "failed">();
   const byId = new Map(candidates.map((item) => [item.candidate_id, item]));
   const store = {
     async listCandidates() {
@@ -369,7 +426,7 @@ function runtimeFixture(
         version: 1,
         trading_run_id: tradingRunId,
         stage_binding_profile: "paper",
-        runtime_lifecycle_status: "registered",
+        runtime_lifecycle_status: runLifecycles.get(tradingRunId) ?? "registered",
         candidate_ref: { record_kind: "trading_system_candidate", id: candidateId },
         candidate_version_ref: {
           record_kind: "candidate_version",
@@ -400,6 +457,16 @@ function runtimeFixture(
       if (index >= 0) evaluations[index] = evaluation;
       else evaluations.push(evaluation);
       return evaluation;
+    },
+    async recordRunControlAudit(input: RunControlAuditInput) {
+      runControlAudits.push(input);
+      runLifecycles.set(
+        input.runtime_id!,
+        input.decision.resulting_lifecycle_status === "failed"
+          ? "failed"
+          : "registered"
+      );
+      return {} as never;
     }
   };
   const paperTrading = {
@@ -428,7 +495,13 @@ function runtimeFixture(
       return { statusCode: 200, body: { status: "stopped" } };
     })
   };
-  return { store: store as never, paperTrading, evaluations, running };
+  return {
+    store: store as never,
+    paperTrading,
+    evaluations,
+    running,
+    runControlAudits
+  };
 }
 
 function candidate(

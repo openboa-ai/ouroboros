@@ -3,6 +3,7 @@ import type {
   CandidateInspectReadModel,
   PaperTradingEvaluationRecord,
   Ref,
+  RunControlAuditInput,
   TradingRunRecord
 } from "@ouroboros/domain";
 import { isCandidateAdmissionDecisionConsistent } from "@ouroboros/domain";
@@ -74,6 +75,7 @@ type ArenaPaperRuntimeStore = Pick<
   | "listCandidateAdmissionDecisions"
   | "listPaperTradingEvaluations"
   | "recordPaperTradingEvaluation"
+  | "recordRunControlAudit"
 >;
 
 export interface ArenaPaperRuntimeServiceOptions {
@@ -274,6 +276,13 @@ export class ArenaPaperRuntimeService {
       }
       if (evaluation?.status === "failed") {
         this.startFailures.delete(failureKey);
+        return;
+      }
+      if (!evaluation) {
+        await this.options.store.recordRunControlAudit(
+          arenaPaperStartFailureAudit(system, failureReason)
+        );
+        this.startFailures.set(failureKey, failureReason);
         return;
       }
     } catch {
@@ -585,4 +594,45 @@ function paperStartFailure(response: PaperTradingCommandResponse): string {
   const reason = response.body.reason ?? response.body.error ??
     `paper_start_http_${response.statusCode}`;
   return typeof reason === "string" ? reason : "paper_start_failed";
+}
+
+function arenaPaperStartFailureAudit(
+  system: ArenaPaperRuntimeSystem,
+  failureReason: string
+): RunControlAuditInput {
+  const summary = `Arena paper start failed: ${failureReason}.`;
+  return {
+    idempotency_key: [
+      "arena-paper-start-failed",
+      system.candidate_ref.id,
+      system.candidate_version_ref.id,
+      system.candidate_admission_decision_ref.id
+    ].join(":"),
+    candidate_id: system.candidate_ref.id,
+    candidate_version_id: system.candidate_version_ref.id,
+    runtime_id: system.trading_run_ref.id,
+    command: {
+      action: "start",
+      requested_lifecycle_status: "running",
+      actor_kind: "policy_engine",
+      reason: "safety_intervention",
+      reason_summary: summary
+    },
+    decision: {
+      decision_outcome: "rejected",
+      decision_reason: "policy_rejected_control",
+      decided_by_actor_kind: "policy_engine",
+      resulting_lifecycle_status: "failed"
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      runtime_lifecycle_status: "failed",
+      message: summary,
+      supporting_record_refs: [
+        system.candidate_admission_decision_ref,
+        system.paper_trading_handoff_conformance_ref,
+        system.system_code_ref
+      ]
+    }
+  };
 }

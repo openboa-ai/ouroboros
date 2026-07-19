@@ -5,7 +5,7 @@ import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
-import type { ArenaPaperRuntimeService } from
+import { ArenaPaperRuntimeService } from
   "@ouroboros/application/trading/paper/arena-runtime";
 import {
   validateOrderRequest
@@ -1274,6 +1274,8 @@ describe("operator product loop smoke", () => {
       const failed = operator.candidate_arena.latest_ticks.find((tick) =>
         tick.paper_trading_continuation?.error === "paper_handoff_conformance_missing"
       );
+      const failedCandidateId = failed?.paper_trading_continuation
+        ?.selected_candidate_id;
       expect(failed?.paper_trading_continuation).toMatchObject({
         status: "failed",
         command_kind: "trading_run.start",
@@ -1289,8 +1291,48 @@ describe("operator product loop smoke", () => {
       expect(await store.listPaperTradingEvaluations()).toHaveLength(baseline.evaluations);
       expect(await paperTradingObservationCount(store)).toBe(baseline.observations);
       expect(await store.listSandboxes()).toHaveLength(baseline.sandboxes);
+      if (!failedCandidateId) throw new Error("expected failed Arena candidate");
+      const failedCandidate = await store.getCandidate(failedCandidateId);
+      if (!failedCandidate) throw new Error("expected failed candidate detail");
+      await expect(store.getTradingRun(failedCandidate.runtime.ref.id)).resolves
+        .toMatchObject({
+          runtime_lifecycle_status: "failed",
+          run_control_command_refs: [
+            { record_kind: "run_control_command", id: expect.any(String) }
+          ],
+          runtime_audit_event_refs: [
+            { record_kind: "runtime_audit_event", id: expect.any(String) }
+          ]
+        });
 
       await postCommand(server, { command_kind: "arena.stop" });
+
+      let restartedStartCount = 0;
+      const restartedRuntime = new ArenaPaperRuntimeService({
+        store,
+        paperTrading: {
+          active: () => false,
+          start: async () => {
+            restartedStartCount += 1;
+            return {
+              statusCode: 500,
+              body: { error: "unexpected_restart_attempt" }
+            };
+          },
+          stop: async () => ({
+            statusCode: 200,
+            body: { status: "stopped" }
+          })
+        }
+      });
+      const recovered = await restartedRuntime.reconcile();
+      expect(restartedStartCount).toBe(0);
+      expect(recovered.systems.find((system) =>
+        system.candidate_ref.id === failedCandidateId
+      )).toMatchObject({
+        lifecycle_status: "failed",
+        failure_reason: "arena_paper_run_missing_evaluation"
+      });
     } finally {
       await server.close();
     }
