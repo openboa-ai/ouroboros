@@ -22,6 +22,9 @@ export interface SandboxStartInput {
   instance_id: string;
   sandbox_name: string;
   sandbox_placement_id: string;
+  workspace_path?: string;
+  workspace_key?: string;
+  generation?: number;
   runtime_ref?: Ref;
   created_at: string;
   trace_ref?: Ref;

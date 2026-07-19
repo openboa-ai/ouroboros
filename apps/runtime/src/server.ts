@@ -121,6 +121,10 @@ import {
   PaperTradingSessionService,
   type PaperTradingRecoveryOutcome
 } from "@ouroboros/application/trading/paper/session-service";
+import { ArenaPaperRuntimeService } from
+  "@ouroboros/application/trading/paper/arena-runtime";
+import { paperTradingStartRequiresGeneratedEligibility } from
+  "@ouroboros/application/trading/paper/start-eligibility";
 import { createResearchControlStudyArmSessionFactory } from
   "./candidate/arena/research-control-study-arm-session-factory";
 import { createResearchControlStudyServerScheduler } from
@@ -176,7 +180,9 @@ export interface BuildServerOptions {
   ) => Promise<ReplayTradingApiProviderSession>;
   paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
   recoverPaperTradingSessionsOnStart?: boolean;
+  arenaPaperCapacity?: number;
   onPaperTradingSessionServiceCreated?: (service: PaperTradingSessionService) => void;
+  onArenaPaperRuntimeCreated?: (service: ArenaPaperRuntimeService) => void;
   onPaperTradingRecovery?: (
     outcomes: readonly PaperTradingRecoveryOutcome[]
   ) => void | Promise<void>;
@@ -463,6 +469,99 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     sessions: paperTradingSessionService,
     artifactResolver: paperTradingArtifactResolver
   });
+  const arenaPaperRuntime = new ArenaPaperRuntimeService({
+    store,
+    paperTrading: paperTradingCommandService,
+    ...(options.arenaPaperCapacity === undefined
+      ? {}
+      : { capacity: options.arenaPaperCapacity })
+  });
+  options.onArenaPaperRuntimeCreated?.(arenaPaperRuntime);
+  const startArenaPaperCandidate = async (
+    candidateId: string,
+    payload: Record<string, unknown> | undefined
+  ) => {
+    if (!isDefaultArenaPaperStartPayload(payload)) {
+      if (isRejectedArenaPaperStartPayload(payload)) {
+        const ownership = await arenaPaperCandidateOwnership(store, candidateId);
+        if (ownership.managed && ownership.candidate) {
+          return {
+            statusCode: 422,
+            body: {
+              error: "arena_paper_start_payload_unsupported",
+              reason: "arena_paper_runtime_owns_candidate_start",
+              candidate_id: candidateId,
+              candidate_version_id:
+                ownership.candidate.candidate_version.candidate_version_id
+            }
+          };
+        }
+      }
+      return paperTradingCommandService.start(candidateId, payload);
+    }
+    const snapshot = await arenaPaperRuntime.reconcile();
+    const system = snapshot.systems.find((entry) =>
+      entry.candidate_ref.id === candidateId
+    );
+    if (!system) {
+      const ownership = await arenaPaperCandidateOwnership(store, candidateId);
+      if (ownership.managed && ownership.candidate) {
+        return {
+          statusCode: 422,
+          body: {
+            error: "arena_paper_candidate_ineligible",
+            reason: "arena_paper_candidate_not_in_exact_admitted_set",
+            candidate_id: candidateId,
+            candidate_version_id:
+              ownership.candidate.candidate_version.candidate_version_id,
+            arena_paper_runtime: snapshot
+          }
+        };
+      }
+      return paperTradingCommandService.start(candidateId, payload);
+    }
+    if (system.lifecycle_status === "running") {
+      return {
+        statusCode: 200,
+        body: {
+          status: "already_running",
+          ...await tradingRunResponse(store, system.trading_run_ref.id),
+          paper_trading_evaluation: await store
+            .getLatestPaperTradingEvaluationForTradingRun(
+              system.trading_run_ref.id
+            ),
+          runner_status: "running",
+          arena_paper_runtime: snapshot
+        }
+      };
+    }
+    if (system.lifecycle_status === "queued" ||
+      system.lifecycle_status === "starting" ||
+      system.lifecycle_status === "recovering") {
+      return {
+        statusCode: 202,
+        body: {
+          status: "queued",
+          candidate_id: candidateId,
+          trading_run_id: system.trading_run_ref.id,
+          lifecycle_status: system.lifecycle_status,
+          arena_paper_runtime: snapshot
+        }
+      };
+    }
+    return {
+      statusCode: 422,
+      body: {
+        error: "arena_paper_runtime_failed",
+        reason: system.failure_reason ??
+          `arena_paper_${system.lifecycle_status}`,
+        candidate_id: candidateId,
+        trading_run_id: system.trading_run_ref.id,
+        lifecycle_status: system.lifecycle_status,
+        arena_paper_runtime: snapshot
+      }
+    };
+  };
   await store.initialize();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
   if (
@@ -1408,10 +1507,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     store,
     candidateArenaRunner,
     paperTradingEvaluationRunner: paperTradingSessionService,
+    arenaPaperRuntime,
     runtimeSupervisor: runtimeSupervisorProjection,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
-      run: async (candidateId) => paperTradingCommandService.start(candidateId, {})
+      run: async (candidateId) => startArenaPaperCandidate(candidateId, {})
     },
     mutationPort: {
       run: async (commandKind, payload) => {
@@ -1422,7 +1522,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return runCandidateReplayCommand(commandPayloadId(payload, "candidate_id"), payload);
         }
         if (commandKind === "trading_run.start") {
-          return paperTradingCommandService.start(commandPayloadId(payload, "candidate_id"), payload);
+          return startArenaPaperCandidate(
+            commandPayloadId(payload, "candidate_id"),
+            payload
+          );
         }
         if (commandKind === "trading_run.observe") {
           return paperTradingCommandService.observe(commandPayloadId(payload, "trading_run_id"));
@@ -1456,6 +1559,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     lanes: createRuntimeSupervisorLanes({
       store,
       paperTradingSessions: paperTradingSessionService,
+      arenaPaperRuntime,
       candidateArenaRunner,
       operatorService,
       researchControlStudyScheduler,
@@ -1688,6 +1792,43 @@ function commandPayloadId(payload: Record<string, unknown> | undefined, key: str
     return value;
   }
   throw new Error(`missing_command_payload_${key}`);
+}
+
+function isDefaultArenaPaperStartPayload(
+  payload: Record<string, unknown> | undefined
+): boolean {
+  return (payload?.runtime_environment === undefined ||
+      payload.runtime_environment === "paper") &&
+    (payload?.paper_order_request === undefined ||
+      payload.paper_order_request === "valid");
+}
+
+function isRejectedArenaPaperStartPayload(
+  payload: Record<string, unknown> | undefined
+): boolean {
+  return (payload?.runtime_environment === undefined ||
+      payload.runtime_environment === "paper") &&
+    payload?.paper_order_request === "rejected";
+}
+
+async function arenaPaperCandidateOwnership(
+  store: LocalStore,
+  candidateId: string
+) {
+  const candidate = await store.getCandidate(candidateId);
+  const systemCodeId = candidate?.system_code?.ref?.id;
+  const hasArenaAdmission = systemCodeId
+    ? (await store.listCandidateAdmissionDecisions()).some((decision) =>
+        decision.system_code_ref.id === systemCodeId
+      )
+    : false;
+  return {
+    candidate,
+    managed: Boolean(candidate && (
+      hasArenaAdmission ||
+      paperTradingStartRequiresGeneratedEligibility(candidate)
+    ))
+  };
 }
 
 async function refreshGatewayPublicMarketSurface(input: {

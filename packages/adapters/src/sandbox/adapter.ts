@@ -93,6 +93,9 @@ export interface SandboxAdapterStartInput {
   artifact: SystemCodeRecord;
   instance_id: string;
   sandbox_name: string;
+  workspace_path?: string;
+  workspace_key?: string;
+  generation?: number;
   runtime_ref?: Ref;
   sandbox_placement_id: string;
   created_at: string;
@@ -187,6 +190,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   ) {}
 
   async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
+    assertSandboxWorkspaceIdentity(input);
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
@@ -212,7 +216,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           lifecycleStatus: "failed",
           createdAt: input.created_at,
           commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
-          traceRef: input.trace_ref
+          traceRef: input.trace_ref,
+          workspaceKey: input.workspace_key,
+          generation: input.generation
         }),
         placement,
         logs: [],
@@ -268,7 +274,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       logRefs: log ? [ref(log.record_kind, log.sandbox_log_id)] : [],
       heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
       commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
-      traceRef: input.trace_ref
+      traceRef: input.trace_ref,
+      workspaceKey: input.workspace_key,
+      generation: input.generation
     });
 
     return {
@@ -526,7 +534,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           lifecycleStatus: "failed",
           createdAt: input.created_at,
           commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
-          traceRef: input.trace_ref
+          traceRef: input.trace_ref,
+          workspaceKey: input.workspace_key,
+          generation: input.generation
         }),
         placement,
         logs: [],
@@ -592,7 +602,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
             commandEvidenceRefs: [
               ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)
             ],
-            traceRef: input.trace_ref
+            traceRef: input.trace_ref,
+            workspaceKey: input.workspace_key,
+            generation: input.generation
           }),
           placement,
           logs: lines.length > 0
@@ -712,7 +724,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
           : [],
         heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
         commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
-        traceRef: input.trace_ref
+        traceRef: input.trace_ref,
+        workspaceKey: input.workspace_key,
+        generation: input.generation
       }),
       placement,
       logs: lines.length > 0
@@ -921,11 +935,19 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
 
   async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
     assertSafeSbxSandboxName(input.sandbox_name);
+    assertSandboxWorkspaceIdentity(input);
     const createdAt = input.created_at;
     const placement = sandboxPlacement(input.sandbox_placement_id);
     const artifactPath = artifactEntrypointPath(input.artifact);
     const logFile = sandboxLogFile(input.instance_id);
     const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    const workspacePath = input.workspace_path ?? this.workspacePath;
+    const workspaceEvidenceRedaction = input.workspace_path && input.workspace_key
+      ? {
+          value: input.workspace_path,
+          replacement: `workspace:${input.workspace_key}`
+        }
+      : undefined;
     const versionCommand = [this.sbxPath, "version"];
     const versionResult = await this.runSbxCommand(versionCommand);
     const versionEvidence = commandEvidenceRecord(input.instance_id, "version", versionResult);
@@ -948,7 +970,9 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
           lifecycleStatus: "failed",
           createdAt,
           commandEvidenceRefs: [ref(versionEvidence.record_kind, versionEvidence.sandbox_command_evidence_id)],
-          traceRef: input.trace_ref
+          traceRef: input.trace_ref,
+          workspaceKey: input.workspace_key,
+          generation: input.generation
         }),
         placement,
         logs: [],
@@ -962,10 +986,15 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       "--name",
       input.sandbox_name,
       "shell",
-      this.workspacePath
+      workspacePath
     ];
     const createResult = await this.runSbxCommand(createCommand);
-    const createEvidence = commandEvidenceRecord(input.instance_id, "create", createResult);
+    const createEvidence = commandEvidenceRecord(
+      input.instance_id,
+      "create",
+      createResult,
+      workspaceEvidenceRedaction
+    );
     if (createResult.exit_code !== 0) {
       return {
         instance: sandboxSandboxRecord({
@@ -981,7 +1010,9 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
             ref(versionEvidence.record_kind, versionEvidence.sandbox_command_evidence_id),
             ref(createEvidence.record_kind, createEvidence.sandbox_command_evidence_id)
           ],
-          traceRef: input.trace_ref
+          traceRef: input.trace_ref,
+          workspaceKey: input.workspace_key,
+          generation: input.generation
         }),
         placement,
         logs: [],
@@ -1076,7 +1107,9 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
           commandEvidenceRefs: commandEvidence.map((evidence) =>
             ref(evidence.record_kind, evidence.sandbox_command_evidence_id)
           ),
-          traceRef: input.trace_ref
+          traceRef: input.trace_ref,
+          workspaceKey: input.workspace_key,
+          generation: input.generation
         }),
         placement,
         logs: [],
@@ -1099,7 +1132,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       "exec",
       "-d",
       "-w",
-      this.workspacePath,
+      workspacePath,
       input.sandbox_name,
       ...sandboxRuntimeEnvCommand(input.env),
       "python3",
@@ -1172,7 +1205,12 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       versionEvidence,
       createEvidence,
       ...networkPolicyEvidence,
-      commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
+      commandEvidenceRecord(
+        input.instance_id,
+        "exec-detached",
+        execResult,
+        workspaceEvidenceRedaction
+      ),
       ...startupEvidence.commandEvidence,
       ...(stopResult
         ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
@@ -1205,7 +1243,9 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       commandEvidenceRefs: commandEvidence.map((evidence) => (
         ref(evidence.record_kind, evidence.sandbox_command_evidence_id)
       )),
-      traceRef: input.trace_ref
+      traceRef: input.trace_ref,
+      workspaceKey: input.workspace_key,
+      generation: input.generation
     });
 
     return {
@@ -1718,6 +1758,8 @@ function sandboxSandboxRecord(input: {
   artifact: SystemCodeRecord;
   instanceId: string;
   sandboxName: string;
+  workspaceKey?: string;
+  generation?: number;
   runtimeRef?: Ref;
   placementId: string;
   lifecycleStatus: SandboxLifecycleStatus;
@@ -1740,6 +1782,8 @@ function sandboxSandboxRecord(input: {
     sandbox_placement_ref: ref("sandbox_placement", input.placementId),
     lifecycle_status: input.lifecycleStatus,
     sandbox_name: input.sandboxName,
+    workspace_key: input.workspaceKey,
+    generation: input.generation,
     sandbox_ref: ref("docker_sandbox", input.sandboxName),
     created_at: input.createdAt,
     started_at: input.startedAt,
@@ -1802,17 +1846,21 @@ function runtimeHeartbeatRecord(
 function commandEvidenceRecord(
   instanceId: string,
   suffix: string,
-  result: CommandResult
+  result: CommandResult,
+  redaction?: { value: string; replacement: string }
 ): SandboxCommandEvidenceRecord {
+  const redact = (value: string): string => redaction
+    ? value.replaceAll(redaction.value, redaction.replacement)
+    : value;
   return {
     record_kind: "sandbox_command_evidence",
     version: 1,
     sandbox_command_evidence_id: `sandbox-command-evidence-${sandboxEvidenceRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
     sandbox_ref: ref("sandbox", instanceId),
-    command: result.command,
+    command: result.command.map(redact),
     exit_code: result.exit_code,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: redact(result.stdout),
+    stderr: redact(result.stderr),
     started_at: result.started_at,
     completed_at: result.completed_at,
     authority_status: "trace_only"
@@ -1889,6 +1937,22 @@ function resolveCommandPath(commandPath: string, workspacePath: string): string 
     return commandPath;
   }
   return path.resolve(workspacePath, commandPath);
+}
+
+function assertSandboxWorkspaceIdentity(input: SandboxAdapterStartInput): void {
+  const hasKey = input.workspace_key !== undefined;
+  const hasGeneration = input.generation !== undefined;
+  if (
+    hasKey !== hasGeneration ||
+    input.workspace_path !== undefined && !hasKey ||
+    input.workspace_path !== undefined && !path.isAbsolute(input.workspace_path) ||
+    hasKey && !/^sha256:[a-f0-9]{64}$/.test(input.workspace_key!) ||
+    hasGeneration && (
+      !Number.isInteger(input.generation) || input.generation! <= 0
+    )
+  ) {
+    throw new Error("invalid_sandbox_workspace_identity");
+  }
 }
 
 function artifactEntrypointPath(artifact: SystemCodeRecord): string {

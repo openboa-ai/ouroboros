@@ -29,6 +29,25 @@ afterEach(async () => {
 });
 
 describe("Docker Sandboxes sbx runtime adapter", () => {
+  it("rejects malformed workspace identity before invoking the sbx CLI", async () => {
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: path.join(tmpDir, "missing-sbx"),
+      workspacePath: "."
+    });
+
+    await expect(adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-invalid-workspace",
+      sandbox_name: "ouro-s5-invalid-workspace",
+      sandbox_placement_id: "sandbox-placement-invalid-workspace",
+      workspace_path: "relative-workspace",
+      workspace_key: "candidate-workspace",
+      generation: 0,
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    })).rejects.toThrow("invalid_sandbox_workspace_identity");
+  });
+
   it("rejects unsafe sbx sandbox names before invoking the sbx CLI", async () => {
     const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: path.join(tmpDir, "missing-sbx"),
@@ -128,6 +147,59 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "policy log ouro-s5-clock-fake --json --limit 100",
       "rm --force ouro-s5-clock-fake"
     ]);
+  });
+
+  it("uses a request-scoped workspace and persists only its opaque identity", async () => {
+    const commandLog = path.join(tmpDir, "workspace-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-workspace");
+    const candidateWorkspace = path.join(tmpDir, "candidate-workspace");
+    await mkdir(candidateWorkspace, { recursive: true });
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-workspace-sbx";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: "."
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-workspace-sbx",
+      sandbox_name: "ouro-s5-clock-workspace",
+      sandbox_placement_id: "sandbox-placement-workspace-sbx",
+      workspace_path: candidateWorkspace,
+      workspace_key: `sha256:${"a".repeat(64)}`,
+      generation: 3,
+      created_at: "2026-05-10T00:00:00.000Z",
+      test_ticks: 1,
+      interval_ms: 1
+    });
+
+    expect(start.instance).toMatchObject({
+      workspace_key: `sha256:${"a".repeat(64)}`,
+      generation: 3
+    });
+    expect(JSON.stringify(start.instance)).not.toContain(candidateWorkspace);
+    expect(JSON.stringify(start.command_evidence)).not.toContain(candidateWorkspace);
+    expect(start.command_evidence.find((evidence) =>
+      evidence.command[1] === "create"
+    )?.command).toContain(`workspace:sha256:${"a".repeat(64)}`);
+    expect(start.command_evidence.find((evidence) =>
+      evidence.command[1] === "exec" && evidence.command[2] === "-d"
+    )?.command).toEqual(expect.arrayContaining([
+      "-w",
+      `workspace:sha256:${"a".repeat(64)}`
+    ]));
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands).toContain(
+      `create --name ouro-s5-clock-workspace shell ${candidateWorkspace}`
+    );
+    expect(commands.some((command) => command.includes(
+      `exec -d -w ${candidateWorkspace} ouro-s5-clock-workspace`
+    ))).toBe(true);
+
+    await adapter.stopArtifactInstance(start.instance);
   });
 
   it("waits under the startup timeout for a delayed first heartbeat", async () => {

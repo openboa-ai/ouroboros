@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import {
   paperTradingComparisonBaselineEvaluation,
   paperTradingComparisonEvaluationRecordDigestInput,
@@ -2680,6 +2681,18 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     const idempotencyKey = ["trading-run-sandbox", input.paperOrderRequest, input.tradingRunId, input.candidateVersionId].join(":");
     const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
     const existing = await this.options.store.getSandbox(sandboxId);
+    const workspaceKey = paperTradingWorkspaceKey({
+      candidateId: input.candidate.candidate_id,
+      candidateVersionId: input.candidateVersionId,
+      systemCodeId: artifact.system_code_id,
+      artifactDigest: artifact.artifact_digest
+    });
+    if (existing?.workspace_key && existing.workspace_key !== workspaceKey) {
+      throw new PaperTradingSessionError(
+        "sandbox_workspace_identity_mismatch",
+        `sandbox ${sandboxId} workspace identity does not match its candidate`
+      );
+    }
     const adapterKind = paperTradingSandboxAdapterKind(input.candidate);
     const adapter = this.options.sandboxAdapters[adapterKind];
     const existingAdapter = existing
@@ -2705,7 +2718,10 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       const verified = await this.options.store.getSandbox(existing.sandbox_id) ?? existing;
       if (
         verified.lifecycle_status === "running" &&
-        (observations.lifecycle_status === "running" || hasFreshSandboxHeartbeat(existing, observations))
+        verified.workspace_key === workspaceKey &&
+        verified.generation !== undefined &&
+        (observations.lifecycle_status === "running" ||
+          hasFreshSandboxHeartbeat(existing, observations))
       ) {
         return verified;
       }
@@ -2719,6 +2735,11 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 34)}-${input.paperOrderRequest}`,
       runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
       sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
+      ...(artifact.artifact_kind === "python_file"
+        ? { workspace_path: path.dirname(path.resolve(artifact.artifact_path)) }
+        : {}),
+      workspace_key: workspaceKey,
+      generation: (existing?.generation ?? 0) + 1,
       created_at: existing?.created_at ?? new Date().toISOString(),
       interval_ms: this.sandboxIntervalMs,
       paper_order_request: input.paperOrderRequest,
@@ -3105,6 +3126,20 @@ function safeRouteId(value: string): string {
   const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
+}
+
+function paperTradingWorkspaceKey(input: {
+  candidateId: string;
+  candidateVersionId: string;
+  systemCodeId: string;
+  artifactDigest: string;
+}): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    system_code_id: input.systemCodeId,
+    artifact_digest: input.artifactDigest
+  })).digest("hex")}`;
 }
 
 function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {

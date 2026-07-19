@@ -11,6 +11,8 @@ import type {
   PaperTradingRecoveryOutcome,
   PaperTradingSessionService
 } from "@ouroboros/application/trading/paper/session-service";
+import type { ArenaPaperRuntimeService } from
+  "@ouroboros/application/trading/paper/arena-runtime";
 import type { ResearchControlStudySchedulerLifecycle } from
   "./candidate/arena/research-control-study-scheduler";
 import type { RuntimeSupervisorLaneAdapter } from "./runtime-supervisor";
@@ -30,6 +32,10 @@ export function createRuntimeSupervisorLanes(options: {
     | "recoverRunningEvaluations"
     | "finalizeRecoveryFailures"
     | "stopAllSessions"
+  >;
+  arenaPaperRuntime?: Pick<
+    ArenaPaperRuntimeService,
+    "snapshot" | "reconcile" | "fencePendingStarts"
   >;
   candidateArenaRunner: Pick<CandidateArenaRunner, "health" | "stopAndDrain">;
   operatorService: Pick<
@@ -52,7 +58,12 @@ export function createRuntimeSupervisorLanes(options: {
   const selectedPaper: RuntimeSupervisorLaneAdapter = {
     lane: "selected_paper",
     async inspect() {
-      const evaluations = await latestPaperEvaluations(options.store);
+      const [evaluations, arena] = await Promise.all([
+        latestPaperEvaluations(options.store),
+        options.runSelectedPaper === false
+          ? undefined
+          : options.arenaPaperRuntime?.snapshot()
+      ]);
       const desired = options.runSelectedPaper === false ? [] : (
         await Promise.all(evaluations.map(async (evaluation) => ({
           evaluation,
@@ -74,25 +85,43 @@ export function createRuntimeSupervisorLanes(options: {
           evaluation.trading_run_ref.id
         )
       }));
+      const paperSessionsSatisfied = desired.every(({ evaluation }) =>
+        options.paperTradingSessions.active(evaluation.trading_run_ref.id)
+      );
+      const desiredState = desired.length > 0 ||
+        (arena?.eligible_count ?? 0) > 0;
       return {
-        desired: desired.length > 0,
-        satisfied: desired.every(({ evaluation }) =>
-          options.paperTradingSessions.active(evaluation.trading_run_ref.id)
-        ),
-        basisDigest: digest(desired.map(({ evaluation }) => ({
-          paper_trading_evaluation_id:
-            evaluation.paper_trading_evaluation_id,
-          candidate_id: evaluation.candidate_ref.id,
-          candidate_version_id: evaluation.candidate_version_ref.id,
-          trading_run_id: evaluation.trading_run_ref.id,
-          interval_ms: evaluation.interval_ms,
-          started_at: evaluation.started_at
-        }))),
-        progressDigest: digest(progress),
-        ...(desired.length === 0
+        desired: desiredState,
+        satisfied: paperSessionsSatisfied && !(arena?.needs_reconcile ?? false),
+        basisDigest: digest({
+          evaluations: desired.map(({ evaluation }) => ({
+            paper_trading_evaluation_id:
+              evaluation.paper_trading_evaluation_id,
+            candidate_id: evaluation.candidate_ref.id,
+            candidate_version_id: evaluation.candidate_version_ref.id,
+            trading_run_id: evaluation.trading_run_ref.id,
+            interval_ms: evaluation.interval_ms,
+            started_at: evaluation.started_at
+          })),
+          arena: arena ? {
+            capacity: arena.capacity,
+            systems: arena.systems.map((system) => ({
+              candidate_id: system.candidate_ref.id,
+              candidate_version_id: system.candidate_version_ref.id,
+              system_code_id: system.system_code_ref.id,
+              admission_id: system.candidate_admission_decision_ref.id,
+              trading_run_id: system.trading_run_ref.id,
+              admitted_at: system.admission_decided_at
+            }))
+          } : null
+        }),
+        progressDigest: digest({ progress, arena }),
+        ...(!desiredState
           ? { reasonCode: "not_requested" }
           : progress.some((entry) => !entry.active)
             ? { reasonCode: "paper_trading_session_inactive" }
+            : arena?.needs_reconcile
+              ? { reasonCode: "arena_paper_capacity_available" }
             : {})
       };
     },
@@ -109,6 +138,7 @@ export function createRuntimeSupervisorLanes(options: {
           `${latestPaperFailures.length} PaperTrading session recovery attempt(s) failed.`
         );
       }
+      await options.arenaPaperRuntime?.reconcile();
     },
     async block() {
       if (latestPaperFailures.length > 0) {
@@ -120,6 +150,7 @@ export function createRuntimeSupervisorLanes(options: {
       }
     },
     async stop() {
+      options.arenaPaperRuntime?.fencePendingStarts();
       await options.paperTradingSessions.stopAllSessions();
     }
   };

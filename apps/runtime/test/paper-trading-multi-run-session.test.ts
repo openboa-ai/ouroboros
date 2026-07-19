@@ -171,6 +171,11 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(additionalEvaluation.processed_public_trade_ids).toContain("additional-public-trade");
     expect(additionalEvaluation.processed_public_trade_ids).not.toContain("default-public-trade");
     expect(defaultSandbox?.sandbox_id).not.toBe(additionalSandbox?.sandbox_id);
+    expect(defaultSandbox?.workspace_key).toEqual(expect.stringMatching(/^sha256:/));
+    expect(additionalSandbox?.workspace_key).toEqual(expect.stringMatching(/^sha256:/));
+    expect(defaultSandbox?.workspace_key).toBe(additionalSandbox?.workspace_key);
+    expect(defaultSandbox?.generation).toBe(1);
+    expect(additionalSandbox?.generation).toBe(1);
     expect(defaultLedgerIds).not.toEqual(additionalLedgerIds);
     expect(new Set([...defaultLedgerIds, ...additionalLedgerIds]).size)
       .toBe(defaultLedgerIds.length + additionalLedgerIds.length);
@@ -340,6 +345,12 @@ describe("multi-run paper TradingSystem sessions", () => {
     const qualificationEvaluationBeforeCleanup = structuredClone(await requireEvaluation(store, qualificationRunId));
     const defaultEvidenceBeforeCleanup = await evidenceSnapshot(store, defaultRunId);
     const additionalEvidenceBeforeCleanup = await evidenceSnapshot(store, additionalRunId);
+    const defaultWorkspaceKeyBeforeCleanup = (
+      await requireRunCandidate(store, defaultRunId)
+    ).runtime.sandbox?.workspace_key;
+    const additionalWorkspaceKeyBeforeCleanup = (
+      await requireRunCandidate(store, additionalRunId)
+    ).runtime.sandbox?.workspace_key;
     await initialService.stopAllSessions();
 
     expect(await requireEvaluation(store, defaultRunId)).toEqual(defaultEvaluationBeforeCleanup);
@@ -398,6 +409,16 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(recoverySandbox.starts(additionalRunId)).toBe(1);
     expect(recoverySandbox.starts(qualificationRunId)).toBe(0);
     expect(recoveryProviders.starts()).toBe(2);
+    expect((await requireRunCandidate(store, defaultRunId)).runtime.sandbox)
+      .toMatchObject({
+        workspace_key: defaultWorkspaceKeyBeforeCleanup,
+        generation: 2
+      });
+    expect((await requireRunCandidate(store, additionalRunId)).runtime.sandbox)
+      .toMatchObject({
+        workspace_key: additionalWorkspaceKeyBeforeCleanup,
+        generation: 2
+      });
     expect(await store.listPaperTradingEvaluationCommitments()).toEqual(commitmentsBeforeCleanup);
     expect(await requireEvaluation(store, defaultRunId)).toEqual(defaultEvaluationBeforeCleanup);
     expect(await requireEvaluation(store, additionalRunId)).toEqual(additionalEvaluationBeforeCleanup);
@@ -1096,6 +1117,8 @@ function runKeyedSandboxHarness(): RunKeyedSandboxHarness {
           sandbox_placement_ref: placementRef,
           lifecycle_status: "running",
           sandbox_name: input.sandbox_name,
+          workspace_key: input.workspace_key,
+          generation: input.generation,
           created_at: input.created_at,
           started_at: input.created_at,
           last_heartbeat_at: input.created_at,

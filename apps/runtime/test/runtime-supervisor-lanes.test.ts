@@ -180,6 +180,62 @@ describe("runtime supervisor lanes", () => {
     expect(finalizeRecoveryFailures).toHaveBeenCalledWith([failedOutcome]);
   });
 
+  it("recovers persisted paper before filling newly available Arena slots", async () => {
+    let paperActive = false;
+    let queued = true;
+    const reconcile = vi.fn(async () => {
+      queued = false;
+      return arenaPaperSnapshot({ queued: false });
+    });
+    const [paper] = createRuntimeSupervisorLanes({
+      store: {
+        ...emptyStore(),
+        async listPaperTradingEvaluations() {
+          return [runningEvaluation()];
+        },
+        async getTradingRun() {
+          return { paper_evidence_purpose: "research_feedback" };
+        }
+      } as never,
+      paperTradingSessions: {
+        active: () => paperActive,
+        async recoverRunningEvaluations() {
+          paperActive = true;
+          return [{
+            tradingRunId: "trading-run-1",
+            status: "recovered" as const,
+            clock: "scheduled" as const
+          }];
+        },
+        async finalizeRecoveryFailures() {},
+        async stopAllSessions() {}
+      },
+      arenaPaperRuntime: {
+        snapshot: async () => arenaPaperSnapshot({ queued }),
+        reconcile,
+        fencePendingStarts: vi.fn()
+      },
+      candidateArenaRunner: inactiveArenaRunner(),
+      operatorService: inactiveOperatorService(),
+      researchControlStudyScheduler: inactiveScheduler(),
+      runResearchControlStudies: false
+    });
+
+    await expect(paper!.inspect()).resolves.toMatchObject({
+      desired: true,
+      satisfied: false,
+      reasonCode: "paper_trading_session_inactive"
+    });
+
+    await paper!.recover();
+
+    expect(reconcile).toHaveBeenCalledOnce();
+    await expect(paper!.inspect()).resolves.toMatchObject({
+      desired: true,
+      satisfied: true
+    });
+  });
+
   it("accepts an Arena restart while the first replacement tick is still active", async () => {
     let arenaRunning = true;
     let activeTick = false;
@@ -475,5 +531,31 @@ function inactiveScheduler() {
       cycleCount: 0,
       completedStudyCount: 0
     })
+  };
+}
+
+function arenaPaperSnapshot(input: { queued: boolean }) {
+  return {
+    runtime_kind: "arena_paper_runtime" as const,
+    capacity: 2,
+    eligible_count: input.queued ? 2 : 1,
+    occupied_count: 1,
+    available_capacity: 1,
+    queued_count: input.queued ? 1 : 0,
+    starting_count: 0,
+    running_count: 1,
+    recovering_count: 0,
+    stopped_count: 0,
+    failed_count: 0,
+    invalidated_count: 0,
+    startable_count: input.queued ? 1 : 0,
+    needs_reconcile: input.queued,
+    systems: [],
+    evaluation_authority: false as const,
+    promotion_authority: false as const,
+    order_submission_authority: false as const,
+    private_read_authority: false as const,
+    live_exchange_authority: false as const,
+    authority_status: "runtime_coordination_only" as const
   };
 }

@@ -182,7 +182,10 @@ export type CandidateArenaDirectionResultStatus =
   | "no_submission"
   | "failed";
 
-export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
+export type CandidateArenaTickPaperTradingContinuationStatus =
+  | "started"
+  | "queued"
+  | "failed";
 
 export type ExperimentRunStatus =
   | "submitted"
@@ -6163,6 +6166,8 @@ export interface SandboxRecord extends BaseRecord {
   sandbox_placement_ref: Ref;
   lifecycle_status: SandboxLifecycleStatus;
   sandbox_name: string;
+  workspace_key?: string;
+  generation?: number;
   sandbox_ref?: Ref;
   created_at: string;
   started_at?: string;
@@ -15902,6 +15907,8 @@ export interface SandboxReadModel {
   sandbox_placement_ref: Ref;
   lifecycle_status: SandboxLifecycleStatus;
   sandbox_name: string;
+  workspace_key?: string;
+  generation?: number;
   sandbox_ref?: Ref;
   created_at: string;
   started_at?: string;

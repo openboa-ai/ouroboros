@@ -19267,6 +19267,21 @@ export class LocalStore {
   }
 
   private async assertSandboxLinks(instance: SandboxRecord): Promise<void> {
+    if (
+      (instance.workspace_key === undefined) !==
+        (instance.generation === undefined) ||
+      instance.workspace_key !== undefined &&
+        !/^sha256:[a-f0-9]{64}$/.test(instance.workspace_key) ||
+      instance.generation !== undefined && (
+        !Number.isInteger(instance.generation) || instance.generation <= 0
+      )
+    ) {
+      throw new LocalStoreError(
+        "invalid_sandbox_input",
+        "sandbox workspace identity is invalid",
+        { sandbox_id: instance.sandbox_id }
+      );
+    }
     const artifact = await this.readOptionalRecord<SystemCodeRecord>(
       "system-codes",
       instance.system_code_ref.id
@@ -20053,6 +20068,8 @@ function toSandboxReadModel(
     sandbox_placement_ref: instance.sandbox_placement_ref,
     lifecycle_status: instance.lifecycle_status,
     sandbox_name: instance.sandbox_name,
+    workspace_key: instance.workspace_key,
+    generation: instance.generation,
     sandbox_ref: instance.sandbox_ref,
     created_at: instance.created_at,
     started_at: instance.started_at,
@@ -21615,7 +21632,8 @@ function isCandidateArenaTickPaperTradingContinuation(value: unknown): boolean {
   const hasSelectedCandidateId = raw.selected_candidate_id === undefined || nonEmpty(raw.selected_candidate_id);
   const hasError = raw.error === undefined || nonEmpty(raw.error);
   return (
-    (raw.status === "started" || raw.status === "failed") &&
+    (raw.status === "started" || raw.status === "queued" ||
+      raw.status === "failed") &&
     raw.command_kind === "trading_run.start" &&
     hasSelectedCandidateId &&
     hasError &&

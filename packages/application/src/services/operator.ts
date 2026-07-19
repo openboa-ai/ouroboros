@@ -50,6 +50,10 @@ import {
   PaperTradingComparisonPromotionService,
   PaperTradingComparisonPromotionServiceError
 } from "../trading/paper/comparison-promotion-service";
+import type {
+  ArenaPaperRuntimeService,
+  ArenaPaperRuntimeSystem
+} from "../trading/paper/arena-runtime";
 
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
 const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
@@ -74,6 +78,10 @@ export interface OperatorServiceOptions {
   paperTradingEvaluationRunner?: {
     active(tradingRunId: string): boolean;
   };
+  arenaPaperRuntime?: Pick<
+    ArenaPaperRuntimeService,
+    "reconcile" | "fencePendingStarts"
+  >;
   paperTradingComparisonPromotionService?: Pick<
     PaperTradingComparisonPromotionService,
     "promote"
@@ -236,6 +244,7 @@ export class OperatorService {
   }
 
   async drainAutonomousPaperStarts(): Promise<void> {
+    this.options.arenaPaperRuntime?.fencePendingStarts();
     this.autonomousPaperStartFence += 1;
     const deadline = Date.now() + AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS;
     while (this.pendingAutonomousPaperStarts.size > 0) {
@@ -311,9 +320,12 @@ export class OperatorService {
           result: {
             arena_tick: outcome,
             selected_candidate_id: paperCycle.selected_candidate_id,
+            paper_trading_status: paperCycle.status,
             paper_trading: paperCycle.paper_trading
           },
-          summary: `Candidate Arena cycle created ${outcome.created_candidate_count} candidates and started Paper Trading Evaluation for ${paperCycle.selected_candidate_id}.`
+          summary: paperCycle.status === "started"
+            ? `Candidate Arena cycle created ${outcome.created_candidate_count} candidates and started Paper Trading Evaluation for ${paperCycle.selected_candidate_id}.`
+            : `Candidate Arena cycle created ${outcome.created_candidate_count} candidates and queued ${paperCycle.selected_candidate_id} for Paper Trading Evaluation.`
         };
       },
       "candidate.select": async (payload) => {
@@ -579,7 +591,11 @@ export class OperatorService {
 
   private async startPaperTradingForArenaCycle(
     outcome: CandidateArenaTickOutcome
-  ): Promise<{ selected_candidate_id: string; paper_trading: unknown }> {
+  ): Promise<{
+    selected_candidate_id: string;
+    status: "started" | "queued";
+    paper_trading: unknown;
+  }> {
     const candidateId = selectArenaCycleCandidateId(outcome);
     if (!candidateId) {
       throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
@@ -589,10 +605,11 @@ export class OperatorService {
       });
     }
     this.selectedCandidateId = candidateId;
-    const paperTrading = await this.executeMutationPort("trading_run.start", { candidate_id: candidateId });
+    const paperTrading = await this.startArenaPaperCandidate(candidateId);
     return {
       selected_candidate_id: candidateId,
-      paper_trading: paperTrading.result
+      status: paperTrading.status,
+      paper_trading: paperTrading.execution.result
     };
   }
 
@@ -609,23 +626,27 @@ export class OperatorService {
     }
     this.selectedCandidateId = candidateId;
     const paperStartFence = this.autonomousPaperStartFence;
-    const paperStart = this.executeMutationPort("trading_run.start", { candidate_id: candidateId });
+    const paperStart = this.startArenaPaperCandidate(candidateId);
     const paperStartContinuation = paperStart
-      .then((): CandidateArenaTickPaperTradingContinuationReadModel => ({
-        status: "started",
+      .then((result): CandidateArenaTickPaperTradingContinuationReadModel => ({
+        status: result.status,
         command_kind: "trading_run.start",
         selected_candidate_id: candidateId,
         authority_status: "not_live"
       }));
     const trackedPaperStart = paperStart
       .then(
-        async (execution) => {
+        async (result) => {
           if (paperStartFence !== this.autonomousPaperStartFence) {
-            await this.stopLateAutonomousPaperStartAfterShutdown(execution);
+            if (result.status === "started") {
+              await this.stopLateAutonomousPaperStartAfterShutdown(
+                result.execution
+              );
+            }
             return;
           }
           await this.recordAutonomousPaperContinuation(outcome, {
-            status: "started",
+            status: result.status,
             command_kind: "trading_run.start",
             selected_candidate_id: candidateId,
             authority_status: "not_live"
@@ -651,6 +672,51 @@ export class OperatorService {
       timer.unref?.();
     });
     return Promise.race([paperStartContinuation, acknowledged]);
+  }
+
+  private async startArenaPaperCandidate(candidateId: string): Promise<{
+    status: "started" | "queued";
+    execution: OperatorCommandExecution;
+  }> {
+    if (!this.options.arenaPaperRuntime) {
+      return {
+        status: "started",
+        execution: await this.executeMutationPort("trading_run.start", {
+          candidate_id: candidateId
+        })
+      };
+    }
+    const snapshot = await this.options.arenaPaperRuntime.reconcile();
+    const system = snapshot.systems.find((entry) =>
+      entry.candidate_ref.id === candidateId
+    );
+    if (!system) {
+      throw new OperatorCommandError(409, "arena_paper_candidate_ineligible", {
+        candidate_id: candidateId
+      });
+    }
+    if (system.lifecycle_status === "failed" ||
+      system.lifecycle_status === "invalidated" ||
+      system.lifecycle_status === "stopped") {
+      throw arenaPaperRuntimeError(system);
+    }
+    const status = system.lifecycle_status === "running"
+      ? "started"
+      : "queued";
+    return {
+      status,
+      execution: {
+        result: {
+          status,
+          trading_run_id: system.trading_run_ref.id,
+          arena_paper_system: system,
+          arena_paper_runtime: snapshot
+        },
+        summary: status === "started"
+          ? `Arena Paper runtime started ${candidateId}.`
+          : `Arena Paper runtime queued ${candidateId}.`
+      }
+    };
   }
 
   private async stopLateAutonomousPaperStartAfterShutdown(
@@ -746,6 +812,16 @@ function commandErrorSummary(error: unknown): string {
     return error.message.split("\n")[0] || error.name;
   }
   return String(error);
+}
+
+function arenaPaperRuntimeError(
+  system: ArenaPaperRuntimeSystem
+): OperatorCommandError {
+  return new OperatorCommandError(422, "arena_paper_runtime_failed", {
+    candidate_id: system.candidate_ref.id,
+    lifecycle_status: system.lifecycle_status,
+    reason: system.failure_reason ?? `arena_paper_${system.lifecycle_status}`
+  });
 }
 
 function tradingRunIdFromCommandResult(result: unknown): string | undefined {

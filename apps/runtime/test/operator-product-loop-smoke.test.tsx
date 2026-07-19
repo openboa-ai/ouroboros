@@ -5,6 +5,8 @@ import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
+import type { ArenaPaperRuntimeService } from
+  "@ouroboros/application/trading/paper/arena-runtime";
 import {
   validateOrderRequest
 } from "@ouroboros/application/trading/research/replay-trading-api-provider";
@@ -138,7 +140,9 @@ describe("operator product loop smoke", () => {
         },
         authority_status: "not_live"
       });
-      expect(started.operator.paper_trading_board.entries[0]).toMatchObject({
+      expect(started.operator.paper_trading_board.entries.find((entry) =>
+        entry.candidate_id === leader.candidate_id
+      )).toMatchObject({
         candidate_id: leader.candidate_id,
         latest_fill_status: "filled",
         open_order_count: 0
@@ -150,6 +154,29 @@ describe("operator product loop smoke", () => {
         latest_execution_status: "dry_run_recorded",
         authority_status: "not_live"
       });
+      const evaluations = await store.listPaperTradingEvaluations();
+      const runningCandidates = await Promise.all(evaluations.map((evaluation) =>
+        store.getCandidate(evaluation.candidate_ref.id)
+      ));
+      const sandboxes = runningCandidates.map((candidate) =>
+        candidate?.runtime.sandbox
+      );
+      const ledgerChainIds = runningCandidates.flatMap((candidate) =>
+        candidate?.ledger?.chains.map((chain) => chain.chain_id) ?? []
+      );
+      expect(evaluations).toHaveLength(2);
+      expect(new Set(evaluations.map((evaluation) =>
+        evaluation.paper_trading_evaluation_id
+      )).size).toBe(2);
+      expect(new Set(evaluations.map((evaluation) =>
+        evaluation.trading_run_ref.id
+      )).size).toBe(2);
+      expect(new Set(sandboxes.map((sandbox) => sandbox?.sandbox_id)).size)
+        .toBe(2);
+      expect(new Set(sandboxes.map((sandbox) => sandbox?.workspace_key)).size)
+        .toBe(2);
+      expect(sandboxes.every((sandbox) => sandbox?.generation === 1)).toBe(true);
+      expect(new Set(ledgerChainIds).size).toBe(ledgerChainIds.length);
     } finally {
       await server.close();
     }
@@ -225,11 +252,151 @@ describe("operator product loop smoke", () => {
         },
         authority_status: "not_live"
       });
-      expect(cycled.operator.paper_trading_board.entries[0]).toMatchObject({
+      expect(cycled.operator.paper_trading_board.entries.find((entry) =>
+        entry.candidate_id === selectedCandidateId
+      )).toMatchObject({
         candidate_id: selectedCandidateId,
         latest_fill_status: "filled",
         open_order_count: 0
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps admitted Arena candidates queued when paper capacity is full", async () => {
+    const store = new LocalStore(tmpDir);
+    let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [{ price: 65_000, expected_direction: "long" }],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      arenaPaperCapacity: 1,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        arenaPaperRuntime = service;
+      }
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, { command_kind: "arena.cycle" });
+      if (!arenaPaperRuntime) throw new Error("expected Arena Paper runtime");
+
+      const initialSnapshot = await arenaPaperRuntime.snapshot();
+      expect(initialSnapshot).toMatchObject({
+        capacity: 1,
+        eligible_count: 3,
+        occupied_count: 1,
+        running_count: 1,
+        queued_count: 2,
+        available_capacity: 0,
+        needs_reconcile: false
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
+
+      const queuedCandidateId = initialSnapshot.systems.find((system) =>
+        system.lifecycle_status === "queued"
+      )?.candidate_ref.id;
+      if (!queuedCandidateId) throw new Error("expected queued Arena candidate");
+      const queued = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: queuedCandidateId }
+        }
+      });
+      expect(queued.statusCode, queued.body).toBe(200);
+      expect(queued.json()).toMatchObject({
+        result: {
+          status: "queued",
+          candidate_id: queuedCandidateId
+        }
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
+
+      const nonstandardStart = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: {
+            candidate_id: queuedCandidateId,
+            paper_order_request: "rejected"
+          }
+        }
+      });
+      expect(nonstandardStart.statusCode, nonstandardStart.body).toBe(422);
+      expect(nonstandardStart.json()).toMatchObject({
+        error: "arena_paper_start_payload_unsupported",
+        reason: "arena_paper_runtime_owns_candidate_start",
+        candidate_id: queuedCandidateId
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
+
+      const getCandidate = store.getCandidate.bind(store);
+      const listCandidates = store.listCandidates.bind(store);
+      const queuedCandidate = await getCandidate(queuedCandidateId);
+      if (!queuedCandidate) throw new Error("expected queued candidate detail");
+      const duplicateCandidateId = `${queuedCandidateId}-ambiguous-copy`;
+      store.listCandidates = async () => [
+        ...await listCandidates(),
+        {
+          candidate_id: duplicateCandidateId,
+          display_name: "Ambiguous candidate copy",
+          status: "materialized",
+          active_version_id: queuedCandidate.active_version_id,
+          fixture_notice: queuedCandidate.fixture_notice
+        }
+      ];
+      store.getCandidate = async (candidateId) => candidateId === duplicateCandidateId
+        ? {
+            ...structuredClone(queuedCandidate),
+            candidate_id: duplicateCandidateId,
+            display_name: "Ambiguous candidate copy"
+          }
+        : getCandidate(candidateId);
+
+      const rejected = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: queuedCandidateId }
+        }
+      });
+      expect(rejected.statusCode, rejected.body).toBe(422);
+      expect(rejected.json()).toMatchObject({
+        error: "arena_paper_candidate_ineligible",
+        reason: "arena_paper_candidate_not_in_exact_admitted_set",
+        candidate_id: queuedCandidateId
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
     } finally {
       await server.close();
     }
@@ -552,7 +719,7 @@ describe("operator product loop smoke", () => {
         && operator.candidate_arena.latest_ticks.some((tick) =>
           tick.tick_id === "tick-2"
           && tick.source_candidate?.source_kind === "paper_trading_evaluation_leader"
-          && tick.paper_trading_continuation?.status === "started"
+          && tick.paper_trading_continuation?.status === "queued"
         )
       );
       const firstTick = runningOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-1");
@@ -577,7 +744,7 @@ describe("operator product loop smoke", () => {
           authority_status: "not_live"
         },
         paper_trading_continuation: {
-          status: "started",
+          status: "queued",
           command_kind: "trading_run.start",
           selected_candidate_id: selectedSecondCandidateId,
           authority_status: "not_live"
@@ -684,11 +851,13 @@ describe("operator product loop smoke", () => {
     try {
       const resumedOperator = await waitForOperator(restartedServer, (operator) =>
         operator.candidate_arena.runner_status === "running"
-        && operator.selected_paper_trading_evaluation.status === "running"
-        && operator.selected_paper_trading_evaluation.runner_active
         && operator.candidate_arena.latest_ticks.some((tick) => tick.tick_id === "tick-2")
         && operator.candidate_arena.latest_ticks.some((tick) =>
-          tick.paper_trading_continuation?.status === "started"
+          tick.tick_id === "tick-2"
+          && tick.paper_trading_continuation?.status === "queued"
+        )
+        && operator.paper_trading_board.entries.some((entry) =>
+          entry.runner_status === "active"
         )
       );
 
@@ -697,11 +866,9 @@ describe("operator product loop smoke", () => {
       expect(resumedOperator.candidate_arena.latest_ticks.map((tick) => tick.tick_id)).toEqual(
         expect.arrayContaining(["tick-1", "tick-2"])
       );
-      expect(resumedOperator.selected_paper_trading_evaluation).toMatchObject({
-        status: "running",
-        runner_active: true,
-        authority_status: "not_live"
-      });
+      expect(resumedOperator.paper_trading_board.entries.some((entry) =>
+        entry.status === "running" && entry.runner_status === "active"
+      )).toBe(true);
 
       const stopped = await postCommand(restartedServer, {
         command_kind: "arena.stop"
@@ -813,7 +980,7 @@ describe("operator product loop smoke", () => {
         operator.candidate_arena.runner_status === "running"
         && operator.candidate_arena.latest_ticks.some((tick) =>
           tick.tick_id === "tick-2"
-          && tick.paper_trading_continuation?.status === "started"
+          && tick.paper_trading_continuation?.status === "queued"
         )
       );
       const secondTick = runningOperator.candidate_arena.latest_ticks.find((tick) =>
@@ -1050,14 +1217,17 @@ describe("operator product loop smoke", () => {
   it("does not persist autonomous paper continuation ack before late paper start settles", async () => {
     const store = new LocalStore(tmpDir);
     let rejectLatePaperStart: ((error: Error) => void) | undefined;
+    let latePaperStart: Promise<never> | undefined;
     const server = await buildServer({
       store,
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
       candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
-      paperTradingApiProviderFactory: () =>
-        new Promise<never>((_resolve, reject) => {
+      paperTradingApiProviderFactory: () => {
+        latePaperStart ??= new Promise<never>((_resolve, reject) => {
           rejectLatePaperStart = reject;
-        }),
+        });
+        return latePaperStart;
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
           {
@@ -1067,6 +1237,7 @@ describe("operator product loop smoke", () => {
         ]
       }),
       candidateArenaTickIntervalMs: 60_000,
+      arenaPaperCapacity: 1,
       paperTradingEvaluationIntervalMs: 60_000,
       paperTradingSandboxIntervalMs: 1_000
     });
@@ -1197,6 +1368,7 @@ describe("operator product loop smoke", () => {
   it("stops autonomous paper starts that complete after runtime close", async () => {
     const store = new LocalStore(tmpDir);
     const paperProvider = delayedPaperTradingApiProviderFactory();
+    let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const server = await buildServer({
       store,
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
@@ -1220,7 +1392,10 @@ describe("operator product loop smoke", () => {
       }),
       candidateArenaTickIntervalMs: 60_000,
       paperTradingEvaluationIntervalMs: 60_000,
-      paperTradingSandboxIntervalMs: 1_000
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        arenaPaperRuntime = service;
+      }
     });
 
     await postCommand(server, {
@@ -1248,23 +1423,27 @@ describe("operator product loop smoke", () => {
     await closing;
 
     paperProvider.release();
+    if (!arenaPaperRuntime) throw new Error("expected Arena Paper runtime");
+    await arenaPaperRuntime.reconcile();
     let evaluations = await store.listPaperTradingEvaluations();
-    for (let attempt = 0; attempt < 120 && !evaluations.some((evaluation) =>
-      evaluation.status === "stopped"
+    for (let attempt = 0; attempt < 120 && !(
+      evaluations.length === 2 && evaluations.every((evaluation) =>
+        evaluation.status === "stopped" && Boolean(evaluation.stopped_at)
+      )
     ); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       evaluations = await store.listPaperTradingEvaluations();
     }
-    expect(evaluations).toHaveLength(1);
-    expect(evaluations[0]).toMatchObject({
-      status: "stopped",
-      stopped_at: expect.any(String)
-    });
+    expect(evaluations).toHaveLength(2);
+    expect(evaluations.every((evaluation) =>
+      evaluation.status === "stopped" && Boolean(evaluation.stopped_at)
+    )).toBe(true);
   });
 
   it("stops pending autonomous paper starts when the arena loop stops", async () => {
     const store = new LocalStore(tmpDir);
     const paperProvider = delayedPaperTradingApiProviderFactory();
+    let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const server = await buildServer({
       store,
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
@@ -1288,7 +1467,10 @@ describe("operator product loop smoke", () => {
       }),
       candidateArenaTickIntervalMs: 60_000,
       paperTradingEvaluationIntervalMs: 60_000,
-      paperTradingSandboxIntervalMs: 1_000
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        arenaPaperRuntime = service;
+      }
     });
 
     try {
@@ -1315,18 +1497,21 @@ describe("operator product loop smoke", () => {
       expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
 
       paperProvider.release();
+      if (!arenaPaperRuntime) throw new Error("expected Arena Paper runtime");
+      await arenaPaperRuntime.reconcile();
       let evaluations = await store.listPaperTradingEvaluations();
-      for (let attempt = 0; attempt < 120 && !evaluations.some((evaluation) =>
-        evaluation.status === "stopped"
+      for (let attempt = 0; attempt < 120 && !(
+        evaluations.length === 2 && evaluations.every((evaluation) =>
+          evaluation.status === "stopped" && Boolean(evaluation.stopped_at)
+        )
       ); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 50));
         evaluations = await store.listPaperTradingEvaluations();
       }
-      expect(evaluations).toHaveLength(1);
-      expect(evaluations[0]).toMatchObject({
-        status: "stopped",
-        stopped_at: expect.any(String)
-      });
+      expect(evaluations).toHaveLength(2);
+      expect(evaluations.every((evaluation) =>
+        evaluation.status === "stopped" && Boolean(evaluation.stopped_at)
+      )).toBe(true);
 
       const ticks = await store.listCandidateArenaTicks();
       expect(ticks.find((tick) => tick.tick_id === "tick-1")?.paper_trading_continuation)
@@ -1477,7 +1662,6 @@ describe("operator product loop smoke", () => {
             authority_status: "read_only"
           },
           latest_decision: {
-            decision_kind: "order_request",
             source_kind: "trading_system_decision",
             authority_status: "trace_only"
           },
@@ -1507,6 +1691,10 @@ describe("operator product loop smoke", () => {
         live_disabled: true,
         authority_status: "not_live"
       });
+      expect(["order_request", "hold"]).toContain(
+        evidenceBody.operator.selected_paper_trading_evaluation
+          .latest_decision?.decision_kind
+      );
 
       const tradingRunId = evidenceBody.operator.selected_paper_trading_evaluation.trading_run_id;
       expect(tradingRunId).toEqual(expect.any(String));
