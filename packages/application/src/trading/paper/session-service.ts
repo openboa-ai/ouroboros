@@ -3197,10 +3197,15 @@ async function resolvePaperRuntimeArtifact(
   resolver: SystemCodeArtifactResolverPort,
   artifact: SystemCodeRecord
 ): Promise<SystemCodeRecord> {
-  if (artifact.artifact_kind !== "python_file" || !resolver.resolveArtifact) {
+  if (artifact.artifact_kind !== "python_file") {
     return artifact;
   }
-  const resolution = await resolver.resolveArtifact(artifact);
+  const resolution = resolver.resolveArtifact
+    ? await resolver.resolveArtifact(artifact)
+    : {
+        artifact_digest: await resolver.resolveArtifactDigest(artifact),
+        artifact_path: path.resolve(artifact.artifact_path)
+      };
   const resolvedArtifactPath = resolution.artifact_path;
   if (resolution.artifact_digest !== artifact.artifact_digest) {
     throw new PaperTradingSessionError(

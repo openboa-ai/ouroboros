@@ -249,6 +249,7 @@ export function invalidatePaperTradingEvaluation(input: {
     invalidation_reason: input.verification.reason,
     latest_failure_reason: input.verification.diagnostic,
     next_observation_at: undefined,
+    runtime_coordination_status: undefined,
     stopped_at: input.invalidatedAt
   };
 }

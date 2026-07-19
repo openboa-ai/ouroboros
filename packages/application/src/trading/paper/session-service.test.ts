@@ -151,11 +151,22 @@ describe("PaperTradingSessionService", () => {
     });
   });
 
-  it("activates a materialized candidate through Docker with the resolver-owned workspace", async () => {
+  it.each([
+    { label: "resolver-owned path", resolverOwnsPath: true },
+    { label: "digest-only relative path", resolverOwnsPath: false }
+  ])("activates a materialized candidate through Docker with a $label workspace", async ({
+    resolverOwnsPath
+  }) => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const fixture = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     if (!fixture) throw new Error("fixture candidate was not materialized");
+    const storedArtifact = fixture.system_code?.ref?.id
+      ? await store.getSystemCode(fixture.system_code.ref.id)
+      : undefined;
+    if (!storedArtifact || storedArtifact.artifact_kind !== "python_file") {
+      throw new Error("fixture Python SystemCode was not materialized");
+    }
     const generated = structuredClone(fixture);
     generated.candidate_version.materialization_attempt_ref = {
       record_kind: "candidate_materialization_attempt",
@@ -188,29 +199,35 @@ describe("PaperTradingSessionService", () => {
       }
     }) as OuroborosStorePort;
     const starts = { deterministic: 0, docker: 0 };
-    const resolvedArtifactPath = path.join(
-      tmpDir,
-      "arm",
-      "candidate-arena-runs",
-      "tick-1",
-      "candidate-1",
-      "run.py"
-    );
+    const resolvedArtifactPath = resolverOwnsPath
+      ? path.join(
+          tmpDir,
+          "arm",
+          "candidate-arena-runs",
+          "tick-1",
+          "candidate-1",
+          "run.py"
+        )
+      : path.resolve(storedArtifact.artifact_path);
     let dockerStart: SandboxStartInput | undefined;
-    const artifactResolver = {
+    const artifactResolver: SystemCodeArtifactResolverPort = {
       async resolveArtifactDigest(systemCode: Parameters<
         SystemCodeArtifactResolverPort["resolveArtifactDigest"]
       >[0]) {
         return systemCode.artifact_digest;
       },
-      async resolveArtifact(systemCode: Parameters<
-        SystemCodeArtifactResolverPort["resolveArtifactDigest"]
-      >[0]) {
-        return {
-          artifact_digest: systemCode.artifact_digest,
-          artifact_path: resolvedArtifactPath
-        };
-      }
+      ...(resolverOwnsPath
+        ? {
+            async resolveArtifact(systemCode: Parameters<
+              SystemCodeArtifactResolverPort["resolveArtifactDigest"]
+            >[0]) {
+              return {
+                artifact_digest: systemCode.artifact_digest,
+                artifact_path: resolvedArtifactPath
+              };
+            }
+          }
+        : {})
     };
     const service = new PaperTradingSessionService({
       store: generatedStore,

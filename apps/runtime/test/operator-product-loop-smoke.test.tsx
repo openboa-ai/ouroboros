@@ -876,6 +876,10 @@ describe("operator product loop smoke", () => {
         operator.candidate_arena.runner_status === "running"
         && operator.selected_paper_trading_evaluation.status === "running"
         && operator.selected_paper_trading_evaluation.runner_active
+        && operator.candidate_arena.latest_ticks.some((tick) =>
+          tick.tick_id === "tick-1"
+          && tick.paper_trading_continuation?.status === "started"
+        )
         && operator.paper_trading_board.entries.filter((entry) =>
           entry.status === "running" && entry.runner_status === "active"
         ).length === 2

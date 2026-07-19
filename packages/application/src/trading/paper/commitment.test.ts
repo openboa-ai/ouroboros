@@ -264,7 +264,11 @@ describe("PaperTradingEvaluation commitment service", () => {
 
   it("converts a verification failure into a terminal evaluation without adding evidence", () => {
     const commitment = createCommitment();
-    const original = evaluation(commitment);
+    const original = {
+      ...evaluation(commitment),
+      status: "stopped" as const,
+      runtime_coordination_status: "arena_capacity_deferred" as const
+    };
 
     expect(invalidatePaperTradingEvaluation({
       evaluation: original,
@@ -280,6 +284,7 @@ describe("PaperTradingEvaluation commitment service", () => {
       invalidation_reason: "resolved_artifact_digest_mismatch",
       latest_failure_reason: "resolved SystemCode artifact bytes changed",
       next_observation_at: undefined,
+      runtime_coordination_status: undefined,
       stopped_at: "2026-07-10T09:01:00.000Z"
     });
   });
