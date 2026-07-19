@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
+import type {
+  SystemCodeArtifactResolution,
+  SystemCodeArtifactResolverPort
+} from "@ouroboros/application/ports/system-code-artifact";
 import { sealSingleFileTradingArtifactClosure } from "@ouroboros/application/trading/research/artifact-closure";
 import type { TradingSystemManifest } from "@ouroboros/application/trading/research/types";
 import type { SystemCodeRecord } from "@ouroboros/domain";
@@ -24,14 +27,43 @@ export class FileSystemCodeArtifactResolver implements SystemCodeArtifactResolve
   }
 
   async resolveArtifactDigest(systemCode: SystemCodeRecord): Promise<string> {
+    return (await this.resolveArtifact(systemCode)).artifact_digest;
+  }
+
+  async resolveArtifact(
+    systemCode: SystemCodeRecord
+  ): Promise<SystemCodeArtifactResolution> {
     if (systemCode.artifact_kind === "container_image") {
-      return immutableContainerDigest(systemCode.image_ref);
+      return { artifact_digest: immutableContainerDigest(systemCode.image_ref) };
     }
-    const generatedArtifact = systemCode.capability_policy_ref && [
-      "candidate-arena-paper-system-code",
-      "candidate-arena-research-source"
-    ].includes(systemCode.capability_policy_ref.id);
-    const artifactPath = generatedArtifact && this.generatedArtifactRoot
+    const generatedArtifact = isGeneratedCandidateArenaArtifact(systemCode);
+    const artifactPath = this.resolveArtifactPath(systemCode);
+    if (!artifactPath) {
+      throw new Error("generated_system_code_artifact_closure_invalid");
+    }
+    if (generatedArtifact) {
+      return {
+        artifact_digest: await resolveGeneratedArtifactClosureDigest(
+          systemCode,
+          artifactPath
+        ),
+        artifact_path: artifactPath
+      };
+    }
+    const bytes = await readFile(artifactPath);
+    return {
+      artifact_digest:
+        `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+      artifact_path: artifactPath
+    };
+  }
+
+  private resolveArtifactPath(
+    systemCode: SystemCodeRecord
+  ): string | undefined {
+    if (systemCode.artifact_kind === "container_image") return undefined;
+    return isGeneratedCandidateArenaArtifact(systemCode) &&
+      this.generatedArtifactRoot
       ? rebaseCandidateArenaArtifactPath(
           systemCode.artifact_path,
           this.generatedArtifactRoot
@@ -39,15 +71,16 @@ export class FileSystemCodeArtifactResolver implements SystemCodeArtifactResolve
       : path.isAbsolute(systemCode.artifact_path)
         ? path.normalize(systemCode.artifact_path)
         : path.resolve(this.repoRoot, systemCode.artifact_path);
-    if (!artifactPath) {
-      throw new Error("generated_system_code_artifact_closure_invalid");
-    }
-    if (generatedArtifact) {
-      return resolveGeneratedArtifactClosureDigest(systemCode, artifactPath);
-    }
-    const bytes = await readFile(artifactPath);
-    return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
   }
+}
+
+function isGeneratedCandidateArenaArtifact(
+  systemCode: SystemCodeRecord
+): boolean {
+  return Boolean(systemCode.capability_policy_ref && [
+    "candidate-arena-paper-system-code",
+    "candidate-arena-research-source"
+  ].includes(systemCode.capability_policy_ref.id));
 }
 
 async function resolveGeneratedArtifactClosureDigest(

@@ -151,7 +151,7 @@ describe("PaperTradingSessionService", () => {
     });
   });
 
-  it("activates a materialized candidate only through the Docker Sandbox adapter", async () => {
+  it("activates a materialized candidate through Docker with the resolver-owned workspace", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const fixture = await store.getCandidate(FIXTURE_CANDIDATE_ID);
@@ -188,20 +188,41 @@ describe("PaperTradingSessionService", () => {
       }
     }) as OuroborosStorePort;
     const starts = { deterministic: 0, docker: 0 };
+    const resolvedArtifactPath = path.join(
+      tmpDir,
+      "arm",
+      "candidate-arena-runs",
+      "tick-1",
+      "candidate-1",
+      "run.py"
+    );
+    let dockerStart: SandboxStartInput | undefined;
+    const artifactResolver = {
+      async resolveArtifactDigest(systemCode: Parameters<
+        SystemCodeArtifactResolverPort["resolveArtifactDigest"]
+      >[0]) {
+        return systemCode.artifact_digest;
+      },
+      async resolveArtifact(systemCode: Parameters<
+        SystemCodeArtifactResolverPort["resolveArtifactDigest"]
+      >[0]) {
+        return {
+          artifact_digest: systemCode.artifact_digest,
+          artifact_path: resolvedArtifactPath
+        };
+      }
+    };
     const service = new PaperTradingSessionService({
       store: generatedStore,
       startEligibility: async () => undefined,
-      artifactResolver: {
-        async resolveArtifactDigest(systemCode) {
-          return systemCode.artifact_digest;
-        }
-      },
+      artifactResolver,
       sandboxAdapters: {
         deterministic_test: sandboxAdapter("deterministic_test", () => {
           starts.deterministic += 1;
         }),
-        docker_sandboxes_sbx: sandboxAdapter("docker_sandboxes_sbx", () => {
+        docker_sandboxes_sbx: sandboxAdapter("docker_sandboxes_sbx", (input) => {
           starts.docker += 1;
+          dockerStart = input;
         })
       },
       marketData: paperSessionMarketData(),
@@ -226,6 +247,12 @@ describe("PaperTradingSessionService", () => {
     await service.activate(prepared);
 
     expect(starts).toEqual({ deterministic: 0, docker: 1 });
+    expect(dockerStart).toMatchObject({
+      artifact: {
+        artifact_path: resolvedArtifactPath
+      },
+      workspace_path: path.dirname(resolvedArtifactPath)
+    });
     await service.stopAllSessions();
   });
 
@@ -3460,10 +3487,13 @@ function activatableResearchSessionService(
   });
 }
 
-function sandboxAdapter(kind: SandboxAdapterKind, onStart: () => void) {
+function sandboxAdapter(
+  kind: SandboxAdapterKind,
+  onStart: (input: SandboxStartInput) => void
+) {
   return {
     async startArtifactInstance(input: SandboxStartInput) {
-      onStart();
+      onStart(input);
       return {
         placement: {
           record_kind: "sandbox_placement" as const,

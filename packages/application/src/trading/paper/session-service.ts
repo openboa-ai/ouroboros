@@ -2717,6 +2717,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     }
     const adapterKind = paperTradingSandboxAdapterKind(input.candidate);
     const adapter = this.options.sandboxAdapters[adapterKind];
+    const runtimeArtifact = adapterKind === "docker_sandboxes_sbx"
+      ? await resolvePaperRuntimeArtifact(this.options.artifactResolver, artifact)
+      : artifact;
     const existingAdapter = existing
       ? this.options.sandboxAdapters[existing.adapter_kind]
       : undefined;
@@ -2752,13 +2755,17 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       }
     }
     const result = await adapter.startArtifactInstance({
-      artifact,
+      artifact: runtimeArtifact,
       instance_id: sandboxId,
       sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 34)}-${input.paperOrderRequest}`,
       runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
       sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
-      ...(artifact.artifact_kind === "python_file"
-        ? { workspace_path: path.dirname(path.resolve(artifact.artifact_path)) }
+      ...(runtimeArtifact.artifact_kind === "python_file"
+        ? {
+            workspace_path: path.dirname(
+              path.resolve(runtimeArtifact.artifact_path)
+            )
+          }
         : {}),
       workspace_key: workspaceKey,
       generation: (existing?.generation ?? 0) + 1,
@@ -3184,6 +3191,40 @@ function safeRouteId(value: string): string {
   const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
+}
+
+async function resolvePaperRuntimeArtifact(
+  resolver: SystemCodeArtifactResolverPort,
+  artifact: SystemCodeRecord
+): Promise<SystemCodeRecord> {
+  if (artifact.artifact_kind !== "python_file" || !resolver.resolveArtifact) {
+    return artifact;
+  }
+  const resolution = await resolver.resolveArtifact(artifact);
+  const resolvedArtifactPath = resolution.artifact_path;
+  if (resolution.artifact_digest !== artifact.artifact_digest) {
+    throw new PaperTradingSessionError(
+      "system_code_artifact_digest_mismatch",
+      "Paper runtime SystemCode artifact changed before sandbox start."
+    );
+  }
+  if (!resolvedArtifactPath || !path.isAbsolute(resolvedArtifactPath)) {
+    throw new PaperTradingSessionError(
+      "system_code_artifact_path_unresolved",
+      "Paper runtime SystemCode artifact path could not be resolved."
+    );
+  }
+  const normalizedArtifactPath = path.normalize(resolvedArtifactPath);
+  const entrypoint = [...artifact.entrypoint];
+  if ((entrypoint[0] === "python" || entrypoint[0] === "python3") &&
+    entrypoint[1] === artifact.artifact_path) {
+    entrypoint[1] = normalizedArtifactPath;
+  }
+  return {
+    ...artifact,
+    artifact_path: normalizedArtifactPath,
+    entrypoint
+  };
 }
 
 function paperTradingWorkspaceKey(input: {
