@@ -443,7 +443,9 @@ export class OperatorService {
         }
         return {
           result: response.body,
-          summary: `Paper evidence recorded for ${candidateId}.`
+          summary: response.statusCode === 202
+            ? `Paper evidence collection queued for ${candidateId}.`
+            : `Paper evidence recorded for ${candidateId}.`
         };
       },
       "candidate.evaluation.run": (payload) => this.executeMutationPort("candidate.evaluation.run", payload),

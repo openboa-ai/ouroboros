@@ -348,6 +348,28 @@ describe("operator product loop smoke", () => {
       });
       await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
 
+      const queuedEvidence = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.paper_evidence.run",
+          payload: { candidate_id: queuedCandidateId }
+        }
+      });
+      expect(queuedEvidence.statusCode, queuedEvidence.body).toBe(200);
+      expect(queuedEvidence.json()).toMatchObject({
+        command: {
+          command_kind: "candidate.paper_evidence.run",
+          status: "succeeded",
+          summary: `Paper evidence collection queued for ${queuedCandidateId}.`
+        },
+        result: {
+          status: "queued",
+          candidate_id: queuedCandidateId
+        }
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toHaveLength(1);
+
       const nonstandardStart = await server.inject({
         method: "POST",
         url: "/api/commands",
