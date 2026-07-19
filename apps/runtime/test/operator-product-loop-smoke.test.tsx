@@ -73,7 +73,8 @@ describe("operator product loop smoke", () => {
           }
         }]
       }),
-      paperTradingEvaluationIntervalMs: 60_000,
+      arenaPaperCapacity: 2,
+      paperTradingEvaluationIntervalMs: 50,
       paperTradingSandboxIntervalMs: 1_000
     });
 
@@ -111,16 +112,23 @@ describe("operator product loop smoke", () => {
         command_kind: "trading_run.start",
         payload: { candidate_id: leader.candidate_id }
       });
+      const observedOperator = await waitForOperator(server, (operator) =>
+        operator.selected_candidate_id === leader.candidate_id
+        && operator.selected_paper_trading_evaluation.status === "running"
+        && operator.selected_paper_trading_evaluation.runner_active
+        && operator.selected_paper_trading_evaluation.ledger_chain_complete
+        && operator.selected_paper_trading_evaluation.latest_fill?.fill_status === "filled"
+      );
 
       expect(started.operator.selected_candidate_id).toBe(leader.candidate_id);
       expect(repeated.operator.selected_candidate_id).toBe(leader.candidate_id);
       await expect(store.listPaperTradingHandoffConformances())
         .resolves.toEqual(conformanceBeforeStart);
-      expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
-      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+      expect(observedOperator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
+      expect(observedOperator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
         runner_active: true,
-        observation_count: 1,
+        observation_count: expect.any(Number),
         ledger_chain_complete: true,
         latest_decision: {
           decision_kind: "order_request",
@@ -140,14 +148,14 @@ describe("operator product loop smoke", () => {
         },
         authority_status: "not_live"
       });
-      expect(started.operator.paper_trading_board.entries.find((entry) =>
+      expect(observedOperator.paper_trading_board.entries.find((entry) =>
         entry.candidate_id === leader.candidate_id
       )).toMatchObject({
         candidate_id: leader.candidate_id,
         latest_fill_status: "filled",
         open_order_count: 0
       });
-      expect(started.operator.selected_paper_evidence).toMatchObject({
+      expect(observedOperator.selected_paper_evidence).toMatchObject({
         status: "ledger_chain_complete",
         ledger_chain_complete: true,
         latest_gateway_outcome: "dry_run_only",
@@ -552,7 +560,7 @@ describe("operator product loop smoke", () => {
     }
   });
 
-  it("keeps observing the selected Paper Trading Evaluation on the autonomous runner schedule", async () => {
+  it("keeps observing a running Arena Paper Trading Evaluation on the autonomous schedule", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
@@ -584,6 +592,7 @@ describe("operator product loop smoke", () => {
         }]
       }),
       candidateArenaTickIntervalMs: 60_000,
+      arenaPaperCapacity: 1,
       paperTradingEvaluationIntervalMs: 50,
       paperTradingSandboxIntervalMs: 10
     });
@@ -608,27 +617,36 @@ describe("operator product loop smoke", () => {
       const runningOperator = await waitForOperator(server, (operator) =>
         operator.candidate_arena.runner_status === "running"
         && operator.candidate_arena.tick_count === 1
-        && operator.selected_paper_trading_evaluation.status === "running"
-        && operator.selected_paper_trading_evaluation.runner_active
-        && operator.selected_paper_trading_evaluation.observation_count >= 2
+        && operator.paper_trading_board.entries.some((entry) =>
+          entry.status === "running"
+          && entry.runner_status === "active"
+          && entry.observation_count >= 2
+        )
       );
-      const evaluation = runningOperator.selected_paper_trading_evaluation;
-      const observations = await store.listPaperTradingObservations(evaluation.evaluation_id!);
+      const evaluation = runningOperator.paper_trading_board.entries.find((entry) =>
+        entry.status === "running"
+        && entry.runner_status === "active"
+        && entry.observation_count >= 2
+      );
+      if (!evaluation) throw new Error("expected active Arena Paper Trading Evaluation");
+      const observations = await store.listPaperTradingObservations(evaluation.evaluation_id);
 
       expect(runningOperator.candidate_arena.latest_ticks).toHaveLength(1);
       expect(runningOperator.candidate_arena.latest_ticks[0]).toMatchObject({
         tick_id: "tick-1",
         paper_trading_continuation: {
-          status: "started",
           command_kind: "trading_run.start",
           selected_candidate_id: runningOperator.selected_candidate_id,
           authority_status: "not_live"
         }
       });
+      expect(["started", "queued"]).toContain(
+        runningOperator.candidate_arena.latest_ticks[0]
+          ?.paper_trading_continuation?.status
+      );
       expect(evaluation).toMatchObject({
         status: "running",
-        runner_active: true,
-        interval_ms: 50,
+        runner_status: "active",
         observation_count: expect.any(Number),
         authority_status: "not_live"
       });
@@ -641,9 +659,11 @@ describe("operator product loop smoke", () => {
         command_kind: "trading_run.stop",
         payload: { trading_run_id: evaluation.trading_run_id }
       });
-      expect(stoppedPaper.operator.selected_paper_trading_evaluation).toMatchObject({
+      expect(stoppedPaper.operator.paper_trading_board.entries.find((entry) =>
+        entry.evaluation_id === evaluation.evaluation_id
+      )).toMatchObject({
         status: "stopped",
-        runner_active: false,
+        runner_status: "inactive",
         authority_status: "not_live"
       });
       const stopped = await postCommand(server, {
@@ -693,6 +713,7 @@ describe("operator product loop smoke", () => {
         ]
       }),
       candidateArenaTickIntervalMs: 100,
+      arenaPaperCapacity: 1,
       paperTradingEvaluationIntervalMs: 60_000,
       paperTradingSandboxIntervalMs: 1_000
     });
@@ -725,17 +746,23 @@ describe("operator product loop smoke", () => {
       const firstTick = runningOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-1");
       const secondTick = runningOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-2");
       const paperSourceCandidateId = secondTick?.source_candidate?.candidate_id;
+      const firstSelectedCandidateId = firstTick?.paper_trading_continuation?.selected_candidate_id;
       const selectedSecondCandidateId = secondTick?.paper_trading_continuation?.selected_candidate_id;
       const secondCandidate = selectedSecondCandidateId
         ? await store.getCandidate(selectedSecondCandidateId)
         : undefined;
+      const paperSourceEntry = runningOperator.paper_trading_board.entries.find((entry) =>
+        entry.candidate_id === paperSourceCandidateId
+      );
 
       expect(firstTick?.paper_trading_continuation).toMatchObject({
-        status: "started",
         command_kind: "trading_run.start",
-        selected_candidate_id: paperSourceCandidateId,
         authority_status: "not_live"
       });
+      expect(["started", "queued"]).toContain(
+        firstTick?.paper_trading_continuation?.status
+      );
+      expect(firstTick?.created_candidate_ids).toContain(firstSelectedCandidateId);
       expect(secondTick).toMatchObject({
         source_candidate: {
           source_kind: "paper_trading_evaluation_leader",
@@ -750,7 +777,14 @@ describe("operator product loop smoke", () => {
           authority_status: "not_live"
         }
       });
-      expect(paperSourceCandidateId).toBe(firstTick?.paper_trading_continuation?.selected_candidate_id);
+      expect(paperSourceEntry).toMatchObject({
+        candidate_id: paperSourceCandidateId,
+        status: "running",
+        runner_status: "active",
+        observation_count: expect.any(Number),
+        authority_status: "not_live"
+      });
+      expect(paperSourceEntry?.observation_count).toBeGreaterThan(0);
       expect(secondTick?.created_candidate_ids).toContain(selectedSecondCandidateId);
       expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).toBe(paperSourceCandidateId);
       expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).not.toBe(FIXTURE_CANDIDATE_ID);
