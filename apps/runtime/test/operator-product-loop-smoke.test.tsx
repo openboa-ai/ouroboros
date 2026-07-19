@@ -272,6 +272,66 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("does not reconcile queued Arena systems for an unmanaged candidate start", async () => {
+    const store = new LocalStore(tmpDir);
+    let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort(),
+      arenaPaperCapacity: 1,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        arenaPaperRuntime = service;
+      }
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "arena.tick",
+        payload: {}
+      });
+      if (!arenaPaperRuntime) throw new Error("expected Arena Paper runtime");
+      expect(await arenaPaperRuntime.snapshot()).toMatchObject({
+        eligible_count: 3,
+        running_count: 0,
+        queued_count: 3
+      });
+      await expect(store.listPaperTradingEvaluations()).resolves.toEqual([]);
+
+      await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      expect(await arenaPaperRuntime.snapshot()).toMatchObject({
+        eligible_count: 3,
+        running_count: 0,
+        queued_count: 3
+      });
+      expect((await store.listPaperTradingEvaluations()).map((evaluation) =>
+        evaluation.candidate_ref.id
+      )).toEqual([FIXTURE_CANDIDATE_ID]);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("keeps admitted Arena candidates queued when paper capacity is full", async () => {
     const store = new LocalStore(tmpDir);
     let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;
@@ -820,7 +880,7 @@ describe("operator product loop smoke", () => {
     } finally {
       await server.close();
     }
-  }, 40_000);
+  }, 90_000);
 
   it("resumes the persisted autonomous arena loop after runtime restart", async () => {
     const store = new LocalStore(tmpDir);

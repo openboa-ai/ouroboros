@@ -481,44 +481,58 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     candidateId: string,
     payload: Record<string, unknown> | undefined
   ) => {
+    const ownership = await arenaPaperCandidateOwnership(store, candidateId);
+    if (!ownership.managed || !ownership.candidate) {
+      return paperTradingCommandService.start(candidateId, payload);
+    }
+    const ownedCandidate = ownership.candidate;
     if (!isDefaultArenaPaperStartPayload(payload)) {
       if (isRejectedArenaPaperStartPayload(payload)) {
-        const ownership = await arenaPaperCandidateOwnership(store, candidateId);
-        if (ownership.managed && ownership.candidate) {
-          return {
-            statusCode: 422,
-            body: {
-              error: "arena_paper_start_payload_unsupported",
-              reason: "arena_paper_runtime_owns_candidate_start",
-              candidate_id: candidateId,
-              candidate_version_id:
-                ownership.candidate.candidate_version.candidate_version_id
-            }
-          };
-        }
+        return {
+          statusCode: 422,
+          body: {
+            error: "arena_paper_start_payload_unsupported",
+            reason: "arena_paper_runtime_owns_candidate_start",
+            candidate_id: candidateId,
+            candidate_version_id:
+              ownedCandidate.candidate_version.candidate_version_id
+          }
+        };
       }
       return paperTradingCommandService.start(candidateId, payload);
+    }
+    const before = await arenaPaperRuntime.snapshot();
+    if (!before.systems.some((entry) =>
+      entry.candidate_ref.id === candidateId
+    )) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "arena_paper_candidate_ineligible",
+          reason: "arena_paper_candidate_not_in_exact_admitted_set",
+          candidate_id: candidateId,
+          candidate_version_id:
+            ownedCandidate.candidate_version.candidate_version_id,
+          arena_paper_runtime: before
+        }
+      };
     }
     const snapshot = await arenaPaperRuntime.reconcile();
     const system = snapshot.systems.find((entry) =>
       entry.candidate_ref.id === candidateId
     );
     if (!system) {
-      const ownership = await arenaPaperCandidateOwnership(store, candidateId);
-      if (ownership.managed && ownership.candidate) {
-        return {
-          statusCode: 422,
-          body: {
-            error: "arena_paper_candidate_ineligible",
-            reason: "arena_paper_candidate_not_in_exact_admitted_set",
-            candidate_id: candidateId,
-            candidate_version_id:
-              ownership.candidate.candidate_version.candidate_version_id,
-            arena_paper_runtime: snapshot
-          }
-        };
-      }
-      return paperTradingCommandService.start(candidateId, payload);
+      return {
+        statusCode: 422,
+        body: {
+          error: "arena_paper_candidate_ineligible",
+          reason: "arena_paper_candidate_not_in_exact_admitted_set",
+          candidate_id: candidateId,
+          candidate_version_id:
+            ownedCandidate.candidate_version.candidate_version_id,
+          arena_paper_runtime: snapshot
+        }
+      };
     }
     if (system.lifecycle_status === "running") {
       return {

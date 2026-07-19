@@ -56,7 +56,7 @@ export interface ProspectivePaperHarness {
 export function prospectiveClock(startAt: string) {
   let current = validTimestamp(startAt);
   const currentTime = () => {
-    current = Math.max(current, Date.now());
+    current = Math.max(current + 1, Date.now());
     return current;
   };
   return {
@@ -176,7 +176,7 @@ export function prospectiveMarketData(input: {
     },
     async readPublicExecutionSnapshot(request = {}) {
       const requestedAt = observedAt(request.observedAt);
-      const at = shiftTimestamp(requestedAt, -1);
+      const at = shiftTimestamp(requestedAt, -3);
       const price = priceAt(requestedAt);
       const marker = `prospective-execution-${++sequence}`;
       return {
