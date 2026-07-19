@@ -332,6 +332,117 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("defers a manually requested recovering Arena overflow before resume", async () => {
+    const store = new LocalStore(tmpDir);
+    let firstArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
+    const firstServer = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort(),
+      arenaPaperCapacity: 2,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        firstArenaPaperRuntime = service;
+      }
+    });
+
+    try {
+      await postCommand(firstServer, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "arena.tick",
+        payload: {}
+      });
+      if (!firstArenaPaperRuntime) {
+        throw new Error("expected initial Arena Paper runtime");
+      }
+      expect(await firstArenaPaperRuntime.reconcile()).toMatchObject({
+        capacity: 2,
+        running_count: 2,
+        queued_count: 1
+      });
+    } finally {
+      await firstServer.close();
+    }
+
+    let restartedArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
+    const restartedServer = await buildServer({
+      store: new LocalStore(tmpDir),
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort(),
+      recoverPaperTradingSessionsOnStart: false,
+      runResearchControlStudiesOnStart: false,
+      arenaPaperCapacity: 1,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        restartedArenaPaperRuntime = service;
+      }
+    });
+
+    try {
+      if (!restartedArenaPaperRuntime) {
+        throw new Error("expected restarted Arena Paper runtime");
+      }
+      const before = await restartedArenaPaperRuntime.snapshot();
+      const recovering = before.systems.filter((system) =>
+        system.lifecycle_status === "recovering"
+      );
+      expect(before).toMatchObject({
+        capacity: 1,
+        occupied_count: 2,
+        recovering_count: 2,
+        running_count: 0
+      });
+      expect(recovering).toHaveLength(2);
+      const overflow = recovering[1];
+      if (!overflow) throw new Error("expected Arena recovery overflow");
+
+      const response = await restartedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: overflow.candidate_ref.id }
+        }
+      });
+
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        result: {
+          status: "queued",
+          candidate_id: overflow.candidate_ref.id,
+          trading_run_id: overflow.trading_run_ref.id,
+          lifecycle_status: "queued"
+        }
+      });
+      expect((await restartedArenaPaperRuntime.snapshot()).systems.find((system) =>
+        system.candidate_ref.id === overflow.candidate_ref.id
+      )).toMatchObject({
+        lifecycle_status: "queued",
+        active: false,
+        runtime_coordination_status: "arena_capacity_deferred"
+      });
+    } finally {
+      await restartedServer.close();
+    }
+  });
+
   it("keeps admitted Arena candidates queued when paper capacity is full", async () => {
     const store = new LocalStore(tmpDir);
     let arenaPaperRuntime: ArenaPaperRuntimeService | undefined;

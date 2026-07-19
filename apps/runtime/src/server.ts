@@ -145,6 +145,7 @@ import { registerRuntimeRouteModules } from "./registry/routes";
 import { RuntimeSupervisor } from "./runtime-supervisor";
 import {
   createRuntimeSupervisorLanes,
+  deferArenaPaperRecoveryOverflow,
   notifyPaperTradingRecoveryObserver
 } from "./runtime-supervisor-lanes";
 
@@ -517,6 +518,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
       };
     }
+    await deferArenaPaperRecoveryOverflow({
+      paperTradingSessions: paperTradingSessionService,
+      arenaPaperRuntime
+    });
     const snapshot = await arenaPaperRuntime.reconcile();
     const system = snapshot.systems.find((entry) =>
       entry.candidate_ref.id === candidateId

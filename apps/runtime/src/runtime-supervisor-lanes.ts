@@ -127,7 +127,7 @@ export function createRuntimeSupervisorLanes(options: {
       };
     },
     async recover() {
-      await deferArenaRecoveryOverflow(options);
+      await deferArenaPaperRecoveryOverflow(options);
       const outcomes = await options.paperTradingSessions
         .recoverRunningEvaluations({ persistFailures: false });
       latestPaperFailures = outcomes.filter((outcome) =>
@@ -280,7 +280,7 @@ export function createRuntimeSupervisorLanes(options: {
   return [selectedPaper, candidateArena, researchScheduler];
 }
 
-async function deferArenaRecoveryOverflow(options: {
+export async function deferArenaPaperRecoveryOverflow(options: {
   paperTradingSessions: Pick<PaperTradingSessionService, "stop">;
   arenaPaperRuntime?: Pick<ArenaPaperRuntimeService, "snapshot">;
 }): Promise<void> {
