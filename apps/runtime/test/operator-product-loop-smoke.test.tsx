@@ -826,6 +826,7 @@ describe("operator product loop smoke", () => {
     const store = new LocalStore(tmpDir);
     let queuedCandidateId: string | undefined;
     let previouslyRunningCandidateIds: string[] = [];
+    let recoveringCandidateId: string | undefined;
     let restartedArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const firstServer = await buildServer({
       store,
@@ -949,6 +950,10 @@ describe("operator product loop smoke", () => {
         occupied_count: 1,
         running_count: 1
       });
+      recoveringCandidateId = restartedSnapshot.systems.find((system) =>
+        system.lifecycle_status === "running" && system.active
+      )?.candidate_ref.id;
+      expect(recoveringCandidateId).toEqual(expect.any(String));
       const previouslyRunningSystems = restartedSnapshot.systems.filter((system) =>
         previouslyRunningCandidateIds.includes(system.candidate_ref.id)
       );
@@ -976,6 +981,7 @@ describe("operator product loop smoke", () => {
       await restartedServer.close();
     }
 
+    let readbackArenaPaperRuntime: ArenaPaperRuntimeService | undefined;
     const readbackServer = await buildServer({
       store: new LocalStore(tmpDir),
       candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
@@ -983,7 +989,10 @@ describe("operator product loop smoke", () => {
       paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
       marketDataPort: fakeGatewayMarketDataPort(),
       recoverPaperTradingSessionsOnStart: false,
-      runResearchControlStudiesOnStart: false
+      runResearchControlStudiesOnStart: false,
+      onArenaPaperRuntimeCreated(service) {
+        readbackArenaPaperRuntime = service;
+      }
     });
     try {
       const response = await readbackServer.inject({
@@ -993,6 +1002,37 @@ describe("operator product loop smoke", () => {
       expect(response.statusCode, response.body).toBe(200);
       expect((response.json() as { operator: OperatorReadModel }).operator.selected_candidate_id)
         .toBe(queuedCandidateId);
+      if (!recoveringCandidateId || !readbackArenaPaperRuntime) {
+        throw new Error("expected persisted recovering Arena paper system");
+      }
+      expect((await readbackArenaPaperRuntime.snapshot()).systems.find((system) =>
+        system.candidate_ref.id === recoveringCandidateId
+      )).toMatchObject({
+        lifecycle_status: "recovering",
+        active: false
+      });
+
+      const resumed = await readbackServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: recoveringCandidateId }
+        }
+      });
+      expect(resumed.statusCode, resumed.body).toBe(200);
+      expect(resumed.json()).toMatchObject({
+        result: {
+          status: "resumed",
+          runner_status: "running"
+        }
+      });
+      expect((await readbackArenaPaperRuntime.snapshot()).systems.find((system) =>
+        system.candidate_ref.id === recoveringCandidateId
+      )).toMatchObject({
+        lifecycle_status: "running",
+        active: true
+      });
     } finally {
       await readbackServer.close();
     }

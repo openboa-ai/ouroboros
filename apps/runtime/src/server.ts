@@ -535,9 +535,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
       };
     }
+    if (system.lifecycle_status === "recovering") {
+      return paperTradingCommandService.start(candidateId, payload);
+    }
     if (system.lifecycle_status === "queued" ||
-      system.lifecycle_status === "starting" ||
-      system.lifecycle_status === "recovering") {
+      system.lifecycle_status === "starting") {
       return {
         statusCode: 202,
         body: {
