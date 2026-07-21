@@ -3,7 +3,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { ArenaWorkspaceViewModel, ResearchWorkspaceViewModel } from "./app/operator-view-model";
+import type {
+  ArenaSystemDetailViewModel,
+  ArenaWorkspaceViewModel,
+  ResearchWorkspaceViewModel
+} from "./app/operator-view-model";
 import { ArenaScreen } from "./screens/arena-screen";
 import { ResearchScreen } from "./screens/research-screen";
 
@@ -50,6 +54,19 @@ describe("greenfield Operator entrypoint", () => {
     expect(source).toContain('"hidden"');
   });
 
+  it("refreshes the selected Arena detail in the existing five-second loop", () => {
+    const appSource = readFileSync(join(srcRoot, "App.tsx"), "utf8");
+    const runtimeSource = readFileSync(
+      join(srcRoot, "app", "use-operator-runtime.ts"),
+      "utf8"
+    );
+
+    expect(appSource).toContain("useOperatorRuntime(selectedArenaSystemId)");
+    expect(runtimeSource).toContain("fetchArenaTradingSystemDetail(selectedArenaSystemId)");
+    expect(runtimeSource).toContain("Promise.allSettled");
+    expect(runtimeSource).toContain("5_000");
+  });
+
   it("moves focus into narrow Arena and Research detail panes", () => {
     for (const screen of ["arena-screen.tsx", "research-screen.tsx"]) {
       const source = readFileSync(join(srcRoot, "screens", screen), "utf8");
@@ -79,6 +96,9 @@ describe("greenfield Operator entrypoint", () => {
         name: "Adaptive trend",
         direction: "trend_following",
         lifecycle: "running",
+        runnerStatus: "active",
+        sandboxStatus: "running",
+        latestDecision: "hold",
         rankStatus: "provisional_ranked",
         rank: 1,
         comparability: "comparable",
@@ -94,10 +114,50 @@ describe("greenfield Operator entrypoint", () => {
         detailAvailability: "summary_only"
       }]
     };
+    const detail: ArenaSystemDetailViewModel = {
+      id: "candidate-1",
+      admissionDecisionId: "admission-1",
+      handoffConformanceId: "handoff-1",
+      isolation: {
+        isolationId: "sandbox-1",
+        sandboxStatus: "running",
+        workspaceIdentity: "workspace-1",
+        networkPolicyStatus: "verified",
+        egressAttestationStatus: "verified"
+      },
+      manifest: {
+        summary: "Adaptive trend artifact",
+        declaredRuntime: "python",
+        declaredOutputs: ["order_request"],
+        allowedStages: ["paper"],
+        declaredPermissions: ["public_market_data"],
+        forbiddenContents: ["credentials"]
+      },
+      openOrders: [],
+      traceEvents: [{
+        sequence: 1,
+        occurredAt: "2026-07-18T00:20:00.000Z",
+        eventKind: "recovery",
+        summary: "Restart recovery completed",
+        recordRef: undefined
+      }],
+      logEntries: [{
+        sequence: 1,
+        occurredAt: "2026-07-18T00:20:01.000Z",
+        level: "info",
+        source: "sandbox",
+        message: "paper log line"
+      }],
+      artifactRefs: [{ record_kind: "system_code", id: "code-1" }],
+      traceTruncated: false,
+      logsTruncated: false
+    };
 
     const markup = renderToStaticMarkup(
       <ArenaScreen
         view={view}
+        detail={detail}
+        detailLoading={false}
         selectedId="candidate-1"
         commandRunning={false}
         onSelect={vi.fn()}
@@ -107,8 +167,13 @@ describe("greenfield Operator entrypoint", () => {
 
     expect(markup).toContain("Adaptive trend");
     expect(markup).toContain("12.00 USDT");
+    expect(markup).toContain("Runner active");
+    expect(markup).toContain("Sandbox running");
     expect(markup).toContain("> Evidence</button>");
-    expect(markup).toContain("Trace, logs, and sandbox detail unavailable");
+    expect(markup).toContain("workspace-1");
+    expect(markup).toContain("Restart recovery completed");
+    expect(markup).toContain("paper log line");
+    expect(markup).not.toContain("Trace, logs, and sandbox detail unavailable");
   });
 
   it("excludes unranked Arena revenue from the comparable headline", () => {

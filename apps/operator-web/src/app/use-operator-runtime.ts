@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ArenaTradingSystemDetailReadModel,
   OperatorReadModel,
   OuroborosCommandRequest,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import {
+  fetchArenaTradingSystemDetail,
   fetchOperatorReadModel,
   fetchTradingGatewayEnvironment,
   submitOuroborosCommand
@@ -21,10 +23,13 @@ export interface OperatorCommandState {
 export interface OperatorRuntimeState {
   operator?: OperatorReadModel;
   gateway?: TradingGatewayEnvironmentReadModel;
+  arenaDetail?: ArenaTradingSystemDetailReadModel;
   loading: boolean;
   refreshing: boolean;
+  arenaDetailLoading: boolean;
   operatorError?: string;
   gatewayError?: string;
+  arenaDetailError?: string;
   lastOperatorReadAt?: string;
   command: OperatorCommandState;
 }
@@ -40,10 +45,13 @@ export interface OperatorRuntimeController extends OperatorRuntimeState {
 const INITIAL_STATE: OperatorRuntimeState = {
   loading: true,
   refreshing: false,
+  arenaDetailLoading: false,
   command: { status: "idle" }
 };
 
-export function useOperatorRuntime(): OperatorRuntimeController {
+export function useOperatorRuntime(
+  selectedArenaSystemId?: string
+): OperatorRuntimeController {
   const [state, setState] = useState<OperatorRuntimeState>(INITIAL_STATE);
   const mountedRef = useRef(false);
   const requestSequenceRef = useRef(0);
@@ -57,12 +65,24 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     const sequence = ++requestSequenceRef.current;
     setState((current) => ({
       ...current,
-      refreshing: !current.loading
+      refreshing: !current.loading,
+      arenaDetail: selectedArenaSystemId &&
+        current.arenaDetail?.candidate_id === selectedArenaSystemId
+        ? current.arenaDetail
+        : undefined,
+      arenaDetailLoading: Boolean(
+        selectedArenaSystemId &&
+        current.arenaDetail?.candidate_id !== selectedArenaSystemId
+      ),
+      arenaDetailError: undefined
     }));
 
-    const [operatorResult, gatewayResult] = await Promise.allSettled([
+    const [operatorResult, gatewayResult, arenaDetailResult] = await Promise.allSettled([
       fetchOperatorReadModel(),
-      fetchTradingGatewayEnvironment()
+      fetchTradingGatewayEnvironment(),
+      selectedArenaSystemId
+        ? fetchArenaTradingSystemDetail(selectedArenaSystemId)
+        : Promise.resolve(undefined)
     ]);
 
     if (!mountedRef.current || sequence !== requestSequenceRef.current) {
@@ -77,19 +97,31 @@ export function useOperatorRuntime(): OperatorRuntimeController {
       gateway: gatewayResult.status === "fulfilled"
         ? gatewayResult.value
         : current.gateway,
+      arenaDetail: !selectedArenaSystemId
+        ? undefined
+        : arenaDetailResult.status === "fulfilled"
+          ? arenaDetailResult.value
+          : current.arenaDetail?.candidate_id === selectedArenaSystemId
+            ? current.arenaDetail
+            : undefined,
       loading: false,
       refreshing: false,
+      arenaDetailLoading: false,
       operatorError: operatorResult.status === "rejected"
         ? errorMessage(operatorResult.reason)
         : undefined,
       gatewayError: gatewayResult.status === "rejected"
         ? errorMessage(gatewayResult.reason)
         : undefined,
+      arenaDetailError: selectedArenaSystemId &&
+        arenaDetailResult.status === "rejected"
+        ? errorMessage(arenaDetailResult.reason)
+        : undefined,
       lastOperatorReadAt: operatorResult.status === "fulfilled"
         ? new Date().toISOString()
         : current.lastOperatorReadAt
     }));
-  }, []);
+  }, [selectedArenaSystemId]);
 
   const executeCommand = useCallback(async (
     label: string,
@@ -124,8 +156,11 @@ export function useOperatorRuntime(): OperatorRuntimeController {
       return undefined;
     } finally {
       commandRunningRef.current = false;
+      if (mountedRef.current) {
+        void refresh();
+      }
     }
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     mountedRef.current = true;

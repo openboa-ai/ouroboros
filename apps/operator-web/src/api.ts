@@ -1,5 +1,6 @@
 import type {
   AgentProfileProviderKind,
+  ArenaTradingSystemDetailReadModel,
   CandidateEvaluationRunOutcome,
   CandidateArenaReadModel,
   LedgerInput,
@@ -144,6 +145,21 @@ export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
   }
   const body = (await response.json()) as { operator: OperatorReadModel };
   return body.operator;
+}
+
+export async function fetchArenaTradingSystemDetail(
+  candidateId: string
+): Promise<ArenaTradingSystemDetailReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/arena/trading-systems/${encodeURIComponent(candidateId)}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load Arena system ${candidateId}: ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    arena_trading_system: ArenaTradingSystemDetailReadModel;
+  };
+  return body.arena_trading_system;
 }
 
 export async function startCandidateArena(): Promise<CandidateArenaReadModel> {

@@ -13915,6 +13915,8 @@ interface ArenaTradingSystemSummaryBaseReadModel {
   system_code_ref: Ref & { record_kind: "system_code" };
   display_name: string;
   direction_kind: ResearchDirectionKind;
+  runner_status: PaperTradingBoardRunnerStatus;
+  sandbox_status: ArenaIsolationReadModel["sandbox_status"];
   evaluation_id?: string;
   trading_run_id?: string;
   profit_loss?: TradingProfitLossReadModel;
@@ -13926,6 +13928,8 @@ interface ArenaTradingSystemSummaryBaseReadModel {
   next_observation_at?: string;
   stopped_at?: string;
   latest_failure?: PaperTradingFailureReadModel;
+  latest_decision?: PaperTradingDecisionSummary;
+  latest_fill?: PaperTradingFillSummary;
   authority_status: "not_live";
 }
 
@@ -14023,6 +14027,15 @@ export type ArenaTradingSystemDetailReadModel = ArenaTradingSystemSummaryReadMod
     record_kind: "paper_trading_handoff_conformance";
   };
   isolation: ArenaIsolationReadModel;
+  trading_system_manifest: {
+    summary: string;
+    declared_runtime?: string;
+    declared_outputs: string[];
+    allowed_stages: string[];
+    declared_permissions: string[];
+    forbidden_contents: string[];
+  };
+  lineage?: FullCycleLineageReadModel;
   latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
   latest_decision?: PaperTradingDecisionSummary;
   paper_account_snapshot?: PaperTradingAccountSnapshot;

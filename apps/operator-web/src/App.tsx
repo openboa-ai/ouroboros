@@ -3,6 +3,7 @@ import type { OuroborosCommandRequest } from "@ouroboros/domain";
 import { AlertTriangle } from "lucide-react";
 import { operatorRouteHref, parseOperatorRoute, type OperatorRoute } from "@/app/operator-route";
 import {
+  buildArenaSystemDetailViewModel,
   buildArenaWorkspaceViewModel,
   buildResearchWorkspaceViewModel
 } from "@/app/operator-view-model";
@@ -22,7 +23,10 @@ export function App() {
   const [route, setRoute] = useState<OperatorRoute>(() => (
     parseOperatorRoute(window.location.hash, window.location.search)
   ));
-  const runtime = useOperatorRuntime();
+  const selectedArenaSystemId = route.section === "arena"
+    ? route.selectedId
+    : undefined;
+  const runtime = useOperatorRuntime(selectedArenaSystemId);
   const arenaView = useMemo(
     () => runtime.operator ? buildArenaWorkspaceViewModel(runtime.operator) : undefined,
     [runtime.operator]
@@ -31,6 +35,12 @@ export function App() {
     () => runtime.operator ? buildResearchWorkspaceViewModel(runtime.operator) : undefined,
     [runtime.operator]
   );
+  const arenaDetail = useMemo(() => {
+    const detail = runtime.arenaDetail;
+    return detail && detail.candidate_id === selectedArenaSystemId
+      ? buildArenaSystemDetailViewModel(detail)
+      : undefined;
+  }, [runtime.arenaDetail, selectedArenaSystemId]);
 
   useEffect(() => {
     const synchronizeRoute = () => {
@@ -94,6 +104,9 @@ export function App() {
       {route.section === "arena" ? (
         <ArenaScreen
           view={arenaView}
+          detail={arenaDetail}
+          detailLoading={runtime.arenaDetailLoading}
+          detailError={runtime.arenaDetailError}
           selectedId={route.selectedId}
           commandRunning={commandRunning}
           onSelect={(selectedId) => navigate({ section: "arena", selectedId })}

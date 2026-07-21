@@ -15,6 +15,7 @@ import {
 import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts";
 import {
   isComparableArenaRevenueSystem,
+  type ArenaSystemDetailViewModel,
   type ArenaSystemViewModel,
   type ArenaWorkspaceViewModel
 } from "@/app/operator-view-model";
@@ -24,12 +25,14 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CommandConfirmation } from "@/components/command-confirmation";
 import { OperatorMetricStrip } from "@/components/operator-metrics";
 import { StatusBadge } from "@/components/operator-status";
 import { focusNarrowDetail } from "@/lib/operator-focus";
 import { formatCompactId, formatMoney, formatPercent, formatStatus, formatTimestamp } from "@/lib/operator-format";
 import { cn } from "@/lib/utils";
+import { ArenaSystemEvidence } from "@/screens/arena-system-evidence";
 
 const ARENA_CHART_CONFIG = {
   netRevenue: {
@@ -42,12 +45,18 @@ const OPERATOR_LEADERBOARD_RENDER_LIMIT = 60;
 
 export function ArenaScreen({
   view,
+  detail,
+  detailLoading = false,
+  detailError,
   selectedId,
   commandRunning,
   onSelect,
   onCommand
 }: {
   view: ArenaWorkspaceViewModel;
+  detail?: ArenaSystemDetailViewModel;
+  detailLoading?: boolean;
+  detailError?: string;
   selectedId?: string;
   commandRunning: boolean;
   onSelect: (id?: string) => void;
@@ -235,6 +244,9 @@ export function ArenaScreen({
           <ArenaSystemDetail
             backButtonRef={detailFocusRef}
             system={selected}
+            detail={detail}
+            detailLoading={detailLoading}
+            detailError={detailError}
             selectedId={selectedId}
             commandRunning={commandRunning}
             onBack={() => onSelect(undefined)}
@@ -298,7 +310,7 @@ function ArenaSystemList({
         {visibleSystems.map((system) => (
           <button
             className={cn(
-              "grid min-h-20 w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              "grid min-h-24 w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               selectedId === system.id && "bg-brand/8"
             )}
             key={system.id}
@@ -316,6 +328,14 @@ function ArenaSystemList({
               <span className="mt-1 block text-xs text-muted-foreground tabular-nums">
                 {system.observationCount} observations
               </span>
+              {system.runnerStatus || system.sandboxStatus ? (
+                <span className="mt-1 block truncate text-xs text-muted-foreground">
+                  {[
+                    system.runnerStatus ? `Runner ${formatStatus(system.runnerStatus).toLowerCase()}` : undefined,
+                    system.sandboxStatus ? `Sandbox ${formatStatus(system.sandboxStatus).toLowerCase()}` : undefined
+                  ].filter(Boolean).join(" · ")}
+                </span>
+              ) : null}
             </span>
             <span className="text-right">
               <span className={cn(
@@ -329,6 +349,14 @@ function ArenaSystemList({
                 {system.rank ? `#${system.rank}` : formatStatus(system.rankStatus)}
                 {system.qualificationStatus ? ` · ${formatStatus(system.qualificationStatus)}` : ""}
               </span>
+              {system.latestDecision || system.latestFill ? (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {[system.latestDecision, system.latestFill]
+                    .filter(Boolean)
+                    .map((value) => formatStatus(value!))
+                    .join(" · ")}
+                </span>
+              ) : null}
             </span>
           </button>
         ))}
@@ -367,6 +395,9 @@ function boundedArenaSystems(
 function ArenaSystemDetail({
   backButtonRef,
   system,
+  detail,
+  detailLoading,
+  detailError,
   selectedId,
   commandRunning,
   onBack,
@@ -374,6 +405,9 @@ function ArenaSystemDetail({
 }: {
   backButtonRef: RefObject<HTMLButtonElement | null>;
   system?: ArenaSystemViewModel;
+  detail?: ArenaSystemDetailViewModel;
+  detailLoading: boolean;
+  detailError?: string;
   selectedId?: string;
   commandRunning: boolean;
   onBack: () => void;
@@ -537,6 +571,10 @@ function ArenaSystemDetail({
             <DetailField label="Last observation" value={formatTimestamp(system.lastObservedAt)} />
             <DetailField label="Next observation" value={formatTimestamp(system.nextObservationAt)} />
             <DetailField label="Lifecycle" value={formatStatus(system.lifecycle)} />
+            <DetailField label="Runner" value={formatStatus(system.runnerStatus ?? "unavailable")} />
+            <DetailField label="Sandbox" value={formatStatus(system.sandboxStatus ?? "unavailable")} />
+            <DetailField label="Latest decision" value={formatStatus(system.latestDecision ?? "unavailable")} />
+            <DetailField label="Latest fill" value={formatStatus(system.latestFill ?? "unavailable")} />
             <DetailField label="Latest failure" value={system.latestFailure ?? "None observed"} />
           </dl>
         </section>
@@ -610,7 +648,26 @@ function ArenaSystemDetail({
         </section>
       ) : null}
 
-      <div className="border-t p-4">
+      {detailLoading ? (
+        <section className="border-t p-4" aria-label="Loading Arena system evidence">
+          <Skeleton className="h-4 w-48" />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }, (_, index) => (
+              <Skeleton className="h-12 w-full" key={index} />
+            ))}
+          </div>
+        </section>
+      ) : detailError ? (
+        <div className="border-t p-4">
+          <Alert variant="warning">
+            <AlertTitle>Arena detail refresh failed</AlertTitle>
+            <AlertDescription>{detailError}</AlertDescription>
+          </Alert>
+        </div>
+      ) : detail?.id === system.id ? (
+        <ArenaSystemEvidence detail={detail} />
+      ) : (
+        <div className="border-t p-4">
         <Alert variant="info">
           <FileCheck2 aria-hidden="true" />
           <AlertTitle>Trace, logs, and sandbox detail unavailable</AlertTitle>
@@ -618,7 +675,8 @@ function ArenaSystemDetail({
             The current Operator response contains an honest summary only. No trace event, log entry, isolation state, or artifact identity is synthesized by the UI.
           </AlertDescription>
         </Alert>
-      </div>
+        </div>
+      )}
     </section>
   );
 }

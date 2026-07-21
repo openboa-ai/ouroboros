@@ -58,6 +58,16 @@ export function registerCoreControllerRoutes(context: CoreControllerRoutesContex
       })
     );
 
+    server.get<{ Params: { candidateId: string } }>(
+      "/api/arena/trading-systems/:candidateId",
+      authRouteOptions(context.filesystemReadRateLimit, context.operatorApiAuthPreHandler),
+      async (request, reply) => {
+        const response = await context.operatorController
+          .readArenaTradingSystemDetail(request.params.candidateId);
+        return reply.code(response.statusCode).send(response.body);
+      }
+    );
+
     server.post<{ Body: OuroborosCommandRequest }>(
       "/api/commands",
       authRouteOptions(context.commandMutationRateLimit, context.operatorApiAuthPreHandler),
