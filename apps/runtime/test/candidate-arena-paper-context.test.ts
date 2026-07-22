@@ -343,6 +343,10 @@ describe("CandidateArena paper evidence context", () => {
         return value;
       },
       directions: ["mean_reversion"],
+      researchTrigger: {
+        trigger_kind: "time",
+        goal: "Use evidence captured during this collection window."
+      },
       researchEvidenceSource: async () => [evidence],
       researchAgent: "codex",
       agentFactory: () => new CapturingResearchAgent(contexts),
@@ -352,6 +356,18 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(outcome.created_candidate_count).toBe(1);
     expect(contexts[0]).toContain(evidence.research_evidence_artifact_id);
+    expect(await store.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-collection-window-consumer"
+    )).toMatchObject({
+      trigger: {
+        trigger_kind: "arena_event",
+        triggered_at: evidence.captured_at,
+        evidence_artifact_digest: evidence.artifact_digest
+      }
+    });
+    expect((await store.listCandidateArenaTicks()).find(
+      (tick) => tick.tick_id === "collection-window-consumer"
+    )?.started_at).toBe(evidence.captured_at);
     expect((await store.listResearchPreflightCommitments()).find(
       (commitment) => commitment.candidate_arena_tick_id ===
         "collection-window-consumer"

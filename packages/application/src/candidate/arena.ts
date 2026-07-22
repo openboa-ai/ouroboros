@@ -553,6 +553,10 @@ async function resolveResearchTrigger(input: {
         ...base,
         trigger_kind: "arena_event",
         goal: "Use newly captured Arena evidence in this bounded Research cycle.",
+        triggered_at: Date.parse(newEvidence.captured_at) >
+          Date.parse(base.triggered_at)
+          ? newEvidence.captured_at
+          : base.triggered_at,
         source_ref: { ...newEvidence.artifact_ref },
         evidence_artifact_ref: {
           record_kind: "research_evidence_artifact",
@@ -644,6 +648,7 @@ export async function runCandidateArenaTick(
       requested: input.researchTrigger ?? defaultResearchTriggerRequest("goal"),
       evidenceArtifacts: researchEvidenceArtifacts
     });
+  const allocationAt = researchTrigger?.triggered_at ?? startedAt;
   const sourceSelection = await sourceCandidate(
     input.store,
     input.sourceSystemId,
@@ -663,7 +668,7 @@ export async function runCandidateArenaTick(
   const allocation = await withArenaStoreMutation(input.store, () =>
     new CandidateArenaResearchAllocationService({
       store: input.store,
-      now: () => startedAt
+      now: () => allocationAt
     }).allocate({
       tickId,
       allocationMode,
@@ -674,6 +679,10 @@ export async function runCandidateArenaTick(
       trigger: researchTrigger
     })
   );
+  const executionStartedAt = Date.parse(allocation.allocated_at) >
+    Date.parse(startedAt)
+    ? allocation.allocated_at
+    : startedAt;
   const selections = allocation.selected_directions;
   const createdCandidateIds: string[] = [];
   const directionResults: CandidateArenaTickDirectionResultReadModel[] = [];
@@ -770,7 +779,7 @@ export async function runCandidateArenaTick(
 
   await input.store.recordCandidateArenaTick(candidateArenaTickRecord({
     tickId,
-    startedAt,
+    startedAt: executionStartedAt,
     completedAt: candidateArenaNow(input.now),
     sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
@@ -1133,7 +1142,10 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     });
   try {
     const createdAdapter = input.researchAgent === "fixture"
-      ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
+      ? new DirectionalFixtureTradingResearchAgentAdapter(
+          input.direction,
+          agentDescriptor
+        )
       : input.agentFactory(input.researchAgent);
     assertCandidateArenaResearchAgentDescriptor(
       createdAdapter.agent,
@@ -1490,9 +1502,13 @@ async function failedArenaDevelopmentSubmissionCount(
 class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResearchAgentAdapter {
   override readonly agent: ManagedResearchAgent;
 
-  constructor(private readonly direction: ResearchDirectionKind) {
+  constructor(
+    private readonly direction: ResearchDirectionKind,
+    agent: ManagedResearchAgent =
+      directionalFixtureResearchAgentDescriptor(direction)
+  ) {
     super();
-    this.agent = directionalFixtureResearchAgentDescriptor(direction);
+    this.agent = structuredClone(agent);
   }
 
   override async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {

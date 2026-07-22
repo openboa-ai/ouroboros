@@ -296,9 +296,7 @@ export async function runResearchMemoryControlStudy(
           repoRoot: prepared.repoRoot,
           sourceArtifactDir: paths.sourceArtifactRoot,
           researchAgent: input.researchAgent,
-          ...(input.researchAgent === "fixture"
-            ? {}
-            : { researchAgentDescriptor: input.researchAgentIdentity }),
+          researchAgentDescriptor: input.researchAgentIdentity,
           agentFactory: input.agentFactory,
           artifactRunner: input.artifactRunner,
           replayProviderFactory: input.replayProviderFactory

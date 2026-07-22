@@ -209,6 +209,7 @@ describe("ResearchControlCampaign runtime", () => {
       }
     });
     const tickCalls: string[] = [];
+    const researchAgentIdentity = new FixtureTradingResearchAgentAdapter().agent;
 
     const outcome = await runResearchControlCampaign({
       store: sourceStore,
@@ -216,12 +217,13 @@ describe("ResearchControlCampaign runtime", () => {
       idempotencyKey: "runtime-isolation-001",
       sourceCandidateId: FIXTURE_CANDIDATE_ID,
       researchAgent: "fixture",
-      researchAgentIdentity: new FixtureTradingResearchAgentAdapter().agent,
+      researchAgentIdentity,
       agentFactory: fixtureAgentFactory,
       tickCountPerArm: 1,
       artifactRunner: networklessArtifactRunner(),
       replayProviderFactory: networklessReplayProvider,
       runTick: async (input) => {
+        expect(input.researchAgentDescriptor).toEqual(researchAgentIdentity);
         tickCalls.push(input.tickId!);
         const before = fencedWrites;
         const result = await runCandidateArenaTick(input);
