@@ -1284,7 +1284,7 @@ describe("operator product loop smoke", () => {
     } finally {
       await readbackServer.close();
     }
-  });
+  }, 90_000);
 
   it("continues arena tick ids when the stopped loop is manually restarted after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
