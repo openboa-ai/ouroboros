@@ -267,6 +267,33 @@ describe("LocalStore", () => {
     );
   });
 
+  it("retains an exact released paper source when evaluation advances before artifact persistence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    const artifact = paperResultResearchEvidence(evaluation);
+    const observation = validPaperTradingObservation(commitment, evaluation);
+
+    await store.recordPaperTradingObservation(observation, {
+      ...evaluation,
+      status: "running",
+      observation_count: 1,
+      last_observed_at: observation.observed_at,
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    });
+
+    await expect(store.recordResearchEvidenceArtifact(artifact))
+      .resolves.toEqual(artifact);
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    await expect(restarted.getResearchEvidenceArtifact(
+      artifact.research_evidence_artifact_id
+    )).resolves.toEqual(artifact);
+  });
+
   it("rejects sealed qualification evidence at the Research boundary", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -13679,6 +13706,46 @@ function paperFailureResearchEvidence(
     ),
     summary: canonicalResearchEvidenceArtifactSummary(
       "arena_failure",
+      evaluation
+    ),
+    supporting_record_refs: [
+      { ...evaluation.trading_run_ref },
+      { ...evaluation.paper_trading_evaluation_commitment_ref! }
+    ],
+    captured_at: evaluation.started_at,
+    sanitization_policy: "research_evidence_sanitization_v1",
+    sanitization_status: "sanitized",
+    qualification_evidence_hidden: true,
+    secrets_removed: true,
+    host_paths_removed: true,
+    truncated: false,
+    artifact_digest: `sha256:${"0".repeat(64)}`,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  });
+}
+
+function paperResultResearchEvidence(
+  evaluation: PaperTradingEvaluationRecord
+): ResearchEvidenceArtifactRecord {
+  return withResearchEvidenceDigest({
+    record_kind: "research_evidence_artifact",
+    version: 1,
+    research_evidence_artifact_id:
+      `research-evidence-result-${evaluation.paper_trading_evaluation_id}`,
+    source_kind: "arena_paper_result",
+    subject_ref: { ...evaluation.candidate_ref },
+    artifact_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: evaluation.paper_trading_evaluation_id
+    },
+    source_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(evaluation)
+    ),
+    summary: canonicalResearchEvidenceArtifactSummary(
+      "arena_paper_result",
       evaluation
     ),
     supporting_record_refs: [

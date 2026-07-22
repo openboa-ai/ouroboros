@@ -882,6 +882,7 @@ type Collection =
   | "research-preflight-commitments"
   | "research-worker-checkpoints"
   | "research-evidence-artifacts"
+  | "research-evidence-paper-evaluation-snapshots"
   | "research-behavior-fingerprints"
   | "experiment-runs"
   | "paper-trading-handoff-conformances"
@@ -966,6 +967,24 @@ interface LocalPaperTradingComparisonCheckpointTransaction {
   champion: LocalPaperTradingComparisonCheckpointTransactionSide;
   challenger: LocalPaperTradingComparisonCheckpointTransactionSide;
   transaction_digest: string;
+}
+
+interface ResearchEvidencePaperEvaluationSnapshot {
+  record_kind: "research_evidence_paper_evaluation_snapshot";
+  version: 1;
+  research_evidence_paper_evaluation_snapshot_id: string;
+  paper_trading_evaluation_ref: Ref;
+  source_digest: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  source_times: string[];
+  paper_result_summary: string;
+  failure_present: boolean;
+  failure_summary?: string;
+  snapshot_digest: string;
+  authority_status: "research_only";
 }
 
 interface LoadedPaperTradingComparisonSideGraph {
@@ -7748,7 +7767,8 @@ export class LocalStore {
           "ResearchEvidenceArtifact canonical content already has an identity"
         );
       }
-      await this.assertResearchEvidenceArtifactSource(artifact, true);
+      await this.ensureResearchEvidencePaperEvaluationSnapshot(artifact);
+      await this.assertResearchEvidenceArtifactSource(artifact);
       await this.writeJson(
         this.itemPath(
           "research-evidence-artifacts",
@@ -7769,7 +7789,7 @@ export class LocalStore {
     );
     if (value === undefined) return undefined;
     const artifact = this.assertPersistedResearchEvidenceArtifact(value);
-    await this.assertResearchEvidenceArtifactSource(artifact, false);
+    await this.assertResearchEvidenceArtifactSource(artifact);
     return artifact;
   }
 
@@ -7780,7 +7800,7 @@ export class LocalStore {
       "research-evidence-artifacts"
     )).map((value) => this.assertPersistedResearchEvidenceArtifact(value));
     for (const artifact of artifacts) {
-      await this.assertResearchEvidenceArtifactSource(artifact, false);
+      await this.assertResearchEvidenceArtifactSource(artifact);
     }
     return artifacts.sort((left, right) =>
       left.captured_at.localeCompare(right.captured_at) ||
@@ -7805,9 +7825,90 @@ export class LocalStore {
     return value;
   }
 
+  private async ensureResearchEvidencePaperEvaluationSnapshot(
+    artifact: ResearchEvidenceArtifactRecord
+  ): Promise<void> {
+    if (artifact.source_kind !== "arena_paper_result" &&
+      artifact.source_kind !== "arena_failure") {
+      return;
+    }
+    const existing = await this.getResearchEvidencePaperEvaluationSnapshot(
+      artifact.artifact_ref.id,
+      artifact.source_digest
+    );
+    if (existing) return;
+    const source = await this.getPaperTradingEvaluation(artifact.artifact_ref.id);
+    if (!source || comparisonExactRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(source)
+    ) !== artifact.source_digest) {
+      return;
+    }
+    await this.recordResearchEvidencePaperEvaluationSnapshotIfReleased(source);
+  }
+
+  private async recordResearchEvidencePaperEvaluationSnapshotIfReleased(
+    source: PaperTradingEvaluationRecord
+  ): Promise<ResearchEvidencePaperEvaluationSnapshot | undefined> {
+    const commitment = source.paper_trading_evaluation_commitment_ref
+      ? await this.getPaperTradingEvaluationCommitment(
+          source.paper_trading_evaluation_commitment_ref.id
+        )
+      : undefined;
+    if (!commitment || commitment.evidence_purpose !== "research_feedback" ||
+      commitment.window_policy.release_policy !== "closed_observation" ||
+      commitment.commitment_digest !== comparisonExactRecordDigest(
+        paperTradingEvaluationCommitmentDigestInput(commitment)
+      ) || !sameRef(commitment.candidate_ref, source.candidate_ref) ||
+      !sameRef(commitment.candidate_version_ref, source.candidate_version_ref) ||
+      !sameRef(commitment.trading_run_ref, source.trading_run_ref)) {
+      return undefined;
+    }
+    const snapshot = buildResearchEvidencePaperEvaluationSnapshot(source);
+    const snapshotPath = this.itemPath(
+      "research-evidence-paper-evaluation-snapshots",
+      snapshot.research_evidence_paper_evaluation_snapshot_id
+    );
+    await this.writeJsonCreateOnly(snapshotPath, snapshot);
+    const persisted = await this.readJson<unknown>(snapshotPath);
+    const verified = this.assertPersistedResearchEvidencePaperEvaluationSnapshot(
+      persisted
+    );
+    if (!sameJson(verified, snapshot)) {
+      throw new LocalStoreError(
+        "research_evidence_artifact_source_mismatch",
+        "Research paper source snapshot conflicts with exact persisted evidence"
+      );
+    }
+    return verified;
+  }
+
+  private async getResearchEvidencePaperEvaluationSnapshot(
+    evaluationId: string,
+    sourceDigest: string
+  ): Promise<ResearchEvidencePaperEvaluationSnapshot | undefined> {
+    const value = await this.readOptionalRecord<unknown>(
+      "research-evidence-paper-evaluation-snapshots",
+      researchEvidencePaperEvaluationSnapshotId(evaluationId, sourceDigest)
+    );
+    return value === undefined
+      ? undefined
+      : this.assertPersistedResearchEvidencePaperEvaluationSnapshot(value);
+  }
+
+  private assertPersistedResearchEvidencePaperEvaluationSnapshot(
+    value: unknown
+  ): ResearchEvidencePaperEvaluationSnapshot {
+    if (!researchEvidencePaperEvaluationSnapshotHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        "research_evidence_artifact_source_mismatch",
+        "Research paper source snapshot is unreadable or corrupt"
+      );
+    }
+    return value;
+  }
+
   private async assertResearchEvidenceArtifactSource(
-    artifact: ResearchEvidenceArtifactRecord,
-    requireCurrentDigest: boolean
+    artifact: ResearchEvidenceArtifactRecord
   ): Promise<void> {
     let sourceMatches = false;
     if (artifact.source_kind === "research_finding") {
@@ -7817,8 +7918,7 @@ export class LocalStore {
       if (!source) this.throwResearchEvidenceSourceNotFound();
       sourceMatches = this.researchEvidenceSourceDigestMatches(
         artifact,
-        source,
-        true
+        source
       ) && sameRef(artifact.subject_ref, source.research_worker_ref) &&
         artifact.summary === canonicalResearchEvidenceArtifactSummary(
           artifact.source_kind,
@@ -7850,8 +7950,7 @@ export class LocalStore {
       );
       sourceMatches = this.researchEvidenceSourceDigestMatches(
         artifact,
-        source,
-        true
+        source
       ) && sameRef(artifact.subject_ref, source.candidate_ref) &&
         artifact.summary === canonicalResearchEvidenceArtifactSummary(
           artifact.source_kind,
@@ -7875,29 +7974,30 @@ export class LocalStore {
         source.candidate_version_ref,
         source.trading_run_ref
       );
-      sourceMatches = this.researchEvidenceSourceDigestMatches(
-        artifact,
-        source,
-        requireCurrentDigest
-      ) && (!requireCurrentDigest || artifact.source_kind !== "arena_failure" ||
-        Boolean(source.latest_failure_reason?.trim())) &&
-        sameRef(artifact.subject_ref, source.candidate_ref) &&
-        (!requireCurrentDigest || artifact.summary ===
-          canonicalResearchEvidenceArtifactSummary(
-            artifact.source_kind,
-            source
-          )) &&
-        this.researchEvidenceCaptureMatchesEvaluation(
-          artifact.captured_at,
-          source,
-          requireCurrentDigest
-        ) &&
+      const snapshot = await this.getResearchEvidencePaperEvaluationSnapshot(
+        artifact.artifact_ref.id,
+        artifact.source_digest
+      );
+      const expectedSummary = artifact.source_kind === "arena_failure"
+        ? snapshot?.failure_summary
+        : snapshot?.paper_result_summary;
+      sourceMatches = snapshot !== undefined && commitment !== undefined &&
+        sameRef(snapshot.paper_trading_evaluation_ref, artifact.artifact_ref) &&
+        sameRef(snapshot.candidate_ref, source.candidate_ref) &&
+        sameRef(snapshot.candidate_version_ref, source.candidate_version_ref) &&
+        sameRef(snapshot.trading_run_ref, source.trading_run_ref) &&
+        sameRef(
+          snapshot.paper_trading_evaluation_commitment_ref,
+          source.paper_trading_evaluation_commitment_ref
+        ) && snapshot.source_digest === artifact.source_digest &&
+        sameRef(artifact.subject_ref, snapshot.candidate_ref) &&
+        expectedSummary !== undefined && artifact.summary === expectedSummary &&
+        (artifact.source_kind !== "arena_failure" || snapshot.failure_present) &&
+        snapshot.source_times.includes(artifact.captured_at) &&
         refsAreSubset(artifact.supporting_record_refs, [
-          source.trading_run_ref,
-          ...(source.paper_trading_evaluation_commitment_ref
-            ? [source.paper_trading_evaluation_commitment_ref]
-            : [])
-        ]) && commitment !== undefined;
+          snapshot.trading_run_ref,
+          snapshot.paper_trading_evaluation_commitment_ref
+        ]);
     }
     if (!sourceMatches) {
       throw new LocalStoreError(
@@ -7911,11 +8011,9 @@ export class LocalStore {
   private researchEvidenceSourceDigestMatches(
     artifact: ResearchEvidenceArtifactRecord,
     source: ResearchFindingRecord | PaperTradingObservationRecord |
-      PaperTradingEvaluationRecord,
-    requireCurrentDigest: boolean
+      PaperTradingEvaluationRecord
   ): boolean {
-    return !requireCurrentDigest ||
-      artifact.source_digest === comparisonExactRecordDigest(
+    return artifact.source_digest === comparisonExactRecordDigest(
       paperTradingComparisonPersistedRecordDigestInput(source)
     );
   }
@@ -7945,22 +8043,6 @@ export class LocalStore {
       return undefined;
     }
     return commitment;
-  }
-
-  private researchEvidenceCaptureMatchesEvaluation(
-    capturedAt: string,
-    source: PaperTradingEvaluationRecord,
-    requireExactCurrentTime: boolean
-  ): boolean {
-    const sourceTimes = [
-      source.started_at,
-      source.last_observed_at,
-      source.stopped_at
-    ].filter((value): value is string => value !== undefined);
-    if (requireExactCurrentTime) return sourceTimes.includes(capturedAt);
-    const latestSourceTime = sourceTimes.sort().at(-1)!;
-    return Date.parse(capturedAt) >= Date.parse(source.started_at) &&
-      Date.parse(capturedAt) <= Date.parse(latestSourceTime);
   }
 
   private throwResearchEvidenceSourceNotFound(): never {
@@ -10867,6 +10949,11 @@ export class LocalStore {
       evaluation,
       existing
     } : undefined);
+    if (existing) {
+      await this.recordResearchEvidencePaperEvaluationSnapshotIfReleased(
+        existing
+      );
+    }
     await this.writeJson(
       this.itemPath("paper-trading-evaluations", evaluation.paper_trading_evaluation_id),
       evaluation
@@ -11002,6 +11089,9 @@ export class LocalStore {
       evaluation
     });
     await this.validatePaperTradingEvaluationWrite(evaluation, existingEvaluation);
+    await this.recordResearchEvidencePaperEvaluationSnapshotIfReleased(
+      existingEvaluation
+    );
     await this.writeJson(
       this.itemPath("paper-trading-observations", observation.paper_trading_observation_id),
       observation
@@ -16708,6 +16798,11 @@ export class LocalStore {
       );
     }
     if (!samePersistedComparisonRecord(existing, after)) {
+      if (collection === "paper-trading-evaluations") {
+        await this.recordResearchEvidencePaperEvaluationSnapshotIfReleased(
+          before as PaperTradingEvaluationRecord
+        );
+      }
       await this.writeJson(this.itemPath(collection, id), after);
     }
   }
@@ -22760,6 +22855,132 @@ function comparePaperTradingObservations(
 
 function storeJsonFileName(id: string): string {
   return `${encodeURIComponent(id)}.json`;
+}
+
+function buildResearchEvidencePaperEvaluationSnapshot(
+  source: PaperTradingEvaluationRecord
+): ResearchEvidencePaperEvaluationSnapshot {
+  const sourceDigest = comparisonExactRecordDigest(
+    paperTradingComparisonPersistedRecordDigestInput(source)
+  );
+  const failurePresent = Boolean(source.latest_failure_reason?.trim());
+  const snapshot: ResearchEvidencePaperEvaluationSnapshot = {
+    record_kind: "research_evidence_paper_evaluation_snapshot",
+    version: 1,
+    research_evidence_paper_evaluation_snapshot_id:
+      researchEvidencePaperEvaluationSnapshotId(
+        source.paper_trading_evaluation_id,
+        sourceDigest
+      ),
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: source.paper_trading_evaluation_id
+    },
+    source_digest: sourceDigest,
+    candidate_ref: { ...source.candidate_ref },
+    candidate_version_ref: { ...source.candidate_version_ref },
+    trading_run_ref: { ...source.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      ...source.paper_trading_evaluation_commitment_ref!
+    },
+    source_times: [...new Set([
+      source.started_at,
+      source.last_observed_at,
+      source.stopped_at
+    ].filter((value): value is string => value !== undefined))],
+    paper_result_summary: canonicalResearchEvidenceArtifactSummary(
+      "arena_paper_result",
+      source
+    ),
+    failure_present: failurePresent,
+    ...(failurePresent
+      ? {
+          failure_summary: canonicalResearchEvidenceArtifactSummary(
+            "arena_failure",
+            source
+          )
+        }
+      : {}),
+    snapshot_digest: `sha256:${"0".repeat(64)}`,
+    authority_status: "research_only"
+  };
+  snapshot.snapshot_digest = comparisonExactRecordDigest(
+    researchEvidencePaperEvaluationSnapshotDigestInput(snapshot)
+  );
+  return snapshot;
+}
+
+function researchEvidencePaperEvaluationSnapshotId(
+  evaluationId: string,
+  sourceDigest: string
+): string {
+  return `research-evidence-paper-evaluation-snapshot-${evaluationId}-${sourceDigest}`;
+}
+
+function researchEvidencePaperEvaluationSnapshotDigestInput(
+  snapshot: ResearchEvidencePaperEvaluationSnapshot
+): string {
+  const { snapshot_digest: _digest, ...payload } = snapshot;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+function researchEvidencePaperEvaluationSnapshotHasRuntimeShape(
+  value: unknown
+): value is ResearchEvidencePaperEvaluationSnapshot {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, [
+    "record_kind",
+    "version",
+    "research_evidence_paper_evaluation_snapshot_id",
+    "paper_trading_evaluation_ref",
+    "source_digest",
+    "candidate_ref",
+    "candidate_version_ref",
+    "trading_run_ref",
+    "paper_trading_evaluation_commitment_ref",
+    "source_times",
+    "paper_result_summary",
+    "failure_present",
+    "failure_summary",
+    "snapshot_digest",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  const snapshot = value as unknown as ResearchEvidencePaperEvaluationSnapshot;
+  return snapshot.record_kind ===
+      "research_evidence_paper_evaluation_snapshot" &&
+    snapshot.version === 1 &&
+    nonEmpty(snapshot.research_evidence_paper_evaluation_snapshot_id) &&
+    isRef(
+      snapshot.paper_trading_evaluation_ref,
+      "paper_trading_evaluation"
+    ) && isSha256Digest(snapshot.source_digest) &&
+    isRef(snapshot.candidate_ref, "trading_system_candidate") &&
+    isRef(snapshot.candidate_version_ref, "candidate_version") &&
+    isRef(snapshot.trading_run_ref, "trading_run") &&
+    isRef(
+      snapshot.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) && Array.isArray(snapshot.source_times) &&
+    snapshot.source_times.length > 0 && snapshot.source_times.length <= 3 &&
+    snapshot.source_times.every(isIsoTimestamp) &&
+    new Set(snapshot.source_times).size === snapshot.source_times.length &&
+    nonEmpty(snapshot.paper_result_summary) &&
+    snapshot.paper_result_summary.length <= 4_000 &&
+    typeof snapshot.failure_present === "boolean" &&
+    (snapshot.failure_present
+      ? nonEmpty(snapshot.failure_summary) &&
+        snapshot.failure_summary.length <= 4_000
+      : snapshot.failure_summary === undefined) &&
+    isSha256Digest(snapshot.snapshot_digest) &&
+    snapshot.authority_status === "research_only" &&
+    snapshot.research_evidence_paper_evaluation_snapshot_id ===
+      researchEvidencePaperEvaluationSnapshotId(
+        snapshot.paper_trading_evaluation_ref.id,
+        snapshot.source_digest
+      ) && snapshot.snapshot_digest === comparisonExactRecordDigest(
+        researchEvidencePaperEvaluationSnapshotDigestInput(snapshot)
+      );
 }
 
 interface LedgerRecordIds {
