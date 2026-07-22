@@ -15,7 +15,7 @@ import type {
 import { ArenaOperationsProjectionService } from "./arena-operations";
 
 describe("ArenaOperationsProjectionService", () => {
-  it("ranks only the newest exact shared cohort at a common paper boundary", async () => {
+  it("ranks independently timed sessions at their common paper sequence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
       system("candidate-b", "running", "2026-07-19T00:00:01.000Z"),
@@ -31,8 +31,8 @@ describe("ArenaOperationsProjectionService", () => {
     });
     fixture.addPaper("candidate-b", {
       observations: [
-        observation("candidate-b", 1, "2026-07-19T00:01:00.000Z", 4),
-        observation("candidate-b", 2, "2026-07-19T00:02:00.000Z", 10)
+        observation("candidate-b", 1, "2026-07-19T00:01:00.500Z", 4),
+        observation("candidate-b", 2, "2026-07-19T00:02:00.750Z", 10)
       ]
     });
     fixture.addPaper("candidate-c", {
@@ -74,7 +74,7 @@ describe("ArenaOperationsProjectionService", () => {
     ]);
     expect(projection.systems[0]).toMatchObject({
       comparison_sequence: 2,
-      comparison_cutoff_at: "2026-07-19T00:02:00.000Z",
+      comparison_cutoff_at: "2026-07-19T00:02:00.750Z",
       runner_status: "active",
       sandbox_status: "running",
       latest_decision: { decision_kind: "hold" }

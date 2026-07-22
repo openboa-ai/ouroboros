@@ -89,7 +89,9 @@ Research feedback and qualification are different evidence purposes even when bo
 Multiple admitted systems may have concurrent or queued PaperTradingEvaluations. A displayed Arena
 rank is valid only inside an exact comparable cohort whose market opportunity, evidence purpose,
 account, cost, risk, and evaluation policies match. Running sessions may receive a provisional
-rank at an exact common observation boundary; qualification remains separate. Queued, invalidated,
+rank at an exact common observation sequence. The comparison cutoff is the latest observation time
+required for every cohort member to reach that sequence; qualification remains separate. Queued,
+invalidated,
 boundary-missing, and cross-cohort sessions remain visible but unranked. ResearchPreflight score or
 revenue never defines Arena rank.
 

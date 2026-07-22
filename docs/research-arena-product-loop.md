@@ -120,7 +120,8 @@ secondary metric. ResearchPreflight revenue or score never defines Arena rank.
 Ranked systems must share an exact comparison cohort that binds market opportunity, evidence
 purpose, the repository-fixed `BTCUSDT` symbol, account, cost, risk, and relevant evaluation
 policy. Running sessions may receive a
-provisional rank only at an exact common observation sequence and cutoff. Qualification remains a
+provisional rank only at an exact common observation sequence. Its comparison cutoff is the latest
+observation time required for every cohort member to reach that sequence. Qualification remains a
 separate evidence-quality decision. A session that is queued, invalidated, missing a common
 boundary, or from a different cohort remains visible but unranked with an explicit reason. The UI
 must not sort incomparable values into one implied leaderboard.

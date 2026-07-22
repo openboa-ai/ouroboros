@@ -458,22 +458,32 @@ function commonBoundary(
 ): CommonBoundary | undefined {
   const [first, ...rest] = systems;
   if (!first) return undefined;
-  const shared = new Map(first.observations.map((entry) => [
-    boundaryKey(entry.sequence, entry.observed_at),
-    { sequence: entry.sequence, cutoffAt: entry.observed_at }
-  ]));
+  const sharedSequences = new Set(first.observations.map((entry) =>
+    entry.sequence
+  ));
   for (const system of rest) {
-    const boundaries = new Set(system.observations.map((entry) =>
-      boundaryKey(entry.sequence, entry.observed_at)
+    const sequences = new Set(system.observations.map((entry) =>
+      entry.sequence
     ));
-    for (const key of shared.keys()) {
-      if (!boundaries.has(key)) shared.delete(key);
+    for (const sequence of sharedSequences) {
+      if (!sequences.has(sequence)) sharedSequences.delete(sequence);
     }
   }
-  return [...shared.values()].sort((left, right) =>
-    right.sequence - left.sequence ||
-    right.cutoffAt.localeCompare(left.cutoffAt)
+  const sequence = [...sharedSequences].sort((left, right) =>
+    right - left
   )[0];
+  if (sequence === undefined) return undefined;
+  const observations = systems
+    .map((system) => system.observations.find((entry) =>
+      entry.sequence === sequence
+    ))
+    .filter((entry): entry is PaperTradingObservationRecord =>
+      entry !== undefined
+    );
+  if (observations.length !== systems.length) return undefined;
+  const cutoffAt = observations.reduce((latest, entry) =>
+    entry.observed_at > latest ? entry.observed_at : latest, "");
+  return cutoffAt ? { sequence, cutoffAt } : undefined;
 }
 
 function scoreAtBoundary(
@@ -481,8 +491,7 @@ function scoreAtBoundary(
   boundary: CommonBoundary
 ): TradingProfitLossReadModel | undefined {
   const observation = observations.find((entry) =>
-    entry.sequence === boundary.sequence &&
-    entry.observed_at === boundary.cutoffAt
+    entry.sequence === boundary.sequence
   );
   return observation ? { ...observation.cumulative_score } : undefined;
 }
@@ -1063,10 +1072,6 @@ function digest(value: unknown): string {
 
 function sha256Text(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function boundaryKey(sequence: number, cutoffAt: string): string {
-  return `${sequence}\u0000${cutoffAt}`;
 }
 
 function cloneJson<T>(value: T): T {
