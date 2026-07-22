@@ -27,6 +27,8 @@ describe("Research and Arena operations read-model contracts", () => {
         display_name: "Trend candidate",
         direction_kind: "trend_following",
         session_status: "running",
+        runner_status: "active",
+        sandbox_status: "running",
         evaluation_id: "paper-1",
         trading_run_id: "run-1",
         rank_status: "provisional_ranked",
@@ -72,6 +74,13 @@ describe("Research and Arena operations read-model contracts", () => {
         failed_observation_count: 0,
         queued_at: "2026-07-18T00:00:00.000Z",
         started_at: "2026-07-18T00:00:01.000Z",
+        latest_decision: {
+          decision_kind: "hold",
+          source_kind: "trading_system_decision",
+          reason: "Waiting for the next closed observation.",
+          observed_at: "2026-07-18T00:12:00.000Z",
+          authority_status: "trace_only"
+        },
         authority_status: "not_live"
       }],
       latest_system_id: "candidate-1",
@@ -102,6 +111,8 @@ describe("Research and Arena operations read-model contracts", () => {
       display_name: "Ranked candidate",
       direction_kind: "trend_following",
       session_status: "completed",
+      runner_status: "inactive",
+      sandbox_status: "stopped",
       evaluation_id: "paper-ranked",
       trading_run_id: "run-ranked",
       rank_status: "ranked",
@@ -156,6 +167,8 @@ describe("Research and Arena operations read-model contracts", () => {
       display_name: "Queued candidate",
       direction_kind: "mean_reversion",
       session_status: "queued",
+      runner_status: "inactive",
+      sandbox_status: "not_started",
       rank_status: "unranked",
       comparability_status: "ineligible",
       unranked_reasons: ["paper_evaluation_not_started"],
@@ -320,6 +333,21 @@ describe("Research and Arena operations read-model contracts", () => {
         network_policy_status: "verified",
         egress_attestation_status: "verified",
         authority_status: "not_live"
+      },
+      trading_system_manifest: {
+        summary: "Trend candidate",
+        declared_runtime: "python",
+        declared_outputs: ["order_request"],
+        allowed_stages: ["paper"],
+        declared_permissions: ["public_market_data"],
+        forbidden_contents: ["credentials"]
+      },
+      lineage: {
+        handoff_status: "runnable",
+        source: {
+          trading_system_id: "source-system-1",
+          candidate_version_id: "source-system-1-v1"
+        }
       },
       open_orders: [],
       trace_events: [],

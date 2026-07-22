@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   OUROBOROS_COMMAND_DESCRIPTORS,
   type AgentProfileProviderKind,
+  type ArenaTradingSystemDetailReadModel,
   type CandidateArenaReadModel,
   type CandidateArenaTickPaperTradingContinuationReadModel,
   type CandidateInspectReadModel,
@@ -54,6 +55,7 @@ import type {
   ArenaPaperRuntimeService,
   ArenaPaperRuntimeSystem
 } from "../trading/paper/arena-runtime";
+import { ArenaOperationsProjectionService } from "./arena-operations";
 
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
 const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
@@ -80,7 +82,7 @@ export interface OperatorServiceOptions {
   };
   arenaPaperRuntime?: Pick<
     ArenaPaperRuntimeService,
-    "reconcile" | "fencePendingStarts"
+    "snapshot" | "reconcile" | "fencePendingStarts"
   >;
   paperTradingComparisonPromotionService?: Pick<
     PaperTradingComparisonPromotionService,
@@ -127,6 +129,9 @@ export class OperatorService {
       this.options.store,
       this.options.paperTradingEvaluationRunner
     );
+    const arenaOperations = this.options.arenaPaperRuntime
+      ? await this.arenaOperationsProjection().readOperations()
+      : undefined;
     const tradingPromotion = await buildTradingPromotionReadModel({
       store: this.options.store,
       paperTradingBoard,
@@ -158,6 +163,7 @@ export class OperatorService {
         selectedEvaluationRunnerActive
       ),
       paper_trading_board: paperTradingBoard,
+      ...(arenaOperations ? { arena_operations: arenaOperations } : {}),
       trading_promotion: tradingPromotion,
       trading_review: await buildTradingReviewReadModel({
         store: this.options.store,
@@ -175,6 +181,13 @@ export class OperatorService {
     };
   }
 
+  async readArenaTradingSystemDetail(
+    candidateId: string
+  ): Promise<ArenaTradingSystemDetailReadModel | undefined> {
+    if (!this.options.arenaPaperRuntime) return undefined;
+    return this.arenaOperationsProjection().readSystemDetail(candidateId);
+  }
+
   async readResearcherProvider(): Promise<ResearcherProviderReadModel> {
     const selection = await this.options.store.getResearcherProviderSelection();
     const selectedProvider = isTradingResearchRuntimeAgent(selection?.selected_provider)
@@ -185,6 +198,13 @@ export class OperatorService {
       available_providers: ["codex", "fixture"],
       authority_status: "research_only"
     };
+  }
+
+  private arenaOperationsProjection(): ArenaOperationsProjectionService {
+    return new ArenaOperationsProjectionService({
+      store: this.options.store,
+      arenaPaperRuntime: this.options.arenaPaperRuntime!
+    });
   }
 
   async recordCommand(input: {

@@ -104,6 +104,45 @@ implements ResearchControlStudySchedulerLifecycle {
 }
 
 describe("runtime canonical operator API", () => {
+  it("publishes authoritative Arena operations and an exact detail route", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    try {
+      const operator = await server.inject({ method: "GET", url: "/api/operator" });
+      expect(operator.statusCode).toBe(200);
+      expect(operator.json()).toMatchObject({
+        operator: {
+          arena_operations: {
+            projection_kind: "arena_operations",
+            capacity: {
+              max_concurrent_sessions: 2,
+              active_session_count: 0,
+              queued_session_count: 0
+            },
+            systems: [],
+            live_disabled: true,
+            authority_status: "not_live"
+          }
+        }
+      });
+
+      const detail = await server.inject({
+        method: "GET",
+        url: "/api/arena/trading-systems/missing-candidate"
+      });
+      expect(detail.statusCode).toBe(404);
+      expect(detail.json()).toEqual({
+        error: "arena_trading_system_not_found",
+        candidate_id: "missing-candidate"
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("fences concurrent supervisors for one store and releases ownership on close", async () => {
     const first = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),

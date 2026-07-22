@@ -1,5 +1,6 @@
 import type {
   ArenaOperationsReadModel,
+  ArenaTradingSystemDetailReadModel,
   CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
   OperatorReadModel,
@@ -28,6 +29,10 @@ export interface ArenaSystemViewModel {
   name: string;
   direction?: string;
   lifecycle: string;
+  runnerStatus?: string;
+  sandboxStatus?: string;
+  latestDecision?: string;
+  latestFill?: string;
   rankStatus: string;
   rank?: number;
   comparability: string;
@@ -51,7 +56,51 @@ export interface ArenaSystemViewModel {
   nextObservationAt?: string;
   latestFailure?: string;
   source: "arena_operations" | "paper_trading_board";
-  detailAvailability: "summary_only";
+  detailAvailability: "available" | "summary_only";
+}
+
+export interface ArenaSystemDetailViewModel {
+  id: string;
+  admissionDecisionId: string;
+  handoffConformanceId: string;
+  isolation: {
+    isolationId?: string;
+    sandboxStatus: string;
+    workspaceIdentity?: string;
+    networkPolicyStatus: string;
+    egressAttestationStatus: string;
+  };
+  manifest: {
+    summary: string;
+    declaredRuntime?: string;
+    declaredOutputs: string[];
+    allowedStages: string[];
+    declaredPermissions: string[];
+    forbiddenContents: string[];
+  };
+  lineage?: ArenaTradingSystemDetailReadModel["lineage"];
+  latestMarketSnapshot?: ArenaTradingSystemDetailReadModel["latest_market_snapshot"];
+  latestDecision?: ArenaTradingSystemDetailReadModel["latest_decision"];
+  paperAccountSnapshot?: ArenaTradingSystemDetailReadModel["paper_account_snapshot"];
+  openOrders: ArenaTradingSystemDetailReadModel["open_orders"];
+  latestFill?: ArenaTradingSystemDetailReadModel["latest_fill"];
+  traceEvents: Array<{
+    sequence: number;
+    occurredAt: string;
+    eventKind: string;
+    summary: string;
+    recordRef?: ArenaTradingSystemDetailReadModel["trace_events"][number]["record_ref"];
+  }>;
+  logEntries: Array<{
+    sequence: number;
+    occurredAt: string;
+    level: string;
+    source: string;
+    message: string;
+  }>;
+  artifactRefs: ArenaTradingSystemDetailReadModel["artifact_refs"];
+  traceTruncated: boolean;
+  logsTruncated: boolean;
 }
 
 export interface ArenaWorkspaceViewModel {
@@ -171,6 +220,10 @@ export function buildArenaWorkspaceViewModel(
         name: system.display_name,
         direction: system.direction_kind,
         lifecycle: system.session_status,
+        runnerStatus: system.runner_status,
+        sandboxStatus: system.sandbox_status,
+        latestDecision: system.latest_decision?.decision_kind,
+        latestFill: system.latest_fill?.fill_status,
         rankStatus: system.rank_status,
         rank: system.rank_status === "unranked" ? undefined : system.rank,
         comparability: system.comparability_status,
@@ -188,7 +241,7 @@ export function buildArenaWorkspaceViewModel(
         nextObservationAt: system.next_observation_at,
         latestFailure: system.latest_failure?.reason,
         source: "arena_operations",
-        detailAvailability: "summary_only"
+        detailAvailability: "available"
       };
     });
 
@@ -216,6 +269,60 @@ export function buildArenaWorkspaceViewModel(
     loopStatus: operator.candidate_arena.runner_status ?? "unavailable",
     systems: [],
     emptyState: "projection_unavailable"
+  };
+}
+
+export function buildArenaSystemDetailViewModel(
+  detail: ArenaTradingSystemDetailReadModel
+): ArenaSystemDetailViewModel {
+  return {
+    id: detail.candidate_id,
+    admissionDecisionId: detail.candidate_admission_decision_ref.id,
+    handoffConformanceId: detail.paper_trading_handoff_conformance_ref.id,
+    isolation: {
+      isolationId: detail.isolation.isolation_id,
+      sandboxStatus: detail.isolation.sandbox_status,
+      workspaceIdentity: detail.isolation.workspace_identity,
+      networkPolicyStatus: detail.isolation.network_policy_status,
+      egressAttestationStatus: detail.isolation.egress_attestation_status
+    },
+    manifest: {
+      summary: detail.trading_system_manifest.summary,
+      declaredRuntime: detail.trading_system_manifest.declared_runtime,
+      declaredOutputs: [...detail.trading_system_manifest.declared_outputs],
+      allowedStages: [...detail.trading_system_manifest.allowed_stages],
+      declaredPermissions: [...detail.trading_system_manifest.declared_permissions],
+      forbiddenContents: [...detail.trading_system_manifest.forbidden_contents]
+    },
+    lineage: detail.lineage ? structuredClone(detail.lineage) : undefined,
+    latestMarketSnapshot: detail.latest_market_snapshot
+      ? structuredClone(detail.latest_market_snapshot)
+      : undefined,
+    latestDecision: detail.latest_decision
+      ? structuredClone(detail.latest_decision)
+      : undefined,
+    paperAccountSnapshot: detail.paper_account_snapshot
+      ? structuredClone(detail.paper_account_snapshot)
+      : undefined,
+    openOrders: structuredClone(detail.open_orders),
+    latestFill: detail.latest_fill ? structuredClone(detail.latest_fill) : undefined,
+    traceEvents: detail.trace_events.map((event) => ({
+      sequence: event.sequence,
+      occurredAt: event.occurred_at,
+      eventKind: event.event_kind,
+      summary: event.summary,
+      recordRef: event.record_ref ? { ...event.record_ref } : undefined
+    })),
+    logEntries: detail.log_entries.map((entry) => ({
+      sequence: entry.sequence,
+      occurredAt: entry.occurred_at,
+      level: entry.level,
+      source: entry.source,
+      message: entry.message
+    })),
+    artifactRefs: detail.artifact_refs.map((ref) => ({ ...ref })),
+    traceTruncated: detail.trace_truncated,
+    logsTruncated: detail.logs_truncated
   };
 }
 
@@ -339,6 +446,8 @@ function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): Aren
     tradingRunId: entry.trading_run_id,
     name: entry.display_name,
     lifecycle: paperBoardLifecycle(entry.runner_status),
+    runnerStatus: entry.runner_status,
+    latestFill: entry.latest_fill_status,
     rankStatus: "paper_board_ranked",
     rank: entry.rank,
     comparability: "legacy_paper_board",

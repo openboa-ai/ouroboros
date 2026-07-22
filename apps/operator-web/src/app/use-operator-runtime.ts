@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ArenaTradingSystemDetailReadModel,
   OperatorReadModel,
   OuroborosCommandRequest,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import {
+  fetchArenaTradingSystemDetail,
   fetchOperatorReadModel,
   fetchTradingGatewayEnvironment,
   submitOuroborosCommand
@@ -21,10 +23,13 @@ export interface OperatorCommandState {
 export interface OperatorRuntimeState {
   operator?: OperatorReadModel;
   gateway?: TradingGatewayEnvironmentReadModel;
+  arenaDetail?: ArenaTradingSystemDetailReadModel;
   loading: boolean;
   refreshing: boolean;
+  arenaDetailLoading: boolean;
   operatorError?: string;
   gatewayError?: string;
+  arenaDetailError?: string;
   lastOperatorReadAt?: string;
   command: OperatorCommandState;
 }
@@ -40,12 +45,16 @@ export interface OperatorRuntimeController extends OperatorRuntimeState {
 const INITIAL_STATE: OperatorRuntimeState = {
   loading: true,
   refreshing: false,
+  arenaDetailLoading: false,
   command: { status: "idle" }
 };
 
-export function useOperatorRuntime(): OperatorRuntimeController {
+export function useOperatorRuntime(
+  selectedArenaSystemId?: string
+): OperatorRuntimeController {
   const [state, setState] = useState<OperatorRuntimeState>(INITIAL_STATE);
   const mountedRef = useRef(false);
+  const operatorRef = useRef<OperatorReadModel | undefined>(undefined);
   const requestSequenceRef = useRef(0);
   const commandRunningRef = useRef(false);
 
@@ -55,9 +64,22 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     }
 
     const sequence = ++requestSequenceRef.current;
+    const pendingArenaDetailCandidateId = selectedArenaDetailCandidateId(
+      operatorRef.current,
+      selectedArenaSystemId
+    );
     setState((current) => ({
       ...current,
-      refreshing: !current.loading
+      refreshing: !current.loading,
+      arenaDetail: pendingArenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id === pendingArenaDetailCandidateId
+        ? current.arenaDetail
+        : undefined,
+      arenaDetailLoading: Boolean(
+        pendingArenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id !== pendingArenaDetailCandidateId
+      ),
+      arenaDetailError: undefined
     }));
 
     const [operatorResult, gatewayResult] = await Promise.allSettled([
@@ -68,7 +90,13 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     if (!mountedRef.current || sequence !== requestSequenceRef.current) {
       return;
     }
-
+    if (operatorResult.status === "fulfilled") {
+      operatorRef.current = operatorResult.value;
+    }
+    const arenaDetailCandidateId = selectedArenaDetailCandidateId(
+      operatorRef.current,
+      selectedArenaSystemId
+    );
     setState((current) => ({
       ...current,
       operator: operatorResult.status === "fulfilled"
@@ -77,19 +105,53 @@ export function useOperatorRuntime(): OperatorRuntimeController {
       gateway: gatewayResult.status === "fulfilled"
         ? gatewayResult.value
         : current.gateway,
+      arenaDetail: !arenaDetailCandidateId
+        ? undefined
+        : current.arenaDetail?.candidate_id === arenaDetailCandidateId
+          ? current.arenaDetail
+          : undefined,
       loading: false,
-      refreshing: false,
+      refreshing: Boolean(arenaDetailCandidateId),
+      arenaDetailLoading: Boolean(
+        arenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id !== arenaDetailCandidateId
+      ),
       operatorError: operatorResult.status === "rejected"
         ? errorMessage(operatorResult.reason)
         : undefined,
       gatewayError: gatewayResult.status === "rejected"
         ? errorMessage(gatewayResult.reason)
         : undefined,
+      arenaDetailError: undefined,
       lastOperatorReadAt: operatorResult.status === "fulfilled"
         ? new Date().toISOString()
         : current.lastOperatorReadAt
     }));
-  }, []);
+    if (!arenaDetailCandidateId) {
+      return;
+    }
+    const [arenaDetailResult] = await Promise.allSettled([
+      fetchArenaTradingSystemDetail(arenaDetailCandidateId)
+    ]);
+
+    if (!mountedRef.current || sequence !== requestSequenceRef.current) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      arenaDetail: arenaDetailResult.status === "fulfilled"
+        ? arenaDetailResult.value
+        : current.arenaDetail?.candidate_id === arenaDetailCandidateId
+          ? current.arenaDetail
+          : undefined,
+      refreshing: false,
+      arenaDetailLoading: false,
+      arenaDetailError: arenaDetailResult.status === "rejected"
+        ? errorMessage(arenaDetailResult.reason)
+        : undefined
+    }));
+  }, [selectedArenaSystemId]);
 
   const executeCommand = useCallback(async (
     label: string,
@@ -105,6 +167,7 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     try {
       const response = await submitOuroborosCommand(request);
       if (mountedRef.current && sequence === requestSequenceRef.current) {
+        operatorRef.current = response.operator;
         setState((current) => ({
           ...current,
           operator: response.operator,
@@ -124,8 +187,11 @@ export function useOperatorRuntime(): OperatorRuntimeController {
       return undefined;
     } finally {
       commandRunningRef.current = false;
+      if (mountedRef.current) {
+        void refresh();
+      }
     }
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -148,6 +214,22 @@ export function useOperatorRuntime(): OperatorRuntimeController {
     refresh,
     executeCommand
   };
+}
+
+export function selectedArenaDetailCandidateId(
+  operator: {
+    arena_operations?: {
+      systems: ReadonlyArray<{ candidate_id: string }>;
+    } | undefined;
+  } | undefined,
+  selectedArenaSystemId: string | undefined
+): string | undefined {
+  if (!selectedArenaSystemId) return undefined;
+  return operator?.arena_operations?.systems.some((entry) =>
+    entry.candidate_id === selectedArenaSystemId
+  )
+    ? selectedArenaSystemId
+    : undefined;
 }
 
 function errorMessage(error: unknown): string {

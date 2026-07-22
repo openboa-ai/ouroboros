@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type {
   ArenaOperationsReadModel,
+  ArenaTradingSystemDetailReadModel,
   CandidateArenaReadModel,
   PaperTradingBoardReadModel,
   ResearchOperationsReadModel
 } from "@ouroboros/domain";
 import {
   buildArenaWorkspaceViewModel,
+  buildArenaSystemDetailViewModel,
   buildResearchWorkspaceViewModel,
   isComparableArenaRevenueSystem,
   type ArenaSystemViewModel,
@@ -51,6 +53,8 @@ function arenaOperations(): ArenaOperationsReadModel {
         system_code_ref: { record_kind: "system_code", id: "code-1" },
         display_name: "Adaptive trend",
         direction_kind: "trend_following",
+        runner_status: "active",
+        sandbox_status: "running",
         evaluation_id: "evaluation-1",
         trading_run_id: "run-1",
         profit_loss: {
@@ -90,6 +94,64 @@ function arenaOperations(): ArenaOperationsReadModel {
     latest_system_id: "arena-candidate",
     live_disabled: true,
     authority_status: "not_live"
+  };
+}
+
+function arenaSystemDetail(): ArenaTradingSystemDetailReadModel {
+  return {
+    ...arenaOperations().systems[0]!,
+    candidate_admission_decision_ref: {
+      record_kind: "candidate_admission_decision",
+      id: "admission-1"
+    },
+    paper_trading_handoff_conformance_ref: {
+      record_kind: "paper_trading_handoff_conformance",
+      id: "handoff-1"
+    },
+    isolation: {
+      isolation_id: "sandbox-1",
+      sandbox_status: "running",
+      workspace_identity: "workspace-1",
+      network_policy_status: "verified",
+      egress_attestation_status: "verified",
+      authority_status: "not_live"
+    },
+    trading_system_manifest: {
+      summary: "Adaptive trend artifact",
+      declared_runtime: "python",
+      declared_outputs: ["order_request"],
+      allowed_stages: ["paper"],
+      declared_permissions: ["public_market_data"],
+      forbidden_contents: ["credentials"]
+    },
+    lineage: {
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: "source-system",
+        candidate_version_id: "source-system-v1"
+      }
+    },
+    open_orders: [],
+    trace_events: [{
+      sequence: 1,
+      occurred_at: "2026-07-18T00:20:00.000Z",
+      event_kind: "recovery",
+      summary: "Restart recovery completed",
+      sanitized: true,
+      authority_status: "read_only"
+    }],
+    log_entries: [{
+      sequence: 1,
+      occurred_at: "2026-07-18T00:20:01.000Z",
+      level: "info",
+      source: "sandbox",
+      message: "paper log line",
+      sanitized: true,
+      authority_status: "read_only"
+    }],
+    artifact_refs: [{ record_kind: "system_code", id: "code-1" }],
+    trace_truncated: false,
+    logs_truncated: false
   };
 }
 
@@ -207,6 +269,32 @@ function researchOperations(): ResearchOperationsReadModel {
 }
 
 describe("Operator projection view models", () => {
+  it("normalizes exact Arena system detail without mixing another selection", () => {
+    const detail = buildArenaSystemDetailViewModel(arenaSystemDetail());
+
+    expect(detail).toMatchObject({
+      id: "arena-candidate",
+      admissionDecisionId: "admission-1",
+      handoffConformanceId: "handoff-1",
+      isolation: {
+        sandboxStatus: "running",
+        workspaceIdentity: "workspace-1",
+        networkPolicyStatus: "verified",
+        egressAttestationStatus: "verified"
+      },
+      manifest: {
+        declaredRuntime: "python",
+        declaredOutputs: ["order_request"]
+      },
+      lineage: {
+        source: { trading_system_id: "source-system" }
+      },
+      traceEvents: [{ summary: "Restart recovery completed" }],
+      logEntries: [{ message: "paper log line" }],
+      artifactRefs: [{ record_kind: "system_code", id: "code-1" }]
+    });
+  });
+
   it("classifies Arena revenue as comparable only for explicitly ranked evidence", () => {
     const ranked: ArenaSystemViewModel = {
       id: "candidate-1",

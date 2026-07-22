@@ -905,7 +905,7 @@ describe("operator product loop smoke", () => {
     }
   });
 
-  it("uses autonomous paper trading results as the next repeating arena generation source", async () => {
+  it("uses observed paper trading results as the next Arena generation source", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
@@ -942,7 +942,7 @@ describe("operator product loop smoke", () => {
           }
         ]
       }),
-      candidateArenaTickIntervalMs: 100,
+      candidateArenaTickIntervalMs: 300_000,
       arenaPaperCapacity: 1,
       paperTradingEvaluationIntervalMs: 60_000,
       paperTradingSandboxIntervalMs: 1_000
@@ -965,19 +965,54 @@ describe("operator product loop smoke", () => {
         command_kind: "arena.start"
       });
 
-      const runningOperator = await waitForOperator(server, (operator) =>
-        operator.candidate_arena.runner_status === "running"
-        && operator.candidate_arena.latest_ticks.some((tick) =>
-          tick.tick_id === "tick-2"
-          && tick.source_candidate?.source_kind === "paper_trading_evaluation_leader"
-          && tick.paper_trading_continuation?.status === "queued"
+      const firstTickOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.latest_ticks.some((tick) =>
+          tick.tick_id === "tick-1"
+          && ["started", "queued"].includes(
+            tick.paper_trading_continuation?.status ?? ""
+          )
         )
       );
-      const firstTick = runningOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-1");
-      const secondTick = runningOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-2");
-      const paperSourceCandidateId = secondTick?.source_candidate?.candidate_id;
+      const firstTick = firstTickOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.tick_id === "tick-1"
+      );
       const firstSelectedCandidateId = firstTick?.paper_trading_continuation?.selected_candidate_id;
-      const selectedSecondCandidateId = secondTick?.paper_trading_continuation?.selected_candidate_id;
+      if (!firstSelectedCandidateId) {
+        throw new Error("expected first Arena tick to select a candidate");
+      }
+      const firstPaperOperator = (await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: firstSelectedCandidateId }
+      })).operator;
+      const firstPaperEntry = firstPaperOperator.paper_trading_board.entries.find((entry) =>
+        entry.status === "running"
+        && entry.runner_status === "active"
+      );
+      if (!firstPaperEntry) {
+        throw new Error("expected first Arena candidate to start paper trading");
+      }
+      expect(firstPaperEntry).toMatchObject({
+        status: "running",
+        runner_status: "active"
+      });
+      const observedOperator = (await postCommand(server, {
+        command_kind: "trading_run.observe",
+        payload: { trading_run_id: firstPaperEntry.trading_run_id }
+      })).operator;
+      expect(observedOperator.paper_trading_board.entries.find((entry) =>
+        entry.candidate_id === firstPaperEntry.candidate_id
+      )?.observation_count).toBeGreaterThan(0);
+      const runningOperator = (await postCommand(server, {
+        command_kind: "arena.tick"
+      })).operator;
+      const paperSourcedTick = runningOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.tick_id === "tick-2"
+        && tick.source_candidate?.source_kind === "paper_trading_evaluation_leader"
+        && tick.paper_trading_continuation?.status === "queued"
+      );
+      const paperSourceCandidateId = paperSourcedTick?.source_candidate?.candidate_id;
+      const selectedSecondCandidateId = paperSourcedTick
+        ?.paper_trading_continuation?.selected_candidate_id;
       const secondCandidate = selectedSecondCandidateId
         ? await store.getCandidate(selectedSecondCandidateId)
         : undefined;
@@ -993,7 +1028,7 @@ describe("operator product loop smoke", () => {
         firstTick?.paper_trading_continuation?.status
       );
       expect(firstTick?.created_candidate_ids).toContain(firstSelectedCandidateId);
-      expect(secondTick).toMatchObject({
+      expect(paperSourcedTick).toMatchObject({
         source_candidate: {
           source_kind: "paper_trading_evaluation_leader",
           candidate_id: paperSourceCandidateId,
@@ -1015,7 +1050,8 @@ describe("operator product loop smoke", () => {
         authority_status: "not_live"
       });
       expect(paperSourceEntry?.observation_count).toBeGreaterThan(0);
-      expect(secondTick?.created_candidate_ids).toContain(selectedSecondCandidateId);
+      expect(paperSourceCandidateId).toBe(firstPaperEntry.candidate_id);
+      expect(paperSourcedTick?.created_candidate_ids).toContain(selectedSecondCandidateId);
       expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).toBe(paperSourceCandidateId);
       expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).not.toBe(FIXTURE_CANDIDATE_ID);
       expect(runningOperator.paper_trading_board.entries.map((entry) => entry.candidate_id))
