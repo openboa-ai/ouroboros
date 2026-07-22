@@ -184,7 +184,12 @@ describe("ArenaOperationsProjectionService", () => {
     candidateA.system_code!.summary =
       "/workspace/ouroboros/candidate-arena-runs/strategy.py token=private-summary-token";
     candidateA.system_code!.declared_outputs.push(
-      "/Users/private-user/output token=private-manifest-token"
+      "/Users/private-user/output token=private-manifest-token",
+      "/secret-token",
+      "C:\\secret-token",
+      "\\\\private-host\\secret-token",
+      "https://example.com/public-doc",
+      "revenue / cost"
     );
     candidateA.full_cycle_lineage!.blocked_reason =
       "/Users/private-user/lineage token=private-lineage-token";
@@ -218,7 +223,12 @@ describe("ArenaOperationsProjectionService", () => {
         declared_runtime: "python",
         declared_outputs: [
           "order_request",
-          "[private-path] token=[redacted]"
+          "[private-path] token=[redacted]",
+          "[private-path]",
+          "[private-path]",
+          "[private-path]",
+          "[external-url]",
+          "revenue / cost"
         ],
         allowed_stages: ["paper"],
         declared_permissions: ["public_market_data"]
