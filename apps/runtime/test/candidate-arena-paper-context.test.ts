@@ -489,13 +489,28 @@ describe("CandidateArena paper evidence context", () => {
         authority_status: "research_only"
       }
     });
+    await runCandidateArenaTick({
+      store,
+      tickId: "event-retry-fresh-source",
+      directions: ["volatility_regime"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const freshFinding = (await store.listResearchFindings()).at(-1)!;
+    const freshEvidence = researchFindingEvidence(freshFinding);
     const contexts: string[] = [];
 
     const outcome = await runCandidateArenaTick({
       store,
       tickId: "event-allocation-retry",
-      now: () => new Date(Date.parse(triggerAt) + 1_000).toISOString(),
+      now: () => new Date(Math.max(
+        Date.parse(triggerAt),
+        Date.parse(freshEvidence.captured_at)
+      ) + 1_000).toISOString(),
       directions: ["mean_reversion"],
+      researchEvidenceSource: async () => [evidence, freshEvidence],
       researchAgent: "codex",
       agentFactory: () => new CapturingResearchAgent(contexts),
       artifactRunner: networklessReplayArtifactRunner(),
@@ -504,16 +519,19 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(outcome.created_candidate_count).toBe(1);
     expect(contexts[0]).toContain(evidence.research_evidence_artifact_id);
+    expect(contexts[0]).not.toContain(
+      freshEvidence.research_evidence_artifact_id
+    );
     expect((await store.listResearchPreflightCommitments()).find(
       (commitment) => commitment.candidate_arena_tick_id ===
         "event-allocation-retry"
-    )?.methodology?.evidence_bindings).toContainEqual({
+    )?.methodology?.evidence_bindings).toEqual([{
       evidence_artifact_ref: {
         record_kind: "research_evidence_artifact",
         id: evidence.research_evidence_artifact_id
       },
       evidence_artifact_digest: evidence.artifact_digest
-    });
+    }]);
   });
 
   it("reuses the exact persisted allocation intent after restart", async () => {

@@ -502,8 +502,9 @@ async function hydratePersistedAllocationEvidence(input: {
   allocation?: CandidateArenaResearchAllocationRecord;
   collected: ResearchEvidenceArtifactRecord[];
 }): Promise<ResearchEvidenceArtifactRecord[]> {
-  const trigger = input.allocation?.trigger;
-  if (!trigger?.evidence_artifact_ref) return input.collected;
+  if (!input.allocation) return input.collected;
+  const trigger = input.allocation.trigger;
+  if (!trigger?.evidence_artifact_ref) return [];
   const artifact = await input.store.getResearchEvidenceArtifact(
     trigger.evidence_artifact_ref.id
   );
@@ -512,13 +513,7 @@ async function hydratePersistedAllocationEvidence(input: {
     !isDeepStrictEqual(artifact.artifact_ref, trigger.source_ref)) {
     throw new Error("candidate_arena_research_trigger_evidence_missing");
   }
-  return [
-    artifact,
-    ...input.collected.filter((candidate) =>
-      candidate.research_evidence_artifact_id !==
-        artifact.research_evidence_artifact_id
-    )
-  ].slice(0, MAX_RESEARCH_EVIDENCE_ARTIFACTS);
+  return [artifact];
 }
 
 async function resolveResearchTrigger(input: {
