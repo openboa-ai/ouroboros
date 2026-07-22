@@ -279,6 +279,40 @@ describe("ResearchEvidenceArtifactService", () => {
     expect(failure?.summary).not.toContain("candidate process exited");
   });
 
+  it("captures paper evidence at the latest evaluation state timestamp", async () => {
+    const operations = arenaOperations();
+    const commitment = paperCommitment();
+    const evaluation = {
+      ...paperEvaluation(commitment),
+      status: "stopped" as const,
+      stopped_at: "2026-07-22T00:09:00.000Z",
+      latest_failure_reason: "candidate process stopped after observation"
+    };
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => [],
+        getTradingRun: async () => undefined
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => undefined
+      }
+    });
+
+    const paperEvidence = (await service.collect()).filter((artifact) =>
+      artifact.source_kind === "arena_paper_result" ||
+      artifact.source_kind === "arena_failure"
+    );
+
+    expect(paperEvidence).toHaveLength(2);
+    expect(paperEvidence.every((artifact) =>
+      artifact.captured_at === evaluation.stopped_at
+    )).toBe(true);
+  });
+
   it("does not collect sealed qualification evidence", async () => {
     const operations = arenaOperations();
     const detail = arenaDetail(operations.systems[0]!);

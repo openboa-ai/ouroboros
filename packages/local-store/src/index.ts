@@ -7993,7 +7993,9 @@ export class LocalStore {
         sameRef(artifact.subject_ref, snapshot.candidate_ref) &&
         expectedSummary !== undefined && artifact.summary === expectedSummary &&
         (artifact.source_kind !== "arena_failure" || snapshot.failure_present) &&
-        snapshot.source_times.includes(artifact.captured_at) &&
+        artifact.captured_at === latestPaperEvaluationSourceTime(
+          snapshot.source_times
+        ) &&
         refsAreSubset(artifact.supporting_record_refs, [
           snapshot.trading_run_ref,
           snapshot.paper_trading_evaluation_commitment_ref
@@ -22908,6 +22910,12 @@ function buildResearchEvidencePaperEvaluationSnapshot(
     researchEvidencePaperEvaluationSnapshotDigestInput(snapshot)
   );
   return snapshot;
+}
+
+function latestPaperEvaluationSourceTime(sourceTimes: string[]): string {
+  return sourceTimes.reduce((latest, candidate) =>
+    Date.parse(candidate) >= Date.parse(latest) ? candidate : latest
+  );
 }
 
 function researchEvidencePaperEvaluationSnapshotId(

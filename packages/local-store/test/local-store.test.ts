@@ -294,6 +294,48 @@ describe("LocalStore", () => {
     )).resolves.toEqual(artifact);
   });
 
+  it("rejects paper evidence captured before its exact source state existed", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    const observation = validPaperTradingObservation(commitment, evaluation);
+    const running = {
+      ...evaluation,
+      status: "running" as const,
+      observation_count: 1,
+      last_observed_at: observation.observed_at,
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    };
+    const stopped = {
+      ...running,
+      status: "stopped" as const,
+      next_observation_at: undefined,
+      stopped_at: "2026-07-10T09:03:00.000Z",
+      latest_failure_reason: "candidate process stopped after observation"
+    };
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    await store.recordPaperTradingObservation(observation, running);
+    await store.recordPaperTradingEvaluation(stopped);
+
+    for (const stale of [
+      paperResultResearchEvidence(stopped),
+      paperFailureResearchEvidence(stopped)
+    ]) {
+      await expectStoreError(
+        store.recordResearchEvidenceArtifact(stale),
+        "research_evidence_artifact_source_mismatch"
+      );
+      const exact = withResearchEvidenceDigest({
+        ...stale,
+        captured_at: stopped.stopped_at
+      });
+      await expect(store.recordResearchEvidenceArtifact(exact))
+        .resolves.toEqual(exact);
+    }
+  });
+
   it("rejects sealed qualification evidence at the Research boundary", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

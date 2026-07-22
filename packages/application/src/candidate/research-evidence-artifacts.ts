@@ -9,6 +9,7 @@ import {
   type ArenaTradingSystemDetailReadModel,
   type ArenaTradingSystemSummaryReadModel,
   type PaperTradingEvaluationCommitmentRecord,
+  type PaperTradingEvaluationRecord,
   type PaperTradingObservationRecord,
   type Ref,
   type ResearchEvidenceArtifactRecord,
@@ -140,8 +141,7 @@ function paperResultArtifacts(
     evaluation.trading_run_ref.id !== system.trading_run_id) {
     return [];
   }
-  const capturedAt = evaluation.last_observed_at ?? evaluation.stopped_at ??
-    evaluation.started_at;
+  const capturedAt = latestPaperEvaluationSourceTime(evaluation);
   const summary = sanitizeSummary(canonicalResearchEvidenceArtifactSummary(
     "arena_paper_result",
     evaluation
@@ -176,8 +176,7 @@ function failureArtifacts(
     !evaluation.latest_failure_reason?.trim()) {
     return [];
   }
-  const capturedAt = evaluation.last_observed_at ?? evaluation.stopped_at ??
-    evaluation.started_at;
+  const capturedAt = latestPaperEvaluationSourceTime(evaluation);
   const summary = sanitizeSummary(canonicalResearchEvidenceArtifactSummary(
     "arena_failure",
     evaluation
@@ -362,6 +361,22 @@ function compareArenaSystemsByRecency(
     right.started_at ?? right.queued_at;
   return rightAt.localeCompare(leftAt) ||
     left.candidate_id.localeCompare(right.candidate_id);
+}
+
+function latestPaperEvaluationSourceTime(
+  evaluation: Pick<
+    PaperTradingEvaluationRecord,
+    "started_at" | "last_observed_at" | "stopped_at"
+  >
+): string {
+  return [
+    evaluation.started_at,
+    evaluation.last_observed_at,
+    evaluation.stopped_at
+  ].filter((value): value is string => value !== undefined)
+    .reduce((latest, candidate) =>
+      Date.parse(candidate) >= Date.parse(latest) ? candidate : latest
+    );
 }
 
 function sanitizeSummary(value: string): { value: string; truncated: boolean } {
