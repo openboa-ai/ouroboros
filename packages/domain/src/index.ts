@@ -1639,12 +1639,9 @@ function researchEvidenceArtifactRefMatchesSource(
 }
 
 export function sanitizeResearchEvidenceText(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .replace(
-      /-----BEGIN ([^-\r\n]+)-----[\s\S]*?-----END \1-----/g,
-      "[redacted-key-material]"
-    )
+  return redactPemLikeBlocks(
+    value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+  )
     .replace(
       /\b((?:Proxy-)?Authorization\s*:\s*)(?:Basic|Bearer)\s+[^\s,;]+/gi,
       "$1[redacted]"
@@ -1658,6 +1655,60 @@ export function sanitizeResearchEvidenceText(value: string): string {
       /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
       "$1$2[redacted]"
     );
+}
+
+function redactPemLikeBlocks(value: string): string {
+  const beginPrefix = ["-----", "BEGIN "].join("");
+  const endPrefix = ["-----", "END "].join("");
+  const boundarySuffix = "-----";
+  let cursor = 0;
+  let redacted = "";
+
+  while (cursor < value.length) {
+    const begin = value.indexOf(beginPrefix, cursor);
+    if (begin === -1) {
+      return redacted + value.slice(cursor);
+    }
+    const labelStart = begin + beginPrefix.length;
+    const headerEnd = value.indexOf(boundarySuffix, labelStart);
+    if (headerEnd === -1) {
+      return redacted + value.slice(cursor);
+    }
+    const label = value.slice(labelStart, headerEnd);
+    if (!pemBoundaryLabel(label)) {
+      redacted += value.slice(cursor, labelStart);
+      cursor = labelStart;
+      continue;
+    }
+
+    redacted += value.slice(cursor, begin) + "[redacted-key-material]";
+    const footerStart = value.indexOf(endPrefix, headerEnd + boundarySuffix.length);
+    if (footerStart === -1) {
+      return redacted;
+    }
+    const footerEnd = value.indexOf(
+      boundarySuffix,
+      footerStart + endPrefix.length
+    );
+    if (footerEnd === -1) {
+      return redacted;
+    }
+    cursor = footerEnd + boundarySuffix.length;
+  }
+
+  return redacted;
+}
+
+function pemBoundaryLabel(value: string): boolean {
+  if (value.length === 0 || value.length > 128) {
+    return false;
+  }
+  for (const character of value) {
+    if (character === "\r" || character === "\n" || character === "-") {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function canonicalResearchEvidenceArtifactSummary(

@@ -214,6 +214,25 @@ describe("CandidateArenaResearchAllocation", () => {
     expect(sanitized).toContain("[external-url]");
     expect(sanitized).toContain("[private-path]");
   });
+
+  it("redacts adversarial and unterminated PEM-like input without backtracking", () => {
+    const repeatedHeaders = ["-----", "BEGIN ", ",", "-----"]
+      .join("")
+      .repeat(20_000);
+    const unterminated = [
+      "before\n-----",
+      "BEGIN ",
+      ["PRIVATE", "KEY"].join(" "),
+      "-----\nsecret-without-footer"
+    ].join("");
+
+    expect(sanitizeResearchEvidenceText(repeatedHeaders)).toBe(
+      "[redacted-key-material]"
+    );
+    expect(sanitizeResearchEvidenceText(unterminated)).toBe(
+      "before\n[redacted-key-material]"
+    );
+  });
 });
 
 function adaptiveAllocationFixture(): CandidateArenaResearchAllocationRecord {
