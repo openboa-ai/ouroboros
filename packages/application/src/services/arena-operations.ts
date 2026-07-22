@@ -27,6 +27,9 @@ import {
 } from "../trading/paper/commitment";
 import { classifyPaperTradingFailure } from "../trading/paper/failures";
 import { paperTradingEvidenceIntegrityReasons } from "../trading/paper/qualification";
+import {
+  parseCandidateSandboxSbxVersion
+} from "../trading/research/candidate-sandbox-network-policy";
 import type {
   ArenaPaperRuntimeService,
   ArenaPaperRuntimeSnapshot,
@@ -714,10 +717,13 @@ function egressAttestationStatus(
   if (adapterKind === "host_process" || adapterKind === "deterministic_test") {
     return "not_required";
   }
+  if (adapterKind !== "docker_sandboxes_sbx" || !sandbox) return "failed";
   if (!conformance || conformance.version !== 2 ||
     conformance.status !== "passed" || !conformance.runnable_paper_handoff) {
     return "failed";
   }
+  const sandboxImplementationVersion = runtimeSandboxImplementationVersion(sandbox);
+  if (!sandbox.sandbox_name || !sandboxImplementationVersion) return "failed";
   const attestation = conformance.candidate_egress_attestation;
   return verifyCandidateEgressAttestation({
     attestation,
@@ -728,8 +734,8 @@ function egressAttestationStatus(
       system_code_ref: conformance.system_code_ref,
       system_code_artifact_digest: conformance.system_code_artifact_digest,
       execution_ref: conformance.experiment_run_ref,
-      sandbox_name: attestation.sandbox.sandbox_name,
-      sandbox_implementation_version: attestation.sandbox.implementation_version,
+      sandbox_name: sandbox.sandbox_name,
+      sandbox_implementation_version: sandboxImplementationVersion,
       conformance_started_at: conformance.started_at,
       conformance_completed_at: conformance.completed_at
     },
@@ -738,6 +744,33 @@ function egressAttestationStatus(
   }).status === "verified"
     ? "verified"
     : "failed";
+}
+
+function runtimeSandboxImplementationVersion(
+  sandbox: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>
+): string | undefined {
+  const boundEvidenceIds = new Set(
+    sandbox.command_evidence_refs
+      .filter((evidenceRef) =>
+        evidenceRef.record_kind === "sandbox_command_evidence"
+      )
+      .map((evidenceRef) => evidenceRef.id)
+  );
+  const versions = new Set<string>();
+  for (const evidence of sandbox.command_evidence) {
+    if (
+      evidence.command_evidence_ref.record_kind !== "sandbox_command_evidence" ||
+      !boundEvidenceIds.has(evidence.command_evidence_ref.id) ||
+      evidence.exit_code !== 0 ||
+      evidence.command.length !== 2 ||
+      evidence.command[1] !== "version"
+    ) {
+      continue;
+    }
+    const version = parseCandidateSandboxSbxVersion(evidence.stdout);
+    if (version) versions.add(version);
+  }
+  return versions.size === 1 ? versions.values().next().value : undefined;
 }
 
 function sandboxConformanceAdapterConsistent(

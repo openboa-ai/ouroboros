@@ -471,7 +471,7 @@ describe("ArenaOperationsProjectionService", () => {
       dockerConformance("candidate-a")
     );
     const candidateA = fixture.candidates.get("candidate-a")!;
-    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+    configureDockerSandbox(candidateA, "candidate-a");
 
     const verified = await fixture.service.readSystemDetail("candidate-a");
 
@@ -495,7 +495,7 @@ describe("ArenaOperationsProjectionService", () => {
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
     const candidateA = fixture.candidates.get("candidate-a")!;
-    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+    configureDockerSandbox(candidateA, "candidate-a");
     const staleConformance = dockerConformance("candidate-a");
     staleConformance.system_code_ref.id = "system-code-from-another-runtime";
     fixture.conformances.set("conformance-candidate-a", staleConformance);
@@ -513,7 +513,7 @@ describe("ArenaOperationsProjectionService", () => {
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
     const candidateA = fixture.candidates.get("candidate-a")!;
-    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+    configureDockerSandbox(candidateA, "candidate-a");
     const failedConformance = dockerConformance("candidate-a");
     if (failedConformance.version !== 2) {
       throw new Error("expected Docker v2 conformance");
@@ -527,6 +527,75 @@ describe("ArenaOperationsProjectionService", () => {
       )
     );
     fixture.conformances.set("conformance-candidate-a", failedConformance);
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
+  it("fails Docker isolation closed when attestation names another Sandbox", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a");
+    const mismatchedConformance = dockerConformance("candidate-a");
+    if (mismatchedConformance.version !== 2) {
+      throw new Error("expected Docker v2 conformance");
+    }
+    mismatchedConformance.candidate_egress_attestation.sandbox.sandbox_name =
+      "sandbox-from-another-runtime";
+    mismatchedConformance.candidate_egress_attestation.attestation_digest = testSha256(
+      candidateEgressAttestationDigestInput(
+        mismatchedConformance.candidate_egress_attestation
+      )
+    );
+    fixture.conformances.set("conformance-candidate-a", mismatchedConformance);
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
+  it("fails Docker isolation closed without bound runtime version evidence", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a", {
+      includeVersionEvidence: false
+    });
+    fixture.conformances.set(
+      "conformance-candidate-a",
+      dockerConformance("candidate-a")
+    );
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
+  it("fails Docker isolation closed when runtime and attested versions differ", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a", {
+      implementationVersion: "0.35.0"
+    });
+    fixture.conformances.set(
+      "conformance-candidate-a",
+      dockerConformance("candidate-a")
+    );
 
     const detail = await fixture.service.readSystemDetail("candidate-a");
 
@@ -1119,6 +1188,36 @@ function dockerConformance(
     runner_kind: "docker_sandboxes_sbx",
     candidate_egress_attestation: attestation
   };
+}
+
+function configureDockerSandbox(
+  target: CandidateInspectReadModel,
+  candidateId: string,
+  options: {
+    implementationVersion?: string;
+    includeVersionEvidence?: boolean;
+  } = {}
+): void {
+  const sandbox = target.runtime.sandbox;
+  if (!sandbox) throw new Error("expected runtime Sandbox");
+  sandbox.adapter_kind = "docker_sandboxes_sbx";
+  sandbox.sandbox_name = `sandbox-${candidateId}`;
+  if (options.includeVersionEvidence === false) return;
+  const evidenceRef = {
+    record_kind: "sandbox_command_evidence",
+    id: `sandbox-version-${candidateId}`
+  };
+  sandbox.command_evidence_refs.push(evidenceRef);
+  sandbox.command_evidence.push({
+    command_evidence_ref: evidenceRef,
+    command: ["sbx", "version"],
+    exit_code: 0,
+    stdout: `sbx version: v${options.implementationVersion ?? "1.0.0"}\n`,
+    stderr: "",
+    started_at: "2026-07-19T00:00:00.000Z",
+    completed_at: "2026-07-19T00:00:00.010Z",
+    authority_status: "trace_only"
+  });
 }
 
 function testSha256(value: string): string {
