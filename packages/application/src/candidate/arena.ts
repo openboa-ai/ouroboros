@@ -598,6 +598,20 @@ export function candidateArenaRunnerTickCountFromTicks(
   ticks: Pick<CandidateArenaTickRecord, "tick_id">[],
   allocations: Pick<CandidateArenaResearchAllocationRecord, "tick_id">[] = []
 ): number {
+  const completedTickIds = new Set(ticks.map((tick) => tick.tick_id));
+  const earliestIncompleteSequence = allocations.reduce<number | undefined>(
+    (earliest, allocation) => {
+      if (completedTickIds.has(allocation.tick_id)) return earliest;
+      const match = /^tick-(\d+)$/.exec(allocation.tick_id);
+      if (!match) return earliest;
+      const sequence = Number(match[1] ?? 0);
+      return earliest === undefined ? sequence : Math.min(earliest, sequence);
+    },
+    undefined
+  );
+  if (earliestIncompleteSequence !== undefined) {
+    return Math.max(0, earliestIncompleteSequence - 1);
+  }
   const highestNumericTickId = [...ticks, ...allocations]
     .reduce((highest, tick) => {
     const match = /^tick-(\d+)$/.exec(tick.tick_id);

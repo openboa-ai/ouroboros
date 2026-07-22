@@ -6,11 +6,18 @@ import {
 } from "./arena";
 
 describe("CandidateArenaRunner health", () => {
-  it("restores sequence past allocations orphaned before tick closure", () => {
+  it("restores sequence to retry allocations orphaned before tick closure", () => {
     expect(candidateArenaRunnerTickCountFromTicks(
       [{ tick_id: "tick-1" }],
-      [{ tick_id: "tick-4" }]
-    )).toBe(4);
+      [{ tick_id: "tick-2" }]
+    )).toBe(1);
+  });
+
+  it("restores sequence past allocations with terminal ticks", () => {
+    expect(candidateArenaRunnerTickCountFromTicks(
+      [{ tick_id: "tick-1" }, { tick_id: "tick-2" }],
+      [{ tick_id: "tick-2" }]
+    )).toBe(2);
   });
 
   it("reports consecutive tick failure without converting it into trading authority", async () => {
