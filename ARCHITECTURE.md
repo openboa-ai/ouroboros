@@ -6,6 +6,8 @@ Ouroboros is organized around the Candidate Arena trust kernel:
 CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
+-> persisted goal, time, Arena-event, or recovery allocation trigger
+-> sanitized immutable ResearchEvidenceArtifact inputs
 -> pre-effect ResearchPreflightCommitment
 -> one bounded ResearchWorkerSession
 -> immutable development submissions and aggregate replay/backtest feedback
@@ -33,8 +35,16 @@ always-on contract is in [Research And Arena Product Loop](docs/research-arena-p
 
 Researchers and LLM agents are candidate generators. Development replay/backtest is an adaptive
 research tool, not admission or final evaluation authority. Before worker effects, LocalStore binds
-one `ResearchPreflightCommitment` to the allocation, direction, worker, source SystemCode, bounded
-development suite, and evaluator-owned sealed suite commitment. The worker never receives the raw
+one `CandidateArenaResearchAllocation` to its exact trigger, then binds one
+`ResearchPreflightCommitment` per selected direction to the worker, source SystemCode, methodology,
+exact sanitized evidence refs/digests, bounded development suite, and evaluator-owned sealed suite
+commitment. Provider/model identity remains on `ResearchWorker`; budgets remain on allocation and
+preflight; terminal lifecycle remains on checkpoint/admission evidence. No second persisted session
+or work-item authority duplicates that graph. The managed-agent descriptor is part of pre-effect
+worker resolution, and the concrete adapter is created only after the commitment persists; identity
+drift fails closed before provider execution. Arena result/failure evidence accepts only released
+`research_feedback` commitments, and each trace artifact binds an immutable paper observation. The
+worker never receives the raw
 seed, sealed scenarios, or sealed outcome. The application creates one provider-independent
 `ResearchWorkerSession` over a mutable working artifact and an externally owned development
 evaluator. A session-local adapter exposes only status, bounded immutable submission, explicit

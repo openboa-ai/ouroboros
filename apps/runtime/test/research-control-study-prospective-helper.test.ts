@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prospectiveClock, prospectiveMarketData } from
+import {
+  fallingProspectivePricePath,
+  prospectiveClock,
+  prospectiveMarketData
+} from
   "./helpers/research-control-study-prospective";
 
 describe("prospectiveClock", () => {
@@ -36,5 +40,18 @@ describe("prospectiveClock", () => {
     expect(Date.parse(execution.observed_at)).toBeLessThanOrEqual(
       Date.parse(capturedAt)
     );
+  });
+
+  it("keeps the prospective price path falling through the integration timeout", () => {
+    const startedAt = "2026-07-19T06:00:00.000Z";
+    const priceAt = fallingProspectivePricePath(startedAt);
+    const beforeTimeout = new Date(
+      Date.parse(startedAt) + 480_000 - 25
+    ).toISOString();
+    const atTimeout = new Date(
+      Date.parse(startedAt) + 480_000
+    ).toISOString();
+
+    expect(priceAt(beforeTimeout)).toBeGreaterThan(priceAt(atTimeout));
   });
 });

@@ -12,6 +12,7 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
+  ResearchDirectionKind,
   ResearchControlStudyExecutionLeaseOwner,
   RunControlAuditInput,
   SandboxAdapterKind,
@@ -88,7 +89,14 @@ import {
   managedAgentProfileEnv,
   type AgentProfileExecFile
 } from "@ouroboros/application/agent/profiles";
-import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import {
+  CandidateArenaRunner,
+  DEFAULT_ARENA_DIRECTIONS
+} from "@ouroboros/application/candidate/arena";
+import { ResearchEvidenceArtifactService } from
+  "@ouroboros/application/candidate/research-evidence-artifacts";
+import { ArenaOperationsProjectionService } from
+  "@ouroboros/application/services/arena-operations";
 import {
   ResearchAllocationPolicyDecisionCoordinator,
   type ResearchAllocationPolicyDecisionCoordinatorLifecycle
@@ -167,6 +175,10 @@ export interface BuildServerOptions {
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
   tradingResearchAgentFactory?: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
+  tradingResearchAgentDescriptor?: (
+    agent: TradingResearchRuntimeAgent,
+    direction: ResearchDirectionKind
+  ) => ManagedResearchAgent;
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
   agentProfileExecFile?: AgentProfileExecFile;
   candidateArenaTickIntervalMs?: number;
@@ -417,6 +429,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
     ?? loadTradingResearchRuntimeConfig();
+  if (options.tradingResearchAgentFactory && !options.tradingResearchAgentDescriptor) {
+    throw new Error("candidate_arena_research_agent_descriptor_required");
+  }
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
     ?? ((agent: TradingResearchRuntimeAgent) => {
       if (options.tradingResearchAgentAdapter && options.tradingResearchAgentAdapter.agent.provider === agent) {
@@ -428,13 +443,27 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         hostId: runtimeProcessHostId
       });
     });
-  const candidateArenaRunner = new CandidateArenaRunner({
-    store,
-    researchAgent: tradingResearchRuntimeConfig.default_agent,
-    agentFactory: tradingResearchAgentFactory,
-    artifactRunner: options.candidateArenaArtifactRunner,
-    replayProviderFactory: options.candidateArenaReplayProviderFactory
-  }, options.candidateArenaTickIntervalMs);
+  const tradingResearchAgentDescriptor = options.tradingResearchAgentDescriptor ??
+    ((agent: TradingResearchRuntimeAgent, direction: ResearchDirectionKind) => {
+      if (agent === "fixture") {
+        return {
+          id: `managed-agent-fixture-arena-${safeId(direction)}`,
+          provider: "fixture",
+          model: `scripted-arena-${direction}`,
+          permission_policy: "fixture_only"
+        };
+      }
+      if (options.tradingResearchAgentAdapter &&
+        options.tradingResearchAgentAdapter.agent.provider === agent) {
+        return structuredClone(options.tradingResearchAgentAdapter.agent);
+      }
+      return {
+        id: "managed-agent-codex-trading-research",
+        provider: "codex",
+        model: tradingResearchRuntimeConfig.codex.model,
+        permission_policy: "artifact_workspace_only"
+      };
+    });
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
@@ -478,6 +507,29 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       : { capacity: options.arenaPaperCapacity })
   });
   options.onArenaPaperRuntimeCreated?.(arenaPaperRuntime);
+  const arenaOperationsProjection = new ArenaOperationsProjectionService({
+    store,
+    arenaPaperRuntime
+  });
+  const researchEvidenceArtifacts = new ResearchEvidenceArtifactService({
+    store,
+    arenaOperations: arenaOperationsProjection
+  });
+  const candidateArenaRunner = new CandidateArenaRunner({
+    store,
+    researchAgent: tradingResearchRuntimeConfig.default_agent,
+    researchAgentDescriptor: tradingResearchAgentDescriptor,
+    agentFactory: tradingResearchAgentFactory,
+    artifactRunner: options.candidateArenaArtifactRunner,
+    replayProviderFactory: options.candidateArenaReplayProviderFactory,
+    researchEvidenceSource: () => researchEvidenceArtifacts.collect()
+  }, options.candidateArenaTickIntervalMs);
+  const researchControlStudyAgentIdentity = (): ManagedResearchAgent => {
+    const agent = candidateArenaRunner.researchAgent();
+    return structuredClone(options.tradingResearchAgentDescriptor
+      ? tradingResearchAgentDescriptor(agent, DEFAULT_ARENA_DIRECTIONS[0]!)
+      : tradingResearchAgentFactory(agent).agent);
+  };
   const startArenaPaperCandidate = async (
     candidateId: string,
     payload: Record<string, unknown> | undefined
@@ -638,9 +690,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         options.researchControlStudyCommitmentCoordinator ??
         createResearchControlStudyServerCommitmentCoordinator({
           store,
-          researchAgentIdentity: () => tradingResearchAgentFactory(
-            candidateArenaRunner.researchAgent()
-          ).agent,
+          researchAgentIdentity: researchControlStudyAgentIdentity,
           marketData: gatewayMarketDataPort,
           repoRoot
         }),

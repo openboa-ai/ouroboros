@@ -23,6 +23,7 @@ import {
 } from "../src/candidate/arena/research-control-study-runtime";
 import {
   createProspectivePaperHarness,
+  fallingProspectivePricePath,
   networklessResearchPreflightArtifactRunner,
   networklessResearchPreflightProvider,
   prospectiveClock,
@@ -65,7 +66,7 @@ describe("ResearchControlStudy prospective protocol evidence", () => {
     const clock = prospectiveClock(startedAt);
     const marketData = prospectiveMarketData({
       now: clock.now,
-      priceAt: fallingPricePath(startedAt)
+      priceAt: fallingProspectivePricePath(startedAt)
     });
     const protocol = boundProtocol(
       paperTradingMarketDataConfigurationDigest(marketData)
@@ -360,14 +361,6 @@ async function preEffectEvidence(store: LocalStore) {
     schedules: schedules.length,
     campaignOutcomes: campaignOutcomes.length,
     studyOutcomes: studyOutcomes.length
-  };
-}
-
-function fallingPricePath(startedAt: string): (observedAt: string) => number {
-  const origin = Date.parse(startedAt);
-  return (observedAt) => {
-    const elapsed = Math.max(0, Date.parse(observedAt) - origin);
-    return Math.max(10_000, 100_000 - Math.floor(elapsed / 25) * 10);
   };
 }
 

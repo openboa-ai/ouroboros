@@ -296,6 +296,7 @@ export async function runResearchMemoryControlStudy(
           repoRoot: prepared.repoRoot,
           sourceArtifactDir: paths.sourceArtifactRoot,
           researchAgent: input.researchAgent,
+          researchAgentDescriptor: input.researchAgentIdentity,
           agentFactory: input.agentFactory,
           artifactRunner: input.artifactRunner,
           replayProviderFactory: input.replayProviderFactory

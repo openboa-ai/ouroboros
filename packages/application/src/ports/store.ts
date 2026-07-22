@@ -20,6 +20,7 @@ import type {
   ResearchOrchestrationRunRecord,
   ResearchBehaviorFingerprintRecord,
   ResearchDirectionRecord,
+  ResearchEvidenceArtifactRecord,
   ResearchControlCampaignArmIntentRecord,
   ResearchControlCampaignOutcomeRecord,
   ResearchControlCampaignPaperScheduleRecord,
@@ -342,6 +343,13 @@ export interface OuroborosStorePort {
   recordResearchWorker(worker: ResearchWorkerRecord): Promise<ResearchWorkerRecord>;
   getResearchWorker(workerId: string): Promise<ResearchWorkerRecord | undefined>;
   listResearchWorkers(): Promise<ResearchWorkerRecord[]>;
+  recordResearchEvidenceArtifact(
+    artifact: ResearchEvidenceArtifactRecord
+  ): Promise<ResearchEvidenceArtifactRecord>;
+  getResearchEvidenceArtifact(
+    artifactId: string
+  ): Promise<ResearchEvidenceArtifactRecord | undefined>;
+  listResearchEvidenceArtifacts(): Promise<ResearchEvidenceArtifactRecord[]>;
   recordResearchPreflightCommitment(
     commitment: ResearchPreflightCommitmentRecord
   ): Promise<ResearchPreflightCommitmentRecord>;

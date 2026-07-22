@@ -25,6 +25,8 @@ import type {
   ManagedResearchAgent,
   TradingResearchAgentAdapter
 } from "@ouroboros/application/trading/research/types";
+import { FixtureTradingResearchAgentAdapter } from
+  "@ouroboros/application/trading/research/agent-adapters";
 import {
   createTradingResearchAgentAdapter,
   loadTradingResearchRuntimeConfig
@@ -77,6 +79,38 @@ afterEach(async () => {
 });
 
 describe("ResearchMemoryControlStudy runtime", () => {
+  it("passes frozen fixture identity into every blinded arm tick", async () => {
+    const coordinator = await initializedStore("coordinator-fixture-identity");
+    const fixtureIdentity = new FixtureTradingResearchAgentAdapter().agent;
+    if (!fixtureIdentity.model) throw new Error("fixture model identity missing");
+    const identity = { ...fixtureIdentity, model: fixtureIdentity.model };
+    const descriptors: RunCandidateArenaTickInput["researchAgentDescriptor"][] = [];
+
+    const result = await runResearchMemoryControlStudy({
+      store: coordinator,
+      workspaceRoot: path.join(temporaryRoot, "workspace-fixture-identity"),
+      idempotencyKey: "memory-control-runtime-fixture-identity-001",
+      sourceCandidateId: FIXTURE_CANDIDATE_ID,
+      directions: DIRECTIONS,
+      researchAgent: "fixture",
+      researchAgentIdentity: identity,
+      agentFactory: () => new FixtureTradingResearchAgentAdapter(),
+      artifactRunner: networklessResearchPreflightArtifactRunner(),
+      replayProviderFactory: networklessResearchPreflightProvider,
+      now: monotonicClock("2026-07-13T00:00:00.000Z"),
+      runTick: async (tickInput) => {
+        descriptors.push(tickInput.researchAgentDescriptor);
+        throw new Error("synthetic_fixture_identity_capture_stop");
+      }
+    });
+
+    expect(result.pairOutcomes).toHaveLength(6);
+    expect(descriptors).toEqual(Array.from(
+      { length: 12 },
+      () => identity
+    ));
+  });
+
   it("runs six fresh paired ticks and derives a supported external outcome", async () => {
     const coordinator = new LocalStore(path.join(temporaryRoot, "coordinator"));
     await coordinator.initialize();
@@ -710,6 +744,7 @@ describe("ResearchMemoryControlStudy runtime", () => {
       codex: {
         ...loaded.codex,
         command: commandPath,
+        model: "codex",
         timeout_ms: 5_000,
         reasoning_effort: "low" as const
       }

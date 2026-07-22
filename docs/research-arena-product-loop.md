@@ -1,6 +1,8 @@
 # Research And Arena Product Loop
 
-Status: target product and operator contract with partial implementation. This document defines
+Status: target product and operator contract with partial implementation. RA-03A now implements
+the persisted evidence-fed Research execution path; Research operations projection and UX remain
+RA-03B. This document defines
 what the continuously operating Research and Arena surfaces mean. It does not claim that the
 current scheduler, read models, or UI already satisfy the contract.
 
@@ -71,14 +73,36 @@ The supported lifecycle is `queued`, `allocating`, `running`, `awaiting_selectio
 `sealed_admission`, `admitted`, `duplicate`, `quarantined`, `finished_without_submission`,
 `failed_closed`, or `recovering`. Process loss never changes old evidence or resumes an old sealed
 opportunity. Recovery closes the old commitment exactly once and creates a new bounded allocation
-only when policy still requests work.
+only when policy still requests work. Restart sequence recovery includes persisted allocations as
+well as completed ticks, so a crash after allocation cannot reuse a tick identity. One Arena-event
+artifact digest may be claimed by only one allocation across LocalStore processes; an orphaned
+claim remains consumed rather than being silently replayed.
 
 ### Research Evidence Input
 
 Research may consume only immutable `ResearchEvidenceArtifact` inputs assembled outside the
 worker. An input identifies its source subject, artifact, digest, capture time, and sanitization
-status. Allowed source families are Arena paper result, Arena trace, Arena failure, released
-research Finding, and future sanitized live result or trace.
+status. Version 1 accepts Arena paper result, Arena trace, Arena failure, and released research
+Finding. Future sanitized live result or trace requires its own provenance validator before it can
+enter this record family.
+
+Arena paper result and failure evidence require an exact `research_feedback` commitment with
+`closed_observation` release. Sealed qualification evidence is never Research input. Each Arena
+trace artifact binds one immutable `PaperTradingObservation`, not a mutable aggregate TradingRun.
+Summaries are assembled from controlled enums, counts, and numeric results; arbitrary provider,
+failure, Finding, decision-reason, credential, URL, or host-path text is not forwarded. The
+sanitizer remains a second defense for any bounded goal or summary text.
+
+The persisted execution graph intentionally has no duplicate session or work-item authority.
+`CandidateArenaResearchAllocation` owns the exact trigger, selected directions, concurrency, and
+experiment budgets. `ResearchPreflightCommitment` owns each direction's hypothesis, method, exact
+evidence refs/digests, source SystemCode, and bounded submission policy before provider effects.
+`ResearchWorker` owns provider/model identity, while `ResearchWorkerCheckpoint` plus admission and
+handoff records close lifecycle and result. `ResearchWorkerSession` remains disposable runtime
+state derived from that graph. A direct tick with no requested trigger receives the repository
+default goal, and every new triggered allocation requires methodology. The exact managed-agent
+descriptor is committed before the adapter factory runs; construction failure or identity drift
+closes the checkpoint before provider effects.
 
 The worker must not receive raw qualification windows before release, evaluator seeds, sealed
 scenarios or outcomes, exchange credentials, private account data, mutable runner state, arbitrary
@@ -218,14 +242,15 @@ track:
 1. `OURO-228`: freeze this product, UX, state, and read-model contract.
 2. `OURO-229`: implement bounded concurrent Arena scheduling, paper-based comparable rank, list and
    detail projections, Desktop UX, and rendered validation.
-3. `OURO-230`: implement bounded goal/time/event Research scheduling, sanitized evidence inputs,
-   session list and detail projections, Desktop UX, and rendered validation.
-4. Operations tickets independently harden process ownership, Sandbox cleanup, restart recovery,
+3. `OURO-237` (RA-03A): implement bounded goal/time/event/recovery Research execution, sanitized
+   immutable evidence inputs, exact preflight methodology binding, and restart-safe terminal state.
+4. `OURO-238` (RA-03B): derive Research session list/detail projections from the persisted graph,
+   connect Desktop UX, and complete rendered validation.
+5. Operations tickets independently harden process ownership, Sandbox cleanup, restart recovery,
    and the final two-hour unattended evidence run.
 
-`OURO-229` and `OURO-230` may proceed in separate worktrees after this contract lands. They must not
-depend on each other's unmerged code. Their only shared join is the exact admitted SystemCode and
-persisted evidence contract defined here.
+Arena and Research delivery slices must remain independently mergeable. Their only shared join is
+the exact admitted SystemCode and persisted evidence contract defined here.
 
 ## Acceptance Evidence
 

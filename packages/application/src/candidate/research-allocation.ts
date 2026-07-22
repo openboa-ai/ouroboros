@@ -22,7 +22,8 @@ import {
   type PaperTradingFailureKind,
   type ResearchAllocationPolicyDecisionRecord,
   type ResearchGeneralizationPolicyDecisionRecord,
-  type ResearchDirectionKind
+  type ResearchDirectionKind,
+  type ResearchTriggerReadModel
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
@@ -60,6 +61,7 @@ export interface DecideCandidateArenaResearchAllocationInput {
   latestTicks: CandidateArenaTickReadModel[];
   priorAllocations: CandidateArenaResearchAllocationRecord[];
   completedTickIds: string[];
+  trigger?: ResearchTriggerReadModel;
 }
 
 export class CandidateArenaResearchAllocationDecisionError extends Error {
@@ -102,6 +104,7 @@ export class CandidateArenaResearchAllocationService {
     explicitDirections?: ResearchDirectionKind[];
     findingClusters: CandidateArenaFindingClusterReadModel[];
     latestTicks: CandidateArenaTickReadModel[];
+    trigger?: ResearchTriggerReadModel;
   }): Promise<CandidateArenaResearchAllocationRecord> {
     const tickId = canonicalId(input?.tickId);
     const allocationId = `candidate-arena-research-allocation-${safeId(tickId)}`;
@@ -130,7 +133,8 @@ export class CandidateArenaResearchAllocationService {
       findingClusters: input.findingClusters,
       latestTicks: input.latestTicks,
       priorAllocations,
-      completedTickIds: completedTicks.map((tick) => tick.tick_id)
+      completedTickIds: completedTicks.map((tick) => tick.tick_id),
+      trigger: input.trigger
     });
     const recorded = await this.options.store
       .recordCandidateArenaResearchAllocation(allocation);
@@ -279,6 +283,9 @@ export function toCandidateArenaResearchAllocationReadModel(
     allocation_policy_basis: cloneAllocationPolicyBasis(
       allocation.allocation_policy_basis
     ),
+    ...(allocation.trigger
+      ? { trigger: structuredClone(allocation.trigger) }
+      : {}),
     policy: { ...allocation.policy },
     selected_directions: allocation.selected_directions.map((selection) => ({
       ...selection,
@@ -356,6 +363,9 @@ export function decideCandidateArenaResearchAllocation(
     tick_id: tickId,
     allocation_mode: allocationMode,
     allocation_policy_basis: allocationPolicyBasis,
+    ...(input.trigger
+      ? { trigger: structuredClone(input.trigger) }
+      : {}),
     policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
     source_tick_refs: sourceTickRefs,
     signal_snapshot: signalSnapshot,
@@ -768,13 +778,14 @@ function allocationRequestMatches(
     allocationMode: CandidateArenaResearchAllocationMode;
     allocationPolicyBasis: CandidateArenaResearchAllocationPolicyBasis;
     explicitDirections?: ResearchDirectionKind[];
+    trigger?: ResearchTriggerReadModel;
   }
 ): boolean {
   if (existing.allocation_mode !== input.allocationMode ||
     !isDeepStrictEqual(
       existing.allocation_policy_basis,
       input.allocationPolicyBasis
-    )) return false;
+    ) || !isDeepStrictEqual(existing.trigger, input.trigger)) return false;
   if (input.allocationMode !== "explicit") {
     return input.explicitDirections === undefined;
   }
