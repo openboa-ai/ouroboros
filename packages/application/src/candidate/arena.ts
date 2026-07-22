@@ -668,31 +668,34 @@ export async function runCandidateArenaTick(
     input.sourceSystemId,
     input.sourceCandidateVersionId
   );
-  const priorArena = await buildCandidateArenaReadModel(
-    input.store,
-    "stopped",
-    tickCount
-  );
-  const { allocationMode, allocationPolicyBasis } =
-    await resolveCandidateArenaResearchAllocationPolicy({
-      store: input.store,
-      explicitDirections: input.directions,
-      requestedAllocationMode: input.researchAllocationMode
-    });
-  const allocation = await withArenaStoreMutation(input.store, () =>
-    new CandidateArenaResearchAllocationService({
-      store: input.store,
-      now: () => allocationAt
-    }).allocate({
-      tickId,
-      allocationMode,
-      allocationPolicyBasis,
-      explicitDirections: input.directions,
-      findingClusters: priorArena.finding_clusters,
-      latestTicks: priorArena.latest_ticks,
-      trigger: researchTrigger
-    })
-  );
+  let allocation = existingAllocation;
+  if (!allocation) {
+    const priorArena = await buildCandidateArenaReadModel(
+      input.store,
+      "stopped",
+      tickCount
+    );
+    const { allocationMode, allocationPolicyBasis } =
+      await resolveCandidateArenaResearchAllocationPolicy({
+        store: input.store,
+        explicitDirections: input.directions,
+        requestedAllocationMode: input.researchAllocationMode
+      });
+    allocation = await withArenaStoreMutation(input.store, () =>
+      new CandidateArenaResearchAllocationService({
+        store: input.store,
+        now: () => allocationAt
+      }).allocate({
+        tickId,
+        allocationMode,
+        allocationPolicyBasis,
+        explicitDirections: input.directions,
+        findingClusters: priorArena.finding_clusters,
+        latestTicks: priorArena.latest_ticks,
+        trigger: researchTrigger
+      })
+    );
+  }
   const executionStartedAt = Date.parse(allocation.allocated_at) >
     Date.parse(startedAt)
     ? allocation.allocated_at

@@ -516,7 +516,7 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
-  it("reuses the exact persisted allocation trigger after restart", async () => {
+  it("reuses the exact persisted allocation intent after restart", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const trigger = {
@@ -544,7 +544,7 @@ describe("CandidateArena paper evidence context", () => {
       store,
       tickId: "trigger-recovery-tick",
       now: () => "2026-07-22T12:00:00.000Z",
-      directions: ["trend_following"],
+      researchAllocationMode: "static_control",
       researchAgent: "codex",
       researchAgentDescriptor: capturingResearchAgentDescriptor(),
       agentFactory: () => new CapturingResearchAgent(
