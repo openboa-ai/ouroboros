@@ -293,7 +293,10 @@ export class CandidateArenaRunner {
     tickCount: number,
     completedTickIds: Iterable<string> = []
   ): void {
-    this.tickCount = Math.max(this.tickCount, Math.max(0, Math.floor(tickCount)));
+    const restoredTickCount = Math.max(0, Math.floor(tickCount));
+    this.tickCount = this.running || this.activeTick
+      ? Math.max(this.tickCount, restoredTickCount)
+      : restoredTickCount;
     this.restoredCompletedTickIds = new Set(completedTickIds);
   }
 

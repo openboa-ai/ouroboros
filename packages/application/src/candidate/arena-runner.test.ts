@@ -7,6 +7,25 @@ import {
 } from "./arena";
 
 describe("CandidateArenaRunner health", () => {
+  it("resets a stopped runner to the persisted orphan recovery sequence", () => {
+    const runner = new CandidateArenaRunner({
+      store: {} as OuroborosStorePort,
+      researchAgent: "fixture",
+      agentFactory: () => ({
+        agent: {
+          provider: "fixture",
+          model: "fixture",
+          permission_mode: "fixture"
+        }
+      }) as never
+    });
+    runner.restoreTickCount(2, ["tick-1"]);
+
+    runner.restoreTickCount(1, ["tick-1", "tick-3"]);
+
+    expect(runner.ticks()).toBe(1);
+  });
+
   it("restores sequence to retry allocations orphaned before tick closure", () => {
     expect(candidateArenaRunnerTickCountFromTicks(
       [{ tick_id: "tick-1" }],
