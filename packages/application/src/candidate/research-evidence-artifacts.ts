@@ -132,19 +132,16 @@ function paperResultArtifacts(
   ]>>,
   commitment: PaperTradingEvaluationCommitmentRecord | undefined
 ): ResearchEvidenceArtifactRecord[] {
-  if (!system.evaluation_id || !system.profit_loss || !evaluation ||
+  if (!system.evaluation_id || !evaluation ||
     !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
     evaluation.candidate_version_ref.id !== system.candidate_version_id ||
-    evaluation.trading_run_ref.id !== system.trading_run_id ||
-    evaluation.observation_count !== system.observation_count ||
-    evaluation.last_observed_at !== system.last_observed_at ||
-    !sameProfitLoss(evaluation.latest_score, system.profit_loss)) {
+    evaluation.trading_run_ref.id !== system.trading_run_id) {
     return [];
   }
-  const capturedAt = system.last_observed_at ?? system.stopped_at ??
-    system.started_at ?? system.queued_at;
+  const capturedAt = evaluation.last_observed_at ?? evaluation.stopped_at ??
+    evaluation.started_at;
   const summary = sanitizeSummary(canonicalResearchEvidenceArtifactSummary(
     "arena_paper_result",
     evaluation
@@ -170,15 +167,17 @@ function failureArtifacts(
   ]>>,
   commitment: PaperTradingEvaluationCommitmentRecord | undefined
 ): ResearchEvidenceArtifactRecord[] {
-  if (!system.evaluation_id || !system.latest_failure || !evaluation ||
+  if (!system.evaluation_id || !evaluation ||
     !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
+    evaluation.candidate_version_ref.id !== system.candidate_version_id ||
+    evaluation.trading_run_ref.id !== system.trading_run_id ||
     !evaluation.latest_failure_reason?.trim()) {
     return [];
   }
-  const capturedAt = system.last_observed_at ?? system.stopped_at ??
-    system.started_at ?? system.queued_at;
+  const capturedAt = evaluation.last_observed_at ?? evaluation.stopped_at ??
+    evaluation.started_at;
   const summary = sanitizeSummary(canonicalResearchEvidenceArtifactSummary(
     "arena_failure",
     evaluation
@@ -382,16 +381,6 @@ function uniqueRefs(refs: Ref[]): Ref[] {
     byIdentity.set(`${reference.record_kind}:${reference.id}`, reference);
   }
   return [...byIdentity.values()];
-}
-
-function sameProfitLoss(
-  left: NonNullable<ArenaTradingSystemSummaryReadModel["profit_loss"]>,
-  right: NonNullable<ArenaTradingSystemSummaryReadModel["profit_loss"]>
-): boolean {
-  return left.revenue_usdt === right.revenue_usdt &&
-    left.cost_usdt === right.cost_usdt &&
-    left.net_revenue_usdt === right.net_revenue_usdt &&
-    left.net_return_pct === right.net_return_pct;
 }
 
 function ref(record_kind: string, id: string): Ref {

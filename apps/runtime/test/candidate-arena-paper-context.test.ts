@@ -205,12 +205,15 @@ describe("CandidateArena paper evidence context", () => {
     const finding = (await store.listResearchFindings()).at(-1);
     expect(finding).toBeDefined();
     const evidence = researchFindingEvidence(finding!);
+    const evidenceReadyAt = new Date(
+      Date.parse(evidence.captured_at) + 1_000
+    ).toISOString();
 
     const eventContexts: string[] = [];
     await runCandidateArenaTick({
       store,
       tickId: "evidence-event",
-      now: () => "2026-07-22T11:00:00.000Z",
+      now: () => evidenceReadyAt,
       directions: ["trend_following", "mean_reversion"],
       researchTrigger: {
         trigger_kind: "time",
@@ -287,7 +290,9 @@ describe("CandidateArena paper evidence context", () => {
     await runCandidateArenaTick({
       store: restarted,
       tickId: "evidence-unchanged",
-      now: () => "2026-07-22T12:00:00.000Z",
+      now: () => new Date(
+        Date.parse(evidenceReadyAt) + 1_000
+      ).toISOString(),
       directions: ["volatility_regime"],
       researchTrigger: {
         trigger_kind: "time",
@@ -311,6 +316,54 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
+  it("accepts evidence captured while the preflight snapshot is collected", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await runCandidateArenaTick({
+      store,
+      tickId: "collection-window-source",
+      now: () => "2026-07-22T10:00:01.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const finding = (await store.listResearchFindings()).at(-1)!;
+    const evidence = researchFindingEvidence(finding);
+    const contexts: string[] = [];
+    let nowMs = Date.parse(evidence.captured_at) - 1_000;
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "collection-window-consumer",
+      now: () => {
+        const value = new Date(nowMs).toISOString();
+        nowMs += 1_000;
+        return value;
+      },
+      directions: ["mean_reversion"],
+      researchEvidenceSource: async () => [evidence],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(contexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    expect(contexts[0]).toContain(evidence.research_evidence_artifact_id);
+    expect((await store.listResearchPreflightCommitments()).find(
+      (commitment) => commitment.candidate_arena_tick_id ===
+        "collection-window-consumer"
+    )?.methodology?.evidence_bindings).toContainEqual({
+      evidence_artifact_ref: {
+        record_kind: "research_evidence_artifact",
+        id: evidence.research_evidence_artifact_id
+      },
+      evidence_artifact_digest: evidence.artifact_digest
+    });
+  });
+
   it("does not reclaim an Arena event after a crash leaves only its allocation", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -326,10 +379,13 @@ describe("CandidateArena paper evidence context", () => {
     });
     const finding = (await store.listResearchFindings()).at(-1)!;
     const evidence = researchFindingEvidence(finding);
+    const triggerAt = new Date(
+      Date.parse(evidence.captured_at) + 1_000
+    ).toISOString();
     await store.recordResearchEvidenceArtifact(evidence);
     await new CandidateArenaResearchAllocationService({
       store,
-      now: () => "2026-07-22T11:00:00.000Z"
+      now: () => triggerAt
     }).allocate({
       tickId: "event-claim-orphan",
       allocationMode: "explicit",
@@ -341,7 +397,7 @@ describe("CandidateArena paper evidence context", () => {
         trigger_kind: "arena_event",
         trigger_id: "event-claim-orphan-trigger",
         goal: "Use this exact event once.",
-        triggered_at: "2026-07-22T11:00:00.000Z",
+        triggered_at: triggerAt,
         source_ref: { ...evidence.artifact_ref },
         evidence_artifact_ref: {
           record_kind: "research_evidence_artifact",
@@ -355,7 +411,7 @@ describe("CandidateArena paper evidence context", () => {
     await runCandidateArenaTick({
       store,
       tickId: "event-claim-after-restart",
-      now: () => "2026-07-22T12:00:00.000Z",
+      now: () => new Date(Date.parse(triggerAt) + 1_000).toISOString(),
       directions: ["mean_reversion"],
       researchTrigger: {
         trigger_kind: "time",

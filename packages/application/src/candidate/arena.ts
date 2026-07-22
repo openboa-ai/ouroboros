@@ -452,14 +452,15 @@ function defaultResearchTriggerRequest(
 async function collectResearchEvidenceArtifacts(input: {
   store: OuroborosStorePort;
   evidenceSource?: () => Promise<ResearchEvidenceArtifactRecord[]>;
-  startedAt: string;
+  now?: () => string;
 }): Promise<ResearchEvidenceArtifactRecord[]> {
   if (!input.evidenceSource) return [];
   const collected = await input.evidenceSource();
+  const collectedAt = candidateArenaNow(input.now);
   if (!Array.isArray(collected) || collected.length > 24 ||
     collected.some((artifact) =>
       !researchEvidenceArtifactHasRuntimeShape(artifact) ||
-      Date.parse(artifact.captured_at) > Date.parse(input.startedAt)
+      Date.parse(artifact.captured_at) > Date.parse(collectedAt)
     )) {
     throw new Error("candidate_arena_research_evidence_invalid");
   }
@@ -597,7 +598,7 @@ export async function runCandidateArenaTick(
   const researchEvidenceArtifacts = await collectResearchEvidenceArtifacts({
     store: input.store,
     evidenceSource: input.researchEvidenceSource,
-    startedAt
+    now: input.now
   });
   const existingAllocation = await input.store
     .getCandidateArenaResearchAllocation(

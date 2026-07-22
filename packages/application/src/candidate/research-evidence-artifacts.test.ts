@@ -199,6 +199,86 @@ describe("ResearchEvidenceArtifactService", () => {
       .not.toContain("second-secret");
   });
 
+  it("uses the latest evaluation result when ranking projects an older boundary", async () => {
+    const operations = arenaOperations();
+    Object.assign(operations.systems[0]!, {
+      profit_loss: {
+        revenue_usdt: 9,
+        cost_usdt: 2,
+        net_revenue_usdt: 7,
+        net_return_pct: 0.07
+      },
+      observation_count: 6,
+      last_observed_at: "2026-07-22T00:06:00.000Z",
+      comparison_sequence: 6,
+      comparison_cutoff_at: "2026-07-22T00:06:00.000Z"
+    });
+    const commitment = paperCommitment();
+    const evaluation = paperEvaluation(commitment);
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => [],
+        getTradingRun: async () => undefined
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => undefined
+      }
+    });
+
+    const result = (await service.collect()).find((artifact) =>
+      artifact.source_kind === "arena_paper_result"
+    );
+
+    expect(result).toMatchObject({
+      artifact_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: evaluation.paper_trading_evaluation_id
+      },
+      source_digest: exactDigest(evaluation),
+      captured_at: evaluation.last_observed_at
+    });
+    expect(result?.summary).toContain("net 12 USDT");
+    expect(result?.summary).toContain("observations 8");
+  });
+
+  it("uses the latest evaluation failure when the projection is behind", async () => {
+    const operations = arenaOperations();
+    delete operations.systems[0]!.latest_failure;
+    const commitment = paperCommitment();
+    const evaluation = {
+      ...paperEvaluation(commitment),
+      latest_failure_reason: "candidate process exited during observation"
+    };
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => [],
+        getTradingRun: async () => undefined
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => undefined
+      }
+    });
+
+    const failure = (await service.collect()).find((artifact) =>
+      artifact.source_kind === "arena_failure"
+    );
+
+    expect(failure).toMatchObject({
+      source_digest: exactDigest(evaluation),
+      captured_at: evaluation.last_observed_at
+    });
+    expect(failure?.summary).toContain("status running");
+    expect(failure?.summary).not.toContain("candidate process exited");
+  });
+
   it("does not collect sealed qualification evidence", async () => {
     const operations = arenaOperations();
     const detail = arenaDetail(operations.systems[0]!);
