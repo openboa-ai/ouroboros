@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
-import { loadTradingResearchRuntimeConfig } from "@ouroboros/application/trading/research/runtime-config";
+import { FixtureTradingResearchAgentAdapter } from
+  "@ouroboros/application/trading/research/agent-adapters";
+import {
+  fixtureTradingResearchRuntimeConfig,
+  loadTradingResearchRuntimeConfig
+} from "@ouroboros/application/trading/research/runtime-config";
 import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   ReplayTradingApiProviderSession,
@@ -38,6 +43,36 @@ describe("managed Codex researcher execution", () => {
     })).rejects.toThrow("candidate_arena_research_agent_descriptor_required");
 
     expect(factoryInvoked).toBe(false);
+  });
+
+  it("keeps directional fixture descriptors when a generic fixture adapter is injected", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchRuntimeConfig: fixtureTradingResearchRuntimeConfig(),
+      tradingResearchAgentAdapter: new FixtureTradingResearchAgentAdapter(),
+      candidateArenaArtifactRunner: networklessReplayArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    try {
+      const tick = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: { command_kind: "arena.tick" }
+      });
+
+      expect(tick.statusCode, tick.body).toBe(200);
+      expect(tick.json().result.created_candidate_count).toBeGreaterThan(1);
+      expect(tick.json().operator.candidate_arena.latest_ticks[0]
+        .direction_results).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            status: "created",
+            agent_provider: "fixture"
+          })
+        ]));
+    } finally {
+      await server.close();
+    }
   });
 
   it("blocks unauthenticated Codex ticks, then runs arena ticks through the managed Codex profile", async () => {

@@ -442,10 +442,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     });
   const tradingResearchAgentDescriptor = options.tradingResearchAgentDescriptor ??
     ((agent: TradingResearchRuntimeAgent, direction: ResearchDirectionKind) => {
-      if (options.tradingResearchAgentAdapter &&
-        options.tradingResearchAgentAdapter.agent.provider === agent) {
-        return structuredClone(options.tradingResearchAgentAdapter.agent);
-      }
       if (agent === "fixture") {
         return {
           id: `managed-agent-fixture-arena-${safeId(direction)}`,
@@ -453,6 +449,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           model: `scripted-arena-${direction}`,
           permission_policy: "fixture_only"
         };
+      }
+      if (options.tradingResearchAgentAdapter &&
+        options.tradingResearchAgentAdapter.agent.provider === agent) {
+        return structuredClone(options.tradingResearchAgentAdapter.agent);
       }
       return {
         id: "managed-agent-codex-trading-research",
