@@ -7879,7 +7879,9 @@ export class LocalStore {
         artifact,
         source,
         requireCurrentDigest
-      ) && sameRef(artifact.subject_ref, source.candidate_ref) &&
+      ) && (!requireCurrentDigest || artifact.source_kind !== "arena_failure" ||
+        Boolean(source.latest_failure_reason?.trim())) &&
+        sameRef(artifact.subject_ref, source.candidate_ref) &&
         (!requireCurrentDigest || artifact.summary ===
           canonicalResearchEvidenceArtifactSummary(
             artifact.source_kind,

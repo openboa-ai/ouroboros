@@ -251,6 +251,22 @@ describe("LocalStore", () => {
     );
   });
 
+  it("rejects arena failure evidence when the exact evaluation has no failure", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(
+        paperFailureResearchEvidence(evaluation)
+      ),
+      "research_evidence_artifact_source_mismatch"
+    );
+  });
+
   it("rejects sealed qualification evidence at the Research boundary", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -13630,6 +13646,46 @@ function paperObservationResearchEvidence(
       { ...observation.paper_trading_evaluation_commitment_ref! }
     ],
     captured_at: observation.observed_at,
+    sanitization_policy: "research_evidence_sanitization_v1",
+    sanitization_status: "sanitized",
+    qualification_evidence_hidden: true,
+    secrets_removed: true,
+    host_paths_removed: true,
+    truncated: false,
+    artifact_digest: `sha256:${"0".repeat(64)}`,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  });
+}
+
+function paperFailureResearchEvidence(
+  evaluation: PaperTradingEvaluationRecord
+): ResearchEvidenceArtifactRecord {
+  return withResearchEvidenceDigest({
+    record_kind: "research_evidence_artifact",
+    version: 1,
+    research_evidence_artifact_id:
+      `research-evidence-failure-${evaluation.paper_trading_evaluation_id}`,
+    source_kind: "arena_failure",
+    subject_ref: { ...evaluation.candidate_ref },
+    artifact_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: evaluation.paper_trading_evaluation_id
+    },
+    source_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(evaluation)
+    ),
+    summary: canonicalResearchEvidenceArtifactSummary(
+      "arena_failure",
+      evaluation
+    ),
+    supporting_record_refs: [
+      { ...evaluation.trading_run_ref },
+      { ...evaluation.paper_trading_evaluation_commitment_ref! }
+    ],
+    captured_at: evaluation.started_at,
     sanitization_policy: "research_evidence_sanitization_v1",
     sanitization_status: "sanitized",
     qualification_evidence_hidden: true,
