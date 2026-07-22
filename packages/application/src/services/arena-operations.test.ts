@@ -23,6 +23,34 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("keeps fresh zero-observation systems in their committed comparison cohort", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
+      system("candidate-b", "running", "2026-07-19T00:00:01.000Z")
+    ]);
+    fixture.addPaper("candidate-a", { observations: [] });
+    fixture.addPaper("candidate-b", { observations: [] });
+
+    const projection = await fixture.service.readOperations();
+
+    expect(projection.systems.map((entry) => ({
+      candidateId: entry.candidate_id,
+      comparabilityStatus: entry.comparability_status,
+      reasons: entry.unranked_reasons,
+      cohortId: entry.comparison_cohort?.cohort_id
+    }))).toEqual([{
+      candidateId: "candidate-a",
+      comparabilityStatus: "comparable",
+      reasons: ["common_observation_boundary_missing"],
+      cohortId: expect.any(String)
+    }, {
+      candidateId: "candidate-b",
+      comparabilityStatus: "comparable",
+      reasons: ["common_observation_boundary_missing"],
+      cohortId: expect.any(String)
+    }]);
+  });
+
   it("ranks independently timed sessions at their common paper sequence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),

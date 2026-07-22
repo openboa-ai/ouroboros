@@ -418,7 +418,7 @@ function selectActiveCohortId(
   const groups = new Map<string, PreparedArenaSystem[]>();
   for (const system of systems) {
     if (!system.cohort || !system.evidenceComplete ||
-      !system.rankLifecycleEligible || system.observations.length === 0) {
+      !system.rankLifecycleEligible) {
       continue;
     }
     const group = groups.get(system.cohort.cohort_id) ?? [];
