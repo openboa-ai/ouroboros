@@ -4,8 +4,7 @@ import type {
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingHandoffConformanceRecord,
-  PaperTradingObservationRecord,
-  RuntimeSupervisorReadModel
+  PaperTradingObservationRecord
 } from "@ouroboros/domain";
 import { paperTradingEvaluationCommitmentDigest } from "../trading/paper/commitment";
 import type {
@@ -15,6 +14,15 @@ import type {
 import { ArenaOperationsProjectionService } from "./arena-operations";
 
 describe("ArenaOperationsProjectionService", () => {
+  it("keeps an empty paper field stopped from its own runtime snapshot", async () => {
+    const fixture = arenaFixture([]);
+
+    await expect(fixture.service.readOperations()).resolves.toMatchObject({
+      loop_status: "stopped",
+      systems: []
+    });
+  });
+
   it("ranks independently timed sessions at their common paper sequence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
@@ -295,26 +303,9 @@ function arenaFixture(systems: ArenaPaperRuntimeSystem[]) {
     listPaperTradingObservations: async (evaluationId: string) => observations.get(evaluationId) ?? [],
     getPaperTradingHandoffConformance: async (conformanceId: string) => conformances.get(conformanceId)
   };
-  const runtimeSupervisor = {
-    status: (): RuntimeSupervisorReadModel => ({
-      status: snapshot.failed_count > 0 ? "degraded" : "running",
-      lanes: [],
-      recorded_at: "2026-07-19T00:04:00.000Z",
-      checkpoint_sequence: 1,
-      checkpoint_digest: `sha256:${"a".repeat(64)}`,
-      runtime_coordination_authority: true,
-      evaluation_authority: false,
-      policy_replacement_authority: false,
-      promotion_authority: false,
-      order_submission_authority: false,
-      live_exchange_authority: false,
-      authority_status: "runtime_coordination_only"
-    })
-  };
   const service = new ArenaOperationsProjectionService({
     store: store as never,
-    arenaPaperRuntime: { snapshot: async () => snapshot },
-    runtimeSupervisor
+    arenaPaperRuntime: { snapshot: async () => snapshot }
   });
 
   return {

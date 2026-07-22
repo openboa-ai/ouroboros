@@ -203,10 +203,7 @@ export class OperatorService {
   private arenaOperationsProjection(): ArenaOperationsProjectionService {
     return new ArenaOperationsProjectionService({
       store: this.options.store,
-      arenaPaperRuntime: this.options.arenaPaperRuntime!,
-      ...(this.options.runtimeSupervisor
-        ? { runtimeSupervisor: this.options.runtimeSupervisor }
-        : {})
+      arenaPaperRuntime: this.options.arenaPaperRuntime!
     });
   }
 

@@ -18,7 +18,6 @@ import {
   type PaperTradingHandoffConformanceRecord,
   type PaperTradingObservationRecord,
   type Ref,
-  type RuntimeSupervisorReadModel,
   type TradingProfitLossReadModel,
   verifyCandidateEgressAttestation
 } from "@ouroboros/domain";
@@ -49,9 +48,6 @@ type ArenaOperationsStore = Pick<
 export interface ArenaOperationsProjectionServiceOptions {
   store: ArenaOperationsStore;
   arenaPaperRuntime: Pick<ArenaPaperRuntimeService, "snapshot">;
-  runtimeSupervisor?: {
-    status(): RuntimeSupervisorReadModel;
-  };
 }
 
 interface LoadedArenaSystem {
@@ -106,22 +102,14 @@ export class ArenaOperationsProjectionService {
 
   async readOperations(): Promise<ArenaOperationsReadModel> {
     const { snapshot, loaded } = await this.load();
-    return projectOperations(
-      snapshot,
-      loaded,
-      this.options.runtimeSupervisor?.status()
-    );
+    return projectOperations(snapshot, loaded);
   }
 
   async readSystemDetail(
     candidateId: string
   ): Promise<ArenaTradingSystemDetailReadModel | undefined> {
     const { snapshot, loaded } = await this.load();
-    const operations = projectOperations(
-      snapshot,
-      loaded,
-      this.options.runtimeSupervisor?.status()
-    );
+    const operations = projectOperations(snapshot, loaded);
     const summary = operations.systems.find((entry) =>
       entry.candidate_id === candidateId
     );
@@ -180,8 +168,7 @@ export class ArenaOperationsProjectionService {
 
 function projectOperations(
   snapshot: ArenaPaperRuntimeSnapshot,
-  loaded: LoadedArenaSystem[],
-  supervisor: RuntimeSupervisorReadModel | undefined
+  loaded: LoadedArenaSystem[]
 ): ArenaOperationsReadModel {
   const prepared = loaded.map(prepareSystem);
   const activeCohortId = selectActiveCohortId(prepared);
@@ -261,7 +248,7 @@ function projectOperations(
 
   return {
     projection_kind: "arena_operations",
-    loop_status: arenaLoopStatus(snapshot, supervisor),
+    loop_status: arenaLoopStatus(snapshot),
     capacity: {
       max_concurrent_sessions: snapshot.capacity,
       active_session_count: snapshot.running_count + snapshot.recovering_count,
@@ -1012,22 +999,15 @@ function sandboxStatus(
 }
 
 function arenaLoopStatus(
-  snapshot: ArenaPaperRuntimeSnapshot,
-  supervisor: RuntimeSupervisorReadModel | undefined
+  snapshot: ArenaPaperRuntimeSnapshot
 ): ArenaOperationsReadModel["loop_status"] {
-  if (supervisor?.status === "degraded" || supervisor?.status === "blocked" ||
-    snapshot.failed_count > 0 || snapshot.invalidated_count > 0) {
+  if (snapshot.failed_count > 0 || snapshot.invalidated_count > 0) {
     return "degraded";
   }
-  if (supervisor?.status === "recovering" || snapshot.starting_count > 0) {
+  if (snapshot.starting_count > 0 || snapshot.recovering_count > 0) {
     return "starting";
   }
-  if (supervisor?.status === "stopped" && snapshot.occupied_count === 0 &&
-    snapshot.queued_count === 0) {
-    return "stopped";
-  }
-  if (snapshot.occupied_count > 0 || snapshot.queued_count > 0 ||
-    supervisor?.status === "running") {
+  if (snapshot.running_count > 0 || snapshot.queued_count > 0) {
     return "running";
   }
   return "stopped";
