@@ -135,6 +135,7 @@ function paperResultArtifacts(
 ): ResearchEvidenceArtifactRecord[] {
   if (!system.evaluation_id || !evaluation ||
     !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
+    evaluation.observation_count < 1 || !evaluation.last_observed_at ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
     evaluation.candidate_version_ref.id !== system.candidate_version_id ||

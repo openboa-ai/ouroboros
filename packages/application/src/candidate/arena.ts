@@ -257,6 +257,7 @@ export class CandidateArenaRunner {
   private loopActive = false;
   private activeTick?: Promise<CandidateArenaTickOutcome>;
   private tickContinuation?: CandidateArenaTickContinuation;
+  private restoredCompletedTickIds = new Set<string>();
 
   constructor(
     private input: Omit<RunCandidateArenaTickInput, "tickId">,
@@ -288,8 +289,12 @@ export class CandidateArenaRunner {
     };
   }
 
-  restoreTickCount(tickCount: number): void {
+  restoreTickCount(
+    tickCount: number,
+    completedTickIds: Iterable<string> = []
+  ): void {
     this.tickCount = Math.max(this.tickCount, Math.max(0, Math.floor(tickCount)));
+    this.restoredCompletedTickIds = new Set(completedTickIds);
   }
 
   researchAgent(): TradingResearchRuntimeAgent {
@@ -340,7 +345,10 @@ export class CandidateArenaRunner {
     if (this.activeTick) {
       return this.activeTick;
     }
-    this.tickCount += 1;
+    this.tickCount = candidateArenaRunnerNextTickCount(
+      this.tickCount,
+      this.restoredCompletedTickIds
+    );
     this.activeTick = runCandidateArenaTick({
       ...this.input,
       researchTrigger,
@@ -621,6 +629,17 @@ export function candidateArenaRunnerTickCountFromTicks(
     return Math.max(highest, Number(match[1] ?? 0));
     }, 0);
   return Math.max(ticks.length, highestNumericTickId);
+}
+
+export function candidateArenaRunnerNextTickCount(
+  currentTickCount: number,
+  completedTickIds: ReadonlySet<string>
+): number {
+  let nextTickCount = Math.max(0, Math.floor(currentTickCount)) + 1;
+  while (completedTickIds.has(`tick-${nextTickCount}`)) {
+    nextTickCount += 1;
+  }
+  return nextTickCount;
 }
 
 export async function runCandidateArenaTick(

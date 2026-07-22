@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OuroborosStorePort } from "../ports/store";
 import {
   CandidateArenaRunner,
+  candidateArenaRunnerNextTickCount,
   candidateArenaRunnerTickCountFromTicks
 } from "./arena";
 
@@ -18,6 +19,21 @@ describe("CandidateArenaRunner health", () => {
       [{ tick_id: "tick-1" }, { tick_id: "tick-2" }],
       [{ tick_id: "tick-2" }]
     )).toBe(2);
+  });
+
+  it("skips completed tick ids after retrying an older incomplete allocation", () => {
+    const completedTickIds = new Set(["tick-1", "tick-3"]);
+    const restoredTickCount = candidateArenaRunnerTickCountFromTicks(
+      [{ tick_id: "tick-1" }, { tick_id: "tick-3" }],
+      [{ tick_id: "tick-2" }, { tick_id: "tick-3" }]
+    );
+
+    expect(restoredTickCount).toBe(1);
+    expect(candidateArenaRunnerNextTickCount(
+      restoredTickCount,
+      completedTickIds
+    )).toBe(2);
+    expect(candidateArenaRunnerNextTickCount(2, completedTickIds)).toBe(4);
   });
 
   it("reports consecutive tick failure without converting it into trading authority", async () => {

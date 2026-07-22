@@ -313,6 +313,34 @@ describe("ResearchEvidenceArtifactService", () => {
     )).toBe(true);
   });
 
+  it("does not emit a paper result before the first closed observation", async () => {
+    const operations = arenaOperations();
+    const commitment = paperCommitment();
+    const evaluation = {
+      ...paperEvaluation(commitment),
+      status: "not_started" as const,
+      observation_count: 0,
+      last_observed_at: undefined
+    };
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => [],
+        getTradingRun: async () => undefined
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => undefined
+      }
+    });
+
+    expect((await service.collect()).filter((artifact) =>
+      artifact.source_kind === "arena_paper_result"
+    )).toEqual([]);
+  });
+
   it("does not collect sealed qualification evidence", async () => {
     const operations = arenaOperations();
     const detail = arenaDetail(operations.systems[0]!);

@@ -796,7 +796,8 @@ export class OperatorService {
       candidateArenaRunnerTickCountFromTicks(
         persistedTicks,
         persistedAllocations
-      )
+      ),
+      persistedTicks.map((tick) => tick.tick_id)
     );
   }
 
