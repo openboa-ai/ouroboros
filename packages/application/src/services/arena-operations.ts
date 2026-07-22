@@ -41,6 +41,8 @@ const WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN =
   /\b[A-Za-z]:[\\\/](?![\\\/])[^\s<>"']+/g;
 const WINDOWS_UNC_ABSOLUTE_PATH_PATTERN =
   /(^|[^\\])\\\\(?!\\)[^\s<>"']+/g;
+const SECRET_ASSIGNMENT_PATTERN =
+  /(^|[^A-Za-z0-9_])((?:[A-Za-z][A-Za-z0-9_]*_)?(?:api[_-]?key|api[_-]?secret|token|password))\s*[:=]\s*\S+/gi;
 
 type ArenaOperationsStore = Pick<
   OuroborosStorePort,
@@ -739,7 +741,8 @@ function sandboxConformanceAdapterConsistent(
   sandbox: CandidateInspectReadModel["runtime"]["sandbox"],
   conformance: PaperTradingHandoffConformanceRecord | undefined
 ): boolean {
-  if (!sandbox || !conformance) return true;
+  if (!conformance) return true;
+  if (!sandbox) return conformance.runner_kind !== "docker_sandboxes_sbx";
   return sandbox.adapter_kind === "docker_sandboxes_sbx"
     ? conformance.runner_kind === "docker_sandboxes_sbx"
     : conformance.runner_kind === "host_process";
@@ -1045,8 +1048,7 @@ function sanitizeText(value: string): string {
     .replace(POSIX_ABSOLUTE_PATH_PATTERN, "$1[private-path]")
     .replace(/\b(?:https?|wss?|file):\/\/[^\s<>"']+/gi, "[external-url]")
     .replace(/\b(Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted]")
-    .replace(/\b(api[_-]?key|api[_-]?secret|token|password)\s*[:=]\s*\S+/gi,
-      "$1=[redacted]");
+    .replace(SECRET_ASSIGNMENT_PATTERN, "$1$2=[redacted]");
   return sanitized.length <= ARENA_TEXT_LIMIT
     ? sanitized
     : `${sanitized.slice(0, ARENA_TEXT_LIMIT)}...`;

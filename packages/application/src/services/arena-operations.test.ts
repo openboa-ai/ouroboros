@@ -1,10 +1,21 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type {
+  CandidateEgressAttestation,
   CandidateInspectReadModel,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingHandoffConformanceRecord,
   PaperTradingObservationRecord
+} from "@ouroboros/domain";
+import {
+  CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_ATTESTER_ID,
+  CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
+  candidateEgressAttestationDigestInput,
+  candidateEgressAttestationIdForConformance,
+  candidateEgressNetworkPolicyDigestInput
 } from "@ouroboros/domain";
 import { paperTradingEvaluationCommitmentDigest } from "../trading/paper/commitment";
 import type {
@@ -176,25 +187,26 @@ describe("ArenaOperationsProjectionService", () => {
       3
     );
     candidateAObservation.decision!.reason =
-      "/Users/private-user/work/strategy.py token=private-decision-token";
+      "/Users/private-user/work/strategy.py OPENAI_API_KEY=private-decision-token";
     fixture.addPaper("candidate-a", { observations: [candidateAObservation] });
     const candidateA = fixture.candidates.get("candidate-a")!;
     candidateA.display_name =
       "/Users/private-user/system token=private-display-token";
     candidateA.system_code!.summary =
-      "/workspace/ouroboros/candidate-arena-runs/strategy.py token=private-summary-token";
+      "/workspace/ouroboros/candidate-arena-runs/strategy.py BINANCE_API_SECRET=private-summary-token";
     candidateA.system_code!.declared_outputs.push(
       "/Users/private-user/output token=private-manifest-token",
       "/secret-token",
       "C:\\secret-token",
       "\\\\private-host\\secret-token",
+      "DATABASE_PASSWORD=private-password",
       "https://example.com/public-doc",
       "revenue / cost"
     );
     candidateA.full_cycle_lineage!.blocked_reason =
       "/Users/private-user/lineage token=private-lineage-token";
     candidateA.runtime.transcript!.items[0]!.summary =
-      "/opt/ouroboros/runtime.json token=private-trace-token";
+      "/opt/ouroboros/runtime.json WORKER_TOKEN=private-trace-token";
     fixture.addPaper("candidate-b", {
       observations: [observation("candidate-b", 1, "2026-07-19T00:01:00.000Z", 4)]
     });
@@ -219,7 +231,7 @@ describe("ArenaOperationsProjectionService", () => {
         egress_attestation_status: "not_required"
       },
       trading_system_manifest: {
-        summary: "[private-path] token=[redacted]",
+        summary: "[private-path] BINANCE_API_SECRET=[redacted]",
         declared_runtime: "python",
         declared_outputs: [
           "order_request",
@@ -227,6 +239,7 @@ describe("ArenaOperationsProjectionService", () => {
           "[private-path]",
           "[private-path]",
           "[private-path]",
+          "DATABASE_PASSWORD=[redacted]",
           "[external-url]",
           "revenue / cost"
         ],
@@ -246,7 +259,7 @@ describe("ArenaOperationsProjectionService", () => {
     expect(detail?.trace_events.find((event) =>
       event.event_kind === "lifecycle"
     )?.summary).toBe(
-      "Restart recovery: [private-path] token=[redacted]"
+      "Restart recovery: [private-path] WORKER_TOKEN=[redacted]"
     );
     expect(detail?.log_entries).toHaveLength(1);
     expect(detail?.log_entries[0]).toMatchObject({
@@ -256,7 +269,7 @@ describe("ArenaOperationsProjectionService", () => {
     });
     expect(detail?.logs_truncated).toBe(true);
     expect(detail?.latest_decision?.reason).toBe(
-      "[private-path] token=[redacted]"
+      "[private-path] OPENAI_API_KEY=[redacted]"
     );
     expect(detail?.display_name).toBe("[private-path] token=[redacted]");
     expect(JSON.stringify(detail)).not.toContain("/Users/private-user");
@@ -268,6 +281,7 @@ describe("ArenaOperationsProjectionService", () => {
     expect(JSON.stringify(detail)).not.toContain("private-manifest-token");
     expect(JSON.stringify(detail)).not.toContain("private-lineage-token");
     expect(JSON.stringify(detail)).not.toContain("private-trace-token");
+    expect(JSON.stringify(detail)).not.toContain("private-password");
     expect(JSON.stringify(detail)).not.toContain("candidate-b secret");
     expect(detail?.artifact_refs).toEqual(expect.arrayContaining([
       { record_kind: "system_code", id: "system-code-candidate-a" },
@@ -307,6 +321,34 @@ describe("ArenaOperationsProjectionService", () => {
 
     expect(detail?.isolation).toMatchObject({
       isolation_id: "sandbox-from-another-runtime",
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
+  it("fails Docker network and egress closed when Sandbox identity is missing", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    fixture.conformances.set(
+      "conformance-candidate-a",
+      dockerConformance("candidate-a")
+    );
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+
+    const verified = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(verified?.isolation).toMatchObject({
+      network_policy_status: "verified",
+      egress_attestation_status: "verified"
+    });
+
+    candidateA.runtime.sandbox = undefined;
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
       network_policy_status: "failed",
       egress_attestation_status: "failed"
     });
@@ -746,6 +788,84 @@ function conformance(candidateId: string): PaperTradingHandoffConformanceRecord 
     live_exchange_authority: false,
     authority_status: "not_live"
   };
+}
+
+function dockerConformance(
+  candidateId: string
+): PaperTradingHandoffConformanceRecord {
+  const base = conformance(candidateId);
+  const networkPolicy = {
+    protocol_version: CANDIDATE_EGRESS_NETWORK_POLICY_PROTOCOL_VERSION,
+    inherited_allow_digest: testSha256("inherited-allow"),
+    inherited_allow_count: 0,
+    owned_allow_rule_ids: [],
+    owned_deny_rule_ids: ["deny-default"],
+    deny_targets: [...CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS]
+  };
+  const networkPolicyDigest = testSha256(
+    candidateEgressNetworkPolicyDigestInput(networkPolicy)
+  );
+  const attestation: CandidateEgressAttestation = {
+    protocol_version: CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
+    attestation_id: candidateEgressAttestationIdForConformance(
+      base.paper_trading_handoff_conformance_id
+    ),
+    attested_by: {
+      record_kind: "external_evaluator",
+      id: CANDIDATE_EGRESS_ATTESTER_ID
+    },
+    candidate_authored: false,
+    system_code_ref: { ...base.system_code_ref },
+    system_code_artifact_digest: base.system_code_artifact_digest,
+    execution_ref: { ...base.experiment_run_ref },
+    sandbox: {
+      adapter_kind: "docker_sandboxes_sbx",
+      sandbox_name: `sandbox-${candidateId}`,
+      implementation_version: "1.0.0"
+    },
+    network_policy: networkPolicy,
+    network_policy_digest: networkPolicyDigest,
+    start: {
+      observed_at: base.started_at,
+      policy_digest: networkPolicyDigest
+    },
+    end: {
+      observed_at: "2026-07-19T00:00:00.900Z",
+      policy_digest: networkPolicyDigest
+    },
+    candidate_effect: {
+      started_at: "2026-07-19T00:00:00.100Z",
+      completed_at: "2026-07-19T00:00:00.800Z"
+    },
+    cleanup_status: "released",
+    enforcement_result: "enforced",
+    denial_summary: {
+      required_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      start_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      end_denied_probe_count: CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length,
+      unexpected_allow_count: 0
+    },
+    issued_at: base.completed_at,
+    attestation_digest: "pending",
+    research_preflight_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "not_live"
+  };
+  attestation.attestation_digest = testSha256(
+    candidateEgressAttestationDigestInput(attestation)
+  );
+  return {
+    ...base,
+    version: 2,
+    runner_kind: "docker_sandboxes_sbx",
+    candidate_egress_attestation: attestation
+  };
+}
+
+function testSha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function workspaceDigest(candidateId: string): string {
