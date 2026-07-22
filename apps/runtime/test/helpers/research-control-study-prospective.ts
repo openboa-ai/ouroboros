@@ -71,6 +71,17 @@ export function prospectiveClock(startAt: string) {
   };
 }
 
+export function fallingProspectivePricePath(
+  startedAt: string
+): (observedAt: string) => number {
+  const origin = Date.parse(startedAt);
+  return (observedAt) => {
+    const elapsed = Math.max(0, Date.parse(observedAt) - origin);
+    const intervalCount = Math.floor(elapsed / 25);
+    return Math.max(10_000, 100_000 * (0.9999 ** intervalCount));
+  };
+}
+
 export function prospectiveMarketData(input: {
   now: () => string;
   priceAt?: (observedAt: string) => number;
