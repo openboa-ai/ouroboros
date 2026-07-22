@@ -249,6 +249,16 @@ describe("LocalStore", () => {
       store.recordResearchEvidenceArtifact(alias),
       "research_evidence_artifact_alias_conflict"
     );
+    const sourceAlias = withResearchEvidenceDigest({
+      ...artifact,
+      research_evidence_artifact_id:
+        `${artifact.research_evidence_artifact_id}-source-alias`,
+      supporting_record_refs: artifact.supporting_record_refs.slice(1)
+    });
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(sourceAlias),
+      "research_evidence_artifact_alias_conflict"
+    );
   });
 
   it("rejects arena failure evidence when the exact evaluation has no failure", async () => {

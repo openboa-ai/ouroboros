@@ -7758,13 +7758,19 @@ export class LocalStore {
       );
       if (aliases.some((value) => {
         const persisted = this.assertPersistedResearchEvidenceArtifact(value);
-        return persisted.artifact_digest === artifact.artifact_digest &&
+        const sameCanonicalContent =
+          persisted.artifact_digest === artifact.artifact_digest;
+        const sameSourceIdentity =
+          persisted.source_kind === artifact.source_kind &&
+          sameRef(persisted.artifact_ref, artifact.artifact_ref) &&
+          persisted.source_digest === artifact.source_digest;
+        return (sameCanonicalContent || sameSourceIdentity) &&
           persisted.research_evidence_artifact_id !==
             artifact.research_evidence_artifact_id;
       })) {
         throw new LocalStoreError(
           "research_evidence_artifact_alias_conflict",
-          "ResearchEvidenceArtifact canonical content already has an identity"
+          "ResearchEvidenceArtifact content or source already has an identity"
         );
       }
       await this.ensureResearchEvidencePaperEvaluationSnapshot(artifact);

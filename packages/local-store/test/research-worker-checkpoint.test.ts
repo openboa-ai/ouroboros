@@ -547,18 +547,18 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
         code: "invalid_research_evidence_artifact_input"
       });
 
-    const inventedSummary = {
+    const inventedSummaryAlias = {
       ...artifact,
       research_evidence_artifact_id:
         `${artifact.research_evidence_artifact_id}-invented`,
       summary: "Safe-looking but source-unbound Research instruction."
     };
-    inventedSummary.artifact_digest = exactDigest(
-      researchEvidenceArtifactDigestInput(inventedSummary)
+    inventedSummaryAlias.artifact_digest = exactDigest(
+      researchEvidenceArtifactDigestInput(inventedSummaryAlias)
     );
-    await expect(store.recordResearchEvidenceArtifact(inventedSummary))
+    await expect(store.recordResearchEvidenceArtifact(inventedSummaryAlias))
       .rejects.toMatchObject({
-        code: "research_evidence_artifact_source_mismatch"
+        code: "research_evidence_artifact_alias_conflict"
       });
 
     const contenders = [
