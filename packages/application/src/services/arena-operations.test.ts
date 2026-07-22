@@ -452,6 +452,21 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("fails egress closed when current Docker and conformance adapters disagree", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a");
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
   it("fails current network closed without invalidating admitted egress evidence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")

@@ -673,7 +673,8 @@ function isolationReadModel(
   const egressAttestation = egressAttestationStatus(
     conformance?.runner_kind ?? sandbox?.adapter_kind,
     conformance,
-    exactConformanceConsistent
+    exactConformanceConsistent,
+    !sandbox || !conformance || adapterConsistent
   );
   return {
     ...(sandbox ? { isolation_id: sandbox.sandbox_id } : {}),
@@ -721,8 +722,10 @@ function networkPolicyStatus(
 function egressAttestationStatus(
   adapterKind: ArenaIsolationAdapterKind | undefined,
   conformance: PaperTradingHandoffConformanceRecord | undefined,
-  evidenceConsistent: boolean
+  evidenceConsistent: boolean,
+  adapterConsistent: boolean
 ): ArenaIsolationReadModel["egress_attestation_status"] {
+  if (!adapterConsistent) return "failed";
   if (adapterKind === "host_process" || adapterKind === "deterministic_test") {
     return "not_required";
   }
