@@ -8,6 +8,7 @@ import type {
   ArenaWorkspaceViewModel,
   ResearchWorkspaceViewModel
 } from "./app/operator-view-model";
+import { selectedArenaDetailCandidateId } from "./app/use-operator-runtime";
 import { ArenaScreen } from "./screens/arena-screen";
 import { ResearchScreen } from "./screens/research-screen";
 
@@ -62,9 +63,27 @@ describe("greenfield Operator entrypoint", () => {
     );
 
     expect(appSource).toContain("useOperatorRuntime(selectedArenaSystemId)");
-    expect(runtimeSource).toContain("fetchArenaTradingSystemDetail(selectedArenaSystemId)");
+    expect(runtimeSource).toContain("selectedArenaDetailCandidateId");
+    expect(runtimeSource).toContain("fetchArenaTradingSystemDetail(arenaDetailCandidateId)");
     expect(runtimeSource).toContain("Promise.allSettled");
     expect(runtimeSource).toContain("5_000");
+  });
+
+  it("requests Arena detail only for a selected authoritative projection row", () => {
+    expect(selectedArenaDetailCandidateId(undefined, "legacy-candidate")).toBeUndefined();
+    expect(selectedArenaDetailCandidateId({
+      arena_operations: undefined
+    }, "legacy-candidate")).toBeUndefined();
+    expect(selectedArenaDetailCandidateId({
+      arena_operations: {
+        systems: [{ candidate_id: "authoritative-candidate" }]
+      }
+    }, "authoritative-candidate")).toBe("authoritative-candidate");
+    expect(selectedArenaDetailCandidateId({
+      arena_operations: {
+        systems: [{ candidate_id: "authoritative-candidate" }]
+      }
+    }, "stale-candidate")).toBeUndefined();
   });
 
   it("moves focus into narrow Arena and Research detail panes", () => {

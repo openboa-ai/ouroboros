@@ -54,6 +54,7 @@ export function useOperatorRuntime(
 ): OperatorRuntimeController {
   const [state, setState] = useState<OperatorRuntimeState>(INITIAL_STATE);
   const mountedRef = useRef(false);
+  const operatorRef = useRef<OperatorReadModel | undefined>(undefined);
   const requestSequenceRef = useRef(0);
   const commandRunningRef = useRef(false);
 
@@ -63,25 +64,42 @@ export function useOperatorRuntime(
     }
 
     const sequence = ++requestSequenceRef.current;
+    const pendingArenaDetailCandidateId = selectedArenaDetailCandidateId(
+      operatorRef.current,
+      selectedArenaSystemId
+    );
     setState((current) => ({
       ...current,
       refreshing: !current.loading,
-      arenaDetail: selectedArenaSystemId &&
-        current.arenaDetail?.candidate_id === selectedArenaSystemId
+      arenaDetail: pendingArenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id === pendingArenaDetailCandidateId
         ? current.arenaDetail
         : undefined,
       arenaDetailLoading: Boolean(
-        selectedArenaSystemId &&
-        current.arenaDetail?.candidate_id !== selectedArenaSystemId
+        pendingArenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id !== pendingArenaDetailCandidateId
       ),
       arenaDetailError: undefined
     }));
 
-    const [operatorResult, gatewayResult, arenaDetailResult] = await Promise.allSettled([
+    const [operatorResult, gatewayResult] = await Promise.allSettled([
       fetchOperatorReadModel(),
-      fetchTradingGatewayEnvironment(),
+      fetchTradingGatewayEnvironment()
+    ]);
+
+    if (!mountedRef.current || sequence !== requestSequenceRef.current) {
+      return;
+    }
+    if (operatorResult.status === "fulfilled") {
+      operatorRef.current = operatorResult.value;
+    }
+    const arenaDetailCandidateId = selectedArenaDetailCandidateId(
+      operatorRef.current,
       selectedArenaSystemId
-        ? fetchArenaTradingSystemDetail(selectedArenaSystemId)
+    );
+    const [arenaDetailResult] = await Promise.allSettled([
+      arenaDetailCandidateId
+        ? fetchArenaTradingSystemDetail(arenaDetailCandidateId)
         : Promise.resolve(undefined)
     ]);
 
@@ -97,11 +115,11 @@ export function useOperatorRuntime(
       gateway: gatewayResult.status === "fulfilled"
         ? gatewayResult.value
         : current.gateway,
-      arenaDetail: !selectedArenaSystemId
+      arenaDetail: !arenaDetailCandidateId
         ? undefined
         : arenaDetailResult.status === "fulfilled"
           ? arenaDetailResult.value
-          : current.arenaDetail?.candidate_id === selectedArenaSystemId
+          : current.arenaDetail?.candidate_id === arenaDetailCandidateId
             ? current.arenaDetail
             : undefined,
       loading: false,
@@ -113,7 +131,7 @@ export function useOperatorRuntime(
       gatewayError: gatewayResult.status === "rejected"
         ? errorMessage(gatewayResult.reason)
         : undefined,
-      arenaDetailError: selectedArenaSystemId &&
+      arenaDetailError: arenaDetailCandidateId &&
         arenaDetailResult.status === "rejected"
         ? errorMessage(arenaDetailResult.reason)
         : undefined,
@@ -137,6 +155,7 @@ export function useOperatorRuntime(
     try {
       const response = await submitOuroborosCommand(request);
       if (mountedRef.current && sequence === requestSequenceRef.current) {
+        operatorRef.current = response.operator;
         setState((current) => ({
           ...current,
           operator: response.operator,
@@ -183,6 +202,22 @@ export function useOperatorRuntime(
     refresh,
     executeCommand
   };
+}
+
+export function selectedArenaDetailCandidateId(
+  operator: {
+    arena_operations?: {
+      systems: ReadonlyArray<{ candidate_id: string }>;
+    } | undefined;
+  } | undefined,
+  selectedArenaSystemId: string | undefined
+): string | undefined {
+  if (!selectedArenaSystemId) return undefined;
+  return operator?.arena_operations?.systems.some((entry) =>
+    entry.candidate_id === selectedArenaSystemId
+  )
+    ? selectedArenaSystemId
+    : undefined;
 }
 
 function errorMessage(error: unknown): string {

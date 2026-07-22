@@ -91,6 +91,43 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("keeps stopped sessions in the final paper ranking", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "stopped", "2026-07-19T00:00:00.000Z"),
+      system("candidate-b", "running", "2026-07-19T00:00:01.000Z")
+    ]);
+    fixture.addPaper("candidate-a", {
+      evaluationStatus: "stopped",
+      observations: [
+        observation("candidate-a", 1, "2026-07-19T00:01:00.000Z", 12)
+      ]
+    });
+    fixture.addPaper("candidate-b", {
+      observations: [
+        observation("candidate-b", 1, "2026-07-19T00:01:00.500Z", 4)
+      ]
+    });
+
+    const projection = await fixture.service.readOperations();
+
+    expect(projection.systems.map((entry) => ({
+      candidateId: entry.candidate_id,
+      sessionStatus: entry.session_status,
+      rankStatus: entry.rank_status,
+      rank: entry.rank
+    }))).toEqual([{
+      candidateId: "candidate-a",
+      sessionStatus: "stopped",
+      rankStatus: "ranked",
+      rank: 1
+    }, {
+      candidateId: "candidate-b",
+      sessionStatus: "running",
+      rankStatus: "provisional_ranked",
+      rank: 2
+    }]);
+  });
+
   it("returns only the selected system's bounded immutable detail and removes host paths", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "recovering", "2026-07-19T00:00:00.000Z"),
