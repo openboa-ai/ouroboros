@@ -96,6 +96,23 @@ describe("greenfield Operator entrypoint", () => {
     }
   });
 
+  it("keeps CandidateArena generation controls on the Research surface", () => {
+    const arenaSource = readFileSync(
+      join(srcRoot, "screens", "arena-screen.tsx"),
+      "utf8"
+    );
+    const researchSource = readFileSync(
+      join(srcRoot, "screens", "research-screen.tsx"),
+      "utf8"
+    );
+
+    for (const command of ["start", "tick", "cycle", "stop"]) {
+      const request = `command_kind: "arena.${command}"`;
+      expect(arenaSource).not.toContain(request);
+      expect(researchSource).toContain(request);
+    }
+  });
+
   it("renders actual Arena summary evidence with inspectable commands", () => {
     const view: ArenaWorkspaceViewModel = {
       availability: "authoritative",

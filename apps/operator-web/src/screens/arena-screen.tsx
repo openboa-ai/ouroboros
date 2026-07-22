@@ -3,14 +3,10 @@ import type { OuroborosCommandRequest } from "@ouroboros/domain";
 import {
   ArrowLeft,
   FileCheck2,
-  Gauge,
-  Pause,
-  Play,
   Search,
   ShieldCheck,
   Square,
-  Trophy,
-  Zap
+  Trophy
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts";
 import {
@@ -81,7 +77,7 @@ export function ArenaScreen({
 
   return (
     <div className="mx-auto w-full max-w-[1800px]">
-      <section className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+      <section className="px-4 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold">Paper evaluation field</h2>
@@ -101,44 +97,6 @@ export function ArenaScreen({
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Continuous paper TradingSystems ranked only by comparable external evidence.
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={commandRunning || view.loopStatus === "running"}
-            onClick={() => onCommand("Start Arena", { command_kind: "arena.start" })}
-          >
-            <Play data-icon="inline-start" aria-hidden="true" />
-            Start
-          </Button>
-          <Button
-            disabled={commandRunning}
-            variant="outline"
-            onClick={() => onCommand("Run Arena tick", { command_kind: "arena.tick" })}
-          >
-            <Zap data-icon="inline-start" aria-hidden="true" />
-            Tick
-          </Button>
-          <Button
-            disabled={commandRunning}
-            variant="outline"
-            onClick={() => onCommand("Run Arena cycle", { command_kind: "arena.cycle" })}
-          >
-            <Gauge data-icon="inline-start" aria-hidden="true" />
-            Cycle
-          </Button>
-          <CommandConfirmation
-            title="Stop the Arena loop?"
-            description="This stops new Arena loop work. Existing durable paper evidence remains available and no live authority is changed."
-            confirmLabel="Stop Arena"
-            destructive
-            onConfirm={() => onCommand("Stop Arena", { command_kind: "arena.stop" })}
-            trigger={(
-              <Button disabled={commandRunning || view.loopStatus === "stopped"} variant="destructive">
-                <Pause data-icon="inline-start" aria-hidden="true" />
-                Stop
-              </Button>
-            )}
-          />
         </div>
       </section>
 
