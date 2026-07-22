@@ -651,6 +651,10 @@ function isolationReadModel(
     sandbox,
     conformance
   );
+  const exactConformanceConsistent = conformanceMatchesRuntime(
+    source,
+    conformance
+  );
   const sandboxIdentityConsistent = !sandbox ||
     !source.runtime.sandbox_ref ||
     source.runtime.sandbox_ref.id === sandbox.sandbox_id;
@@ -664,13 +668,15 @@ function isolationReadModel(
       sandbox,
       conformance,
       workspaceIdentity !== undefined,
-      adapterConsistent && sandboxIdentityConsistent
+      adapterConsistent && sandboxIdentityConsistent &&
+        (sandbox?.adapter_kind !== "docker_sandboxes_sbx" ||
+          exactConformanceConsistent)
     ),
     egress_attestation_status: egressAttestationStatus(
       sandbox,
       conformance,
       adapterConsistent && sandboxIdentityConsistent &&
-        conformanceMatchesRuntime(source, conformance)
+        exactConformanceConsistent
     ),
     authority_status: "not_live"
   };

@@ -354,6 +354,24 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("fails Docker network closed when conformance belongs to another SystemCode", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+    const staleConformance = dockerConformance("candidate-a");
+    staleConformance.system_code_ref.id = "system-code-from-another-runtime";
+    fixture.conformances.set("conformance-candidate-a", staleConformance);
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
   it("does not invent an isolation identity from a runtime reference", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "starting", "2026-07-19T00:00:00.000Z")
