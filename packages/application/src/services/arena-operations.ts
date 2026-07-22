@@ -26,6 +26,7 @@ import {
   paperTradingEvaluationCommitmentMatchesEvaluation
 } from "../trading/paper/commitment";
 import { classifyPaperTradingFailure } from "../trading/paper/failures";
+import { paperTradingEvidenceIntegrityReasons } from "../trading/paper/qualification";
 import type {
   ArenaPaperRuntimeService,
   ArenaPaperRuntimeSnapshot,
@@ -291,11 +292,12 @@ function prepareSystem(source: LoadedArenaSystem): PreparedArenaSystem {
     source.commitment.trading_run_ref.id === source.runtime.trading_run_ref.id
   );
   const evidenceComplete = commitmentValid && Boolean(
-    source.evaluation && observationChainComplete(
-      source.evaluation,
-      source.commitment!,
-      source.observations
-    )
+    source.evaluation && source.commitment &&
+    paperTradingEvidenceIntegrityReasons({
+      evaluation: source.evaluation,
+      commitment: source.commitment,
+      observations: source.observations
+    }).length === 0
   );
   const cohort = commitmentValid
     ? comparisonCohort(source.commitment!)
@@ -433,7 +435,19 @@ function selectActiveCohortId(
     group.push(system);
     groups.set(system.cohort.cohort_id, group);
   }
-  return [...groups.entries()]
+  const allCohorts = [...groups.entries()];
+  const observedCohorts: Array<[string, PreparedArenaSystem[]]> = allCohorts
+    .map(([cohortId, cohort]) => [
+      cohortId,
+      cohort.filter((system) => system.observations.length > 0)
+    ]);
+  const rankableCohorts = observedCohorts.filter(([, cohort]) =>
+    cohort.length >= 2 && commonBoundary(cohort) !== undefined
+  );
+  const selectableCohorts = rankableCohorts.length > 0
+    ? rankableCohorts
+    : allCohorts;
+  return selectableCohorts
     .sort(([leftId, left], [rightId, right]) =>
       right.length - left.length ||
       newestCommitmentAt(right).localeCompare(newestCommitmentAt(left)) ||
@@ -497,24 +511,6 @@ function compareScores(
 ): number {
   return right.net_revenue_usdt - left.net_revenue_usdt ||
     right.net_return_pct - left.net_return_pct;
-}
-
-function observationChainComplete(
-  evaluation: PaperTradingEvaluationRecord,
-  commitment: PaperTradingEvaluationCommitmentRecord,
-  observations: PaperTradingObservationRecord[]
-): boolean {
-  if (evaluation.observation_count !== observations.length) return false;
-  return observations.every((entry, index) =>
-    entry.sequence === index + 1 &&
-    entry.paper_trading_evaluation_ref.id ===
-      evaluation.paper_trading_evaluation_id &&
-    entry.paper_trading_evaluation_commitment_ref?.id ===
-      commitment.paper_trading_evaluation_commitment_id &&
-    entry.candidate_ref.id === commitment.candidate_ref.id &&
-    entry.candidate_version_ref.id === commitment.candidate_version_ref.id &&
-    entry.trading_run_ref.id === commitment.trading_run_ref.id
-  );
 }
 
 function comparisonCohort(

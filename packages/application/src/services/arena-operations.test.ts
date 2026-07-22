@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEgressAttestation,
   CandidateInspectReadModel,
+  PaperTradingAccountSnapshot,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingHandoffConformanceRecord,
-  PaperTradingObservationRecord
+  PaperTradingObservationRecord,
+  TradingProfitLossReadModel
 } from "@ouroboros/domain";
 import {
   CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
@@ -59,6 +61,60 @@ describe("ArenaOperationsProjectionService", () => {
       comparabilityStatus: "comparable",
       reasons: ["common_observation_boundary_missing"],
       cohortId: expect.any(String)
+    }]);
+  });
+
+  it("keeps an observed leaderboard active when a larger fresh cohort arrives", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
+      system("candidate-b", "running", "2026-07-19T00:00:01.000Z"),
+      system("candidate-c", "running", "2026-07-19T00:00:02.000Z"),
+      system("candidate-d", "running", "2026-07-19T00:00:03.000Z"),
+      system("candidate-e", "running", "2026-07-19T00:00:04.000Z")
+    ]);
+    fixture.addPaper("candidate-a", {
+      observations: [
+        observation("candidate-a", 1, "2026-07-19T00:01:00.000Z", 3)
+      ]
+    });
+    fixture.addPaper("candidate-b", {
+      observations: [
+        observation("candidate-b", 1, "2026-07-19T00:01:00.500Z", 7)
+      ]
+    });
+    for (const candidateId of ["candidate-c", "candidate-d", "candidate-e"]) {
+      fixture.addPaper(candidateId, {
+        policySuffix: "fresh-cohort",
+        observations: []
+      });
+    }
+
+    const projection = await fixture.service.readOperations();
+
+    expect(projection.systems.map((entry) => ({
+      candidateId: entry.candidate_id,
+      rank: entry.rank,
+      reasons: entry.unranked_reasons
+    }))).toEqual([{
+      candidateId: "candidate-b",
+      rank: 1,
+      reasons: []
+    }, {
+      candidateId: "candidate-a",
+      rank: 2,
+      reasons: []
+    }, {
+      candidateId: "candidate-c",
+      rank: undefined,
+      reasons: ["comparison_cohort_mismatch"]
+    }, {
+      candidateId: "candidate-d",
+      rank: undefined,
+      reasons: ["comparison_cohort_mismatch"]
+    }, {
+      candidateId: "candidate-e",
+      rank: undefined,
+      reasons: ["comparison_cohort_mismatch"]
     }]);
   });
 
@@ -136,6 +192,69 @@ describe("ArenaOperationsProjectionService", () => {
       sandbox_status: "failed",
       latest_failure: { reason: "sandbox_crashed" }
     });
+  });
+
+  it("rejects a cohort member with a tampered cumulative paper score", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
+      system("candidate-b", "running", "2026-07-19T00:00:01.000Z")
+    ]);
+    const corrupted = observation(
+      "candidate-a",
+      1,
+      "2026-07-19T00:01:00.000Z",
+      3
+    );
+    fixture.addPaper("candidate-a", { observations: [corrupted] });
+    fixture.addPaper("candidate-b", {
+      observations: [
+        observation("candidate-b", 1, "2026-07-19T00:01:00.500Z", 7)
+      ]
+    });
+    corrupted.cumulative_score = score(10_003);
+
+    const projection = await fixture.service.readOperations();
+    const corruptedSummary = projection.systems.find((entry) =>
+      entry.candidate_id === "candidate-a"
+    );
+
+    expect(corruptedSummary).toMatchObject({
+      rank_status: "unranked",
+      comparability_status: "ineligible",
+      unranked_reasons: ["comparison_evidence_incomplete"]
+    });
+    expect(projection.systems.every((entry) => entry.rank === undefined)).toBe(true);
+  });
+
+  it("rejects a cohort member with a stale commitment digest", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z"),
+      system("candidate-b", "running", "2026-07-19T00:00:01.000Z")
+    ]);
+    fixture.addPaper("candidate-a", {
+      observations: [
+        observation("candidate-a", 1, "2026-07-19T00:01:00.000Z", 3)
+      ]
+    });
+    fixture.addPaper("candidate-b", {
+      observations: [
+        observation("candidate-b", 1, "2026-07-19T00:01:00.500Z", 7)
+      ]
+    });
+    fixture.commitments.get("commitment-candidate-a")!
+      .policy_identity.cost_policy_version = "tampered-after-commitment";
+
+    const projection = await fixture.service.readOperations();
+    const corruptedSummary = projection.systems.find((entry) =>
+      entry.candidate_id === "candidate-a"
+    );
+
+    expect(corruptedSummary).toMatchObject({
+      rank_status: "unranked",
+      comparability_status: "ineligible",
+      unranked_reasons: ["comparison_evidence_incomplete"]
+    });
+    expect(projection.systems.every((entry) => entry.rank === undefined)).toBe(true);
   });
 
   it("keeps stopped sessions in the final paper ranking", async () => {
@@ -439,6 +558,7 @@ function arenaFixture(systems: ArenaPaperRuntimeSystem[]) {
   return {
     service,
     candidates,
+    commitments,
     conformances,
     snapshot,
     addPaper(candidateId: string, input: {
@@ -447,6 +567,7 @@ function arenaFixture(systems: ArenaPaperRuntimeSystem[]) {
       evaluationStatus?: PaperTradingEvaluationRecord["status"];
       failureReason?: string;
     }) {
+      normalizeObservationAccounting(input.observations);
       const commitment = commitmentFor(candidateId, input.policySuffix);
       commitments.set(commitment.paper_trading_evaluation_commitment_id, commitment);
       const evaluation = evaluationFor(candidateId, commitment, input.observations, {
@@ -718,6 +839,8 @@ function evaluationFor(
     last_observed_at: entries.at(-1)?.observed_at,
     next_observation_at: options.status === "failed" ? undefined : "2026-07-19T00:05:00.000Z",
     latest_score: entries.at(-1)?.cumulative_score ?? zeroScore(),
+    paper_account_snapshot: entries.at(-1)?.paper_account_snapshot ??
+      commitment.initial_account_snapshot,
     latest_failure_reason: options.failureReason,
     authority_status: "not_live"
   };
@@ -767,7 +890,73 @@ function observation(
   };
 }
 
-function score(netRevenue: number) {
+function normalizeObservationAccounting(
+  observations: PaperTradingObservationRecord[]
+): void {
+  let previous = zeroScore();
+  for (const observation of [...observations].sort((left, right) =>
+    left.sequence - right.sequence
+  )) {
+    observation.score_delta = subtractScore(
+      observation.cumulative_score,
+      previous
+    );
+    observation.paper_account_snapshot = accountForScore(
+      observation.cumulative_score
+    );
+    previous = observation.cumulative_score;
+  }
+}
+
+function subtractScore(
+  current: TradingProfitLossReadModel,
+  previous: TradingProfitLossReadModel
+): TradingProfitLossReadModel {
+  return {
+    revenue_usdt: roundedScoreValue(
+      current.revenue_usdt - previous.revenue_usdt
+    ),
+    cost_usdt: roundedScoreValue(current.cost_usdt - previous.cost_usdt),
+    net_revenue_usdt: roundedScoreValue(
+      current.net_revenue_usdt - previous.net_revenue_usdt
+    ),
+    net_return_pct: roundedScoreValue(
+      current.net_return_pct - previous.net_return_pct
+    )
+  };
+}
+
+function roundedScoreValue(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function accountForScore(
+  current: TradingProfitLossReadModel
+): PaperTradingAccountSnapshot {
+  const equity = 10_000 + current.net_revenue_usdt;
+  return {
+    wallet_balance_usdt: String(equity),
+    available_balance_usdt: String(equity),
+    equity_usdt: String(equity),
+    realized_pnl_usdt: String(current.revenue_usdt),
+    unrealized_pnl_usdt: "0",
+    fee_paid_usdt: String(current.cost_usdt),
+    slippage_paid_usdt: "0",
+    funding_paid_usdt: "0",
+    margin_reserved_usdt: "0",
+    position: {
+      symbol: "BTCUSDT",
+      side: "flat",
+      quantity: "0",
+      mark_price: "0",
+      notional_usdt: "0"
+    },
+    open_order_count: 0,
+    authority_status: "not_live"
+  };
+}
+
+function score(netRevenue: number): TradingProfitLossReadModel {
   return {
     revenue_usdt: netRevenue + 1,
     cost_usdt: 1,
@@ -776,8 +965,13 @@ function score(netRevenue: number) {
   };
 }
 
-function zeroScore() {
-  return score(0);
+function zeroScore(): TradingProfitLossReadModel {
+  return {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
+  };
 }
 
 function conformance(candidateId: string): PaperTradingHandoffConformanceRecord {
