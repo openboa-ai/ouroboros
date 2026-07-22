@@ -149,6 +149,40 @@ describe("CandidateArena paper evidence context", () => {
       });
   });
 
+  it("accepts equivalent agent descriptors with an omitted optional model", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const contexts: string[] = [];
+    const committedAgent: ManagedResearchAgent = {
+      id: "managed-agent-model-omitted",
+      provider: "codex",
+      permission_policy: "artifact_workspace_only"
+    };
+    const reportedAgent: ManagedResearchAgent = {
+      ...committedAgent,
+      model: undefined
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "agent-descriptor-optional-model",
+      now: () => "2026-07-22T09:45:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: committedAgent,
+      agentFactory: () => new CapturingResearchAgent(
+        contexts,
+        undefined,
+        reportedAgent
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    expect(contexts).toHaveLength(1);
+  });
+
   it("binds new Arena evidence and distinct methodologies before provider effects", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -339,6 +373,101 @@ describe("CandidateArena paper evidence context", () => {
     )).resolves.toMatchObject({
       trigger: { trigger_kind: "time" }
     });
+  });
+
+  it("reuses the exact persisted allocation trigger after restart", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const trigger = {
+      trigger_kind: "goal" as const,
+      trigger_id: "research-trigger-trigger-recovery-tick",
+      goal: "Run one bounded CandidateArena Research cycle.",
+      triggered_at: "2026-07-22T11:00:00.000Z",
+      authority_status: "research_only" as const
+    };
+    const frozen = await new CandidateArenaResearchAllocationService({
+      store,
+      now: () => trigger.triggered_at
+    }).allocate({
+      tickId: "trigger-recovery-tick",
+      allocationMode: "explicit",
+      allocationPolicyBasis: { basis_kind: "explicit_request" },
+      explicitDirections: ["trend_following"],
+      findingClusters: [],
+      latestTicks: [],
+      trigger
+    });
+    const contexts: string[] = [];
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "trigger-recovery-tick",
+      now: () => "2026-07-22T12:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: capturingResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(
+        contexts,
+        undefined,
+        capturingResearchAgentDescriptor()
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    await expect(store.getCandidateArenaResearchAllocation(
+      frozen.candidate_arena_research_allocation_id
+    )).resolves.toEqual(frozen);
+    expect(JSON.parse(contexts[0] ?? "{}") as Record<string, unknown>)
+      .toMatchObject({
+        research_trigger: {
+          trigger_kind: trigger.trigger_kind,
+          trigger_id: trigger.trigger_id,
+          goal: trigger.goal,
+          triggered_at: trigger.triggered_at
+        }
+      });
+  });
+
+  it("reuses a triggerless persisted allocation after an upgrade restart", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const frozen = await new CandidateArenaResearchAllocationService({
+      store,
+      now: () => "2026-07-22T11:00:00.000Z"
+    }).allocate({
+      tickId: "triggerless-recovery-tick",
+      allocationMode: "explicit",
+      allocationPolicyBasis: { basis_kind: "explicit_request" },
+      explicitDirections: ["trend_following"],
+      findingClusters: [],
+      latestTicks: []
+    });
+    const contexts: string[] = [];
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "triggerless-recovery-tick",
+      now: () => "2026-07-22T12:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: capturingResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(
+        contexts,
+        undefined,
+        capturingResearchAgentDescriptor()
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    await expect(store.getCandidateArenaResearchAllocation(
+      frozen.candidate_arena_research_allocation_id
+    )).resolves.toEqual(frozen);
+    expect(JSON.parse(contexts[0] ?? "{}") as Record<string, unknown>)
+      .not.toHaveProperty("research_trigger");
   });
 
   it("uses the injected clock for both tick boundaries", async () => {

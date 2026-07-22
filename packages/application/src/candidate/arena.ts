@@ -599,13 +599,19 @@ export async function runCandidateArenaTick(
     evidenceSource: input.researchEvidenceSource,
     startedAt
   });
-  const researchTrigger = await resolveResearchTrigger({
-    store: input.store,
-    tickId,
-    startedAt,
-    requested: input.researchTrigger ?? defaultResearchTriggerRequest("goal"),
-    evidenceArtifacts: researchEvidenceArtifacts
-  });
+  const existingAllocation = await input.store
+    .getCandidateArenaResearchAllocation(
+      `candidate-arena-research-allocation-${safeId(tickId)}`
+    );
+  const researchTrigger = existingAllocation
+    ? existingAllocation.trigger
+    : await resolveResearchTrigger({
+      store: input.store,
+      tickId,
+      startedAt,
+      requested: input.researchTrigger ?? defaultResearchTriggerRequest("goal"),
+      evidenceArtifacts: researchEvidenceArtifacts
+    });
   const sourceSelection = await sourceCandidate(
     input.store,
     input.sourceSystemId,
@@ -652,7 +658,7 @@ export async function runCandidateArenaTick(
         tickId,
         allocation,
         allocationSelection: selection,
-        researchTriggerRecord: researchTrigger,
+        researchTriggerRecord: allocation.trigger,
         researchEvidenceArtifacts
       })
     })
@@ -1286,16 +1292,30 @@ function resolveCandidateArenaResearchAgentDescriptor(
     ))) {
     throw new Error("candidate_arena_research_agent_descriptor_invalid");
   }
-  return structuredClone(agent);
+  return canonicalCandidateArenaResearchAgentDescriptor(agent);
 }
 
 function assertCandidateArenaResearchAgentDescriptor(
   actual: ManagedResearchAgent,
   committed: ManagedResearchAgent
 ): void {
-  if (!isDeepStrictEqual(actual, committed)) {
+  if (!isDeepStrictEqual(
+    canonicalCandidateArenaResearchAgentDescriptor(actual),
+    canonicalCandidateArenaResearchAgentDescriptor(committed)
+  )) {
     throw new Error("candidate_arena_research_agent_descriptor_mismatch");
   }
+}
+
+function canonicalCandidateArenaResearchAgentDescriptor(
+  agent: ManagedResearchAgent
+): ManagedResearchAgent {
+  return {
+    id: agent.id,
+    provider: agent.provider,
+    ...(agent.model === undefined ? {} : { model: agent.model }),
+    permission_policy: agent.permission_policy
+  };
 }
 
 function bindCandidateArenaResearchAgentDescriptor(

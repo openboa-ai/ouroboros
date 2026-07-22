@@ -97,6 +97,7 @@ export class OperatorService {
   private selectedCandidateId: string | undefined;
   private readonly pendingAutonomousPaperStarts = new Set<Promise<unknown>>();
   private autonomousPaperStartFence = 0;
+  private autonomousArenaLoopStatusOverride?: "running" | "stopped";
 
   constructor(private readonly options: OperatorServiceOptions) {}
 
@@ -244,10 +245,7 @@ export class OperatorService {
   }
 
   async resumeAutonomousArenaLoop(): Promise<"resumed" | "not_requested" | "blocked"> {
-    const desiredStatus = autonomousArenaLoopDesiredStatus(
-      await this.options.store.listOuroborosCommands()
-    );
-    if (desiredStatus !== "running") {
+    if (await this.desiredAutonomousArenaLoopStatus() !== "running") {
       return "not_requested";
     }
 
@@ -257,6 +255,9 @@ export class OperatorService {
       return "blocked";
     }
 
+    if (await this.desiredAutonomousArenaLoopStatus() !== "running") {
+      return "not_requested";
+    }
     this.installAutonomousArenaTickContinuation();
     await this.restoreCandidateArenaTickCount();
     this.options.candidateArenaRunner.start("recovery");
@@ -294,6 +295,7 @@ export class OperatorService {
       "arena.start": async () => {
         await this.requireResearcherProviderReady();
         await this.restoreCandidateArenaTickCount();
+        this.autonomousArenaLoopStatusOverride = "running";
         this.installAutonomousArenaTickContinuation();
         const status = this.options.candidateArenaRunner.start("goal");
         return {
@@ -309,6 +311,7 @@ export class OperatorService {
         };
       },
       "arena.stop": async () => {
+        this.autonomousArenaLoopStatusOverride = "stopped";
         this.options.candidateArenaRunner.setTickContinuation(undefined);
         const status = this.options.candidateArenaRunner.stop();
         await this.drainAutonomousPaperStarts();
@@ -795,6 +798,15 @@ export class OperatorService {
         persistedAllocations
       )
     );
+  }
+
+  private async desiredAutonomousArenaLoopStatus(): Promise<
+    "running" | "stopped"
+  > {
+    return this.autonomousArenaLoopStatusOverride ??
+      autonomousArenaLoopDesiredStatus(
+        await this.options.store.listOuroborosCommands()
+      );
   }
 }
 
