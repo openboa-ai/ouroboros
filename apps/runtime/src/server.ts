@@ -89,7 +89,10 @@ import {
   managedAgentProfileEnv,
   type AgentProfileExecFile
 } from "@ouroboros/application/agent/profiles";
-import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import {
+  CandidateArenaRunner,
+  DEFAULT_ARENA_DIRECTIONS
+} from "@ouroboros/application/candidate/arena";
 import { ResearchEvidenceArtifactService } from
   "@ouroboros/application/candidate/research-evidence-artifacts";
 import { ArenaOperationsProjectionService } from
@@ -521,6 +524,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     replayProviderFactory: options.candidateArenaReplayProviderFactory,
     researchEvidenceSource: () => researchEvidenceArtifacts.collect()
   }, options.candidateArenaTickIntervalMs);
+  const researchControlStudyAgentIdentity = (): ManagedResearchAgent => {
+    const agent = candidateArenaRunner.researchAgent();
+    return structuredClone(options.tradingResearchAgentDescriptor
+      ? tradingResearchAgentDescriptor(agent, DEFAULT_ARENA_DIRECTIONS[0]!)
+      : tradingResearchAgentFactory(agent).agent);
+  };
   const startArenaPaperCandidate = async (
     candidateId: string,
     payload: Record<string, unknown> | undefined
@@ -681,9 +690,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         options.researchControlStudyCommitmentCoordinator ??
         createResearchControlStudyServerCommitmentCoordinator({
           store,
-          researchAgentIdentity: () => tradingResearchAgentFactory(
-            candidateArenaRunner.researchAgent()
-          ).agent,
+          researchAgentIdentity: researchControlStudyAgentIdentity,
           marketData: gatewayMarketDataPort,
           repoRoot
         }),

@@ -292,6 +292,57 @@ describe("runtime canonical operator API", () => {
     await server.close();
   });
 
+  it("uses the immutable descriptor for default study commitments", async () => {
+    const fixtureRoot = path.join(tmpDir, "descriptor-study-commitment");
+    await cp(RESEARCH_CONTROL_STUDY_TRADING_REVIEW_FIXTURE, fixtureRoot, {
+      recursive: true
+    });
+    let factoryCallCount = 0;
+    const descriptorCalls: Array<{ agent: string; direction: string }> = [];
+    let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
+    const server = await buildServer({
+      store: new LocalStore(fixtureRoot),
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort(),
+      recoverPaperTradingSessionsOnStart: false,
+      tradingResearchAgentFactory: () => {
+        factoryCallCount += 1;
+        throw new Error("factory_must_not_run_before_study_commitment");
+      },
+      tradingResearchAgentDescriptor: (agent, direction) => {
+        descriptorCalls.push({ agent, direction });
+        return {
+          id: "managed-agent-custom-study",
+          provider: agent,
+          model: "custom-study-model",
+          permission_policy: "artifact_workspace_only"
+        };
+      },
+      researchControlStudyPollIntervalMs: 60_000,
+      onResearchControlStudySchedulerCreated(value) {
+        scheduler = value;
+      }
+    });
+
+    try {
+      await waitFor(() =>
+        scheduler?.status().status === "waiting" ||
+        scheduler?.status().status === "failed"
+      );
+      expect(scheduler?.status()).toMatchObject({
+        status: "waiting",
+        lastCommitment: { status: "protocol_committed" }
+      });
+      expect(factoryCallCount).toBe(0);
+      expect(descriptorCalls).toContainEqual({
+        agent: "codex",
+        direction: "trend_following"
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs injected automatic policy decisions through the default scheduler", async () => {
     let decisionCount = 0;
     let scheduler: ResearchControlStudySchedulerLifecycle | undefined;
