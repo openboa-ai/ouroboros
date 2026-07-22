@@ -35,6 +35,10 @@ import type {
 const ARENA_TRACE_LIMIT = 100;
 const ARENA_LOG_LIMIT = 100;
 const ARENA_TEXT_LIMIT = 500;
+const POSIX_ABSOLUTE_PATH_PATTERN =
+  /(^|[^A-Za-z0-9._~\/-])\/(?!\/)(?:[^/\s<>"']+\/)+[^\s<>"']*/g;
+const WINDOWS_ABSOLUTE_PATH_PATTERN =
+  /\b[A-Za-z]:\\(?:[^\\\s<>"']+\\)+[^\s<>"']*/g;
 
 type ArenaOperationsStore = Pick<
   OuroborosStorePort,
@@ -1034,8 +1038,8 @@ function exactWorkspaceIdentity(
 function sanitizeText(value: string): string {
   const sanitized = value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .replace(/\/(?:Users|home|private|tmp|var)\/[^\s<>"']+/g, "[private-path]")
-    .replace(/[A-Za-z]:\\Users\\[^\s]+/g, "[private-path]")
+    .replace(POSIX_ABSOLUTE_PATH_PATTERN, "$1[private-path]")
+    .replace(WINDOWS_ABSOLUTE_PATH_PATTERN, "[private-path]")
     .replace(/\b(?:https?|wss?|file):\/\/[^\s<>"']+/gi, "[external-url]")
     .replace(/\b(Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted]")
     .replace(/\b(api[_-]?key|api[_-]?secret|token|password)\s*[:=]\s*\S+/gi,

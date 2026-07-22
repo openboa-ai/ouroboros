@@ -181,11 +181,15 @@ describe("ArenaOperationsProjectionService", () => {
     const candidateA = fixture.candidates.get("candidate-a")!;
     candidateA.display_name =
       "/Users/private-user/system token=private-display-token";
+    candidateA.system_code!.summary =
+      "/workspace/ouroboros/candidate-arena-runs/strategy.py token=private-summary-token";
     candidateA.system_code!.declared_outputs.push(
       "/Users/private-user/output token=private-manifest-token"
     );
     candidateA.full_cycle_lineage!.blocked_reason =
       "/Users/private-user/lineage token=private-lineage-token";
+    candidateA.runtime.transcript!.items[0]!.summary =
+      "/opt/ouroboros/runtime.json token=private-trace-token";
     fixture.addPaper("candidate-b", {
       observations: [observation("candidate-b", 1, "2026-07-19T00:01:00.000Z", 4)]
     });
@@ -210,6 +214,7 @@ describe("ArenaOperationsProjectionService", () => {
         egress_attestation_status: "not_required"
       },
       trading_system_manifest: {
+        summary: "[private-path] token=[redacted]",
         declared_runtime: "python",
         declared_outputs: [
           "order_request",
@@ -228,6 +233,11 @@ describe("ArenaOperationsProjectionService", () => {
       "lifecycle",
       "gateway_outcome"
     ]);
+    expect(detail?.trace_events.find((event) =>
+      event.event_kind === "lifecycle"
+    )?.summary).toBe(
+      "Restart recovery: [private-path] token=[redacted]"
+    );
     expect(detail?.log_entries).toHaveLength(1);
     expect(detail?.log_entries[0]).toMatchObject({
       level: "info",
@@ -240,10 +250,14 @@ describe("ArenaOperationsProjectionService", () => {
     );
     expect(detail?.display_name).toBe("[private-path] token=[redacted]");
     expect(JSON.stringify(detail)).not.toContain("/Users/private-user");
+    expect(JSON.stringify(detail)).not.toContain("/workspace/ouroboros");
+    expect(JSON.stringify(detail)).not.toContain("/opt/ouroboros");
     expect(JSON.stringify(detail)).not.toContain("private-decision-token");
     expect(JSON.stringify(detail)).not.toContain("private-display-token");
+    expect(JSON.stringify(detail)).not.toContain("private-summary-token");
     expect(JSON.stringify(detail)).not.toContain("private-manifest-token");
     expect(JSON.stringify(detail)).not.toContain("private-lineage-token");
+    expect(JSON.stringify(detail)).not.toContain("private-trace-token");
     expect(JSON.stringify(detail)).not.toContain("candidate-b secret");
     expect(detail?.artifact_refs).toEqual(expect.arrayContaining([
       { record_kind: "system_code", id: "system-code-candidate-a" },
