@@ -112,7 +112,10 @@ export function useOperatorRuntime(
           : undefined,
       loading: false,
       refreshing: Boolean(arenaDetailCandidateId),
-      arenaDetailLoading: Boolean(arenaDetailCandidateId),
+      arenaDetailLoading: Boolean(
+        arenaDetailCandidateId &&
+        current.arenaDetail?.candidate_id !== arenaDetailCandidateId
+      ),
       operatorError: operatorResult.status === "rejected"
         ? errorMessage(operatorResult.reason)
         : undefined,
