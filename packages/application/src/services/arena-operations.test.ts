@@ -508,6 +508,34 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("fails Docker network closed when egress attestation reports an unexpected allow", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    candidateA.runtime.sandbox!.adapter_kind = "docker_sandboxes_sbx";
+    const failedConformance = dockerConformance("candidate-a");
+    if (failedConformance.version !== 2) {
+      throw new Error("expected Docker v2 conformance");
+    }
+    failedConformance.candidate_egress_attestation.enforcement_result =
+      "unexpected_allow";
+    failedConformance.candidate_egress_attestation.denial_summary.unexpected_allow_count = 1;
+    failedConformance.candidate_egress_attestation.attestation_digest = testSha256(
+      candidateEgressAttestationDigestInput(
+        failedConformance.candidate_egress_attestation
+      )
+    );
+    fixture.conformances.set("conformance-candidate-a", failedConformance);
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
   it("does not invent an isolation identity from a runtime reference", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "starting", "2026-07-19T00:00:00.000Z")
