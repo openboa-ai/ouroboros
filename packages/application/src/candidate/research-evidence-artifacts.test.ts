@@ -51,7 +51,7 @@ describe("ResearchEvidenceArtifactService", () => {
           started_at: "2026-07-22T00:01:00.000Z",
           last_observed_at: "2026-07-22T00:08:00.000Z",
           latest_failure_reason:
-            "/Users/sangjoon/run token=secret-value",
+            "/Users/private-owner/run token=secret-value",
           latest_score: {
             revenue_usdt: 14,
             cost_usdt: 2,
@@ -109,7 +109,7 @@ describe("ResearchEvidenceArtifactService", () => {
       artifact.authority_status === "research_only"
     )).toBe(true);
     expect(first.map((artifact) => artifact.summary).join("\n"))
-      .not.toMatch(/sangjoon|secret-value|\/Users\//);
+      .not.toMatch(/private-owner|secret-value|\/Users\//);
     expect(first.find((artifact) =>
       artifact.source_kind === "research_finding"
     )?.source_digest).toBe(exactDigest(finding));
@@ -259,9 +259,9 @@ function arenaOperations(): ArenaOperationsReadModel {
       next_observation_at: "2026-07-22T00:09:00.000Z",
       latest_failure: {
         failure_kind: "sandbox_or_runner_failure",
-        reason: "/Users/sangjoon/run token=secret-value",
-        summary: "Provider failed at /Users/sangjoon/run",
-        next_action: "Inspect API_KEY=secret-value",
+        reason: "[private-path] token=[redacted]",
+        summary: "Provider failed at [private-path]",
+        next_action: "Inspect API_KEY=[redacted]",
         authority_status: "not_live"
       },
       session_status: "running",
@@ -337,7 +337,7 @@ function arenaDetail(
       sequence: 1,
       occurred_at: "2026-07-22T00:08:00.000Z",
       event_kind: "trading_system_decision",
-      summary: "Read /Users/sangjoon/data token=secret-value then held.",
+      summary: "Read /Users/private-owner/data token=secret-value then held.",
       sanitized: true,
       record_ref: {
         record_kind: "paper_trading_observation",
@@ -374,7 +374,7 @@ function researchFinding(): ResearchFindingRecord {
       id: "result-a"
     },
     finding_kind: "negative_result",
-    summary: "Loss at /Users/sangjoon/run password=secret-value",
+    summary: "Loss at /Users/private-owner/run password=secret-value",
     supporting_record_refs: [{
       record_kind: "trading_evaluation_result",
       id: "result-a"

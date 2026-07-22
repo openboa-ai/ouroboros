@@ -426,6 +426,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
     ?? loadTradingResearchRuntimeConfig();
+  if (options.tradingResearchAgentFactory && !options.tradingResearchAgentDescriptor) {
+    throw new Error("candidate_arena_research_agent_descriptor_required");
+  }
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
     ?? ((agent: TradingResearchRuntimeAgent) => {
       if (options.tradingResearchAgentAdapter && options.tradingResearchAgentAdapter.agent.provider === agent) {
@@ -438,28 +441,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
     });
   const tradingResearchAgentDescriptor = options.tradingResearchAgentDescriptor ??
-    (options.tradingResearchAgentFactory
-      ? undefined
-      : (agent: TradingResearchRuntimeAgent, direction: ResearchDirectionKind) => {
-          if (options.tradingResearchAgentAdapter &&
-            options.tradingResearchAgentAdapter.agent.provider === agent) {
-            return structuredClone(options.tradingResearchAgentAdapter.agent);
-          }
-          if (agent === "fixture") {
-            return {
-              id: `managed-agent-fixture-arena-${safeId(direction)}`,
-              provider: "fixture",
-              model: `scripted-arena-${direction}`,
-              permission_policy: "fixture_only"
-            };
-          }
-          return {
-            id: "managed-agent-codex-trading-research",
-            provider: "codex",
-            model: tradingResearchRuntimeConfig.codex.model,
-            permission_policy: "artifact_workspace_only"
-          };
-        });
+    ((agent: TradingResearchRuntimeAgent, direction: ResearchDirectionKind) => {
+      if (options.tradingResearchAgentAdapter &&
+        options.tradingResearchAgentAdapter.agent.provider === agent) {
+        return structuredClone(options.tradingResearchAgentAdapter.agent);
+      }
+      if (agent === "fixture") {
+        return {
+          id: `managed-agent-fixture-arena-${safeId(direction)}`,
+          provider: "fixture",
+          model: `scripted-arena-${direction}`,
+          permission_policy: "fixture_only"
+        };
+      }
+      return {
+        id: "managed-agent-codex-trading-research",
+        provider: "codex",
+        model: tradingResearchRuntimeConfig.codex.model,
+        permission_policy: "artifact_workspace_only"
+      };
+    });
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
@@ -514,9 +515,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const candidateArenaRunner = new CandidateArenaRunner({
     store,
     researchAgent: tradingResearchRuntimeConfig.default_agent,
-    ...(tradingResearchAgentDescriptor
-      ? { researchAgentDescriptor: tradingResearchAgentDescriptor }
-      : {}),
+    researchAgentDescriptor: tradingResearchAgentDescriptor,
     agentFactory: tradingResearchAgentFactory,
     artifactRunner: options.candidateArenaArtifactRunner,
     replayProviderFactory: options.candidateArenaReplayProviderFactory,

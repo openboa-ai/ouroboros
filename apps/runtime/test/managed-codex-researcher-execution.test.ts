@@ -26,6 +26,20 @@ afterEach(async () => {
 });
 
 describe("managed Codex researcher execution", () => {
+  it("requires an immutable descriptor before accepting a custom agent factory", async () => {
+    let factoryInvoked = false;
+
+    await expect(buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentFactory: () => {
+        factoryInvoked = true;
+        throw new Error("factory_must_not_run_before_commitment");
+      }
+    })).rejects.toThrow("candidate_arena_research_agent_descriptor_required");
+
+    expect(factoryInvoked).toBe(false);
+  });
+
   it("blocks unauthenticated Codex ticks, then runs arena ticks through the managed Codex profile", async () => {
     const fakeCodexLog = path.join(tmpDir, "fake-codex.jsonl");
     const fakeCodex = path.join(tmpDir, "fake-codex");

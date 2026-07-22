@@ -174,7 +174,7 @@ function failureArtifacts(
     !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
-    evaluation.latest_failure_reason !== system.latest_failure.reason) {
+    !evaluation.latest_failure_reason?.trim()) {
     return [];
   }
   const capturedAt = system.last_observed_at ?? system.stopped_at ??
