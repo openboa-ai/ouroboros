@@ -45,7 +45,7 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("operator product loop smoke", () => {
+describe("operator product loop smoke", { timeout: 90_000 }, () => {
   it("runs an arena-generated fixture TradingSystem through the real deterministic paper sandbox", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
@@ -1284,7 +1284,7 @@ describe("operator product loop smoke", () => {
     } finally {
       await readbackServer.close();
     }
-  }, 90_000);
+  });
 
   it("continues arena tick ids when the stopped loop is manually restarted after runtime restart", async () => {
     const store = new LocalStore(tmpDir);
