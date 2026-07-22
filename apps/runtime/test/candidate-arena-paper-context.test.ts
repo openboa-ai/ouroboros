@@ -431,6 +431,75 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
+  it("hydrates frozen Arena event evidence when its allocation retries", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await runCandidateArenaTick({
+      store,
+      tickId: "event-retry-source",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const finding = (await store.listResearchFindings()).at(-1)!;
+    const evidence = researchFindingEvidence(finding);
+    const triggerAt = new Date(
+      Date.parse(evidence.captured_at) + 1_000
+    ).toISOString();
+    await store.recordResearchEvidenceArtifact(evidence);
+    await new CandidateArenaResearchAllocationService({
+      store,
+      now: () => triggerAt
+    }).allocate({
+      tickId: "event-allocation-retry",
+      allocationMode: "explicit",
+      allocationPolicyBasis: { basis_kind: "explicit_request" },
+      explicitDirections: ["mean_reversion"],
+      findingClusters: [],
+      latestTicks: [],
+      trigger: {
+        trigger_kind: "arena_event",
+        trigger_id: "event-allocation-retry-trigger",
+        goal: "Use this exact event once.",
+        triggered_at: triggerAt,
+        source_ref: { ...evidence.artifact_ref },
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: evidence.research_evidence_artifact_id
+        },
+        evidence_artifact_digest: evidence.artifact_digest,
+        authority_status: "research_only"
+      }
+    });
+    const contexts: string[] = [];
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "event-allocation-retry",
+      now: () => new Date(Date.parse(triggerAt) + 1_000).toISOString(),
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(contexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    expect(contexts[0]).toContain(evidence.research_evidence_artifact_id);
+    expect((await store.listResearchPreflightCommitments()).find(
+      (commitment) => commitment.candidate_arena_tick_id ===
+        "event-allocation-retry"
+    )?.methodology?.evidence_bindings).toContainEqual({
+      evidence_artifact_ref: {
+        record_kind: "research_evidence_artifact",
+        id: evidence.research_evidence_artifact_id
+      },
+      evidence_artifact_digest: evidence.artifact_digest
+    });
+  });
+
   it("reuses the exact persisted allocation trigger after restart", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

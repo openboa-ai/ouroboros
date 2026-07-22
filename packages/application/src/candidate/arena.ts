@@ -134,6 +134,7 @@ import {
 } from "../trading/paper/qualification";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const MAX_RESEARCH_EVIDENCE_ARTIFACTS = 24;
 
 export { DEFAULT_ARENA_DIRECTIONS } from "./research-allocation";
 export { recoverIncompleteResearchWorkerCheckpoints } from "./research-worker-lifecycle";
@@ -457,7 +458,8 @@ async function collectResearchEvidenceArtifacts(input: {
   if (!input.evidenceSource) return [];
   const collected = await input.evidenceSource();
   const collectedAt = candidateArenaNow(input.now);
-  if (!Array.isArray(collected) || collected.length > 24 ||
+  if (!Array.isArray(collected) ||
+    collected.length > MAX_RESEARCH_EVIDENCE_ARTIFACTS ||
     collected.some((artifact) =>
       !researchEvidenceArtifactHasRuntimeShape(artifact) ||
       Date.parse(artifact.captured_at) > Date.parse(collectedAt)
@@ -482,6 +484,30 @@ async function collectResearchEvidenceArtifacts(input: {
     ));
   }
   return recorded;
+}
+
+async function hydratePersistedAllocationEvidence(input: {
+  store: OuroborosStorePort;
+  allocation?: CandidateArenaResearchAllocationRecord;
+  collected: ResearchEvidenceArtifactRecord[];
+}): Promise<ResearchEvidenceArtifactRecord[]> {
+  const trigger = input.allocation?.trigger;
+  if (!trigger?.evidence_artifact_ref) return input.collected;
+  const artifact = await input.store.getResearchEvidenceArtifact(
+    trigger.evidence_artifact_ref.id
+  );
+  if (!artifact || artifact.artifact_digest !==
+      trigger.evidence_artifact_digest ||
+    !isDeepStrictEqual(artifact.artifact_ref, trigger.source_ref)) {
+    throw new Error("candidate_arena_research_trigger_evidence_missing");
+  }
+  return [
+    artifact,
+    ...input.collected.filter((candidate) =>
+      candidate.research_evidence_artifact_id !==
+        artifact.research_evidence_artifact_id
+    )
+  ].slice(0, MAX_RESEARCH_EVIDENCE_ARTIFACTS);
 }
 
 async function resolveResearchTrigger(input: {
@@ -595,7 +621,7 @@ export async function runCandidateArenaTick(
       recovered_at: startedAt
     })
   );
-  const researchEvidenceArtifacts = await collectResearchEvidenceArtifacts({
+  const collectedResearchEvidenceArtifacts = await collectResearchEvidenceArtifacts({
     store: input.store,
     evidenceSource: input.researchEvidenceSource,
     now: input.now
@@ -604,6 +630,11 @@ export async function runCandidateArenaTick(
     .getCandidateArenaResearchAllocation(
       `candidate-arena-research-allocation-${safeId(tickId)}`
     );
+  const researchEvidenceArtifacts = await hydratePersistedAllocationEvidence({
+    store: input.store,
+    allocation: existingAllocation,
+    collected: collectedResearchEvidenceArtifacts
+  });
   const researchTrigger = existingAllocation
     ? existingAllocation.trigger
     : await resolveResearchTrigger({
