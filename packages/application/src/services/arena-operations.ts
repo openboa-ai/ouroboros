@@ -286,6 +286,7 @@ function prepareSystem(source: LoadedArenaSystem): PreparedArenaSystem {
   const latestFailureReason = latestObservation?.failure_reason ??
     source.evaluation?.latest_failure_reason ??
     source.runtime.failure_reason;
+  const latestFailure = classifyPaperTradingFailure(latestFailureReason);
   const commitmentValid = Boolean(
     source.commitment &&
     source.evaluation &&
@@ -351,8 +352,13 @@ function prepareSystem(source: LoadedArenaSystem): PreparedArenaSystem {
     ...(source.evaluation?.stopped_at
       ? { stopped_at: source.evaluation.stopped_at }
       : {}),
-    ...(classifyPaperTradingFailure(latestFailureReason)
-      ? { latest_failure: classifyPaperTradingFailure(latestFailureReason) }
+    ...(latestFailure
+      ? {
+          latest_failure: {
+            ...latestFailure,
+            reason: sanitizeText(latestFailure.reason)
+          }
+        }
       : {}),
     ...(latestObservation?.decision
       ? { latest_decision: sanitizeDecision(latestObservation.decision) }

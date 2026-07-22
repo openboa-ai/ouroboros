@@ -149,7 +149,8 @@ describe("ArenaOperationsProjectionService", () => {
     fixture.addPaper("candidate-d", {
       evaluationStatus: "failed",
       observations: [],
-      failureReason: "sandbox_crashed"
+      failureReason:
+        "sandbox_crashed at /Users/private-user/runtime OPENAI_API_KEY=private-failure-token"
     });
 
     const projection = await fixture.service.readOperations();
@@ -191,8 +192,12 @@ describe("ArenaOperationsProjectionService", () => {
       session_status: "failed",
       runner_status: "inactive",
       sandbox_status: "failed",
-      latest_failure: { reason: "sandbox_crashed" }
+      latest_failure: {
+        reason: "sandbox_crashed at [private-path] OPENAI_API_KEY=[redacted]"
+      }
     });
+    expect(JSON.stringify(projection)).not.toContain("/Users/private-user");
+    expect(JSON.stringify(projection)).not.toContain("private-failure-token");
   });
 
   it("rejects a cohort member with a tampered cumulative paper score", async () => {
