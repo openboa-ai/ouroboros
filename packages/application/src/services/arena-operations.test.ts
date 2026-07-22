@@ -244,6 +244,22 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
+  it("fails network and egress closed when Sandbox identities disagree", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    fixture.candidates.get("candidate-a")!.runtime.sandbox!.sandbox_id =
+      "sandbox-from-another-runtime";
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      isolation_id: "sandbox-from-another-runtime",
+      network_policy_status: "failed",
+      egress_attestation_status: "failed"
+    });
+  });
+
   it("does not invent an isolation identity from a runtime reference", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "starting", "2026-07-19T00:00:00.000Z")

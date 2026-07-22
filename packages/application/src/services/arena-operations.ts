@@ -661,7 +661,8 @@ function isolationReadModel(
     egress_attestation_status: egressAttestationStatus(
       sandbox,
       conformance,
-      adapterConsistent && conformanceMatchesRuntime(source, conformance)
+      adapterConsistent && sandboxIdentityConsistent &&
+        conformanceMatchesRuntime(source, conformance)
     ),
     authority_status: "not_live"
   };
