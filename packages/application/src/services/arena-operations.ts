@@ -616,9 +616,9 @@ function projectDetail(
           )
         }
       : {}),
-    open_orders: cloneJson(
+    open_orders: (
       latestObservation?.open_orders ?? source.evaluation?.open_orders ?? []
-    ),
+    ).map(sanitizeOrderSummary),
     ...((latestObservation?.latest_fill ?? source.evaluation?.latest_fill)
       ? {
           latest_fill: cloneJson(
@@ -934,6 +934,16 @@ function sanitizeDecision(
   return {
     ...cloneJson(decision),
     reason: sanitizeText(decision.reason)
+  };
+}
+
+function sanitizeOrderSummary(
+  order: ArenaTradingSystemDetailReadModel["open_orders"][number]
+): ArenaTradingSystemDetailReadModel["open_orders"][number] {
+  return {
+    ...cloneJson(order),
+    order_id: sanitizeText(order.order_id),
+    event_id: sanitizeText(order.event_id)
   };
 }
 

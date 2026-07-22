@@ -307,6 +307,19 @@ describe("ArenaOperationsProjectionService", () => {
     );
     candidateAObservation.decision!.reason =
       "/Users/private-user/work/strategy.py OPENAI_API_KEY=private-decision-token";
+    candidateAObservation.open_orders = [{
+      order_id: "paper-order-candidate-a",
+      event_id: "/Users/private-user/order OPENAI_API_KEY=private-order-token",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000",
+      status: "open",
+      cumulative_filled_quantity: "0",
+      remaining_quantity: "0.001",
+      created_at: "2026-07-19T00:01:00.000Z",
+      updated_at: "2026-07-19T00:01:00.000Z"
+    }];
     fixture.addPaper("candidate-a", { observations: [candidateAObservation] });
     const candidateA = fixture.candidates.get("candidate-a")!;
     candidateA.display_name =
@@ -391,6 +404,9 @@ describe("ArenaOperationsProjectionService", () => {
       "[private-path] OPENAI_API_KEY=[redacted]"
     );
     expect(detail?.display_name).toBe("[private-path] token=[redacted]");
+    expect(detail?.open_orders[0]?.event_id).toBe(
+      "[private-path] OPENAI_API_KEY=[redacted]"
+    );
     expect(JSON.stringify(detail)).not.toContain("/Users/private-user");
     expect(JSON.stringify(detail)).not.toContain("/workspace/ouroboros");
     expect(JSON.stringify(detail)).not.toContain("/opt/ouroboros");
@@ -401,6 +417,7 @@ describe("ArenaOperationsProjectionService", () => {
     expect(JSON.stringify(detail)).not.toContain("private-lineage-token");
     expect(JSON.stringify(detail)).not.toContain("private-trace-token");
     expect(JSON.stringify(detail)).not.toContain("private-password");
+    expect(JSON.stringify(detail)).not.toContain("private-order-token");
     expect(JSON.stringify(detail)).not.toContain("candidate-b secret");
     expect(detail?.artifact_refs).toEqual(expect.arrayContaining([
       { record_kind: "system_code", id: "system-code-candidate-a" },

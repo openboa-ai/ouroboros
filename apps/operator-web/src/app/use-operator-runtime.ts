@@ -97,16 +97,6 @@ export function useOperatorRuntime(
       operatorRef.current,
       selectedArenaSystemId
     );
-    const [arenaDetailResult] = await Promise.allSettled([
-      arenaDetailCandidateId
-        ? fetchArenaTradingSystemDetail(arenaDetailCandidateId)
-        : Promise.resolve(undefined)
-    ]);
-
-    if (!mountedRef.current || sequence !== requestSequenceRef.current) {
-      return;
-    }
-
     setState((current) => ({
       ...current,
       operator: operatorResult.status === "fulfilled"
@@ -117,27 +107,46 @@ export function useOperatorRuntime(
         : current.gateway,
       arenaDetail: !arenaDetailCandidateId
         ? undefined
-        : arenaDetailResult.status === "fulfilled"
-          ? arenaDetailResult.value
-          : current.arenaDetail?.candidate_id === arenaDetailCandidateId
-            ? current.arenaDetail
-            : undefined,
+        : current.arenaDetail?.candidate_id === arenaDetailCandidateId
+          ? current.arenaDetail
+          : undefined,
       loading: false,
-      refreshing: false,
-      arenaDetailLoading: false,
+      refreshing: Boolean(arenaDetailCandidateId),
+      arenaDetailLoading: Boolean(arenaDetailCandidateId),
       operatorError: operatorResult.status === "rejected"
         ? errorMessage(operatorResult.reason)
         : undefined,
       gatewayError: gatewayResult.status === "rejected"
         ? errorMessage(gatewayResult.reason)
         : undefined,
-      arenaDetailError: arenaDetailCandidateId &&
-        arenaDetailResult.status === "rejected"
-        ? errorMessage(arenaDetailResult.reason)
-        : undefined,
+      arenaDetailError: undefined,
       lastOperatorReadAt: operatorResult.status === "fulfilled"
         ? new Date().toISOString()
         : current.lastOperatorReadAt
+    }));
+    if (!arenaDetailCandidateId) {
+      return;
+    }
+    const [arenaDetailResult] = await Promise.allSettled([
+      fetchArenaTradingSystemDetail(arenaDetailCandidateId)
+    ]);
+
+    if (!mountedRef.current || sequence !== requestSequenceRef.current) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      arenaDetail: arenaDetailResult.status === "fulfilled"
+        ? arenaDetailResult.value
+        : current.arenaDetail?.candidate_id === arenaDetailCandidateId
+          ? current.arenaDetail
+          : undefined,
+      refreshing: false,
+      arenaDetailLoading: false,
+      arenaDetailError: arenaDetailResult.status === "rejected"
+        ? errorMessage(arenaDetailResult.reason)
+        : undefined
     }));
   }, [selectedArenaSystemId]);
 

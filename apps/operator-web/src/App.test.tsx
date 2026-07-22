@@ -67,6 +67,9 @@ describe("greenfield Operator entrypoint", () => {
     expect(runtimeSource).toContain("fetchArenaTradingSystemDetail(arenaDetailCandidateId)");
     expect(runtimeSource).toContain("Promise.allSettled");
     expect(runtimeSource).toContain("5_000");
+    expect(runtimeSource.indexOf("loading: false")).toBeLessThan(
+      runtimeSource.indexOf("fetchArenaTradingSystemDetail(arenaDetailCandidateId)")
+    );
   });
 
   it("requests Arena detail only for a selected authoritative projection row", () => {
