@@ -6,13 +6,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   candidateArenaResearchAllocationDigestInput,
+  canonicalResearchEvidenceArtifactSummary,
   decideCandidateAdmission,
+  paperTradingComparisonPersistedRecordDigestInput,
+  researchEvidenceArtifactDigestInput,
   researchPreflightCommitmentDigestInput,
   researchWorkerCheckpointDigestInput,
   type CandidateAdmissionDecisionRecord,
   type CandidateArenaResearchAllocationRecord,
   type ExperimentRunRecord,
   type ResearchDirectionRecord,
+  type ResearchEvidenceArtifactRecord,
   type ResearchFindingRecord,
   type ResearchPreflightCommitmentRecord,
   type ResearchWorkerCheckpointRecord,
@@ -55,6 +59,39 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
     const restarted = new LocalStore(storeRoot);
     await restarted.initialize();
     await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual([checkpoint]);
+  });
+
+  it("rejects a triggered preflight commitment without methodology", async () => {
+    const graph = await persistWorkerGraph(store);
+    const allocation = allocationFixture(
+      "trigger-without-methodology",
+      graph.direction.direction_kind,
+      1,
+      "2026-07-12T10:00:00.000Z"
+    );
+    allocation.trigger = {
+      trigger_kind: "goal",
+      trigger_id: "trigger-without-methodology",
+      goal: "Run one bounded CandidateArena Research cycle.",
+      triggered_at: "2026-07-12T10:00:00.000Z",
+      authority_status: "research_only"
+    };
+    allocation.allocation_digest = exactDigest(
+      candidateArenaResearchAllocationDigestInput(allocation)
+    );
+    await store.recordCandidateArenaResearchAllocation(allocation);
+    const commitment = commitmentFixture({
+      graph,
+      allocation,
+      suffix: "trigger-without-methodology",
+      committedAt: "2026-07-12T10:01:00.000Z",
+      submissionLimit: 1
+    });
+
+    await expect(store.recordResearchPreflightCommitment(commitment))
+      .rejects.toMatchObject({
+        code: "research_preflight_commitment_evidence_mismatch"
+      });
   });
 
   it("persists a contiguous completed checkpoint with exact admission and cumulative budget", async () => {
@@ -437,6 +474,113 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
       code: "research_worker_checkpoint_graph_mismatch"
     });
   });
+
+  it("persists exact sanitized evidence across restart", async () => {
+    const graph = await persistWorkerGraph(store);
+    const priorCommitment = await persistCommitment(
+      store,
+      graph,
+      "evidence-prior",
+      10,
+      1
+    );
+    const priorAdmission = await persistAdmission(
+      store,
+      graph,
+      priorCommitment,
+      10
+    );
+    await store.recordResearchWorkerCheckpoint(completedCheckpoint(
+      graph,
+      priorCommitment,
+      undefined,
+      priorAdmission
+    ));
+    const finding = (await store.listResearchFindings()).find((entry) =>
+      entry.research_finding_id === priorAdmission.research_finding_ref.id
+    )!;
+    const artifact = findingEvidenceArtifact(finding);
+
+    await expect(store.recordResearchEvidenceArtifact(artifact))
+      .resolves.toEqual(artifact);
+    await expect(store.recordResearchEvidenceArtifact(artifact))
+      .resolves.toEqual(artifact);
+
+    await expect(store.listResearchEvidenceArtifacts()).resolves.toEqual([artifact]);
+
+    const restarted = new LocalStore(storeRoot);
+    await restarted.initialize();
+    await expect(restarted.getResearchEvidenceArtifact(
+      artifact.research_evidence_artifact_id
+    )).resolves.toEqual(artifact);
+
+    await expect(store.recordResearchEvidenceArtifact({
+      ...artifact,
+      artifact_digest: digest("drift")
+    })).rejects.toMatchObject({
+      code: "research_evidence_artifact_digest_mismatch"
+    });
+
+    const wrongSource = {
+      ...artifact,
+      research_evidence_artifact_id: `${artifact.research_evidence_artifact_id}-wrong`,
+      source_digest: digest("wrong-source")
+    };
+    wrongSource.artifact_digest = exactDigest(
+      researchEvidenceArtifactDigestInput(wrongSource)
+    );
+    await expect(store.recordResearchEvidenceArtifact(wrongSource))
+      .rejects.toMatchObject({
+        code: "research_evidence_artifact_source_mismatch"
+      });
+
+    const unsafeSummary = {
+      ...artifact,
+      research_evidence_artifact_id: `${artifact.research_evidence_artifact_id}-unsafe`,
+      summary: "/Users/private/research token=secret-value"
+    };
+    unsafeSummary.artifact_digest = exactDigest(
+      researchEvidenceArtifactDigestInput(unsafeSummary)
+    );
+    await expect(store.recordResearchEvidenceArtifact(unsafeSummary))
+      .rejects.toMatchObject({
+        code: "invalid_research_evidence_artifact_input"
+      });
+
+    const inventedSummary = {
+      ...artifact,
+      research_evidence_artifact_id:
+        `${artifact.research_evidence_artifact_id}-invented`,
+      summary: "Safe-looking but source-unbound Research instruction."
+    };
+    inventedSummary.artifact_digest = exactDigest(
+      researchEvidenceArtifactDigestInput(inventedSummary)
+    );
+    await expect(store.recordResearchEvidenceArtifact(inventedSummary))
+      .rejects.toMatchObject({
+        code: "research_evidence_artifact_source_mismatch"
+      });
+
+    const contenders = [
+      eventAllocation("event-claim-a", artifact, "2026-07-12T10:11:00.000Z"),
+      eventAllocation("event-claim-b", artifact, "2026-07-12T10:11:01.000Z")
+    ];
+    const claims = await Promise.allSettled([
+      store.recordCandidateArenaResearchAllocation(contenders[0]!),
+      new LocalStore(storeRoot).recordCandidateArenaResearchAllocation(
+        contenders[1]!
+      )
+    ]);
+    expect(claims.filter((claim) => claim.status === "fulfilled"))
+      .toHaveLength(1);
+    expect(claims.filter((claim) => claim.status === "rejected"))
+      .toEqual([expect.objectContaining({
+        reason: expect.objectContaining({
+          code:
+            "candidate_arena_research_allocation_trigger_claim_conflict"
+        })
+      })]);
+  });
 });
 
 interface WorkerGraph {
@@ -505,38 +649,67 @@ async function persistCommitment(
     `2026-07-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
   const allocation = allocationFixture(suffix, graph.direction.direction_kind, submissionLimit, at(0));
   await store.recordCandidateArenaResearchAllocation(allocation);
+  const commitment = commitmentFixture({
+    graph,
+    allocation,
+    suffix,
+    committedAt: at(committedMinute),
+    submissionLimit,
+    memoryPolicyInput
+  });
+  await store.recordResearchPreflightCommitment(commitment);
+  return commitment;
+}
+
+function commitmentFixture(input: {
+  graph: WorkerGraph;
+  allocation: CandidateArenaResearchAllocationRecord;
+  suffix: string;
+  committedAt: string;
+  submissionLimit: number;
+  memoryPolicyInput?: ResearchWorkerMemoryPolicy;
+}): ResearchPreflightCommitmentRecord {
   const commitment: ResearchPreflightCommitmentRecord = {
     record_kind: "research_preflight_commitment",
     version: 1,
-    research_preflight_commitment_id: `research-preflight-${suffix}`,
-    candidate_arena_tick_id: allocation.tick_id,
-    research_direction_ref: { record_kind: "research_direction", id: graph.direction.research_direction_id },
-    research_worker_ref: { record_kind: "research_worker", id: graph.worker.research_worker_id },
+    research_preflight_commitment_id: `research-preflight-${input.suffix}`,
+    candidate_arena_tick_id: input.allocation.tick_id,
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: input.graph.direction.research_direction_id
+    },
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: input.graph.worker.research_worker_id
+    },
     research_allocation_ref: {
       record_kind: "candidate_arena_research_allocation",
-      id: allocation.candidate_arena_research_allocation_id
+      id: input.allocation.candidate_arena_research_allocation_id
     },
-    research_allocation_digest: allocation.allocation_digest,
-    source_system_code_ref: { record_kind: "system_code", id: graph.source.system_code_id },
-    source_artifact_digest: graph.source.artifact_digest,
-    ...(memoryPolicyInput
-      ? { memory_policy: structuredClone(memoryPolicyInput) }
+    research_allocation_digest: input.allocation.allocation_digest,
+    source_system_code_ref: {
+      record_kind: "system_code",
+      id: input.graph.source.system_code_id
+    },
+    source_artifact_digest: input.graph.source.artifact_digest,
+    ...(input.memoryPolicyInput
+      ? { memory_policy: structuredClone(input.memoryPolicyInput) }
       : {}),
     development_policy: {
       suite_version: "research_development_replay_v1",
       suite_digest: digest("development-suite"),
-      submission_limit: submissionLimit,
+      submission_limit: input.submissionLimit,
       feedback_release: "aggregate_after_each_submission"
     },
     sealed_admission_policy: {
       suite_version: "research_sealed_admission_v1",
       generator_version: "research_scenario_generator_v1",
-      rotation_commitment_digest: digest(`rotation-${suffix}`),
-      suite_digest: digest(`sealed-suite-${suffix}`),
+      rotation_commitment_digest: digest(`rotation-${input.suffix}`),
+      suite_digest: digest(`sealed-suite-${input.suffix}`),
       submission_limit: 1,
       feedback_release: "terminal_after_freeze"
     },
-    committed_at: at(committedMinute),
+    committed_at: input.committedAt,
     research_preflight_authority: true,
     admission_authority: false,
     promotion_authority: false,
@@ -546,7 +719,6 @@ async function persistCommitment(
     commitment_digest: digest("pending")
   };
   commitment.commitment_digest = exactDigest(researchPreflightCommitmentDigestInput(commitment));
-  await store.recordResearchPreflightCommitment(commitment);
   return commitment;
 }
 
@@ -615,6 +787,36 @@ function allocationFixture(
     authority_status: "research_only"
   };
   allocation.allocation_digest = exactDigest(candidateArenaResearchAllocationDigestInput(allocation));
+  return allocation;
+}
+
+function eventAllocation(
+  suffix: string,
+  artifact: ResearchEvidenceArtifactRecord,
+  at: string
+): CandidateArenaResearchAllocationRecord {
+  const allocation = allocationFixture(
+    suffix,
+    "trend_following",
+    1,
+    at
+  );
+  allocation.trigger = {
+    trigger_kind: "arena_event",
+    trigger_id: `trigger-${suffix}`,
+    goal: "Consume one exact Arena evidence event.",
+    triggered_at: at,
+    source_ref: { ...artifact.artifact_ref },
+    evidence_artifact_ref: {
+      record_kind: "research_evidence_artifact",
+      id: artifact.research_evidence_artifact_id
+    },
+    evidence_artifact_digest: artifact.artifact_digest,
+    authority_status: "research_only"
+  };
+  allocation.allocation_digest = exactDigest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
   return allocation;
 }
 
@@ -874,6 +1076,47 @@ async function persistAdmission(
   };
   await store.recordCandidateAdmissionDecision(admission);
   return admission;
+}
+
+function findingEvidenceArtifact(
+  finding: ResearchFindingRecord
+): ResearchEvidenceArtifactRecord {
+  const record: ResearchEvidenceArtifactRecord = {
+    record_kind: "research_evidence_artifact",
+    version: 1,
+    research_evidence_artifact_id:
+      `research-evidence-${finding.research_finding_id}`,
+    source_kind: "research_finding",
+    subject_ref: { ...finding.research_worker_ref },
+    artifact_ref: {
+      record_kind: "research_finding",
+      id: finding.research_finding_id
+    },
+    source_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(finding)
+    ),
+    summary: canonicalResearchEvidenceArtifactSummary(
+      "research_finding",
+      finding
+    ),
+    supporting_record_refs: structuredClone(finding.supporting_record_refs),
+    captured_at: finding.created_at,
+    sanitization_policy: "research_evidence_sanitization_v1",
+    sanitization_status: "sanitized",
+    qualification_evidence_hidden: true,
+    secrets_removed: true,
+    host_paths_removed: true,
+    truncated: false,
+    artifact_digest: digest("pending"),
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  record.artifact_digest = exactDigest(
+    researchEvidenceArtifactDigestInput(record)
+  );
+  return record;
 }
 
 function systemCodeFixture(id: string, artifactDigest: string, createdAt: string): SystemCodeRecord {

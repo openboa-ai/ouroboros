@@ -150,7 +150,10 @@ describe("managed Codex researcher execution", () => {
       expect(tick.statusCode, tick.body).toBe(200);
       const tickBody = tick.json();
       expect(tickBody.operator.researcher_provider.selected_provider).toBe("codex");
-      expect(tickBody.result.created_candidate_count).toBeGreaterThan(1);
+      expect(
+        tickBody.result.created_candidate_count,
+        JSON.stringify(tickBody.result)
+      ).toBeGreaterThan(1);
       expect(tickBody.operator.candidate_arena.latest_ticks[0].direction_results).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

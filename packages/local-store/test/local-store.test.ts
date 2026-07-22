@@ -26,6 +26,7 @@ import type {
   CandidateInspectReadModel,
   ImprovementProposalRecord,
   ResearchFindingRecord,
+  ResearchEvidenceArtifactRecord,
   ResearchDirectionKind,
   ResearchOrchestrationRunRecord,
   ImprovementProposalMaterializationInput,
@@ -93,6 +94,7 @@ import type {
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
   PAPER_TRADING_COMPARISON_ZERO_SCORE,
+  canonicalResearchEvidenceArtifactSummary,
   decidePaperTradingQualification,
   paperTradingComparisonActivationDigestInput,
   paperTradingComparisonActivationAttemptDigestInput,
@@ -120,7 +122,8 @@ import {
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingComparisonQualificationResultDigestInput,
   paperTradingComparisonVerdictDigestInput,
-  paperTradingEvaluationCommitmentDigestInput
+  paperTradingEvaluationCommitmentDigestInput,
+  researchEvidenceArtifactDigestInput
 } from "@ouroboros/domain";
 
 type LocalStoreProjectionInternals = {
@@ -217,6 +220,85 @@ describe("LocalStore", () => {
       "paper_trading_evaluation_commitment_conflict"
     );
     await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual([commitment]);
+  });
+
+  it("admits only unique released research-feedback evidence artifacts", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    const observation = validPaperTradingObservation(commitment, evaluation);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    await store.recordPaperTradingObservation(observation, {
+      ...evaluation,
+      status: "running",
+      observation_count: 1,
+      last_observed_at: observation.observed_at,
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    });
+    const artifact = paperObservationResearchEvidence(observation);
+
+    await expect(store.recordResearchEvidenceArtifact(artifact))
+      .resolves.toEqual(artifact);
+    const alias = withResearchEvidenceDigest({
+      ...artifact,
+      research_evidence_artifact_id: `${artifact.research_evidence_artifact_id}-alias`
+    });
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(alias),
+      "research_evidence_artifact_alias_conflict"
+    );
+  });
+
+  it("rejects sealed qualification evidence at the Research boundary", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const run = await store.createPaperTradingRun({
+      idempotency_key: "qualification-research-boundary",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: "fixture-candidate-version-001",
+      evidence_purpose: "qualification",
+      created_at: "2026-07-10T09:00:00.000Z"
+    });
+    const commitment = withPaperTradingCommitmentDigest({
+      ...validPaperTradingCommitment(),
+      paper_trading_evaluation_commitment_id:
+        "paper-commitment-qualification-evidence",
+      evidence_purpose: "qualification",
+      candidate_ref: { ...run.candidate_ref! },
+      candidate_version_ref: { ...run.candidate_version_ref! },
+      trading_run_ref: { record_kind: "trading_run", id: run.trading_run_id },
+      window_policy: {
+        ...validPaperTradingCommitment().window_policy,
+        release_policy: "sealed_until_adjudication"
+      }
+    });
+    const evaluation = {
+      ...validPaperTradingEvaluation(commitment),
+      paper_trading_evaluation_id: "paper-evaluation-qualification-evidence",
+      trading_run_ref: { record_kind: "trading_run", id: run.trading_run_id }
+    };
+    const observation = {
+      ...validPaperTradingObservation(commitment, evaluation),
+      paper_trading_observation_id: "paper-observation-qualification-evidence"
+    };
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    await store.recordPaperTradingObservation(observation, {
+      ...evaluation,
+      status: "running",
+      observation_count: 1,
+      last_observed_at: observation.observed_at,
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    });
+
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(
+        paperObservationResearchEvidence(observation)
+      ),
+      "research_evidence_artifact_source_not_research_feedback"
+    );
   });
 
   it("enforces paper trading commitment references and terminal invalidation", async () => {
@@ -13519,6 +13601,62 @@ function validPaperTradingObservation(
     cumulative_score: zeroPaperTradingProfitLoss(),
     authority_status: "not_live"
   };
+}
+
+function paperObservationResearchEvidence(
+  observation: PaperTradingObservationRecord
+): ResearchEvidenceArtifactRecord {
+  return withResearchEvidenceDigest({
+    record_kind: "research_evidence_artifact",
+    version: 1,
+    research_evidence_artifact_id:
+      `research-evidence-${observation.paper_trading_observation_id}`,
+    source_kind: "arena_trace",
+    subject_ref: { ...observation.candidate_ref },
+    artifact_ref: {
+      record_kind: "paper_trading_observation",
+      id: observation.paper_trading_observation_id
+    },
+    source_digest: exactDigest(
+      paperTradingComparisonPersistedRecordDigestInput(observation)
+    ),
+    summary: canonicalResearchEvidenceArtifactSummary(
+      "arena_trace",
+      observation
+    ),
+    supporting_record_refs: [
+      { ...observation.trading_run_ref },
+      { ...observation.paper_trading_evaluation_ref },
+      { ...observation.paper_trading_evaluation_commitment_ref! }
+    ],
+    captured_at: observation.observed_at,
+    sanitization_policy: "research_evidence_sanitization_v1",
+    sanitization_status: "sanitized",
+    qualification_evidence_hidden: true,
+    secrets_removed: true,
+    host_paths_removed: true,
+    truncated: false,
+    artifact_digest: `sha256:${"0".repeat(64)}`,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  });
+}
+
+function withResearchEvidenceDigest(
+  artifact: ResearchEvidenceArtifactRecord
+): ResearchEvidenceArtifactRecord {
+  return {
+    ...artifact,
+    artifact_digest: exactDigest(
+      researchEvidenceArtifactDigestInput(artifact)
+    )
+  };
+}
+
+function exactDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function initialPaperTradingAccountSnapshot(): PaperTradingEvaluationCommitmentRecord["initial_account_snapshot"] {

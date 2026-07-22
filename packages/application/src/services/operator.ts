@@ -259,7 +259,7 @@ export class OperatorService {
 
     this.installAutonomousArenaTickContinuation();
     await this.restoreCandidateArenaTickCount();
-    this.options.candidateArenaRunner.start();
+    this.options.candidateArenaRunner.start("recovery");
     return "resumed";
   }
 
@@ -295,7 +295,7 @@ export class OperatorService {
         await this.requireResearcherProviderReady();
         await this.restoreCandidateArenaTickCount();
         this.installAutonomousArenaTickContinuation();
-        const status = this.options.candidateArenaRunner.start();
+        const status = this.options.candidateArenaRunner.start("goal");
         return {
           result: {
             status,
@@ -785,9 +785,15 @@ export class OperatorService {
   }
 
   private async restoreCandidateArenaTickCount(): Promise<void> {
-    const persistedTicks = await this.options.store.listCandidateArenaTicks();
+    const [persistedTicks, persistedAllocations] = await Promise.all([
+      this.options.store.listCandidateArenaTicks(),
+      this.options.store.listCandidateArenaResearchAllocations()
+    ]);
     this.options.candidateArenaRunner.restoreTickCount(
-      candidateArenaRunnerTickCountFromTicks(persistedTicks)
+      candidateArenaRunnerTickCountFromTicks(
+        persistedTicks,
+        persistedAllocations
+      )
     );
   }
 }

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -44,14 +45,18 @@ import type {
   PaperTradingObservationRecord,
   Ref,
   ResearchAllocationPolicyDecisionRecord,
+  ResearchEvidenceArtifactRecord,
+  ResearchFindingRecord,
   ResearchWorkerCheckpointRecord
 } from "@ouroboros/domain";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateEgressNetworkPolicyDigestInput,
+  canonicalResearchEvidenceArtifactSummary,
   paperTradingComparisonPersistedRecordDigestInput,
-  researchAllocationPolicyDecisionDigestInput
+  researchAllocationPolicyDecisionDigestInput,
+  researchEvidenceArtifactDigestInput
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
@@ -68,6 +73,274 @@ afterEach(async () => {
 });
 
 describe("CandidateArena paper evidence context", () => {
+  it("binds a default goal and methodology for direct Arena ticks", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let preflightVisibleWhenFactoryCalled = false;
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "default-goal-methodology",
+      now: () => "2026-07-22T09:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => {
+        const preflightDir = path.join(
+          tmpDir,
+          "research-preflight-commitments",
+          "items"
+        );
+        preflightVisibleWhenFactoryCalled = existsSync(preflightDir) &&
+          readdirSync(preflightDir).some((entry) => entry.endsWith(".json"));
+        return new CapturingResearchAgent([]);
+      },
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(preflightVisibleWhenFactoryCalled).toBe(true);
+    await expect(store.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-default-goal-methodology"
+    )).resolves.toMatchObject({
+      trigger: {
+        trigger_kind: "goal",
+        goal: "Run one bounded CandidateArena Research cycle."
+      }
+    });
+    const commitment = (await store.listResearchPreflightCommitments())
+      .find((commitment) => commitment.candidate_arena_tick_id ===
+        "default-goal-methodology");
+    expect(commitment?.methodology).toMatchObject({
+      direction_kind: "trend_following",
+      evidence_bindings: []
+    });
+  });
+
+  it("fails closed before provider effects when the agent descriptor drifts", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const contexts: string[] = [];
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "agent-descriptor-drift",
+      now: () => "2026-07-22T09:30:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(contexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(contexts).toEqual([]);
+    expect((await store.listResearchWorkerCheckpoints())).toEqual([
+      expect.objectContaining({
+        candidate_arena_tick_id: "agent-descriptor-drift",
+        terminal_status: "failed_closed",
+        terminal_reason: "execution_failed"
+      })
+    ]);
+    expect((await store.listCandidateArenaTicks())[0]?.direction_results[0])
+      .toMatchObject({
+        status: "failed",
+        error: "candidate_arena_research_agent_descriptor_mismatch"
+      });
+  });
+
+  it("binds new Arena evidence and distinct methodologies before provider effects", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const firstContexts: string[] = [];
+    await runCandidateArenaTick({
+      store,
+      tickId: "evidence-source",
+      now: () => "2026-07-22T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: capturingResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(
+        firstContexts,
+        undefined,
+        capturingResearchAgentDescriptor()
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const finding = (await store.listResearchFindings()).at(-1);
+    expect(finding).toBeDefined();
+    const evidence = researchFindingEvidence(finding!);
+
+    const eventContexts: string[] = [];
+    await runCandidateArenaTick({
+      store,
+      tickId: "evidence-event",
+      now: () => "2026-07-22T11:00:00.000Z",
+      directions: ["trend_following", "mean_reversion"],
+      researchTrigger: {
+        trigger_kind: "time",
+        goal: "Run the next bounded Research cycle."
+      },
+      researchEvidenceSource: async () => [evidence],
+      researchAgent: "codex",
+      researchAgentDescriptor: capturingResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(
+        eventContexts,
+        undefined,
+        capturingResearchAgentDescriptor()
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const allocation = await store.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-evidence-event"
+    );
+    expect(allocation?.trigger).toMatchObject({
+      trigger_kind: "arena_event",
+      source_ref: evidence.artifact_ref,
+      evidence_artifact_ref: {
+        record_kind: "research_evidence_artifact",
+        id: evidence.research_evidence_artifact_id
+      },
+      evidence_artifact_digest: evidence.artifact_digest
+    });
+    const commitments = (await store.listResearchPreflightCommitments())
+      .filter((commitment) => commitment.candidate_arena_tick_id ===
+        "evidence-event");
+    expect(commitments).toHaveLength(2);
+    expect(new Set(commitments.map((commitment) =>
+      commitment.methodology?.direction_kind
+    ))).toEqual(new Set(["trend_following", "mean_reversion"]));
+    expect(commitments.every((commitment) =>
+      commitment.methodology?.evidence_bindings.some((binding) =>
+        binding.evidence_artifact_ref.id ===
+          evidence.research_evidence_artifact_id &&
+        binding.evidence_artifact_digest === evidence.artifact_digest
+      )
+    )).toBe(true);
+    const workers = await store.listResearchWorkers();
+    expect(commitments.every((commitment) => {
+      const worker = workers.find((entry) =>
+        entry.research_worker_id === commitment.research_worker_ref.id
+      );
+      const selection = allocation?.selected_directions.find((entry) =>
+        entry.direction_kind === commitment.methodology?.direction_kind
+      );
+      return worker?.provider_kind === "codex_cli" &&
+        worker.model === "capturing-context" &&
+        selection?.experiment_budget ===
+          commitment.development_policy.submission_limit;
+    })).toBe(true);
+    expect((await store.listResearchWorkerCheckpoints()).filter((checkpoint) =>
+      checkpoint.candidate_arena_tick_id === "evidence-event"
+    )).toEqual([
+      expect.objectContaining({ terminal_status: "completed" }),
+      expect.objectContaining({ terminal_status: "completed" })
+    ]);
+    expect(eventContexts).toHaveLength(2);
+    expect(eventContexts.every((context) =>
+      context.includes(evidence.research_evidence_artifact_id) &&
+      context.includes(evidence.summary)
+    )).toBe(true);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    await expect(restarted.getResearchEvidenceArtifact(
+      evidence.research_evidence_artifact_id
+    )).resolves.toEqual(evidence);
+    await runCandidateArenaTick({
+      store: restarted,
+      tickId: "evidence-unchanged",
+      now: () => "2026-07-22T12:00:00.000Z",
+      directions: ["volatility_regime"],
+      researchTrigger: {
+        trigger_kind: "time",
+        goal: "Run the next bounded Research cycle."
+      },
+      researchEvidenceSource: async () => [evidence],
+      researchAgent: "codex",
+      researchAgentDescriptor: capturingResearchAgentDescriptor(),
+      agentFactory: () => new CapturingResearchAgent(
+        [],
+        undefined,
+        capturingResearchAgentDescriptor()
+      ),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    await expect(restarted.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-evidence-unchanged"
+    )).resolves.toMatchObject({
+      trigger: { trigger_kind: "time" }
+    });
+  });
+
+  it("does not reclaim an Arena event after a crash leaves only its allocation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await runCandidateArenaTick({
+      store,
+      tickId: "event-claim-source",
+      now: () => "2026-07-22T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const finding = (await store.listResearchFindings()).at(-1)!;
+    const evidence = researchFindingEvidence(finding);
+    await store.recordResearchEvidenceArtifact(evidence);
+    await new CandidateArenaResearchAllocationService({
+      store,
+      now: () => "2026-07-22T11:00:00.000Z"
+    }).allocate({
+      tickId: "event-claim-orphan",
+      allocationMode: "explicit",
+      allocationPolicyBasis: { basis_kind: "explicit_request" },
+      explicitDirections: ["trend_following"],
+      findingClusters: [],
+      latestTicks: [],
+      trigger: {
+        trigger_kind: "arena_event",
+        trigger_id: "event-claim-orphan-trigger",
+        goal: "Use this exact event once.",
+        triggered_at: "2026-07-22T11:00:00.000Z",
+        source_ref: { ...evidence.artifact_ref },
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: evidence.research_evidence_artifact_id
+        },
+        evidence_artifact_digest: evidence.artifact_digest,
+        authority_status: "research_only"
+      }
+    });
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "event-claim-after-restart",
+      now: () => "2026-07-22T12:00:00.000Z",
+      directions: ["mean_reversion"],
+      researchTrigger: {
+        trigger_kind: "time",
+        goal: "Continue after restart."
+      },
+      researchEvidenceSource: async () => [evidence],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    await expect(store.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-event-claim-after-restart"
+    )).resolves.toMatchObject({
+      trigger: { trigger_kind: "time" }
+    });
+  });
+
   it("uses the injected clock for both tick boundaries", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -102,6 +375,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent(captures),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -112,6 +386,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T11:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent(captures),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -204,6 +479,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent(captures),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -215,6 +491,7 @@ describe("CandidateArena paper evidence context", () => {
       directions: ["trend_following"],
       researchMemoryMode: "memory_masked",
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent(captures),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -229,6 +506,7 @@ describe("CandidateArena paper evidence context", () => {
       "current_research_allocation",
       "current_research_selection",
       "requested_direction",
+      "research_trigger",
       "task"
     ]);
     expect(maskedContext).not.toHaveProperty("research_memory_policy");
@@ -312,18 +590,20 @@ describe("CandidateArena paper evidence context", () => {
       }
     ];
     for (const [index, run] of runs.entries()) {
+      const agent = new LifecycleResearchAgent(
+        captures,
+        "edit",
+        undefined,
+        run.identity
+      );
       await runCandidateArenaTick({
         store,
         tickId: run.tickId,
         now: () => `2026-07-12T${String(10 + index).padStart(2, "0")}:00:00.000Z`,
         directions: [run.direction],
         researchAgent: "codex",
-        agentFactory: () => new LifecycleResearchAgent(
-          captures,
-          "edit",
-          undefined,
-          run.identity
-        ),
+        researchAgentDescriptor: agent.agent,
+        agentFactory: () => agent,
         artifactRunner: networklessReplayArtifactRunner(),
         replayProviderFactory: networklessReplayTradingApiProvider
       });
@@ -366,6 +646,7 @@ describe("CandidateArena paper evidence context", () => {
       store,
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: claudeAgent.agent,
       agentFactory: () => claudeAgent,
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -869,6 +1150,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent([], "throw"),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -885,6 +1167,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T11:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent(
         captures,
         "edit",
@@ -988,6 +1271,7 @@ describe("CandidateArena paper evidence context", () => {
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
       agentFactory: () => new LifecycleResearchAgent([]),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
@@ -3653,18 +3937,43 @@ function releasedCampaignFindingFixture(
   };
 }
 
-class CapturingResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
+function capturingResearchAgentDescriptor(): ManagedResearchAgent {
+  return {
     id: "managed-agent-capturing-context",
     provider: "codex",
     model: "capturing-context",
     permission_policy: "artifact_workspace_only"
   };
+}
+
+function defaultCodexResearchAgentDescriptor(): ManagedResearchAgent {
+  return {
+    id: "managed-agent-codex-trading-research",
+    provider: "codex",
+    model: undefined,
+    permission_policy: "artifact_workspace_only"
+  };
+}
+
+function lifecycleResearchAgentDescriptor(): ManagedResearchAgent {
+  return {
+    id: "managed-agent-lifecycle-researcher",
+    provider: "codex",
+    model: "lifecycle-researcher-v1",
+    permission_policy: "artifact_workspace_only"
+  };
+}
+
+class CapturingResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent;
 
   constructor(
     private readonly contexts: string[],
-    private readonly beforeImprove?: () => void | Promise<void>
-  ) {}
+    private readonly beforeImprove?: () => void | Promise<void>,
+    agent: ManagedResearchAgent = defaultCodexResearchAgentDescriptor()
+  ) {
+    this.agent = structuredClone(agent);
+  }
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     await this.beforeImprove?.();
@@ -3702,12 +4011,7 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
 
 class AutonomousSessionResearchAgent
 implements TradingResearchAgentAdapter, ResearchWorkerSessionAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-autonomous-session-test",
-    provider: "codex",
-    model: "autonomous-session-test",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
   runSessionCount = 0;
 
   constructor(
@@ -3805,10 +4109,7 @@ class LifecycleResearchAgent implements TradingResearchAgentAdapter {
     identity: Partial<ManagedResearchAgent> = {}
   ) {
     this.agent = {
-      id: "managed-agent-lifecycle-researcher",
-      provider: "codex",
-      model: "lifecycle-researcher-v1",
-      permission_policy: "artifact_workspace_only",
+      ...lifecycleResearchAgentDescriptor(),
       ...identity
     };
   }
@@ -3891,12 +4192,7 @@ async function waitForAllocationProbePair(
 }
 
 class AllocationProbeResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-allocation-probe",
-    provider: "codex",
-    model: "allocation-probe",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   constructor(
     private readonly store: LocalStore,
@@ -3942,12 +4238,7 @@ class AllocationProbeResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class FailedResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-failed-researcher",
-    provider: "codex",
-    model: "failed-researcher",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(): Promise<AgentEditResult> {
     return {
@@ -3961,12 +4252,7 @@ class FailedResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class ThrowingResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-throwing-researcher",
-    provider: "codex",
-    model: "throwing-researcher",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(): Promise<AgentEditResult> {
     throw new Error("research worker process terminated");
@@ -3974,12 +4260,7 @@ class ThrowingResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class NoChangeResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-no-change-researcher",
-    provider: "codex",
-    model: "no-change-researcher",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(): Promise<AgentEditResult> {
     return {
@@ -3991,12 +4272,7 @@ class NoChangeResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class MisreportedEditResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-misreported-edit-researcher",
-    provider: "codex",
-    model: "misreported-edit-researcher",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(): Promise<AgentEditResult> {
     return {
@@ -4008,12 +4284,7 @@ class MisreportedEditResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class EscapingEntrypointResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-escaping-entrypoint",
-    provider: "codex",
-    model: "escaping-entrypoint",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     const outsidePath = path.join(input.artifact_dir, "..", "outside.py");
@@ -4034,12 +4305,7 @@ class EscapingEntrypointResearchAgent implements TradingResearchAgentAdapter {
 }
 
 class MissingEditablePathsResearchAgent implements TradingResearchAgentAdapter {
-  readonly agent: ManagedResearchAgent = {
-    id: "managed-agent-missing-editable-paths",
-    provider: "codex",
-    model: "missing-editable-paths",
-    permission_policy: "artifact_workspace_only"
-  };
+  readonly agent = defaultCodexResearchAgentDescriptor();
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     await writeFile(path.join(input.artifact_dir, "manifest.json"), `${JSON.stringify({
@@ -4677,6 +4943,55 @@ function attestedNegativeReplayArtifactRunner(): TradingArtifactRunner {
       };
     }
   };
+}
+
+function researchFindingEvidence(
+  finding: ResearchFindingRecord
+): ResearchEvidenceArtifactRecord {
+  const record: ResearchEvidenceArtifactRecord = {
+    record_kind: "research_evidence_artifact",
+    version: 1,
+    research_evidence_artifact_id:
+      `research-evidence-${finding.research_finding_id}`,
+    source_kind: "research_finding",
+    subject_ref: { ...finding.research_worker_ref },
+    artifact_ref: {
+      record_kind: "research_finding",
+      id: finding.research_finding_id
+    },
+    source_digest: sha256Digest(
+      paperTradingComparisonPersistedRecordDigestInput(finding)
+    ),
+    summary: canonicalResearchEvidenceArtifactSummary(
+      "research_finding",
+      finding
+    ),
+    supporting_record_refs: [
+      { ...finding.research_direction_ref },
+      { ...finding.experiment_run_ref },
+      { ...finding.trading_evaluation_result_ref },
+      ...finding.supporting_record_refs.map((reference) => ({ ...reference }))
+    ].filter((reference, index, references) => references.findIndex(
+      (candidate) => candidate.record_kind === reference.record_kind &&
+        candidate.id === reference.id
+    ) === index),
+    captured_at: finding.created_at,
+    sanitization_policy: "research_evidence_sanitization_v1",
+    sanitization_status: "sanitized",
+    qualification_evidence_hidden: true,
+    secrets_removed: true,
+    host_paths_removed: true,
+    truncated: false,
+    artifact_digest: "",
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  record.artifact_digest = sha256Digest(
+    researchEvidenceArtifactDigestInput(record)
+  );
+  return record;
 }
 
 function sha256Digest(value: string): string {

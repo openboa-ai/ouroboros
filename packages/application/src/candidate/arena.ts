@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import type {
   ArtifactLineageRecord,
   CandidateAdmissionDecision,
@@ -40,8 +41,11 @@ import type {
   ResearchDirectionRecord,
   ResearchBehaviorFingerprintRecord,
   ResearchDirectionKind,
+  ResearchEvidenceArtifactRecord,
   ResearchFindingRecord,
+  ResearchPreflightMethodology,
   ResearchPreflightCommitmentRecord,
+  ResearchTriggerReadModel,
   ResearchWorkerMemoryControlAssignment,
   ResearchWorkerMemoryMode,
   ResearchWorkerCheckpointTerminalReason,
@@ -59,6 +63,8 @@ import {
   deriveCandidateAdmissionResearchWorkerOutcome,
   paperTradingHandoffConformanceDigestInput,
   paperTradingComparisonResearchReleaseHasRuntimeShape,
+  researchEvidenceArtifactHasRuntimeShape,
+  sanitizeResearchEvidenceText,
   verifyCandidateEgressAttestation
 } from "@ouroboros/domain";
 import {
@@ -108,6 +114,7 @@ import type {
   AgentEditInput,
   AgentEditResult,
   ManagedResearchAgent,
+  ResearchWorkerSessionAdapter,
   TradingEvaluationResult,
   TradingResearchNotebookEntry,
   TradingResearchAgentAdapter,
@@ -193,10 +200,21 @@ export interface RunCandidateArenaTickInput {
   now?: () => string;
   repoRoot?: string;
   sourceArtifactDir?: string;
+  researchTrigger?: CandidateArenaResearchTriggerRequest;
+  researchEvidenceSource?: () => Promise<ResearchEvidenceArtifactRecord[]>;
   researchAgent: TradingResearchRuntimeAgent;
+  researchAgentDescriptor?: ManagedResearchAgent | ((
+    agent: TradingResearchRuntimeAgent,
+    direction: ResearchDirectionKind
+  ) => ManagedResearchAgent);
   agentFactory: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
   artifactRunner?: TradingArtifactRunner;
   replayProviderFactory?: ReplayTradingApiProviderFactory;
+}
+
+export interface CandidateArenaResearchTriggerRequest {
+  trigger_kind: "goal" | "time" | "recovery";
+  goal: string;
 }
 
 export interface CandidateArenaTickOutcome {
@@ -288,12 +306,16 @@ export class CandidateArenaRunner {
     this.tickContinuation = continuation;
   }
 
-  start(): "started" | "already_running" {
+  start(
+    triggerKind: CandidateArenaResearchTriggerRequest["trigger_kind"] = "goal"
+  ): "started" | "already_running" {
     if (this.running) {
       return "already_running";
     }
     this.running = true;
-    void this.tick().catch(() => undefined);
+    void this.tick(defaultResearchTriggerRequest(triggerKind)).catch(() =>
+      undefined
+    );
     this.loop();
     return "started";
   }
@@ -310,13 +332,17 @@ export class CandidateArenaRunner {
     return status;
   }
 
-  async tick(): Promise<CandidateArenaTickOutcome> {
+  async tick(
+    researchTrigger: CandidateArenaResearchTriggerRequest =
+      defaultResearchTriggerRequest("goal")
+  ): Promise<CandidateArenaTickOutcome> {
     if (this.activeTick) {
       return this.activeTick;
     }
     this.tickCount += 1;
     this.activeTick = runCandidateArenaTick({
       ...this.input,
+      researchTrigger,
       tickId: `tick-${this.tickCount}`
     }, this.status(), this.tickCount)
       .then((outcome) => this.applyTickContinuation(outcome))
@@ -387,7 +413,7 @@ export class CandidateArenaRunner {
           return;
         }
         try {
-          await this.tick();
+          await this.tick(defaultResearchTriggerRequest("time"));
         } catch {
           // Health retains the failure; the bounded runtime supervisor decides retry policy.
         } finally {
@@ -410,16 +436,145 @@ function candidateArenaRunnerErrorCode(error: unknown): string {
     : "candidate_arena_tick_failed";
 }
 
+function defaultResearchTriggerRequest(
+  triggerKind: CandidateArenaResearchTriggerRequest["trigger_kind"]
+): CandidateArenaResearchTriggerRequest {
+  return {
+    trigger_kind: triggerKind,
+    goal: triggerKind === "time"
+      ? "Run the next bounded Research cycle."
+      : triggerKind === "recovery"
+        ? "Recover the autonomous Research loop with a new bounded session."
+        : "Run one bounded CandidateArena Research cycle."
+  };
+}
+
+async function collectResearchEvidenceArtifacts(input: {
+  store: OuroborosStorePort;
+  evidenceSource?: () => Promise<ResearchEvidenceArtifactRecord[]>;
+  startedAt: string;
+}): Promise<ResearchEvidenceArtifactRecord[]> {
+  if (!input.evidenceSource) return [];
+  const collected = await input.evidenceSource();
+  if (!Array.isArray(collected) || collected.length > 24 ||
+    collected.some((artifact) =>
+      !researchEvidenceArtifactHasRuntimeShape(artifact) ||
+      Date.parse(artifact.captured_at) > Date.parse(input.startedAt)
+    )) {
+    throw new Error("candidate_arena_research_evidence_invalid");
+  }
+  const identities = collected.map((artifact) =>
+    artifact.research_evidence_artifact_id
+  );
+  if (new Set(identities).size !== identities.length) {
+    throw new Error("candidate_arena_research_evidence_duplicate");
+  }
+  const recorded: ResearchEvidenceArtifactRecord[] = [];
+  for (const artifact of [...collected].sort((left, right) =>
+    right.captured_at.localeCompare(left.captured_at) ||
+    left.research_evidence_artifact_id.localeCompare(
+      right.research_evidence_artifact_id
+    )
+  )) {
+    recorded.push(await withArenaStoreMutation(input.store, () =>
+      input.store.recordResearchEvidenceArtifact(artifact)
+    ));
+  }
+  return recorded;
+}
+
+async function resolveResearchTrigger(input: {
+  store: OuroborosStorePort;
+  tickId: string;
+  startedAt: string;
+  requested?: CandidateArenaResearchTriggerRequest;
+  evidenceArtifacts: ResearchEvidenceArtifactRecord[];
+}): Promise<ResearchTriggerReadModel | undefined> {
+  if (!input.requested) return undefined;
+  const goal = sanitizeResearchEvidenceText(input.requested.goal)
+    .slice(0, 1_000);
+  if (!goal) {
+    throw new Error("candidate_arena_research_trigger_goal_invalid");
+  }
+  const base: ResearchTriggerReadModel = {
+    trigger_kind: input.requested.trigger_kind,
+    trigger_id: `research-trigger-${safeId(input.tickId)}`,
+    goal,
+    triggered_at: input.startedAt,
+    authority_status: "research_only"
+  };
+  if (input.requested.trigger_kind !== "time" ||
+    input.evidenceArtifacts.length === 0) {
+    return base;
+  }
+  const [commitments, allocations] = await Promise.all([
+    input.store.listResearchPreflightCommitments(),
+    input.store.listCandidateArenaResearchAllocations()
+  ]);
+  const newEvidence = input.evidenceArtifacts.find((artifact) =>
+    !allocations.some((allocation) =>
+      allocation.trigger?.trigger_kind === "arena_event" &&
+      allocation.trigger.evidence_artifact_digest === artifact.artifact_digest
+    ) && !commitments.some((commitment) =>
+      commitment.methodology?.evidence_bindings.some((binding) =>
+        binding.evidence_artifact_digest === artifact.artifact_digest
+      )
+    )
+  );
+  return newEvidence
+    ? {
+        ...base,
+        trigger_kind: "arena_event",
+        goal: "Use newly captured Arena evidence in this bounded Research cycle.",
+        source_ref: { ...newEvidence.artifact_ref },
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: newEvidence.research_evidence_artifact_id
+        },
+        evidence_artifact_digest: newEvidence.artifact_digest
+      }
+    : base;
+}
+
+function researchPreflightMethodology(input: {
+  direction: ResearchDirectionRecord;
+  sourceCandidateId: string;
+  trigger?: ResearchTriggerReadModel;
+  evidenceArtifacts: ResearchEvidenceArtifactRecord[];
+}): ResearchPreflightMethodology {
+  const triggerGoal = input.trigger?.goal ??
+    "Run one bounded CandidateArena Research cycle.";
+  return {
+    direction_kind: input.direction.direction_kind,
+    hypothesis: sanitizeResearchEvidenceText(
+      `${triggerGoal} A differentiated ${input.direction.direction_kind} ` +
+      "candidate may improve external paper evidence without widening authority."
+    ).slice(0, 2_000),
+    method: sanitizeResearchEvidenceText(input.direction.prompt_seed)
+      .slice(0, 2_000),
+    source_candidate_id: input.sourceCandidateId,
+    evidence_bindings: input.evidenceArtifacts.map((artifact) => ({
+      evidence_artifact_ref: {
+        record_kind: "research_evidence_artifact",
+        id: artifact.research_evidence_artifact_id
+      },
+      evidence_artifact_digest: artifact.artifact_digest
+    }))
+  };
+}
+
 export function candidateArenaRunnerTickCountFromTicks(
-  ticks: Pick<CandidateArenaTickRecord, "tick_id">[]
+  ticks: Pick<CandidateArenaTickRecord, "tick_id">[],
+  allocations: Pick<CandidateArenaResearchAllocationRecord, "tick_id">[] = []
 ): number {
-  const highestNumericTickId = ticks.reduce((highest, tick) => {
+  const highestNumericTickId = [...ticks, ...allocations]
+    .reduce((highest, tick) => {
     const match = /^tick-(\d+)$/.exec(tick.tick_id);
     if (!match) {
       return highest;
     }
     return Math.max(highest, Number(match[1] ?? 0));
-  }, 0);
+    }, 0);
   return Math.max(ticks.length, highestNumericTickId);
 }
 
@@ -439,6 +594,18 @@ export async function runCandidateArenaTick(
       recovered_at: startedAt
     })
   );
+  const researchEvidenceArtifacts = await collectResearchEvidenceArtifacts({
+    store: input.store,
+    evidenceSource: input.researchEvidenceSource,
+    startedAt
+  });
+  const researchTrigger = await resolveResearchTrigger({
+    store: input.store,
+    tickId,
+    startedAt,
+    requested: input.researchTrigger ?? defaultResearchTriggerRequest("goal"),
+    evidenceArtifacts: researchEvidenceArtifacts
+  });
   const sourceSelection = await sourceCandidate(
     input.store,
     input.sourceSystemId,
@@ -465,7 +632,8 @@ export async function runCandidateArenaTick(
       allocationPolicyBasis,
       explicitDirections: input.directions,
       findingClusters: priorArena.finding_clusters,
-      latestTicks: priorArena.latest_ticks
+      latestTicks: priorArena.latest_ticks,
+      trigger: researchTrigger
     })
   );
   const selections = allocation.selected_directions;
@@ -483,7 +651,9 @@ export async function runCandidateArenaTick(
         direction: selection.direction_kind,
         tickId,
         allocation,
-        allocationSelection: selection
+        allocationSelection: selection,
+        researchTriggerRecord: researchTrigger,
+        researchEvidenceArtifacts
       })
     })
   );
@@ -792,6 +962,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   tickId: string;
   allocation: CandidateArenaResearchAllocationRecord;
   allocationSelection: CandidateArenaResearchAllocationSelection;
+  researchTriggerRecord?: ResearchTriggerReadModel;
+  researchEvidenceArtifacts: ResearchEvidenceArtifactRecord[];
 }): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
@@ -809,17 +981,18 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   const sourceManifest = await readTradingSystemManifest(seedDir);
   assertCandidateArenaResearchManifest(sourceManifest);
   const sourceArtifact = await arenaEntrypointArtifact(seedDir, sourceManifest);
-  const adapter = input.researchAgent === "fixture"
-    ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
-    : input.agentFactory(input.researchAgent);
+  const agentDescriptor = resolveCandidateArenaResearchAgentDescriptor(
+    input,
+    input.direction
+  );
   const requestedCommittedAt = candidateArenaNow(input.now);
   const memoryMode = input.researchMemoryMode ?? "released_memory";
   const preflight = await withArenaStoreMutation(input.store, async () => {
     const lifecycle = await resolveResearchWorkerLifecycle({
       store: input.store,
       direction_kind: input.direction,
-      agent: adapter.agent,
-      provider_kind: researchWorkerProviderKind(adapter.agent),
+      agent: agentDescriptor,
+      provider_kind: researchWorkerProviderKind(agentDescriptor),
       candidate_arena_tick_id: input.tickId,
       created_at: requestedCommittedAt
     });
@@ -844,7 +1017,9 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       input.store,
       input.direction,
       input.allocation,
-      input.allocationSelection
+      input.allocationSelection,
+      input.researchTriggerRecord,
+      input.researchEvidenceArtifacts
     );
     const memoryProjection = buildResearchWorkerMemoryProjection({
       mode: memoryMode,
@@ -885,6 +1060,12 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       source_artifact_digest: input.researchMemoryControlAssignment
         ? sourceArtifact.artifactDigest
         : sourceSystemCode.artifact_digest,
+      methodology: researchPreflightMethodology({
+        direction: lifecycle.direction,
+        sourceCandidateId: input.source.candidate_id,
+        trigger: input.researchTriggerRecord,
+        evidenceArtifacts: input.researchEvidenceArtifacts
+      }),
       memory_policy: memoryProjection.policy,
       development_submission_limit: input.allocationSelection.experiment_budget,
       committed_at: committedAt,
@@ -913,6 +1094,17 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       closed_at: candidateArenaNow(input.now)
     });
   try {
+    const createdAdapter = input.researchAgent === "fixture"
+      ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
+      : input.agentFactory(input.researchAgent);
+    assertCandidateArenaResearchAgentDescriptor(
+      createdAdapter.agent,
+      agentDescriptor
+    );
+    const adapter = bindCandidateArenaResearchAgentDescriptor(
+      createdAdapter,
+      agentDescriptor
+    );
     const research = await runTradingResearchLoop({
       repo_root: repoRoot,
       artifact_source_dir: artifactSourceDir,
@@ -1075,6 +1267,72 @@ async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => 
   return current;
 }
 
+function resolveCandidateArenaResearchAgentDescriptor(
+  input: RunCandidateArenaTickInput,
+  direction: ResearchDirectionKind
+): ManagedResearchAgent {
+  const configured = typeof input.researchAgentDescriptor === "function"
+    ? input.researchAgentDescriptor(input.researchAgent, direction)
+    : input.researchAgentDescriptor;
+  const agent = configured ?? (input.researchAgent === "fixture"
+    ? directionalFixtureResearchAgentDescriptor(direction)
+    : defaultCodexResearchAgentDescriptor());
+  if (!agent || typeof agent.id !== "string" || !agent.id.trim() ||
+    !["codex", "claude_code", "fixture"].includes(agent.provider) ||
+    !["artifact_workspace_only", "fixture_only"].includes(
+      agent.permission_policy
+    ) || (agent.model !== undefined && (
+      typeof agent.model !== "string" || !agent.model.trim()
+    ))) {
+    throw new Error("candidate_arena_research_agent_descriptor_invalid");
+  }
+  return structuredClone(agent);
+}
+
+function assertCandidateArenaResearchAgentDescriptor(
+  actual: ManagedResearchAgent,
+  committed: ManagedResearchAgent
+): void {
+  if (!isDeepStrictEqual(actual, committed)) {
+    throw new Error("candidate_arena_research_agent_descriptor_mismatch");
+  }
+}
+
+function bindCandidateArenaResearchAgentDescriptor(
+  adapter: TradingResearchAgentAdapter,
+  agent: ManagedResearchAgent
+): TradingResearchAgentAdapter {
+  const sessionAdapter = adapter as TradingResearchAgentAdapter &
+    Partial<ResearchWorkerSessionAdapter>;
+  return {
+    agent: structuredClone(agent),
+    improveArtifact: adapter.improveArtifact.bind(adapter),
+    ...(typeof sessionAdapter.runSession === "function"
+      ? { runSession: sessionAdapter.runSession.bind(adapter) }
+      : {})
+  } as TradingResearchAgentAdapter;
+}
+
+function directionalFixtureResearchAgentDescriptor(
+  direction: ResearchDirectionKind
+): ManagedResearchAgent {
+  return {
+    id: `managed-agent-fixture-arena-${safeId(direction)}`,
+    provider: "fixture",
+    model: `scripted-arena-${direction}`,
+    permission_policy: "fixture_only"
+  };
+}
+
+function defaultCodexResearchAgentDescriptor(): ManagedResearchAgent {
+  return {
+    id: "managed-agent-codex-trading-research",
+    provider: "codex",
+    model: undefined,
+    permission_policy: "artifact_workspace_only"
+  };
+}
+
 function researchWorkerProviderKind(
   agent: ManagedResearchAgent
 ): NonNullable<ResearchWorkerRecord["provider_kind"]> {
@@ -1182,12 +1440,7 @@ class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResear
 
   constructor(private readonly direction: ResearchDirectionKind) {
     super();
-    this.agent = {
-      id: `managed-agent-fixture-arena-${safeId(direction)}`,
-      provider: "fixture",
-      model: `scripted-arena-${direction}`,
-      permission_policy: "fixture_only"
-    };
+    this.agent = directionalFixtureResearchAgentDescriptor(direction);
   }
 
   override async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
@@ -2228,7 +2481,9 @@ async function arenaContext(
   store: OuroborosStorePort,
   direction: ResearchDirectionKind,
   allocation: CandidateArenaResearchAllocationRecord,
-  allocationSelection: CandidateArenaResearchAllocationSelection
+  allocationSelection: CandidateArenaResearchAllocationSelection,
+  researchTrigger: ResearchTriggerReadModel | undefined,
+  evidenceArtifacts: ResearchEvidenceArtifactRecord[]
 ): Promise<{
   currentContext: Record<string, unknown>;
   memoryContext: Record<string, unknown>;
@@ -2259,6 +2514,21 @@ async function arenaContext(
         priority: allocationSelection.priority,
         experiment_budget: allocationSelection.experiment_budget
       },
+      ...(researchTrigger
+        ? { research_trigger: structuredClone(researchTrigger) }
+        : {}),
+      ...(evidenceArtifacts.length > 0
+        ? {
+            research_evidence_artifacts: evidenceArtifacts.map((artifact) => ({
+              evidence_artifact_id: artifact.research_evidence_artifact_id,
+              source_kind: artifact.source_kind,
+              subject_ref: { ...artifact.subject_ref },
+              source_ref: { ...artifact.artifact_ref },
+              captured_at: artifact.captured_at,
+              summary: artifact.summary
+            }))
+          }
+        : {}),
       task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs."
     },
     memoryContext: {

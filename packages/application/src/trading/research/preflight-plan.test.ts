@@ -105,6 +105,55 @@ describe("ResearchPreflight evaluator-owned plan", () => {
     );
   });
 
+  it("binds methodology and exact evidence before provider effects", () => {
+    const methodology = {
+      direction_kind: "trend_following" as const,
+      hypothesis: "Recent paper losses may fall with a volatility-aware exit.",
+      method: "Test one bounded volatility-aware trend revision.",
+      source_candidate_id: "candidate-a",
+      evidence_bindings: [{
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: "research-evidence-a"
+        },
+        evidence_artifact_digest: digest("research-evidence-a")
+      }]
+    };
+    const plan = buildResearchPreflightPlan({
+      ...planInput(seed(27)),
+      methodology
+    } as Parameters<typeof buildResearchPreflightPlan>[0]);
+    const changed = buildResearchPreflightPlan({
+      ...planInput(seed(27)),
+      methodology: {
+        ...methodology,
+        evidence_bindings: [{
+          ...methodology.evidence_bindings[0],
+          evidence_artifact_digest: digest("changed-evidence")
+        }]
+      }
+    } as Parameters<typeof buildResearchPreflightPlan>[0]);
+
+    expect(plan.commitment.methodology).toEqual(methodology);
+    expect(changed.commitment.commitment_digest).not.toBe(
+      plan.commitment.commitment_digest
+    );
+  });
+
+  it.each([
+    { hypothesis: "token=methodology-secret", method: "Bounded method." },
+    { hypothesis: "Bounded hypothesis.", method: "/Users/private-owner/method" }
+  ])("rejects unsanitized methodology before commitment", (methodology) => {
+    expect(() => buildResearchPreflightPlan({
+      ...planInput(seed(28)),
+      methodology: {
+        direction_kind: "trend_following",
+        ...methodology,
+        evidence_bindings: []
+      }
+    })).toThrow("methodology");
+  });
+
   it("reuses one exact evaluator opportunity across different arm plans", () => {
     const opportunity = createResearchPreflightEvaluationOpportunity({
       evaluator_seed: seed(29),

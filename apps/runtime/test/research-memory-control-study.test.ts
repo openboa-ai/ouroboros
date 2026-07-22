@@ -710,6 +710,7 @@ describe("ResearchMemoryControlStudy runtime", () => {
       codex: {
         ...loaded.codex,
         command: commandPath,
+        model: "codex",
         timeout_ms: 5_000,
         reasoning_effort: "low" as const
       }

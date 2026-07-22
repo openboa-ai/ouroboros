@@ -4,9 +4,11 @@ import {
   paperTradingComparisonPersistedRecordDigestInput,
   researchPreflightCommitmentDigestInput,
   researchPreflightCommitmentHasRuntimeShape,
+  researchPreflightMethodologyHasRuntimeShape,
   researchWorkerMemoryPolicyHasRuntimeShape,
   type Ref,
   type ResearchPreflightCommitmentRecord,
+  type ResearchPreflightMethodology,
   type ResearchWorkerMemoryPolicy
 } from "@ouroboros/domain";
 import { researchDevelopmentReplayScenarios } from "./replay-trading-api-provider";
@@ -21,6 +23,7 @@ export interface BuildResearchPreflightPlanInput {
   source_system_code_ref: Ref;
   source_artifact_digest: string;
   memory_policy?: ResearchWorkerMemoryPolicy;
+  methodology?: ResearchPreflightMethodology;
   development_submission_limit: number;
   committed_at: string;
   evaluator_seed: Uint8Array;
@@ -183,6 +186,9 @@ export function buildResearchPreflightPlan(
     sealed_suite_digest: sealedAdmissionSuite.suite_digest,
     ...(input.memory_policy
       ? { memory_policy: input.memory_policy }
+      : {}),
+    ...(input.methodology
+      ? { methodology: input.methodology }
       : {})
   })));
   const commitment: ResearchPreflightCommitmentRecord = {
@@ -198,6 +204,9 @@ export function buildResearchPreflightPlan(
     source_artifact_digest: input.source_artifact_digest,
     ...(input.memory_policy
       ? { memory_policy: structuredClone(input.memory_policy) }
+      : {}),
+    ...(input.methodology
+      ? { methodology: structuredClone(input.methodology) }
       : {}),
     development_policy: {
       suite_version: "research_development_replay_v1",
@@ -317,6 +326,9 @@ function planContext(input: BuildResearchPreflightPlanInput): string {
     research_allocation_digest: input.research_allocation_digest,
     source_system_code_ref: input.source_system_code_ref,
     source_artifact_digest: input.source_artifact_digest,
+    ...(input.methodology
+      ? { methodology: input.methodology }
+      : {}),
     development_submission_limit: input.development_submission_limit,
     committed_at: input.committed_at
   });
@@ -364,6 +376,10 @@ function assertBuildInput(input: BuildResearchPreflightPlanInput): void {
         input.memory_policy !== undefined &&
           !researchWorkerMemoryPolicyHasRuntimeShape(input.memory_policy)
           ? "memory_policy"
+          : undefined,
+        input.methodology !== undefined &&
+          !researchPreflightMethodologyHasRuntimeShape(input.methodology)
+          ? "methodology"
           : undefined,
         input.evaluation_opportunity !== undefined &&
           !researchPreflightEvaluationOpportunityIsValid(

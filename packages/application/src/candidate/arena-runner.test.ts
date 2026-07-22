@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { OuroborosStorePort } from "../ports/store";
-import { CandidateArenaRunner } from "./arena";
+import {
+  CandidateArenaRunner,
+  candidateArenaRunnerTickCountFromTicks
+} from "./arena";
 
 describe("CandidateArenaRunner health", () => {
+  it("restores sequence past allocations orphaned before tick closure", () => {
+    expect(candidateArenaRunnerTickCountFromTicks(
+      [{ tick_id: "tick-1" }],
+      [{ tick_id: "tick-4" }]
+    )).toBe(4);
+  });
+
   it("reports consecutive tick failure without converting it into trading authority", async () => {
     const runner = new CandidateArenaRunner({
       store: {} as OuroborosStorePort,

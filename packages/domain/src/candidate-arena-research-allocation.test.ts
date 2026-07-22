@@ -3,6 +3,7 @@ import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
+  sanitizeResearchEvidenceText,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaResearchAllocationSignal
 } from "./index";
@@ -32,6 +33,35 @@ describe("CandidateArenaResearchAllocation", () => {
     allocation.allocation_policy_basis = approvedGeneralizationPolicyBasis();
 
     expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(true);
+  });
+
+  it("binds one exact Research trigger into allocation identity", () => {
+    const allocation = {
+      ...adaptiveAllocationFixture(),
+      trigger: {
+        trigger_kind: "arena_event",
+        trigger_id: "research-trigger-adaptive-tick-2",
+        goal: "Use the latest Arena evidence in a bounded Research tick.",
+        triggered_at: "2026-07-12T09:59:00.000Z",
+        source_ref: {
+          record_kind: "paper_trading_evaluation",
+          id: "paper-evaluation-a"
+        },
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: "research-evidence-a"
+        },
+        evidence_artifact_digest: `sha256:${"e".repeat(64)}`,
+        authority_status: "research_only"
+      }
+    } as CandidateArenaResearchAllocationRecord;
+
+    expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(true);
+    const changed = structuredClone(allocation);
+    changed.trigger!.evidence_artifact_digest = `sha256:${"f".repeat(64)}`;
+    expect(candidateArenaResearchAllocationDigestInput(changed)).not.toBe(
+      candidateArenaResearchAllocationDigestInput(allocation)
+    );
   });
 
   it("freezes every scheduling and authority field in digest input", () => {
@@ -152,6 +182,37 @@ describe("CandidateArenaResearchAllocation", () => {
     const allocation = explicitAllocationFixture() as any;
     mutate(allocation);
     expect(candidateArenaResearchAllocationHasRuntimeShape(allocation)).toBe(false);
+  });
+
+  it("removes credentials, key material, URLs, and host paths from research text", () => {
+    const keyLabel = ["PRIVATE", "KEY"].join(" ");
+    const unsafe = [
+      '{"apiKey":"json-secret","password":"password-secret"}',
+      "Authorization: Basic YmFzaWMtc2VjcmV0",
+      "Authorization: Bearer bearer-secret",
+      `-----BEGIN ${keyLabel}-----\nkey-body-secret\n-----END ${keyLabel}-----`,
+      "https://url-user:url-secret@example.test/private?token=query-secret",
+      "/Users/private-owner/project/evidence.json",
+      "C:\\Users\\private-owner\\project\\evidence.json"
+    ].join("\n");
+
+    const sanitized = sanitizeResearchEvidenceText(unsafe);
+
+    for (const secret of [
+      "json-secret",
+      "password-secret",
+      "YmFzaWMtc2VjcmV0",
+      "bearer-secret",
+      "key-body-secret",
+      "url-secret",
+      "query-secret",
+      "private-owner"
+    ]) {
+      expect(sanitized).not.toContain(secret);
+    }
+    expect(sanitized).toContain("[redacted]");
+    expect(sanitized).toContain("[external-url]");
+    expect(sanitized).toContain("[private-path]");
   });
 });
 

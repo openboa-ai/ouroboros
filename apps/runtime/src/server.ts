@@ -12,6 +12,7 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
+  ResearchDirectionKind,
   ResearchControlStudyExecutionLeaseOwner,
   RunControlAuditInput,
   SandboxAdapterKind,
@@ -89,6 +90,10 @@ import {
   type AgentProfileExecFile
 } from "@ouroboros/application/agent/profiles";
 import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import { ResearchEvidenceArtifactService } from
+  "@ouroboros/application/candidate/research-evidence-artifacts";
+import { ArenaOperationsProjectionService } from
+  "@ouroboros/application/services/arena-operations";
 import {
   ResearchAllocationPolicyDecisionCoordinator,
   type ResearchAllocationPolicyDecisionCoordinatorLifecycle
@@ -167,6 +172,10 @@ export interface BuildServerOptions {
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
   tradingResearchAgentFactory?: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
+  tradingResearchAgentDescriptor?: (
+    agent: TradingResearchRuntimeAgent,
+    direction: ResearchDirectionKind
+  ) => ManagedResearchAgent;
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
   agentProfileExecFile?: AgentProfileExecFile;
   candidateArenaTickIntervalMs?: number;
@@ -428,13 +437,29 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         hostId: runtimeProcessHostId
       });
     });
-  const candidateArenaRunner = new CandidateArenaRunner({
-    store,
-    researchAgent: tradingResearchRuntimeConfig.default_agent,
-    agentFactory: tradingResearchAgentFactory,
-    artifactRunner: options.candidateArenaArtifactRunner,
-    replayProviderFactory: options.candidateArenaReplayProviderFactory
-  }, options.candidateArenaTickIntervalMs);
+  const tradingResearchAgentDescriptor = options.tradingResearchAgentDescriptor ??
+    (options.tradingResearchAgentFactory
+      ? undefined
+      : (agent: TradingResearchRuntimeAgent, direction: ResearchDirectionKind) => {
+          if (options.tradingResearchAgentAdapter &&
+            options.tradingResearchAgentAdapter.agent.provider === agent) {
+            return structuredClone(options.tradingResearchAgentAdapter.agent);
+          }
+          if (agent === "fixture") {
+            return {
+              id: `managed-agent-fixture-arena-${safeId(direction)}`,
+              provider: "fixture",
+              model: `scripted-arena-${direction}`,
+              permission_policy: "fixture_only"
+            };
+          }
+          return {
+            id: "managed-agent-codex-trading-research",
+            provider: "codex",
+            model: tradingResearchRuntimeConfig.codex.model,
+            permission_policy: "artifact_workspace_only"
+          };
+        });
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
@@ -478,6 +503,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       : { capacity: options.arenaPaperCapacity })
   });
   options.onArenaPaperRuntimeCreated?.(arenaPaperRuntime);
+  const arenaOperationsProjection = new ArenaOperationsProjectionService({
+    store,
+    arenaPaperRuntime
+  });
+  const researchEvidenceArtifacts = new ResearchEvidenceArtifactService({
+    store,
+    arenaOperations: arenaOperationsProjection
+  });
+  const candidateArenaRunner = new CandidateArenaRunner({
+    store,
+    researchAgent: tradingResearchRuntimeConfig.default_agent,
+    ...(tradingResearchAgentDescriptor
+      ? { researchAgentDescriptor: tradingResearchAgentDescriptor }
+      : {}),
+    agentFactory: tradingResearchAgentFactory,
+    artifactRunner: options.candidateArenaArtifactRunner,
+    replayProviderFactory: options.candidateArenaReplayProviderFactory,
+    researchEvidenceSource: () => researchEvidenceArtifacts.collect()
+  }, options.candidateArenaTickIntervalMs);
   const startArenaPaperCandidate = async (
     candidateId: string,
     payload: Record<string, unknown> | undefined

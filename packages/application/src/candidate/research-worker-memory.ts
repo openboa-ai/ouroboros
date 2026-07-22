@@ -18,6 +18,8 @@ const RESEARCH_WORKER_ARENA_CONTEXT_KEYS = new Set([
   "requested_direction",
   "current_research_allocation",
   "current_research_selection",
+  "research_trigger",
+  "research_evidence_artifacts",
   "research_population_diversity",
   "task",
   "leaderboard",

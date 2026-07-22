@@ -1502,6 +1502,252 @@ export interface ResearchWorkerRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
+export interface ResearchEvidenceArtifactRecord extends BaseRecord {
+  record_kind: "research_evidence_artifact";
+  research_evidence_artifact_id: string;
+  source_kind: Exclude<
+    ResearchEvidenceArtifactSourceKind,
+    "live_result" | "live_trace"
+  >;
+  subject_ref: Ref;
+  artifact_ref: Ref;
+  source_digest: string;
+  summary: string;
+  supporting_record_refs: Ref[];
+  captured_at: string;
+  sanitization_policy: "research_evidence_sanitization_v1";
+  sanitization_status: "sanitized";
+  qualification_evidence_hidden: true;
+  secrets_removed: true;
+  host_paths_removed: true;
+  truncated: boolean;
+  artifact_digest: string;
+  promotion_authority: false;
+  order_submission_authority: false;
+  live_exchange_authority: false;
+  authority_status: "research_only";
+}
+
+export interface ResearchEvidenceBinding {
+  evidence_artifact_ref: Ref & {
+    record_kind: "research_evidence_artifact";
+  };
+  evidence_artifact_digest: string;
+}
+
+export interface ResearchPreflightMethodology {
+  direction_kind: ResearchDirectionKind;
+  hypothesis: string;
+  method: string;
+  source_candidate_id?: string;
+  evidence_bindings: ResearchEvidenceBinding[];
+}
+
+export function researchEvidenceArtifactDigestInput(
+  record: ResearchEvidenceArtifactRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    research_evidence_artifact_id: _id,
+    artifact_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function researchEvidenceArtifactHasRuntimeShape(
+  value: unknown
+): value is ResearchEvidenceArtifactRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_evidence_artifact_id",
+    "source_kind",
+    "subject_ref",
+    "artifact_ref",
+    "source_digest",
+    "summary",
+    "supporting_record_refs",
+    "captured_at",
+    "sanitization_policy",
+    "sanitization_status",
+    "qualification_evidence_hidden",
+    "secrets_removed",
+    "host_paths_removed",
+    "truncated",
+    "artifact_digest",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ])) {
+    return false;
+  }
+  return value.record_kind === "research_evidence_artifact" &&
+    value.version === 1 &&
+    comparisonString(value.research_evidence_artifact_id) &&
+    researchEvidenceArtifactSourceKind(value.source_kind) &&
+    comparisonRef(value.subject_ref) &&
+    comparisonRef(value.artifact_ref) &&
+    researchEvidenceArtifactRefMatchesSource(
+      value.source_kind,
+      value.artifact_ref
+    ) &&
+    comparisonDigest(value.source_digest) &&
+    comparisonString(value.summary) &&
+    value.summary.length <= 4_000 &&
+    value.summary === sanitizeResearchEvidenceText(value.summary) &&
+    Array.isArray(value.supporting_record_refs) &&
+    value.supporting_record_refs.every((item) => comparisonRef(item)) &&
+    researchRefsUnique(value.supporting_record_refs) &&
+    comparisonIso(value.captured_at) &&
+    value.sanitization_policy === "research_evidence_sanitization_v1" &&
+    value.sanitization_status === "sanitized" &&
+    value.qualification_evidence_hidden === true &&
+    value.secrets_removed === true &&
+    value.host_paths_removed === true &&
+    typeof value.truncated === "boolean" &&
+    comparisonDigest(value.artifact_digest) &&
+    value.promotion_authority === false &&
+    value.order_submission_authority === false &&
+    value.live_exchange_authority === false &&
+    value.authority_status === "research_only";
+}
+
+function researchEvidenceArtifactSourceKind(
+  value: unknown
+): value is ResearchEvidenceArtifactRecord["source_kind"] {
+  return value === "arena_paper_result" || value === "arena_trace" ||
+    value === "arena_failure" || value === "research_finding";
+}
+
+function researchEvidenceArtifactRefMatchesSource(
+  sourceKind: unknown,
+  value: unknown
+): boolean {
+  if (sourceKind === "arena_paper_result" || sourceKind === "arena_failure") {
+    return comparisonRef(value, "paper_trading_evaluation");
+  }
+  if (sourceKind === "arena_trace") {
+    return comparisonRef(value, "paper_trading_observation");
+  }
+  if (sourceKind === "research_finding") {
+    return comparisonRef(value, "research_finding");
+  }
+  return false;
+}
+
+export function sanitizeResearchEvidenceText(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(
+      /-----BEGIN ([^-\r\n]+)-----[\s\S]*?-----END \1-----/g,
+      "[redacted-key-material]"
+    )
+    .replace(
+      /\b((?:Proxy-)?Authorization\s*:\s*)(?:Basic|Bearer)\s+[^\s,;]+/gi,
+      "$1[redacted]"
+    )
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted]")
+    .replace(/\b(?:https?|wss?|file):\/\/[^\s<>"']+/gi, "[external-url]")
+    .replace(/(^|[^\\])\\\\(?!\\)[^\s<>"']+/g, "$1[private-path]")
+    .replace(/\b[A-Za-z]:[\\\/](?![\\\/])[^\s<>"']+/g, "[private-path]")
+    .replace(/(^|[^A-Za-z0-9._~\/-])\/(?!\/)[^\s<>"']+/g, "$1[private-path]")
+    .replace(
+      /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
+      "$1$2[redacted]"
+    );
+}
+
+export function canonicalResearchEvidenceArtifactSummary(
+  sourceKind: ResearchEvidenceArtifactRecord["source_kind"],
+  source: ResearchFindingRecord | PaperTradingObservationRecord |
+    PaperTradingEvaluationRecord
+): string {
+  if (sourceKind === "arena_paper_result" &&
+    source.record_kind === "paper_trading_evaluation") {
+    return sanitizeResearchEvidenceText([
+      `Arena paper result: net ${source.latest_score.net_revenue_usdt} USDT`,
+      `revenue ${source.latest_score.revenue_usdt} USDT`,
+      `cost ${source.latest_score.cost_usdt} USDT`,
+      `return ${source.latest_score.net_return_pct}%`,
+      `observations ${source.observation_count}`,
+      `status ${source.status}`
+    ].join("; ") + ".");
+  }
+  if (sourceKind === "arena_failure" &&
+    source.record_kind === "paper_trading_evaluation") {
+    return sanitizeResearchEvidenceText(
+      `Arena paper failure: status ${source.status}; ` +
+        `observations ${source.observation_count}.`
+    );
+  }
+  if (sourceKind === "arena_trace" &&
+    source.record_kind === "paper_trading_observation") {
+    return sanitizeResearchEvidenceText([
+      `Paper observation ${source.sequence}`,
+      `status ${source.status}`,
+      `decision ${source.decision?.decision_kind ?? "none"}`,
+      `net ${source.cumulative_score.net_revenue_usdt} USDT`,
+      `cost ${source.cumulative_score.cost_usdt} USDT`,
+      `return ${source.cumulative_score.net_return_pct}%`
+    ].join("; ") + ".");
+  }
+  if (sourceKind === "research_finding" &&
+    source.record_kind === "research_finding") {
+    return sanitizeResearchEvidenceText(
+      `${source.finding_kind} ResearchFinding recorded for its bound ` +
+        "worker and direction."
+    );
+  }
+  throw new Error("research_evidence_artifact_summary_source_mismatch");
+}
+
+export function researchPreflightMethodologyHasRuntimeShape(
+  value: unknown
+): value is ResearchPreflightMethodology {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "direction_kind",
+    "hypothesis",
+    "method",
+    ...(value.source_candidate_id === undefined
+      ? []
+      : ["source_candidate_id"]),
+    "evidence_bindings"
+  ]) || !candidateArenaResearchDirection(value.direction_kind) ||
+    !comparisonString(value.hypothesis) || value.hypothesis.length > 2_000 ||
+    value.hypothesis !== sanitizeResearchEvidenceText(value.hypothesis) ||
+    !comparisonString(value.method) || value.method.length > 2_000 ||
+    value.method !== sanitizeResearchEvidenceText(value.method) ||
+    (value.source_candidate_id !== undefined &&
+      !comparisonString(value.source_candidate_id)) ||
+    !Array.isArray(value.evidence_bindings) ||
+    value.evidence_bindings.length > 24) {
+    return false;
+  }
+  const bindings = value.evidence_bindings;
+  return bindings.every((binding) =>
+    comparisonObject(binding) && comparisonHasExactKeys(binding, [
+      "evidence_artifact_ref",
+      "evidence_artifact_digest"
+    ]) && comparisonRef(
+      binding.evidence_artifact_ref,
+      "research_evidence_artifact"
+    ) && comparisonDigest(binding.evidence_artifact_digest)
+  ) && researchRefsUnique(bindings.map((binding) =>
+    binding.evidence_artifact_ref
+  ));
+}
+
+function researchRefsUnique(refs: unknown[]): boolean {
+  const keys = refs.map((item) => {
+    if (!comparisonObject(item)) return "";
+    return `${String(item.record_kind)}:${String(item.id)}`;
+  });
+  return keys.every(Boolean) && new Set(keys).size === keys.length;
+}
+
 export interface TradingEvaluationTaskRecord extends BaseRecord {
   record_kind: "trading_evaluation_task";
   trading_evaluation_task_id: string;
@@ -1577,6 +1823,7 @@ export interface ResearchPreflightCommitmentRecord extends BaseRecord {
   source_system_code_ref: Ref;
   source_artifact_digest: string;
   memory_policy?: ResearchWorkerMemoryPolicy;
+  methodology?: ResearchPreflightMethodology;
   development_policy: {
     suite_version: "research_development_replay_v1";
     suite_digest: string;
@@ -2000,6 +2247,7 @@ export function researchPreflightCommitmentHasRuntimeShape(
 ): value is ResearchPreflightCommitmentRecord {
   if (!comparisonObject(value)) return false;
   const hasMemoryPolicy = Object.hasOwn(value, "memory_policy");
+  const hasMethodology = Object.hasOwn(value, "methodology");
   if (!comparisonHasExactKeys(value, [
     "record_kind",
     "version",
@@ -2012,6 +2260,7 @@ export function researchPreflightCommitmentHasRuntimeShape(
     "source_system_code_ref",
     "source_artifact_digest",
     ...(hasMemoryPolicy ? ["memory_policy"] : []),
+    ...(hasMethodology ? ["methodology"] : []),
     "development_policy",
     "sealed_admission_policy",
     "committed_at",
@@ -2036,6 +2285,9 @@ export function researchPreflightCommitmentHasRuntimeShape(
     !researchPreflightSha256Digest(value.source_artifact_digest) ||
     (hasMemoryPolicy && !researchWorkerMemoryPolicyHasRuntimeShape(
       value.memory_policy
+    )) ||
+    (hasMethodology && !researchPreflightMethodologyHasRuntimeShape(
+      value.methodology
     )) ||
     !researchPreflightDevelopmentPolicyHasRuntimeShape(value.development_policy) ||
     !researchPreflightSealedPolicyHasRuntimeShape(value.sealed_admission_policy) ||
@@ -7043,6 +7295,7 @@ export interface CandidateArenaResearchAllocationRecord extends BaseRecord {
   tick_id: string;
   allocation_mode: CandidateArenaResearchAllocationMode;
   allocation_policy_basis: CandidateArenaResearchAllocationPolicyBasis;
+  trigger?: ResearchTriggerReadModel;
   policy: CandidateArenaResearchAllocationPolicy;
   source_tick_refs: Ref[];
   signal_snapshot: CandidateArenaResearchAllocationSignal[];
@@ -7062,6 +7315,7 @@ export interface CandidateArenaResearchAllocationReadModel {
   tick_id: string;
   allocation_mode: CandidateArenaResearchAllocationMode;
   allocation_policy_basis: CandidateArenaResearchAllocationPolicyBasis;
+  trigger?: ResearchTriggerReadModel;
   policy: CandidateArenaResearchAllocationPolicy;
   selected_directions: CandidateArenaResearchAllocationSelection[];
   deferred_directions: ResearchDirectionKind[];
@@ -7098,16 +7352,60 @@ export function candidateArenaResearchAllocationDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function researchTriggerHasRuntimeShape(
+  value: unknown
+): value is ResearchTriggerReadModel {
+  if (!comparisonObject(value)) return false;
+  const hasSource = Object.hasOwn(value, "source_ref");
+  const hasEvidenceRef = Object.hasOwn(value, "evidence_artifact_ref");
+  const hasEvidenceDigest = Object.hasOwn(value, "evidence_artifact_digest");
+  if (!comparisonHasExactKeys(value, [
+    "trigger_kind",
+    "trigger_id",
+    "goal",
+    "triggered_at",
+    ...(hasSource ? ["source_ref"] : []),
+    ...(hasEvidenceRef ? ["evidence_artifact_ref"] : []),
+    ...(hasEvidenceDigest ? ["evidence_artifact_digest"] : []),
+    "authority_status"
+  ]) || !["goal", "time", "arena_event", "live_event", "recovery"].includes(
+    value.trigger_kind as string
+  ) || !comparisonString(value.trigger_id) ||
+    !comparisonString(value.goal) || value.goal.length > 1_000 ||
+    value.goal !== sanitizeResearchEvidenceText(value.goal) ||
+    !comparisonIso(value.triggered_at) ||
+    (hasSource && !comparisonRef(value.source_ref)) ||
+    (hasEvidenceRef && !comparisonRef(
+      value.evidence_artifact_ref,
+      "research_evidence_artifact"
+    )) || (hasEvidenceDigest && !comparisonDigest(
+      value.evidence_artifact_digest
+    )) || hasEvidenceRef !== hasEvidenceDigest ||
+    (hasEvidenceRef && !hasSource) ||
+    value.authority_status !== "research_only") {
+    return false;
+  }
+  return value.trigger_kind !== "arena_event" &&
+      value.trigger_kind !== "live_event" ||
+    hasSource && hasEvidenceRef && hasEvidenceDigest;
+}
+
 export function candidateArenaResearchAllocationHasRuntimeShape(
   value: unknown
 ): value is CandidateArenaResearchAllocationRecord {
-  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+  if (!comparisonObject(value)) return false;
+  const hasTrigger = Object.hasOwn(value, "trigger");
+  const trigger = hasTrigger && researchTriggerHasRuntimeShape(value.trigger)
+    ? value.trigger
+    : undefined;
+  if (!comparisonHasExactKeys(value, [
     "record_kind",
     "version",
     "candidate_arena_research_allocation_id",
     "tick_id",
     "allocation_mode",
     "allocation_policy_basis",
+    ...(hasTrigger ? ["trigger"] : []),
     "policy",
     "source_tick_refs",
     "signal_snapshot",
@@ -7128,6 +7426,7 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     !candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       value.allocation_policy_basis
     ) ||
+    (hasTrigger && !trigger) ||
     !candidateArenaResearchAllocationPolicyHasRuntimeShape(value.policy) ||
     !Array.isArray(value.source_tick_refs) ||
     value.source_tick_refs.some((item) =>
@@ -7144,6 +7443,8 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     !value.deferred_directions.every(candidateArenaResearchDirection) ||
     !candidateArenaAllocationStringsUnique(value.deferred_directions) ||
     !comparisonIso(value.allocated_at) ||
+    (trigger && Date.parse(trigger.triggered_at) >
+      Date.parse(value.allocated_at)) ||
     !comparisonDigest(value.allocation_digest) ||
     value.research_scheduling_authority !== true ||
     value.promotion_authority !== false ||
@@ -14095,6 +14396,10 @@ export interface ResearchTriggerReadModel {
   goal: string;
   triggered_at: string;
   source_ref?: Ref;
+  evidence_artifact_ref?: Ref & {
+    record_kind: "research_evidence_artifact";
+  };
+  evidence_artifact_digest?: string;
   authority_status: "research_only";
 }
 
@@ -14638,6 +14943,7 @@ export type FixtureRecord =
   | SystemCodeRecord
   | ResearchDirectionRecord
   | ResearchWorkerRecord
+  | ResearchEvidenceArtifactRecord
   | ExperimentRunRecord
   | ResearchPreflightCommitmentRecord
   | ResearchBehaviorFingerprintRecord
