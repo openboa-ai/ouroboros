@@ -98,6 +98,7 @@ import {
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingEvidenceIntegrityReasons,
   paperTradingComparisonObservationChainDigestInput,
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
@@ -971,7 +972,7 @@ interface LocalPaperTradingComparisonCheckpointTransaction {
 
 interface ResearchEvidencePaperEvaluationSnapshot {
   record_kind: "research_evidence_paper_evaluation_snapshot";
-  version: 1;
+  version: 2;
   research_evidence_paper_evaluation_snapshot_id: string;
   paper_trading_evaluation_ref: Ref;
   source_digest: string;
@@ -979,7 +980,10 @@ interface ResearchEvidencePaperEvaluationSnapshot {
   candidate_version_ref: Ref;
   trading_run_ref: Ref;
   paper_trading_evaluation_commitment_ref: Ref;
+  observation_count: number;
+  last_observed_at?: string;
   source_times: string[];
+  evidence_integrity_status: "verified";
   paper_result_summary: string;
   failure_present: boolean;
   failure_summary?: string;
@@ -7860,10 +7864,15 @@ export class LocalStore {
           source.paper_trading_evaluation_commitment_ref.id
         )
       : undefined;
+    const observations = await this.listPaperTradingObservations(
+      source.paper_trading_evaluation_id
+    );
     if (!commitment || commitment.evidence_purpose !== "research_feedback" ||
       commitment.window_policy.release_policy !== "closed_observation" ||
-      commitment.commitment_digest !== comparisonExactRecordDigest(
-        paperTradingEvaluationCommitmentDigestInput(commitment)
+      !this.researchEvidencePaperGraphHasIntegrity(
+        source,
+        commitment,
+        observations
       ) || !sameRef(commitment.candidate_ref, source.candidate_ref) ||
       !sameRef(commitment.candidate_version_ref, source.candidate_version_ref) ||
       !sameRef(commitment.trading_run_ref, source.trading_run_ref)) {
@@ -7941,12 +7950,13 @@ export class LocalStore {
       const evaluationRef = artifact.supporting_record_refs.find((reference) =>
         reference.record_kind === "paper_trading_evaluation"
       );
-      const source = evaluationRef
-        ? (await this.listPaperTradingObservations(evaluationRef.id)).find(
-            (observation) => observation.paper_trading_observation_id ===
-              artifact.artifact_ref.id
-          )
-        : undefined;
+      const observations = evaluationRef
+        ? await this.listPaperTradingObservations(evaluationRef.id)
+        : [];
+      const source = observations.find(
+        (observation) => observation.paper_trading_observation_id ===
+          artifact.artifact_ref.id
+      );
       if (!source) this.throwResearchEvidenceSourceNotFound();
       const commitment = await this.researchEvidenceCommitment(
         source.paper_trading_evaluation_commitment_ref,
@@ -7954,6 +7964,9 @@ export class LocalStore {
         source.candidate_version_ref,
         source.trading_run_ref
       );
+      const evaluation = evaluationRef
+        ? await this.getPaperTradingEvaluation(evaluationRef.id)
+        : undefined;
       sourceMatches = this.researchEvidenceSourceDigestMatches(
         artifact,
         source
@@ -7968,7 +7981,12 @@ export class LocalStore {
           source.paper_trading_evaluation_commitment_ref!,
           source.trading_run_ref,
           ...(source.ledger_ref ? [source.ledger_ref] : [])
-        ]) && commitment !== undefined;
+        ]) && commitment !== undefined && evaluation !== undefined &&
+        this.researchEvidencePaperGraphHasIntegrity(
+          evaluation,
+          commitment,
+          observations
+        );
     } else {
       const source = await this.getPaperTradingEvaluation(
         artifact.artifact_ref.id
@@ -7980,6 +7998,9 @@ export class LocalStore {
         source.candidate_version_ref,
         source.trading_run_ref
       );
+      const observations = await this.listPaperTradingObservations(
+        source.paper_trading_evaluation_id
+      );
       const snapshot = await this.getResearchEvidencePaperEvaluationSnapshot(
         artifact.artifact_ref.id,
         artifact.source_digest
@@ -7988,6 +8009,14 @@ export class LocalStore {
         ? snapshot?.failure_summary
         : snapshot?.paper_result_summary;
       sourceMatches = snapshot !== undefined && commitment !== undefined &&
+        this.researchEvidencePaperGraphHasIntegrity(
+          source,
+          commitment,
+          observations
+        ) &&
+        (artifact.source_kind !== "arena_paper_result" ||
+          snapshot.observation_count > 0 &&
+          snapshot.last_observed_at !== undefined) &&
         sameRef(snapshot.paper_trading_evaluation_ref, artifact.artifact_ref) &&
         sameRef(snapshot.candidate_ref, source.candidate_ref) &&
         sameRef(snapshot.candidate_version_ref, source.candidate_version_ref) &&
@@ -8014,6 +8043,29 @@ export class LocalStore {
           `(${artifact.source_kind}) does not match its exact source graph`
       );
     }
+  }
+
+  private researchEvidencePaperGraphHasIntegrity(
+    evaluation: PaperTradingEvaluationRecord,
+    commitment: PaperTradingEvaluationCommitmentRecord,
+    observations: PaperTradingObservationRecord[]
+  ): boolean {
+    const latestObservation = [...observations].sort(
+      comparePaperTradingObservations
+    ).at(-1);
+    return evaluation.status !== "invalidated" &&
+      (evaluation.observation_count === 0
+        ? evaluation.last_observed_at === undefined
+        : evaluation.last_observed_at === latestObservation?.observed_at) &&
+      paperTradingEvidenceIntegrityReasons({
+        evaluation,
+        commitment,
+        observations,
+        commitmentDigestVerified:
+          commitment.commitment_digest === comparisonExactRecordDigest(
+            paperTradingEvaluationCommitmentDigestInput(commitment)
+          )
+      }).length === 0;
   }
 
   private researchEvidenceSourceDigestMatches(
@@ -22874,7 +22926,7 @@ function buildResearchEvidencePaperEvaluationSnapshot(
   const failurePresent = Boolean(source.latest_failure_reason?.trim());
   const snapshot: ResearchEvidencePaperEvaluationSnapshot = {
     record_kind: "research_evidence_paper_evaluation_snapshot",
-    version: 1,
+    version: 2,
     research_evidence_paper_evaluation_snapshot_id:
       researchEvidencePaperEvaluationSnapshotId(
         source.paper_trading_evaluation_id,
@@ -22891,11 +22943,16 @@ function buildResearchEvidencePaperEvaluationSnapshot(
     paper_trading_evaluation_commitment_ref: {
       ...source.paper_trading_evaluation_commitment_ref!
     },
+    observation_count: source.observation_count,
+    ...(source.last_observed_at
+      ? { last_observed_at: source.last_observed_at }
+      : {}),
     source_times: [...new Set([
       source.started_at,
       source.last_observed_at,
       source.stopped_at
     ].filter((value): value is string => value !== undefined))],
+    evidence_integrity_status: "verified",
     paper_result_summary: canonicalResearchEvidenceArtifactSummary(
       "arena_paper_result",
       source
@@ -22928,7 +22985,14 @@ function researchEvidencePaperEvaluationSnapshotId(
   evaluationId: string,
   sourceDigest: string
 ): string {
-  return `research-evidence-paper-evaluation-snapshot-${evaluationId}-${sourceDigest}`;
+  const identityDigest = createHash("sha256")
+    .update([
+      "research-evidence-paper-evaluation-snapshot-v2",
+      evaluationId,
+      sourceDigest
+    ].join(":"))
+    .digest("hex");
+  return `research-evidence-paper-snapshot-${identityDigest}`;
 }
 
 function researchEvidencePaperEvaluationSnapshotDigestInput(
@@ -22951,7 +23015,10 @@ function researchEvidencePaperEvaluationSnapshotHasRuntimeShape(
     "candidate_version_ref",
     "trading_run_ref",
     "paper_trading_evaluation_commitment_ref",
+    "observation_count",
+    "last_observed_at",
     "source_times",
+    "evidence_integrity_status",
     "paper_result_summary",
     "failure_present",
     "failure_summary",
@@ -22963,7 +23030,7 @@ function researchEvidencePaperEvaluationSnapshotHasRuntimeShape(
   const snapshot = value as unknown as ResearchEvidencePaperEvaluationSnapshot;
   return snapshot.record_kind ===
       "research_evidence_paper_evaluation_snapshot" &&
-    snapshot.version === 1 &&
+    snapshot.version === 2 &&
     nonEmpty(snapshot.research_evidence_paper_evaluation_snapshot_id) &&
     isRef(
       snapshot.paper_trading_evaluation_ref,
@@ -22975,10 +23042,18 @@ function researchEvidencePaperEvaluationSnapshotHasRuntimeShape(
     isRef(
       snapshot.paper_trading_evaluation_commitment_ref,
       "paper_trading_evaluation_commitment"
-    ) && Array.isArray(snapshot.source_times) &&
+    ) && Number.isSafeInteger(snapshot.observation_count) &&
+    snapshot.observation_count >= 0 &&
+    (snapshot.observation_count === 0
+      ? snapshot.last_observed_at === undefined
+      : isIsoTimestamp(snapshot.last_observed_at)) &&
+    Array.isArray(snapshot.source_times) &&
     snapshot.source_times.length > 0 && snapshot.source_times.length <= 3 &&
     snapshot.source_times.every(isIsoTimestamp) &&
     new Set(snapshot.source_times).size === snapshot.source_times.length &&
+    (snapshot.last_observed_at === undefined ||
+      snapshot.source_times.includes(snapshot.last_observed_at)) &&
+    snapshot.evidence_integrity_status === "verified" &&
     nonEmpty(snapshot.paper_result_summary) &&
     snapshot.paper_result_summary.length <= 4_000 &&
     typeof snapshot.failure_present === "boolean" &&

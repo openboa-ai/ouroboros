@@ -261,6 +261,70 @@ describe("LocalStore", () => {
     );
   });
 
+  it("rejects invalidated paper evidence at the Research storage boundary", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    const observation = validPaperTradingObservation(commitment, evaluation);
+    const running = {
+      ...evaluation,
+      status: "running" as const,
+      observation_count: 1,
+      last_observed_at: observation.observed_at,
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    };
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    await store.recordPaperTradingObservation(observation, running);
+    const invalidated = await store.recordPaperTradingEvaluation({
+      ...running,
+      status: "invalidated",
+      next_observation_at: undefined,
+      stopped_at: "2026-07-10T09:03:00.000Z",
+      invalidation_reason: "resolved_artifact_digest_mismatch"
+    });
+    const invalidatedResult = withResearchEvidenceDigest({
+      ...paperResultResearchEvidence(invalidated),
+      captured_at: invalidated.stopped_at!
+    });
+
+    for (const artifact of [
+      paperObservationResearchEvidence(observation),
+      invalidatedResult
+    ]) {
+      await expectStoreError(
+        store.recordResearchEvidenceArtifact(artifact),
+        "research_evidence_artifact_source_mismatch"
+      );
+    }
+  });
+
+  it("rejects integrity-broken paper evidence at the Research storage boundary", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    const broken = await store.recordPaperTradingEvaluation({
+      ...evaluation,
+      status: "running",
+      observation_count: 1,
+      last_observed_at: "2026-07-10T09:01:00.000Z",
+      next_observation_at: "2026-07-10T09:02:00.000Z"
+    });
+    const artifact = withResearchEvidenceDigest({
+      ...paperResultResearchEvidence(broken),
+      captured_at: broken.last_observed_at!
+    });
+
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(artifact),
+      "research_evidence_artifact_source_mismatch"
+    );
+  });
+
   it("rejects arena failure evidence when the exact evaluation has no failure", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -277,22 +341,47 @@ describe("LocalStore", () => {
     );
   });
 
-  it("retains an exact released paper source when evaluation advances before artifact persistence", async () => {
+  it("rejects paper result evidence before the first closed observation", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const commitment = validPaperTradingCommitment();
     const evaluation = validPaperTradingEvaluation(commitment);
     await store.recordPaperTradingEvaluationCommitment(commitment);
     await store.recordPaperTradingEvaluation(evaluation);
-    const artifact = paperResultResearchEvidence(evaluation);
-    const observation = validPaperTradingObservation(commitment, evaluation);
 
-    await store.recordPaperTradingObservation(observation, {
+    await expectStoreError(
+      store.recordResearchEvidenceArtifact(
+        paperResultResearchEvidence(evaluation)
+      ),
+      "research_evidence_artifact_source_mismatch"
+    );
+  });
+
+  it("retains an exact released paper source when evaluation advances before artifact persistence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    const observation = validPaperTradingObservation(commitment, evaluation);
+    const running = {
       ...evaluation,
-      status: "running",
+      status: "running" as const,
       observation_count: 1,
       last_observed_at: observation.observed_at,
       next_observation_at: "2026-07-10T09:02:00.000Z"
+    };
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    await store.recordPaperTradingEvaluation(evaluation);
+    await store.recordPaperTradingObservation(observation, running);
+    const artifact = withResearchEvidenceDigest({
+      ...paperResultResearchEvidence(running),
+      captured_at: observation.observed_at
+    });
+    await store.recordPaperTradingEvaluation({
+      ...running,
+      status: "stopped",
+      next_observation_at: undefined,
+      stopped_at: "2026-07-10T09:03:00.000Z"
     });
 
     await expect(store.recordResearchEvidenceArtifact(artifact))
