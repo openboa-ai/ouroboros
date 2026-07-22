@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   candidateEgressAttestationIdForConformance,
+  paperTradingHandoffConformanceDigestInput,
+  paperTradingHandoffConformanceHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
   type ArenaComparisonCohortReadModel,
   type ArenaIsolationReadModel,
@@ -69,6 +71,10 @@ interface LoadedArenaSystem {
   commitment?: PaperTradingEvaluationCommitmentRecord;
   observations: PaperTradingObservationRecord[];
 }
+
+type ArenaIsolationAdapterKind =
+  | NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["adapter_kind"]
+  | PaperTradingHandoffConformanceRecord["runner_kind"];
 
 interface PreparedArenaSystem extends LoadedArenaSystem {
   base: ArenaSummaryBase;
@@ -654,14 +660,14 @@ function isolationReadModel(
     source,
     conformance
   );
-  const sandboxIdentityConsistent = !sandbox ||
-    !source.runtime.sandbox_ref ||
-    source.runtime.sandbox_ref.id === sandbox.sandbox_id;
+  const sandboxIdentityConsistent = sandboxMatchesRuntime(source, sandbox);
+  const runtimeVersionEvidencePresent = sandbox?.adapter_kind !==
+      "docker_sandboxes_sbx" ||
+    runtimeSandboxImplementationVersion(sandbox) !== undefined;
   const egressAttestation = egressAttestationStatus(
-    sandbox,
+    conformance?.runner_kind ?? sandbox?.adapter_kind,
     conformance,
-    adapterConsistent && sandboxIdentityConsistent &&
-      exactConformanceConsistent
+    exactConformanceConsistent
   );
   return {
     ...(sandbox ? { isolation_id: sandbox.sandbox_id } : {}),
@@ -674,8 +680,7 @@ function isolationReadModel(
       conformance,
       workspaceIdentity !== undefined,
       adapterConsistent && sandboxIdentityConsistent &&
-        (sandbox?.adapter_kind !== "docker_sandboxes_sbx" ||
-          (exactConformanceConsistent && egressAttestation === "verified"))
+        runtimeVersionEvidencePresent
     ),
     egress_attestation_status: egressAttestation,
     authority_status: "not_live"
@@ -689,10 +694,10 @@ function networkPolicyStatus(
   evidenceConsistent: boolean
 ): ArenaIsolationReadModel["network_policy_status"] {
   const adapterKind = sandbox?.adapter_kind ?? conformance?.runner_kind;
-  if (!evidenceConsistent) return "failed";
   if (adapterKind === "host_process" || adapterKind === "deterministic_test") {
     return "not_required";
   }
+  if (!evidenceConsistent) return "failed";
   if (adapterKind !== "docker_sandboxes_sbx" || !sandbox) return "pending";
   if (!workspaceConsistent) return "failed";
   if (sandbox.lifecycle_status === "requested" ||
@@ -708,22 +713,20 @@ function networkPolicyStatus(
 }
 
 function egressAttestationStatus(
-  sandbox: CandidateInspectReadModel["runtime"]["sandbox"],
+  adapterKind: ArenaIsolationAdapterKind | undefined,
   conformance: PaperTradingHandoffConformanceRecord | undefined,
   evidenceConsistent: boolean
 ): ArenaIsolationReadModel["egress_attestation_status"] {
-  const adapterKind = sandbox?.adapter_kind ?? conformance?.runner_kind;
-  if (!evidenceConsistent) return "failed";
   if (adapterKind === "host_process" || adapterKind === "deterministic_test") {
     return "not_required";
   }
-  if (adapterKind !== "docker_sandboxes_sbx" || !sandbox) return "failed";
+  if (!evidenceConsistent || adapterKind !== "docker_sandboxes_sbx") {
+    return "failed";
+  }
   if (!conformance || conformance.version !== 2 ||
     conformance.status !== "passed" || !conformance.runnable_paper_handoff) {
     return "failed";
   }
-  const sandboxImplementationVersion = runtimeSandboxImplementationVersion(sandbox);
-  if (!sandbox.sandbox_name || !sandboxImplementationVersion) return "failed";
   const attestation = conformance.candidate_egress_attestation;
   return verifyCandidateEgressAttestation({
     attestation,
@@ -734,8 +737,8 @@ function egressAttestationStatus(
       system_code_ref: conformance.system_code_ref,
       system_code_artifact_digest: conformance.system_code_artifact_digest,
       execution_ref: conformance.experiment_run_ref,
-      sandbox_name: sandbox.sandbox_name,
-      sandbox_implementation_version: sandboxImplementationVersion,
+      sandbox_name: attestation.sandbox.sandbox_name,
+      sandbox_implementation_version: attestation.sandbox.implementation_version,
       conformance_started_at: conformance.started_at,
       conformance_completed_at: conformance.completed_at
     },
@@ -784,12 +787,33 @@ function sandboxConformanceAdapterConsistent(
     : conformance.runner_kind === "host_process";
 }
 
+function sandboxMatchesRuntime(
+  source: LoadedArenaSystem,
+  sandbox: CandidateInspectReadModel["runtime"]["sandbox"]
+): boolean {
+  if (!sandbox) return source.runtime.sandbox_ref === undefined;
+  if (sandbox.adapter_kind !== "docker_sandboxes_sbx") return true;
+  return Boolean(
+    source.runtime.sandbox_ref?.record_kind === "sandbox" &&
+    source.runtime.sandbox_ref.id === sandbox.sandbox_id &&
+    sandbox.system_code_ref.record_kind === "system_code" &&
+    sandbox.system_code_ref.id === source.runtime.system_code_ref.id &&
+    sandbox.runtime_ref?.record_kind === "trading_run" &&
+    sandbox.runtime_ref.id === source.runtime.trading_run_ref.id &&
+    sandbox.generation === source.runtime.sandbox_generation
+  );
+}
+
 function conformanceMatchesRuntime(
   source: LoadedArenaSystem,
   conformance: PaperTradingHandoffConformanceRecord | undefined
 ): boolean {
   return Boolean(
     conformance &&
+    paperTradingHandoffConformanceHasRuntimeShape(conformance) &&
+    conformance.evidence_digest === sha256Text(
+      paperTradingHandoffConformanceDigestInput(conformance)
+    ) &&
     conformance.paper_trading_handoff_conformance_id ===
       source.runtime.paper_trading_handoff_conformance_ref.id &&
     conformance.system_code_ref.record_kind === "system_code" &&

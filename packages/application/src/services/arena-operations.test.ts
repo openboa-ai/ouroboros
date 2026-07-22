@@ -17,7 +17,8 @@ import {
   CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateEgressAttestationDigestInput,
   candidateEgressAttestationIdForConformance,
-  candidateEgressNetworkPolicyDigestInput
+  candidateEgressNetworkPolicyDigestInput,
+  paperTradingHandoffConformanceDigestInput
 } from "@ouroboros/domain";
 import { paperTradingEvaluationCommitmentDigest } from "../trading/paper/commitment";
 import type {
@@ -446,11 +447,17 @@ describe("ArenaOperationsProjectionService", () => {
     });
   });
 
-  it("fails network and egress closed when Sandbox identities disagree", async () => {
+  it("fails current network closed without invalidating admitted egress evidence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
-    fixture.candidates.get("candidate-a")!.runtime.sandbox!.sandbox_id =
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a");
+    fixture.conformances.set(
+      "conformance-candidate-a",
+      dockerConformance("candidate-a")
+    );
+    candidateA.runtime.sandbox!.sandbox_id =
       "sandbox-from-another-runtime";
 
     const detail = await fixture.service.readSystemDetail("candidate-a");
@@ -458,11 +465,11 @@ describe("ArenaOperationsProjectionService", () => {
     expect(detail?.isolation).toMatchObject({
       isolation_id: "sandbox-from-another-runtime",
       network_policy_status: "failed",
-      egress_attestation_status: "failed"
+      egress_attestation_status: "verified"
     });
   });
 
-  it("fails Docker network and egress closed when Sandbox identity is missing", async () => {
+  it("fails current Docker network closed when Sandbox identity is missing", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
@@ -486,11 +493,11 @@ describe("ArenaOperationsProjectionService", () => {
 
     expect(detail?.isolation).toMatchObject({
       network_policy_status: "failed",
-      egress_attestation_status: "failed"
+      egress_attestation_status: "verified"
     });
   });
 
-  it("fails Docker network closed when conformance belongs to another SystemCode", async () => {
+  it("fails admitted egress when conformance belongs to another SystemCode", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
@@ -498,17 +505,20 @@ describe("ArenaOperationsProjectionService", () => {
     configureDockerSandbox(candidateA, "candidate-a");
     const staleConformance = dockerConformance("candidate-a");
     staleConformance.system_code_ref.id = "system-code-from-another-runtime";
+    staleConformance.evidence_digest = testSha256(
+      paperTradingHandoffConformanceDigestInput(staleConformance)
+    );
     fixture.conformances.set("conformance-candidate-a", staleConformance);
 
     const detail = await fixture.service.readSystemDetail("candidate-a");
 
     expect(detail?.isolation).toMatchObject({
-      network_policy_status: "failed",
+      network_policy_status: "verified",
       egress_attestation_status: "failed"
     });
   });
 
-  it("fails Docker network closed when egress attestation reports an unexpected allow", async () => {
+  it("fails admitted egress when its attestation reports an unexpected allow", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
@@ -526,44 +536,39 @@ describe("ArenaOperationsProjectionService", () => {
         failedConformance.candidate_egress_attestation
       )
     );
+    failedConformance.evidence_digest = testSha256(
+      paperTradingHandoffConformanceDigestInput(failedConformance)
+    );
     fixture.conformances.set("conformance-candidate-a", failedConformance);
 
     const detail = await fixture.service.readSystemDetail("candidate-a");
 
     expect(detail?.isolation).toMatchObject({
-      network_policy_status: "failed",
+      network_policy_status: "verified",
       egress_attestation_status: "failed"
     });
   });
 
-  it("fails Docker isolation closed when attestation names another Sandbox", async () => {
+  it("keeps handoff egress separate from the current paper Sandbox identity", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
     const candidateA = fixture.candidates.get("candidate-a")!;
     configureDockerSandbox(candidateA, "candidate-a");
-    const mismatchedConformance = dockerConformance("candidate-a");
-    if (mismatchedConformance.version !== 2) {
-      throw new Error("expected Docker v2 conformance");
-    }
-    mismatchedConformance.candidate_egress_attestation.sandbox.sandbox_name =
-      "sandbox-from-another-runtime";
-    mismatchedConformance.candidate_egress_attestation.attestation_digest = testSha256(
-      candidateEgressAttestationDigestInput(
-        mismatchedConformance.candidate_egress_attestation
-      )
+    fixture.conformances.set(
+      "conformance-candidate-a",
+      dockerConformance("candidate-a")
     );
-    fixture.conformances.set("conformance-candidate-a", mismatchedConformance);
 
     const detail = await fixture.service.readSystemDetail("candidate-a");
 
     expect(detail?.isolation).toMatchObject({
-      network_policy_status: "failed",
-      egress_attestation_status: "failed"
+      network_policy_status: "verified",
+      egress_attestation_status: "verified"
     });
   });
 
-  it("fails Docker isolation closed without bound runtime version evidence", async () => {
+  it("fails current Docker network closed without bound runtime version evidence", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
@@ -580,11 +585,11 @@ describe("ArenaOperationsProjectionService", () => {
 
     expect(detail?.isolation).toMatchObject({
       network_policy_status: "failed",
-      egress_attestation_status: "failed"
+      egress_attestation_status: "verified"
     });
   });
 
-  it("fails Docker isolation closed when runtime and attested versions differ", async () => {
+  it("keeps current and attested Sandbox versions independently verifiable", async () => {
     const fixture = arenaFixture([
       system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
     ]);
@@ -600,7 +605,34 @@ describe("ArenaOperationsProjectionService", () => {
     const detail = await fixture.service.readSystemDetail("candidate-a");
 
     expect(detail?.isolation).toMatchObject({
-      network_policy_status: "failed",
+      network_policy_status: "verified",
+      egress_attestation_status: "verified"
+    });
+  });
+
+  it("fails admitted egress when attestation identity drifts from its outer digest", async () => {
+    const fixture = arenaFixture([
+      system("candidate-a", "running", "2026-07-19T00:00:00.000Z")
+    ]);
+    const candidateA = fixture.candidates.get("candidate-a")!;
+    configureDockerSandbox(candidateA, "candidate-a");
+    const tamperedConformance = dockerConformance("candidate-a");
+    if (tamperedConformance.version !== 2) {
+      throw new Error("expected Docker v2 conformance");
+    }
+    tamperedConformance.candidate_egress_attestation.sandbox.sandbox_name =
+      "tampered-conformance-sandbox";
+    tamperedConformance.candidate_egress_attestation.attestation_digest = testSha256(
+      candidateEgressAttestationDigestInput(
+        tamperedConformance.candidate_egress_attestation
+      )
+    );
+    fixture.conformances.set("conformance-candidate-a", tamperedConformance);
+
+    const detail = await fixture.service.readSystemDetail("candidate-a");
+
+    expect(detail?.isolation).toMatchObject({
+      network_policy_status: "verified",
       egress_attestation_status: "failed"
     });
   });
@@ -767,10 +799,12 @@ function candidate(candidateId: string): CandidateInspectReadModel {
         sandbox_id: `sandbox-${candidateId}`,
         adapter_kind: "deterministic_test",
         system_code_ref: { record_kind: "system_code", id: `system-code-${candidateId}` },
+        runtime_ref: { record_kind: "trading_run", id: `run-${candidateId}` },
         sandbox_placement_ref: { record_kind: "sandbox_placement", id: `placement-${candidateId}` },
         lifecycle_status: candidateId === "candidate-d" ? "failed" : "running",
         sandbox_name: `ouro-${candidateId}`,
         workspace_key: workspaceDigest(candidateId),
+        generation: 1,
         created_at: "2026-07-19T00:00:00.000Z",
         started_at: "2026-07-19T00:00:01.000Z",
         log_refs: [{ record_kind: "sandbox_log", id: `log-${candidateId}` }],
@@ -1089,7 +1123,7 @@ function zeroScore(): TradingProfitLossReadModel {
 }
 
 function conformance(candidateId: string): PaperTradingHandoffConformanceRecord {
-  return {
+  const record: PaperTradingHandoffConformanceRecord = {
     record_kind: "paper_trading_handoff_conformance",
     version: 1,
     paper_trading_handoff_conformance_id: `conformance-${candidateId}`,
@@ -1101,7 +1135,8 @@ function conformance(candidateId: string): PaperTradingHandoffConformanceRecord 
     runner_kind: "host_process",
     status: "passed",
     reason: "passed",
-    provider_request_count: 0,
+    provider_request_count: 3,
+    decision_event_kind: "hold",
     heartbeat_count: 1,
     runtime_stopped: true,
     started_at: "2026-07-19T00:00:00.000Z",
@@ -1114,6 +1149,10 @@ function conformance(candidateId: string): PaperTradingHandoffConformanceRecord 
     live_exchange_authority: false,
     authority_status: "not_live"
   };
+  record.evidence_digest = testSha256(
+    paperTradingHandoffConformanceDigestInput(record)
+  );
+  return record;
 }
 
 function dockerConformance(
@@ -1182,12 +1221,16 @@ function dockerConformance(
   attestation.attestation_digest = testSha256(
     candidateEgressAttestationDigestInput(attestation)
   );
-  return {
+  const record: PaperTradingHandoffConformanceRecord = {
     ...base,
     version: 2,
     runner_kind: "docker_sandboxes_sbx",
     candidate_egress_attestation: attestation
   };
+  record.evidence_digest = testSha256(
+    paperTradingHandoffConformanceDigestInput(record)
+  );
+  return record;
 }
 
 function configureDockerSandbox(
@@ -1201,7 +1244,7 @@ function configureDockerSandbox(
   const sandbox = target.runtime.sandbox;
   if (!sandbox) throw new Error("expected runtime Sandbox");
   sandbox.adapter_kind = "docker_sandboxes_sbx";
-  sandbox.sandbox_name = `sandbox-${candidateId}`;
+  sandbox.sandbox_name = `paper-sandbox-${candidateId}`;
   if (options.includeVersionEvidence === false) return;
   const evidenceRef = {
     record_kind: "sandbox_command_evidence",
