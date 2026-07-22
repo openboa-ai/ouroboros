@@ -665,11 +665,6 @@ export async function runCandidateArenaTick(
     .getCandidateArenaResearchAllocation(
       `candidate-arena-research-allocation-${safeId(tickId)}`
     );
-  const researchEvidenceArtifacts = await hydratePersistedAllocationEvidence({
-    store: input.store,
-    allocation: existingAllocation,
-    collected: collectedResearchEvidenceArtifacts
-  });
   const researchTrigger = existingAllocation
     ? existingAllocation.trigger
     : await resolveResearchTrigger({
@@ -677,7 +672,7 @@ export async function runCandidateArenaTick(
       tickId,
       startedAt,
       requested: input.researchTrigger ?? defaultResearchTriggerRequest("goal"),
-      evidenceArtifacts: researchEvidenceArtifacts
+      evidenceArtifacts: collectedResearchEvidenceArtifacts
     });
   const allocationAt = researchTrigger?.triggered_at ?? startedAt;
   const sourceSelection = await sourceCandidate(
@@ -713,6 +708,11 @@ export async function runCandidateArenaTick(
       })
     );
   }
+  const researchEvidenceArtifacts = await hydratePersistedAllocationEvidence({
+    store: input.store,
+    allocation,
+    collected: collectedResearchEvidenceArtifacts
+  });
   const executionStartedAt = Date.parse(allocation.allocated_at) >
     Date.parse(startedAt)
     ? allocation.allocated_at

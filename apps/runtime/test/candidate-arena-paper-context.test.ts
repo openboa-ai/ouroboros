@@ -316,6 +316,72 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
+  it("passes only the evidence claimed by a new allocation into Research", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    for (const [index, direction] of [
+      "trend_following",
+      "volatility_regime"
+    ].entries()) {
+      await runCandidateArenaTick({
+        store,
+        tickId: `multi-evidence-source-${index + 1}`,
+        directions: [direction as "trend_following" | "volatility_regime"],
+        researchAgent: "codex",
+        agentFactory: () => new CapturingResearchAgent([]),
+        artifactRunner: networklessReplayArtifactRunner(),
+        replayProviderFactory: networklessReplayTradingApiProvider
+      });
+    }
+    const evidenceArtifacts = (await store.listResearchFindings())
+      .map(researchFindingEvidence);
+    const contexts: string[] = [];
+    const collectedAt = new Date(Math.max(...evidenceArtifacts.map((artifact) =>
+      Date.parse(artifact.captured_at)
+    )) + 1_000).toISOString();
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "multi-evidence-consumer",
+      now: () => collectedAt,
+      directions: ["mean_reversion"],
+      researchTrigger: {
+        trigger_kind: "time",
+        goal: "Claim one exact new Arena event."
+      },
+      researchEvidenceSource: async () => evidenceArtifacts,
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(contexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const allocation = await store.getCandidateArenaResearchAllocation(
+      "candidate-arena-research-allocation-multi-evidence-consumer"
+    );
+    const claimedId = allocation?.trigger?.evidence_artifact_ref?.id;
+    const unclaimed = evidenceArtifacts.find((artifact) =>
+      artifact.research_evidence_artifact_id !== claimedId
+    );
+    expect(claimedId).toBeDefined();
+    expect(unclaimed).toBeDefined();
+    expect(contexts[0]).toContain(claimedId);
+    expect(contexts[0]).not.toContain(
+      unclaimed!.research_evidence_artifact_id
+    );
+    expect((await store.listResearchPreflightCommitments()).find(
+      (commitment) => commitment.candidate_arena_tick_id ===
+        "multi-evidence-consumer"
+    )?.methodology?.evidence_bindings).toEqual([
+      expect.objectContaining({
+        evidence_artifact_ref: {
+          record_kind: "research_evidence_artifact",
+          id: claimedId
+        }
+      })
+    ]);
+  });
+
   it("accepts evidence captured while the preflight snapshot is collected", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
