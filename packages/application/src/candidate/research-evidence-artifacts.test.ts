@@ -19,46 +19,16 @@ describe("ResearchEvidenceArtifactService", () => {
     const detail = arenaDetail(operations.systems[0]!);
     const finding = researchFinding();
     const commitment = paperCommitment();
-    const observations = [paperObservation("observation-a-1", 1)];
+    const observations = paperObservations(commitment);
     const service = new ResearchEvidenceArtifactService({
       store: {
         listResearchFindings: async () => [finding],
         getPaperTradingEvaluationCommitment: async () => commitment,
         listPaperTradingObservations: async () => observations,
-        getPaperTradingEvaluation: async (evaluationId) => ({
-          record_kind: "paper_trading_evaluation",
-          version: 1,
-          paper_trading_evaluation_id: evaluationId,
-          candidate_ref: {
-            record_kind: "trading_system_candidate",
-            id: "candidate-a"
-          },
-          candidate_version_ref: {
-            record_kind: "candidate_version",
-            id: "candidate-version-a"
-          },
-          trading_run_ref: {
-            record_kind: "trading_run",
-            id: "trading-run-a"
-          },
-          paper_trading_evaluation_commitment_ref: {
-            record_kind: "paper_trading_evaluation_commitment",
-            id: commitment.paper_trading_evaluation_commitment_id
-          },
-          status: "running",
-          interval_ms: 60_000,
-          observation_count: 8,
-          started_at: "2026-07-22T00:01:00.000Z",
-          last_observed_at: "2026-07-22T00:08:00.000Z",
+        getPaperTradingEvaluation: async () => ({
+          ...paperEvaluation(commitment, observations),
           latest_failure_reason:
-            "/Users/private-owner/run token=secret-value",
-          latest_score: {
-            revenue_usdt: 14,
-            cost_usdt: 2,
-            net_revenue_usdt: 12,
-            net_return_pct: 0.12
-          },
-          authority_status: "not_live"
+            "/Users/private-owner/run token=secret-value"
         }),
         getTradingRun: async (tradingRunId) => ({
           record_kind: "trading_run",
@@ -135,11 +105,12 @@ describe("ResearchEvidenceArtifactService", () => {
     const operations = arenaOperations();
     const detail = arenaDetail(operations.systems[0]!);
     const commitment = paperCommitment();
-    const observations = [paperObservation("observation-a-1", 1)];
+    const observations = [paperObservation("observation-a-1", 1, commitment)];
     const service = new ResearchEvidenceArtifactService({
       store: {
         listResearchFindings: async () => [],
-        getPaperTradingEvaluation: async () => paperEvaluation(commitment),
+        getPaperTradingEvaluation: async () =>
+          paperEvaluation(commitment, observations),
         getTradingRun: async (tradingRunId) => ({
           record_kind: "trading_run",
           version: 1,
@@ -173,7 +144,7 @@ describe("ResearchEvidenceArtifactService", () => {
     const first = (await service.collect()).filter((artifact) =>
       artifact.source_kind === "arena_trace"
     );
-    observations.push(paperObservation("observation-a-2", 2));
+    observations.push(paperObservation("observation-a-2", 2, commitment));
     detail.trace_events.push({
       sequence: 2,
       occurred_at: "2026-07-22T00:09:00.000Z",
@@ -214,13 +185,14 @@ describe("ResearchEvidenceArtifactService", () => {
       comparison_cutoff_at: "2026-07-22T00:06:00.000Z"
     });
     const commitment = paperCommitment();
-    const evaluation = paperEvaluation(commitment);
+    const observations = paperObservations(commitment);
+    const evaluation = paperEvaluation(commitment, observations);
     const service = new ResearchEvidenceArtifactService({
       store: {
         listResearchFindings: async () => [],
         getPaperTradingEvaluation: async () => evaluation,
         getPaperTradingEvaluationCommitment: async () => commitment,
-        listPaperTradingObservations: async () => [],
+        listPaperTradingObservations: async () => observations,
         getTradingRun: async () => undefined
       },
       arenaOperations: {
@@ -249,8 +221,9 @@ describe("ResearchEvidenceArtifactService", () => {
     const operations = arenaOperations();
     delete operations.systems[0]!.latest_failure;
     const commitment = paperCommitment();
+    const observations = paperObservations(commitment);
     const evaluation = {
-      ...paperEvaluation(commitment),
+      ...paperEvaluation(commitment, observations),
       latest_failure_reason: "candidate process exited during observation"
     };
     const service = new ResearchEvidenceArtifactService({
@@ -258,7 +231,7 @@ describe("ResearchEvidenceArtifactService", () => {
         listResearchFindings: async () => [],
         getPaperTradingEvaluation: async () => evaluation,
         getPaperTradingEvaluationCommitment: async () => commitment,
-        listPaperTradingObservations: async () => [],
+        listPaperTradingObservations: async () => observations,
         getTradingRun: async () => undefined
       },
       arenaOperations: {
@@ -282,10 +255,11 @@ describe("ResearchEvidenceArtifactService", () => {
   it("captures paper evidence at the latest evaluation state timestamp", async () => {
     const operations = arenaOperations();
     const commitment = paperCommitment();
+    const observations = paperObservations(commitment);
     const evaluation = {
-      ...paperEvaluation(commitment),
+      ...paperEvaluation(commitment, observations),
       status: "stopped" as const,
-      stopped_at: "2026-07-22T00:09:00.000Z",
+      stopped_at: "2026-07-22T00:16:00.000Z",
       latest_failure_reason: "candidate process stopped after observation"
     };
     const service = new ResearchEvidenceArtifactService({
@@ -293,7 +267,7 @@ describe("ResearchEvidenceArtifactService", () => {
         listResearchFindings: async () => [],
         getPaperTradingEvaluation: async () => evaluation,
         getPaperTradingEvaluationCommitment: async () => commitment,
-        listPaperTradingObservations: async () => [],
+        listPaperTradingObservations: async () => observations,
         getTradingRun: async () => undefined
       },
       arenaOperations: {
@@ -316,10 +290,10 @@ describe("ResearchEvidenceArtifactService", () => {
   it("does not emit a paper result before the first closed observation", async () => {
     const operations = arenaOperations();
     const commitment = paperCommitment();
+    const observations: PaperTradingObservationRecord[] = [];
     const evaluation = {
-      ...paperEvaluation(commitment),
+      ...paperEvaluation(commitment, observations),
       status: "not_started" as const,
-      observation_count: 0,
       last_observed_at: undefined
     };
     const service = new ResearchEvidenceArtifactService({
@@ -327,7 +301,7 @@ describe("ResearchEvidenceArtifactService", () => {
         listResearchFindings: async () => [],
         getPaperTradingEvaluation: async () => evaluation,
         getPaperTradingEvaluationCommitment: async () => commitment,
-        listPaperTradingObservations: async () => [],
+        listPaperTradingObservations: async () => observations,
         getTradingRun: async () => undefined
       },
       arenaOperations: {
@@ -341,19 +315,130 @@ describe("ResearchEvidenceArtifactService", () => {
     )).toEqual([]);
   });
 
+  it("omits invalidated paper results, failures, and traces", async () => {
+    const operations = arenaOperations();
+    operations.systems[0]!.session_status = "invalidated";
+    operations.systems[0]!.comparability_status = "ineligible";
+    operations.systems[0]!.unranked_reasons = [
+      "paper_evaluation_invalidated"
+    ];
+    const detail = arenaDetail(operations.systems[0]!);
+    const commitment = paperCommitment();
+    const observations = [paperObservation("observation-a-1", 1, commitment)];
+    const evaluation = {
+      ...paperEvaluation(commitment, observations),
+      status: "invalidated" as const,
+      invalidation_reason: "commitment_digest_mismatch" as const,
+      latest_failure_reason: "integrity verification failed"
+    };
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => observations,
+        getTradingRun: async (tradingRunId) => ({
+          record_kind: "trading_run",
+          version: 1,
+          trading_run_id: tradingRunId,
+          stage_binding_profile: "paper",
+          candidate_ref: {
+            record_kind: "trading_system_candidate",
+            id: "candidate-a"
+          },
+          placement_ref: { record_kind: "sandbox_placement", id: "place-a" },
+          hands_environment_ref: {
+            record_kind: "hands_environment",
+            id: "hands-a"
+          },
+          memory_surface_ref: {
+            record_kind: "runtime_memory_surface",
+            id: "memory-a"
+          },
+          created_at: "2026-07-22T00:01:00.000Z",
+          authority_status: "not_live"
+        })
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => detail
+      }
+    });
+
+    expect(await service.collect()).toEqual([]);
+  });
+
+  it("omits paper evidence whose observation and accounting graph fails integrity", async () => {
+    const operations = arenaOperations();
+    operations.systems[0]!.comparability_status = "ineligible";
+    operations.systems[0]!.unranked_reasons = [
+      "comparison_evidence_incomplete"
+    ];
+    const detail = arenaDetail(operations.systems[0]!);
+    const commitment = paperCommitment();
+    const observations = [paperObservation(
+      "observation-a-1",
+      1,
+      commitment
+    )];
+    const evaluation = {
+      ...paperEvaluation(commitment, observations),
+      observation_count: 2
+    };
+    const service = new ResearchEvidenceArtifactService({
+      store: {
+        listResearchFindings: async () => [],
+        getPaperTradingEvaluation: async () => evaluation,
+        getPaperTradingEvaluationCommitment: async () => commitment,
+        listPaperTradingObservations: async () => observations,
+        getTradingRun: async (tradingRunId) => ({
+          record_kind: "trading_run",
+          version: 1,
+          trading_run_id: tradingRunId,
+          stage_binding_profile: "paper",
+          candidate_ref: {
+            record_kind: "trading_system_candidate",
+            id: "candidate-a"
+          },
+          placement_ref: { record_kind: "sandbox_placement", id: "place-a" },
+          hands_environment_ref: {
+            record_kind: "hands_environment",
+            id: "hands-a"
+          },
+          memory_surface_ref: {
+            record_kind: "runtime_memory_surface",
+            id: "memory-a"
+          },
+          created_at: "2026-07-22T00:01:00.000Z",
+          authority_status: "not_live"
+        })
+      },
+      arenaOperations: {
+        readOperations: async () => operations,
+        readSystemDetail: async () => detail
+      }
+    });
+
+    expect(await service.collect()).toEqual([]);
+  });
+
   it("does not collect sealed qualification evidence", async () => {
     const operations = arenaOperations();
     const detail = arenaDetail(operations.systems[0]!);
     const commitment = paperCommitment("qualification");
+    const observations = [paperObservation(
+      "observation-a-1",
+      1,
+      commitment
+    )];
     const service = new ResearchEvidenceArtifactService({
       store: {
         listResearchFindings: async () => [],
-        getPaperTradingEvaluation: async () => paperEvaluation(commitment),
+        getPaperTradingEvaluation: async () =>
+          paperEvaluation(commitment, observations),
         getTradingRun: async () => undefined,
         getPaperTradingEvaluationCommitment: async () => commitment,
-        listPaperTradingObservations: async () => [
-          paperObservation("observation-a-1", 1, commitment)
-        ]
+        listPaperTradingObservations: async () => observations
       },
       arenaOperations: {
         readOperations: async () => operations,
@@ -609,6 +694,14 @@ function paperObservation(
   sequence: number,
   commitment = paperCommitment()
 ): PaperTradingObservationRecord {
+  const observedAt = new Date(Date.UTC(2026, 6, 22, 0, 7 + sequence))
+    .toISOString();
+  const profitableScore = {
+    revenue_usdt: 14,
+    cost_usdt: 2,
+    net_revenue_usdt: 12,
+    net_return_pct: 0.12
+  };
   return {
     record_kind: "paper_trading_observation",
     version: 1,
@@ -626,16 +719,12 @@ function paperObservation(
     trading_run_ref: { ...commitment.trading_run_ref },
     sequence,
     status: sequence === 1 ? "recorded" : "no_order",
-    observed_at: sequence === 1
-      ? "2026-07-22T00:08:00.000Z"
-      : "2026-07-22T00:09:00.000Z",
+    observed_at: observedAt,
     decision: {
       decision_kind: sequence === 1 ? "order_request" : "no_action",
       source_kind: "trading_system_decision",
       reason: `password=observation-${sequence}-secret`,
-      observed_at: sequence === 1
-        ? "2026-07-22T00:08:00.000Z"
-        : "2026-07-22T00:09:00.000Z",
+      observed_at: observedAt,
       ...(sequence === 1
         ? {
             order_request: {
@@ -649,25 +738,50 @@ function paperObservation(
         : {}),
       authority_status: "trace_only"
     },
-    score_delta: {
-      revenue_usdt: 0,
-      cost_usdt: 0,
-      net_revenue_usdt: 0,
-      net_return_pct: 0
-    },
-    cumulative_score: {
-      revenue_usdt: 14,
-      cost_usdt: 2,
-      net_revenue_usdt: 12,
-      net_return_pct: 0.12
-    },
+    score_delta: sequence === 1
+      ? { ...profitableScore }
+      : {
+          revenue_usdt: 0,
+          cost_usdt: 0,
+          net_revenue_usdt: 0,
+          net_return_pct: 0
+        },
+    cumulative_score: { ...profitableScore },
+    ...(sequence === 1
+      ? { paper_account_snapshot: profitablePaperAccount() }
+      : {}),
     authority_status: "not_live"
   };
 }
 
+function paperObservations(
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  count = 8
+): PaperTradingObservationRecord[] {
+  return Array.from({ length: count }, (_, index) => paperObservation(
+    `observation-a-${index + 1}`,
+    index + 1,
+    commitment
+  ));
+}
+
 function paperEvaluation(
-  commitment: PaperTradingEvaluationCommitmentRecord
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  observations = paperObservations(commitment)
 ): PaperTradingEvaluationRecord {
+  const ordered = [...observations].sort((left, right) =>
+    left.sequence - right.sequence
+  );
+  const latest = ordered.at(-1);
+  const account = [...ordered].reverse().find((observation) =>
+    observation.paper_account_snapshot !== undefined
+  )?.paper_account_snapshot ?? commitment.initial_account_snapshot;
+  const score = latest?.cumulative_score ?? {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
+  };
   return {
     record_kind: "paper_trading_evaluation",
     version: 1,
@@ -681,16 +795,23 @@ function paperEvaluation(
     },
     status: "running",
     interval_ms: 60_000,
-    observation_count: 8,
+    observation_count: ordered.length,
     started_at: "2026-07-22T00:01:00.000Z",
-    last_observed_at: "2026-07-22T00:08:00.000Z",
-    latest_score: {
-      revenue_usdt: 14,
-      cost_usdt: 2,
-      net_revenue_usdt: 12,
-      net_return_pct: 0.12
-    },
+    last_observed_at: latest?.observed_at,
+    latest_score: { ...score },
+    paper_account_snapshot: structuredClone(account),
     authority_status: "not_live"
+  };
+}
+
+function profitablePaperAccount() {
+  return {
+    ...structuredClone(PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT),
+    wallet_balance_usdt: "10012",
+    available_balance_usdt: "10012",
+    equity_usdt: "10012",
+    realized_pnl_usdt: "14",
+    fee_paid_usdt: "2"
   };
 }
 

@@ -17,6 +17,7 @@ import {
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
+import { paperTradingEvidenceIntegrityReasons } from "../trading/paper/qualification";
 
 const MAX_ARENA_SYSTEMS = 12;
 const MAX_TRACE_EVENTS_PER_SYSTEM = 20;
@@ -90,18 +91,21 @@ export class ResearchEvidenceArtifactService {
       artifacts.push(...paperResultArtifacts(
         system,
         source.evaluation,
-        source.commitment
+        source.commitment,
+        source.observations
       ));
       artifacts.push(...failureArtifacts(
         system,
         source.evaluation,
-        source.commitment
+        source.commitment,
+        source.observations
       ));
       if (source.detail && source.tradingRun) {
         artifacts.push(...traceArtifacts(
           system,
           source.detail,
           source.tradingRun,
+          source.evaluation,
           source.observations,
           source.commitment
         ));
@@ -131,10 +135,16 @@ function paperResultArtifacts(
   evaluation: Awaited<ReturnType<ResearchEvidenceStore[
     "getPaperTradingEvaluation"
   ]>>,
-  commitment: PaperTradingEvaluationCommitmentRecord | undefined
+  commitment: PaperTradingEvaluationCommitmentRecord | undefined,
+  observations: PaperTradingObservationRecord[]
 ): ResearchEvidenceArtifactRecord[] {
   if (!system.evaluation_id || !evaluation ||
-    !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
+    !releasedResearchFeedbackEvidence(
+      system,
+      evaluation,
+      commitment,
+      observations
+    ) ||
     evaluation.observation_count < 1 || !evaluation.last_observed_at ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
@@ -166,10 +176,16 @@ function failureArtifacts(
   evaluation: Awaited<ReturnType<ResearchEvidenceStore[
     "getPaperTradingEvaluation"
   ]>>,
-  commitment: PaperTradingEvaluationCommitmentRecord | undefined
+  commitment: PaperTradingEvaluationCommitmentRecord | undefined,
+  observations: PaperTradingObservationRecord[]
 ): ResearchEvidenceArtifactRecord[] {
   if (!system.evaluation_id || !evaluation ||
-    !releasedResearchFeedbackCommitment(system, evaluation, commitment) ||
+    !releasedResearchFeedbackEvidence(
+      system,
+      evaluation,
+      commitment,
+      observations
+    ) ||
     evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
     evaluation.candidate_ref.id !== system.candidate_id ||
     evaluation.candidate_version_ref.id !== system.candidate_version_id ||
@@ -200,14 +216,21 @@ function traceArtifacts(
   system: ArenaTradingSystemSummaryReadModel,
   detail: ArenaTradingSystemDetailReadModel,
   tradingRun: Awaited<ReturnType<ResearchEvidenceStore["getTradingRun"]>>,
+  evaluation: PaperTradingEvaluationRecord | undefined,
   observations: PaperTradingObservationRecord[],
   commitment: PaperTradingEvaluationCommitmentRecord | undefined
 ): ResearchEvidenceArtifactRecord[] {
-  if (!system.trading_run_id || !tradingRun ||
+  if (!system.trading_run_id || !tradingRun || !evaluation ||
     tradingRun.trading_run_id !== system.trading_run_id ||
     tradingRun.candidate_ref?.id !== system.candidate_id ||
     !system.evaluation_id ||
-    !releasedResearchFeedbackCommitment(system, undefined, commitment) ||
+    evaluation.paper_trading_evaluation_id !== system.evaluation_id ||
+    !releasedResearchFeedbackEvidence(
+      system,
+      evaluation,
+      commitment,
+      observations
+    ) ||
     detail.trace_events.length === 0) {
     return [];
   }
@@ -254,6 +277,24 @@ function traceArtifacts(
       truncated: traceTruncated || summary.truncated
     })];
   });
+}
+
+function releasedResearchFeedbackEvidence(
+  system: ArenaTradingSystemSummaryReadModel,
+  evaluation: PaperTradingEvaluationRecord,
+  commitment: PaperTradingEvaluationCommitmentRecord | undefined,
+  observations: PaperTradingObservationRecord[]
+): commitment is PaperTradingEvaluationCommitmentRecord {
+  return evaluation.status !== "invalidated" &&
+    system.session_status !== "invalidated" &&
+    (system.rank_status !== "unranked" ||
+      !system.unranked_reasons.includes("paper_evaluation_invalidated")) &&
+    releasedResearchFeedbackCommitment(system, evaluation, commitment) &&
+    paperTradingEvidenceIntegrityReasons({
+      evaluation,
+      commitment,
+      observations
+    }).length === 0;
 }
 
 function releasedResearchFeedbackCommitment(
