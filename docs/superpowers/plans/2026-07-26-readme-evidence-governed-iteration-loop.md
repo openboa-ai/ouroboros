@@ -18,7 +18,7 @@
 - Do not claim stock, spot, multi-asset, private exchange, signed-request, listen-key, leverage-change, or live-order support.
 - Do not claim profitability, durable generalization, causal agent leverage, production-duration autonomy, completed weak-to-strong success, or that an external source proves Ouroboros works in trading.
 - Research/CandidateArena owns external admission. Arena queues and runs already-admitted TradingSystems.
-- Only evidence precommitted for `research_feedback` may inform a later generation. Prospective qualification evidence cannot double as research feedback.
+- One paper window cannot carry both `research_feedback` and `qualification` purposes. Precommitted `research_feedback` may feed later generations; qualification evidence stays sealed until terminal closure and may enter later Research only through a separate post-close `PaperTradingComparisonResearchRelease`, which materializes only Finding and Lineage and grants no promotion or live authority.
 - ResearchWorkers do not grade, admit, qualify, promote, erase history, or grant themselves trading authority.
 - Gateway owns public market data, validation, and fake execution. TradingSystems never attach directly to Binance.
 - Paper evidence never grants private or live authority.
@@ -180,7 +180,7 @@ flowchart LR
         A --> P["Arena paper<br/>evaluation"]
         P --> W["Gateway<br/>public data + fake execution"]
         W --> L["Ledger evidence<br/>cost · risk · outcomes"]
-        L --> M["Released research-feedback Findings<br/>+ valid negatives + lineage"]
+        L --> M["Released Findings<br/>+ valid negatives + lineage"]
     end
 
     M --> R
@@ -190,7 +190,7 @@ Directly below the diagram, retain these rules:
 
 - ResearchWorkers do not grade or admit themselves.
 - TradingSystems reach public market data and fake execution only through Gateway.
-- Only precommitted `research_feedback` evidence feeds a later generation; prospective qualification evidence cannot double as feedback.
+- One paper window cannot carry both `research_feedback` and `qualification` purposes. Precommitted `research_feedback` may feed later generations; qualification evidence stays sealed until terminal closure and may enter later Research only through a separate post-close `PaperTradingComparisonResearchRelease`, which materializes only Finding and Lineage and grants no promotion or live authority.
 - Paper evidence never grants private or live authority.
 
 In `Why trading is the first proving ground`, open with “Trading is the first domain, not the philosophy.” Explain non-stationarity, competition, future outcomes, fees, funding, slippage, execution, risk, noisy/path-dependent PnL, and why trustworthy evaluation is difficult. Close with the current `BTCUSDT` public-data paper boundary.
