@@ -1,5 +1,7 @@
 # Ouroboros
 
+![CI](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml/badge.svg)
+
 **Ouroboros is a weak-to-strong research system for turning advances in frontier agents into cumulative, externally verified progress—tested first in trading.**
 
 [Thesis](#the-thesis) · [Why trading](#why-trading) · [How it works](#how-ouroboros-compounds-progress) · [What is built](#built-today--still-to-prove) · [Quickstart](#quickstart) · [Architecture](#product-and-architecture) · [Development](#operate-and-develop)
@@ -21,6 +23,8 @@ For the detailed product thesis and authority model, see [Project Direction](doc
 The concrete question is deliberately narrower than a profitability promise:
 
 > Can an AI research system repeatedly find a TradingSystem that improves on its current champion with prospective paper evidence—after costs and risk—without weakening evaluation rules?
+
+Admitted TradingSystems rank by accumulated `revenue - cost` only within comparable cohorts. Advancement separately requires a qualified prospective comparison against the exact current champion; raw PnL alone is insufficient.
 
 The current boundary is `BTCUSDT` USD-M futures paper trading over Binance public market data. Accounts, execution, and Ledgers are fake. Ouroboros does not claim stock support, private exchange access, signed requests, live orders, proven profitability, completed generalization, or completed weak-to-strong success.
 
@@ -72,6 +76,8 @@ Replay and backtests are useful research tools, not final authority. Continuous 
 Prerequisites:
 
 - Node.js and npm. CI currently uses Node 24; `package.json` does not declare a hard engine minimum.
+- Python 3.11 or later for contributor validation (`tomllib`); CI uses Python 3.12.
+- `gitleaks` for contributor secret scanning.
 - Rust and Cargo for native Tauri Desktop development.
 - macOS for the packaged/open/verify Desktop release path. The source-checkout Desktop development command is still the primary interactive path.
 
@@ -89,14 +95,19 @@ curl -fsS http://127.0.0.1:4173/health
 ./bin/ouroboros status
 ```
 
-For headless operation, start the runtime directly and use the repository-local CLI from a second terminal:
+For headless operation, use two terminals. In Terminal 1, start the runtime:
 
 ```bash
 ./bin/ouroboros runtime serve
+```
+
+In Terminal 2, use the repository-local CLI:
+
+```bash
 ./bin/ouroboros arena status
 ```
 
-`./bin/ouroboros` is the source-checkout CLI entry point; `npm install` does not install a global `ouroboros` binary. The Web app is a browser development surface, not the primary operator app:
+`./bin/ouroboros` is the source-checkout CLI entry point; `npm install` does not install a global `ouroboros` binary. The Web app is a Vite-only browser development surface: start it only when a Desktop app or runtime is already running. It is not the primary operator app:
 
 ```bash
 npm run dev:operator-web
@@ -108,6 +119,7 @@ The full generated-candidate research and paper loop has additional prerequisite
 ./bin/ouroboros agent setup codex
 ./bin/ouroboros agent login codex
 ./bin/ouroboros agent probe codex
+./bin/ouroboros researcher provider set codex
 ```
 
 Those prerequisites are not required merely to open the Desktop app or inspect its local runtime.
@@ -116,7 +128,7 @@ For the native launch, packaged macOS path, and release verification, see [Opera
 
 ## Product and architecture
 
-**Ouroboros is one product loop with several shared operator surfaces, not separate trading products.** Desktop is the primary Tauri operator app; CLI is the complete headless baseline; TUI and Web use the same runtime read/command contract. Web is for browser development and does not gain separate authority.
+**Ouroboros is one product loop with several shared operator surfaces, not separate trading products.** The Desktop app is the primary interactive operator surface; CLI remains the complete baseline for headless operation and automation. Desktop, CLI, TUI, and Web share the same runtime/store-backed session data and product command/read contract; Web remains a browser development surface with no separate authority.
 
 | Path | Purpose |
 | --- | --- |
@@ -138,7 +150,7 @@ The architecture keeps candidate generation, evaluation, public-market access, a
 Common source-checkout commands:
 
 ```bash
-# Inspect or control the Arena through the local runtime.
+# After provider setup, inspect or control the Arena through a running local runtime.
 ./bin/ouroboros status
 ./bin/ouroboros arena start
 ./bin/ouroboros arena stop
@@ -178,4 +190,4 @@ For implementation changes, add the relevant tests and run `npm test`, `npm run 
 
 ## Contributing and license
 
-**This checkout has no published `CONTRIBUTING` guide or license file, so it intentionally provides no dead links for either.**
+**Contribution guidance and licensing terms are not yet published, so this checkout intentionally provides no dead links for either.**
