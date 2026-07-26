@@ -41,12 +41,12 @@ improving frontier agents
         -> better-informed next generation
 ```
 
-Here, "external evaluation" means evaluator-owned evaluation outside the generating session, not a claim that a third party grades the candidate. Only released, sanitized findings and lineage inform later generations; raw sealed data stays withheld. The short names below describe the product roles; the detailed evidence graph remains in the maintained protocols.
+Here, "external evaluation" means evaluator-owned evaluation outside the generating session, not a claim that a third party grades the candidate. Released, sanitized context—such as Arena paper results, traces, failures, Findings, lineage, and bounded population-diversity summaries—can inform later generations; raw sealed data stays withheld. The short names below describe the product roles; the detailed evidence graph remains in the maintained protocols.
 
 | Role | Plain-language responsibility |
 | --- | --- |
-| Research | Gives a bounded agent session a direction, tools, and a workspace to propose a candidate. |
-| Arena | Freezes candidate artifacts, keeps generation separate from admission, and compares admitted candidates only inside the appropriate paper-evidence context. |
+| Research | Gives bounded agent sessions directions, tools, and workspaces; freezes immutable submissions, carries them through evaluator-owned admission, and retains findings, lineage, and sanitized inputs. |
+| Arena | Runs admitted TradingSystems in isolated paper sessions and records comparable paper performance, lifecycle, trace, failure, and recovery evidence. |
 | Gateway | Owns public market-data access, order validation, and fake paper execution instead of letting a TradingSystem reach an exchange directly. |
 | Ledger | Records the append-only evidence needed to inspect paper decisions, costs, risk, and outcomes. |
 
