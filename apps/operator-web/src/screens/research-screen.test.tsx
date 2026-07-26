@@ -7,7 +7,8 @@ import {
   closeResearchDetail,
   preserveResearchOrigin,
   ResearchScreen,
-  resolveResearchMasterTab
+  resolveResearchMasterTab,
+  settleResearchOrigin
 } from "./research-screen";
 
 function session(overrides: Partial<ResearchSessionViewModel> = {}): ResearchSessionViewModel {
@@ -347,16 +348,22 @@ describe("ResearchScreen", () => {
     expect(resolveResearchMasterTab({ currentTab: "history", previousSessionCount: 0, sessionCount: 0 })).toBe("history");
   });
 
-  it("clears only the Research selection and returns focus to the originating narrow card", () => {
+  it("clears only the Research selection before restoring focus after the route commit", () => {
     const onSelect = vi.fn();
-    const focus = vi.fn();
-    closeResearchDetail({
-      onSelect, originId: "research-1", getOrigin: (id) => id === "research-1" ? { focus } : undefined,
-      schedule: (callback) => callback()
-    });
+    closeResearchDetail({ onSelect });
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(undefined);
-    expect(focus).toHaveBeenCalledOnce();
+
+    const focusOrigin = vi.fn();
+    expect(settleResearchOrigin({
+      originId: "research-1", selectedId: "research-1", focusOrigin
+    })).toBe("research-1");
+    expect(focusOrigin).not.toHaveBeenCalled();
+    expect(settleResearchOrigin({
+      originId: "research-1", selectedId: undefined, focusOrigin
+    })).toBeUndefined();
+    expect(focusOrigin).toHaveBeenCalledOnce();
+    expect(focusOrigin).toHaveBeenCalledWith("research-1");
     expect(preserveResearchOrigin("research-1", "research-1")).toBe("research-1");
     expect(preserveResearchOrigin("research-1", "direct-url-id")).toBeUndefined();
   });
@@ -367,6 +374,7 @@ describe("ResearchScreen", () => {
     expect(rendered).toContain('tabindex="-1"');
     expect(rendered).toContain("min-h-10");
     expect(source).toContain("focusNarrowDetail(detailHeadingRef.current)");
+    expect(source).toContain("settleResearchOrigin({");
     expect(source).toContain("narrowCardRefs.current.set(session.id, node)");
   });
 });

@@ -80,23 +80,30 @@ export function resolveResearchMasterTab({
 }
 
 export function closeResearchDetail({
-  onSelect,
-  originId,
-  getOrigin,
-  schedule = (callback) => requestAnimationFrame(callback)
+  onSelect
 }: {
   onSelect: (id?: string) => void;
-  originId?: string;
-  getOrigin: (id: string) => Pick<HTMLElement, "focus"> | undefined;
-  schedule?: (callback: () => void) => void;
 }): void {
   onSelect(undefined);
-  if (!originId) return;
-  schedule(() => getOrigin(originId)?.focus());
 }
 
 export function preserveResearchOrigin(originId?: string, selectedId?: string): string | undefined {
   return originId === selectedId ? originId : undefined;
+}
+
+export function settleResearchOrigin({
+  originId,
+  selectedId,
+  focusOrigin
+}: {
+  originId?: string;
+  selectedId?: string;
+  focusOrigin: (id: string) => void;
+}): string | undefined {
+  if (!originId) return undefined;
+  if (selectedId === originId) return originId;
+  if (selectedId === undefined) focusOrigin(originId);
+  return undefined;
 }
 
 export function ResearchScreen({
@@ -142,7 +149,11 @@ export function ResearchScreen({
   }, [selectedId]);
 
   useEffect(() => {
-    originSessionIdRef.current = preserveResearchOrigin(originSessionIdRef.current, selectedId);
+    originSessionIdRef.current = settleResearchOrigin({
+      originId: originSessionIdRef.current,
+      selectedId,
+      focusOrigin: (id) => requestAnimationFrame(() => narrowCardRefs.current.get(id)?.focus())
+    });
   }, [selectedId]);
 
   const selectFromNarrowCard = (id: string) => {
@@ -150,11 +161,7 @@ export function ResearchScreen({
     onSelect(id);
   };
 
-  const backToSessions = () => closeResearchDetail({
-    onSelect,
-    originId: originSessionIdRef.current,
-    getOrigin: (id) => narrowCardRefs.current.get(id)
-  });
+  const backToSessions = () => closeResearchDetail({ onSelect });
 
   return (
     <div className="mx-auto w-full max-w-[1800px]">
