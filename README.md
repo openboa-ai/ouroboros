@@ -1,5 +1,3 @@
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
 # Ouroboros
 
 [![CI](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml/badge.svg)](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml)
