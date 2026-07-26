@@ -22875,7 +22875,15 @@ function candidateArenaCheckpointSafeId(value: string): string {
     }
     if (normalized.length > 96) break;
   }
-  return normalized.replace(/^-+|-+$/g, "").slice(0, 96) || "empty";
+  let start = 0;
+  let end = normalized.length;
+  while (start < end && normalized[start] === "-") {
+    start += 1;
+  }
+  while (end > start && normalized[end - 1] === "-") {
+    end -= 1;
+  }
+  return normalized.slice(start, end).slice(0, 96) || "empty";
 }
 
 function compactCandidateArenaCheckpointConformance(

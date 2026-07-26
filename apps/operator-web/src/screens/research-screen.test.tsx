@@ -92,7 +92,7 @@ describe("ResearchScreen", () => {
       "Budget", "Submissions", "Result", "Latest progress"
     ];
     const actual = Array.from(rendered.matchAll(/<th\b[^>]*scope="col"[^>]*>([\s\S]*?)<\/th>/g))
-      .map((match) => match[1]!.replace(/<[^>]+>/g, ""));
+      .map((match) => match[1]!);
     expect(actual).toEqual(headers);
     expect(rendered).toContain("hidden lg:block");
     expect(rendered).toContain("lg:hidden");

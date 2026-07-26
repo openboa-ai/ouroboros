@@ -625,7 +625,10 @@ function buildSource(input: {
   const evaluationChain = evaluationChains.length === 1 ? evaluationChains[0] : undefined;
   const evaluationChainConflict = evaluationGraphConflict || evaluationCanProject &&
     rawCommitmentEvaluations.length > 0 && evaluationChains.length !== 1;
-  const selectedArtifactExpected = Boolean(
+  const terminalSelectionExpected = checkpoint?.terminal_reason === "admission_recorded" ||
+    tickResult?.status === "created" || tickResult?.status === "duplicate" ||
+    tickResult?.status === "quarantined";
+  const selectedArtifactExpected = terminalSelectionExpected || Boolean(
     commitment && sourceClosure && worker && direction &&
     rawCommitmentEvaluations.length > 0
   );
@@ -848,6 +851,18 @@ function projectSummary(
   const submissionCount = source.checkpoint?.development_budget.recorded_submission_count ?? 0;
   const maxSubmissions = source.commitment?.development_policy.submission_limit ??
     source.selection.experiment_budget;
+  const tickExperimentCount = source.commitment &&
+    source.tickResult?.research_preflight?.commitment_id ===
+      source.commitment.research_preflight_commitment_id &&
+    source.tickResult.research_preflight.development_submission_count <=
+      source.selection.experiment_budget
+    ? source.tickResult.research_preflight.development_submission_count
+    : undefined;
+  // Checkpoint and terminal-tick counts cover the full bounded development loop.
+  // A lone legacy sealed ExperimentRun proves only one completed experiment.
+  const completedExperimentCount = source.checkpoint
+    ?.development_budget.recorded_submission_count ??
+    tickExperimentCount ?? (source.experiment?.status === "evaluated" ? 1 : 0);
   const latestProgress = terminalProgress(source, resolution.status) ??
     source.latestEvidenceSummary ??
     (
@@ -880,7 +895,7 @@ function projectSummary(
     degraded_reasons: degraded,
     budget: {
       max_experiment_count: source.selection.experiment_budget,
-      completed_experiment_count: source.experiment?.status === "evaluated" ? 1 : 0,
+      completed_experiment_count: completedExperimentCount,
       max_development_submission_count: maxSubmissions,
       development_submission_count: submissionCount,
       remaining_development_submission_count: Math.max(0, maxSubmissions - submissionCount),
@@ -2546,15 +2561,6 @@ function tickMatchesAllocation(
     );
 }
 
-function rawTickTargetsAllocation(
-  tick: CandidateArenaTickRecord,
-  allocation: CandidateArenaResearchAllocationRecord
-): boolean {
-  return tick?.tick_id === allocation.tick_id &&
-    tick?.research_allocation_ref?.id ===
-      allocation.candidate_arena_research_allocation_id;
-}
-
 function tickHasUniqueRawIdentity(
   tick: CandidateArenaTickRecord,
   index: ResearchOperationsProjectionIndex
@@ -3851,10 +3857,6 @@ function canonicalEvidenceIndex(
     record.research_evidence_artifact_id,
     record
   ]));
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function addReason(

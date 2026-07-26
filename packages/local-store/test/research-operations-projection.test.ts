@@ -516,6 +516,7 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
       const detail = await service.readSessionDetail(
         operations.sessions[0]!.research_work_item_id
       );
+      expect(detail?.budget.completed_experiment_count).toBe(1);
       expectNoTerminalAuthority(detail, "unavailable");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -578,6 +579,7 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
       const detail = await service.readSessionDetail(
         operations.sessions[0]!.research_work_item_id
       );
+      expect(detail?.budget.completed_experiment_count).toBe(1);
       expectNoTerminalAuthority(detail, "unavailable");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -787,9 +789,14 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
             projection_health: "degraded",
             degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"])
           });
+          const selectedArtifactAvailability =
+            allocation.candidate_arena_research_allocation_id ===
+              original.allocation.candidate_arena_research_allocation_id
+            ? "unavailable"
+            : "not_selected";
           expectNoTerminalAuthority(await stoppedService(restarted).readSessionDetail(
             row!.research_work_item_id
-          ));
+          ), selectedArtifactAvailability);
         }
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -1024,8 +1031,9 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
       const detail = await restartedService.readSessionDetail(
         currentRow!.research_work_item_id
       );
-      expectNoTerminalAuthority(detail);
+      expectNoTerminalAuthority(detail, "unavailable");
       expect(detail).toMatchObject({
+        degraded_reasons: expect.arrayContaining(["selected_artifact_unavailable"]),
         submission_history_availability: "unavailable_until_checkpoint",
         development_submissions: []
       });
@@ -1069,7 +1077,6 @@ function expectNoTerminalAuthority(
 ): void {
   expect(detail).toBeDefined();
   expect(detail).toMatchObject({
-    budget: { completed_experiment_count: 0 },
     selected_artifact_availability: selectedArtifactAvailability
   });
   expect(detail?.status).not.toBe("admitted");
@@ -1107,9 +1114,7 @@ function expectTerminalAuthorityMatrix(
   const isAdmission = kind === "admitted" || kind === "duplicate" ||
     kind === "quarantined";
   if (isAdmission) {
-    expect(detail?.budget.completed_experiment_count, kind).toBe(
-      kind === "quarantined" ? 0 : 1
-    );
+    expect(detail?.budget.completed_experiment_count, kind).toBe(1);
     expect(detail, kind).toMatchObject({
       selected_artifact_availability: "available",
       recorded_submission_count: 1,

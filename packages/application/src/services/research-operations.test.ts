@@ -995,6 +995,71 @@ describe("ResearchOperationsProjectionService", () => {
     expect(JSON.stringify(detail)).not.toContain("iteration-99");
   });
 
+  it.each(["admitted", "finished_without_submission"] as const)(
+    "counts every checkpointed development experiment for %s sessions",
+    async (outcome) => {
+      const fixture = graphFixture();
+      const allocation = fixture.addAllocation(
+        `two-experiments-${outcome}`,
+        ["trend_following", "mean_reversion", "volatility_regime"]
+      );
+      makeStaticControlAllocation(allocation);
+
+      if (outcome === "admitted") {
+        const graph = fixture.addTerminalGraph(allocation, "trend_following", "admitted");
+        graph.commitment.development_policy.submission_limit = 2;
+        resealCommitmentGraph(graph);
+        fixture.ticks.at(-1)!.direction_results[0]!.research_preflight!
+          .development_submission_count = 2;
+        fixture.checkpoints.push(checkpoint(
+          fixture,
+          graph.commitment,
+          "admission_recorded",
+          [
+            entry(graph.commitment.candidate_arena_tick_id, 1),
+            entry(graph.commitment.candidate_arena_tick_id, 2)
+          ],
+          2,
+          2,
+          graph.admission.candidate_admission_decision_id
+        ));
+      } else {
+        const commitment = fixture.addCommitment(
+          allocation,
+          "trend_following",
+          "worker-two-experiment-finished"
+        );
+        commitment.development_policy.submission_limit = 2;
+        commitment.commitment_digest = digest(
+          researchPreflightCommitmentDigestInput(commitment)
+        );
+        fixture.checkpoints.push(checkpoint(
+          fixture,
+          commitment,
+          "finished_without_submission",
+          [
+            entry(commitment.candidate_arena_tick_id, 1),
+            entry(commitment.candidate_arena_tick_id, 2)
+          ],
+          2,
+          2
+        ));
+      }
+
+      const detail = await fixture.service.readSessionDetail(
+        workId(allocation, "trend_following")
+      );
+
+      expect(detail).toMatchObject({
+        budget: {
+          max_experiment_count: 2,
+          completed_experiment_count: 2,
+          development_submission_count: 2
+        }
+      });
+    }
+  );
+
   it("emits the admitted Arena handoff only for the complete exact accepted graph", async () => {
     const fixture = graphFixture();
     const allocation = fixture.addAllocation("terminal", ["trend_following"]);
@@ -1364,19 +1429,21 @@ describe("ResearchOperationsProjectionService", () => {
       const detail = await fixture.service.readSessionDetail(workId(allocation, "trend_following"));
 
       expect(detail?.selected_artifact_availability, testCase.suffix).toBe(
-        testCase.commitmentUnavailable ? "not_selected" : "unavailable"
+        "unavailable"
       );
       expect(detail?.terminal_graph, testCase.suffix).not.toHaveProperty("admitted_arena_handoff");
       if (!testCase.exactEvaluation) {
         expect(detail?.degraded_reasons, testCase.suffix).toEqual(
           expect.arrayContaining(testCase.commitmentUnavailable
-            ? ["inactive_incomplete_graph"]
+            ? ["selected_artifact_unavailable", "inactive_incomplete_graph"]
             : ["selected_artifact_unavailable", "inactive_incomplete_graph"])
         );
         expect(detail?.terminal_graph, testCase.suffix).not.toHaveProperty(
           "selected_sealed_evaluation"
         );
-        expect(detail?.budget.completed_experiment_count, testCase.suffix).toBe(0);
+        expect(detail?.budget.completed_experiment_count, testCase.suffix).toBe(
+          testCase.commitmentUnavailable ? 0 : 1
+        );
         expect(detail?.lifecycle_events.map((event) => event.event_kind), testCase.suffix)
           .not.toContain("evaluation");
       } else {
@@ -1399,7 +1466,7 @@ describe("ResearchOperationsProjectionService", () => {
     );
 
     expect(detail).toMatchObject({
-      budget: { completed_experiment_count: 0 },
+      budget: { completed_experiment_count: 1 },
       selected_artifact_availability: "unavailable",
       degraded_reasons: expect.arrayContaining([
         "selected_artifact_unavailable",
@@ -1528,7 +1595,7 @@ describe("ResearchOperationsProjectionService", () => {
     expect(detail).toMatchObject({
       projection_health: "degraded",
       degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"]),
-      budget: { completed_experiment_count: 0 },
+      budget: { completed_experiment_count: 1 },
       selected_artifact_availability: "unavailable"
     });
     expect(detail?.status).not.toBe("admitted");
@@ -2400,11 +2467,14 @@ describe("ResearchOperationsProjectionService", () => {
     const conflicted = await fixture.service.readSessionDetail(
       workId(currentAllocation, "trend_following")
     );
-    expectNoTerminalAuthority(conflicted);
+    expectNoTerminalAuthority(conflicted, "unavailable");
     expect(conflicted).toMatchObject({
       status_basis: { basis_kind: "incomplete_persisted_graph" },
       projection_health: "degraded",
-      degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"]),
+      degraded_reasons: expect.arrayContaining([
+        "selected_artifact_unavailable",
+        "inactive_incomplete_graph"
+      ]),
       submission_history_availability: "unavailable_until_checkpoint"
     });
   });
@@ -2677,6 +2747,95 @@ describe("ResearchOperationsProjectionService", () => {
     expect(detail?.terminal_graph).not.toHaveProperty("admission");
   });
 
+  it.each(["checkpoint", "tick"] as const)(
+    "keeps %s-owned terminal selection unavailable when its exact Evaluation is missing",
+    async (terminalOwner) => {
+      const fixture = graphFixture();
+      const allocation = fixture.addAllocation(
+        `terminal-selection-missing-evaluation-${terminalOwner}`,
+        ["trend_following"]
+      );
+      const graph = fixture.addTerminalGraph(allocation, "trend_following", "admitted");
+      if (terminalOwner === "checkpoint") {
+        fixture.checkpoints.push(checkpoint(
+          fixture,
+          graph.commitment,
+          "admission_recorded",
+          [entry(graph.commitment.candidate_arena_tick_id, 1)],
+          1,
+          1,
+          graph.admission.candidate_admission_decision_id
+        ));
+        fixture.ticks.length = 0;
+      }
+      fixture.evaluations.length = 0;
+
+      const detail = await fixture.service.readSessionDetail(
+        workId(allocation, "trend_following")
+      );
+
+      expect(detail).toMatchObject({
+        status: "failed_closed",
+        selected_artifact_availability: "unavailable",
+        degraded_reasons: expect.arrayContaining([
+          "selected_artifact_unavailable",
+          "terminal_admission_unavailable"
+        ])
+      });
+      expect(detail).not.toHaveProperty("selected_submission_sequence");
+      expect(detail).not.toHaveProperty("selected_system_code_ref");
+    }
+  );
+
+  it("keeps an exact terminal-tick selection unavailable when its commitment is missing", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "terminal-selection-missing-commitment",
+      ["trend_following"]
+    );
+    fixture.addTerminalGraph(allocation, "trend_following", "admitted");
+    fixture.commitments.length = 0;
+
+    const detail = await fixture.service.readSessionDetail(
+      workId(allocation, "trend_following")
+    );
+
+    expect(detail).toMatchObject({
+      status: "failed_closed",
+      selected_artifact_availability: "unavailable",
+      degraded_reasons: expect.arrayContaining([
+        "selected_artifact_unavailable",
+        "terminal_admission_unavailable"
+      ])
+    });
+    expect(detail).not.toHaveProperty("selected_submission_sequence");
+    expect(detail).not.toHaveProperty("selected_system_code_ref");
+  });
+
+  it("does not infer a selected artifact from a no-submission tick without a commitment", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "no-submission-missing-commitment",
+      ["trend_following"]
+    );
+    fixture.ticks.push(tick(allocation, [{
+      direction_kind: "trend_following",
+      status: "no_submission",
+      finding: "Research finished without a selection."
+    }]));
+
+    const detail = await fixture.service.readSessionDetail(
+      workId(allocation, "trend_following")
+    );
+
+    expect(detail).toMatchObject({
+      selected_artifact_availability: "not_selected"
+    });
+    expect(detail?.degraded_reasons).not.toContain("selected_artifact_unavailable");
+    expect(detail).not.toHaveProperty("selected_submission_sequence");
+    expect(detail).not.toHaveProperty("selected_system_code_ref");
+  });
+
   it("keeps a commitment-owned Evaluation selection unavailable when its checkpoint conflicts", async () => {
     const fixture = graphFixture();
     const allocation = fixture.addAllocation(
@@ -2868,9 +3027,13 @@ describe("ResearchOperationsProjectionService", () => {
           .not.toHaveProperty("admitted_candidate_id");
       }
       for (const session of result.sessions) {
+        const selectedArtifactAvailability = session.research_allocation_id ===
+          terminalAllocation.candidate_arena_research_allocation_id
+          ? "unavailable"
+          : "not_selected";
         expectNoTerminalAuthority(await fixture.service.readSessionDetail(
           session.research_work_item_id
-        ));
+        ), selectedArtifactAvailability);
       }
     }
   });
@@ -2901,10 +3064,13 @@ describe("ResearchOperationsProjectionService", () => {
     const commitmentDetail = await invalidCommitmentFixture.service.readSessionDetail(
       workId(invalidCommitmentAllocation, "trend_following")
     );
-    expectNoTerminalAuthority(commitmentDetail);
+    expectNoTerminalAuthority(commitmentDetail, "unavailable");
     expect(commitmentDetail).toMatchObject({
       status_basis: { basis_kind: "incomplete_persisted_graph" },
-      degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"])
+      degraded_reasons: expect.arrayContaining([
+        "selected_artifact_unavailable",
+        "inactive_incomplete_graph"
+      ])
     });
 
     const duplicateTickFixture = graphFixture();
@@ -3963,11 +4129,14 @@ describe("ResearchOperationsProjectionService", () => {
       workId(allocation, "trend_following")
     );
 
-    expectNoTerminalAuthority(detail);
+    expectNoTerminalAuthority(detail, "unavailable");
     expect(detail).not.toHaveProperty("commitment_id");
     expect(detail).toMatchObject({
       status_basis: { basis_kind: "incomplete_persisted_graph" },
-      degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"])
+      degraded_reasons: expect.arrayContaining([
+        "selected_artifact_unavailable",
+        "inactive_incomplete_graph"
+      ])
     });
   });
 
@@ -4170,11 +4339,14 @@ describe("ResearchOperationsProjectionService", () => {
       workId(allocation, "trend_following")
     );
 
-    expectNoTerminalAuthority(detail);
+    expectNoTerminalAuthority(detail, "unavailable");
     expect(detail).not.toHaveProperty("commitment_id");
     expect(detail).toMatchObject({
       status_basis: { basis_kind: "incomplete_persisted_graph" },
-      degraded_reasons: expect.arrayContaining(["inactive_incomplete_graph"])
+      degraded_reasons: expect.arrayContaining([
+        "selected_artifact_unavailable",
+        "inactive_incomplete_graph"
+      ])
     });
   });
 
@@ -4695,6 +4867,26 @@ function makeAdaptiveDecisionAllocation(
     })
   );
   allocation.deferred_directions = directions.slice(3);
+  allocation.allocation_digest = digest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
+}
+
+function makeStaticControlAllocation(
+  allocation: CandidateArenaResearchAllocationRecord
+): void {
+  makeAdaptiveDecisionAllocation(allocation);
+  allocation.allocation_mode = "static_control";
+  allocation.allocation_policy_basis = { basis_kind: "explicit_request" };
+  allocation.selected_directions = allocation.selected_directions.map(
+    (selection, index) => ({
+      ...selection,
+      selection_kind: "static_control",
+      experiment_budget: index < 2 ? 2 : 1,
+      signal_score: 0,
+      reasons: ["static control"]
+    })
+  );
   allocation.allocation_digest = digest(
     candidateArenaResearchAllocationDigestInput(allocation)
   );
@@ -5723,7 +5915,6 @@ function expectNoTerminalAuthority(
 ): void {
   expect(detail).toBeDefined();
   expect(detail).toMatchObject({
-    budget: { completed_experiment_count: 0 },
     selected_artifact_availability: selectedArtifactAvailability
   });
   expect(detail?.status).not.toBe("admitted");
