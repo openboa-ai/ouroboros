@@ -686,6 +686,23 @@ function ResearchDetail({
     );
   }
 
+  if (!session && detailError) {
+    return (
+      <div className="min-w-0 p-4">
+        <Button className="mb-4 min-h-10 lg:hidden" variant="ghost" onClick={onBack}>
+          <ArrowLeft data-icon="inline-start" aria-hidden="true" /> Back
+        </Button>
+        <h3 ref={detailHeadingRef} className="sr-only" tabIndex={-1}>Research detail unavailable</h3>
+        <Alert variant="warning">
+          <AlertTitle>Research detail unavailable</AlertTitle>
+          <AlertDescription>
+            Exact persisted detail could not be loaded: {detailError}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div className="min-w-0 p-4">

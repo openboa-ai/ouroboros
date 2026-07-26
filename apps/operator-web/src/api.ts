@@ -178,15 +178,16 @@ export async function fetchArenaTradingSystemDetail(
 export async function fetchResearchSessionDetail(
   researchWorkItemId: string,
   signal?: AbortSignal
-): Promise<ResearchSessionDetailReadModel> {
+): Promise<ResearchSessionDetailReadModel | undefined> {
   const response = await runtimeFetch(
     `${runtimeBaseUrl}/api/research/sessions/${encodeURIComponent(researchWorkItemId)}`,
     signal ? { signal } : undefined
   );
+  if (response.status === 404) {
+    return undefined;
+  }
   if (!response.ok) {
-    throw new Error(
-      `Failed to load Research session ${researchWorkItemId}: ${response.status}`
-    );
+    throw new Error(`Failed to load Research session: ${response.status}`);
   }
   const body = (await response.json()) as {
     research_session: ResearchSessionDetailReadModel;

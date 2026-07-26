@@ -331,6 +331,27 @@ describe("ResearchScreen", () => {
     expect(rendered).not.toContain("Selected session is not in the current projection");
   });
 
+  it("shows cold outside-list transport failure as unavailable instead of a 404 miss", () => {
+    const emptyView = view([]);
+    emptyView.history = [];
+    emptyView.emptyState = "available_empty";
+    const rendered = renderToStaticMarkup(
+      <ResearchScreen
+        view={emptyView}
+        selectedId="research-outside-summary-bound"
+        detailError="Failed to load Research session: 503"
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(rendered).toContain("Research detail unavailable");
+    expect(rendered).toContain("Failed to load Research session: 503");
+    expect(rendered).not.toContain("Selected session is not in the current projection");
+    expect(rendered).not.toContain("current Research evidence no longer contains it");
+  });
+
   it("keeps exact same-ID evidence visible with a distinct refresh warning", () => {
     const rendered = markup({
       selectedId: "research-1", detail: minimalDetail(), detailError: "runtime transport unavailable"

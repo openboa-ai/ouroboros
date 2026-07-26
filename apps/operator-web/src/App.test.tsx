@@ -438,6 +438,18 @@ describe("greenfield Operator entrypoint", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
   });
 
+  it("distinguishes an exact Research 404 from projection or transport unavailability", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchResearchSessionDetail("missing-session")).resolves.toBeUndefined();
+    await expect(fetchResearchSessionDetail("unavailable-session")).rejects.toThrow(
+      "Failed to load Research session: 503"
+    );
+  });
+
   it("forwards one cancellation signal to operator and gateway root reads", async () => {
     const fetchMock = vi.fn(async (
       input: RequestInfo | URL,
