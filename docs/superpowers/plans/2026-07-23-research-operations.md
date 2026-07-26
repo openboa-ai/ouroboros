@@ -503,6 +503,38 @@ Process-ownership tests that need `/bin/ps` must be rerun outside the managed sa
 - [ ] Publish a PR titled `[OURO-238] ...` with body exactly `OURO-238`. Move Linear to `In Review` only after local evidence and the PR exist.
 - [ ] Land only after current-head required checks, CodeQL/gitleaks where configured, unresolved-thread readback, mergeability, rendered UI evidence, and current-head Codex review are clean.
 
+### Execution evidence — 2026-07-26
+
+- Isolated run root: `/private/tmp/ouro-238.2JdMAp`. The selected researcher provider was `codex`; persisted session detail reported `codex_cli`.
+- Terminal no-selection detail: `research-session-v1-db0c9aa52e0c03a57c83e668bc9e6c9c122ed4ce0f95a1aef5e190d3482bb7b9` in `evidence/research-detail.json`.
+- Restart-recovery detail: `research-session-v1-f15f5a3b4194c71f5c7afa7a9ef5c4860f86401d38be854b4a4d4014022fa5e5`, commitment `research-preflight-85c2e78689ff635e59a540a6`, in `evidence/research-detail-restart-recovery.json`. Readback required `failed_closed`, checkpoint-owned status basis, `Research failed closed during restart recovery.`, and lifecycle event `Research checkpoint restart_recovery.`. Persisted provider ownership was captured before loss and after owner-absent reconciliation.
+- Authoritative Web evidence and adjacent metric files:
+  - `evidence/research-web-empty-authoritative-390x844.jpg`
+  - `evidence/research-web-populated-390x844.jpg`
+  - `evidence/research-web-populated-768x960.jpg`
+  - `evidence/research-web-restart-recovery-failed-closed-390x844.jpg`
+  - `evidence/research-web-degraded-baseline-768x960.jpg`
+  - `evidence/research-web-degraded-transport-768x960.jpg`
+  - `evidence/research-web-degraded-recovered-768x960.jpg`
+- The same visible 768x960 tab retained the exact failed-closed detail for 13 seconds after the ownership-validated runtime listener was stopped. Both degraded warnings appeared, and both cleared after restart. Every capture asserted the exact requested viewport and no document/body horizontal overflow.
+- Actual native Tauri evidence used the unique bundle `ai.openboa.ouroboros.operator.ouro238` and exact URL-backed restart-recovery detail:
+  - `evidence/research-desktop-failed-closed-native-screen-1152x768.jpeg`
+  - `evidence/research-desktop-restart-recovery-lifecycle-1152x768.jpeg`
+  - adjacent `.metrics.json` files assert the exact session URL, `Failed Closed`, restart-recovery summary/checkpoint, `Codex Cli`, controlled lifecycle, and no projection degradation.
+- Host-display constraint: the attached display exposed 1152x768 pixels, so the native captures truthfully record 1152x768 rather than relabeling them as the requested 1440x960 or 1180x760. Exact Web evidence covers 768x960 and 390x844; the native captures remain the actual Desktop proof.
+- Post-fix keyboard evidence: `evidence/research-web-interaction-check-after-fix.json` and `evidence/research-web-interaction-after-fix-390x844.jpeg`. Browser-only `Tab`/`Enter` opened the exact failed-closed card, retained it across a 5.6-second refresh, activated `Back`, restored focus to the originating card after the route commit, and reported no horizontal overflow. All assertions are `true`.
+- Cleanup: only the evidence-run Tauri, Web, runtime, and caffeinate sessions were stopped. Ports `4273` and `5273` no longer listened; the pre-existing OURO-237 service on `4173` remained untouched.
+- Current-main validation after rebase to `28c8c9dde15609bfa098cfc4200ab3e31c0b162f`:
+  - focused read-model/runtime: 5 files, 46 passed;
+  - focused Research projection services: 2 files, 97 passed;
+  - Research detail API: 4 passed, 42 skipped by the name filter;
+  - focused App/Research UI: 3 files, 44 passed;
+  - full Operator Web source: 15 files, 95 passed;
+  - root `npm run typecheck`, `npm run build`, and `npm run check:repo-guards`: passed;
+  - final exact `npm test` outside the managed sandbox: 236 files, 3,725 passed, 1 skipped.
+- Environment-only validation notes: the managed sandbox denied local TCP/Unix-socket listeners and process-start inspection with `EPERM`, so its affected result was invalidated and rerun outside the sandbox as required. The first unsandboxed full run had one non-reproduced load-sensitive polling timeout in an unchanged autonomous-restart smoke; the exact test passed 1/1, its full file passed 19/19, and a second exact `npm test` completed green with the counts above.
+- Independent Task 5 safety re-review: PASS. The standalone fail-fast preflight validates runtime/provider identities and start markers before any signal, uses `node --import tsx -e`, signals only still-live owned groups, and bounded-polls every exit.
+
 ## Plan Self-Review
 
 - Scope is projection-only; no persisted contract, provider, scheduler, evaluator, rank, private/live, or order authority is added.
