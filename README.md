@@ -79,6 +79,7 @@ Prerequisites:
 - Python 3.11 or later for contributor validation (`tomllib`); CI uses Python 3.12.
 - `gitleaks` for contributor secret scanning.
 - Rust and Cargo for native Tauri Desktop development.
+- Linux Desktop development also requires the `glib-2.0`, `gtk+-3.0`, and `webkit2gtk-4.1` pkg-config modules; distribution package names vary.
 - macOS for the packaged/open/verify Desktop release path. The source-checkout Desktop development command is still the primary interactive path.
 
 Install dependencies and open the source-checkout Desktop app:
