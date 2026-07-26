@@ -5,7 +5,7 @@
 **Ouroboros is a weak-to-strong research system for turning advances in frontier agents into cumulative, externally verified progress—tested first in trading.**
 
 > [!IMPORTANT]
-> The current boundary is public-data `BTCUSDT` paper trading with fake accounts, execution, and Ledgers; there is no private or live authority.
+> The current boundary is public-data `BTCUSDT` Binance USD-M futures paper trading with fake accounts, execution, and Ledgers; there is no private or live authority.
 
 ## Why Ouroboros
 
@@ -71,7 +71,7 @@ For headless operation, use two terminals:
 
 - Codex-first bounded research-worker sessions with bounded tools, workspaces, and explicit submissions.
 - External admission and paper-handoff conformance for frozen candidate artifacts.
-- Isolated `BTCUSDT` paper operation over public Binance data, with fake accounts and execution.
+- Isolated public-data `BTCUSDT` Binance USD-M futures paper operation, with fake accounts, execution, and Ledgers; no private or live authority.
 - Recorded fees, funding, slippage, risk, Gateway provenance, and Ledger evidence.
 - Shared Desktop, CLI, TUI, and browser-development operator surfaces; Research and Arena remain separate views, while persisted operational detail is currently an Arena surface.
 - Paper-only safety: researchers do not grade themselves, and paper evidence is not live promotion.
