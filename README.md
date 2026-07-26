@@ -46,7 +46,7 @@ npm install
 npm run dev:operator-desktop
 ```
 
-The Desktop app starts or reuses the local runtime. Inspect that runtime and its operator state:
+The Desktop app starts or reuses the local runtime. In another terminal, inspect that runtime and its operator state:
 
 ```bash
 curl -fsS http://127.0.0.1:4173/health
