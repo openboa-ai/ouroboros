@@ -173,6 +173,10 @@ bash scripts/check-secrets.sh
 git diff --check
 ```
 
+Runbooks for Docker Sandboxes `sbx`/`sdx`, S5 audits, recovery helpers, fixture compatibility, and
+full-cycle research are developer/detail surfaces. Use the relevant npm script `--help` output and
+Linear workflow notes when that work is explicitly in scope.
+
 For implementation changes, add the relevant tests and run `npm test`, `npm run typecheck`, and `npm run build`. The [Development Workflow](docs/development-workflow.md) describes the repository delivery boundary; [API And Command Contract](docs/api-command-contract.md) lists the product commands and their authority.
 
 ## Canonical documentation
