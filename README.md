@@ -1,426 +1,169 @@
 # Ouroboros
 
-Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
-continuously improving AI agents to a hard, dynamic trading problem with externally recorded
-economic outcomes, then turns that external agent progress into parallel `TradingSystem` candidate
-search.
+[![CI](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml/badge.svg)](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml)
 
-AI agents improve over time. Trading is hard, dynamic, and adversarial. `revenue - cost`, return,
-costs, risk, and paper evidence provide objective accounting, but strategy quality remains noisy,
-path-dependent, and non-stationary. Ouroboros exists to make that combination compound: generate
-many candidates, evaluate admitted systems in isolated paper sessions, keep findings and lineage,
-and reserve qualification claims for comparable precommitted evidence.
+**Ouroboros is a weak-to-strong research system for turning advances in frontier agents into cumulative, externally verified progress—tested first in trading.**
 
-## Core Doctrine
+[Thesis](#the-thesis) · [Why trading](#why-trading) · [How it works](#how-ouroboros-compounds-progress) · [What is built](#built-today--still-to-prove) · [Quickstart](#quickstart) · [Architecture](#product-and-architecture) · [Development](#operate-and-develop)
 
-The researcher is a candidate generator, not the authority. Researcher cannot grade, candidate
-cannot grade itself, and paper evidence is proof gathering, not live promotion. Research and Arena
-are separate operator surfaces: Research shows how candidates are being created; Arena shows how
-admitted TradingSystems are actually running and performing in isolated paper sessions. See
-[Research And Arena Product Loop](docs/research-arena-product-loop.md).
+Generation is improving faster than trustworthy selection: an agent can propose many plausible systems, but it should not decide which deserve trust or more authority. Ouroboros keeps those roles separate. Agents generate candidates; frozen artifacts are evaluated outside their generator; admitted, rejected, invalid, and duplicate outcomes become bounded memory for the next generation. Trading is the first test domain, not the thesis.
 
-Replay and backtest are research tools, not final evaluation authority. They belong inside the
-candidate creation stage as fast ways to explore, sanity-check, and reject weak ideas. The primary
-product score must come from continuous paper trading: admitted candidates run against live public
-market data with isolated fake accounts, fake execution, and fake Ledgers, and are ranked only
-inside comparable cohorts by accumulated `revenue - cost` over time.
+## The thesis
 
-```text
-parallel TradingSystem candidates
--> pre-effect ResearchPreflightCommitment
--> bounded agent-owned ResearchWorkerSession
--> immutable development submissions and aggregate replay/backtest feedback
--> explicit selection or no submission
--> frozen artifact and one-shot rotating sealed admission
--> external PaperTradingHandoffConformance
--> development-only ResearchBehaviorFingerprint comparison
--> CandidateAdmissionDecision and materialization
--> terminal ResearchWorkerCheckpoint
--> bounded isolated paper Arena
--> comparable paper leaderboard
--> findings and lineage
--> next generation
--> explicit qualified handoff for later Trading review
-```
+**Ouroboros turns better external agents into a testable research loop instead of trying to rebuild those agents.** It does not build foundation models, a general coding agent, or a generic agent harness. Its work is the domain and evidence layer: define a hard problem, bound a worker's tools and workspace, preserve artifacts and evidence, and decide what later authority the evidence supports.
 
-`TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
-an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
-evaluated in paper before it earns authority.
+Today, Codex is the only current non-fixture provider path. Claude Code and future frontier agents are intended sources of external intelligence, not claimed current integrations. That boundary matters: improving intelligence supply can widen candidate generation, but it must not let a generator grade itself, choose its own evidence, or grant itself trading authority.
 
-Development replay success alone cannot claim runnable paper handoff. Each direction first
-persists a `ResearchPreflightCommitment` that binds allocation, direction, worker, source bytes,
-development budget, and evaluator-owned sealed-suite commitments before worker effects. The worker
-gets one bounded provider session and a session-local tool port. `status`, `submitDevelopment`,
-`selectDevelopment`, and `finishWithoutSubmission` are application capabilities, not public product
-commands. Each development call copies and evaluates an immutable external snapshot and returns
-aggregate feedback only. The worker explicitly selects a completed sequence; the host never falls
-back to the highest development score or current mutable workspace. No selection claims no sealed
-suite and records no submitted SystemCode, Evaluation, Finding, or admission. One selected frozen
-artifact is submitted only once to the rotating sealed set. Its development sequence and exact
-submitted digest remain durably bound while sealed submission sequence one denotes the one-shot
-sealed attempt. Raw evaluator seed and sealed scenarios remain process-local; process
-loss closes that commitment instead of reconstructing or resampling it. Every new admitted candidate
-must then bind the exact commitment, sealed terminal evaluation, submitted `SystemCode`, and one
-external `PaperTradingHandoffConformance`, and a
-generated candidate must revalidate that evidence before paper effects. For generated single-file
-Python candidates, the SystemCode digest covers the frozen manifest plus sole editable entrypoint;
-undeclared files, directories, symlinks, or manifest drift invalidate the closure. This gate proves bounded
-target-protocol compatibility only; it does not add economic score, qualification, promotion,
-order, private, or live authority.
+For the detailed product thesis and authority model, see [Project Direction](docs/project-direction.md), [Ouroboros Doctrine](docs/ouroboros-doctrine.md), and the [Autonomy Model](docs/autonomy-model.md).
 
-Before population materialization, CandidateArena also derives one `ResearchBehaviorFingerprint`
-from the final externally recorded order decision for every exact development scenario. Different
-SystemCode artifacts with the same protocol, development-suite digest, and normalized decisions
-share one behavioral key. Only a prior admitted fingerprint can exclude a later exact match;
-duplicates retain Finding and Lineage but receive no candidate slot. Missing canonical observations
-quarantine an otherwise admissible submission. This is bounded observational equality on a public
-development suite, not semantic program equivalence or economic evidence, and sealed or paper
-outcomes never enter the fingerprint.
+## Why trading
 
-CandidateArena reconstructs `ResearchPopulationDiversity` over the same latest ten completed ticks
-shown in its read model. The top-level distributions measure recent population coverage, while the
-newest-first `tick_series` independently measures each tick's worker cross-section so older
-diversity cannot hide current exact-behavior collapse. Assigned `ResearchDirection` entropy and
-exact observed-behavior entropy remain separate. Behavior is comparable only inside one exact
-fingerprint protocol and development suite; mixed cohorts report `incomparable_suites` and make no
-unique-count or entropy claim. A suite transition between ticks may close the window aggregate
-while preserving valid single-cohort tick measurements. The same bounded object is available to the
-next ResearchWorker without raw fingerprint, observation, scenario, suite-digest, sealed, or paper
-evidence. It is a search diagnostic with no rank, admission, allocation, qualification, promotion,
-order, private, or live authority.
+**Trading pressure-tests the method because markets are competitive, noisy, non-stationary, and costly to act in.** A candidate must survive changing regimes and observable fees, funding, slippage, and risk; an attractive backtest or self-report is not enough.
 
-CandidateArena policy can now be exercised through the internal `ResearchControlCampaign` runtime
-composition. It seals one bounded LocalStore baseline plus the actual single-file research artifact,
-then clones independent `adaptive_default` and `static_control` stores and runs their exact tick
-sequences concurrently by sequence. The append-only report records admission, duplicate, failure,
-diversity, and efficiency diagnostics and reserves the first admitted candidate per tick for future
-paper evidence. It deliberately has `unadjudicated` primary outcome and no winner. Before arm
-effects, the campaign also freezes the exact current Trading review comparator or explicit
-unavailability. A bound campaign now commits one deterministic
-`ResearchControlCampaignPaperSchedule`. The internal bounded paper executor can install that graph
-in candidate-bearing arm stores, prepare matched source comparisons, seal shared first-tick market
-and public-execution evidence in a `ResearchControlCampaignPaperStartBatch`, drive source and
-confirmation windows, and close every candidate slot with an exact
-`ResearchControlCampaignPaperSlotOutcome`. The outcome collector consumes those slot outcomes,
-counts every precommitted slot, credits only `qualified_improvement`, and persists one
-authority-closed single-campaign observation in the coordinator.
-`ResearchControlStudy` now precommits 6 to 30 deterministic campaign identities before any planned
-campaign exists, freezes their exact source/agent/comparator/paper/allocation condition on one
-baseline snapshot, and fixes a two-sided paired exact sign test with no early stopping.
-`ResearchControlStudyOutcome` consumes every planned terminal campaign outcome exactly once. Its
-only causal claim is over same-baseline stochastic repetitions; a supported adaptive effect makes a
-separate policy decision eligible but does not change allocation policy itself.
-`ResearchMemoryControlStudy` separately precommits 6 to 30 fresh same-baseline pairs that differ
-only in whether safe cross-generation Arena memory is visible. Source, managed agent, direction,
-budget, development suite, sealed opportunity, and analysis are frozen; provider-visible tick and
-workspace sides are blinded and carry no arm label. Each `ResearchMemoryControlPairOutcome` uses
-external unchanged-artifact or exact same-suite fingerprint evidence, and the all-pairs outcome may
-claim only reduced exact repetition under that condition. It is neither candidate-quality nor
-paper-economic evidence and has no memory-policy, promotion, order, private, or live authority.
-`ResearchAllocationPolicyDecisionService` now creates that separate append-only research-only
-decision from the exact persisted study graph. Version 1 approves only an eligible
-`adaptive_effect_supported` outcome and binds the exact studied allocation-policy digest;
-non-supported or underpowered outcomes remain `not_approved` and never select static control. Each
-future allocation records an explicit-request, repository-default, or approved-decision basis.
-Uncontrolled ticks use the latest applicable exact approval, while caller-specified directions and
-adaptive/static modes always take precedence. LocalStore revalidates decision-backed provenance and
-time order before accepting the pre-effect allocation.
-`createResearchControlCampaignPaperRuntimeArm` composes each arm-local store and paper-session
-service into the existing comparison, activation, checkpoint, qualification, confirmation, and
-release services. Confirmation advances one restart-projectable transition per executor action and
-propagates exact window wake times to the runner instead of polling. Each arm has one runtime
-activation owner, and restart recovery stops rather than adopts an unowned running attempt.
-`createResearchControlCampaignPaperRuntime` then composes the source, confirmation, evidence,
-action, executor, and interruptible runner components, and `runResearchControlCampaign` can invoke
-one injected executor step.
-`createResearchControlStudyRuntime` now binds that campaign lifecycle into a sequential study
-executor and runner. Each advance completes or resumes only the earliest planned campaign, reloads
-its terminal closure, and adjudicates only after all replications; stop drains the active campaign.
-`ResearchControlStudyProcessSupervisor` can now discover incomplete committed studies oldest first,
-open one injected study runtime at a time, reload exact completion, and rescan until caught up.
-Failure does not skip later work, restart derives from append-only evidence, and stop drains the
-active campaign. The campaign-to-outcome runtime can now open root-specific arm stores and build
-those real arm services from an arm-local session factory. `ResearchControlStudyScheduler` now
-keeps that one-shot supervisor alive under the runtime server. Before each discovery cycle, the
-default `ResearchControlStudyCommitmentCoordinator` reloads the latest exact TradingPromotion and
-its sealed confirmation campaign, then creates or accepts one deterministic six-replication,
-one-tick-per-arm study. It preserves the campaign's numeric, market-data, and paper policy and
-normalizes only the comparison mode to `champion_challenge`. No promotion or one already-pending
-study defers; malformed or drifted evidence stops the scheduler before effects. Same-root races use
-create-only publication and accept only the exact deterministic winner. The scheduler then runs the
-supervisor immediately. After successful catch-up, and before its interruptible bounded wait, it
-reconciles the oldest missing generalization outcome, the oldest missing generalization-policy
-decision, and then the oldest missing same-baseline allocation-policy decision. Each coordinator
-creates at most one record per cycle. The same-baseline decision records supported, unsupported,
-and underpowered evidence symmetrically as `approved` or `not_approved`; a non-significant result
-never selects static control. Decision publication is create-only across same-root contenders, and
-an automatic approval is available to the next uncontrolled Arena tick as exact provenance. The
-scheduler can then consider a later reviewed source without an operator command. Each opened
-runtime reconstructs source, agent identity, campaign bounds, and the bound paper protocol from the
-exact persisted study condition. Shutdown stops this scheduler before CandidateArena and
-paper-session dependencies.
-`buildServer` owns those dependencies through one `RuntimeSupervisor`, not three unrelated startup
-effects. After Store initialization it claims one same-host process ownership, reloads the immutable
-checkpoint chain, and reconciles selected PaperTrading sessions, persisted CandidateArena start
-intent, and the ResearchControlStudyScheduler in that order. Each lane records desired state,
-basis/progress digests, bounded no-progress retries, and `recovering`, `running`, `degraded`,
-`blocked`, or `stopped` status. A blocked research lane does not stop a healthy paper lane. Shutdown
-drains the reverse dependency order. `/health` and `OperatorReadModel.runtime_supervisor` expose the
-same coordination-only projection; it carries no evaluation, promotion, order, private, or live
-authority.
-`SIGINT` and `SIGTERM` close Fastify through that same drain path. Operator Desktop sends
-`SIGTERM` first and waits for a bounded graceful stop before using a hard-kill fallback. A failed
-signal drain retains ownership and exits non-zero so exact-PID stale-owner recovery remains the
-only restart path.
-`RuntimeSoakHarness` remains outside `RuntimeSupervisor` as an operational test controller. Run it
-with `npm run runtime:soak -- --config <file> --report-root <directory>` to execute one immutable,
-time-bounded clean-restart, crash, delayed-cleanup, provider-loss, Sandbox-loss, Gateway-loss,
-recovery, and terminal-cleanup schedule. It samples normalized external state, stops on the first
-invariant failure, and writes one create-only, digest-linked `RuntimeSoakReport`. Resume preserves
-wall-clock elapsed time, never replays a completed action, repairs a missing post-action sample,
-and restores a failure recorded before terminal publication. The deterministic test fixture proves
-this protocol and all terminal classifications only; no production-duration soak has yet passed.
-The same default commitment path now first creates or reloads one immutable
-`ResearchGeneralizationProtocol`, then fills at most one eligible deterministic slot per call.
-Gateway-owned public evidence is exactly 30 closed `BTCUSDT` one-minute klines; a frozen five-close
-versus 30-close mean classifier opens only a matching `long`, `short`, or `flat` block. The protocol
-precommits two studies per block, 24-hour global spacing, a 90-day deadline, exact ResearchWorker
-and paper/campaign identities, source reuse guards, and equal-weight analysis. After study catch-up,
-`ResearchGeneralizationOutcomeCoordinator` reconciles at most the oldest complete or expired
-protocol before policy decisions. The outcome includes all
-six slots and supports generalization only with six eligible non-ties, at least three distinct
-baseline snapshots, exact p-value at most 0.05, positive equal-weight mean, and no harmful block.
-It is external research evidence only and cannot replace allocation policy, promote a candidate,
-submit an order, or grant private/live authority.
-`ResearchGeneralizationPolicyDecisionService` separately reloads the exact protocol/outcome graph.
-Version 1 approves only the protocol's frozen `adaptive_default` policy digest after an eligible
-`generalization_supported` outcome. Unsupported and insufficient outcomes are persisted as
-`not_approved` with no effective mode and never imply static superiority. Future uncontrolled
-allocations resolve explicit directions, explicit mode, the latest applicable broad approval, the
-latest applicable same-baseline approval, and finally the repository adaptive default, in that
-order. Every selected decision basis is sealed before effects and independently revalidated by
-LocalStore. The shared generalization read model keeps the chronologically latest decision separate
-from the exact approved decision the uncontrolled-allocation resolver currently selects. A newer
-negative decision therefore remains visible without revoking an older applicable approval. The
-effective projection joins existing allocation and completed-tick records as
-`awaiting_allocation`, `allocated`, or `completed_tick`, with exact counts and latest allocation
-evidence. CLI, TUI, and Web render the same authority-closed state without a new record, command,
-worker-feedback path, or trading authority. A production-service integration fixture proves this
-composition and its harmful-block negative control deterministically; it is contract proof, not
-real-market generalization or profitability evidence.
-Before opening a pending study, each server
-now acquires one renewable `ResearchControlStudyExecutionLease` scoped to the same host and
-LocalStore root. The default 30-second lease renews every 10 seconds, guards every executor advance,
-and records released or expired ownership history. A live or liveness-unknown owner remains held;
-takeover requires both exact expiry and a confirmed-absent same-host PID. The lease coordinates
-runtime effects only and never becomes research, rank, allocation, or promotion evidence. Multi-host
-fencing and PID-namespace claims remain outside. Automatic commitment owns research scheduling
-only; automatic policy decisions own future uncontrolled research allocation only. The prospective
-condition-blocked selection protocol and separate approval-only generalization decision are
-implemented, while complete six-study real-market evidence, generated or tuned policy parameters,
-automatic TradingPromotion, and champion handoff remain separate and outside this path.
+The concrete question is deliberately narrower than a profitability promise:
 
-The runtime supervisor, provider children, and deterministic long-running Sandbox child effects use
-same-host `RuntimeProcessOwnership` under distinct scopes. It durably binds an exact PID start
-marker, executable/profile, runtime-supervisor, worker/store-root, or Sandbox process scope,
-runtime ref, host, and session token before effects.
-Isolated control arms therefore do not share provider ownership. Restart terminates an exact stale
-provider owner before opening a fresh non-resumable session, while an exact live deterministic
-Sandbox may be adopted without duplication. Missing, reused, unreadable, or mismatched identity
-cannot grant ownership; terminal transitions remain inspectable. External `sbx` resources,
-provider-session resumption, and multi-host fencing remain outside this boundary.
-Before any selected-paper effect, a non-fixture provider-generated candidate must reload an admitted
-version 2 handoff, verify its external deny-default `CandidateEgressAttestation`, and recheck the
-exact SystemCode, ExperimentRun, Evaluation, and artifact digest chain. Explicit `fixture_only`
-materialization remains deterministic, simulated, and authority-free.
-Eligible non-fixture paper runs use the Docker Sandbox adapter. Stop releases policy and
-force-removes the Sandbox; a stop-plus-removal failure retains the deny policy and lease.
+> Can an AI research system repeatedly find a TradingSystem that improves on its current champion with prospective paper evidence—after costs and risk—without weakening evaluation rules?
 
-One logical `ResearchWorker` is stable across ticks for an exact direction, provider, model, and
-managed-agent profile. It owns a stable workspace with per-tick sanitized notebooks, while candidate
-artifact bytes remain isolated under the tick run. Every checkpoint-enabled commitment closes with
-one append-only `ResearchWorkerCheckpoint`: completed admission, completed finish without a
-submission, or failed-closed execution. It carries zero remaining submission authority, cumulative
-bounded budget accounting, and at most six recent
-development-visible notebook entries. Before a new tick effect, restart recovery closes every
-orphan in commitment order. An already persisted exact admission reconstructs only the terminal
-checkpoint; otherwise the orphan becomes `failed_closed/restart_recovery`. Neither path reruns the
-old worker, artifact, provider, sandbox, budget, evaluator seed, or sealed suite.
+Admitted TradingSystems rank by accumulated `revenue - cost` only within comparable cohorts. Advancement separately requires a qualified prospective comparison against the exact current champion; raw PnL alone is insufficient.
 
-This isolation and diversity measurement reduce direct evaluator reuse and make population
-concentration observable; they do not prove that a
-query cap prevents reward hacking or that synthetic replay generalizes economically. Approximate
-or cross-suite behavior clustering, external Sandbox ownership and provider-session resumption,
-worker-chosen
-long-horizon research quality, directed-versus-undirected and memory/baseline controls, a completed
-six-slot prospective generalization outcome on real public paths, controlled discovery-yield and
-production-duration restart soak evidence, deployed multi-host always-on operation, automatic promotion,
-champion runner handoff, private/live authority, P0, and the overall Goal remain open.
+The current boundary is `BTCUSDT` USD-M futures paper trading over Binance public market data. Accounts, execution, and Ledgers are fake. Ouroboros does not claim stock support, private exchange access, signed requests, live orders, proven profitability, completed generalization, or completed weak-to-strong success.
 
-The authority boundary is outside the candidate. A candidate is accepted or rejected by external
-paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after
-selection. Failures and losing candidates remain useful arena memory unless they crash, submit
-malformed orders, bypass provider boundaries, fail risk validation, or attempt private/live
-behavior.
+## How Ouroboros compounds progress
 
-Paper trading runs the selected `TradingSystem`; it does not ask the Gateway to invent a decision
-on every snapshot. The `TradingSystem` owns when and how often it evaluates market state, news,
-tools, internal agents, and risk. The Gateway owns public market data access, cache, validation,
-fake paper execution, and Ledger evidence. A paper observation is a checkpoint/readback: record the
-latest market snapshot, consume any newly emitted `OrderRequest`s through the Gateway, update paper
-score and Ledger evidence, or record a valid no-order checkpoint when the system emitted nothing.
-The paper engine owns the fake account, open/partial/filled/canceled orders, fake fills, mark-to-
-market PnL, fees, slippage, funding, and position state. Fills require public execution evidence:
-Binance routed WebSocket `/public` `bookTicker` and `/market` `aggTrade` are the primary live
-sources, REST is the snapshot, backfill, and recovery anchor, and local order book state follows
-Binance `/public` `depth` snapshot plus `U/u/pu` continuity rules. Fills are not invented from a
-mark price alone.
-Replaying old sandbox output as a new decision is not paper trading evaluation.
-
-The Candidate Arena leaderboard is a research preflight board. The `PaperTradingEvaluation` board
-is the product evaluation board: it ranks selected candidates by accumulated paper
-`net_revenue_usdt` first and `net_return_pct` second, keeps losing candidates visible as useful
-evidence, and shows a qualification gate without enabling live authority. Ranking and
-qualification are deliberately separate: a high paper `net_revenue_usdt` can still be
-`collecting_evidence` or `blocked_by_quality` when the evidence window is too small, the runner is
-inactive, failure ratio is high, market snapshots are missing, or fill-bearing results lack public
-execution evidence.
-CandidateArena rank and next-generation context use development-visible preflight evidence; the
-sealed terminal score is an admission gate and never becomes a leaderboard value or worker
-feedback channel.
-
-Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
-separate states; live authority remains disabled.
-
-## Source Of Truth
-
-The GitHub repository on `main` is the Ouroboros source of truth. Code, tests, validation scripts,
-root documentation, [docs](docs/project-direction.md), and `.agents` instructions define durable
-product, architecture, naming, API, and operating truth.
-
-Linear is a workflow tool for issues, comments, scratchpads, project coordination, and historical
-progress notes. See [Development Workflow](docs/development-workflow.md) and
-[LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
-
-Canonical repo docs:
-
-- [Development Workflow](docs/development-workflow.md)
-- [Project Direction](docs/project-direction.md)
-- [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
-- [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
-- [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
-- [Autonomy Model](docs/autonomy-model.md)
-- [Product Quality Design](docs/product-quality-design.md)
-- [Architecture Governance](docs/architecture-governance.md)
-- [API And Command Contract](docs/api-command-contract.md)
-- [Interface Parity](docs/interface-parity.md)
-- [Product Loop Smoke](docs/product-loop-smoke.md)
-- [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md)
-- [TradingSystem Paper Event Protocol](docs/trading-system-paper-event-protocol.md)
-- [Naming Taxonomy](docs/naming-taxonomy.md)
-
-## Canonical Flow
-
-Use the same nouns in code, API, UI, issues, and compact docs:
+**The loop converts externally checked outcomes into a more informed next generation, rather than treating a model response as proof.**
 
 ```text
-Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger
+improving frontier agents
+        -> diverse candidate systems
+        -> external evaluation
+        -> bounded paper evidence
+        -> findings and lineage
+        -> better-informed next generation
 ```
 
-`OrderRequest`, `GatewayResult`, and `ExecutionResult` are the Ledger chain. `Improvement`,
-full-cycle research, fixtures, Docker Sandboxes, Compose, and host paths are developer/detail
-surfaces. They must not replace the primary Candidate Arena workflow.
+Here, "external evaluation" means evaluator-owned evaluation outside the generating session, not a claim that a third party grades the candidate. Released, sanitized context—such as Arena paper results, traces, failures, Findings, lineage, and bounded population-diversity summaries—can inform later generations; raw sealed data stays withheld. The short names below describe the product roles; the detailed evidence graph remains in the maintained protocols.
 
-## Repository Shape
+| Role | Plain-language responsibility |
+| --- | --- |
+| Research | Gives bounded agent sessions directions, tools, and workspaces; freezes immutable submissions, carries them through evaluator-owned admission, and retains findings, lineage, and sanitized inputs. |
+| Arena | Runs admitted TradingSystems in isolated paper sessions and records comparable paper performance, lifecycle, trace, failure, and recovery evidence. |
+| Gateway | Owns public market-data access, order validation, and fake paper execution instead of letting a TradingSystem reach an exchange directly. |
+| Ledger | Records the append-only evidence needed to inspect paper decisions, costs, risk, and outcomes. |
 
-- `apps/runtime`: Fastify composition root and HTTP route/controller registration.
-- `apps/cli`: `ouroboros` command-line interface over the shared command/read contracts. It
-  remains complete enough for automation and headless operation.
-- `apps/operator-tui`: Ink action console over the shared Operator read model and command endpoint.
-- `apps/operator-web`: shared Operator UI source and browser/development surface over the same
-  Operator read model and Ouroboros command endpoint. It is not a separate product authority.
-- `apps/operator-desktop`: primary Tauri operator app. It launches or reuses the runtime, keeps
-  runtime status visible from the macOS menu bar, restores the operator window from the tray, and
-  loads the shared Operator UI bundle through the platform WebView without granting frontend Tauri
-  permissions.
-- `packages/domain`: shared domain contracts, including the Operator command descriptors used by
-  CLI, TUI, shared UI, and the Desktop app.
-- `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports, organized by product domain such as `agent/`, `candidate/`, `research/`, and `trading/`.
-- `packages/adapters`: concrete outside-system integrations grouped by boundary, such as `codex/`, `binance/`, `fixture/`, and `sandbox/`.
-- `packages/local-store`: filesystem-backed local store primitives.
-- `.agents`: repo-local skills and agent operating support.
+[CandidateArena And Research Goal](docs/candidate-arena-research-goal.md) explains the research boundary. [Research And Arena Product Loop](docs/research-arena-product-loop.md) explains the operator loop, and [API And Command Contract](docs/api-command-contract.md) defines the shared command/read surface.
 
-Architecture quality is enforced as a product constraint. New runtime work follows
-Hexagonal/Clean/Layered Architecture, DDD vocabulary, and CQRS command/read separation. Use
-Strategy, Factory, Builder, Adapter, Decorator, Observer, Middleware, Registry, Plugin, and
-Dependency Injection only at the extension point they solve; see
-[Architecture Governance](docs/architecture-governance.md) for the decision matrix.
+The repository's canonical product vocabulary is `Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger`.
 
-## Primary Commands
+## Built today / Still to prove
 
-Run local services:
+**The implementation establishes evidence controls and paper operation; it does not establish the economic result those controls are meant to test.**
+
+| Built today | Still to prove |
+| --- | --- |
+| Codex-first bounded research-worker sessions, with bounded tools, workspaces, and explicit submissions | Economic frontier improvement from better agents |
+| External admission and paper-handoff conformance for frozen candidate artifacts | A causal agent-leverage effect rather than correlation or one-off success |
+| Isolated `BTCUSDT` paper operation over public Binance data, with fake accounts and execution | Long-horizon, real-market generalization |
+| Recorded fees, funding, slippage, risk, Gateway provenance, and Ledger evidence | Production-duration autonomous operation and complete runtime-soak evidence |
+| Shared Desktop, CLI, TUI, and browser-development operator surfaces; Research and Arena remain separate views, while persisted operational detail is currently an Arena surface | Multi-host operation, private exchange access, and live authority |
+| Paper-only safety: researchers do not grade themselves, and paper evidence is not live promotion | Profitability or a completed weak-to-strong result |
+
+Replay and backtests are useful research tools, not final authority. Continuous comparable paper evidence gathers proof; it does not unlock private access or live trading. The exact product and architecture boundaries are maintained in [Research And Arena Product Loop](docs/research-arena-product-loop.md) and [Architecture](ARCHITECTURE.md).
+
+## Quickstart
+
+**Start with the native Desktop app; use the CLI when you need a headless surface.**
+
+Prerequisites:
+
+- Node.js and npm. CI currently uses Node 24; `package.json` does not declare a hard engine minimum.
+- Python 3.11 or later for contributor validation (`tomllib`); CI uses Python 3.12.
+- `gitleaks` for contributor secret scanning.
+- Rust and Cargo for native Tauri Desktop development.
+- Linux Desktop development also requires the `glib-2.0`, `gtk+-3.0`, and `webkit2gtk-4.1` pkg-config modules; distribution package names vary.
+- macOS for the packaged/open/verify Desktop release path. The source-checkout Desktop development command is still the primary interactive path.
+
+Install dependencies and open the source-checkout Desktop app:
 
 ```bash
 npm install
-ouroboros runtime serve
-npm run package:operator-desktop
-npm run open:operator-desktop
-npm run verify:operator-desktop-release
-npm run measure:operator-performance -- --check
 npm run dev:operator-desktop
+```
+
+The Desktop app launches or reuses the local runtime. In another terminal, inspect that runtime and its operator state:
+
+```bash
+curl -fsS http://127.0.0.1:4173/health
+./bin/ouroboros status
+```
+
+For headless operation, use two terminals. In Terminal 1, start the runtime:
+
+```bash
+./bin/ouroboros runtime serve
+```
+
+In Terminal 2, use the repository-local CLI:
+
+```bash
+./bin/ouroboros arena status
+```
+
+`./bin/ouroboros` is the source-checkout CLI entry point; `npm install` does not install a global `ouroboros` binary. The Web app is a Vite-only browser development surface: start it only when a Desktop app or runtime is already running. It is not the primary operator app:
+
+```bash
 npm run dev:operator-web
 ```
 
-Operate the product loop through the Ouroboros command surface:
+The full generated-candidate research and paper loop has additional prerequisites: a configured Codex CLI and Docker Sandboxes `sbx` version 0.35.0 or later. Set up, log in to, probe, and select Codex with the source-checkout CLI:
 
 ```bash
-ouroboros arena status
-ouroboros arena tick
-ouroboros arena cycle
-ouroboros arena start
-ouroboros arena stop
-ouroboros candidate select <candidate-id>
-ouroboros candidate promote <candidate-id>
-ouroboros candidate paper start <candidate-id>
-ouroboros trading-run observe <trading-run-id>
-ouroboros trading-run stop <trading-run-id>
-ouroboros agent setup codex
-ouroboros agent login codex
-ouroboros agent probe codex
-ouroboros researcher provider set codex
-ouroboros tui
+./bin/ouroboros agent setup codex
+./bin/ouroboros agent login codex
+./bin/ouroboros agent probe codex
+./bin/ouroboros researcher provider set codex
 ```
 
-The Desktop app is the primary interactive operator surface; use the packaged app path for operator
-checks instead of opening the browser development surface. The CLI remains the complete baseline
-for headless operation and automation. CLI, Desktop, Web, and TUI all read `GET /api/operator`,
-mutate through `POST /api/commands`, and share the same runtime/store-backed session data. Adapter
-names such as Codex are internal provider settings on managed `AgentProfile` records. The agent
-setup surface is provider-scoped, and the researcher selects one available provider from that
-managed set; product-facing commands stay under the `ouroboros` noun.
+Those prerequisites are not required merely to open the Desktop app or inspect its local runtime.
 
-Use the installed Linear OAuth Connector when a task needs Linear workflow writeback. The connector
-is an external Codex/plugin capability, not a repository executable or product runtime dependency.
-Load the `linear` skill, read the target before writing, and update the issue's single
-`## Codex Workpad` comment instead of creating duplicate progress notes.
+For the native launch, packaged macOS path, and release verification, see [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md).
 
-The OAuth Connector is the only Linear execution path for this repository. If it is unavailable,
-continue repo work that does not depend on Linear mutation and leave writeback blocked with exact
-evidence. Linear writeback must point back to repo truth rather than replacing it.
+## Product and architecture
 
-## Product Boundary
+**Ouroboros is one product loop with several shared operator surfaces, not separate trading products.** The Desktop app is the primary interactive operator surface; CLI remains the complete baseline for headless operation and automation. Desktop, CLI, TUI, and Web share the same runtime/store-backed session data and product command/read contract; Web remains a browser development surface with no separate authority.
 
-MLP-01 is paper-only. Paper uses Binance production public market data through the Gateway-owned
-`MarketDataPort` with a fake account, fake executor, and fake Ledger. Binance never attaches
-directly to a `TradingSystem`; the `TradingSystem` emits validated `OrderRequest`s and the Gateway
-owns REST + WebSocket market data reads, cache, order book recovery, validation, execution routing,
-and evidence. Live trading, private account reads, signed exchange requests,
-listenKey/user-data streams, leverage or margin mutation, and live orders remain disabled until a
-future repo issue explicitly enables that authority.
+| Path | Purpose |
+| --- | --- |
+| `apps/runtime` | Local runtime and shared operator API. |
+| `apps/operator-desktop` | Primary Tauri Desktop operator application. |
+| `apps/operator-web` | Shared browser/development UI source. |
+| `apps/cli` and `apps/operator-tui` | Headless and terminal operator surfaces. |
+| `packages/domain` | Shared domain contracts and command descriptors. |
+| `packages/application` | Use cases, controllers, read models, and ports. |
+| `packages/adapters` | Boundary adapters, including Codex, Binance public data, fixtures, and sandbox integration. |
+| `packages/local-store` | Filesystem-backed persistence primitives. |
 
-## Validation
+The architecture keeps candidate generation, evaluation, public-market access, and authority separate. Read [Architecture](ARCHITECTURE.md), [Architecture Governance](docs/architecture-governance.md), and [Naming Taxonomy](docs/naming-taxonomy.md) before changing those contracts.
 
-Before a PR is ready:
+## Operate and develop
+
+**Use the same command contract for Desktop, CLI, TUI, and Web, and verify documentation changes before sharing them.**
+
+Common source-checkout commands:
+
+```bash
+# Inspect the Arena through a running local runtime; run arena start only after provider setup.
+./bin/ouroboros status
+./bin/ouroboros arena start
+./bin/ouroboros arena stop
+./bin/ouroboros tui
+
+# Build, open, and verify the local macOS Desktop bundle.
+npm run package:operator-desktop
+npm run open:operator-desktop
+npm run verify:operator-desktop-release
+```
+
+Run the repository guards for a README or other documentation change:
 
 ```bash
 bash scripts/check-docs.sh
@@ -431,14 +174,25 @@ bash scripts/check-secrets.sh
 git diff --check
 ```
 
-For implementation changes, also run the relevant tests plus:
-
-```bash
-npm test
-npm run typecheck --workspaces --if-present
-npm run build
-```
-
 Runbooks for Docker Sandboxes `sbx`/`sdx`, S5 audits, recovery helpers, fixture compatibility, and
 full-cycle research are developer/detail surfaces. Use the relevant npm script `--help` output and
 Linear workflow notes when that work is explicitly in scope.
+
+For implementation changes, add the relevant tests and run `npm test`, `npm run typecheck`, and `npm run build`. The [Development Workflow](docs/development-workflow.md) describes the repository delivery boundary; [API And Command Contract](docs/api-command-contract.md) lists the product commands and their authority.
+
+## Canonical documentation
+
+**The linked repository documents are the durable source of truth; this README is the first-reader map.**
+
+- [Project Direction](docs/project-direction.md)
+- [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
+- [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+- [Research And Arena Product Loop](docs/research-arena-product-loop.md)
+- [Autonomy Model](docs/autonomy-model.md)
+- [Architecture](ARCHITECTURE.md)
+- [API And Command Contract](docs/api-command-contract.md)
+- [Development Workflow](docs/development-workflow.md)
+
+## Contributing and license
+
+**Contribution guidance and licensing terms are not yet published.**
