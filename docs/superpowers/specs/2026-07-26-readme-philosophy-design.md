@@ -1,6 +1,7 @@
 # README Philosophy And First-Reader Design
 
-Status: approved in conversation; pending written-spec review before implementation.
+Status: approved; implementation tracked by
+`docs/superpowers/plans/2026-07-26-readme-philosophy-implementation.md`.
 
 Linear issue: `OURO-239`
 
