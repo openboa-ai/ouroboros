@@ -7,6 +7,7 @@ import {
   closeResearchDetail,
   preserveResearchOrigin,
   ResearchScreen,
+  resolveResearchDetailFocusPhase,
   resolveResearchMasterTab,
   settleResearchOrigin
 } from "./research-screen";
@@ -368,12 +369,40 @@ describe("ResearchScreen", () => {
     expect(preserveResearchOrigin("research-1", "direct-url-id")).toBeUndefined();
   });
 
+  it("changes the detail focus phase when an async deep link replaces its loading heading", () => {
+    expect(resolveResearchDetailFocusPhase({
+      selectedId: "deep-link-id", sessionAvailable: false, detailLoading: true
+    })).toBe("loading");
+    expect(resolveResearchDetailFocusPhase({
+      selectedId: "deep-link-id", sessionAvailable: true, detailLoading: false
+    })).toBe("loaded");
+    expect(resolveResearchDetailFocusPhase({
+      selectedId: "deep-link-id", sessionAvailable: false, detailLoading: false
+    })).toBe("unavailable");
+    expect(resolveResearchDetailFocusPhase({
+      selectedId: undefined, sessionAvailable: false, detailLoading: false
+    })).toBe("none");
+  });
+
+  it("stacks long terminal badges below the narrow-card heading before the sm breakpoint", () => {
+    const rendered = markup({
+      sessions: [session({ status: "finished_without_submission", projectionHealth: "complete" })]
+    });
+    const source = readFileSync(new URL("./research-screen.tsx", import.meta.url), "utf8");
+
+    expect(rendered).toContain('data-research-card-heading="true"');
+    expect(rendered).toContain('data-research-card-badges="true"');
+    expect(source).toContain("flex min-w-0 flex-col items-start gap-2 sm:flex-row");
+    expect(source).toContain("flex max-w-full flex-wrap gap-1 sm:shrink-0 sm:justify-end");
+  });
+
   it("wires narrow detail focus to the heading and preserves a 40px Back target", () => {
     const rendered = markup({ selectedId: "research-1", detail: minimalDetail() });
     const source = readFileSync(new URL("./research-screen.tsx", import.meta.url), "utf8");
     expect(rendered).toContain('tabindex="-1"');
     expect(rendered).toContain("min-h-10");
     expect(source).toContain("focusNarrowDetail(detailHeadingRef.current)");
+    expect(source).toContain("[selectedId, detailFocusPhase]");
     expect(source).toContain("settleResearchOrigin({");
     expect(source).toContain("narrowCardRefs.current.set(session.id, node)");
   });

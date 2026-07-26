@@ -106,6 +106,20 @@ export function settleResearchOrigin({
   return undefined;
 }
 
+export function resolveResearchDetailFocusPhase({
+  selectedId,
+  sessionAvailable,
+  detailLoading
+}: {
+  selectedId?: string;
+  sessionAvailable: boolean;
+  detailLoading: boolean;
+}): "none" | "loading" | "loaded" | "unavailable" {
+  if (!selectedId) return "none";
+  if (sessionAvailable) return "loaded";
+  return detailLoading ? "loading" : "unavailable";
+}
+
 export function ResearchScreen({
   view,
   detail,
@@ -133,6 +147,11 @@ export function ResearchScreen({
     ? view.sessions.find((session) => session.id === selectedId) ??
       (exactDetail ? buildResearchSessionViewModel(exactDetail) : undefined)
     : undefined;
+  const detailFocusPhase = resolveResearchDetailFocusPhase({
+    selectedId,
+    sessionAvailable: selected !== undefined,
+    detailLoading: detailLoading === true
+  });
   const activeSessions = view.sessions.filter((session) => [
     "allocating",
     "running",
@@ -143,10 +162,10 @@ export function ResearchScreen({
   const recordedSessionCount = view.sessionWindow?.recordedCount ?? view.sessions.length;
 
   useEffect(() => {
-    if (selectedId) {
+    if (detailFocusPhase !== "none") {
       focusNarrowDetail(detailHeadingRef.current);
     }
-  }, [selectedId]);
+  }, [selectedId, detailFocusPhase]);
 
   useEffect(() => {
     originSessionIdRef.current = settleResearchOrigin({
@@ -457,9 +476,17 @@ function ResearchMaster({
                 }}
                 type="button"
               >
-                <span className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="min-w-0 break-words text-sm font-medium">{researchSessionHeading(session)}</span>
-                  <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                <span className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span
+                    className="w-full min-w-0 break-words text-sm font-medium sm:w-auto"
+                    data-research-card-heading="true"
+                  >
+                    {researchSessionHeading(session)}
+                  </span>
+                  <span
+                    className="flex max-w-full flex-wrap gap-1 sm:shrink-0 sm:justify-end"
+                    data-research-card-badges="true"
+                  >
                     <StatusBadge status={session.status} />
                     <StatusBadge status={session.projectionHealth} />
                   </span>
