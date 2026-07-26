@@ -225,7 +225,7 @@ flowchart LR
         A --> P["Arena paper<br/>evaluation"]
         P --> W["Gateway<br/>public data + fake execution"]
         W --> L["Ledger evidence<br/>cost · risk · outcomes"]
-        L --> M["Released research-feedback Findings<br/>+ valid negatives + lineage"]
+        L --> M["Released Findings<br/>+ valid negatives + lineage"]
     end
 
     M --> R
@@ -235,9 +235,11 @@ Adjacent copy must retain three authority rules:
 
 - ResearchWorkers do not grade or admit themselves;
 - TradingSystems reach public market data and fake execution only through Gateway;
-- only evidence precommitted for `research_feedback` feeds a later generation; prospective
-  qualification evidence cannot double as research feedback and remains unavailable to an open
-  ResearchWorker;
+- one paper window cannot carry both `research_feedback` and `qualification` purposes. Precommitted
+  `research_feedback` may feed later generations; qualification evidence stays sealed until terminal
+  closure and may enter later Research only through a separate post-close
+  `PaperTradingComparisonResearchRelease`, which materializes only Finding and Lineage and grants no
+  promotion, public, private, order, or live authority;
 - paper evidence never grants private or live authority.
 
 ### Why trading is the first proving ground
