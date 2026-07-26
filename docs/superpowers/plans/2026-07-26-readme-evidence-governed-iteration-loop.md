@@ -1,5 +1,3 @@
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
 # README Evidence-Governed Iteration Loop Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
