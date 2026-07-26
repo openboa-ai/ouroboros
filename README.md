@@ -37,7 +37,7 @@ flowchart LR
 
 **Start with the native Desktop app; use the CLI when you need a headless surface.**
 
-Prerequisites: Node.js and npm; Python 3.11 or later for contributor validation; `gitleaks` for contributor secret scanning; and Rust and Cargo for native Tauri Desktop development. Linux Desktop development also needs the `glib-2.0`, `gtk+-3.0`, and `webkit2gtk-4.1` pkg-config modules. macOS is required for the packaged/open/verify Desktop release path.
+Prerequisites: Node.js 24 (recommended and CI-tested) and npm; Python 3.11 or later for contributor validation; `gitleaks` for contributor secret scanning; and Rust and Cargo for native Tauri Desktop development. Linux Desktop development also needs the `glib-2.0`, `gtk+-3.0`, and `webkit2gtk-4.1` pkg-config modules. macOS is required for the packaged/open/verify Desktop release path.
 
 Install dependencies and open the source-checkout Desktop app:
 
