@@ -1,6 +1,6 @@
 # Ouroboros
 
-![CI](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml/badge.svg)](https://github.com/openboa-ai/ouroboros/actions/workflows/ci.yml)
 
 **Ouroboros is a weak-to-strong research system for turning advances in frontier agents into cumulative, externally verified progress—tested first in trading.**
 
@@ -113,7 +113,7 @@ In Terminal 2, use the repository-local CLI:
 npm run dev:operator-web
 ```
 
-The full generated-candidate research and paper loop has additional prerequisites: a configured Codex CLI and Docker Sandboxes `sbx` version 0.35.0 or later. Set up, log in to, and probe Codex with the source-checkout CLI:
+The full generated-candidate research and paper loop has additional prerequisites: a configured Codex CLI and Docker Sandboxes `sbx` version 0.35.0 or later. Set up, log in to, probe, and select Codex with the source-checkout CLI:
 
 ```bash
 ./bin/ouroboros agent setup codex
@@ -150,7 +150,7 @@ The architecture keeps candidate generation, evaluation, public-market access, a
 Common source-checkout commands:
 
 ```bash
-# After provider setup, inspect or control the Arena through a running local runtime.
+# Inspect the Arena through a running local runtime; run arena start only after provider setup.
 ./bin/ouroboros status
 ./bin/ouroboros arena start
 ./bin/ouroboros arena stop
@@ -190,4 +190,4 @@ For implementation changes, add the relevant tests and run `npm test`, `npm run 
 
 ## Contributing and license
 
-**Contribution guidance and licensing terms are not yet published, so this checkout intentionally provides no dead links for either.**
+**Contribution guidance and licensing terms are not yet published.**
