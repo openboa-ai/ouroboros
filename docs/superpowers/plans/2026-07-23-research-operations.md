@@ -360,10 +360,11 @@ sanitize_legacy_ownership_copy \
   "$OURO_RUN_ROOT/evidence/degraded-runtime-ownership.witness.jsonl"
 
 capture_ownership_signal_witnesses() {
-  node --import tsx -e '
+  node --import tsx --input-type=module -e '
     import { execFileSync } from "node:child_process";
     import { readFile, readdir, writeFile } from "node:fs/promises";
     import path from "node:path";
+    import { runtimeProcessOwnershipHasRuntimeShape } from "@ouroboros/domain";
 
     const [activeDirectory, commitmentsPath, runtimeOutput, providerOutput] =
       process.argv.slice(1);
@@ -409,10 +410,10 @@ capture_ownership_signal_witnesses() {
         const activeRecordPath = path.join(activeDirectory, entry.name);
         const raw = await readFile(activeRecordPath, "utf8");
         const record = JSON.parse(raw);
-        if (record?.ownership_status !== "active") continue;
-        if (typeof record.session_token !== "string" || !record.session_token) {
-          throw new Error(`active ownership session identity unavailable: ${activeRecordPath}`);
+        if (!runtimeProcessOwnershipHasRuntimeShape(record)) {
+          throw new Error(`active ownership metadata invalid: ${activeRecordPath}`);
         }
+        if (record.ownership_status !== "active") continue;
         targets.push({
           active_record_path: activeRecordPath,
           exact_record_sha256: exactRecordSha256(raw),
@@ -496,45 +497,37 @@ test "$OURO_PROVIDER_OWNER_COUNT" -eq "$(jq 'length' "$OURO_RUN_ROOT/evidence/in
 test "$(sort -nu "$OURO_RUN_ROOT/evidence/provider-process-groups.txt" | wc -l | tr -d ' ')" -eq "$OURO_PROVIDER_OWNER_COUNT"
 
 # This helper owns the complete per-target check-and-signal critical section. It
-# rescans the active directory, reloads the exact scope record, compares the
-# complete snapshotted lineage, and rechecks the live process identity and
-# listener/PGID immediately before calling process.kill. No cached runtime PID
+# resolves the canonical scope path, reloads the exact record through the
+# authoritative ownership store (including history), compares the complete
+# snapshotted lineage, and rechecks live process identity plus listener/PGID
+# immediately before calling process.kill. No cached runtime PID
 # or provider PGID receives a destructive signal outside this body. Audit mode
 # uses the same validation path but appends only a would-signal record, so guard
 # regressions remain non-destructive.
 signal_exact_active_owner() {
-  node --import tsx -e '
+  node --import tsx --input-type=module -e '
+    import { createHash } from "node:crypto";
     import { execFileSync } from "node:child_process";
-    import { appendFile, readFile, readdir } from "node:fs/promises";
+    import { appendFile, readFile } from "node:fs/promises";
     import { hostname } from "node:os";
     import path from "node:path";
     import { isDeepStrictEqual } from "node:util";
+    import { runtimeProcessOwnershipHasRuntimeShape } from "@ouroboros/domain";
+    import { FileSystemRuntimeProcessOwnershipStore } from "@ouroboros/local-store";
     import { processStartMarker } from "./packages/local-store/src/process-start-marker.ts";
 
     const manifestPath = process.argv[1];
     const expectedOwnershipId = process.argv[2];
     const expectedKind = process.argv[3];
+    const ownershipRoot = process.argv[4];
     const signalMode = process.env.OURO_OWNERSHIP_SIGNAL_MODE ?? "signal";
     const auditPath = process.env.OURO_OWNERSHIP_SIGNAL_AUDIT_PATH;
 
     const fail = (message) => {
       throw new Error(`ownership signal guard: ${message}`);
     };
-    const validRef = (value) => typeof value?.record_kind === "string" &&
-      value.record_kind.length > 0 && typeof value?.id === "string" && value.id.length > 0;
-    const sameRef = (left, right) => left?.record_kind === right?.record_kind &&
-      left?.id === right?.id;
-    const exactRecordSha256 = (raw) => {
-      const output = execFileSync("/usr/bin/shasum", ["-a", "256"], {
-        input: raw,
-        encoding: "utf8",
-        timeout: 1_000,
-        maxBuffer: 16_384
-      }).trim();
-      const digest = output.split(/\s+/)[0];
-      if (!/^[a-f0-9]{64}$/.test(digest)) fail("exact ownership hash unavailable");
-      return `sha256:${digest}`;
-    };
+    const exactRecordSha256 = (raw) =>
+      `sha256:${createHash("sha256").update(raw).digest("hex")}`;
     const lineageWitness = (record) => ({
       record_kind: record.record_kind,
       version: record.version,
@@ -589,6 +582,7 @@ signal_exact_active_owner() {
     (async () => {
       if (!manifestPath || !expectedOwnershipId ||
         (expectedKind !== "runtime_supervisor" && expectedKind !== "research_provider") ||
+        !ownershipRoot || !path.isAbsolute(ownershipRoot) ||
         (signalMode !== "signal" && signalMode !== "audit") ||
         (signalMode === "audit" && !auditPath)) {
         fail("invalid invocation");
@@ -609,7 +603,6 @@ signal_exact_active_owner() {
         typeof target.active_record_path !== "string" || !target.active_record_path ||
         typeof target.exact_record_sha256 !== "string" ||
         !/^sha256:[a-f0-9]{64}$/.test(target.exact_record_sha256) ||
-        !validRef(expected.subject_ref) || !validRef(expected.runtime_ref) ||
         typeof expected.ownership_digest !== "string" || !expected.ownership_digest ||
         expected.owner?.host_id !== hostname() ||
         !Number.isSafeInteger(expected.owner?.process_id) || expected.owner.process_id <= 0 ||
@@ -625,35 +618,55 @@ signal_exact_active_owner() {
         fail("provider lineage is not bound to a ResearchPreflightCommitment");
       }
 
-      const activeDirectory = path.dirname(target.active_record_path);
-      const assertExactActiveLineage = async () => {
-        const entries = await readdir(activeDirectory, { withFileTypes: true });
-        const scoped = [];
-        for (const entry of entries) {
-          if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-          const activePath = path.join(activeDirectory, entry.name);
-          let raw;
-          let record;
-          try {
-            raw = await readFile(activePath, "utf8");
-            record = JSON.parse(raw);
-          } catch {
-            fail(`active ownership record became unreadable: ${activePath}`);
-          }
-          if (record?.ownership_status === "active" &&
-            record.process_kind === expectedKind && sameRef(record.subject_ref, expected.subject_ref)) {
-            scoped.push({ activePath, raw, record });
-          }
+      const scopeKey = createHash("sha256").update([
+        expectedKind,
+        expected.subject_ref?.record_kind,
+        expected.subject_ref?.id
+      ].join(":")).digest("hex");
+      const canonicalActivePath = path.join(ownershipRoot, "active", `${scopeKey}.json`);
+      if (path.resolve(target.active_record_path) !== path.resolve(canonicalActivePath)) {
+        fail(`snapshotted ${expectedKind} lineage is not at its canonical ownership path`);
+      }
+      const ownershipStore = new FileSystemRuntimeProcessOwnershipStore(ownershipRoot);
+      const assertExactCanonicalOwnership = async () => {
+        let raw;
+        let record;
+        try {
+          raw = await readFile(canonicalActivePath, "utf8");
+          record = JSON.parse(raw);
+        } catch {
+          fail("canonical active ownership record became unreadable");
         }
-        if (scoped.length !== 1) {
-          fail(`active ownership scope changed before signal: expected one, received ${scoped.length}`);
+        if (!runtimeProcessOwnershipHasRuntimeShape(record) ||
+          record.ownership_status !== "active") {
+          fail("canonical active ownership metadata is invalid");
         }
-        const current = scoped[0];
-        if (path.resolve(current.activePath) !== path.resolve(target.active_record_path) ||
-          exactRecordSha256(current.raw) !== target.exact_record_sha256 ||
-          !isDeepStrictEqual(lineageWitness(current.record), expected)) {
+        if (record.runtime_process_ownership_id !== expectedOwnershipId ||
+          record.process_kind !== expectedKind ||
+          exactRecordSha256(raw) !== target.exact_record_sha256 ||
+          !isDeepStrictEqual(lineageWitness(record), expected)) {
           fail(`active ownership lineage ${expectedOwnershipId} changed before signal`);
         }
+        let inspection;
+        try {
+          inspection = await ownershipStore.inspect({
+            process_kind: record.process_kind,
+            subject_ref: { ...record.subject_ref },
+            runtime_ref: { ...record.runtime_ref },
+            host_id: record.owner.host_id,
+            executable: record.executable,
+            profile_digest: record.profile_digest
+          });
+        } catch {
+          fail("canonical ownership inspection failed");
+        }
+        if (inspection.status !== "owned") {
+          fail(`canonical ownership is not currently owned (${inspection.status})`);
+        }
+        if (!isDeepStrictEqual(inspection.ownership, record)) {
+          fail(`canonical ownership lineage ${expectedOwnershipId} changed during inspection`);
+        }
+        return record;
       };
 
       const pid = expected.owner.process_id;
@@ -680,11 +693,12 @@ signal_exact_active_owner() {
         return -pgid;
       };
 
-      // Revalidate twice so both the active lineage and the OS identity are
-      // freshly observed at the final signal boundary, not merely at capture.
-      await assertExactActiveLineage();
+      // Revalidate twice through the canonical store. The final sequence is an
+      // exact owned-state inspection followed immediately by OS identity and
+      // the sole audit/signal sink.
+      await assertExactCanonicalOwnership();
       await assertLiveSignalTarget();
-      await assertExactActiveLineage();
+      await assertExactCanonicalOwnership();
       const signalTarget = await assertLiveSignalTarget();
       const result = {
         signal_mode: signalMode,
@@ -704,127 +718,389 @@ signal_exact_active_owner() {
       console.error(error);
       process.exit(1);
     });
-  ' "$1" "$2" "$3"
+  ' "$1" "$2" "$3" "$4"
 }
 
-# Non-destructive regression for the same helper: audit mode writes only if the
-# real signal line would be reached. One fixture owner exits naturally; another
-# active file is swapped after snapshot. Both invocations must fail and leave
-# their audit files empty.
-export OURO_SIGNAL_PROBE_ROOT="$(mktemp -d "$OURO_RUN_ROOT/evidence/ownership-signal-guard.XXXXXX")"
-mkdir -p "$OURO_SIGNAL_PROBE_ROOT/active"
-export OURO_SIGNAL_PROBE_HOST="$(node -e 'console.log(require("node:os").hostname())')"
-sleep 5 &
-OURO_EXITED_PROBE_PID=$!
-export OURO_EXITED_PROBE_PID
-OURO_EXITED_PROBE_MARKER="$(node --import tsx -e '
-  import { processStartMarker } from "./packages/local-store/src/process-start-marker.ts";
-  (async () => {
-    const marker = await processStartMarker(Number(process.argv[1]));
-    if (!marker) process.exit(1);
-    console.log(marker);
-  })().catch(() => process.exit(1));
-' "$OURO_EXITED_PROBE_PID")"
-export OURO_EXITED_PROBE_MARKER
-test -n "$OURO_EXITED_PROBE_MARKER"
-jq -n --arg host "$OURO_SIGNAL_PROBE_HOST" --argjson pid "$OURO_EXITED_PROBE_PID" \
-  --arg marker "$OURO_EXITED_PROBE_MARKER" '{
-    record_kind:"runtime_process_ownership",version:1,
-    runtime_process_ownership_id:"runtime-process-ownership-owner-exit-probe",
-    process_kind:"runtime_supervisor",
-    subject_ref:{record_kind:"runtime_supervisor",id:"runtime-supervisor-owner-exit-probe"},
-    runtime_ref:{record_kind:"local_store",id:"local-store-owner-exit-probe"},
-    owner:{host_id:$host,process_id:$pid,process_start_marker:$marker},
-    executable:"/bin/sleep",profile_digest:"sha256:owner-exit-probe",
-    ownership_status:"active",adoption_count:0,started_at:"2026-07-26T00:00:00.000Z",
-    ownership_digest:"sha256:owner-exit-probe"
-  }' >"$OURO_SIGNAL_PROBE_ROOT/active/owner-exit.json"
-OURO_EXITED_PROBE_SHA256="$(node -e '
-  const { createHash } = require("node:crypto");
-  const { readFileSync } = require("node:fs");
-  console.log(`sha256:${createHash("sha256").update(readFileSync(process.argv[1])).digest("hex")}`);
-' "$OURO_SIGNAL_PROBE_ROOT/active/owner-exit.json")"
-jq -n --arg active_record_path "$OURO_SIGNAL_PROBE_ROOT/active/owner-exit.json" \
-  --arg exact_record_sha256 "$OURO_EXITED_PROBE_SHA256" \
-  --slurpfile expected "$OURO_SIGNAL_PROBE_ROOT/active/owner-exit.json" \
-  '[{active_record_path:$active_record_path,
-    exact_record_sha256:$exact_record_sha256,lineage:$expected[0]}]' \
-  >"$OURO_SIGNAL_PROBE_ROOT/owner-exit-manifest.json"
-wait "$OURO_EXITED_PROBE_PID"
-: >"$OURO_SIGNAL_PROBE_ROOT/owner-exit-audit.jsonl"
-if OURO_OWNERSHIP_SIGNAL_MODE=audit \
-    OURO_OWNERSHIP_SIGNAL_AUDIT_PATH="$OURO_SIGNAL_PROBE_ROOT/owner-exit-audit.jsonl" \
-    signal_exact_active_owner \
-      "$OURO_SIGNAL_PROBE_ROOT/owner-exit-manifest.json" \
-      runtime-process-ownership-owner-exit-probe \
-      runtime_supervisor \
-      2>"$OURO_SIGNAL_PROBE_ROOT/owner-exit-error.txt"; then
-  printf 'owner-exit guard probe unexpectedly reached the signal sink\n' >&2
-  exit 1
-fi
-grep -F 'exited before signal' "$OURO_SIGNAL_PROBE_ROOT/owner-exit-error.txt" >/dev/null
-test ! -s "$OURO_SIGNAL_PROBE_ROOT/owner-exit-audit.jsonl"
+# Non-destructive regression for the exact helper: all initial records come
+# from FileSystemRuntimeProcessOwnershipStore.claim(), and audit mode writes
+# only if the real signal line would be reached. Probe-only records (including
+# their session tokens) live outside evidence and are removed before the
+# token-free result report is retained.
+export OURO_SIGNAL_PROBE_ROOT="$(mktemp -d /private/tmp/ouro-238-ownership-signal-guard.XXXXXX)"
+export OURO_SIGNAL_PROBE_OWNERSHIP_ROOT="$OURO_SIGNAL_PROBE_ROOT/runtime-process-ownership"
+OURO_SIGNAL_PROBE_PIDS=()
+cleanup_signal_probes() {
+  for probe_pid in "${OURO_SIGNAL_PROBE_PIDS[@]}"; do
+    kill "$probe_pid" 2>/dev/null || true
+    wait "$probe_pid" 2>/dev/null || true
+  done
+  case "$OURO_SIGNAL_PROBE_ROOT" in
+    /private/tmp/ouro-238-ownership-signal-guard.*)
+      rm -rf -- "$OURO_SIGNAL_PROBE_ROOT"
+      ;;
+    *)
+      printf 'refusing unexpected signal-probe cleanup root: %s\n' \
+        "$OURO_SIGNAL_PROBE_ROOT" >&2
+      return 1
+      ;;
+  esac
+}
+trap cleanup_signal_probes EXIT
 
-sleep 5 &
+claim_signal_probe_owner() {
+  node --import tsx --input-type=module -e '
+    import { createHash, randomUUID } from "node:crypto";
+    import { readFile, writeFile } from "node:fs/promises";
+    import path from "node:path";
+    import { hostname } from "node:os";
+    import { FileSystemRuntimeProcessOwnershipStore } from "@ouroboros/local-store";
+
+    const [
+      ownershipRoot, processKind, subjectId, runtimeRecordKind, runtimeId,
+      pidText, manifestPath
+    ] = process.argv.slice(1);
+    const profileDigest = "sha256:" + createHash("sha256")
+      .update(["probe", processKind, subjectId].join(":")).digest("hex");
+    const expected = {
+      process_kind: processKind,
+      subject_ref: { record_kind: processKind, id: subjectId },
+      runtime_ref: { record_kind: runtimeRecordKind, id: runtimeId },
+      host_id: hostname(),
+      executable: "/bin/sleep",
+      profile_digest: profileDigest
+    };
+    const lineageWitness = (record) => ({
+      record_kind: record.record_kind,
+      version: record.version,
+      runtime_process_ownership_id: record.runtime_process_ownership_id,
+      process_kind: record.process_kind,
+      subject_ref: record.subject_ref,
+      runtime_ref: record.runtime_ref,
+      owner: record.owner,
+      executable: record.executable,
+      profile_digest: record.profile_digest,
+      ownership_status: record.ownership_status,
+      adoption_count: record.adoption_count,
+      started_at: record.started_at,
+      ...(record.last_adopted_at === undefined
+        ? {} : { last_adopted_at: record.last_adopted_at }),
+      ownership_digest: record.ownership_digest
+    });
+
+    const store = new FileSystemRuntimeProcessOwnershipStore(ownershipRoot);
+    const record = await store.claim({
+      expected,
+      processId: Number(pidText),
+      sessionToken: randomUUID(),
+      startedAt: new Date().toISOString()
+    });
+    const key = createHash("sha256").update([
+      record.process_kind,
+      record.subject_ref.record_kind,
+      record.subject_ref.id
+    ].join(":")).digest("hex");
+    const activeRecordPath = path.join(ownershipRoot, "active", key + ".json");
+    const raw = await readFile(activeRecordPath, "utf8");
+    await writeFile(manifestPath, JSON.stringify([{
+      active_record_path: activeRecordPath,
+      exact_record_sha256: "sha256:" + createHash("sha256").update(raw).digest("hex"),
+      lineage: lineageWitness(record)
+    }], null, 2) + "\n", { mode: 0o600 });
+    console.log(record.runtime_process_ownership_id);
+  ' "$1" "$2" "$3" "$4" "$5" "$6" "$7"
+}
+
+snapshot_signal_probe_record() {
+  node --import tsx --input-type=module -e '
+    import { createHash } from "node:crypto";
+    import { readFile, writeFile } from "node:fs/promises";
+    const [activeRecordPath, manifestPath] = process.argv.slice(1);
+    const raw = await readFile(activeRecordPath, "utf8");
+    const record = JSON.parse(raw);
+    const lineage = {
+      record_kind: record.record_kind,
+      version: record.version,
+      runtime_process_ownership_id: record.runtime_process_ownership_id,
+      process_kind: record.process_kind,
+      subject_ref: record.subject_ref,
+      runtime_ref: record.runtime_ref,
+      owner: record.owner,
+      executable: record.executable,
+      profile_digest: record.profile_digest,
+      ownership_status: record.ownership_status,
+      adoption_count: record.adoption_count,
+      started_at: record.started_at,
+      ...(record.last_adopted_at === undefined
+        ? {} : { last_adopted_at: record.last_adopted_at }),
+      ownership_digest: record.ownership_digest
+    };
+    await writeFile(manifestPath, JSON.stringify([{
+      active_record_path: activeRecordPath,
+      exact_record_sha256: "sha256:" + createHash("sha256").update(raw).digest("hex"),
+      lineage
+    }], null, 2) + "\n", { mode: 0o600 });
+  ' "$1" "$2"
+}
+
+replace_signal_probe_record() {
+  node --import tsx --input-type=module -e '
+    import { randomUUID } from "node:crypto";
+    import { readFile, writeFile } from "node:fs/promises";
+    import { createRuntimeProcessOwnership } from "@ouroboros/domain";
+    const activeRecordPath = process.argv[1];
+    const before = JSON.parse(await readFile(activeRecordPath, "utf8"));
+    const after = createRuntimeProcessOwnership({
+      processKind: before.process_kind,
+      subjectRef: before.subject_ref,
+      runtimeRef: before.runtime_ref,
+      owner: before.owner,
+      executable: before.executable,
+      profileDigest: before.profile_digest,
+      sessionToken: randomUUID(),
+      startedAt: new Date().toISOString()
+    });
+    await writeFile(activeRecordPath, JSON.stringify(after) + "\n", { mode: 0o600 });
+  ' "$1"
+}
+
+add_signal_probe_history_conflict() {
+  node --import tsx --input-type=module -e '
+    import { createHash, randomUUID } from "node:crypto";
+    import { readFile, writeFile } from "node:fs/promises";
+    import path from "node:path";
+    import { createRuntimeProcessOwnership } from "@ouroboros/domain";
+    const [ownershipRoot, activeRecordPath] = process.argv.slice(1);
+    const before = JSON.parse(await readFile(activeRecordPath, "utf8"));
+    const conflict = createRuntimeProcessOwnership({
+      processKind: before.process_kind,
+      subjectRef: before.subject_ref,
+      runtimeRef: before.runtime_ref,
+      owner: before.owner,
+      executable: before.executable,
+      profileDigest: before.profile_digest,
+      sessionToken: randomUUID(),
+      startedAt: new Date().toISOString()
+    });
+    const key = createHash("sha256").update([
+      before.process_kind,
+      before.subject_ref.record_kind,
+      before.subject_ref.id
+    ].join(":")).digest("hex");
+    await writeFile(
+      path.join(ownershipRoot, "history", key, "zz-conflicting-open-record.json"),
+      JSON.stringify(conflict) + "\n",
+      { mode: 0o600 }
+    );
+  ' "$1" "$2"
+}
+
+assert_signal_guard_blocked() {
+  local label="$1"
+  local manifest_path="$2"
+  local ownership_id="$3"
+  local process_kind="$4"
+  local expected_error="$5"
+  local audit_path="$OURO_SIGNAL_PROBE_ROOT/$label-audit.jsonl"
+  local error_path="$OURO_SIGNAL_PROBE_ROOT/$label-error.txt"
+  : >"$audit_path"
+  if OURO_OWNERSHIP_SIGNAL_MODE=audit \
+      OURO_OWNERSHIP_SIGNAL_AUDIT_PATH="$audit_path" \
+      signal_exact_active_owner \
+        "$manifest_path" \
+        "$ownership_id" \
+        "$process_kind" \
+        "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+        2>"$error_path"; then
+    printf '%s guard probe unexpectedly reached the signal sink\n' "$label" >&2
+    exit 1
+  fi
+  if ! grep -F "$expected_error" "$error_path" >/dev/null; then
+    sed -n '1,5p' "$error_path" >&2
+    return 1
+  fi
+  test ! -s "$audit_path"
+}
+sleep 2 &
+OURO_EXITED_PROBE_PID=$!
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_EXITED_PROBE_PID")
+OURO_EXITED_PROBE_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/owner-exit-manifest.json"
+OURO_EXITED_PROBE_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  runtime_supervisor \
+  runtime-supervisor-owner-exit-probe \
+  local_store \
+  local-store-owner-exit-probe \
+  "$OURO_EXITED_PROBE_PID" \
+  "$OURO_EXITED_PROBE_MANIFEST")"
+wait "$OURO_EXITED_PROBE_PID"
+assert_signal_guard_blocked \
+  owner-exit \
+  "$OURO_EXITED_PROBE_MANIFEST" \
+  "$OURO_EXITED_PROBE_OWNERSHIP_ID" \
+  runtime_supervisor \
+  'canonical ownership is not currently owned'
+
+sleep 30 &
 OURO_SWAPPED_PROBE_PID=$!
-export OURO_SWAPPED_PROBE_PID
-OURO_SWAPPED_PROBE_MARKER="$(node --import tsx -e '
-  import { processStartMarker } from "./packages/local-store/src/process-start-marker.ts";
-  (async () => {
-    const marker = await processStartMarker(Number(process.argv[1]));
-    if (!marker) process.exit(1);
-    console.log(marker);
-  })().catch(() => process.exit(1));
-' "$OURO_SWAPPED_PROBE_PID")"
-export OURO_SWAPPED_PROBE_MARKER
-test -n "$OURO_SWAPPED_PROBE_MARKER"
-jq -n --arg host "$OURO_SIGNAL_PROBE_HOST" --argjson pid "$OURO_SWAPPED_PROBE_PID" \
-  --arg marker "$OURO_SWAPPED_PROBE_MARKER" '{
-    record_kind:"runtime_process_ownership",version:1,
-    runtime_process_ownership_id:"runtime-process-ownership-record-swap-probe",
-    process_kind:"runtime_supervisor",
-    subject_ref:{record_kind:"runtime_supervisor",id:"runtime-supervisor-record-swap-probe"},
-    runtime_ref:{record_kind:"local_store",id:"local-store-record-swap-probe"},
-    owner:{host_id:$host,process_id:$pid,process_start_marker:$marker},
-    executable:"/bin/sleep",profile_digest:"sha256:record-swap-probe",
-    ownership_status:"active",adoption_count:0,started_at:"2026-07-26T00:00:00.000Z",
-    ownership_digest:"sha256:record-swap-probe"
-  }' >"$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json"
-OURO_SWAPPED_PROBE_SHA256="$(node -e '
-  const { createHash } = require("node:crypto");
-  const { readFileSync } = require("node:fs");
-  console.log(`sha256:${createHash("sha256").update(readFileSync(process.argv[1])).digest("hex")}`);
-' "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json")"
-jq -n --arg active_record_path "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json" \
-  --arg exact_record_sha256 "$OURO_SWAPPED_PROBE_SHA256" \
-  --slurpfile expected "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json" \
-  '[{active_record_path:$active_record_path,
-    exact_record_sha256:$exact_record_sha256,lineage:$expected[0]}]' \
-  >"$OURO_SIGNAL_PROBE_ROOT/record-swap-manifest.json"
-jq '.ownership_digest = "sha256:record-swapped-after-snapshot"' \
-  "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json" \
-  >"$OURO_SIGNAL_PROBE_ROOT/active/record-swap.changed.json"
-mv "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.changed.json" \
-  "$OURO_SIGNAL_PROBE_ROOT/active/record-swap.json"
-: >"$OURO_SIGNAL_PROBE_ROOT/record-swap-audit.jsonl"
-if OURO_OWNERSHIP_SIGNAL_MODE=audit \
-    OURO_OWNERSHIP_SIGNAL_AUDIT_PATH="$OURO_SIGNAL_PROBE_ROOT/record-swap-audit.jsonl" \
-    signal_exact_active_owner \
-      "$OURO_SIGNAL_PROBE_ROOT/record-swap-manifest.json" \
-      runtime-process-ownership-record-swap-probe \
-      runtime_supervisor \
-      2>"$OURO_SIGNAL_PROBE_ROOT/record-swap-error.txt"; then
-  printf 'record-swap guard probe unexpectedly reached the signal sink\n' >&2
-  exit 1
-fi
-grep -F 'changed before signal' "$OURO_SIGNAL_PROBE_ROOT/record-swap-error.txt" >/dev/null
-test ! -s "$OURO_SIGNAL_PROBE_ROOT/record-swap-audit.jsonl"
-wait "$OURO_SWAPPED_PROBE_PID"
-jq -n --arg root "$OURO_SIGNAL_PROBE_ROOT" '{
-  probe_root:$root,
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_SWAPPED_PROBE_PID")
+OURO_SWAPPED_PROBE_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/record-swap-manifest.json"
+OURO_SWAPPED_PROBE_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  runtime_supervisor \
+  runtime-supervisor-record-swap-probe \
+  local_store \
+  local-store-record-swap-probe \
+  "$OURO_SWAPPED_PROBE_PID" \
+  "$OURO_SWAPPED_PROBE_MANIFEST")"
+OURO_SWAPPED_PROBE_ACTIVE="$(jq -er '.[0].active_record_path' \
+  "$OURO_SWAPPED_PROBE_MANIFEST")"
+replace_signal_probe_record "$OURO_SWAPPED_PROBE_ACTIVE"
+assert_signal_guard_blocked \
+  record-swap \
+  "$OURO_SWAPPED_PROBE_MANIFEST" \
+  "$OURO_SWAPPED_PROBE_OWNERSHIP_ID" \
+  runtime_supervisor \
+  'changed before signal'
+kill "$OURO_SWAPPED_PROBE_PID"
+wait "$OURO_SWAPPED_PROBE_PID" 2>/dev/null || true
+
+sleep 30 &
+OURO_MALFORMED_PROBE_PID=$!
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_MALFORMED_PROBE_PID")
+OURO_MALFORMED_PROBE_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/malformed-manifest.json"
+OURO_MALFORMED_PROBE_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  runtime_supervisor \
+  runtime-supervisor-malformed-probe \
+  local_store \
+  local-store-malformed-probe \
+  "$OURO_MALFORMED_PROBE_PID" \
+  "$OURO_MALFORMED_PROBE_MANIFEST")"
+OURO_MALFORMED_PROBE_ACTIVE="$(jq -er '.[0].active_record_path' \
+  "$OURO_MALFORMED_PROBE_MANIFEST")"
+jq '.evaluation_authority = true' "$OURO_MALFORMED_PROBE_ACTIVE" \
+  >"$OURO_MALFORMED_PROBE_ACTIVE.changed"
+mv "$OURO_MALFORMED_PROBE_ACTIVE.changed" "$OURO_MALFORMED_PROBE_ACTIVE"
+snapshot_signal_probe_record \
+  "$OURO_MALFORMED_PROBE_ACTIVE" \
+  "$OURO_MALFORMED_PROBE_MANIFEST"
+assert_signal_guard_blocked \
+  stable-malformed \
+  "$OURO_MALFORMED_PROBE_MANIFEST" \
+  "$OURO_MALFORMED_PROBE_OWNERSHIP_ID" \
+  runtime_supervisor \
+  'canonical active ownership metadata is invalid'
+kill "$OURO_MALFORMED_PROBE_PID"
+wait "$OURO_MALFORMED_PROBE_PID" 2>/dev/null || true
+
+sleep 30 &
+OURO_PATH_PROBE_PID=$!
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_PATH_PROBE_PID")
+OURO_PATH_PROBE_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/canonical-path-manifest.json"
+OURO_PATH_PROBE_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  runtime_supervisor \
+  runtime-supervisor-canonical-path-probe \
+  local_store \
+  local-store-canonical-path-probe \
+  "$OURO_PATH_PROBE_PID" \
+  "$OURO_PATH_PROBE_MANIFEST")"
+OURO_PATH_PROBE_ACTIVE="$(jq -er '.[0].active_record_path' \
+  "$OURO_PATH_PROBE_MANIFEST")"
+OURO_PATH_PROBE_NONCANONICAL="$OURO_PATH_PROBE_ACTIVE.noncanonical"
+mv "$OURO_PATH_PROBE_ACTIVE" "$OURO_PATH_PROBE_NONCANONICAL"
+jq --arg active_record_path "$OURO_PATH_PROBE_NONCANONICAL" \
+  '.[0].active_record_path = $active_record_path' \
+  "$OURO_PATH_PROBE_MANIFEST" >"$OURO_PATH_PROBE_MANIFEST.changed"
+mv "$OURO_PATH_PROBE_MANIFEST.changed" "$OURO_PATH_PROBE_MANIFEST"
+assert_signal_guard_blocked \
+  canonical-path \
+  "$OURO_PATH_PROBE_MANIFEST" \
+  "$OURO_PATH_PROBE_OWNERSHIP_ID" \
+  runtime_supervisor \
+  'not at its canonical ownership path'
+kill "$OURO_PATH_PROBE_PID"
+wait "$OURO_PATH_PROBE_PID" 2>/dev/null || true
+
+sleep 30 &
+OURO_HISTORY_PROBE_PID=$!
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_HISTORY_PROBE_PID")
+OURO_HISTORY_PROBE_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/history-conflict-manifest.json"
+OURO_HISTORY_PROBE_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  runtime_supervisor \
+  runtime-supervisor-history-conflict-probe \
+  local_store \
+  local-store-history-conflict-probe \
+  "$OURO_HISTORY_PROBE_PID" \
+  "$OURO_HISTORY_PROBE_MANIFEST")"
+OURO_HISTORY_PROBE_ACTIVE="$(jq -er '.[0].active_record_path' \
+  "$OURO_HISTORY_PROBE_MANIFEST")"
+add_signal_probe_history_conflict \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  "$OURO_HISTORY_PROBE_ACTIVE"
+assert_signal_guard_blocked \
+  history-conflict \
+  "$OURO_HISTORY_PROBE_MANIFEST" \
+  "$OURO_HISTORY_PROBE_OWNERSHIP_ID" \
+  runtime_supervisor \
+  'canonical ownership'
+kill "$OURO_HISTORY_PROBE_PID"
+wait "$OURO_HISTORY_PROBE_PID" 2>/dev/null || true
+
+OURO_PROVIDER_DRIFT_PID_FILE="$OURO_SIGNAL_PROBE_ROOT/provider-drift.pid"
+/bin/sh -c '
+  /bin/sleep 30 &
+  child_pid=$!
+  printf "%s\n" "$child_pid" >"$1"
+  wait "$child_pid"
+' signal-probe-wrapper "$OURO_PROVIDER_DRIFT_PID_FILE" \
+  2>"$OURO_SIGNAL_PROBE_ROOT/provider-drift-wrapper-error.txt" &
+OURO_PROVIDER_DRIFT_WRAPPER_PID=$!
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_PROVIDER_DRIFT_WRAPPER_PID")
+for attempt in {1..40}; do
+  test -s "$OURO_PROVIDER_DRIFT_PID_FILE" && break
+  sleep 0.05
+done
+OURO_PROVIDER_DRIFT_PID="$(cat "$OURO_PROVIDER_DRIFT_PID_FILE")"
+test "$OURO_PROVIDER_DRIFT_PID" -gt 0
+OURO_SIGNAL_PROBE_PIDS+=("$OURO_PROVIDER_DRIFT_PID")
+OURO_PROVIDER_DRIFT_PGID="$(ps -o pgid= -p "$OURO_PROVIDER_DRIFT_PID" | tr -d ' ')"
+test "$OURO_PROVIDER_DRIFT_PGID" -gt 0
+test "$OURO_PROVIDER_DRIFT_PGID" -ne "$OURO_PROVIDER_DRIFT_PID"
+OURO_PROVIDER_DRIFT_MANIFEST="$OURO_SIGNAL_PROBE_ROOT/provider-pgid-drift-manifest.json"
+OURO_PROVIDER_DRIFT_OWNERSHIP_ID="$(claim_signal_probe_owner \
+  "$OURO_SIGNAL_PROBE_OWNERSHIP_ROOT" \
+  research_provider \
+  research-provider-pgid-drift-probe \
+  research_preflight_commitment \
+  research-preflight-provider-pgid-drift-probe \
+  "$OURO_PROVIDER_DRIFT_PID" \
+  "$OURO_PROVIDER_DRIFT_MANIFEST")"
+assert_signal_guard_blocked \
+  provider-pgid-drift \
+  "$OURO_PROVIDER_DRIFT_MANIFEST" \
+  "$OURO_PROVIDER_DRIFT_OWNERSHIP_ID" \
+  research_provider \
+  'provider PGID leader drift'
+kill "$OURO_PROVIDER_DRIFT_PID"
+wait "$OURO_PROVIDER_DRIFT_WRAPPER_PID" 2>/dev/null || true
+
+jq -n '{
   owner_exit:"blocked_without_signal",
-  active_record_swap:"blocked_without_signal"
+  active_record_swap:"blocked_without_signal",
+  stable_malformed_record:"blocked_without_signal",
+  canonical_path_conflict:"blocked_without_signal",
+  canonical_history_conflict:"blocked_without_signal",
+  provider_pgid_drift:"blocked_without_signal",
+  retained_probe_secrets:false
 }' >"$OURO_RUN_ROOT/evidence/ownership-signal-guard-regression.json"
+cleanup_signal_probes
+trap - EXIT
+jq -e '
+  .retained_probe_secrets == false and
+  ([paths | select(.[-1] == "session_token")] | length == 0)
+' "$OURO_RUN_ROOT/evidence/ownership-signal-guard-regression.json" >/dev/null
 
 # Each real signal is issued only by the helper that just reloaded and
 # revalidated that exact target. A failure aborts immediately; it is never
@@ -837,12 +1113,14 @@ signal_exact_active_owner \
   "$OURO_RUN_ROOT/evidence/runtime-signal-targets.json" \
   "$(jq -er '.[0].lineage.runtime_process_ownership_id' "$OURO_RUN_ROOT/evidence/runtime-signal-targets.json")" \
   runtime_supervisor \
+  "$OUROBOROS_STORE_ROOT/runtime-process-ownership" \
   >>"$OURO_RUN_ROOT/evidence/ownership-signals.jsonl"
 while IFS= read -r ownership_id; do
   signal_exact_active_owner \
     "$OURO_RUN_ROOT/evidence/provider-signal-targets.json" \
     "$ownership_id" \
     research_provider \
+    "$OUROBOROS_STORE_ROOT/runtime-process-ownership" \
     >>"$OURO_RUN_ROOT/evidence/ownership-signals.jsonl"
 done < <(jq -r '.[].lineage.runtime_process_ownership_id' \
   "$OURO_RUN_ROOT/evidence/provider-signal-targets.json")
@@ -970,18 +1248,18 @@ Process-ownership tests that need `/bin/ps` must be rerun outside the managed sa
   - `evidence/research-desktop-post-review-metrics.json` records exact window and pixel sizes, the exact session route, `failed_closed`, checkpoint-owned status basis, restart-recovery summary/checkpoint, provider-log unavailability, and `required_sizes_exact: true`.
   - SHA-256: `6ae501b895aa741c695777a1404d4b731ba961a91a3bf8d357a09739c1d62904` (1440x960), `eca47d6e40c0efbac21b4fbcad0e49cc9287e748ee7ab9dd34ebb051a1925cf2` (1180x760), and `649a8db4fdef79c50d904f2b82274ac179796722c6770ca0c96eef7cb5d64c0e` (metrics).
 - Post-fix keyboard evidence: `evidence/research-web-interaction-check-after-fix.json` and `evidence/research-web-interaction-after-fix-390x844.jpeg`. Browser-only `Tab`/`Enter` opened the exact failed-closed card, retained it across a 5.6-second refresh, activated `Back`, restored focus to the originating card after the route commit, and reported no horizontal overflow. All assertions are `true`.
-- Post-review real-browser behavior evidence is `evidence/research-web-post-review-accessibility.json` (SHA-256 `9c24db111d3da0e688f8424bb4344e5a94fbe8ef6cabaf0e9b7d5b7666060c93`) and `evidence/research-web-post-review-layout-390x844.jpeg` (SHA-256 `460ea44c59cd541b9c4f503e78534c3db99eb571fc08e23cf21396c58ee72039`). At one unchanged URL selection, `research-session-v1-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`, `document.activeElement` moved from the loading `H3` to its unavailable replacement `H3`; the exact loaded recovery session separately focused its detail `H3`. At an exact 390x844 viewport the long terminal card measured 389px wide, its 357px heading occupied the full row, the 293.515625px wrapped badge row began 8px below the heading, no bounds overlapped, and both document/body scroll widths were 390px. The evidence is bound to `research-screen.tsx` SHA-256 `74db04d6ffefaa5e664eebfe3e48c6e52d763ab4e08914f953eb43fe75dc2bd9` and `research-screen.test.tsx` SHA-256 `c0a6416c67d608d3f4950cb8f5833fc1cc97cadd19034e997e082338a9ec1484`; neither scoped file changed after capture. Those exact source bindings were committed as `327d8116807cb253d551013817969d2866e71b3c` with tree `661c8f236828609346221c14cc60cd644e5a55f4` before this ledger-only binding update.
+- Post-review real-browser behavior evidence is `evidence/research-web-post-review-accessibility.json` (SHA-256 `9c24db111d3da0e688f8424bb4344e5a94fbe8ef6cabaf0e9b7d5b7666060c93`) and `evidence/research-web-post-review-layout-390x844.jpeg` (SHA-256 `460ea44c59cd541b9c4f503e78534c3db99eb571fc08e23cf21396c58ee72039`). At one unchanged URL selection, `research-session-v1-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`, `document.activeElement` moved from the loading `H3` to its unavailable replacement `H3`; the exact loaded recovery session separately focused its detail `H3`. At an exact 390x844 viewport the long terminal card measured 389px wide, its 357px heading occupied the full row, the 293.515625px wrapped badge row began 8px below the heading, no bounds overlapped, and both document/body scroll widths were 390px. The evidence is bound to `research-screen.tsx` SHA-256 `74db04d6ffefaa5e664eebfe3e48c6e52d763ab4e08914f953eb43fe75dc2bd9` and `research-screen.test.tsx` SHA-256 `c0a6416c67d608d3f4950cb8f5833fc1cc97cadd19034e997e082338a9ec1484`; neither scoped file changed after capture. After the latest-main rebase, those exact source bindings are commit `1c820411289833c1612704f32a556ccb5e29e410` with tree `2386a986aa92644e1571ad834b47cd082ce3ee5a` before the ledger-only binding update.
 - Cleanup remains pending until PR review and merge evidence close. Stop only the evidence-run Tauri, Web, runtime, and caffeinate sessions, verify ports `4273` and `5273` are free, and leave the pre-existing service on `4173` untouched.
-- Current-main validation after rebase to `28c8c9dde15609bfa098cfc4200ab3e31c0b162f`:
+- Current-main validation after rebase to `e4fccd33f80e3c4a16f5fffb8fb7043706b9d4f1`:
   - focused read-model/runtime: 5 files, 46 passed;
   - focused Research projection services: 2 files, 97 passed;
   - Research detail API: 4 passed, 42 skipped by the name filter;
   - focused App/Research UI: 3 files, 44 passed;
   - full Operator Web source after the post-review UI fix: 15 files, 97 passed;
   - root `npm run typecheck`, `npm run build`, and `npm run check:repo-guards`: passed;
-  - final exact `npm test` outside the managed sandbox: 236 files, 3,725 passed, 1 skipped.
+  - final exact `npm test` outside the managed sandbox: 236 files, 3,727 passed, 1 skipped in 209.12 seconds.
 - Environment-only validation notes: the managed sandbox denied local TCP/Unix-socket listeners and process-start inspection with `EPERM`, so its affected result was invalidated and rerun outside the sandbox as required. The first unsandboxed full run had one non-reproduced load-sensitive polling timeout in an unchanged autonomous-restart smoke; the exact test passed 1/1, its full file passed 19/19, and a second exact `npm test` completed green with the counts above.
-- Task 5 signal-guard verification: PASS only for `bash -n` of the extracted crash block and the embedded non-destructive `node --import tsx` audit probes. Under `/private/tmp/ouro-238-ownership-helper-probe.xhnAK7`, a naturally exited owner and an exact active-record swap each made the same per-target helper return nonzero before its signal sink, both audit files remained empty, and `rg session_token` found no retained probe artifact. The earlier destructive restart evidence predates this TOCTOU revision; the revised real-signal path was not replayed, so this entry claims neither a new `SIGKILL`/restart artifact nor independent final safety sign-off.
+- Task 5 signal-guard verification: `bash -n` passed for the extracted final helper/probe block, and its non-destructive audit run passed outside the managed sandbox. The helper now requires the canonical active path, `runtimeProcessOwnershipHasRuntimeShape`, and an exact `FileSystemRuntimeProcessOwnershipStore.inspect()` result of `owned` (including consistent open history) immediately before marker/listener-or-PGID revalidation and the sole signal sink. Canonically claimed fixtures proved owner exit, exact record swap, stable malformed metadata, non-canonical active path, conflicting open history, and provider PGID drift all returned nonzero with empty audit sinks. Probe stores were created only under validated `/private/tmp/ouro-238-ownership-signal-guard.*` roots and removed before retaining the token-free `evidence/ownership-signal-guard-regression.json` (SHA-256 `af711c42e88a6ec94ee28f160629ad12efb4c1336453d7a1bb7b62248fb4e99e`). The earlier destructive restart evidence predates this canonical-store revision; the revised real-signal path was not replayed, so this entry claims no new `SIGKILL`/restart artifact. Independent final safety sign-off remains the current-head review gate.
 
 ## Plan Self-Review
 
