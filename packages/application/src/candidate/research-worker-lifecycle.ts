@@ -5,6 +5,7 @@ import {
   researchWorkerCheckpointDigestInput,
   researchWorkerCheckpointHasRuntimeShape,
   type CandidateAdmissionDecisionRecord,
+  type CandidateArenaTickDirectionResultReadModel,
   type ProviderKind,
   type ResearchDirectionKind,
   type ResearchDirectionRecord,
@@ -154,6 +155,7 @@ export async function closeResearchWorkerCheckpoint(input: {
     ResearchWorkerCheckpointTerminalReason,
     "admission_recorded"
   >;
+  terminal_direction_result?: CandidateArenaTickDirectionResultReadModel;
   closed_at: string;
 }): Promise<ResearchWorkerCheckpointRecord> {
   assertIso(input.closed_at, "research_worker_checkpoint_invalid_close_time");
@@ -211,6 +213,24 @@ export async function closeResearchWorkerCheckpoint(input: {
     previousCheckpoint?.closed_at,
     admission?.decided_at
   ]);
+  const terminalAdmission = input.terminal_reason !== "restart_recovery" &&
+    admission &&
+    researchWorkerTerminalResultMatchesAdmission(
+      input.terminal_direction_result,
+      admission
+    )
+    ? admission
+    : undefined;
+  const terminalDirectionResult = terminalAdmission
+    ? input.terminal_direction_result
+    : admission || input.terminal_reason === "restart_recovery"
+      ? undefined
+      : input.terminal_direction_result;
+  const terminalReason = terminalAdmission
+    ? "admission_recorded"
+    : admission && input.terminal_reason !== "restart_recovery"
+      ? "execution_failed"
+      : input.terminal_reason;
   const checkpoint: ResearchWorkerCheckpointRecord = {
     record_kind: "research_worker_checkpoint",
     version: 1,
@@ -250,16 +270,23 @@ export async function closeResearchWorkerCheckpoint(input: {
       remaining_submission_authority: 0
     },
     notebook,
-    terminal_status: admission || input.terminal_reason === "finished_without_submission"
+    terminal_status: terminalAdmission ||
+      terminalReason === "finished_without_submission"
       ? "completed"
       : "failed_closed",
-    terminal_reason: admission ? "admission_recorded" : input.terminal_reason,
-    ...(admission
+    terminal_reason: terminalReason,
+    ...(terminalAdmission
       ? {
           candidate_admission_decision_ref: {
             record_kind: "candidate_admission_decision",
-            id: admission.candidate_admission_decision_id
+            id: terminalAdmission.candidate_admission_decision_id
           }
+        }
+      : {}),
+    ...(terminalDirectionResult
+      ? {
+          terminal_direction_result:
+            structuredClone(terminalDirectionResult)
         }
       : {}),
     closed_at: closedAt,
@@ -279,6 +306,24 @@ export async function closeResearchWorkerCheckpoint(input: {
     throw new Error("research_worker_checkpoint_generated_shape_invalid");
   }
   return input.store.recordResearchWorkerCheckpoint(checkpoint);
+}
+
+function researchWorkerTerminalResultMatchesAdmission(
+  result: CandidateArenaTickDirectionResultReadModel | undefined,
+  admission: CandidateAdmissionDecisionRecord
+): boolean {
+  if (!result ||
+    result.admission_decision_id !==
+      admission.candidate_admission_decision_id ||
+    result.admission_reason !== admission.reason) {
+    return false;
+  }
+  return admission.status === "admitted"
+    ? result.status === "created"
+    : admission.status === "duplicate"
+      ? result.status === "duplicate"
+      : admission.status === "quarantined" &&
+        result.status === "quarantined";
 }
 
 export async function recoverIncompleteResearchWorkerCheckpoints(input: {
@@ -347,6 +392,23 @@ export function researchWorkerNotebookPath(
     "notebooks",
     `${safeId(candidateArenaTickId)}.json`
   );
+}
+
+export async function researchWorkerCheckpointDevelopmentSubmissionCount(
+  input: {
+    store: Pick<OuroborosStorePort, "root">;
+    worker: ResearchWorkerRecord;
+    commitment: ResearchPreflightCommitmentRecord;
+  }
+): Promise<number> {
+  return (await readCurrentNotebookEntries(
+    researchWorkerNotebookPath(
+      input.store,
+      input.worker,
+      input.commitment.candidate_arena_tick_id
+    ),
+    input.commitment
+  )).length;
 }
 
 function toTradingResearchPriorCheckpoint(

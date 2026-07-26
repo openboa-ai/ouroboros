@@ -61,6 +61,51 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
     await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual([checkpoint]);
   });
 
+  it("binds a terminal direction result to the persisted direction and commitment", async () => {
+    const graph = await persistWorkerGraph(store);
+    const commitment = await persistCommitment(
+      store,
+      graph,
+      "terminal-result",
+      10,
+      1
+    );
+    const checkpoint = failedCheckpoint(graph, commitment, {
+      closedAt: "2026-07-12T10:10:00.000Z",
+      reason: "execution_failed"
+    });
+    checkpoint.terminal_direction_result = {
+      direction_kind: graph.alternateDirection.direction_kind,
+      status: "failed",
+      error: "candidate_arena_research_failed",
+      finding: "Research session failed before candidate materialization.",
+      research_preflight: {
+        commitment_id: commitment.research_preflight_commitment_id,
+        development_submission_count: 0,
+        sealed_terminal_status: "not_run",
+        reason: "execution_failed",
+        authority_status: "not_promotion_authority"
+      }
+    };
+    withCheckpointDigest(checkpoint);
+
+    await expect(store.recordResearchWorkerCheckpoint(checkpoint))
+      .rejects.toMatchObject({
+        code: "research_worker_checkpoint_graph_mismatch",
+        details: {
+          mismatch_fields: expect.arrayContaining([
+            "terminal_direction_result.direction_kind"
+          ])
+        }
+      });
+
+    checkpoint.terminal_direction_result.direction_kind =
+      graph.direction.direction_kind;
+    withCheckpointDigest(checkpoint);
+    await expect(store.recordResearchWorkerCheckpoint(checkpoint))
+      .resolves.toEqual(checkpoint);
+  });
+
   it("rejects a triggered preflight commitment without methodology", async () => {
     const graph = await persistWorkerGraph(store);
     const allocation = allocationFixture(
@@ -116,6 +161,116 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
       cumulative_recorded_submission_count: 1,
       remaining_submission_authority: 0
     });
+  });
+
+  it("rejects terminal admission, preflight, and development-total drift", async () => {
+    const graph = await persistWorkerGraph(store);
+    const commitment = await persistCommitment(
+      store,
+      graph,
+      "terminal-admission-drift",
+      10,
+      1
+    );
+    const admission = await persistAdmission(store, graph, commitment, 10);
+    const checkpoint = completedCheckpoint(
+      graph,
+      commitment,
+      undefined,
+      admission
+    );
+
+    const statusDrift = structuredClone(checkpoint);
+    statusDrift.terminal_direction_result!.status = "duplicate";
+    withCheckpointDigest(statusDrift);
+    await expect(store.recordResearchWorkerCheckpoint(statusDrift))
+      .rejects.toMatchObject({
+        code: "research_worker_checkpoint_graph_mismatch",
+        details: {
+          mismatch_fields: expect.arrayContaining([
+            "terminal_direction_result.status"
+          ])
+        }
+      });
+
+    const reasonDrift = structuredClone(checkpoint);
+    reasonDrift.terminal_direction_result!.admission_reason =
+      "no_candidate_change";
+    withCheckpointDigest(reasonDrift);
+    await expect(store.recordResearchWorkerCheckpoint(reasonDrift))
+      .rejects.toMatchObject({
+        code: "research_worker_checkpoint_graph_mismatch",
+        details: {
+          mismatch_fields: expect.arrayContaining([
+            "terminal_direction_result.admission_reason"
+          ])
+        }
+      });
+
+    const preflightCountDrift = structuredClone(checkpoint);
+    preflightCountDrift.terminal_direction_result!.research_preflight!
+      .development_submission_count = 0;
+    withCheckpointDigest(preflightCountDrift);
+    await expect(store.recordResearchWorkerCheckpoint(preflightCountDrift))
+      .rejects.toMatchObject({
+        code: "invalid_research_worker_checkpoint_input"
+      });
+
+    const preflightStatusDrift = structuredClone(checkpoint);
+    preflightStatusDrift.terminal_direction_result!.research_preflight!
+      .sealed_terminal_status = "accepted";
+    preflightStatusDrift.terminal_direction_result!.research_preflight!
+      .reason = "accepted";
+    withCheckpointDigest(preflightStatusDrift);
+    await expect(store.recordResearchWorkerCheckpoint(preflightStatusDrift))
+      .rejects.toMatchObject({
+        code: "research_worker_checkpoint_graph_mismatch",
+        details: {
+          mismatch_fields: expect.arrayContaining([
+            "terminal_direction_result.research_preflight.sealed_terminal_status",
+            "terminal_direction_result.research_preflight.reason"
+          ])
+        }
+      });
+
+    const efficiencyDrift = structuredClone(checkpoint);
+    efficiencyDrift.terminal_direction_result!.research_efficiency!
+      .provider_request_total = 1;
+    withCheckpointDigest(efficiencyDrift);
+    await expect(store.recordResearchWorkerCheckpoint(efficiencyDrift))
+      .rejects.toMatchObject({
+        code: "invalid_research_worker_checkpoint_input"
+      });
+
+    const missingEfficiency = structuredClone(checkpoint);
+    delete missingEfficiency.terminal_direction_result!.research_efficiency;
+    withCheckpointDigest(missingEfficiency);
+    await expect(store.recordResearchWorkerCheckpoint(missingEfficiency))
+      .rejects.toMatchObject({
+        code: "invalid_research_worker_checkpoint_input"
+      });
+
+    const missingDevelopmentPhase = structuredClone(checkpoint);
+    delete missingDevelopmentPhase.terminal_direction_result!
+      .research_efficiency!.development;
+    withCheckpointDigest(missingDevelopmentPhase);
+    await expect(store.recordResearchWorkerCheckpoint(
+      missingDevelopmentPhase
+    )).rejects.toMatchObject({
+      code: "invalid_research_worker_checkpoint_input"
+    });
+
+    const missingSealedPhase = structuredClone(checkpoint);
+    delete missingSealedPhase.terminal_direction_result!
+      .research_efficiency!.sealed_admission;
+    withCheckpointDigest(missingSealedPhase);
+    await expect(store.recordResearchWorkerCheckpoint(missingSealedPhase))
+      .rejects.toMatchObject({
+        code: "invalid_research_worker_checkpoint_input"
+      });
+
+    await expect(store.recordResearchWorkerCheckpoint(checkpoint))
+      .resolves.toEqual(checkpoint);
   });
 
   it("requires a preflight memory policy to bind the exact prior checkpoint graph", async () => {
@@ -459,6 +614,8 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
 
     const missing = structuredClone(checkpoint);
     missing.candidate_admission_decision_ref!.id = "missing-admission";
+    missing.terminal_direction_result!.admission_decision_id =
+      "missing-admission";
     withCheckpointDigest(missing);
     await expect(store.recordResearchWorkerCheckpoint(missing)).rejects.toMatchObject({
       code: "research_worker_checkpoint_reference_not_found"
@@ -469,6 +626,10 @@ describe("LocalStore ResearchWorkerCheckpoint", () => {
     const mismatched = structuredClone(checkpoint);
     mismatched.candidate_admission_decision_ref!.id =
       foreignAdmission.candidate_admission_decision_id;
+    mismatched.terminal_direction_result!.admission_decision_id =
+      foreignAdmission.candidate_admission_decision_id;
+    mismatched.terminal_direction_result!.admission_reason =
+      foreignAdmission.reason;
     withCheckpointDigest(mismatched);
     await expect(store.recordResearchWorkerCheckpoint(mismatched)).rejects.toMatchObject({
       code: "research_worker_checkpoint_graph_mismatch"
@@ -951,6 +1112,41 @@ function completedCheckpoint(
     candidate_admission_decision_ref: {
       record_kind: "candidate_admission_decision",
       id: admission.candidate_admission_decision_id
+    },
+    terminal_direction_result: {
+      direction_kind: graph.direction.direction_kind,
+      status: "quarantined",
+      admission_decision_id: admission.candidate_admission_decision_id,
+      admission_reason: admission.reason,
+      finding: "ResearchWorker failed before artifact execution.",
+      research_efficiency: {
+        provider_request_total: 0,
+        runner_command_total: 0,
+        scenario_count: 0,
+        elapsed_ms: 0,
+        development: {
+          submission_count: 1,
+          provider_request_total: 0,
+          runner_command_total: 0,
+          scenario_count: 0,
+          elapsed_ms: 0
+        },
+        sealed_admission: {
+          submission_count: 0,
+          provider_request_total: 0,
+          runner_command_total: 0,
+          scenario_count: 0,
+          elapsed_ms: 0
+        },
+        authority_status: "not_promotion_authority"
+      },
+      research_preflight: {
+        commitment_id: commitment.research_preflight_commitment_id,
+        development_submission_count: 1,
+        sealed_terminal_status: "not_run",
+        reason: "no_development_winner",
+        authority_status: "not_promotion_authority"
+      }
     },
     closed_at: admission.decided_at,
     checkpoint_digest: digest("pending"),

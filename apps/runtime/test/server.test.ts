@@ -22,17 +22,21 @@ import { FixtureTradingResearchAgentAdapter } from
 import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import { decideCandidateArenaResearchAllocation } from
   "@ouroboros/application/candidate/research-allocation";
+import { researchWorkItemId } from
+  "@ouroboros/application/candidate/research-work-item";
 import type { ResearchControlStudyExecutionLeasePort } from
   "@ouroboros/application/ports/research-control-study-execution-lease";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  candidateArenaResearchAllocationDigestInput,
   decideResearchControlStudyExecutionLease,
   OUROBOROS_COMMAND_KINDS,
   paperTradingComparisonPersistedRecordDigestInput,
   researchGeneralizationPolicyDecisionDigestInput,
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaTickRecord,
+  type ResearchDirectionRecord,
   type ResearchGeneralizationOutcomeRecord,
   type ResearchGeneralizationPolicyDecisionRecord,
   type ResearchGeneralizationProtocolRecord
@@ -138,6 +142,243 @@ describe("runtime canonical operator API", () => {
         error: "arena_trading_system_not_found",
         candidate_id: "missing-candidate"
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("publishes an authoritative empty Research session projection", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/api/operator" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        operator: {
+          research_operations: {
+            projection_kind: "research_operations",
+            availability: "available",
+            capacity: {
+              max_concurrent_sessions: 2,
+              active_session_count: 0,
+              queued_session_count: 0
+            },
+            sessions: [],
+            authority_status: "research_only"
+          }
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("re-sanitizes legacy Arena and continuation failures before authenticated operator output", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const privateOwner = "api-private-owner-sentinel";
+    const urlPassword = "api-url-password-sentinel";
+    const tokenValue = "api-token-value-sentinel";
+    const rawFailure = [
+      `provider failed at /Users/${privateOwner}/research/session.json`,
+      `https://operator:${urlPassword}@example.test/private`,
+      `refresh_token=${tokenValue}`,
+      "x".repeat(2_000)
+    ].join(" ");
+    await store.recordCandidateArenaTick({
+      record_kind: "candidate_arena_tick",
+      version: 1,
+      candidate_arena_tick_id: "candidate-arena-tick-private-api",
+      tick_id: "tick-private-api",
+      started_at: "2026-07-23T00:00:00.000Z",
+      completed_at: "2026-07-23T00:00:01.000Z",
+      status: "failed",
+      created_candidate_refs: [],
+      direction_results: [{
+        direction_kind: "trend_following",
+        status: "failed",
+        error: rawFailure
+      }],
+      paper_trading_continuation: {
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: FIXTURE_CANDIDATE_ID,
+        error: rawFailure,
+        authority_status: "not_live"
+      },
+      authority_status: "not_live"
+    });
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator",
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      const failure = body.operator.candidate_arena.latest_ticks[0]
+        .direction_results[0].error as string;
+      const continuationFailure = body.operator.candidate_arena.latest_ticks[0]
+        .paper_trading_continuation.error as string;
+      const serialized = JSON.stringify(body);
+      for (const summary of [failure, continuationFailure]) {
+        expect(summary).toContain("[private-path]");
+        expect(summary).toContain("[external-url]");
+        expect(summary).toContain("[redacted]");
+        expect(summary.length).toBeLessThanOrEqual(256);
+      }
+      for (const sentinel of [privateOwner, urlPassword, tokenValue]) {
+        expect(serialized).not.toContain(sentinel);
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("publishes one authenticated exact Research session detail without private transport data", async () => {
+    const store = new LocalStore(tmpDir);
+    const researchWorkItemId = await persistRuntimeResearchSessionFixture(store);
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/research/sessions/${encodeURIComponent(researchWorkItemId)}`,
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(Object.keys(body)).toEqual(["research_session"]);
+      expect(body).toMatchObject({
+        research_session: {
+          research_work_item_id: researchWorkItemId,
+          provider_logs_availability: "not_persisted",
+          terminal_graph: {
+            authority_status: "read_only"
+          }
+        }
+      });
+      const serialized = JSON.stringify(body);
+      for (const privateValue of [
+        "injected-bearer-token",
+        "injected-credential",
+        "secret-pass",
+        "url-secret",
+        "private-owner",
+        "raw provider failure",
+        "stdout",
+        "stderr"
+      ]) {
+        expect(serialized).not.toContain(privateValue);
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("authenticates before revealing an exact missing Research session", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+    const encodedMissingId = "research%2Fsession%201";
+
+    try {
+      for (const headers of [undefined, {
+        "x-ouroboros-operator-token": "invalid-token"
+      }]) {
+        const unauthorized = await server.inject({
+          method: "GET",
+          url: `/api/research/sessions/${encodedMissingId}`,
+          ...(headers ? { headers } : {})
+        });
+        expect(unauthorized.statusCode).toBe(401);
+        expect(unauthorized.json()).toMatchObject({
+          error: "operator_api_unauthorized"
+        });
+        expect(unauthorized.json()).not.toHaveProperty("research_work_item_id");
+      }
+
+      const authorized = await server.inject({
+        method: "GET",
+        url: `/api/research/sessions/${encodedMissingId}`,
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+      expect(authorized.statusCode).toBe(404);
+      expect(authorized.json()).toEqual({
+        error: "research_session_not_found",
+        research_work_item_id: "research/session 1"
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("sanitizes exact Research session projection failures after authentication", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+    const privateOwner = "detail-private-owner-sentinel";
+    const urlPassword = "detail-url-password-sentinel";
+    const tokenValue = "detail-token-value-sentinel";
+    const rawFailure = [
+      `projection failed at /Users/${privateOwner}/research/session.json`,
+      `https://operator:${urlPassword}@example.test/private`,
+      `access_token=${tokenValue}`
+    ].join(" ");
+    const allocationReads = vi.spyOn(store, "listCandidateArenaResearchAllocations")
+      .mockRejectedValue(new Error(rawFailure));
+
+    try {
+      const unauthorized = await server.inject({
+        method: "GET",
+        url: "/api/research/sessions/research-session-v1-private"
+      });
+      expect(unauthorized.statusCode).toBe(401);
+      expect(allocationReads).not.toHaveBeenCalled();
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/research/sessions/research-session-v1-private",
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({
+        error: "research_operations_unavailable",
+        availability: "unavailable"
+      });
+      for (const privateValue of [privateOwner, urlPassword, tokenValue, rawFailure]) {
+        expect(response.body).not.toContain(privateValue);
+      }
     } finally {
       await server.close();
     }
@@ -1154,6 +1395,49 @@ describe("runtime canonical operator API", () => {
       expect(JSON.stringify(projection)).not.toContain("allocation_digest");
       expect(allocationReads).toHaveBeenCalledTimes(1);
       expect(tickReads).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps CandidateArena and Trading readable when Research projection reads fail", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildRuntimeTestServer({ store });
+    const privateFailure = "research-private-read-failure-sentinel";
+    vi.spyOn(store, "listResearchWorkers")
+      .mockRejectedValue(new Error(privateFailure));
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        operator: {
+          candidate_arena: {
+            authority_status: "not_live"
+          },
+          paper_trading_board: {
+            board_kind: "paper_trading_board",
+            authority_status: "not_live"
+          },
+          research_operations: {
+            projection_kind: "research_operations",
+            availability: "unavailable",
+            loop_status: "degraded",
+            capacity: {
+              active_session_count: 0,
+              queued_session_count: 0
+            },
+            sessions: [],
+            authority_status: "research_only"
+          },
+          authority_status: "not_live"
+        }
+      });
+      expect(response.body).not.toContain(privateFailure);
     } finally {
       await server.close();
     }
@@ -2998,6 +3282,99 @@ function researchGeneralizationApplicationFixture(): {
     authority_status: "not_live"
   };
   return { protocol, outcome, decision, allocation, tick };
+}
+
+async function persistRuntimeResearchSessionFixture(
+  store: LocalStore
+): Promise<string> {
+  const direction: ResearchDirectionRecord = {
+    record_kind: "research_direction",
+    version: 1,
+    research_direction_id: "research-direction-runtime-detail",
+    direction_kind: "trend_following",
+    market_scope: "external_trading_api_fixture",
+    prompt_seed: "Inspect one exact persisted Research session.",
+    created_at: "2026-07-23T00:00:00.000Z",
+    authority_status: "research_seed_only"
+  };
+  const allocation: CandidateArenaResearchAllocationRecord = {
+    record_kind: "candidate_arena_research_allocation",
+    version: 1,
+    candidate_arena_research_allocation_id: "allocation-runtime-research-detail",
+    tick_id: "tick-runtime-research-detail",
+    allocation_mode: "explicit",
+    allocation_policy_basis: { basis_kind: "explicit_request" },
+    trigger: {
+      trigger_kind: "goal",
+      trigger_id: "trigger-runtime-research-detail",
+      goal: "Inspect one exact persisted Research session.",
+      triggered_at: "2026-07-23T00:00:00.000Z",
+      authority_status: "research_only"
+    },
+    policy: { ...CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY },
+    source_tick_refs: [],
+    signal_snapshot: [],
+    selected_directions: [{
+      direction_kind: "trend_following",
+      selection_kind: "explicit",
+      priority: 1,
+      experiment_budget: 1,
+      signal_score: 0,
+      reasons: ["test_explicit_direction"]
+    }],
+    deferred_directions: [
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk",
+      "execution_cost_robustness"
+    ],
+    allocated_at: "2026-07-23T00:00:00.000Z",
+    allocation_digest: serverTestExactDigest("pending"),
+    research_scheduling_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+  allocation.allocation_digest = serverTestExactDigest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: "candidate-arena-tick-runtime-research-detail",
+    tick_id: allocation.tick_id,
+    started_at: allocation.allocated_at,
+    completed_at: "2026-07-23T00:00:05.000Z",
+    status: "completed_with_errors",
+    created_candidate_refs: [],
+    direction_results: [{
+      direction_kind: "trend_following",
+      status: "failed",
+      error: [
+        "raw provider failure stdout stderr",
+        "Bearer injected-bearer-token",
+        "OPENAI_API_KEY=injected-credential",
+        "https://secret-user:secret-pass@example.test/private?token=url-secret",
+        "/Users/private-owner/provider.log",
+        "C:\\Users\\private-owner\\provider.log"
+      ].join(" ")
+    }],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+
+  await store.recordResearchDirection(direction);
+  await store.recordCandidateArenaResearchAllocation(allocation);
+  await store.recordCandidateArenaTick(tick);
+  return researchWorkItemId({
+    research_allocation_id: allocation.candidate_arena_research_allocation_id,
+    direction_kind: "trend_following"
+  });
 }
 
 function serverTestExactDigest(value: string): string {

@@ -68,6 +68,16 @@ export function registerCoreControllerRoutes(context: CoreControllerRoutesContex
       }
     );
 
+    server.get<{ Params: { researchWorkItemId: string } }>(
+      "/api/research/sessions/:researchWorkItemId",
+      authRouteOptions(context.filesystemReadRateLimit, context.operatorApiAuthPreHandler),
+      async (request, reply) => {
+        const response = await context.operatorController
+          .readResearchSessionDetail(request.params.researchWorkItemId);
+        return reply.code(response.statusCode).send(response.body);
+      }
+    );
+
     server.post<{ Body: OuroborosCommandRequest }>(
       "/api/commands",
       authRouteOptions(context.commandMutationRateLimit, context.operatorApiAuthPreHandler),

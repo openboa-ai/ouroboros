@@ -64,10 +64,24 @@ Each session exposes:
 - resulting admission, duplicate, quarantine, no-submission, or failed-closed state;
 - exact admitted candidate and SystemCode link when one exists.
 
+The Research row identity is a derived projection key, not a new persisted authority. Version 1
+hashes the canonical allocation-and-direction pair as
+`research-session-v1-<full-sha256>`. Runtime health names the exact active tick and only the work
+items whose bounded direction tasks have actually started. Its `allocating`, `running`, and
+`failed_closed_pending_tick` phases are read-only coordination evidence; they do not replace the
+persisted allocation, commitment, checkpoint, admission, or terminal tick graph.
+
 Development submissions and the selected result bind only `system_code` records. The terminal
 Research detail links bind the exact `candidate_admission_decision` and
 `paper_trading_handoff_conformance` records; consumers never infer those edges from an arbitrary
 reference.
+
+The current persisted graph identifies only the exact explicitly selected artifact. Non-selected
+immutable submission summaries are reconstructed from the terminal
+`ResearchWorkerCheckpoint` entries for that exact tick. Their artifact identity is explicitly
+`not_persisted`: a projection must not invent or borrow a `SystemCode` reference or digest from the
+selected submission. Before a terminal checkpoint exists, durable submission detail is reported as
+unavailable rather than read from a mutable notebook or provider log.
 
 The supported lifecycle is `queued`, `allocating`, `running`, `awaiting_selection`,
 `sealed_admission`, `admitted`, `duplicate`, `quarantined`, `finished_without_submission`,
@@ -77,6 +91,10 @@ only when policy still requests work. Restart sequence recovery includes persist
 well as completed ticks, so a crash after allocation cannot reuse a tick identity. One Arena-event
 artifact digest may be claimed by only one allocation across LocalStore processes; an orphaned
 claim remains consumed rather than being silently replayed.
+
+`awaiting_selection` and `sealed_admission` remain reserved lifecycle vocabulary. The current
+persisted graph has no durable mid-session selection record, so the Research projection does not
+emit either state without future exact evidence.
 
 ### Research Evidence Input
 
@@ -233,6 +251,12 @@ Operator migration may expose these fields optionally until the owning builders 
 absent projection means unavailable, not an empty or successful loop. Once the builders are
 implemented, the projections become required API state and compatibility views can be retired in a
 separate migration.
+
+`ResearchOperationsReadModel.availability` distinguishes a successful rebuild from its isolated
+read-failure fallback. A successful rebuild is `available` even when it contains zero sessions;
+the bounded fallback is `unavailable`, keeps the loop `degraded`, exposes no inferred sessions, and
+does not disclose the raw read error. Operator surfaces must not present that fallback as an
+authoritative or healthy empty Research queue.
 
 ## Delivery Slices
 

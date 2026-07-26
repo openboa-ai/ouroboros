@@ -200,6 +200,7 @@ describe("ResearchControlCampaign application", () => {
       duplicate_count: 1,
       quarantined_count: 0,
       failed_count: 1,
+      no_submission_count: 0,
       provider_request_total: 9,
       runner_command_total: 5,
       scenario_count: 12,

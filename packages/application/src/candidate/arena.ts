@@ -48,6 +48,7 @@ import type {
   ResearchTriggerReadModel,
   ResearchWorkerMemoryControlAssignment,
   ResearchWorkerMemoryMode,
+  ResearchWorkerCheckpointRecord,
   ResearchWorkerCheckpointTerminalReason,
   ResearchWorkerRecord,
   SystemCodeRecord,
@@ -81,6 +82,11 @@ import {
   toCandidateArenaResearchAllocationReadModel
 } from "./research-allocation";
 import { buildResearchPopulationDiversity } from "./research-population-diversity";
+import {
+  CandidateArenaResearchWorkRegistry,
+  type CandidateArenaActiveResearchWorkItemReadModel,
+  type CandidateArenaResearchWorkObserver
+} from "./research-work-item";
 import { buildResearchWorkerMemoryProjection } from
   "./research-worker-memory";
 import {
@@ -90,6 +96,7 @@ import {
 import {
   closeResearchWorkerCheckpoint,
   recoverIncompleteResearchWorkerCheckpoints,
+  researchWorkerCheckpointDevelopmentSubmissionCount,
   resolveResearchWorkerLifecycle
 } from "./research-worker-lifecycle";
 import { readTradingSystemManifest } from "../trading/research/artifact-runner";
@@ -135,9 +142,15 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MAX_RESEARCH_EVIDENCE_ARTIFACTS = 24;
+const MAX_CANDIDATE_ARENA_FAILURE_SOURCE_LENGTH = 4_096;
+const MAX_CANDIDATE_ARENA_FAILURE_SUMMARY_LENGTH = 256;
 
 export { DEFAULT_ARENA_DIRECTIONS } from "./research-allocation";
 export { recoverIncompleteResearchWorkerCheckpoints } from "./research-worker-lifecycle";
+export {
+  CandidateArenaResearchWorkRegistry,
+  type CandidateArenaResearchWorkObserver
+} from "./research-work-item";
 
 const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
   revenue_usdt: 0,
@@ -195,6 +208,7 @@ export interface RunCandidateArenaTickInput {
   >;
   researchMemoryMode?: ResearchWorkerMemoryMode;
   researchMemoryControlAssignment?: ResearchWorkerMemoryControlAssignment;
+  effectedAllocationRecoveryMode?: "record_failed_tick";
   researchPreflightEvaluationOpportunity?:
     ResearchPreflightEvaluationOpportunityHandle;
   tickId?: string;
@@ -226,6 +240,11 @@ export interface CandidateArenaTickOutcome {
   arena: CandidateArenaReadModel;
 }
 
+export interface CandidateArenaEvidenceSnapshot {
+  allocations: CandidateArenaResearchAllocationRecord[];
+  ticks: CandidateArenaTickRecord[];
+}
+
 export type CandidateArenaTickContinuation = (
   outcome: CandidateArenaTickOutcome
 ) =>
@@ -238,6 +257,8 @@ export interface CandidateArenaRunnerHealthReadModel {
   tick_count: number;
   completed_tick_count: number;
   active_tick: boolean;
+  active_tick_id?: string;
+  active_research_work_items: CandidateArenaActiveResearchWorkItemReadModel[];
   consecutive_failure_count: number;
   last_error_code?: string;
   runtime_coordination_authority: true;
@@ -256,6 +277,7 @@ export class CandidateArenaRunner {
   private lastErrorCode?: string;
   private loopActive = false;
   private activeTick?: Promise<CandidateArenaTickOutcome>;
+  private readonly researchWorkRegistry = new CandidateArenaResearchWorkRegistry();
   private tickContinuation?: CandidateArenaTickContinuation;
   private restoredCompletedTickIds = new Set<string>();
 
@@ -273,11 +295,13 @@ export class CandidateArenaRunner {
   }
 
   health(): CandidateArenaRunnerHealthReadModel {
+    const researchWork = this.researchWorkRegistry.snapshot();
     return {
       status: this.status(),
       tick_count: this.tickCount,
       completed_tick_count: this.completedTickCount,
       active_tick: this.activeTick !== undefined,
+      ...researchWork,
       consecutive_failure_count: this.consecutiveFailureCount,
       ...(this.lastErrorCode ? { last_error_code: this.lastErrorCode } : {}),
       runtime_coordination_authority: true,
@@ -352,11 +376,13 @@ export class CandidateArenaRunner {
       this.tickCount,
       this.restoredCompletedTickIds
     );
+    const tickId = `tick-${this.tickCount}`;
+    const researchWorkObserver = this.researchWorkRegistry.beginTick(tickId);
     this.activeTick = runCandidateArenaTick({
       ...this.input,
       researchTrigger,
-      tickId: `tick-${this.tickCount}`
-    }, this.status(), this.tickCount)
+      tickId
+    }, this.status(), this.tickCount, researchWorkObserver)
       .then((outcome) => this.applyTickContinuation(outcome))
       .then((outcome) => {
         this.completedTickCount += 1;
@@ -370,6 +396,7 @@ export class CandidateArenaRunner {
         throw error;
       })
       .finally(() => {
+        researchWorkObserver.clearMatchingTick();
         this.activeTick = undefined;
       });
     return this.activeTick;
@@ -388,7 +415,10 @@ export class CandidateArenaRunner {
       continuationEvidence = {
         status: "failed",
         command_kind: "trading_run.start",
-        error: conciseError(error),
+        error: candidateArenaFailureSummary(
+          error,
+          "candidate_arena_paper_continuation_failed"
+        ),
         authority_status: "not_live"
       };
     }
@@ -604,20 +634,6 @@ export function candidateArenaRunnerTickCountFromTicks(
   ticks: Pick<CandidateArenaTickRecord, "tick_id">[],
   allocations: Pick<CandidateArenaResearchAllocationRecord, "tick_id">[] = []
 ): number {
-  const completedTickIds = new Set(ticks.map((tick) => tick.tick_id));
-  const earliestIncompleteSequence = allocations.reduce<number | undefined>(
-    (earliest, allocation) => {
-      if (completedTickIds.has(allocation.tick_id)) return earliest;
-      const match = /^tick-(\d+)$/.exec(allocation.tick_id);
-      if (!match) return earliest;
-      const sequence = Number(match[1] ?? 0);
-      return earliest === undefined ? sequence : Math.min(earliest, sequence);
-    },
-    undefined
-  );
-  if (earliestIncompleteSequence !== undefined) {
-    return Math.max(0, earliestIncompleteSequence - 1);
-  }
   const highestNumericTickId = [...ticks, ...allocations]
     .reduce((highest, tick) => {
     const match = /^tick-(\d+)$/.exec(tick.tick_id);
@@ -643,7 +659,8 @@ export function candidateArenaRunnerNextTickCount(
 export async function runCandidateArenaTick(
   input: RunCandidateArenaTickInput,
   runnerStatus: "running" | "stopped" = "stopped",
-  tickCount = 0
+  tickCount = 0,
+  researchWorkObserver?: CandidateArenaResearchWorkObserver
 ): Promise<CandidateArenaTickOutcome> {
   const tickId = input.tickId ?? `tick-${Date.now()}`;
   const startedAt = candidateArenaNow(input.now);
@@ -656,15 +673,47 @@ export async function runCandidateArenaTick(
       recovered_at: startedAt
     })
   );
+  const existingAllocation = await input.store
+    .getCandidateArenaResearchAllocation(
+      `candidate-arena-research-allocation-${safeId(tickId)}`
+    );
+  if (existingAllocation) {
+    const recoveredTick = input.effectedAllocationRecoveryMode ===
+      "record_failed_tick"
+      ? await withArenaStoreMutation(input.store, () =>
+          recordRecoveredCandidateArenaTick({
+            store: input.store,
+            tickId,
+            allocation: existingAllocation
+          })
+        )
+      : undefined;
+    if (recoveredTick) {
+      observeResearchWork(() => researchWorkObserver?.tickPersisted());
+      const arena = await buildCandidateArenaReadModel(
+        input.store,
+        runnerStatus,
+        tickCount
+      );
+      return {
+        status: "completed",
+        tick_id: tickId,
+        created_candidate_count: 0,
+        created_candidate_ids: [],
+        arena
+      };
+    }
+    await assertCandidateArenaAllocationHasNoPriorEffect({
+      store: input.store,
+      tickId,
+      allocationId: existingAllocation.candidate_arena_research_allocation_id
+    });
+  }
   const collectedResearchEvidenceArtifacts = await collectResearchEvidenceArtifacts({
     store: input.store,
     evidenceSource: input.researchEvidenceSource,
     now: input.now
   });
-  const existingAllocation = await input.store
-    .getCandidateArenaResearchAllocation(
-      `candidate-arena-research-allocation-${safeId(tickId)}`
-    );
   const researchTrigger = existingAllocation
     ? existingAllocation.trigger
     : await resolveResearchTrigger({
@@ -724,19 +773,35 @@ export async function runCandidateArenaTick(
   const settledDirections = await settleArenaSelections(
     selections,
     allocation.policy.concurrency_limit,
-    async (selection) => ({
-      selection,
-      outcome: await runArenaDirection({
-        ...input,
-        source: sourceSelection.candidate,
-        direction: selection.direction_kind,
-        tickId,
-        allocation,
-        allocationSelection: selection,
-        researchTriggerRecord: allocation.trigger,
-        researchEvidenceArtifacts
-      })
-    })
+    async (selection) => {
+      const identity = {
+        research_allocation_id:
+          allocation.candidate_arena_research_allocation_id,
+        direction_kind: selection.direction_kind
+      };
+      observeResearchWork(() => researchWorkObserver?.directionStarted(identity));
+      try {
+        return {
+          selection,
+          outcome: await runArenaDirection({
+            ...input,
+            source: sourceSelection.candidate,
+            direction: selection.direction_kind,
+            tickId,
+            allocation,
+            allocationSelection: selection,
+            researchTriggerRecord: allocation.trigger,
+            researchEvidenceArtifacts,
+            researchWorkObserver
+          })
+        };
+      } catch (error) {
+        observeResearchWork(() =>
+          researchWorkObserver?.directionFailed(identity)
+        );
+        throw error;
+      }
+    }
   );
 
   for (let index = 0; index < settledDirections.length; index += 1) {
@@ -744,56 +809,16 @@ export async function runCandidateArenaTick(
     const settled = settledDirections[index]!;
     if (settled.status === "fulfilled") {
       const directionOutcome = settled.value.outcome;
-      if (directionOutcome.status === "created") {
-        const created = directionOutcome.candidate;
-        createdCandidateIds.push(created.candidate_id);
-        const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
-        directionResults.push({
-          direction_kind: direction,
-          status: "created",
-          agent_provider: input.researchAgent,
-          candidate_id: created.candidate_id,
-          admission_decision_id:
-            directionOutcome.admission.candidate_admission_decision_id,
-          admission_reason: directionOutcome.admission.reason,
-          paper_handoff_conformance:
-            compactPaperHandoffConformance(directionOutcome.conformance),
-          finding: findingSummaryForProfitLoss(
-            profitLoss,
-            created.full_cycle_lineage?.evidence?.evaluation_status
-          ),
-          net_revenue_usdt: profitLoss.net_revenue_usdt,
-          research_efficiency: directionOutcome.research_efficiency,
-          research_preflight: directionOutcome.research_preflight
-        });
-      } else if (directionOutcome.status === "no_submission") {
-        directionResults.push({
-          direction_kind: direction,
-          status: directionOutcome.status,
-          agent_provider: input.researchAgent,
-          finding: directionOutcome.finding,
-          research_efficiency: directionOutcome.research_efficiency,
-          research_preflight: directionOutcome.research_preflight
-        });
-      } else {
-        directionResults.push({
-          direction_kind: direction,
-          status: directionOutcome.status,
-          agent_provider: input.researchAgent,
-          finding: directionOutcome.finding.summary,
-          admission_decision_id:
-            directionOutcome.admission.candidate_admission_decision_id,
-          admission_reason: directionOutcome.admission.reason,
-          ...(directionOutcome.conformance
-            ? {
-                paper_handoff_conformance:
-                  compactPaperHandoffConformance(directionOutcome.conformance)
-              }
-            : {}),
-          research_efficiency: directionOutcome.research_efficiency,
-          research_preflight: directionOutcome.research_preflight
-        });
+      const directionResult = candidateArenaDirectionResult(
+        direction,
+        input.researchAgent,
+        directionOutcome
+      );
+      if (directionResult.status === "created" &&
+        directionResult.candidate_id) {
+        createdCandidateIds.push(directionResult.candidate_id);
       }
+      directionResults.push(directionResult);
     } else {
       const researchPreflight = await failedArenaResearchPreflightReadback(
         input.store,
@@ -804,7 +829,10 @@ export async function runCandidateArenaTick(
         direction_kind: direction,
         status: "failed",
         agent_provider: input.researchAgent,
-        error: conciseError(settled.reason),
+        error: candidateArenaFailureSummary(
+          settled.reason,
+          "candidate_arena_research_failed"
+        ),
         finding: `${directionLabel(direction)} researcher failed before candidate materialization.`,
         ...(researchPreflight ? { research_preflight: researchPreflight } : {})
       });
@@ -820,6 +848,7 @@ export async function runCandidateArenaTick(
     directionResults,
     allocation
   }));
+  observeResearchWork(() => researchWorkObserver?.tickPersisted());
 
   const arena = await buildCandidateArenaReadModel(input.store, runnerStatus, tickCount);
   return {
@@ -829,6 +858,222 @@ export async function runCandidateArenaTick(
     created_candidate_ids: createdCandidateIds,
     arena
   };
+}
+
+async function recordRecoveredCandidateArenaTick(input: {
+  store: OuroborosStorePort;
+  tickId: string;
+  allocation: CandidateArenaResearchAllocationRecord;
+}): Promise<CandidateArenaTickRecord | undefined> {
+  const [ticks, commitments, checkpoints, directions, admissions] =
+    await Promise.all([
+    input.store.listCandidateArenaTicks(),
+    input.store.listResearchPreflightCommitments(),
+    input.store.listResearchWorkerCheckpoints(),
+    input.store.listResearchDirections(),
+    input.store.listCandidateAdmissionDecisions()
+  ]);
+  if (ticks.some((tick) => tick.tick_id === input.tickId)) {
+    return undefined;
+  }
+  const allocationCommitments = commitments.filter((commitment) =>
+    commitment.candidate_arena_tick_id === input.tickId &&
+    commitment.research_allocation_ref.id ===
+      input.allocation.candidate_arena_research_allocation_id &&
+    commitment.research_allocation_digest === input.allocation.allocation_digest
+  );
+  if (allocationCommitments.length === 0) {
+    return undefined;
+  }
+  const directionsById = new Map(directions.map((direction) => [
+    direction.research_direction_id,
+    direction
+  ]));
+  const checkpointsByCommitment = new Map(checkpoints.map((checkpoint) => [
+    checkpoint.research_preflight_commitment_ref.id,
+    checkpoint
+  ]));
+  const admissionsById = new Map(admissions.map((admission) => [
+    admission.candidate_admission_decision_id,
+    admission
+  ]));
+  const evidenceByDirection = new Map<ResearchDirectionKind, {
+    commitment: ResearchPreflightCommitmentRecord;
+    checkpoint: ResearchWorkerCheckpointRecord;
+  }>();
+  for (const commitment of allocationCommitments) {
+    const direction = directionsById.get(commitment.research_direction_ref.id);
+    const checkpoint = checkpointsByCommitment.get(
+      commitment.research_preflight_commitment_id
+    );
+    if (!direction ||
+      !input.allocation.selected_directions.some((selection) =>
+        selection.direction_kind === direction.direction_kind
+      ) || evidenceByDirection.has(direction.direction_kind) ||
+      !checkpoint || checkpoint.candidate_arena_tick_id !== input.tickId ||
+      checkpoint.research_preflight_commitment_digest !==
+        commitment.commitment_digest) {
+      return undefined;
+    }
+    evidenceByDirection.set(direction.direction_kind, {
+      commitment,
+      checkpoint
+    });
+  }
+  const directionResults = input.allocation.selected_directions.map(
+    (selection) => {
+      const evidence = evidenceByDirection.get(selection.direction_kind);
+      if (!evidence) {
+        return recoveredCandidateArenaFailedDirection(
+          selection.direction_kind,
+          "candidate_arena_restart_recovery",
+          "Campaign direction had no completed commitment after restart."
+        );
+      }
+      if (evidence.checkpoint.terminal_direction_result) {
+        return structuredClone(
+          evidence.checkpoint.terminal_direction_result
+        );
+      }
+      if (evidence.checkpoint.terminal_reason === "restart_recovery") {
+        return recoveredCandidateArenaFailedDirection(
+          selection.direction_kind,
+          "candidate_arena_restart_recovery",
+          "Research session failed closed during restart recovery.",
+          recoveredCandidateArenaResearchPreflight(
+            evidence.commitment,
+            evidence.checkpoint
+          )
+        );
+      }
+      if (evidence.checkpoint.terminal_status === "failed_closed" &&
+        evidence.checkpoint.terminal_reason === "execution_failed") {
+        return recoveredCandidateArenaFailedDirection(
+          selection.direction_kind,
+          "candidate_arena_checkpoint_execution_failed",
+          "Research session failed closed before terminal tick persistence.",
+          recoveredCandidateArenaResearchPreflight(
+            evidence.commitment,
+            evidence.checkpoint
+          )
+        );
+      }
+      if (evidence.checkpoint.terminal_reason === "admission_recorded") {
+        const admissionId =
+          evidence.checkpoint.candidate_admission_decision_ref?.id;
+        const admission = admissionId
+          ? admissionsById.get(admissionId)
+          : undefined;
+        if (!admission ||
+          admission.research_preflight_commitment_ref?.id !==
+            evidence.commitment.research_preflight_commitment_id ||
+          admission.research_preflight_commitment_digest !==
+            evidence.commitment.commitment_digest) {
+          throw new Error(
+            "candidate_arena_research_allocation_recovery_unavailable"
+          );
+        }
+      }
+      if (evidence.checkpoint.terminal_reason === "admission_recorded" ||
+        evidence.checkpoint.terminal_reason ===
+          "finished_without_submission") {
+        return recoveredCandidateArenaFailedDirection(
+          selection.direction_kind,
+          "candidate_arena_recovery_evidence_unavailable",
+          "Legacy checkpoint lacks exact terminal direction evidence."
+        );
+      }
+      throw new Error(
+        "candidate_arena_research_allocation_recovery_unavailable"
+      );
+    }
+  );
+  const createdCandidateIds = directionResults.flatMap((result) =>
+    result.status === "created" && result.candidate_id
+      ? [result.candidate_id]
+      : []
+  );
+  const allocationCheckpoints = [...evidenceByDirection.values()].map(
+    (evidence) => evidence.checkpoint
+  );
+  const completedAt = allocationCheckpoints.reduce(
+    (latest, checkpoint) =>
+      checkpoint.closed_at.localeCompare(latest) > 0
+        ? checkpoint.closed_at
+        : latest,
+    input.allocation.allocated_at
+  );
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: `candidate-arena-tick-${safeId(input.tickId)}`,
+    tick_id: input.tickId,
+    started_at: input.allocation.allocated_at,
+    completed_at: completedAt,
+    status: candidateArenaTickStatus(directionResults),
+    created_candidate_refs: createdCandidateIds.map((candidateId) =>
+      ref("trading_system_candidate", candidateId)
+    ),
+    direction_results: directionResults,
+    research_allocation_ref: ref(
+      "candidate_arena_research_allocation",
+      input.allocation.candidate_arena_research_allocation_id
+    ),
+    research_allocation_digest: input.allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+  return input.store.recordCandidateArenaTick(tick);
+}
+
+function recoveredCandidateArenaResearchPreflight(
+  commitment: ResearchPreflightCommitmentRecord,
+  checkpoint: ResearchWorkerCheckpointRecord
+): CandidateArenaResearchPreflightReadModel {
+  const admissionRecorded = checkpoint.terminal_reason === "admission_recorded";
+  return {
+    commitment_id: commitment.research_preflight_commitment_id,
+    development_submission_count:
+      checkpoint.development_budget.recorded_submission_count,
+    sealed_terminal_status: admissionRecorded ? "accepted" : "not_run",
+    reason: admissionRecorded
+      ? "accepted"
+      : checkpoint.terminal_reason === "finished_without_submission"
+        ? "no_development_winner"
+        : "execution_failed",
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function recoveredCandidateArenaFailedDirection(
+  direction: ResearchDirectionKind,
+  error: string,
+  finding: string,
+  researchPreflight?: CandidateArenaResearchPreflightReadModel
+): CandidateArenaTickDirectionResultReadModel {
+  return {
+    direction_kind: direction,
+    status: "failed",
+    error,
+    finding,
+    ...(researchPreflight ? { research_preflight: researchPreflight } : {})
+  };
+}
+
+async function assertCandidateArenaAllocationHasNoPriorEffect(input: {
+  store: OuroborosStorePort;
+  tickId: string;
+  allocationId: string;
+}): Promise<void> {
+  const [ticks, commitments] = await Promise.all([
+    input.store.listCandidateArenaTicks(),
+    input.store.listResearchPreflightCommitments()
+  ]);
+  if (ticks.some((tick) => tick.tick_id === input.tickId) ||
+    commitments.some((commitment) =>
+      commitment.research_allocation_ref.id === input.allocationId
+    )) {
+    throw new Error("candidate_arena_research_allocation_already_effected");
+  }
 }
 
 async function settleArenaSelections<T>(
@@ -845,6 +1090,14 @@ async function settleArenaSelections<T>(
   return settled;
 }
 
+function observeResearchWork(observer: () => void): void {
+  try {
+    observer();
+  } catch {
+    // Runtime projection observation cannot change Research effects or evidence.
+  }
+}
+
 function candidateArenaNow(now: (() => string) | undefined): string {
   const value = now?.() ?? new Date().toISOString();
   if (!Number.isFinite(Date.parse(value)) ||
@@ -858,22 +1111,22 @@ export async function buildCandidateArenaReadModel(
   store: OuroborosStorePort,
   runnerStatus: "running" | "stopped",
   tickCount: number,
-  preloadedResearchReleases?: PaperTradingComparisonResearchReleaseRecord[]
+  preloadedResearchReleases?: PaperTradingComparisonResearchReleaseRecord[],
+  preloadedArenaEvidence?: CandidateArenaEvidenceSnapshot
 ): Promise<CandidateArenaReadModel> {
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
   );
-  const tickRecords = await store.listCandidateArenaTicks();
+  const arenaEvidence = preloadedArenaEvidence ??
+    await loadCandidateArenaEvidenceSnapshot(store);
+  const tickRecords = arenaEvidence.ticks;
   const latestTickRecords = [...tickRecords]
     .sort((left, right) =>
       right.completed_at.localeCompare(left.completed_at) ||
       right.tick_id.localeCompare(left.tick_id)
     )
     .slice(0, 10);
-  const allocationRecords = typeof store.listCandidateArenaResearchAllocations ===
-      "function"
-    ? await store.listCandidateArenaResearchAllocations()
-    : [];
+  const allocationRecords = arenaEvidence.allocations;
   const [
     directions,
     commitments,
@@ -971,6 +1224,21 @@ export async function buildCandidateArenaReadModel(
   };
 }
 
+export async function loadCandidateArenaEvidenceSnapshot(
+  store: Pick<
+    OuroborosStorePort,
+    "listCandidateArenaResearchAllocations" | "listCandidateArenaTicks"
+  >
+): Promise<CandidateArenaEvidenceSnapshot> {
+  const [allocations, ticks] = await Promise.all([
+    typeof store.listCandidateArenaResearchAllocations === "function"
+      ? store.listCandidateArenaResearchAllocations()
+      : Promise.resolve([]),
+    store.listCandidateArenaTicks()
+  ]);
+  return { allocations, ticks };
+}
+
 async function arenaResearchGeneralization(
   store: OuroborosStorePort,
   allocations: CandidateArenaResearchAllocationRecord[],
@@ -1033,7 +1301,8 @@ async function recordCandidateArenaTickPaperTradingContinuation(
   }
   await store.recordCandidateArenaTick({
     ...tick,
-    paper_trading_continuation: continuation
+    paper_trading_continuation:
+      sanitizeCandidateArenaPaperTradingContinuation(continuation)
   });
 }
 
@@ -1045,6 +1314,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   allocationSelection: CandidateArenaResearchAllocationSelection;
   researchTriggerRecord?: ResearchTriggerReadModel;
   researchEvidenceArtifacts: ResearchEvidenceArtifactRecord[];
+  researchWorkObserver?: CandidateArenaResearchWorkObserver;
 }): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
@@ -1159,21 +1429,41 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         : {})
     });
     await input.store.recordResearchPreflightCommitment(plan.commitment);
+    observeResearchWork(() =>
+      input.researchWorkObserver?.commitmentPersisted({
+        research_allocation_id:
+          input.allocation.candidate_arena_research_allocation_id,
+        direction_kind: input.direction,
+        commitment_id: plan.commitment.research_preflight_commitment_id
+      })
+    );
     return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
   });
-  const closeCheckpoint = (terminalReason: Exclude<
+  const closeCheckpoint = async (terminalReason: Exclude<
     ResearchWorkerCheckpointTerminalReason,
     "admission_recorded"
-  >) =>
-    closeResearchWorkerCheckpoint({
+  >, terminalDirectionResult?: CandidateArenaTickDirectionResultReadModel) => {
+    const checkpoint = await closeResearchWorkerCheckpoint({
       store: input.store,
       commitment: preflight.plan.commitment,
       direction: preflight.direction,
       worker: preflight.worker,
       notebook_path: preflight.notebook_path,
       terminal_reason: terminalReason,
+      ...(terminalDirectionResult
+        ? { terminal_direction_result: terminalDirectionResult }
+        : {}),
       closed_at: candidateArenaNow(input.now)
     });
+    observeResearchWork(() =>
+      input.researchWorkObserver?.terminalEvidencePersisted({
+          research_allocation_id:
+            input.allocation.candidate_arena_research_allocation_id,
+          direction_kind: input.direction
+        })
+    );
+    return checkpoint;
+  };
   try {
     const createdAdapter = input.researchAgent === "fixture"
       ? new DirectionalFixtureTradingResearchAgentAdapter(
@@ -1226,15 +1516,24 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         sealedAdmission !== undefined) {
         throw new Error("candidate_arena_unselected_submission_evidence_invalid");
       }
-      await withArenaStoreMutation(input.store, () =>
-        closeCheckpoint("finished_without_submission")
-      );
-      return {
+      const outcome: ArenaDirectionRunOutcome = {
         status: "no_submission",
-        finding: "ResearchWorker finished without selecting a development submission.",
+        finding:
+          "ResearchWorker finished without selecting a development submission.",
         research_efficiency: researchEfficiency,
         research_preflight: researchPreflight
       };
+      await withArenaStoreMutation(input.store, () =>
+        closeCheckpoint(
+          "finished_without_submission",
+          candidateArenaDirectionResult(
+            input.direction,
+            input.researchAgent,
+            outcome
+          )
+        )
+      );
+      return outcome;
     }
     const selectedSequence = research.selected_development_submission;
     const entry = autonomousSession
@@ -1284,8 +1583,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         sealedAdmission
       });
       if (!researchRecords.admission.runnable_paper_handoff) {
-        await closeCheckpoint("execution_failed");
-        return {
+        const outcome: ArenaDirectionRunOutcome = {
           status: researchRecords.admission.status === "duplicate"
             ? "duplicate"
             : "quarantined",
@@ -1295,6 +1593,15 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
           research_efficiency: researchEfficiency,
           research_preflight: researchPreflight
         };
+        await closeCheckpoint(
+          "execution_failed",
+          candidateArenaDirectionResult(
+            input.direction,
+            input.researchAgent,
+            outcome
+          )
+        );
+        return outcome;
       }
       if (!researchRecords.conformance ||
         !sealedAdmission ||
@@ -1326,8 +1633,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       if (!candidate) {
         throw new Error("candidate_arena_projection_failed");
       }
-      await closeCheckpoint("execution_failed");
-      return {
+      const outcome: ArenaDirectionRunOutcome = {
         status: "created",
         candidate,
         admission: researchRecords.admission,
@@ -1335,10 +1641,45 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
         research_efficiency: researchEfficiency,
         research_preflight: researchPreflight
       };
+      await closeCheckpoint(
+        "execution_failed",
+        candidateArenaDirectionResult(
+          input.direction,
+          input.researchAgent,
+          outcome
+        )
+      );
+      return outcome;
     });
   } catch (error) {
+    const researchPreflight: CandidateArenaResearchPreflightReadModel = {
+      commitment_id: preflight.plan.commitment
+        .research_preflight_commitment_id,
+      development_submission_count:
+        await researchWorkerCheckpointDevelopmentSubmissionCount({
+          store: input.store,
+          worker: preflight.worker,
+          commitment: preflight.plan.commitment
+        }),
+      sealed_terminal_status: "not_run",
+      reason: "execution_failed",
+      authority_status: "not_promotion_authority"
+    };
+    const terminalDirectionResult:
+      CandidateArenaTickDirectionResultReadModel = {
+        direction_kind: input.direction,
+        status: "failed",
+        agent_provider: input.researchAgent,
+        error: candidateArenaFailureSummary(
+          error,
+          "candidate_arena_research_failed"
+        ),
+        finding:
+          `${directionLabel(input.direction)} researcher failed before candidate materialization.`,
+        research_preflight: researchPreflight
+      };
     await withArenaStoreMutation(input.store, () =>
-      closeCheckpoint("execution_failed")
+      closeCheckpoint("execution_failed", terminalDirectionResult)
     );
     throw error;
   }
@@ -1498,11 +1839,20 @@ async function failedArenaResearchPreflightReadback(
           candidate.research_preflight_commitment_ref.id ===
             commitment.research_preflight_commitment_id
         );
+      const worker = await store.getResearchWorker(
+        commitment.research_worker_ref.id
+      );
       return {
         commitment_id: commitment.research_preflight_commitment_id,
         development_submission_count:
           checkpoint?.development_budget.recorded_submission_count ??
-          await failedArenaDevelopmentSubmissionCount(store, tickId, direction),
+          (worker
+            ? await researchWorkerCheckpointDevelopmentSubmissionCount({
+                store,
+                worker,
+                commitment
+              })
+            : 0),
         sealed_terminal_status: "not_run",
         reason: "execution_failed",
         authority_status: "not_promotion_authority"
@@ -1510,27 +1860,6 @@ async function failedArenaResearchPreflightReadback(
     }
   }
   return undefined;
-}
-
-async function failedArenaDevelopmentSubmissionCount(
-  store: OuroborosStorePort,
-  tickId: string,
-  direction: ResearchDirectionKind
-): Promise<number> {
-  const sessionId = `candidate-arena-${safeId(tickId)}-${safeId(direction)}`;
-  try {
-    const notebook = JSON.parse(await readFile(path.join(
-      store.root(),
-      "candidate-arena-runs",
-      sessionId,
-      "notebook.json"
-    ), "utf8")) as { entries?: unknown };
-    return Array.isArray(notebook.entries)
-      ? Math.min(notebook.entries.length, 2)
-      : 0;
-  } catch {
-    return 0;
-  }
 }
 
 class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResearchAgentAdapter {
@@ -3254,6 +3583,62 @@ function elapsedMs(startedAt: string, completedAt: string): number {
   return completed - started;
 }
 
+function candidateArenaDirectionResult(
+  direction: ResearchDirectionKind,
+  researchAgent: TradingResearchRuntimeAgent,
+  outcome: ArenaDirectionRunOutcome
+): CandidateArenaTickDirectionResultReadModel {
+  if (outcome.status === "created") {
+    const profitLoss = outcome.candidate.full_cycle_lineage?.evidence
+      ?.profit_loss ?? ZERO_PROFIT_LOSS;
+    return {
+      direction_kind: direction,
+      status: "created",
+      agent_provider: researchAgent,
+      candidate_id: outcome.candidate.candidate_id,
+      admission_decision_id:
+        outcome.admission.candidate_admission_decision_id,
+      admission_reason: outcome.admission.reason,
+      paper_handoff_conformance:
+        compactPaperHandoffConformance(outcome.conformance),
+      finding: findingSummaryForProfitLoss(
+        profitLoss,
+        outcome.candidate.full_cycle_lineage?.evidence?.evaluation_status
+      ),
+      net_revenue_usdt: profitLoss.net_revenue_usdt,
+      research_efficiency: outcome.research_efficiency,
+      research_preflight: outcome.research_preflight
+    };
+  }
+  if (outcome.status === "no_submission") {
+    return {
+      direction_kind: direction,
+      status: "no_submission",
+      agent_provider: researchAgent,
+      finding: outcome.finding,
+      research_efficiency: outcome.research_efficiency,
+      research_preflight: outcome.research_preflight
+    };
+  }
+  return {
+    direction_kind: direction,
+    status: outcome.status,
+    agent_provider: researchAgent,
+    finding: outcome.finding.summary,
+    admission_decision_id:
+      outcome.admission.candidate_admission_decision_id,
+    admission_reason: outcome.admission.reason,
+    ...(outcome.conformance
+      ? {
+          paper_handoff_conformance:
+            compactPaperHandoffConformance(outcome.conformance)
+        }
+      : {}),
+    research_efficiency: outcome.research_efficiency,
+    research_preflight: outcome.research_preflight
+  };
+}
+
 function candidateArenaTickRecord(input: {
   tickId: string;
   startedAt: string;
@@ -3296,7 +3681,17 @@ function toCandidateArenaTickReadModel(
     status: tick.status,
     ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
     created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
-    direction_results: tick.direction_results,
+    direction_results: tick.direction_results.map((result) => ({
+      ...result,
+      ...(result.error === undefined
+        ? {}
+        : {
+            error: candidateArenaFailureSummary(
+              result.error,
+              "candidate_arena_research_failed"
+            )
+          })
+    })),
     ...(allocation
       ? {
           research_allocation:
@@ -3304,7 +3699,12 @@ function toCandidateArenaTickReadModel(
         }
       : {}),
     ...(tick.paper_trading_continuation
-      ? { paper_trading_continuation: tick.paper_trading_continuation }
+      ? {
+          paper_trading_continuation:
+            sanitizeCandidateArenaPaperTradingContinuation(
+              tick.paper_trading_continuation
+            )
+        }
       : {}),
     authority_status: tick.authority_status
   };
@@ -3332,11 +3732,36 @@ function findingSummaryForProfitLoss(
     : "Candidate remained executable but lost money after costs.";
 }
 
-function conciseError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.split("\n")[0] || error.name;
-  }
-  return String(error);
+function candidateArenaFailureSummary(
+  error: unknown,
+  fallback: string
+): string {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === "string"
+      ? error
+      : "";
+  const firstLine = raw.split(/\r?\n/, 1)[0] ?? "";
+  const sanitized = sanitizeResearchEvidenceText(
+    firstLine.slice(0, MAX_CANDIDATE_ARENA_FAILURE_SOURCE_LENGTH)
+  ).trim();
+  return sanitized
+    ? sanitized.slice(0, MAX_CANDIDATE_ARENA_FAILURE_SUMMARY_LENGTH)
+    : fallback;
+}
+
+export function sanitizeCandidateArenaPaperTradingContinuation(
+  continuation: CandidateArenaTickPaperTradingContinuationReadModel
+): CandidateArenaTickPaperTradingContinuationReadModel {
+  return continuation.error === undefined
+    ? continuation
+    : {
+        ...continuation,
+        error: candidateArenaFailureSummary(
+          continuation.error,
+          "candidate_arena_paper_continuation_failed"
+        )
+      };
 }
 
 function directionLabel(direction: ResearchDirectionKind): string {

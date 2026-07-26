@@ -7,8 +7,13 @@ import type {
   PaperTradingBoardEntryReadModel,
   PaperTradingLearningSummaryReadModel,
   ResearchGeneralizationReadModel,
-  ResearchOperationsReadModel
+  ResearchOperationsReadModel,
+  ResearchSessionSummaryReadModel
 } from "@ouroboros/domain";
+import { sanitizeResearchEvidenceText } from "@ouroboros/domain";
+
+const MAX_RESEARCH_FAILURE_SOURCE_LENGTH = 4_096;
+const MAX_RESEARCH_FAILURE_SUMMARY_LENGTH = 256;
 
 export type OperatorProjectionInput = Pick<
   OperatorReadModel,
@@ -132,16 +137,20 @@ export interface ResearchSessionViewModel {
   id: string;
   allocationId: string;
   workerId?: string;
-  workerSessionId?: string;
   commitmentId?: string;
   status: string;
+  projectionHealth: ResearchSessionSummaryReadModel["projection_health"];
+  degradedReasons: ResearchSessionSummaryReadModel["degraded_reasons"];
+  triggerAvailability: "available" | "unavailable";
   triggerKind: string;
   goal: string;
   triggeredAt: string;
+  methodologyAvailability: "available" | "unavailable";
   direction: string;
   hypothesis: string;
   method: string;
   evidenceArtifactCount: number;
+  providerAvailability: "available" | "unavailable";
   provider: string;
   model?: string;
   completedExperimentCount: number;
@@ -191,6 +200,12 @@ export interface ResearchWorkspaceViewModel {
   availability: Exclude<ProjectionAvailability, "compatibility">;
   loopStatus: string;
   capacity?: ResearchOperationsReadModel["capacity"];
+  sessionWindow?: {
+    recordedCount: number;
+    projectedCount: number;
+    omittedCount: number;
+    truncated: boolean;
+  };
   sessions: ResearchSessionViewModel[];
   latestSessionId?: string;
   history: ResearchHistoryViewModel[];
@@ -364,7 +379,7 @@ export function buildResearchWorkspaceViewModel(
           status: result.status,
           candidateId: result.candidate_id,
           finding: result.finding,
-          error: result.error,
+          error: researchFailureSummary(result.error),
           researchEfficiency: efficiency ? {
             providerRequestTotal: efficiency.provider_request_total,
             runnerCommandTotal: efficiency.runner_command_total,
@@ -377,44 +392,35 @@ export function buildResearchWorkspaceViewModel(
     };
   });
 
-  if (operator.research_operations) {
-    const sessions = operator.research_operations.sessions.map((session): ResearchSessionViewModel => ({
-      id: session.research_work_item_id,
-      allocationId: session.research_allocation_id,
-      workerId: session.research_worker_id,
-      workerSessionId: session.research_worker_session_id,
-      commitmentId: session.commitment_id,
-      status: session.status,
-      triggerKind: session.trigger.trigger_kind,
-      goal: session.trigger.goal,
-      triggeredAt: session.trigger.triggered_at,
-      direction: session.methodology.direction_kind,
-      hypothesis: session.methodology.hypothesis,
-      method: session.methodology.method,
-      evidenceArtifactCount: session.methodology.evidence_artifact_ids.length,
-      provider: session.provider,
-      model: session.model,
-      completedExperimentCount: session.budget.completed_experiment_count,
-      maxExperimentCount: session.budget.max_experiment_count,
-      developmentSubmissionCount: session.budget.development_submission_count,
-      maxDevelopmentSubmissionCount: session.budget.max_development_submission_count,
-      startedAt: session.started_at,
-      lastProgressAt: session.last_progress_at,
-      completedAt: session.completed_at,
-      latestProgressSummary: session.latest_progress_summary,
-      admittedCandidateId: session.admitted_candidate_id,
-      detailAvailability: "summary_only"
-    }));
+  if (operator.research_operations?.availability === "available") {
+    const sessions = operator.research_operations.sessions.map(buildResearchSessionViewModel);
 
     return {
       availability: "authoritative",
       loopStatus: operator.research_operations.loop_status,
       capacity: operator.research_operations.capacity,
+      sessionWindow: {
+        recordedCount: operator.research_operations.recorded_session_count,
+        projectedCount: operator.research_operations.projected_session_count,
+        omittedCount: operator.research_operations.omitted_session_count,
+        truncated: operator.research_operations.sessions_truncated
+      },
       sessions,
       latestSessionId: operator.research_operations.latest_session_id,
       history,
       ...context,
       emptyState: sessions.length === 0 ? "available_empty" : "none"
+    };
+  }
+
+  if (operator.research_operations) {
+    return {
+      availability: "unavailable",
+      loopStatus: operator.research_operations.loop_status,
+      sessions: [],
+      history,
+      ...context,
+      emptyState: "projection_unavailable"
     };
   }
 
@@ -437,6 +443,62 @@ export function buildResearchWorkspaceViewModel(
     ...context,
     emptyState: "projection_unavailable"
   };
+}
+
+export function buildResearchSessionViewModel(
+  session: ResearchSessionSummaryReadModel
+): ResearchSessionViewModel {
+  return {
+    id: session.research_work_item_id,
+    allocationId: session.research_allocation_id,
+    workerId: session.research_worker_id,
+    commitmentId: session.commitment_id,
+    status: session.status,
+    projectionHealth: session.projection_health,
+    degradedReasons: [...session.degraded_reasons],
+    triggerAvailability: session.trigger_availability,
+    ...(session.trigger_availability === "available"
+      ? {
+          triggerKind: session.trigger.trigger_kind,
+          goal: session.trigger.goal,
+          triggeredAt: session.trigger.triggered_at
+        }
+      : { triggerKind: "", goal: "", triggeredAt: "" }),
+    methodologyAvailability: session.methodology_availability,
+    direction: session.direction_kind,
+    ...(session.methodology_availability === "available"
+      ? {
+          hypothesis: session.methodology.hypothesis,
+          method: session.methodology.method,
+          evidenceArtifactCount: session.methodology.evidence_artifact_ids.length
+        }
+      : { hypothesis: "", method: "", evidenceArtifactCount: 0 }),
+    providerAvailability: session.provider_availability,
+    ...(session.provider_availability === "available"
+      ? { provider: session.provider, model: session.model }
+      : { provider: "" }),
+    completedExperimentCount: session.budget.completed_experiment_count,
+    maxExperimentCount: session.budget.max_experiment_count,
+    developmentSubmissionCount: session.budget.development_submission_count,
+    maxDevelopmentSubmissionCount: session.budget.max_development_submission_count,
+    startedAt: session.started_at,
+    lastProgressAt: session.last_progress_at,
+    completedAt: session.completed_at,
+    latestProgressSummary: session.latest_progress_summary,
+    admittedCandidateId: session.admitted_candidate_id,
+    detailAvailability: "summary_only"
+  };
+}
+
+function researchFailureSummary(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const firstLine = value.split(/\r?\n/, 1)[0] ?? "";
+  const sanitized = sanitizeResearchEvidenceText(
+    firstLine.slice(0, MAX_RESEARCH_FAILURE_SOURCE_LENGTH)
+  ).trim();
+  return sanitized
+    ? sanitized.slice(0, MAX_RESEARCH_FAILURE_SUMMARY_LENGTH)
+    : "candidate_arena_research_failed";
 }
 
 function paperBoardSystemViewModel(entry: PaperTradingBoardEntryReadModel): ArenaSystemViewModel {

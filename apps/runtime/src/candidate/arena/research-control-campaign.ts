@@ -43,6 +43,9 @@ import {
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
+  type CandidateAdmissionDecisionRecord,
+  type CandidateArenaTickRecord,
+  type ResearchBehaviorFingerprintRecord,
   type ResearchExperimentBaselineSnapshot,
   type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignPaperEvaluationProtocol,
@@ -502,6 +505,7 @@ export async function runResearchControlCampaign(
         sourceSystemId: campaign.source.candidate_ref.id,
         sourceCandidateVersionId: campaign.source.candidate_version_ref.id,
         researchAllocationMode: armRuntime.intent.allocation_mode,
+        effectedAllocationRecoveryMode: "record_failed_tick",
         tickId,
         ...(input.now ? { now: input.now } : {}),
         repoRoot,
@@ -951,12 +955,17 @@ async function loadArmEvidence(
       arm.store.listResearchBehaviorFingerprints(),
       arm.store.listCandidateAdmissionDecisions()
     ]);
+    const populationEvidence = researchControlCampaignPopulationEvidence({
+      ticks,
+      admissions,
+      fingerprints
+    });
     const populationDiversity = buildResearchPopulationDiversity({
       ticks,
       directions,
       commitments,
-      fingerprints,
-      admissions
+      fingerprints: populationEvidence.fingerprints,
+      admissions: populationEvidence.admissions
     });
     const candidateClosures = await resolveCandidateClosures(
       arm.store,
@@ -989,6 +998,100 @@ async function loadArmEvidence(
       { arm_kind: arm.armKind, reason: conciseError(error) }
     );
   }
+}
+
+function researchControlCampaignPopulationEvidence(input: {
+  ticks: CandidateArenaTickRecord[];
+  admissions: CandidateAdmissionDecisionRecord[];
+  fingerprints: ResearchBehaviorFingerprintRecord[];
+}): {
+  admissions: CandidateAdmissionDecisionRecord[];
+  fingerprints: ResearchBehaviorFingerprintRecord[];
+} {
+  const admissionsById = new Map<string, CandidateAdmissionDecisionRecord>();
+  for (const admission of input.admissions) {
+    if (admissionsById.has(admission.candidate_admission_decision_id)) {
+      throw new Error("research_control_campaign_admission_ambiguous");
+    }
+    admissionsById.set(
+      admission.candidate_admission_decision_id,
+      admission
+    );
+  }
+  const selectedAdmissions = new Map<string, CandidateAdmissionDecisionRecord>();
+  for (const result of input.ticks.flatMap((tick) =>
+    tick.direction_results
+  )) {
+    if (result.status === "failed" || result.status === "no_submission") {
+      continue;
+    }
+    const admission = result.admission_decision_id
+      ? admissionsById.get(result.admission_decision_id)
+      : undefined;
+    const expectedAdmissionStatus = result.status === "created"
+      ? "admitted"
+      : result.status;
+    if (!admission || admission.status !== expectedAdmissionStatus ||
+      result.admission_reason !== admission.reason ||
+      selectedAdmissions.has(admission.candidate_admission_decision_id)) {
+      throw new Error(
+        "research_control_campaign_terminal_admission_binding_invalid"
+      );
+    }
+    selectedAdmissions.set(
+      admission.candidate_admission_decision_id,
+      admission
+    );
+  }
+
+  const fingerprintBindings = new Map<string, {
+    digest: string;
+    commitmentId: string;
+    commitmentDigest: string;
+  }>();
+  for (const admission of selectedAdmissions.values()) {
+    if (!admission.research_behavior_fingerprint_ref) continue;
+    const fingerprintDigest = admission.research_behavior_fingerprint_digest;
+    const commitmentId = admission.research_preflight_commitment_ref?.id;
+    const commitmentDigest = admission.research_preflight_commitment_digest;
+    if (!fingerprintDigest || !commitmentId || !commitmentDigest ||
+      fingerprintBindings.has(
+        admission.research_behavior_fingerprint_ref.id
+      )) {
+      throw new Error(
+        "research_control_campaign_terminal_fingerprint_binding_invalid"
+      );
+    }
+    fingerprintBindings.set(
+      admission.research_behavior_fingerprint_ref.id,
+      {
+        digest: fingerprintDigest,
+        commitmentId,
+        commitmentDigest
+      }
+    );
+  }
+  const selectedFingerprints: ResearchBehaviorFingerprintRecord[] = [];
+  for (const [fingerprintId, binding] of fingerprintBindings) {
+    const matches = input.fingerprints.filter((fingerprint) =>
+      fingerprint.research_behavior_fingerprint_id === fingerprintId
+    );
+    if (matches.length !== 1 ||
+      matches[0]!.fingerprint_digest !== binding.digest ||
+      matches[0]!.research_preflight_commitment_ref.id !==
+        binding.commitmentId ||
+      matches[0]!.research_preflight_commitment_digest !==
+        binding.commitmentDigest) {
+      throw new Error(
+        "research_control_campaign_terminal_fingerprint_binding_invalid"
+      );
+    }
+    selectedFingerprints.push(matches[0]!);
+  }
+  return {
+    admissions: [...selectedAdmissions.values()],
+    fingerprints: selectedFingerprints
+  };
 }
 
 async function resolveCandidateClosures(

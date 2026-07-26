@@ -26,7 +26,10 @@ export function App() {
   const selectedArenaSystemId = route.section === "arena"
     ? route.selectedId
     : undefined;
-  const runtime = useOperatorRuntime(selectedArenaSystemId);
+  const selectedResearchWorkItemId = route.section === "research"
+    ? route.selectedId
+    : undefined;
+  const runtime = useOperatorRuntime(selectedArenaSystemId, selectedResearchWorkItemId);
   const arenaView = useMemo(
     () => runtime.operator ? buildArenaWorkspaceViewModel(runtime.operator) : undefined,
     [runtime.operator]
@@ -41,6 +44,12 @@ export function App() {
       ? buildArenaSystemDetailViewModel(detail)
       : undefined;
   }, [runtime.arenaDetail, selectedArenaSystemId]);
+  const researchDetail = useMemo(() => {
+    const detail = runtime.researchDetail;
+    return detail?.research_work_item_id === selectedResearchWorkItemId
+      ? detail
+      : undefined;
+  }, [runtime.researchDetail, selectedResearchWorkItemId]);
 
   useEffect(() => {
     const synchronizeRoute = () => {
@@ -116,6 +125,9 @@ export function App() {
       {route.section === "research" ? (
         <ResearchScreen
           view={researchView}
+          detail={researchDetail}
+          detailLoading={runtime.researchDetailLoading}
+          detailError={runtime.researchDetailError}
           selectedId={route.selectedId}
           commandRunning={commandRunning}
           onSelect={(selectedId) => navigate({ section: "research", selectedId })}

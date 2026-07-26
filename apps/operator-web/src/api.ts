@@ -20,6 +20,7 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureWriteInput,
+  ResearchSessionDetailReadModel,
   RunControlAuditInput,
   RunControlAuditOutcome,
   SandboxDetailReadModel,
@@ -74,8 +75,13 @@ export async function fetchTradingExecutionModeContracts(): Promise<TradingSyste
   return body.trading_system_execution_mode_contracts;
 }
 
-export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
-  const response = await runtimeFetch(`${runtimeBaseUrl}/api/gateway/environment`);
+export async function fetchTradingGatewayEnvironment(
+  signal?: AbortSignal
+): Promise<TradingGatewayEnvironmentReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/gateway/environment`,
+    signal ? { signal } : undefined
+  );
   if (!response.ok) {
     throw new Error(`Failed to load trading gateway environment: ${response.status}`);
   }
@@ -138,8 +144,13 @@ export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
   return operator.candidate_arena;
 }
 
-export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
-  const response = await runtimeFetch(`${runtimeBaseUrl}/api/operator`);
+export async function fetchOperatorReadModel(
+  signal?: AbortSignal
+): Promise<OperatorReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/operator`,
+    signal ? { signal } : undefined
+  );
   if (!response.ok) {
     throw new Error(`Failed to load Ouroboros operator: ${response.status}`);
   }
@@ -148,10 +159,12 @@ export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
 }
 
 export async function fetchArenaTradingSystemDetail(
-  candidateId: string
+  candidateId: string,
+  signal?: AbortSignal
 ): Promise<ArenaTradingSystemDetailReadModel> {
   const response = await runtimeFetch(
-    `${runtimeBaseUrl}/api/arena/trading-systems/${encodeURIComponent(candidateId)}`
+    `${runtimeBaseUrl}/api/arena/trading-systems/${encodeURIComponent(candidateId)}`,
+    signal ? { signal } : undefined
   );
   if (!response.ok) {
     throw new Error(`Failed to load Arena system ${candidateId}: ${response.status}`);
@@ -160,6 +173,25 @@ export async function fetchArenaTradingSystemDetail(
     arena_trading_system: ArenaTradingSystemDetailReadModel;
   };
   return body.arena_trading_system;
+}
+
+export async function fetchResearchSessionDetail(
+  researchWorkItemId: string,
+  signal?: AbortSignal
+): Promise<ResearchSessionDetailReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/research/sessions/${encodeURIComponent(researchWorkItemId)}`,
+    signal ? { signal } : undefined
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load Research session ${researchWorkItemId}: ${response.status}`
+    );
+  }
+  const body = (await response.json()) as {
+    research_session: ResearchSessionDetailReadModel;
+  };
+  return body.research_session;
 }
 
 export async function startCandidateArena(): Promise<CandidateArenaReadModel> {

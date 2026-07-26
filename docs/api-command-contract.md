@@ -427,6 +427,8 @@ without creating candidates, paper evidence, provider login, sandbox mutation, o
 
 Canonical resource reads:
 
+- `GET /api/arena/trading-systems/:candidateId`
+- `GET /api/research/sessions/:researchWorkItemId`
 - `GET /api/candidates`
 - `GET /api/candidates/:candidate_id`
 - `GET /api/candidates/:candidate_id/evaluations`
@@ -446,6 +448,20 @@ Canonical resource reads:
 - `GET /api/trading-substrate/private-readiness/latest`
 - `GET /api/trading-substrate/private-readiness-posture/latest`
 - `GET /api/trading-substrate/account-position-risk/latest`
+
+The Arena and Research detail resources use the filesystem read-rate limit and Operator API
+authentication. Authentication is evaluated before existence is disclosed. An Arena hit returns
+`{ arena_trading_system: detail }`; a miss returns `404` with
+`{ error: "arena_trading_system_not_found", candidate_id }`. A Research hit returns
+`{ research_session: detail }`; a miss returns `404` with
+`{ error: "research_session_not_found", research_work_item_id }`. If the exact Research projection
+cannot be rebuilt, the resource returns `503` with
+`{ error: "research_operations_unavailable", availability: "unavailable" }`; caught store or
+projection exception messages, paths, URLs, and credentials are never response fields. Authentication
+and the filesystem read-rate limit run before that projection read. Route parameters are decoded by
+the HTTP framework exactly once, and clients encode the selected exact identifier as one path
+segment. These resources expose only the bounded read-model projections and add no mutation,
+provider-log, evaluation, promotion, order, private-data, or live authority.
 
 ## Removed Routes
 

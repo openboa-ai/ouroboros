@@ -374,9 +374,11 @@ export interface OuroborosStorePort {
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
   getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined>;
+  listExperimentRuns(): Promise<ExperimentRunRecord[]>;
   getTradingEvaluationResult(
     evaluationResultId: string
   ): Promise<TradingEvaluationResultRecord | undefined>;
+  listTradingEvaluationResults(): Promise<TradingEvaluationResultRecord[]>;
   recordPaperTradingHandoffConformance(
     record: PaperTradingHandoffConformanceRecord
   ): Promise<PaperTradingHandoffConformanceRecord>;

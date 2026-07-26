@@ -14,6 +14,7 @@ import {
   type PaperTradingObservationRecord,
   type PaperTradingQualificationStatus,
   type ResearcherProviderReadModel,
+  type ResearchSessionDetailReadModel,
   type RuntimeSupervisorReadModel,
   type TradingProfitLossReadModel,
   type TradingPromotionComparisonConfirmationReadModel,
@@ -30,7 +31,10 @@ import {
 import {
   buildCandidateArenaReadModel,
   candidateArenaRunnerTickCountFromTicks,
+  loadCandidateArenaEvidenceSnapshot,
+  sanitizeCandidateArenaPaperTradingContinuation,
   type CandidateArenaRunner,
+  type CandidateArenaRunnerHealthReadModel,
   type CandidateArenaTickOutcome
 } from "../candidate/arena";
 import type {
@@ -56,9 +60,14 @@ import type {
   ArenaPaperRuntimeSystem
 } from "../trading/paper/arena-runtime";
 import { ArenaOperationsProjectionService } from "./arena-operations";
+import {
+  ResearchOperationsProjectionService,
+  unavailableResearchOperationsReadModel
+} from "./research-operations";
 
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
 const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
+const MAX_ARENA_PAPER_START_OUTCOMES = 32;
 
 export class OperatorCommandError extends Error {
   constructor(
@@ -68,6 +77,17 @@ export class OperatorCommandError extends Error {
   ) {
     super(error);
     this.name = "OperatorCommandError";
+  }
+}
+
+export class OperatorReadError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly error: string,
+    readonly details: Record<string, unknown> = {}
+  ) {
+    super(error);
+    this.name = "OperatorReadError";
   }
 }
 
@@ -98,14 +118,30 @@ export class OperatorService {
   private readonly pendingAutonomousPaperStarts = new Set<Promise<unknown>>();
   private autonomousPaperStartFence = 0;
   private autonomousArenaLoopStatusOverride?: "running" | "stopped";
+  private activeCandidateArenaOneShot?: Promise<CandidateArenaTickOutcome>;
+  private readonly arenaPaperStartsByTick = new Map<string, {
+    candidateId: string;
+    paperStart: Promise<{
+      status: "started" | "queued";
+      execution: OperatorCommandExecution;
+    }>;
+  }>();
 
   constructor(private readonly options: OperatorServiceOptions) {}
 
   async readOperator(): Promise<OperatorReadModel> {
+    const runnerHealth = readCandidateArenaRunnerHealth(
+      this.options.candidateArenaRunner
+    );
+    const arenaEvidence = await loadCandidateArenaEvidenceSnapshot(
+      this.options.store
+    );
     const arena = await buildCandidateArenaReadModel(
       this.options.store,
-      this.options.candidateArenaRunner.status(),
-      this.options.candidateArenaRunner.ticks()
+      runnerHealth.status,
+      runnerHealth.tick_count,
+      undefined,
+      arenaEvidence
     );
     const candidateId = this.selectedCandidateId
       ?? selectedPaperContinuationCandidateId(arena)
@@ -133,6 +169,11 @@ export class OperatorService {
     const arenaOperations = this.options.arenaPaperRuntime
       ? await this.arenaOperationsProjection().readOperations()
       : undefined;
+    const researchOperations = await this.researchOperationsProjection(
+      runnerHealth
+    ).readOperations(arenaEvidence).catch(() =>
+      unavailableResearchOperationsReadModel(runnerHealth, arenaEvidence)
+    );
     const tradingPromotion = await buildTradingPromotionReadModel({
       store: this.options.store,
       paperTradingBoard,
@@ -164,6 +205,7 @@ export class OperatorService {
         selectedEvaluationRunnerActive
       ),
       paper_trading_board: paperTradingBoard,
+      research_operations: researchOperations,
       ...(arenaOperations ? { arena_operations: arenaOperations } : {}),
       trading_promotion: tradingPromotion,
       trading_review: await buildTradingReviewReadModel({
@@ -189,6 +231,18 @@ export class OperatorService {
     return this.arenaOperationsProjection().readSystemDetail(candidateId);
   }
 
+  async readResearchSessionDetail(
+    researchWorkItemId: string
+  ): Promise<ResearchSessionDetailReadModel | undefined> {
+    try {
+      return await this.researchOperationsProjection().readSessionDetail(researchWorkItemId);
+    } catch {
+      throw new OperatorReadError(503, "research_operations_unavailable", {
+        availability: "unavailable"
+      });
+    }
+  }
+
   async readResearcherProvider(): Promise<ResearcherProviderReadModel> {
     const selection = await this.options.store.getResearcherProviderSelection();
     const selectedProvider = isTradingResearchRuntimeAgent(selection?.selected_provider)
@@ -205,6 +259,17 @@ export class OperatorService {
     return new ArenaOperationsProjectionService({
       store: this.options.store,
       arenaPaperRuntime: this.options.arenaPaperRuntime!
+    });
+  }
+
+  private researchOperationsProjection(
+    runnerHealth = readCandidateArenaRunnerHealth(
+      this.options.candidateArenaRunner
+    )
+  ): ResearchOperationsProjectionService {
+    return new ResearchOperationsProjectionService({
+      store: this.options.store,
+      runnerHealth: () => runnerHealth
     });
   }
 
@@ -329,7 +394,7 @@ export class OperatorService {
       },
       "arena.tick": async () => {
         await this.requireResearcherProviderReady();
-        const outcome = await this.options.candidateArenaRunner.tick();
+        const outcome = await this.runOneShotCandidateArenaTick();
         return {
           result: outcome,
           summary: `Candidate Arena tick created ${outcome.created_candidate_count} candidates.`
@@ -337,7 +402,7 @@ export class OperatorService {
       },
       "arena.cycle": async () => {
         await this.requireResearcherProviderReady();
-        const outcome = await this.options.candidateArenaRunner.tick();
+        const outcome = await this.runOneShotCandidateArenaTick();
         const paperCycle = await this.startPaperTradingForArenaCycle(outcome);
         return {
           result: {
@@ -564,13 +629,15 @@ export class OperatorService {
   private installAutonomousArenaTickContinuation(): void {
     this.options.candidateArenaRunner.setTickContinuation((outcome) =>
       this.startPaperTradingForArenaCycleAck(outcome)
-        .catch((error): CandidateArenaTickPaperTradingContinuationReadModel => ({
-          status: "failed",
-          command_kind: "trading_run.start",
-          selected_candidate_id: selectArenaCycleCandidateId(outcome),
-          error: commandErrorSummary(error),
-          authority_status: "not_live"
-        }))
+        .catch((error): CandidateArenaTickPaperTradingContinuationReadModel =>
+          sanitizeCandidateArenaPaperTradingContinuation({
+            status: "failed",
+            command_kind: "trading_run.start",
+            selected_candidate_id: selectArenaCycleCandidateId(outcome),
+            error: commandErrorSummary(error),
+            authority_status: "not_live"
+          })
+        )
     );
   }
 
@@ -621,16 +688,8 @@ export class OperatorService {
     status: "started" | "queued";
     paper_trading: unknown;
   }> {
-    const candidateId = selectArenaCycleCandidateId(outcome);
-    if (!candidateId) {
-      throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
-        tick_id: outcome.tick_id,
-        created_candidate_count: outcome.created_candidate_count,
-        next_action: "Fix Candidate Arena direction failures before starting Paper Trading Evaluation."
-      });
-    }
-    this.selectedCandidateId = candidateId;
-    const paperTrading = await this.startArenaPaperCandidate(candidateId);
+    const { candidateId, paperStart } = this.arenaPaperStartForTick(outcome);
+    const paperTrading = await paperStart;
     return {
       selected_candidate_id: candidateId,
       status: paperTrading.status,
@@ -641,17 +700,8 @@ export class OperatorService {
   private async startPaperTradingForArenaCycleAck(
     outcome: CandidateArenaTickOutcome
   ): Promise<CandidateArenaTickPaperTradingContinuationReadModel | void> {
-    const candidateId = selectArenaCycleCandidateId(outcome);
-    if (!candidateId) {
-      throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
-        tick_id: outcome.tick_id,
-        created_candidate_count: outcome.created_candidate_count,
-        next_action: "Fix Candidate Arena direction failures before starting Paper Trading Evaluation."
-      });
-    }
-    this.selectedCandidateId = candidateId;
+    const { candidateId, paperStart } = this.arenaPaperStartForTick(outcome);
     const paperStartFence = this.autonomousPaperStartFence;
-    const paperStart = this.startArenaPaperCandidate(candidateId);
     const paperStartContinuation = paperStart
       .then((result): CandidateArenaTickPaperTradingContinuationReadModel => ({
         status: result.status,
@@ -697,6 +747,39 @@ export class OperatorService {
       timer.unref?.();
     });
     return Promise.race([paperStartContinuation, acknowledged]);
+  }
+
+  private arenaPaperStartForTick(outcome: CandidateArenaTickOutcome): {
+    candidateId: string;
+    paperStart: Promise<{
+      status: "started" | "queued";
+      execution: OperatorCommandExecution;
+    }>;
+  } {
+    const existing = this.arenaPaperStartsByTick.get(outcome.tick_id);
+    if (existing) {
+      this.selectedCandidateId = existing.candidateId;
+      return existing;
+    }
+
+    const candidateId = selectArenaCycleCandidateId(outcome);
+    if (!candidateId) {
+      throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
+        tick_id: outcome.tick_id,
+        created_candidate_count: outcome.created_candidate_count,
+        next_action: "Fix Candidate Arena direction failures before starting Paper Trading Evaluation."
+      });
+    }
+    this.selectedCandidateId = candidateId;
+    const paperStart = this.startArenaPaperCandidate(candidateId);
+    const entry = { candidateId, paperStart };
+    this.arenaPaperStartsByTick.set(outcome.tick_id, entry);
+    while (this.arenaPaperStartsByTick.size > MAX_ARENA_PAPER_START_OUTCOMES) {
+      const oldestTickId = this.arenaPaperStartsByTick.keys().next().value;
+      if (typeof oldestTickId !== "string") break;
+      this.arenaPaperStartsByTick.delete(oldestTickId);
+    }
+    return entry;
   }
 
   private async startArenaPaperCandidate(candidateId: string): Promise<{
@@ -766,7 +849,8 @@ export class OperatorService {
     }
     await this.options.store.recordCandidateArenaTick({
       ...tick,
-      paper_trading_continuation: continuation
+      paper_trading_continuation:
+        sanitizeCandidateArenaPaperTradingContinuation(continuation)
     });
   }
 
@@ -799,6 +883,26 @@ export class OperatorService {
       ),
       persistedTicks.map((tick) => tick.tick_id)
     );
+  }
+
+  private runOneShotCandidateArenaTick(): Promise<CandidateArenaTickOutcome> {
+    if (this.activeCandidateArenaOneShot) {
+      return this.activeCandidateArenaOneShot;
+    }
+
+    const oneShot = (async () => {
+      await this.restoreCandidateArenaTickCount();
+      return this.options.candidateArenaRunner.tick();
+    })();
+    this.activeCandidateArenaOneShot = oneShot;
+
+    const clearOneShot = (): void => {
+      if (this.activeCandidateArenaOneShot === oneShot) {
+        this.activeCandidateArenaOneShot = undefined;
+      }
+    };
+    void oneShot.then(clearOneShot, clearOneShot);
+    return oneShot;
   }
 
   private async desiredAutonomousArenaLoopStatus(): Promise<
@@ -2092,6 +2196,34 @@ function zeroProfitLoss() {
     cost_usdt: 0,
     net_revenue_usdt: 0,
     net_return_pct: 0
+  };
+}
+
+function readCandidateArenaRunnerHealth(
+  runner: CandidateArenaRunner
+): CandidateArenaRunnerHealthReadModel {
+  const health = (runner as unknown as {
+    health?: () => CandidateArenaRunnerHealthReadModel;
+  }).health;
+  if (typeof health === "function") {
+    return health.call(runner);
+  }
+
+  const status = runner.status();
+  const tickCount = runner.ticks();
+  return {
+    status,
+    tick_count: tickCount,
+    completed_tick_count: tickCount,
+    active_tick: false,
+    active_research_work_items: [],
+    consecutive_failure_count: 0,
+    runtime_coordination_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "runtime_coordination_only"
   };
 }
 

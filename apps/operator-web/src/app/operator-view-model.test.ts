@@ -219,6 +219,7 @@ function paperBoard(): PaperTradingBoardReadModel {
 function researchOperations(): ResearchOperationsReadModel {
   return {
     projection_kind: "research_operations",
+    availability: "available",
     loop_status: "running",
     capacity: {
       max_concurrent_sessions: 3,
@@ -227,28 +228,42 @@ function researchOperations(): ResearchOperationsReadModel {
     },
     sessions: [
       {
+        identity_kind: "derived_projection",
         research_work_item_id: "research-1",
         research_allocation_id: "allocation-1",
+        direction_kind: "execution_cost_robustness",
         research_worker_id: "worker-1",
-        research_worker_session_id: "session-1",
         commitment_id: "commitment-1",
         status: "running",
+        status_basis: {
+          basis_kind: "runtime_research_work_item",
+          authority_status: "read_only"
+        },
+        projection_health: "complete",
+        degraded_reasons: [],
+        trigger_availability: "available",
         trigger: {
           trigger_kind: "arena_event",
           trigger_id: "trigger-1",
           goal: "Reduce execution-cost sensitivity",
+          goal_truncated: false,
           triggered_at: "2026-07-18T00:00:00.000Z",
           authority_status: "research_only"
         },
+        methodology_availability: "available",
         methodology: {
           direction_kind: "execution_cost_robustness",
           hypothesis: "A slower cadence survives public execution costs.",
+          hypothesis_truncated: false,
           method: "Compare bounded cadence variants against Arena traces.",
+          method_truncated: false,
           evidence_artifact_ids: ["artifact-1"],
           authority_status: "research_only"
         },
-        provider: "codex",
+        provider_availability: "available",
+        provider: "codex_cli",
         model: "gpt-5",
+        model_truncated: false,
         budget: {
           max_experiment_count: 4,
           completed_experiment_count: 2,
@@ -260,9 +275,14 @@ function researchOperations(): ResearchOperationsReadModel {
         started_at: "2026-07-18T00:01:00.000Z",
         last_progress_at: "2026-07-18T00:10:00.000Z",
         latest_progress_summary: "Evaluating the second cadence variant.",
+        latest_progress_summary_truncated: false,
         authority_status: "research_only"
       }
     ],
+    recorded_session_count: 1,
+    projected_session_count: 1,
+    omitted_session_count: 0,
+    sessions_truncated: false,
     latest_session_id: "research-1",
     authority_status: "research_only"
   };
@@ -511,6 +531,46 @@ describe("Operator projection view models", () => {
     });
   });
 
+  it("re-sanitizes and bounds historical failure summaries in Operator JSON", () => {
+    const privateOwner = "operator-private-owner-sentinel";
+    const urlPassword = "operator-url-password-sentinel";
+    const tokenValue = "operator-token-value-sentinel";
+    const rawFailure = [
+      `provider failed at /Users/${privateOwner}/research/session.json`,
+      `https://operator:${urlPassword}@example.test/private`,
+      `refresh_token=${tokenValue}`,
+      "x".repeat(2_000)
+    ].join(" ");
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      candidate_arena: {
+        active_researchers: [],
+        latest_ticks: [{
+          tick_id: "tick-private-failure",
+          status: "failed",
+          started_at: "2026-07-18T00:00:00.000Z",
+          completed_at: "2026-07-18T00:05:00.000Z",
+          created_candidate_ids: [],
+          direction_results: [{
+            direction_kind: "trend_following",
+            status: "failed",
+            error: rawFailure
+          }],
+          authority_status: "not_live"
+        }]
+      } as unknown as CandidateArenaReadModel
+    }));
+
+    const failure = view.history[0]?.directions[0]?.error;
+    const serialized = JSON.stringify(view);
+    expect(failure).toContain("[private-path]");
+    expect(failure).toContain("[external-url]");
+    expect(failure).toContain("[redacted]");
+    expect(failure?.length).toBeLessThanOrEqual(256);
+    for (const sentinel of [privateOwner, urlPassword, tokenValue]) {
+      expect(serialized).not.toContain(sentinel);
+    }
+  });
+
   it("maps only research_operations records into active methodology sessions", () => {
     const view = buildResearchWorkspaceViewModel(projectionInput({
       research_operations: researchOperations()
@@ -524,6 +584,96 @@ describe("Operator projection view models", () => {
       direction: "execution_cost_robustness",
       completedExperimentCount: 2,
       maxExperimentCount: 4
+    });
+  });
+
+  it("does not treat an unavailable Research projection as authoritative empty state", () => {
+    const operations = researchOperations();
+    operations.availability = "unavailable";
+    operations.loop_status = "degraded";
+    operations.sessions = [];
+    operations.recorded_session_count = 0;
+    operations.projected_session_count = 0;
+    delete operations.latest_session_id;
+
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      research_operations: operations
+    }));
+
+    expect(view).toMatchObject({
+      availability: "unavailable",
+      loopStatus: "degraded",
+      sessions: [],
+      emptyState: "projection_unavailable"
+    });
+    expect(view.emptyState).not.toBe("available_empty");
+  });
+
+  it("preserves each Research summary projection health and degraded reasons", () => {
+    const operations = researchOperations();
+    operations.sessions[0]!.projection_health = "degraded";
+    operations.sessions[0]!.degraded_reasons = [
+      "trigger_unavailable",
+      "inactive_incomplete_graph"
+    ];
+
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      research_operations: operations
+    }));
+
+    expect(view.sessions[0]).toMatchObject({
+      id: "research-1",
+      projectionHealth: "degraded",
+      degradedReasons: ["trigger_unavailable", "inactive_incomplete_graph"]
+    });
+  });
+
+  it("keeps recorded and projected Research session counts distinct", () => {
+    const operations = researchOperations();
+    operations.recorded_session_count = 4;
+    operations.projected_session_count = 1;
+    operations.omitted_session_count = 3;
+    operations.sessions_truncated = true;
+
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      research_operations: operations
+    }));
+
+    expect(view.sessionWindow).toEqual({
+      recordedCount: 4,
+      projectedCount: 1,
+      omittedCount: 3,
+      truncated: true
+    });
+  });
+
+  it("maps unavailable historical Research source fields without inventing values", () => {
+    const operations = researchOperations() as unknown as {
+      sessions: Array<Record<string, unknown>>;
+    } & ResearchOperationsReadModel;
+    const session = operations.sessions[0]!;
+    delete session.trigger;
+    delete session.methodology;
+    delete session.provider;
+    session.trigger_availability = "unavailable";
+    session.methodology_availability = "unavailable";
+    session.provider_availability = "unavailable";
+    session.direction_kind = "execution_cost_robustness";
+
+    const view = buildResearchWorkspaceViewModel(projectionInput({
+      research_operations: operations
+    }));
+
+    expect(view.sessions[0]).toMatchObject({
+      triggerAvailability: "unavailable",
+      methodologyAvailability: "unavailable",
+      providerAvailability: "unavailable",
+      direction: "execution_cost_robustness"
+    });
+    expect(view.sessions[0]).toMatchObject({
+      goal: "",
+      method: "",
+      provider: ""
     });
   });
 

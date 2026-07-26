@@ -1616,7 +1616,7 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
-  it("reconstructs terminal admission closure without replaying materialization", async () => {
+  it("fails closed an orphan admission without replaying materialization", async () => {
     const interrupted = new CheckpointDisabledStore(tmpDir);
     await interrupted.initialize();
     await runCandidateArenaTick({
@@ -1649,12 +1649,13 @@ describe("CandidateArena paper evidence context", () => {
     expect(materializationCount).toBe(0);
     expect(recovered).toEqual([expect.objectContaining({
       candidate_arena_tick_id: "worker-restart-admission",
-      terminal_status: "completed",
-      terminal_reason: "admission_recorded",
-      candidate_admission_decision_ref: expect.objectContaining({
-        record_kind: "candidate_admission_decision"
-      })
+      terminal_status: "failed_closed",
+      terminal_reason: "restart_recovery"
     })]);
+    expect(recovered[0]).not.toHaveProperty(
+      "candidate_admission_decision_ref"
+    );
+    expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
     await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
   });
 

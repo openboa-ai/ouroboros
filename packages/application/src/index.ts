@@ -22,6 +22,7 @@ export * from "./candidate/materialization";
 export * from "./controllers/operator";
 export * from "./controllers/local-ouroboros";
 export * from "./services/operator";
+export * from "./services/research-operations";
 export * from "./ports/operator";
 export * from "./ports/market-data";
 export * from "./safe-id";
