@@ -1,5 +1,3 @@
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
-pyenv: cannot rehash: /Users/sangjoon/.pyenv/shims isn't writable
 # README Evidence-Governed Iteration Loop Design
 
 Status: approved for implementation on 2026-07-26.
