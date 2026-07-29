@@ -107,6 +107,74 @@ Running agent research requires Docker Sandboxes `sbx` 0.35.0 or later, a host-l
 
 `arena start` starts the bounded generated-candidate research and paper loop without granting private or live authority.
 
+## How Ouroboros composes loops
+
+Ouroboros approaches AI-driven quantitative trading as an evidence-governed research system, not
+a one-shot trading bot. Autonomous research agents generate and refine quantitative
+`TradingSystem` candidates, while external evaluation and prospective paper-trading evidence
+determine what counts. Findings, lineage, costs, risk, and outcomes become durable Arena memory
+that informs the next candidate generation.
+
+### Functional architecture
+
+![Ouroboros routes external market and Arena signals through workflow orchestration, candidate generation, external evaluation, and persisted evidence that informs the next frontier](docs/assets/ouroboros-system-structure-v3.png)
+
+The portable systems terms are large; the exact Ouroboros components and their roles appear below
+them. `RuntimeSupervisor` turns market and Arena signals into bounded work.
+`CandidateArena` and `ResearchWorkerSession` generate frozen `SystemCode` candidates.
+`CandidateAdmissionDecision` and `PaperTradingEvaluation` remain external decision boundaries, and
+`Finding`, `Lineage`, `Gateway`, and `Ledger` evidence inform the next frontier. No generated path
+bypasses admission or grants itself paper rank, private exchange access, or live-trading authority.
+
+[Anthropic's Loop Engineering](https://claude.com/blog/getting-started-with-loops) classifies loops
+by trigger and stop condition: turn-based, goal-based, time-based, and proactive. OpenAI describes
+the [agent loop](https://openai.com/index/unrolling-the-codex-agent-loop/) as orchestration among
+the model, tools, and their observations, with tool results feeding the next inference. Ouroboros
+composes those patterns at four different scopes. The pairings below are representative operating
+modes, not exclusive runtime type constraints.
+
+### Agentic loop — Turn-based
+
+![The turn-based Agentic Loop moves from context through model inference, tool execution, and observation before beginning the next bounded turn](docs/assets/ouroboros-agentic-loop-v3.png)
+
+The Agentic Loop repeats `context -> model inference -> tool execution -> observation` inside one
+bounded `ResearchWorkerSession`. Its purpose is to produce an attributable candidate artifact and
+stop at final output, the turn limit, or terminal failure. The model can propose actions and use
+tools; it cannot evaluate its own admission or grant trading authority.
+
+### Evaluation loop — Goal-based
+
+![The goal-based Evaluation Loop moves from committed success criteria through development iterations and aggregate evaluation to one explicit frozen selection](docs/assets/ouroboros-evaluation-loop-v3.png)
+
+The Evaluation Loop starts from committed success criteria and iterates immutable development
+submissions against aggregate feedback. `ResearchPreflightCommitment` freezes the method, budget,
+evaluator opportunity, and stop condition before agent effects. The worker may explicitly select
+one frozen `SystemCode`; this development evaluation still has no admission authority.
+
+### Research loop — Time-based
+
+![The time-based Research Loop moves from a candidate population through external evaluation and Arena memory into the next generation](docs/assets/ouroboros-research-loop-v3.png)
+
+The Research Loop runs `ResearchWorker` instances across multiple `ResearchDirection` lanes to
+build a candidate population. `CandidateArena` retains externally grounded `Finding` and `Lineage`
+evidence so the next research window starts from Arena memory rather than a blank slate. Each
+window remains bounded even when research recurs on a time-based schedule.
+
+### Operations: orchestration loop — Proactive
+
+![The proactive Orchestration Loop observes market and Arena signals, chooses a bounded Agent, Experiment, or Research workflow, persists its checkpoint, and schedules the next wake](docs/assets/ouroboros-orchestration-loop-v3.png)
+
+The Operations Loop is the outer orchestration loop that causes the preceding three loops to run.
+`RuntimeSupervisor` observes market and Arena evidence, reconciles Agentic, Evaluation, and
+Research work, opens one bounded run, persists a `RuntimeSupervisorCheckpoint`, and records the
+next wake. It may improve the researcher, experiment, agent behavior, or the research direction;
+it never grades its own output or gains evaluation, order, private, or live authority.
+
+Agentic, Evaluation, and Research work are implemented as bounded paths. Continuous 24/365
+operation is the target composition; production-duration autonomy, complete soak evidence, and
+multi-host coordination remain work to prove. Paper execution remains public-data, fake-execution, risk-
+validated, and append-only; no loop grants private or live authority.
+
 ## Product loops and operator views
 
 Two cooperating product loops turn research effort into inspectable paper evidence:
@@ -154,7 +222,9 @@ Candidate Arena -> Trading System -> System Code -> research preflight -> select
 
 Replay and backtest are research feedback rather than final economic evidence authority.
 
-## How the system is structured
+## Repository structure
+
+The product authority boundaries also shape the repository:
 
 | Boundary | Responsibility |
 | --- | --- |
