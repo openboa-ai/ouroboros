@@ -80,7 +80,8 @@ SUCCESS CRITERIA -> ITERATION -> EVALUATION -> SUCCESS CRITERIA
 ```
 
 - Representative mode: `GOAL-BASED`
-- Small mapping: `ResearchPreflightCommitment`; precommitted method, budget, submissions, and stop condition
+- Small mapping: `ResearchPreflightCommitment`; declared methodology plus development and
+  sealed-admission suite identities, submission limits, and feedback-release policies
 - Small mapping: `SystemCode`; frozen candidate artifact selected explicitly before admission
 - Stop: explicit selection or no submission is terminal; budget exhaustion or fail-closed
   termination also closes the session

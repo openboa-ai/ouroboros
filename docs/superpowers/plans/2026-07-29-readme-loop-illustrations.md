@@ -115,7 +115,7 @@ Primary request: Explain one Experiment Loop and why it repeats.
 Style reference: match the approved Ouroboros system-structure image exactly in background, line weight, typography, spacing, and orange use.
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom.
 Large text verbatim: "EVALUATION LOOP", "GOAL-BASED", "SUCCESS CRITERIA", "ITERATION", "EVALUATION", "SELECTION".
-Small text verbatim: "ResearchPreflightCommitment", "method + budget + stop condition", "SystemCode · explicit frozen selection".
+Small text verbatim: "ResearchPreflightCommitment", "methodology · development + sealed-admission limits", "SystemCode · explicit frozen selection".
 Color: black structure, orange return path from EVALUATION to SUCCESS CRITERIA. SELECTION is a
 separate terminal node reached by one black arrow from EVALUATION and has no outgoing return.
 Constraints: one loop only, one purpose only, large calm whitespace.

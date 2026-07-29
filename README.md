@@ -151,11 +151,13 @@ tools; it cannot evaluate its own admission or grant trading authority.
 ![The goal-based Evaluation Loop moves from committed success criteria through development iterations and aggregate evaluation to one explicit frozen selection](docs/assets/ouroboros-evaluation-loop-v3.png)
 
 The Evaluation Loop starts from committed success criteria and iterates immutable development
-submissions against aggregate feedback. `ResearchPreflightCommitment` freezes the method, budget,
-evaluator opportunity, and stop condition before agent effects. The worker may explicitly select
-one frozen `SystemCode` or finish without a submission. Feedback can start another development
-iteration only before that decision; frozen selection is terminal for the worker session and never
-returns to mutable success criteria. This development evaluation still has no admission authority.
+submissions against aggregate feedback. Before agent effects, `ResearchPreflightCommitment` binds
+the declared methodology plus development and sealed-admission suite identities, submission limits,
+and feedback-release policies; the session timeout is enforced separately. The worker may explicitly
+select one frozen `SystemCode` or finish without a submission. Feedback can start another development
+iteration only before that decision; selection, no submission, and fail-closed termination end the
+worker session and never return to mutable success criteria. This development evaluation still has
+no admission authority.
 
 ### Research loop — Time-based
 
