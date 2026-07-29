@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -62,6 +62,81 @@ describe("LocalStore ResearchBehaviorFingerprint", () => {
       second.fingerprint,
       first.fingerprint
     ]);
+  });
+
+  it("fails cold projection rebuild closed for a corrupt cached fingerprint", async () => {
+    const graph = await persistedFingerprintGraph(store, "cold-corrupt", 0);
+    await store.recordResearchBehaviorFingerprint(graph.fingerprint);
+    const corrupt = structuredClone(graph.fingerprint);
+    corrupt.fingerprint_digest = digest("cold-corrupt-drift");
+    await writeFile(
+      path.join(
+        storeRoot,
+        "research-behavior-fingerprints",
+        "items",
+        `${encodeURIComponent(
+          graph.fingerprint.research_behavior_fingerprint_id
+        )}.json`
+      ),
+      `${JSON.stringify(corrupt, null, 2)}\n`,
+      "utf8"
+    );
+
+    const restarted = new LocalStore(storeRoot);
+    await expect(restarted.initialize()).rejects.toMatchObject({
+      code: "research_behavior_fingerprint_reload_failed"
+    });
+  });
+
+  it("fails cold projection rebuild closed for a graph-mismatched cached fingerprint", async () => {
+    const graph = await persistedFingerprintGraph(store, "cold-orphan", 0);
+    await store.recordResearchBehaviorFingerprint(graph.fingerprint);
+    const orphan = structuredClone(graph.fingerprint);
+    orphan.system_code_ref.id = "missing-system-code";
+    await writeFile(
+      path.join(
+        storeRoot,
+        "research-behavior-fingerprints",
+        "items",
+        `${encodeURIComponent(
+          graph.fingerprint.research_behavior_fingerprint_id
+        )}.json`
+      ),
+      `${JSON.stringify(orphan, null, 2)}\n`,
+      "utf8"
+    );
+
+    const restarted = new LocalStore(storeRoot);
+    await expect(restarted.initialize()).rejects.toMatchObject({
+      code: "research_behavior_fingerprint_reference_not_found"
+    });
+  });
+
+  it("fails cold projection rebuild closed for a graph-mismatched cached admission", async () => {
+    const graph = await persistedAdmissionGraph(store, "cold-admission", 0);
+    await store.recordResearchBehaviorFingerprint(graph.fingerprint);
+    const admission = behaviorAdmission(graph, "distinct");
+    await store.recordCandidateAdmissionDecision(admission);
+    const forged = structuredClone(admission);
+    forged.system_code_ref = {
+      record_kind: "system_code",
+      id: graph.sourceSystemCode.system_code_id
+    };
+    await writeFile(
+      path.join(
+        storeRoot,
+        "candidate-admission-decisions",
+        "items",
+        `${encodeURIComponent(admission.candidate_admission_decision_id)}.json`
+      ),
+      `${JSON.stringify(forged, null, 2)}\n`,
+      "utf8"
+    );
+
+    const restarted = new LocalStore(storeRoot);
+    await expect(restarted.initialize()).rejects.toMatchObject({
+      code: "candidate_admission_reference_mismatch"
+    });
   });
 
   it("rejects malformed, digest-drifted, graph-mismatched, and same-ID-mutated evidence", async () => {

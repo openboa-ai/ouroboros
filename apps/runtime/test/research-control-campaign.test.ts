@@ -121,7 +121,7 @@ describe("ResearchControlCampaign snapshots", () => {
 
     expect(first).toEqual(second);
     expect(first).toEqual({
-      protocol_version: "local_store_regular_files_v1",
+      protocol_version: "local_store_regular_files_v2",
       snapshot_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       regular_file_count: 2,
       total_bytes: 4,
@@ -152,6 +152,54 @@ describe("ResearchControlCampaign snapshots", () => {
     });
     expect(changed.snapshot_digest).not.toBe(first.snapshot_digest);
     expect(changed.regular_file_count).toBe(4);
+  });
+
+  it("keeps final snapshot semantics on a persisted v1 campaign protocol", async () => {
+    const root = path.join(tmpDir, "legacy-final-snapshot");
+    await mkdir(path.join(root, "read-models"), { recursive: true });
+    await mkdir(path.join(root, ".locks"), { recursive: true });
+    await writeFile(path.join(root, "state.json"), "state\n", "utf8");
+    await writeFile(
+      path.join(root, "read-models/index.json"),
+      "legacy derived\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(root, ".locks/generation.json"),
+      "legacy generation\n",
+      "utf8"
+    );
+    const baseline = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      protocolVersion: "local_store_regular_files_v1"
+    });
+    await mkdir(path.join(root, "read-models/research-operations"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(root, "read-models/research-operations/index.json"),
+      "new projection\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(
+        root,
+        ".locks/research-operations-projection-generation.json"
+      ),
+      "new generation\n",
+      "utf8"
+    );
+
+    const finalSnapshot = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      protocolVersion: baseline.protocol_version
+    });
+
+    expect(finalSnapshot).toEqual(baseline);
   });
 
   it.each([
@@ -278,12 +326,31 @@ describe("ResearchControlCampaign runtime", () => {
       ?.allocation_mode).toBe("adaptive_default");
     expect((await controlStore.listCandidateArenaResearchAllocations())[0]
       ?.allocation_mode).toBe("static_control");
+    const sourceIntents = await sourceStore
+      .listResearchControlCampaignArmIntents();
+    expect(await adaptiveStore.listResearchControlCampaigns()).toEqual([
+      outcome.campaign
+    ]);
+    expect(await controlStore.listResearchControlCampaigns()).toEqual([
+      outcome.campaign
+    ]);
+    expect(await adaptiveStore.listResearchControlCampaignArmIntents())
+      .toEqual(sourceIntents.filter((intent) =>
+        intent.arm_kind === "adaptive_treatment"
+      ));
+    expect(await controlStore.listResearchControlCampaignArmIntents())
+      .toEqual(sourceIntents.filter((intent) =>
+        intent.arm_kind === "static_control"
+      ));
     expect(adaptiveTicks[0]!.tick_id).not.toBe(controlTicks[0]!.tick_id);
     expect(adaptiveTicks[0]!.direction_results).toHaveLength(3);
     expect(controlTicks[0]!.direction_results).toHaveLength(3);
 
     const baselineStore = new LocalStore(outcome.baselineRoot);
     expect(await baselineStore.listCandidateArenaTicks()).toEqual([]);
+    expect(await baselineStore.listResearchControlCampaigns()).toEqual([]);
+    expect(await baselineStore.listResearchControlCampaignArmIntents())
+      .toEqual([]);
     await verifyResearchControlCampaignSnapshot({
       root: outcome.baselineRoot,
       expected: outcome.campaign.baseline,
@@ -294,6 +361,103 @@ describe("ResearchControlCampaign runtime", () => {
     expect(JSON.stringify(outcome.report)).not.toMatch(
       /winner|sealed_terminal_score|fingerprint_digest|store_root/
     );
+  });
+
+  it("fails closed when a planned tick imports a foreign admitted result", async () => {
+    const sourceStore = new LocalStore(path.join(tmpDir, "foreign-tick-source"));
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(tmpDir, "foreign-tick-workspace");
+    let foreignResultInjected = false;
+    let failure: unknown;
+
+    try {
+      await runResearchControlCampaign({
+        ...campaignRunInput(
+          sourceStore,
+          workspaceRoot,
+          runCandidateArenaTick
+        ),
+        idempotencyKey: "runtime-foreign-tick-admission-001",
+        runTick: async (tickInput) => {
+          if (tickInput.researchAllocationMode !== "static_control") {
+            return runCandidateArenaTick(tickInput);
+          }
+          const store = tickInput.store as LocalStore;
+          const plannedTickId = tickInput.tickId!;
+          const foreignTickId = `${plannedTickId}-foreign`;
+          await runCandidateArenaTick({
+            ...tickInput,
+            tickId: foreignTickId
+          });
+          const foreignTick = (await store.listCandidateArenaTicks()).find(
+            (tick) => tick.tick_id === foreignTickId
+          );
+          const foreignResult = foreignTick?.direction_results.find(
+            (result) => result.status === "created"
+          );
+          if (!foreignResult) {
+            throw new Error("fixture_expected_foreign_admitted_result");
+          }
+          const outcome = await runCandidateArenaTick(tickInput);
+          const plannedTick = (await store.listCandidateArenaTicks()).find(
+            (tick) => tick.tick_id === plannedTickId
+          );
+          if (!plannedTick) {
+            throw new Error("fixture_expected_planned_tick");
+          }
+          const substituted = structuredClone(plannedTick);
+          const directionIndex = substituted.direction_results.findIndex(
+            (result) => result.direction_kind === foreignResult.direction_kind
+          );
+          if (directionIndex < 0) {
+            throw new Error("fixture_expected_matching_planned_direction");
+          }
+          substituted.direction_results[directionIndex] =
+            structuredClone(foreignResult);
+          substituted.created_candidate_refs = substituted.direction_results
+            .flatMap((result) => result.status === "created"
+              ? [{
+                  record_kind: "trading_system_candidate",
+                  id: result.candidate_id!
+                }]
+              : []);
+          const failedCount = substituted.direction_results.filter(
+            (result) => result.status === "failed"
+          ).length;
+          substituted.status = failedCount === 0
+            ? "completed"
+            : failedCount < substituted.direction_results.length
+              ? "completed_with_errors"
+              : "failed";
+          await writeFile(path.join(
+            store.root(),
+            "candidate-arena-ticks",
+            "items",
+            `${substituted.candidate_arena_tick_id}.json`
+          ), `${JSON.stringify(substituted)}\n`, "utf8");
+          foreignResultInjected = true;
+          return outcome;
+        }
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(
+      foreignResultInjected,
+      failure instanceof Error ? `${failure.name}: ${failure.message} ${
+        JSON.stringify((failure as ResearchControlCampaignRuntimeError).details)
+      }` :
+        String(failure)
+    ).toBe(true);
+    expect(failure).toMatchObject({
+      code: "research_control_campaign_arm_evidence_invalid",
+      details: {
+        arm_kind: "static_control",
+        reason: "research_control_campaign_terminal_admission_binding_invalid"
+      }
+    });
+    expect(await sourceStore.listResearchControlCampaignReports()).toEqual([]);
   });
 
   it("returns an exact terminal report without another worker effect", async () => {

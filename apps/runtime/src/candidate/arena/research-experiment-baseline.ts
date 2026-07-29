@@ -35,6 +35,11 @@ const RESEARCH_MEMORY_CONTROL_EVIDENCE_COLLECTIONS = new Set([
   "research-memory-control-study-outcomes"
 ]);
 
+const RECONSTRUCTIBLE_LOCAL_STORE_COLLECTIONS = new Set([
+  ".locks",
+  "read-models"
+]);
+
 export type ResearchExperimentBaselineErrorCode =
   | "research_experiment_baseline_root_invalid"
   | "research_experiment_baseline_empty"
@@ -61,6 +66,7 @@ export interface CaptureResearchExperimentBaselineInput {
   maximumRegularFileCount: number;
   maximumTotalBytes: number;
   exclusionPolicy?: ResearchExperimentBaselineSnapshot["exclusion_policy"];
+  protocolVersion?: ResearchExperimentBaselineSnapshot["protocol_version"];
 }
 
 export interface VerifyResearchExperimentBaselineInput
@@ -98,6 +104,8 @@ export async function captureResearchExperimentBaseline(
   );
   const exclusionPolicy = input.exclusionPolicy ??
     "research_experiment_evidence_only";
+  const protocolVersion = input.protocolVersion ??
+    "local_store_regular_files_v2";
   const rootStat = await stat(root).catch(() => undefined);
   if (!rootStat?.isDirectory()) {
     throw baselineError(
@@ -112,13 +120,14 @@ export async function captureResearchExperimentBaseline(
     const children = await readdir(directory, { withFileTypes: true });
     children.sort((left, right) => left.name.localeCompare(right.name));
     for (const child of children) {
-      if (!relativeDirectory && child.isDirectory() &&
-        excludedCollection(child.name, exclusionPolicy)) {
-        continue;
-      }
       const relativePath = relativeDirectory
         ? path.posix.join(relativeDirectory, child.name)
         : child.name;
+      if (excludedRelativePath(
+        relativePath,
+        exclusionPolicy,
+        protocolVersion
+      )) continue;
       const absolutePath = path.join(directory, child.name);
       const entryStat = await lstat(absolutePath, { bigint: true });
       if (entryStat.isSymbolicLink()) {
@@ -174,9 +183,9 @@ export async function captureResearchExperimentBaseline(
     left.relative_path.localeCompare(right.relative_path)
   );
   return {
-    protocol_version: "local_store_regular_files_v1",
+    protocol_version: protocolVersion,
     snapshot_digest: canonicalDigest({
-      protocol_version: "local_store_regular_files_v1",
+      protocol_version: protocolVersion,
       entries
     }),
     regular_file_count: entries.length,
@@ -192,7 +201,8 @@ export async function verifyResearchExperimentBaseline(
     root: input.root,
     maximumRegularFileCount: input.maximumRegularFileCount,
     maximumTotalBytes: input.maximumTotalBytes,
-    exclusionPolicy: input.expected.exclusion_policy
+    exclusionPolicy: input.expected.exclusion_policy,
+    protocolVersion: input.expected.protocol_version
   });
   if (!isDeepStrictEqual(actual, input.expected)) {
     throw baselineError(
@@ -225,14 +235,25 @@ export async function ensureResearchExperimentStoreCopy(
     maximumTotalBytes: input.maximumTotalBytes
   });
   const temporaryRoot = temporarySibling(input.destinationRoot);
+  const sourceRoot = path.resolve(input.sourceRoot);
   await mkdir(path.dirname(input.destinationRoot), { recursive: true });
   await rm(temporaryRoot, { recursive: true, force: true });
   try {
-    await cp(input.sourceRoot, temporaryRoot, {
+    await cp(sourceRoot, temporaryRoot, {
       recursive: true,
       force: false,
       errorOnExist: true,
-      preserveTimestamps: true
+      preserveTimestamps: true,
+      filter(source) {
+        const relative = path.relative(sourceRoot, path.resolve(source));
+        if (!relative) return true;
+        const relativePath = relative.split(path.sep).join(path.posix.sep);
+        return !excludedRelativePath(
+          relativePath,
+          input.expected.exclusion_policy,
+          input.expected.protocol_version
+        );
+      }
     });
     await verifyResearchExperimentBaseline({
       root: temporaryRoot,
@@ -253,13 +274,34 @@ export async function ensureResearchExperimentStoreCopy(
   }
 }
 
-function excludedCollection(
-  collection: string,
-  policy: ResearchExperimentBaselineSnapshot["exclusion_policy"]
+function excludedRelativePath(
+  relativePath: string,
+  policy: ResearchExperimentBaselineSnapshot["exclusion_policy"],
+  protocolVersion: ResearchExperimentBaselineSnapshot["protocol_version"]
 ): boolean {
-  return RESEARCH_CONTROL_EVIDENCE_COLLECTIONS.has(collection) ||
+  const [collection] = relativePath.split("/");
+  return reconstructiblePathExcludedByProtocol(relativePath, protocolVersion) ||
+    RESEARCH_CONTROL_EVIDENCE_COLLECTIONS.has(collection!) ||
     (policy === "research_experiment_evidence_only" &&
-      RESEARCH_MEMORY_CONTROL_EVIDENCE_COLLECTIONS.has(collection));
+      RESEARCH_MEMORY_CONTROL_EVIDENCE_COLLECTIONS.has(collection!));
+}
+
+function reconstructiblePathExcludedByProtocol(
+  relativePath: string,
+  protocolVersion: ResearchExperimentBaselineSnapshot["protocol_version"]
+): boolean {
+  const [collection] = relativePath.split("/");
+  if (protocolVersion === "local_store_regular_files_v2") {
+    return RECONSTRUCTIBLE_LOCAL_STORE_COLLECTIONS.has(collection!);
+  }
+  return relativePath === "read-models/research-operations" ||
+    relativePath.startsWith("read-models/research-operations/") ||
+    relativePath ===
+      ".locks/research-operations-projection-generation.json" ||
+    relativePath === ".locks/research-operations-projection-publication" ||
+    relativePath.startsWith(
+      ".locks/research-operations-projection-publication/"
+    );
 }
 
 async function captureRegularFile(

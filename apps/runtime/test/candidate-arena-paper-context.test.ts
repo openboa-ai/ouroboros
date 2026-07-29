@@ -4110,6 +4110,13 @@ class ResearchAllocationPolicyOverlayStore extends LocalStore {
     private readonly decisions: ResearchAllocationPolicyDecisionRecord[]
   ) {
     super(root);
+    // This test-only overlay injects a policy decision that is intentionally
+    // absent from the persisted LocalStore graph. Keep this policy-resolver
+    // test on the optional legacy evidence port instead of asking the compact
+    // projection to attest an unpersisted decision.
+    Object.defineProperty(this, "readCandidateArenaEvidenceProjection", {
+      value: undefined
+    });
   }
 
   override async listResearchAllocationPolicyDecisions(): Promise<
@@ -5098,11 +5105,6 @@ async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
         }
       }
     ],
-    research_allocation_ref: {
-      record_kind: "candidate_arena_research_allocation",
-      id: allocation.candidate_arena_research_allocation_id
-    },
-    research_allocation_digest: allocation.allocation_digest,
     authority_status: "not_live"
   };
   await store.recordCandidateArenaTick(tick);

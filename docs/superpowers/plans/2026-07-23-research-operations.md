@@ -4,14 +4,14 @@
 
 **Goal:** Project every actual bounded Research allocation from the existing RA-03A persisted graph into authoritative `research_operations`, exact Research detail, and the Operator master/detail UI.
 
-**Architecture:** This is a projection-only slice. The persisted allocation, trigger, preflight commitment, worker, direction, checkpoint, selected `SystemCode`, sealed Evaluation, admission, conformance, Finding, lineage, and terminal tick remain the only evidence authorities. Add an exact read-only active-tick plus per-work-item runtime registry to `CandidateArenaRunner` so queued, allocating, and running work can be distinguished from an older orphan without adding persistence. Non-selected development artifacts are not persisted on current `main`; the projection therefore exposes only the current tick's immutable checkpoint summaries and explicitly marks artifact identity unavailable instead of inventing `SystemCode` records or reading mutable workspaces.
+**Architecture:** This is a read-model-centered slice. The persisted allocation, trigger, preflight commitment, worker, direction, checkpoint, selected `SystemCode`, sealed Evaluation, admission, conformance, Finding, lineage, and terminal tick remain the only evidence authorities. The slice adds two narrow durability repairs inside those existing authorities: a terminal `ResearchWorkerCheckpoint` may seal its exact terminal direction result, and recovery of an already-effected allocation may record the exact failed terminal tick from persisted checkpoint evidence instead of rerunning the old effect. Neither repair creates a competing Research-session authority. An exact read-only active-tick plus per-work-item runtime registry lets queued, allocating, and running work be distinguished from an older orphan. Non-selected development artifacts are not persisted; the projection exposes immutable checkpoint summaries and marks their artifact identity unavailable instead of inventing `SystemCode` records or reading mutable workspaces.
 
 **Tech Stack:** TypeScript, React 19, Fastify, Vitest, LocalStore, Tauri Desktop, shadcn/Radix primitives.
 
 ## Locked Scope
 
 - Base commit: `3f50ca6598de676d66ec3606108356558eb89f6f`, equal to fetched `origin/main` when this plan was written.
-- No new persisted record family, Research scheduler, provider behavior, evaluator policy, Arena rank, private data, order, or live authority.
+- No new standalone Research-session record family or authority. The existing checkpoint and tick contracts are extended only to bind the exact terminal direction result and close an already-effected allocation as a failed terminal tick during restart recovery. No Research scheduler, provider behavior, evaluator policy, Arena rank, private data, order, or live authority is added.
 - One row represents one `CandidateArenaResearchAllocation.selected_directions` item. Configured directions and compatibility tick rows never become sessions.
 - `research_work_item_id` is `research-session-v1-` plus the full SHA-256 of canonical JSON `{research_allocation_id,direction_kind}`. It is a projection key, not a persisted authority.
 - Terminal checkpoint/admission/tick evidence wins over runtime health. Runtime state is exact only when the selection belongs to `active_tick_id`: an unstarted active selection is `queued`, a registry entry is `allocating` or `running`, and any inactive incomplete allocation or commitment is `recovering`.
@@ -19,7 +19,7 @@
 - A missing historical trigger, methodology, worker, evaluation edge, or evidence artifact is explicit `unavailable`/`degraded`; no fallback text is presented as source evidence. Provider remains the persisted `ProviderKind` (`codex_cli`, `claude_code`, `local_process`, or `fixture_only`) rather than being rewritten as an AgentProfile provider.
 - Every projected free-text field passes through `sanitizeResearchEvidenceText`, is bounded, and carries truncation/degradation state. Provider stdout/stderr, run-root notebooks, paths, URLs, credentials, manifests, and raw failure text are never read into the projection.
 - Development and selected-artifact identity stay distinct. Checkpoint notebook entries can prove immutable summary/count history; only the exact selected `TradingEvaluationResultRecord.submitted_system_code_ref` and `submitted_artifact_digest` can identify a `SystemCode`.
-- Five-second refresh stays hidden-document aware. Exact detail fetches are list-membership gated, request-sequenced, and retain only last-safe detail for the same selected ID.
+- Five-second refresh stays hidden-document aware. A canonical URL-selected work-item ID triggers exact detail independently of the bounded list window, so intentional off-page historical detail remains available; requests are sequenced and retain only last-safe detail for the same selected ID.
 - Responsive evidence covers 1440x960 and 1180x760 native Desktop plus 768px and 390px shared Web. Node/SSR tests prove content; rendered manual evidence proves focus, overlap, and overflow.
 - Actual populated, empty, degraded-transport, and restart-recovery evidence uses one isolated store and a real managed Codex provider. No fixture capture substitutes for actual-session proof.
 
@@ -79,18 +79,29 @@ Never apply a global `active_tick` boolean to every open commitment. The runner 
 - Create: `packages/application/src/services/research-operations.ts`
 - Create: `packages/application/src/services/research-operations.test.ts`
 - Modify: `packages/application/src/ports/store.ts`
+- Modify: `packages/local-store/src/index.ts`
+- Create: `packages/local-store/test/research-operations-projection.test.ts`
 - Modify: `packages/application/src/index.ts`
 - Modify: `packages/application/src/services/operator.ts`
 - Modify: `packages/application/src/services/operator.test.ts`
 
 **Consumes:** allocation, runner health, tick, commitment, worker, direction, evidence artifact, checkpoint, evaluation, ExperimentRun, `SystemCode`, admission, conformance, Finding, lineage, and candidate evidence already persisted by RA-03A.
 
-**Produces:** `ResearchOperationsProjectionService.readOperations()` and `readSessionDetail(researchWorkItemId)` without adding write authority.
+**Produces:** `ResearchOperationsProjectionService.materializeProjection()`, bounded
+`readOperations()`, and canonical-ID `readSessionDetail(researchWorkItemId)`. LocalStore privately
+publishes reconstructible read-only index, capsule, and Merkle byte-radix trie records; no public
+product command, authority-bearing write port, or competing Research-session authority is added.
 
 - [ ] **RED:** Cover authoritative empty; third selection queued behind concurrency; exact allocating and running entries; active concurrent commitments; older orphan beside a new active tick; inactive incomplete allocation/commitment recovery; pre-commit terminal failure; finished without submission; restart recovery; admitted/duplicate/quarantined; deterministic newest-first order; capacity; exact detail/not-found; cross-session isolation; malformed digest/ref rejection; missing trigger/evidence degradation; and absence of configured-direction rows. Add a same-worker second-session regression proving earlier tick entries stay out, `iteration` remains the session submission sequence, selected comparison uses `selected_development_submission_sequence`, and omitted count derives from `development_budget.recorded_submission_count` rather than cumulative notebook totals.
 - [ ] Add privacy/bounds cases for POSIX/Windows paths, URLs, bearer tokens, credential assignments, PEM material, control characters, oversized summaries, raw failure text, more than 100 logs, and truncated checkpoint history.
 - [ ] Run `npx vitest run packages/application/src/services/research-operations.test.ts`; verify the service is missing.
-- [ ] **GREEN:** Expose LocalStore's existing read-only `listExperimentRuns()` and `listTradingEvaluationResults()` on `OuroborosStorePort` so a partial post-evaluation/pre-admission graph remains inspectable. Load list collections once, index exact IDs, use `getSystemCode()` for selected refs, validate every ref/digest before a join, and apply the locked status precedence. Add no Store write method or record family.
+- [ ] **GREEN:** Expose LocalStore's existing read-only `listExperimentRuns()` and
+  `listTradingEvaluationResults()` on `OuroborosStorePort` so a partial
+  post-evaluation/pre-admission graph remains inspectable. Materialize the complete source graph
+  only at coordinated source-write/restart boundaries into a bounded 100-session head, exact
+  per-session capsules, and a digest-bound Merkle byte-radix trie. Polling and canonical-ID detail
+  then read only the bounded projection window they need. Validate every source ref/digest before
+  materialization and every persisted projection digest and cross-record binding before display.
 - [ ] Project evidence summaries only from persisted sanitized `ResearchEvidenceArtifactRecord`s. Derive bounded lifecycle events only from allocation, commitment, checkpoint, terminal tick, evaluation, admission, and conformance records; expose provider logs as not persisted.
 - [ ] Resolve selected artifact only when Evaluation, ExperimentRun, admission, and `SystemCode` agree on the exact commitment and artifact digest. Project Finding via the admission ref and lineage via the selected child `SystemCode`.
 - [ ] Compose the service in `OperatorService`. `readOperator()` always emits `research_operations`; add `readResearchSessionDetail()`. Do not fall back to `CandidateArenaReadModel.latest_ticks` as active sessions.
@@ -112,7 +123,7 @@ Never apply a global `active_tick` boolean to every open commitment. The runner 
 
 **Produces:** authenticated `GET /api/research/sessions/:researchWorkItemId`, exact 404, and a symmetric but separately typed Web detail state.
 
-- [ ] **RED:** Add runtime tests for authenticated 200, exact `research_session_not_found` 404, missing/invalid auth, sanitization, and authoritative empty. Add Web tests for encoded fetch, URL selection, authoritative list-membership gate, stale response rejection, same-ID last-safe detail on refresh error, five-second interval, and hidden-document skip.
+- [ ] **RED:** Add runtime tests for authenticated 200, exact `research_session_not_found` 404, missing/invalid auth, sanitization, and authoritative empty. Add Web tests for encoded fetch, URL-selected exact detail outside the bounded list window, true projection-miss handling, stale response rejection, same-ID last-safe detail on refresh error, five-second interval, and hidden-document skip.
 - [ ] Run `npx vitest run apps/runtime/test/server.test.ts -t "Research session" apps/operator-web/src/App.test.tsx`; verify the route/detail path is absent.
 - [ ] **GREEN:** Mirror Arena detail controller, read rate limit, authentication, and response conventions. Keep Arena and Research detail state separately typed; pass both selected IDs into `useOperatorRuntime`.
 - [ ] Freeze the route in `docs/api-command-contract.md` and correct the Desktop resource list in `docs/operator-desktop-performance-release.md`.
@@ -1264,13 +1275,37 @@ Process-ownership tests that need `/bin/ps` must be rerun outside the managed sa
 - Environment-only validation notes: the managed sandbox denied local TCP/Unix-socket listeners and process-start inspection with `EPERM`, so its affected result was invalidated and rerun outside the sandbox as required. The first unsandboxed full run had one non-reproduced load-sensitive polling timeout in an unchanged autonomous-restart smoke; the exact test passed 1/1, its full file passed 19/19, and a second exact `npm test` completed green with the counts above.
 - Task 5 signal-guard verification: `bash -n` passed for the extracted final helper/probe block, and its non-destructive audit run passed outside the managed sandbox. The helper now requires the canonical active path, `runtimeProcessOwnershipHasRuntimeShape`, and an exact `FileSystemRuntimeProcessOwnershipStore.inspect()` result of `owned` (including consistent open history) immediately before marker/listener-or-PGID revalidation and the sole signal sink. Canonically claimed fixtures proved owner exit, exact record swap, stable malformed metadata, non-canonical active path, conflicting open history, and provider PGID drift all returned nonzero with empty audit sinks. Probe stores were created only under validated `/private/tmp/ouro-238-ownership-signal-guard.*` roots and removed before retaining the token-free `evidence/ownership-signal-guard-regression.json` (SHA-256 `af711c42e88a6ec94ee28f160629ad12efb4c1336453d7a1bb7b62248fb4e99e`). The earlier destructive restart evidence predates this canonical-store revision; the revised real-signal path was not replayed, so this entry claims no new `SIGKILL`/restart artifact. Independent final safety sign-off remains the current-head review gate.
 
+### Projection hardening design and pre-final evidence — 2026-07-28
+
+- The in-progress hardening materializes a read-only projection under
+  `read-models/research-operations`: a bounded 100-session head, per-session capsules, and
+  a digest-bound bounded Merkle byte-radix capsule trie support steady list reads and canonical-ID
+  exact detail without reparsing the complete Research history. Exact URL detail intentionally
+  remains independent of head-list membership.
+- Index/capsule/trie-node digests, active-tick membership, compact sanitized CandidateArena
+  evidence, and same-root publication coordination fail closed on missing, malformed, drifted, or
+  overlapping state. Missing or malformed source-generation coordination metadata is instead
+  repairable: the owning LocalStore resynchronizes from canonical source records and republishes a
+  complete projection generation. These files are reconstructible read models and runtime
+  coordination, not evaluation, admission, scheduling, promotion, order, private-data, or live
+  authority.
+- The earlier working-tree run (`npm test`: 237 files, 3,775 passed, 1 skipped; root typecheck,
+  build, and repository guards green) is superseded by later projection, validator, and test
+  changes. It is retained only as historical debugging evidence. Fresh full validation and fresh
+  UI captures bound to the final tree remain required, so this entry does not claim current-head
+  CI, review closure, or merge completion.
+
 ## Plan Self-Review
 
-- Scope is projection-only; no persisted contract, provider, scheduler, evaluator, rank, private/live, or order authority is added.
+- Scope is read-model-centered. Its only persisted-contract changes bind an exact terminal
+  direction result to the existing terminal checkpoint and close an already-effected allocation
+  with a failed terminal tick during restart recovery; they add no duplicate session authority,
+  provider, scheduler, evaluator, rank, private/live, or order authority.
 - Exact active identity prevents an unrelated active tick from reviving an orphan.
 - Terminal and pre-commit failures precede runtime state; inactive incomplete work is recovery.
 - Development snapshot digest and selected canonical `SystemCode` digest are never conflated.
 - Missing trigger/methodology and non-selected artifact identity are explicit, not fabricated.
-- Intermediate commits run root typecheck; the nonexistent Research screen test is correctly marked Create.
+- Intermediate commits run root typecheck; the Research screen and response-boundary tests cover
+  the current master/detail implementation.
 - Required build and 1440x960, 1180x760, 768px, and 390px evidence are included.
 - Empty, populated, degraded-transport, and failed-closed restart evidence all remain bound to the isolated real Codex-backed run.

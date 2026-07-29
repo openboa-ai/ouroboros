@@ -21,6 +21,100 @@ describe("CandidateArenaResearchAllocation", () => {
     )).toBe(true);
   });
 
+  it.each([
+    ["allocation id", "candidate_arena_research_allocation_id"],
+    ["tick id", "tick_id"]
+  ] as const)("accepts a canonical 200-character %s and rejects longer identifiers", (
+    _label,
+    field
+  ) => {
+    const exactBoundary = adaptiveAllocationFixture();
+    exactBoundary[field] = "a".repeat(200);
+    expect(candidateArenaResearchAllocationHasRuntimeShape(exactBoundary))
+      .toBe(true);
+
+    for (const length of [201, 500, 501]) {
+      const overBoundary = adaptiveAllocationFixture();
+      overBoundary[field] = "a".repeat(length);
+      expect(candidateArenaResearchAllocationHasRuntimeShape(overBoundary),
+        `${field}:${length}`).toBe(false);
+    }
+  });
+
+  it.each([
+    ["leading dash", "-allocation"],
+    ["trailing dash", "allocation-"],
+    ["space", "allocation drift"],
+    ["unicode", "allocation-δ"]
+  ])("rejects a noncanonical %s identifier", (_label, identifier) => {
+    const allocation = adaptiveAllocationFixture();
+    allocation.candidate_arena_research_allocation_id = identifier;
+
+    expect(candidateArenaResearchAllocationHasRuntimeShape(allocation))
+      .toBe(false);
+  });
+
+  it.each([
+    {
+      name: "source tick ref",
+      make: adaptiveAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        value.source_tick_refs[0]!.id = id;
+      }
+    },
+    {
+      name: "trigger id",
+      make: triggeredAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        value.trigger!.trigger_id = id;
+      }
+    },
+    {
+      name: "trigger source ref",
+      make: triggeredAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        value.trigger!.source_ref!.id = id;
+      }
+    },
+    {
+      name: "trigger evidence ref",
+      make: triggeredAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        value.trigger!.evidence_artifact_ref!.id = id;
+      }
+    },
+    {
+      name: "policy decision ref",
+      make: decisionBackedAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        if (value.allocation_policy_basis.basis_kind !==
+          "research_allocation_policy_decision") throw new Error("basis");
+        value.allocation_policy_basis.policy_decision_ref.id = id;
+      }
+    },
+    {
+      name: "study outcome ref",
+      make: decisionBackedAllocationFixture,
+      mutate: (value: CandidateArenaResearchAllocationRecord, id: string) => {
+        if (value.allocation_policy_basis.basis_kind !==
+          "research_allocation_policy_decision") throw new Error("basis");
+        value.allocation_policy_basis.study_outcome_ref.id = id;
+      }
+    }
+  ])("bounds nested projection identifier: $name", ({ make, mutate }) => {
+    const exactBoundary = make();
+    mutate(exactBoundary, "a".repeat(200));
+    expect(candidateArenaResearchAllocationHasRuntimeShape(exactBoundary))
+      .toBe(true);
+
+    for (const length of [201, 500, 501]) {
+      const overBoundary = make();
+      mutate(overBoundary, "a".repeat(length));
+      expect(candidateArenaResearchAllocationHasRuntimeShape(overBoundary),
+        `${length}`).toBe(false);
+    }
+  });
+
   it("accepts an exact approved-policy basis only for adaptive allocation", () => {
     const allocation = adaptiveAllocationFixture();
     allocation.allocation_policy_basis = approvedPolicyBasis();
@@ -213,6 +307,7 @@ describe("CandidateArenaResearchAllocation", () => {
     expect(sanitized).toContain("[redacted]");
     expect(sanitized).toContain("[external-url]");
     expect(sanitized).toContain("[private-path]");
+    expect(sanitizeResearchEvidenceText(sanitized)).toBe(sanitized);
   });
 
   it("redacts adversarial and unterminated PEM-like input without backtracking", () => {
@@ -269,6 +364,34 @@ function adaptiveAllocationFixture(): CandidateArenaResearchAllocationRecord {
     ],
     deferred_directions: ["volatility_regime", "funding_aware_risk"]
   };
+}
+
+function triggeredAllocationFixture(): CandidateArenaResearchAllocationRecord {
+  const allocation = adaptiveAllocationFixture();
+  allocation.trigger = {
+    trigger_kind: "arena_event",
+    trigger_id: "research-trigger-adaptive-tick-2",
+    goal: "Use the latest Arena evidence in a bounded Research tick.",
+    triggered_at: "2026-07-12T09:59:00.000Z",
+    source_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: "paper-evaluation-a"
+    },
+    evidence_artifact_ref: {
+      record_kind: "research_evidence_artifact",
+      id: "research-evidence-a"
+    },
+    evidence_artifact_digest: `sha256:${"e".repeat(64)}`,
+    authority_status: "research_only"
+  };
+  return allocation;
+}
+
+function decisionBackedAllocationFixture():
+CandidateArenaResearchAllocationRecord {
+  const allocation = adaptiveAllocationFixture();
+  allocation.allocation_policy_basis = approvedPolicyBasis();
+  return allocation;
 }
 
 function staticAllocationFixture(): CandidateArenaResearchAllocationRecord {

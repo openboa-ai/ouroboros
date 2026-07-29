@@ -8,17 +8,18 @@ import type {
   CandidateAdmissionDecision,
   CandidateAdmissionDecisionRecord,
   CandidateArenaTickDirectionResultReadModel,
+  CandidateArenaTickProjectedDirectionResultReadModel,
   CandidateArenaTickPaperTradingContinuationReadModel,
   CandidateArenaTickRecord,
   CandidateArenaTickReadModel,
   CandidateArenaTickSourceKind,
   CandidateArenaTickSourceReadModel,
-  CandidateArenaTickStatus,
   CandidateArenaFindingClusterMarketRegime,
   CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
   CandidateArenaResearchAllocationMode,
   CandidateArenaResearchAllocationRecord,
+  CandidateArenaResearchAllocationReadModel,
   CandidateArenaResearchAllocationSelection,
   CandidateArenaResearchEfficiencyReadModel,
   CandidateArenaResearchPreflightReadModel,
@@ -56,11 +57,17 @@ import type {
   TradingProfitLossReadModel
 } from "@ouroboros/domain";
 import {
+  candidateArenaResearchAllocationDigestInput,
+  candidateArenaResearchAllocationHasRuntimeShape,
+  candidateArenaIdentifierHasRuntimeShape,
+  candidateArenaTickAuthorityGraphHasRuntimeShape,
+  candidateArenaTickHasRuntimeShape,
   candidateEgressAttestationDigestInput,
   candidateEgressAttestationIdForConformance,
   CANDIDATE_EGRESS_ATTESTATION_PROTOCOL_VERSION,
   CANDIDATE_EGRESS_ATTESTER_ID,
   decideCandidateAdmission,
+  deriveCandidateArenaTickStatus,
   deriveCandidateAdmissionResearchWorkerOutcome,
   paperTradingHandoffConformanceDigestInput,
   paperTradingComparisonResearchReleaseHasRuntimeShape,
@@ -72,6 +79,8 @@ import {
   FIXTURE_CANDIDATE_ID,
   type OuroborosStorePort
 } from "../ports/store";
+import { ResearchOperationsProjectionCompatibilityError } from
+  "../ports/store";
 import { safeId } from "../safe-id";
 import {
   DEFAULT_ARENA_DIRECTIONS,
@@ -144,6 +153,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const MAX_RESEARCH_EVIDENCE_ARTIFACTS = 24;
 const MAX_CANDIDATE_ARENA_FAILURE_SOURCE_LENGTH = 4_096;
 const MAX_CANDIDATE_ARENA_FAILURE_SUMMARY_LENGTH = 256;
+const MAX_CANDIDATE_ARENA_PROJECTION_TEXT_LENGTH = 256;
+const MAX_CANDIDATE_ARENA_PROJECTION_TRIGGER_GOAL_LENGTH = 500;
+const MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH = 10;
 
 export { DEFAULT_ARENA_DIRECTIONS } from "./research-allocation";
 export { recoverIncompleteResearchWorkerCheckpoints } from "./research-worker-lifecycle";
@@ -240,10 +252,25 @@ export interface CandidateArenaTickOutcome {
   arena: CandidateArenaReadModel;
 }
 
-export interface CandidateArenaEvidenceSnapshot {
-  allocations: CandidateArenaResearchAllocationRecord[];
-  ticks: CandidateArenaTickRecord[];
-}
+export type CandidateArenaEvidenceSnapshot =
+  | {
+      availability?: undefined;
+      allocations: CandidateArenaResearchAllocationRecord[];
+      ticks: CandidateArenaTickRecord[];
+      research_population_diversity?:
+        CandidateArenaReadModel["research_population_diversity"];
+      research_generalization?: CandidateArenaReadModel["research_generalization"];
+      projection_digest?: undefined;
+    }
+  | {
+      availability: "available";
+      latest_ticks: CandidateArenaReadModel["latest_ticks"];
+      terminal_tick_ids: string[];
+      research_population_diversity:
+        CandidateArenaReadModel["research_population_diversity"];
+      research_generalization: CandidateArenaReadModel["research_generalization"];
+      projection_digest: string;
+    };
 
 export type CandidateArenaTickContinuation = (
   outcome: CandidateArenaTickOutcome
@@ -427,15 +454,11 @@ export class CandidateArenaRunner {
       return outcome;
     }
 
-    try {
-      await recordCandidateArenaTickPaperTradingContinuation(
-        this.input.store,
-        outcome.tick_id,
-        continuationEvidence
-      );
-    } catch {
-      return outcome;
-    }
+    await recordCandidateArenaTickPaperTradingContinuation(
+      this.input.store,
+      outcome.tick_id,
+      continuationEvidence
+    );
 
     return {
       ...outcome,
@@ -1010,7 +1033,7 @@ async function recordRecoveredCandidateArenaTick(input: {
     tick_id: input.tickId,
     started_at: input.allocation.allocated_at,
     completed_at: completedAt,
-    status: candidateArenaTickStatus(directionResults),
+    status: deriveCandidateArenaTickStatus(directionResults),
     created_candidate_refs: createdCandidateIds.map((candidateId) =>
       ref("trading_system_candidate", candidateId)
     ),
@@ -1119,47 +1142,61 @@ export async function buildCandidateArenaReadModel(
   );
   const arenaEvidence = preloadedArenaEvidence ??
     await loadCandidateArenaEvidenceSnapshot(store);
-  const tickRecords = arenaEvidence.ticks;
-  const latestTickRecords = [...tickRecords]
-    .sort((left, right) =>
-      right.completed_at.localeCompare(left.completed_at) ||
-      right.tick_id.localeCompare(left.tick_id)
-    )
-    .slice(0, 10);
-  const allocationRecords = arenaEvidence.allocations;
-  const [
-    directions,
-    commitments,
-    fingerprints,
-    admissions,
-    researchGeneralization
-  ] = await Promise.all([
-    typeof store.listResearchDirections === "function"
-      ? store.listResearchDirections()
-      : Promise.resolve([]),
-    typeof store.listResearchPreflightCommitments === "function"
-      ? store.listResearchPreflightCommitments()
-      : Promise.resolve([]),
-    typeof store.listResearchBehaviorFingerprints === "function"
-      ? store.listResearchBehaviorFingerprints()
-      : Promise.resolve([]),
-    typeof store.listCandidateAdmissionDecisions === "function"
-      ? store.listCandidateAdmissionDecisions()
-      : Promise.resolve([]),
-    arenaResearchGeneralization(store, allocationRecords, tickRecords)
-  ]);
+  const compactEvidence = arenaEvidence.availability === "available";
+  const tickRecords = compactEvidence ? [] : arenaEvidence.ticks;
+  const latestTickRecords = compactEvidence
+    ? []
+    : [...tickRecords]
+        .sort((left, right) =>
+          right.completed_at.localeCompare(left.completed_at) ||
+          right.tick_id.localeCompare(left.tick_id)
+        )
+        .slice(0, 10);
+  const allocationRecords = compactEvidence ? [] : arenaEvidence.allocations;
+  const [researchPopulationDiversity, researchGeneralization] =
+    await Promise.all([
+      !compactEvidence && arenaEvidence.research_population_diversity === undefined
+        ? Promise.all([
+            typeof store.listResearchDirections === "function"
+              ? store.listResearchDirections()
+              : Promise.resolve([]),
+            typeof store.listResearchPreflightCommitments === "function"
+              ? store.listResearchPreflightCommitments()
+              : Promise.resolve([]),
+            typeof store.listResearchBehaviorFingerprints === "function"
+              ? store.listResearchBehaviorFingerprints()
+              : Promise.resolve([]),
+            typeof store.listCandidateAdmissionDecisions === "function"
+              ? store.listCandidateAdmissionDecisions()
+              : Promise.resolve([])
+          ]).then(([directions, commitments, fingerprints, admissions]) =>
+            buildResearchPopulationDiversity({
+              ticks: latestTickRecords,
+              directions,
+              commitments,
+              fingerprints,
+              admissions
+            })
+          )
+        : Promise.resolve(arenaEvidence.research_population_diversity!),
+      !compactEvidence && arenaEvidence.research_generalization === undefined
+        ? arenaResearchGeneralization(store, allocationRecords, tickRecords)
+        : Promise.resolve(arenaEvidence.research_generalization!)
+    ]);
   const allocationsById = new Map(allocationRecords.map((allocation) => [
     allocation.candidate_arena_research_allocation_id,
     allocation
   ]));
-  const latestTicks = latestTickRecords.map((tick) =>
-    toCandidateArenaTickReadModel(
-      tick,
-      tick.research_allocation_ref
-        ? allocationsById.get(tick.research_allocation_ref.id)
-        : undefined
-    )
-  );
+  const latestTicks = compactEvidence
+    ? arenaEvidence.latest_ticks
+    : latestTickRecords.map((tick) =>
+        projectCandidateArenaTickReadModel(
+          tick,
+          tick.research_allocation_ref
+            ? allocationsById.get(tick.research_allocation_ref.id)
+            : undefined
+        )
+      );
   const entries = candidates
     .filter((candidate): candidate is CandidateInspectReadModel => Boolean(candidate?.full_cycle_lineage?.evidence?.profit_loss))
     .map((candidate) => ({
@@ -1179,13 +1216,7 @@ export async function buildCandidateArenaReadModel(
     runner_status: runnerStatus,
     tick_count: tickCount,
     research_generalization: researchGeneralization,
-    research_population_diversity: buildResearchPopulationDiversity({
-      ticks: latestTickRecords,
-      directions,
-      commitments,
-      fingerprints,
-      admissions
-    }),
+    research_population_diversity: researchPopulationDiversity,
     active_researchers: DEFAULT_ARENA_DIRECTIONS.map((direction) => arenaResearcher(direction, latestTicks)),
     leaderboard: entries.map((entry, index) => ({
       rank: index + 1,
@@ -1227,9 +1258,25 @@ export async function buildCandidateArenaReadModel(
 export async function loadCandidateArenaEvidenceSnapshot(
   store: Pick<
     OuroborosStorePort,
-    "listCandidateArenaResearchAllocations" | "listCandidateArenaTicks"
+    | "listCandidateArenaResearchAllocations"
+    | "listCandidateArenaTicks"
+    | "readCandidateArenaEvidenceProjection"
   >
 ): Promise<CandidateArenaEvidenceSnapshot> {
+  if (typeof store.readCandidateArenaEvidenceProjection === "function") {
+    try {
+      const projection = await store.readCandidateArenaEvidenceProjection();
+      if (projection.availability !== "available") {
+        throw new Error("candidate_arena_evidence_projection_unavailable");
+      }
+      return projection;
+    } catch (error) {
+      if (!(error instanceof ResearchOperationsProjectionCompatibilityError) ||
+        error.reason !== "legacy_source_oversized") {
+        throw error;
+      }
+    }
+  }
   const [allocations, ticks] = await Promise.all([
     typeof store.listCandidateArenaResearchAllocations === "function"
       ? store.listCandidateArenaResearchAllocations()
@@ -1297,7 +1344,7 @@ async function recordCandidateArenaTickPaperTradingContinuation(
   const tick = (await store.listCandidateArenaTicks())
     .find((entry) => entry.tick_id === tickId);
   if (!tick) {
-    return;
+    throw new Error("candidate_arena_tick_continuation_target_missing");
   }
   await store.recordCandidateArenaTick({
     ...tick,
@@ -1338,107 +1385,110 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   );
   const requestedCommittedAt = candidateArenaNow(input.now);
   const memoryMode = input.researchMemoryMode ?? "released_memory";
-  const preflight = await withArenaStoreMutation(input.store, async () => {
-    const lifecycle = await resolveResearchWorkerLifecycle({
-      store: input.store,
-      direction_kind: input.direction,
-      agent: agentDescriptor,
-      provider_kind: researchWorkerProviderKind(agentDescriptor),
-      candidate_arena_tick_id: input.tickId,
-      created_at: requestedCommittedAt
-    });
-    const committedAt = new Date(Math.max(
-      Date.parse(requestedCommittedAt),
-      Date.parse(lifecycle.previous_checkpoint?.closed_at ??
-        requestedCommittedAt)
-    )).toISOString();
-    const sourceSystemCode = input.researchMemoryControlAssignment
-      ? await exactArenaSourceSystemCode({
-          store: input.store,
-          source: input.source
-        })
-      : await recordArenaSourceSystemCode({
-          store: input.store,
-          source: input.source,
-          artifact: sourceArtifact,
-          sessionId,
-          createdAt: requestedCommittedAt
-        });
-    const context = await arenaContext(
+  const preflight = await withArenaStoreSnapshotMutation(
+    input.store,
+    () => arenaContext(
       input.store,
       input.direction,
       input.allocation,
       input.allocationSelection,
       input.researchTriggerRecord,
       input.researchEvidenceArtifacts
-    );
-    const memoryProjection = buildResearchWorkerMemoryProjection({
-      mode: memoryMode,
-      currentContext: context.currentContext,
-      memoryContext: context.memoryContext,
-      ...(lifecycle.previous_checkpoint && lifecycle.prior_checkpoint
-        ? {
-            priorCheckpointRecord: lifecycle.previous_checkpoint,
-            priorCheckpoint: lifecycle.prior_checkpoint,
-            ...(lifecycle.previous_admission
-              ? { priorAdmissionDecision: lifecycle.previous_admission }
-              : {})
-          }
-        : {}),
-      ...(input.researchMemoryControlAssignment
-        ? { controlAssignment: input.researchMemoryControlAssignment }
-        : {})
-    });
-    const plan = buildResearchPreflightPlan({
-      candidate_arena_tick_id: input.tickId,
-      research_direction_ref: ref(
-        "research_direction",
-        lifecycle.direction.research_direction_id
-      ),
-      research_worker_ref: ref(
-        "research_worker",
-        lifecycle.worker.research_worker_id
-      ),
-      research_allocation_ref: ref(
-        "candidate_arena_research_allocation",
-        input.allocation.candidate_arena_research_allocation_id
-      ),
-      research_allocation_digest: input.allocation.allocation_digest,
-      source_system_code_ref: ref(
-        "system_code",
-        sourceSystemCode.system_code_id
-      ),
-      source_artifact_digest: input.researchMemoryControlAssignment
-        ? sourceArtifact.artifactDigest
-        : sourceSystemCode.artifact_digest,
-      methodology: researchPreflightMethodology({
-        direction: lifecycle.direction,
-        sourceCandidateId: input.source.candidate_id,
-        trigger: input.researchTriggerRecord,
-        evidenceArtifacts: input.researchEvidenceArtifacts
-      }),
-      memory_policy: memoryProjection.policy,
-      development_submission_limit: input.allocationSelection.experiment_budget,
-      committed_at: committedAt,
-      evaluator_seed: generateResearchPreflightEvaluatorSeed(),
-      ...(input.researchPreflightEvaluationOpportunity
-        ? {
-            evaluation_opportunity:
-              input.researchPreflightEvaluationOpportunity
-          }
-        : {})
-    });
-    await input.store.recordResearchPreflightCommitment(plan.commitment);
-    observeResearchWork(() =>
-      input.researchWorkObserver?.commitmentPersisted({
-        research_allocation_id:
-          input.allocation.candidate_arena_research_allocation_id,
+    ),
+    async (context) => {
+      const lifecycle = await resolveResearchWorkerLifecycle({
+        store: input.store,
         direction_kind: input.direction,
-        commitment_id: plan.commitment.research_preflight_commitment_id
-      })
-    );
-    return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
-  });
+        agent: agentDescriptor,
+        provider_kind: researchWorkerProviderKind(agentDescriptor),
+        candidate_arena_tick_id: input.tickId,
+        created_at: requestedCommittedAt
+      });
+      const committedAt = new Date(Math.max(
+        Date.parse(requestedCommittedAt),
+        Date.parse(lifecycle.previous_checkpoint?.closed_at ??
+          requestedCommittedAt)
+      )).toISOString();
+      const sourceSystemCode = input.researchMemoryControlAssignment
+        ? await exactArenaSourceSystemCode({
+            store: input.store,
+            source: input.source
+          })
+        : await recordArenaSourceSystemCode({
+            store: input.store,
+            source: input.source,
+            artifact: sourceArtifact,
+            sessionId,
+            createdAt: requestedCommittedAt
+          });
+      const memoryProjection = buildResearchWorkerMemoryProjection({
+        mode: memoryMode,
+        currentContext: context.currentContext,
+        memoryContext: context.memoryContext,
+        ...(lifecycle.previous_checkpoint && lifecycle.prior_checkpoint
+          ? {
+              priorCheckpointRecord: lifecycle.previous_checkpoint,
+              priorCheckpoint: lifecycle.prior_checkpoint,
+              ...(lifecycle.previous_admission
+                ? { priorAdmissionDecision: lifecycle.previous_admission }
+                : {})
+            }
+          : {}),
+        ...(input.researchMemoryControlAssignment
+          ? { controlAssignment: input.researchMemoryControlAssignment }
+          : {})
+      });
+      const plan = buildResearchPreflightPlan({
+        candidate_arena_tick_id: input.tickId,
+        research_direction_ref: ref(
+          "research_direction",
+          lifecycle.direction.research_direction_id
+        ),
+        research_worker_ref: ref(
+          "research_worker",
+          lifecycle.worker.research_worker_id
+        ),
+        research_allocation_ref: ref(
+          "candidate_arena_research_allocation",
+          input.allocation.candidate_arena_research_allocation_id
+        ),
+        research_allocation_digest: input.allocation.allocation_digest,
+        source_system_code_ref: ref(
+          "system_code",
+          sourceSystemCode.system_code_id
+        ),
+        source_artifact_digest: input.researchMemoryControlAssignment
+          ? sourceArtifact.artifactDigest
+          : sourceSystemCode.artifact_digest,
+        methodology: researchPreflightMethodology({
+          direction: lifecycle.direction,
+          sourceCandidateId: input.source.candidate_id,
+          trigger: input.researchTriggerRecord,
+          evidenceArtifacts: input.researchEvidenceArtifacts
+        }),
+        memory_policy: memoryProjection.policy,
+        development_submission_limit: input.allocationSelection.experiment_budget,
+        committed_at: committedAt,
+        evaluator_seed: generateResearchPreflightEvaluatorSeed(),
+        ...(input.researchPreflightEvaluationOpportunity
+          ? {
+              evaluation_opportunity:
+                input.researchPreflightEvaluationOpportunity
+            }
+          : {})
+      });
+      await input.store.recordResearchPreflightCommitment(plan.commitment);
+      observeResearchWork(() =>
+        input.researchWorkObserver?.commitmentPersisted({
+          research_allocation_id:
+            input.allocation.candidate_arena_research_allocation_id,
+          direction_kind: input.direction,
+          commitment_id: plan.commitment.research_preflight_commitment_id
+        })
+      );
+      return { ...lifecycle, sourceSystemCode, plan, memoryProjection };
+    }
+  );
   const closeCheckpoint = async (terminalReason: Exclude<
     ResearchWorkerCheckpointTerminalReason,
     "admission_recorded"
@@ -1686,6 +1736,31 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
 }
 
 async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => Promise<T>): Promise<T> {
+  return queueArenaStoreMutation(store, () =>
+    typeof store.runResearchOperationsProjectionBatch === "function"
+      ? store.runResearchOperationsProjectionBatch(task)
+      : task()
+  );
+}
+
+export async function withArenaStoreSnapshotMutation<Snapshot, Result>(
+  store: OuroborosStorePort,
+  readSnapshot: () => Promise<Snapshot>,
+  task: (snapshot: Snapshot) => Promise<Result>
+): Promise<Result> {
+  return queueArenaStoreMutation(store, () =>
+    typeof store.runResearchOperationsProjectionBatch === "function"
+      ? store.runResearchOperationsProjectionBatch(async () =>
+          task(await readSnapshot())
+        )
+      : readSnapshot().then(task)
+  );
+}
+
+async function queueArenaStoreMutation<T>(
+  store: OuroborosStorePort,
+  task: () => Promise<T>
+): Promise<T> {
   const previous = arenaStoreMutationQueues.get(store) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(task);
   arenaStoreMutationQueues.set(store, current.catch(() => undefined));
@@ -3655,7 +3730,7 @@ function candidateArenaTickRecord(input: {
     tick_id: input.tickId,
     started_at: input.startedAt,
     completed_at: input.completedAt,
-    status: candidateArenaTickStatus(input.directionResults),
+    status: deriveCandidateArenaTickStatus(input.directionResults),
     source_candidate: input.sourceCandidate,
     created_candidate_refs: input.createdCandidateIds.map((candidateId) =>
       ref("trading_system_candidate", candidateId)
@@ -3670,32 +3745,49 @@ function candidateArenaTickRecord(input: {
   };
 }
 
-function toCandidateArenaTickReadModel(
+export function projectCandidateArenaTickReadModel(
   tick: CandidateArenaTickRecord,
   allocation?: CandidateArenaResearchAllocationRecord
 ): CandidateArenaTickReadModel {
+  if (!candidateArenaTickHasRuntimeShape(tick) ||
+    !candidateArenaTickAuthorityGraphHasRuntimeShape(tick) ||
+    tick.status !== deriveCandidateArenaTickStatus(tick.direction_results)) {
+    throw new Error("candidate_arena_projection_source_invalid");
+  }
+  const hasAllocationBinding = tick.research_allocation_ref !== undefined ||
+    tick.research_allocation_digest !== undefined;
+  if (tick.created_candidate_refs.length >
+      MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH ||
+    tick.direction_results.length >
+      MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH ||
+    hasAllocationBinding !== (allocation !== undefined) ||
+    allocation !== undefined && !candidateArenaProjectionAllocationMatchesTick(
+      allocation,
+      tick
+    )) {
+    throw new Error("candidate_arena_projection_source_invalid");
+  }
   return {
-    tick_id: tick.tick_id,
+    tick_id: candidateArenaProjectionIdentifier(tick.tick_id),
     started_at: tick.started_at,
     completed_at: tick.completed_at,
     status: tick.status,
-    ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
-    created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
-    direction_results: tick.direction_results.map((result) => ({
-      ...result,
-      ...(result.error === undefined
-        ? {}
-        : {
-            error: candidateArenaFailureSummary(
-              result.error,
-              "candidate_arena_research_failed"
-            )
-          })
-    })),
+    ...(tick.source_candidate
+      ? { source_candidate: projectCandidateArenaTickSource(tick.source_candidate) }
+      : {}),
+    created_candidate_ids: tick.created_candidate_refs
+      .map((candidate) => candidateArenaProjectionIdentifier(candidate.id)),
+    direction_results: tick.direction_results
+      .map((result) =>
+        allocation === undefined && result.status === "created"
+          ? projectLegacyCandidateArenaDirectionResult(result)
+          : projectCandidateArenaDirectionResult(result)
+      ),
     ...(allocation
       ? {
-          research_allocation:
-            toCandidateArenaResearchAllocationReadModel(allocation)
+          research_allocation: projectCandidateArenaResearchAllocation(
+            allocation
+          )
         }
       : {}),
     ...(tick.paper_trading_continuation
@@ -3706,18 +3798,390 @@ function toCandidateArenaTickReadModel(
             )
         }
       : {}),
-    authority_status: tick.authority_status
+    authority_status: "not_live"
   };
 }
 
-function candidateArenaTickStatus(
-  directionResults: CandidateArenaTickDirectionResultReadModel[]
-): CandidateArenaTickStatus {
-  const failedCount = directionResults.filter((result) => result.status === "failed").length;
-  if (failedCount === 0) {
-    return "completed";
+function projectCandidateArenaTickSource(
+  source: CandidateArenaTickSourceReadModel
+): CandidateArenaTickSourceReadModel {
+  return {
+    source_kind: source.source_kind,
+    candidate_id: candidateArenaProjectionIdentifier(source.candidate_id),
+    display_name: candidateArenaProjectionText(
+      source.display_name,
+      "candidate"
+    ),
+    ...(source.net_revenue_usdt === undefined
+      ? {}
+      : { net_revenue_usdt: source.net_revenue_usdt }),
+    authority_status: "not_live"
+  };
+}
+
+function projectCandidateArenaDirectionResult(
+  result: CandidateArenaTickDirectionResultReadModel
+): CandidateArenaTickProjectedDirectionResultReadModel {
+  const provider = result.agent_provider === "codex" ||
+    result.agent_provider === "fixture" ||
+    result.agent_provider === "claude_code"
+      ? result.agent_provider
+      : undefined;
+  return {
+    direction_kind: result.direction_kind,
+    status: result.status,
+    ...(provider ? { agent_provider: provider } : {}),
+    ...(typeof result.agent_model === "string"
+      ? {
+          agent_model: candidateArenaProjectionText(
+            result.agent_model,
+            "managed_model"
+          )
+        }
+      : {}),
+    ...(result.candidate_id === undefined
+      ? {}
+      : {
+          candidate_id: candidateArenaProjectionIdentifier(
+            result.candidate_id
+          )
+        }),
+    ...(result.finding === undefined
+      ? {}
+      : {
+          finding: candidateArenaProjectionText(
+            result.finding,
+            "candidate_arena_research_finding_unavailable"
+          )
+        }),
+    ...(result.error === undefined
+      ? {}
+      : {
+          error: candidateArenaFailureSummary(
+            result.error,
+            "candidate_arena_research_failed"
+          )
+        }),
+    ...(result.admission_decision_id === undefined
+      ? {}
+      : {
+          admission_decision_id: candidateArenaProjectionIdentifier(
+            result.admission_decision_id
+          )
+        }),
+    ...(result.admission_reason === undefined
+      ? {}
+      : { admission_reason: result.admission_reason }),
+    ...(result.net_revenue_usdt === undefined
+      ? {}
+      : { net_revenue_usdt: result.net_revenue_usdt }),
+    ...(result.research_efficiency === undefined
+      ? {}
+      : {
+          research_efficiency: projectCandidateArenaResearchEfficiency(
+            result.research_efficiency
+          )
+        }),
+    ...(result.research_preflight === undefined
+      ? {}
+      : {
+          research_preflight: {
+            commitment_id: candidateArenaProjectionIdentifier(
+              result.research_preflight.commitment_id
+            ),
+            development_submission_count:
+              result.research_preflight.development_submission_count,
+            sealed_terminal_status:
+              result.research_preflight.sealed_terminal_status,
+            reason: result.research_preflight.reason,
+            authority_status: "not_promotion_authority"
+          }
+        }),
+    ...(result.paper_handoff_conformance === undefined
+      ? {}
+      : {
+          paper_handoff_conformance:
+            projectCandidateArenaPaperHandoffConformance(
+              result.paper_handoff_conformance
+            )
+        })
+  };
+}
+
+function projectLegacyCandidateArenaDirectionResult(
+  result: CandidateArenaTickDirectionResultReadModel
+): CandidateArenaTickProjectedDirectionResultReadModel {
+  if (result.status !== "created" || result.candidate_id === undefined) {
+    throw new Error("candidate_arena_projection_legacy_result_invalid");
   }
-  return failedCount < directionResults.length ? "completed_with_errors" : "failed";
+  return {
+    direction_kind: result.direction_kind,
+    status: "legacy_unverified",
+    candidate_id: candidateArenaProjectionIdentifier(result.candidate_id),
+    finding: candidateArenaProjectionText(
+      result.finding ??
+        "Legacy candidate predates allocation-bound admission evidence.",
+      "Legacy candidate predates allocation-bound admission evidence."
+    ),
+    ...(result.research_efficiency === undefined
+      ? {}
+      : {
+          research_efficiency: projectCandidateArenaResearchEfficiency(
+            result.research_efficiency
+          )
+        })
+  };
+}
+
+function projectCandidateArenaResearchEfficiency(
+  efficiency: CandidateArenaResearchEfficiencyReadModel
+): CandidateArenaResearchEfficiencyReadModel {
+  const projectPhase = (
+    phase: NonNullable<CandidateArenaResearchEfficiencyReadModel["development"]>
+  ) => ({
+    submission_count: phase.submission_count,
+    provider_request_total: phase.provider_request_total,
+    runner_command_total: phase.runner_command_total,
+    scenario_count: phase.scenario_count,
+    elapsed_ms: phase.elapsed_ms
+  });
+  return {
+    provider_request_total: efficiency.provider_request_total,
+    runner_command_total: efficiency.runner_command_total,
+    scenario_count: efficiency.scenario_count,
+    elapsed_ms: efficiency.elapsed_ms,
+    ...(efficiency.development
+      ? { development: projectPhase(efficiency.development) }
+      : {}),
+    ...(efficiency.sealed_admission
+      ? { sealed_admission: projectPhase(efficiency.sealed_admission) }
+      : {}),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function projectCandidateArenaPaperHandoffConformance(
+  conformance: NonNullable<
+    CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+  >
+): NonNullable<
+  CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+> {
+  if (!candidateArenaPaperHandoffReason(conformance.reason) ||
+    (conformance.status === "passed") !== (conformance.reason === "passed")) {
+    throw new Error(
+      "candidate_arena_projection_conformance_reason_invalid"
+    );
+  }
+  return {
+    conformance_id: candidateArenaProjectionIdentifier(
+      conformance.conformance_id
+    ),
+    status: conformance.status,
+    reason: conformance.reason,
+    ...(conformance.candidate_egress_attestation
+      ? {
+          candidate_egress_attestation: {
+            attestation_id: candidateArenaProjectionIdentifier(
+              conformance.candidate_egress_attestation.attestation_id
+            ),
+            verification_status: "verified",
+            enforcement_result: "enforced",
+            network_policy_digest:
+              conformance.candidate_egress_attestation.network_policy_digest,
+            denial_summary: {
+              required_probe_count:
+                conformance.candidate_egress_attestation.denial_summary
+                  .required_probe_count,
+              start_denied_probe_count:
+                conformance.candidate_egress_attestation.denial_summary
+                  .start_denied_probe_count,
+              end_denied_probe_count:
+                conformance.candidate_egress_attestation.denial_summary
+                  .end_denied_probe_count,
+              unexpected_allow_count: 0
+            },
+            authority_status: "research_only"
+          }
+        }
+      : {}),
+    authority_status: "research_only"
+  };
+}
+
+function candidateArenaPaperHandoffReason(value: unknown): value is NonNullable<
+  CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+>["reason"] {
+  return [
+    "passed",
+    "runner_crash",
+    "execution_timed_out",
+    "provider_protocol_incomplete",
+    "provider_protocol_violation",
+    "provider_request_limit_exceeded",
+    "paper_decision_missing",
+    "paper_decision_ambiguous",
+    "paper_event_invalid",
+    "runtime_heartbeat_missing",
+    "runtime_stop_missing",
+    "instance_identity_mismatch",
+    "artifact_digest_mismatch",
+    "hidden_evaluator_field",
+    "candidate_self_report",
+    "private_or_live_authority"
+  ].includes(value as string);
+}
+
+function projectCandidateArenaResearchAllocation(
+  allocation: CandidateArenaResearchAllocationRecord
+): CandidateArenaResearchAllocationReadModel {
+  if (allocation.selected_directions.length >
+      MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH ||
+    allocation.deferred_directions.length >
+      MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH ||
+    allocation.selected_directions.some((selection) =>
+      selection.reasons.length > MAX_CANDIDATE_ARENA_PROJECTION_ARRAY_LENGTH
+    )) {
+    throw new Error("candidate_arena_projection_source_invalid");
+  }
+  const basis = allocation.allocation_policy_basis;
+  const allocationPolicyBasis = basis.basis_kind ===
+      "research_allocation_policy_decision"
+    ? {
+        basis_kind: basis.basis_kind,
+        policy_decision_ref: projectCandidateArenaRef(
+          basis.policy_decision_ref
+        ),
+        policy_decision_digest: basis.policy_decision_digest,
+        study_outcome_ref: projectCandidateArenaRef(basis.study_outcome_ref),
+        study_outcome_digest: basis.study_outcome_digest
+      } as const
+    : basis.basis_kind === "research_generalization_policy_decision"
+      ? {
+          basis_kind: basis.basis_kind,
+          policy_decision_ref: projectCandidateArenaRef(
+            basis.policy_decision_ref
+          ),
+          policy_decision_digest: basis.policy_decision_digest,
+          generalization_outcome_ref: projectCandidateArenaRef(
+            basis.generalization_outcome_ref
+          ),
+          generalization_outcome_digest: basis.generalization_outcome_digest
+        } as const
+      : { basis_kind: basis.basis_kind } as const;
+  return {
+    allocation_id: candidateArenaProjectionIdentifier(
+      allocation.candidate_arena_research_allocation_id
+    ),
+    tick_id: candidateArenaProjectionIdentifier(allocation.tick_id),
+    allocation_mode: allocation.allocation_mode,
+    allocation_policy_basis: allocationPolicyBasis,
+    ...(allocation.trigger
+      ? {
+          trigger: {
+            trigger_kind: allocation.trigger.trigger_kind,
+            trigger_id: candidateArenaProjectionIdentifier(
+              allocation.trigger.trigger_id
+            ),
+            goal: candidateArenaProjectionText(
+              allocation.trigger.goal,
+              "candidate_arena_research_goal",
+              MAX_CANDIDATE_ARENA_PROJECTION_TRIGGER_GOAL_LENGTH
+            ),
+            triggered_at: allocation.trigger.triggered_at,
+            ...(allocation.trigger.source_ref
+              ? {
+                  source_ref: projectCandidateArenaRef(
+                    allocation.trigger.source_ref
+                  )
+                }
+              : {}),
+            ...(allocation.trigger.evidence_artifact_ref
+              ? {
+                  evidence_artifact_ref: {
+                    record_kind: "research_evidence_artifact" as const,
+                    id: candidateArenaProjectionIdentifier(
+                      allocation.trigger.evidence_artifact_ref.id
+                    )
+                  },
+                  evidence_artifact_digest:
+                    allocation.trigger.evidence_artifact_digest!
+                }
+              : {}),
+            authority_status: "research_only" as const
+          }
+        }
+      : {}),
+    policy: { ...allocation.policy },
+    selected_directions: allocation.selected_directions
+      .map((selection) => ({
+        direction_kind: selection.direction_kind,
+        selection_kind: selection.selection_kind,
+        priority: selection.priority,
+        experiment_budget: selection.experiment_budget,
+        signal_score: selection.signal_score,
+        reasons: selection.reasons
+          .map((reason) => candidateArenaProjectionText(
+            reason,
+            "candidate_arena_allocation_reason"
+          ))
+      })),
+    deferred_directions: [...allocation.deferred_directions],
+    allocated_at: allocation.allocated_at,
+    research_scheduling_authority: true,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "research_only"
+  };
+}
+
+function candidateArenaProjectionAllocationMatchesTick(
+  allocation: CandidateArenaResearchAllocationRecord,
+  tick: CandidateArenaTickRecord
+): boolean {
+  const allocationDigest = `sha256:${createHash("sha256")
+    .update(candidateArenaResearchAllocationDigestInput(allocation))
+    .digest("hex")}`;
+  return candidateArenaResearchAllocationHasRuntimeShape(allocation) &&
+    allocation.allocation_digest === allocationDigest &&
+    allocation.tick_id === tick.tick_id &&
+    tick.research_allocation_ref?.record_kind ===
+      "candidate_arena_research_allocation" &&
+    tick.research_allocation_ref.id ===
+      allocation.candidate_arena_research_allocation_id &&
+    tick.research_allocation_digest === allocation.allocation_digest &&
+    Date.parse(tick.started_at) >= Date.parse(allocation.allocated_at) &&
+    tick.direction_results.length === allocation.selected_directions.length &&
+    tick.direction_results.every((result, index) =>
+      result.direction_kind ===
+        allocation.selected_directions[index]?.direction_kind
+    );
+}
+
+function projectCandidateArenaRef(reference: Ref): Ref {
+  return {
+    record_kind: candidateArenaProjectionIdentifier(reference.record_kind),
+    id: candidateArenaProjectionIdentifier(reference.id)
+  };
+}
+
+function candidateArenaProjectionIdentifier(value: string): string {
+  if (!candidateArenaIdentifierHasRuntimeShape(value)) {
+    throw new Error("candidate_arena_projection_identifier_invalid");
+  }
+  return value;
+}
+
+function candidateArenaProjectionText(
+  value: string,
+  fallback: string,
+  limit = MAX_CANDIDATE_ARENA_PROJECTION_TEXT_LENGTH
+): string {
+  const projected = sanitizeResearchEvidenceText(
+    String(value).slice(0, Math.max(limit * 4, limit))
+  ).trim().slice(0, limit);
+  return projected || fallback;
 }
 
 function findingSummaryForProfitLoss(
@@ -3753,15 +4217,26 @@ function candidateArenaFailureSummary(
 export function sanitizeCandidateArenaPaperTradingContinuation(
   continuation: CandidateArenaTickPaperTradingContinuationReadModel
 ): CandidateArenaTickPaperTradingContinuationReadModel {
-  return continuation.error === undefined
-    ? continuation
-    : {
-        ...continuation,
-        error: candidateArenaFailureSummary(
-          continuation.error,
-          "candidate_arena_paper_continuation_failed"
-        )
-      };
+  return {
+    status: continuation.status,
+    command_kind: "trading_run.start",
+    ...(continuation.selected_candidate_id === undefined
+      ? {}
+      : {
+          selected_candidate_id: candidateArenaProjectionIdentifier(
+            continuation.selected_candidate_id
+          )
+        }),
+    ...(continuation.error === undefined
+      ? {}
+      : {
+          error: candidateArenaFailureSummary(
+            continuation.error,
+            "candidate_arena_paper_continuation_failed"
+          )
+        }),
+    authority_status: "not_live"
+  };
 }
 
 function directionLabel(direction: ResearchDirectionKind): string {

@@ -45,6 +45,7 @@ function view(sessions: ResearchSessionViewModel[] = [session()]): ResearchWorks
 function minimalDetail(id = "research-1"): ResearchSessionDetailReadModel {
   return {
     identity_kind: "derived_projection", research_work_item_id: id, research_allocation_id: "allocation-1",
+    tick_id: "tick-1",
     direction_kind: "execution_cost_robustness", status: "running",
     status_basis: { basis_kind: "runtime_research_work_item", authority_status: "read_only" },
     projection_health: "complete", degraded_reasons: [], trigger_availability: "available",
@@ -122,6 +123,28 @@ describe("ResearchScreen", () => {
     expect(rendered).toContain("Loop degraded");
     expect(rendered).toContain("Tick history 1");
     expect(rendered).not.toContain("The Research projection is available");
+  });
+
+  it("labels legacy Research summaries as compatibility evidence", () => {
+    const compatibilityView = view();
+    compatibilityView.availability = "compatibility";
+    compatibilityView.sessionWindow = undefined;
+    compatibilityView.sessions[0]!.projectionHealth = "legacy_unknown";
+
+    const rendered = renderToStaticMarkup(
+      <ResearchScreen
+        view={compatibilityView}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(rendered).toContain("Legacy summary compatibility");
+    expect(rendered).toContain("Older Research summary fields remain visible");
+    expect(rendered).toContain("Legacy Unknown");
+    expect(rendered).toContain("Improve spread robustness");
+    expect(rendered).not.toContain("Research projection unavailable");
   });
 
   it("keeps Tick history separately labeled and marks native selections with aria-current", () => {
@@ -209,6 +232,82 @@ describe("ResearchScreen", () => {
     expect(rendered).toContain("1 projected · 3 omitted");
     expect(rendered).toContain(
       "Bounded summary projection: 1 of 4 sessions · 3 omitted · exact URL detail remains available."
+    );
+  });
+
+  it("uses authoritative capacity for active sessions instead of counting inactive recovering rows", () => {
+    const recoveringView = view([session({ status: "recovering" })]);
+    recoveringView.sessionWindow = {
+      recordedCount: 1,
+      projectedCount: 1,
+      omittedCount: 0,
+      truncated: false
+    };
+    recoveringView.capacity = {
+      max_concurrent_sessions: 2,
+      active_session_count: 0,
+      queued_session_count: 0
+    };
+
+    const rendered = renderToStaticMarkup(
+      <ResearchScreen
+        view={recoveringView}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(rendered).toContain("0 active");
+    expect(rendered).toContain("0 / 2");
+    expect(rendered).not.toContain("1 active");
+  });
+
+  it("renders recorded and active session metrics as unavailable without a projection", () => {
+    const unavailableView = view([]);
+    unavailableView.availability = "unavailable";
+    unavailableView.sessionWindow = {
+      recordedCount: 365,
+      projectedCount: 100,
+      omittedCount: 265,
+      truncated: true
+    };
+    unavailableView.emptyState = "projection_unavailable";
+
+    const rendered = renderToStaticMarkup(
+      <ResearchScreen
+        view={unavailableView}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(rendered).toMatch(
+      /Actual sessions<\/dt><dd[^>]*>Unavailable<\/dd><dd[^>]*>Active unavailable/
+    );
+    expect(rendered).toMatch(
+      /Capacity<\/dt><dd[^>]*>Unavailable<\/dd><dd[^>]*>Projection required/
+    );
+    expect(rendered).not.toContain("365");
+    expect(rendered).not.toContain("0 / 2");
+  });
+
+  it("does not infer a recorded total from a bounded list without authoritative window metadata", () => {
+    const missingWindowView = view([session()]);
+    missingWindowView.sessionWindow = undefined;
+
+    const rendered = renderToStaticMarkup(
+      <ResearchScreen
+        view={missingWindowView}
+        commandRunning={false}
+        onSelect={vi.fn()}
+        onCommand={vi.fn()}
+      />
+    );
+
+    expect(rendered).toMatch(
+      /Actual sessions<\/dt><dd[^>]*>Unavailable<\/dd>/
     );
   });
 

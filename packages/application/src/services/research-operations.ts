@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY,
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
+  candidateArenaTickAuthorityGraphHasRuntimeShape,
   candidateArenaTickHasRuntimeShape,
   candidateEgressAttestationIdForConformance,
+  deriveCandidateArenaTickStatus,
   isCandidateAdmissionDecisionConsistent,
   paperTradingHandoffConformanceDigestInput,
   paperTradingHandoffConformanceHasRuntimeShape,
@@ -30,6 +33,7 @@ import {
   researchGeneralizationPolicyDecisionHasRuntimeShape,
   researchGeneralizationProtocolDigestInput,
   researchGeneralizationProtocolHasRuntimeShape,
+  researchPopulationDiversityHasRuntimeShape,
   researchMemoryControlStudyDigestInput,
   researchMemoryControlStudyHasRuntimeShape,
   researchPreflightCommitmentDigestInput,
@@ -45,6 +49,8 @@ import {
   type CandidateArenaResearchAllocationRecord,
   type CandidateArenaResearchAllocationSelection,
   type CandidateArenaTickDirectionResultReadModel,
+  type CandidateArenaTickProjectedDirectionResultReadModel,
+  type CandidateArenaTickReadModel,
   type CandidateArenaTickRecord,
   type ExperimentRunRecord,
   type PaperTradingHandoffConformanceRecord,
@@ -63,12 +69,14 @@ import {
   type ResearchGeneralizationPolicyDecisionRecord,
   type ResearchGeneralizationProtocolRecord,
   type ResearchMemoryControlStudyRecord,
+  type ResearchGeneralizationReadModel,
   type ResearchLifecycleEventReadModel,
   type ResearchOperationsReadModel,
   type ResearchSessionDegradedReason,
   type ResearchSessionDetailReadModel,
   type ResearchSessionStatusBasisReadModel,
   type ResearchSessionSummaryReadModel,
+  type ResearchSessionSummaryWireReadModel,
   type ResearchSessionTerminalGraphReadModel,
   type ResearchPreflightCommitmentRecord,
   type ResearchWorkerCheckpointRecord,
@@ -80,6 +88,17 @@ import type {
   CandidateArenaEvidenceSnapshot,
   CandidateArenaRunnerHealthReadModel
 } from "../candidate/arena";
+import { projectCandidateArenaTickReadModel } from "../candidate/arena";
+import {
+  buildResearchGeneralizationReadModel,
+  ResearchGeneralizationReadModelError
+} from
+  "../candidate/research-generalization-read-model";
+import {
+  buildResearchPopulationDiversity,
+  ResearchPopulationDiversityEvidenceError
+} from
+  "../candidate/research-population-diversity";
 import { decideResearchAllocationPolicyDecision } from
   "../candidate/research-allocation-policy-decision";
 import { researchControlCampaignId } from
@@ -95,12 +114,27 @@ import {
   researchWorkItemId,
   type CandidateArenaActiveResearchWorkItemReadModel
 } from "../candidate/research-work-item";
-import type { OuroborosStorePort } from "../ports/store";
+import type {
+  OuroborosStorePort,
+  ResearchOperationsProjectionCapsule,
+  ResearchOperationsProjectionCapsuleTrieNode,
+  ResearchOperationsProjectionCapsuleTrieNodeRef,
+  ResearchOperationsProjectionIndexRecord,
+  ResearchOperationsProjectionWindow
+} from "../ports/store";
 import { safeId } from "../safe-id";
 
 const TEXT_LIMIT = 500;
 const HISTORY_LIMIT = 100;
 export const RESEARCH_OPERATIONS_SESSION_LIMIT = 100;
+const RESEARCH_OPERATIONS_CAPSULE_MAX_BYTES = 256 * 1024;
+const RESEARCH_OPERATIONS_CAPSULE_TRIE_LEAF_MAX_BYTES = 16 * 1024;
+const RESEARCH_OPERATIONS_CAPSULE_TRIE_NODE_MAX_BYTES = 256 * 1024;
+const RESEARCH_OPERATIONS_INDEX_MAX_BYTES = 256 * 1024;
+export const RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES = 256 * 1024;
+const RESEARCH_OPERATIONS_OPEN_SESSION_LIMIT = 100;
+const SESSION_MEMBERSHIP_BIT_COUNT = 32_768;
+const SESSION_MEMBERSHIP_HASH_COUNT = 7;
 
 type ResearchOperationsStore = Pick<
   OuroborosStorePort,
@@ -127,6 +161,7 @@ type ResearchOperationsStore = Pick<
   | "listResearchMemoryControlStudies"
   | "getCandidate"
   | "getSystemCode"
+  | "readResearchOperationsProjectionWindow"
 >;
 
 export interface ResearchOperationsProjectionServiceOptions {
@@ -136,18 +171,14 @@ export interface ResearchOperationsProjectionServiceOptions {
 
 export function unavailableResearchOperationsReadModel(
   health: CandidateArenaRunnerHealthReadModel,
-  arenaEvidence: CandidateArenaEvidenceSnapshot
+  _arenaEvidence: CandidateArenaEvidenceSnapshot
 ): ResearchOperationsReadModel {
-  const activeAllocation = arenaEvidence.allocations.find((allocation) =>
-    allocationHasCanonicalRuntimeShape(allocation) &&
-    allocation.tick_id === health.active_tick_id
-  );
   return {
     projection_kind: "research_operations",
     availability: "unavailable",
     loop_status: "degraded",
     capacity: {
-      max_concurrent_sessions: activeAllocation?.policy.concurrency_limit ??
+      max_concurrent_sessions:
         CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY.concurrency_limit,
       active_session_count: health.active_research_work_items.length,
       queued_session_count: 0
@@ -210,11 +241,13 @@ interface SessionSource {
   selectedSystemCode?: SystemCodeRecord;
   selectedArtifactExact: boolean;
   selectedArtifactExpected: boolean;
+  candidateMaterializationExact: boolean;
   evaluationChainAmbiguous: boolean;
   evaluationGraphConflict: boolean;
   tickAmbiguous: boolean;
   admissionGraphConflict: boolean;
   admissionIntegrityConflict: boolean;
+  terminalAdmissionConflict: boolean;
   terminalGraphComplete: boolean;
   evidenceInputs: ResearchEvidenceArtifactReadModel[];
   latestEvidenceSummary?: string;
@@ -265,6 +298,7 @@ interface ResearchOperationsProjectionIndex {
   evaluationsByCommitmentId: Map<string, TradingEvaluationResultRecord[]>;
   evaluationsById: Map<string, TradingEvaluationResultRecord[]>;
   admissionsByEvaluationId: Map<string, CandidateAdmissionDecisionRecord[]>;
+  admissionsByCommitmentId: Map<string, CandidateAdmissionDecisionRecord[]>;
   admissionsById: Map<string, CandidateAdmissionDecisionRecord[]>;
   admissionsByFingerprintId: Map<string, CandidateAdmissionDecisionRecord[]>;
   lineagesBySystemCodeId: Map<string, ArtifactLineageRecord[]>;
@@ -304,6 +338,16 @@ export class ResearchOperationsProjectionService {
   async readOperations(
     arenaEvidence?: CandidateArenaEvidenceSnapshot
   ): Promise<ResearchOperationsReadModel> {
+    if (typeof this.options.store.readResearchOperationsProjectionWindow ===
+      "function") {
+      return this.readMaterializedOperations(arenaEvidence);
+    }
+    return this.readOperationsFromGraph(arenaEvidence);
+  }
+
+  private async readOperationsFromGraph(
+    arenaEvidence?: CandidateArenaEvidenceSnapshot
+  ): Promise<ResearchOperationsReadModel> {
     const graph = await this.load(arenaEvidence);
     const index = createResearchOperationsProjectionIndex(graph);
     const recordedSeeds = this.sessionSeeds(graph, index)
@@ -314,7 +358,7 @@ export class ResearchOperationsProjectionService {
       this.loadCandidates(graph, index, projectedSeeds)
     ]);
     const sessions = this.sources(graph, index, projectedSeeds)
-      .map((source) => projectSummary(source, graph.health))
+      .map((source) => summaryForWire(projectSummary(source, graph.health)))
       .sort(compareSessions);
     const capacity = sessionCapacity(recordedSeeds, graph, index);
     const activeAllocation = graph.allocations.find((allocation) =>
@@ -362,6 +406,10 @@ export class ResearchOperationsProjectionService {
   async readSessionDetail(
     requestedWorkItemId: string
   ): Promise<ResearchSessionDetailReadModel | undefined> {
+    if (typeof this.options.store.readResearchOperationsProjectionWindow ===
+      "function") {
+      return this.readMaterializedSessionDetail(requestedWorkItemId);
+    }
     const allocations = await this.options.store.listCandidateArenaResearchAllocations();
     if (!rawSessionSeeds(allocations, requestedWorkItemId).length) return undefined;
     const graph = await this.load(undefined, allocations);
@@ -376,12 +424,224 @@ export class ResearchOperationsProjectionService {
     return sources.length === 1 ? projectDetail(sources[0]!, graph.health) : undefined;
   }
 
+  async materializeProjection(
+    arenaEvidence?: CandidateArenaEvidenceSnapshot
+  ): Promise<{
+    index: ResearchOperationsProjectionIndexRecord;
+    capsules: ResearchOperationsProjectionCapsule[];
+    capsule_trie_nodes: ResearchOperationsProjectionCapsuleTrieNode[];
+  }> {
+    const graph = await this.load(arenaEvidence);
+    const projectionIndex = createResearchOperationsProjectionIndex(graph);
+    const seeds = this.sessionSeeds(graph, projectionIndex)
+      .sort((left, right) => compareSessionSeeds(left, right, projectionIndex));
+    await Promise.all([
+      this.loadSystemCodes(graph, projectionIndex, seeds),
+      this.loadCandidates(graph, projectionIndex, seeds)
+    ]);
+    const sources = this.sources(graph, projectionIndex, seeds);
+    const tickResearchWorkItemIds = new Map<string, string[]>();
+    for (const seed of seeds) {
+      const ids = tickResearchWorkItemIds.get(seed.allocation.tick_id) ?? [];
+      if (!ids.includes(seed.workItemId)) ids.push(seed.workItemId);
+      tickResearchWorkItemIds.set(seed.allocation.tick_id, ids);
+    }
+    for (const ids of tickResearchWorkItemIds.values()) ids.sort();
+    const capsules = sources.map((source, position) => {
+      const seed = seeds[position]!;
+      const { runtime: _runtime, ...materializedSource } = source;
+      const inactiveHealth = materializationHealth();
+      const activeHealth = materializationHealth(seed.allocation.tick_id);
+      const inactiveDetail = projectDetail(materializedSource, inactiveHealth);
+      const activeQueuedDetail = projectDetail(materializedSource, activeHealth);
+      return sealResearchOperationsProjectionCapsule({
+        record_kind: "research_operations_projection_capsule",
+        version: 1,
+        research_work_item_id: seed.workItemId,
+        runtime_identity: {
+          research_work_item_id: seed.workItemId,
+          research_allocation_id:
+            seed.allocation.candidate_arena_research_allocation_id,
+          tick_id: seed.allocation.tick_id,
+          tick_research_work_item_ids: [
+            ...(tickResearchWorkItemIds.get(seed.allocation.tick_id) ?? [])
+          ],
+          direction_kind: seed.selection.direction_kind,
+          ...(source.commitment
+            ? {
+                commitment_id:
+                  source.commitment.research_preflight_commitment_id
+              }
+            : {}),
+          concurrency_limit: seed.allocation.policy.concurrency_limit
+        },
+        inactive_detail: inactiveDetail,
+        active_queued_detail: activeQueuedDetail,
+        graph_conflict: sessionSeedHasGraphConflict(seed, projectionIndex),
+        // Only terminal evidence admitted into the exact projected detail may
+        // close the materialized session. A raw checkpoint behind an invalid
+        // commitment closure must remain recoverable rather than becoming
+        // terminal through the seed-only pre-load index.
+        terminal_evidence_present: inactiveDetail.lifecycle_events.some(
+          (event) => event.event_kind === "checkpoint" || event.event_kind === "tick"
+        ),
+        authority_status: "read_only"
+      });
+    });
+    const candidateArenaEvidence = materializeCandidateArenaEvidence(
+      graph,
+      projectionIndex
+    );
+    const capsuleTrie = materializeResearchOperationsProjectionCapsuleTrie(
+      capsules
+    );
+    const graphConflictCount = capsules.filter((capsule) =>
+      capsule.graph_conflict
+    ).length;
+    const incompleteWithoutConflictCount = capsules.filter((capsule) =>
+      !capsule.graph_conflict && !capsule.terminal_evidence_present
+    ).length;
+    const openTickProjection = projectResearchOperationsOpenTickSessions(
+      capsules
+    );
+    const index = sealResearchOperationsProjectionIndex({
+      record_kind: "research_operations_projection_index",
+      version: 1,
+      head_session_refs: capsules
+        .slice(0, RESEARCH_OPERATIONS_SESSION_LIMIT)
+        .map((capsule) => ({
+          research_work_item_id: capsule.research_work_item_id,
+          allocated_at: capsule.inactive_detail.allocated_at!,
+          capsule_digest: capsule.capsule_digest
+        })),
+      ...openTickProjection,
+      capsule_trie_root_refs: capsuleTrie.root_refs,
+      recorded_session_count: capsules.length,
+      graph_conflict_count: graphConflictCount,
+      incomplete_without_conflict_count: incompleteWithoutConflictCount,
+      capsule_set_digest: researchOperationsProjectionCapsuleTrieDigest(
+        capsuleTrie.root_refs
+      ),
+      session_membership: createSessionMembership(capsules.map((capsule) =>
+        capsule.research_work_item_id
+      )),
+      candidate_arena_evidence: candidateArenaEvidence,
+      authority_status: "read_only"
+    });
+    return { index, capsules, capsule_trie_nodes: capsuleTrie.nodes };
+  }
+
+  private async readMaterializedOperations(
+    arenaEvidence?: CandidateArenaEvidenceSnapshot
+  ): Promise<ResearchOperationsReadModel> {
+    const health = this.options.runnerHealth();
+    const activeWorkItemIds = new Set(
+      health.active_research_work_items.map((item) => item.research_work_item_id)
+    );
+    const window = await this.options.store.readResearchOperationsProjectionWindow!({
+      session_limit: RESEARCH_OPERATIONS_SESSION_LIMIT,
+      ...(health.active_tick_id ? { active_tick_id: health.active_tick_id } : {}),
+      active_research_work_item_ids: [...activeWorkItemIds],
+      ...(arenaEvidence?.projection_digest
+        ? { expected_projection_digest: arenaEvidence.projection_digest }
+        : {})
+    });
+    assertResearchOperationsProjectionWindow(window);
+    const capsulesById = new Map(window.capsules.map((capsule) => [
+      capsule.research_work_item_id,
+      capsule
+    ]));
+    const headCapsules = window.index.head_session_refs.map((reference) => {
+      const capsule = capsulesById.get(reference.research_work_item_id);
+      if (!capsule || capsule.capsule_digest !== reference.capsule_digest ||
+        capsule.inactive_detail.allocated_at !== reference.allocated_at) {
+        throw new Error("research_operations_projection_head_mismatch");
+      }
+      return capsule;
+    });
+    const sessions = headCapsules
+      .map((capsule) => summaryFromDetail(materializedDetail(capsule, health)))
+      .sort(compareSessions);
+    const activeCapsules = [...capsulesById.values()].filter((capsule) =>
+      capsule.runtime_identity.tick_id === health.active_tick_id
+    );
+    const capacity = materializedSessionCapacity(activeCapsules, health);
+    const activeIncompleteWithoutConflictCount = activeCapsules.filter((capsule) =>
+      !capsule.graph_conflict && !capsule.terminal_evidence_present
+    ).length;
+    const hasInactiveRecovery = window.index.graph_conflict_count > 0 ||
+      window.index.incomplete_without_conflict_count >
+        activeIncompleteWithoutConflictCount ||
+      sessions.some((entry) => entry.status === "recovering");
+    const hasActiveRuntimeFailure = capacity.hasActiveRuntimeFailure ||
+      sessions.some((entry) =>
+        entry.status === "failed_closed" &&
+        entry.status_basis.basis_kind === "runtime_research_work_item"
+      );
+    const loopStatus = health.status === "running"
+      ? health.consecutive_failure_count > 0 || hasInactiveRecovery ||
+          hasActiveRuntimeFailure
+        ? "degraded"
+        : "running"
+      : health.active_tick
+        ? "stopping"
+        : hasInactiveRecovery ? "degraded" : "stopped";
+    const activeConcurrencyLimit = activeCapsules[0]
+      ?.runtime_identity.concurrency_limit;
+    const omittedSessionCount = window.index.recorded_session_count - sessions.length;
+    if (omittedSessionCount < 0) {
+      throw new Error("research_operations_projection_count_mismatch");
+    }
+    return {
+      projection_kind: "research_operations",
+      availability: "available",
+      loop_status: loopStatus,
+      capacity: {
+        max_concurrent_sessions: activeConcurrencyLimit ??
+          CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY.concurrency_limit,
+        active_session_count: capacity.activeCount,
+        queued_session_count: capacity.queuedCount
+      },
+      sessions,
+      recorded_session_count: window.index.recorded_session_count,
+      projected_session_count: sessions.length,
+      omitted_session_count: omittedSessionCount,
+      sessions_truncated: omittedSessionCount > 0,
+      ...(sessions[0]
+        ? { latest_session_id: sessions[0].research_work_item_id }
+        : {}),
+      authority_status: "research_only"
+    };
+  }
+
+  private async readMaterializedSessionDetail(
+    requestedWorkItemId: string
+  ): Promise<ResearchSessionDetailReadModel | undefined> {
+    const window = await this.options.store.readResearchOperationsProjectionWindow!({
+      session_limit: 0,
+      exact_research_work_item_id: requestedWorkItemId
+    });
+    assertResearchOperationsProjectionWindow(window);
+    const matching = window.capsules.filter((capsule) =>
+      capsule.research_work_item_id === requestedWorkItemId
+    );
+    if (matching.length === 0) return undefined;
+    if (matching.length !== 1) {
+      throw new Error("research_operations_projection_detail_ambiguous");
+    }
+    const health = this.options.runnerHealth();
+    return materializedDetail(matching[0]!, health);
+  }
+
   private async load(
     arenaEvidence?: CandidateArenaEvidenceSnapshot,
     suppliedAllocations?: CandidateArenaResearchAllocationRecord[]
   ): Promise<LoadedGraph> {
     const health = this.options.runnerHealth();
-    const allocations = suppliedAllocations ?? arenaEvidence?.allocations ??
+    const rawArenaEvidence = arenaEvidence?.availability === undefined
+      ? arenaEvidence
+      : undefined;
+    const allocations = suppliedAllocations ?? rawArenaEvidence?.allocations ??
       await this.options.store.listCandidateArenaResearchAllocations();
     const [
       ticks,
@@ -405,7 +665,7 @@ export class ResearchOperationsProjectionService {
       generalizationOutcomes,
       memoryControlStudies
     ] = await Promise.all([
-      arenaEvidence?.ticks ?? this.options.store.listCandidateArenaTicks(),
+      rawArenaEvidence?.ticks ?? this.options.store.listCandidateArenaTicks(),
       this.options.store.listResearchPreflightCommitments(),
       this.options.store.listResearchWorkers(),
       this.options.store.listResearchDirections(),
@@ -499,6 +759,3357 @@ export class ResearchOperationsProjectionService {
       await this.options.store.getCandidate(id)
     ] as const)));
   }
+}
+
+function projectionDigest(value: unknown): string {
+  return `sha256:${createHash("sha256")
+    .update(paperTradingComparisonPersistedRecordDigestInput(value))
+    .digest("hex")}`;
+}
+
+function persistedProjectionBytes(value: unknown): number {
+  return Buffer.byteLength(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+export function projectResearchOperationsOpenTickSessions(
+  capsules: ResearchOperationsProjectionCapsule[]
+): Pick<
+  ResearchOperationsProjectionIndexRecord,
+  | "open_tick_session_refs"
+  | "open_tick_session_count"
+  | "projected_open_tick_session_count"
+  | "omitted_open_tick_session_count"
+  | "open_tick_sessions_truncated"
+> {
+  const openByTick = new Map<string, string[]>();
+  for (const capsule of capsules) {
+    if (capsule.terminal_evidence_present) continue;
+    const ids = openByTick.get(capsule.runtime_identity.tick_id) ?? [];
+    ids.push(capsule.research_work_item_id);
+    openByTick.set(capsule.runtime_identity.tick_id, ids);
+  }
+  const openTickSessionCount = [...openByTick.values()].reduce(
+    (total, ids) => total + ids.length,
+    0
+  );
+  const projected = new Map<string, string[]>();
+  let projectedOpenTickSessionCount = 0;
+  for (const [tickId, ids] of openByTick) {
+    if (projectedOpenTickSessionCount + ids.length >
+      RESEARCH_OPERATIONS_OPEN_SESSION_LIMIT) {
+      continue;
+    }
+    projected.set(tickId, [...ids].sort());
+    projectedOpenTickSessionCount += ids.length;
+  }
+  const omittedOpenTickSessionCount = openTickSessionCount -
+    projectedOpenTickSessionCount;
+  return {
+    open_tick_session_refs: [...projected]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([tick_id, research_work_item_ids]) => ({
+        tick_id,
+        research_work_item_ids
+      })),
+    open_tick_session_count: openTickSessionCount,
+    projected_open_tick_session_count: projectedOpenTickSessionCount,
+    omitted_open_tick_session_count: omittedOpenTickSessionCount,
+    open_tick_sessions_truncated: omittedOpenTickSessionCount > 0
+  };
+}
+
+export function researchOperationsProjectionSourceRecordHasBoundedShape(
+  record:
+    | CandidateArenaResearchAllocationRecord
+    | CandidateArenaTickRecord
+    | ResearchFindingRecord
+    | ArtifactLineageRecord
+): boolean {
+  let bytes: number;
+  try {
+    bytes = Buffer.byteLength(JSON.stringify(record), "utf8");
+  } catch {
+    return false;
+  }
+  if (bytes > RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES) return false;
+  if (record?.record_kind === "candidate_arena_research_allocation") {
+    return candidateArenaResearchAllocationHasRuntimeShape(record) &&
+      record.selected_directions.length <= 10 &&
+      record.deferred_directions.length <= 10 &&
+      record.selected_directions.every((selection) =>
+        selection.reasons.length <= 10
+      ) &&
+      projectionIdentifier(record.candidate_arena_research_allocation_id) &&
+      projectionIdentifier(record.tick_id) &&
+      record.source_tick_refs.every((reference) =>
+        projectionRef(reference, "candidate_arena_tick")
+      ) && (!record.trigger || projectionIdentifier(record.trigger.trigger_id) &&
+        (!record.trigger.source_ref || projectionRef(record.trigger.source_ref)) &&
+        (!record.trigger.evidence_artifact_ref || projectionRef(
+          record.trigger.evidence_artifact_ref,
+          "research_evidence_artifact"
+        )));
+  }
+  if (record?.record_kind === "candidate_arena_tick") {
+    return candidateArenaTickHasRuntimeShape(record) &&
+      record.created_candidate_refs.length <= 10 &&
+      record.direction_results.length <= 10 &&
+      projectionIdentifier(record.candidate_arena_tick_id) &&
+      projectionIdentifier(record.tick_id) &&
+      record.created_candidate_refs.every((reference) =>
+        projectionRef(reference, "trading_system_candidate")
+      ) && (!record.research_allocation_ref || projectionRef(
+        record.research_allocation_ref,
+        "candidate_arena_research_allocation"
+      )) && record.direction_results.every((result) =>
+        result.paper_handoff_conformance === undefined ||
+        candidateArenaPaperHandoffReason(
+          result.paper_handoff_conformance.reason
+        )
+      );
+  }
+  if (record?.record_kind === "research_finding") {
+    return findingHasRuntimeShape(record);
+  }
+  return record?.record_kind === "artifact_lineage" &&
+    lineageHasRuntimeShape(record);
+}
+
+export function researchOperationsProjectionCapsuleRouteHash(
+  researchWorkItemId: string
+): string {
+  return createHash("sha256").update(researchWorkItemId).digest("hex");
+}
+
+export function materializeResearchOperationsProjectionCapsuleTrie(
+  capsules: ResearchOperationsProjectionCapsule[]
+): {
+  root_refs: ResearchOperationsProjectionCapsuleTrieNodeRef[];
+  nodes: ResearchOperationsProjectionCapsuleTrieNode[];
+} {
+  const entriesByRoot = new Map<string, Array<{
+    research_work_item_id: string;
+    capsule_digest: string;
+  }>>();
+  for (const capsule of capsules) {
+    if (!projectionIdentifier(capsule.research_work_item_id) ||
+      !validDigest(capsule.capsule_digest)) {
+      throw new Error("research_operations_projection_capsule_trie_entry_invalid");
+    }
+    const rootPrefix = researchOperationsProjectionCapsuleRouteHash(
+      capsule.research_work_item_id
+    ).slice(0, 2);
+    const entries = entriesByRoot.get(rootPrefix) ?? [];
+    entries.push({
+      research_work_item_id: capsule.research_work_item_id,
+      capsule_digest: capsule.capsule_digest
+    });
+    entriesByRoot.set(rootPrefix, entries);
+  }
+  const nodes: ResearchOperationsProjectionCapsuleTrieNode[] = [];
+  const roots = [...entriesByRoot]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([prefix, entries]) => buildResearchOperationsProjectionCapsuleTrieNode(
+      prefix,
+      entries,
+      nodes
+    ));
+  const result = {
+    root_refs: roots.map((node) => ({
+      prefix: node.prefix,
+      subtree_entry_count: node.subtree_entry_count,
+      node_digest: node.node_digest
+    })),
+    nodes: nodes.sort((left, right) =>
+      left.prefix.localeCompare(right.prefix) ||
+      left.node_kind.localeCompare(right.node_kind)
+    )
+  };
+  if (!researchOperationsProjectionCapsuleTrieHasIntegrity(
+    result.root_refs,
+    result.nodes,
+    capsules
+  )) {
+    throw new Error("research_operations_projection_capsule_trie_invalid");
+  }
+  return result;
+}
+
+function buildResearchOperationsProjectionCapsuleTrieNode(
+  prefix: string,
+  unsortedEntries: Array<{
+    research_work_item_id: string;
+    capsule_digest: string;
+  }>,
+  nodes: ResearchOperationsProjectionCapsuleTrieNode[]
+): ResearchOperationsProjectionCapsuleTrieNode {
+  const entries = [...unsortedEntries].sort((left, right) =>
+    left.research_work_item_id.localeCompare(right.research_work_item_id)
+  );
+  const leafInput = {
+    record_kind: "research_operations_projection_capsule_trie_node" as const,
+    version: 1 as const,
+    node_kind: "leaf" as const,
+    prefix,
+    subtree_entry_count: entries.length,
+    entries,
+    authority_status: "read_only" as const
+  };
+  const leafBytes = persistedProjectionBytes({
+    ...leafInput,
+    node_digest: projectionDigest(leafInput)
+  });
+  if (leafBytes <= RESEARCH_OPERATIONS_CAPSULE_TRIE_LEAF_MAX_BYTES ||
+    prefix.length === 64) {
+    if (leafBytes > RESEARCH_OPERATIONS_CAPSULE_TRIE_NODE_MAX_BYTES) {
+      throw new Error("research_operations_projection_capsule_trie_hash_collision");
+    }
+    const leaf = sealResearchOperationsProjectionCapsuleTrieNode(leafInput);
+    nodes.push(leaf);
+    return leaf;
+  }
+  const entriesByChild = new Map<string, typeof entries>();
+  for (const entry of entries) {
+    const routeHash = researchOperationsProjectionCapsuleRouteHash(
+      entry.research_work_item_id
+    );
+    const childPrefix = routeHash.slice(0, prefix.length + 2);
+    const childEntries = entriesByChild.get(childPrefix) ?? [];
+    childEntries.push(entry);
+    entriesByChild.set(childPrefix, childEntries);
+  }
+  const children = [...entriesByChild]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([childPrefix, childEntries]) =>
+      buildResearchOperationsProjectionCapsuleTrieNode(
+        childPrefix,
+        childEntries,
+        nodes
+      )
+    );
+  const branch = sealResearchOperationsProjectionCapsuleTrieNode({
+    record_kind: "research_operations_projection_capsule_trie_node",
+    version: 1,
+    node_kind: "branch",
+    prefix,
+    children: children.map((child) => ({
+      prefix: child.prefix,
+      subtree_entry_count: child.subtree_entry_count,
+      node_digest: child.node_digest
+    })),
+    subtree_entry_count: children.reduce(
+      (total, child) => total + child.subtree_entry_count,
+      0
+    ),
+    authority_status: "read_only"
+  });
+  nodes.push(branch);
+  return branch;
+}
+
+function sealResearchOperationsProjectionCapsuleTrieNode(
+  input:
+    | Omit<
+        Extract<
+          ResearchOperationsProjectionCapsuleTrieNode,
+          { node_kind: "leaf" }
+        >,
+        "node_digest"
+      >
+    | Omit<
+        Extract<
+          ResearchOperationsProjectionCapsuleTrieNode,
+          { node_kind: "branch" }
+        >,
+        "node_digest"
+      >
+): ResearchOperationsProjectionCapsuleTrieNode {
+  const node = {
+    ...input,
+    node_digest: projectionDigest(input)
+  } as ResearchOperationsProjectionCapsuleTrieNode;
+  if (persistedProjectionBytes(node) >
+    RESEARCH_OPERATIONS_CAPSULE_TRIE_NODE_MAX_BYTES) {
+    throw new Error("research_operations_projection_capsule_trie_node_too_large");
+  }
+  return node;
+}
+
+export function researchOperationsProjectionCapsuleTrieNodeHasIntegrity(
+  node: ResearchOperationsProjectionCapsuleTrieNode
+): boolean {
+  if (!node || node.record_kind !==
+      "research_operations_projection_capsule_trie_node" || node.version !== 1 ||
+    node.authority_status !== "read_only" ||
+    !/^(?:[0-9a-f]{2}){1,32}$/.test(node.prefix) ||
+    persistedProjectionBytes(node) >
+      RESEARCH_OPERATIONS_CAPSULE_TRIE_NODE_MAX_BYTES ||
+    !validDigest(node.node_digest)) {
+    return false;
+  }
+  if (node.node_kind === "leaf") {
+    if (!hasExactKeys(node, [
+      "record_kind",
+      "version",
+      "node_kind",
+      "prefix",
+      "subtree_entry_count",
+      "entries",
+      "node_digest",
+      "authority_status"
+    ]) || !positiveSafeInteger(node.subtree_entry_count) ||
+      !Array.isArray(node.entries) || node.entries.length === 0 ||
+      node.subtree_entry_count !== node.entries.length ||
+      (node.prefix.length < 64 && persistedProjectionBytes(node) >
+        RESEARCH_OPERATIONS_CAPSULE_TRIE_LEAF_MAX_BYTES)) {
+      return false;
+    }
+    let previous = "";
+    for (const entry of node.entries) {
+      if (!hasExactKeys(entry, [
+        "research_work_item_id",
+        "capsule_digest"
+      ]) || !projectionIdentifier(entry.research_work_item_id) ||
+        entry.research_work_item_id <= previous ||
+        !researchOperationsProjectionCapsuleRouteHash(
+          entry.research_work_item_id
+        ).startsWith(node.prefix) || !validDigest(entry.capsule_digest)) {
+        return false;
+      }
+      previous = entry.research_work_item_id;
+    }
+  } else if (node.node_kind === "branch") {
+    if (!hasExactKeys(node, [
+      "record_kind",
+      "version",
+      "node_kind",
+      "prefix",
+      "subtree_entry_count",
+      "children",
+      "node_digest",
+      "authority_status"
+    ]) || node.prefix.length >= 64 ||
+      !positiveSafeInteger(node.subtree_entry_count) ||
+      !Array.isArray(node.children) ||
+      node.children.length === 0 || node.children.length > 256) {
+      return false;
+    }
+    let previous = "";
+    for (const child of node.children) {
+      if (!hasExactKeys(child, [
+        "prefix",
+        "subtree_entry_count",
+        "node_digest"
+      ]) ||
+        !/^(?:[0-9a-f]{2}){2,32}$/.test(child.prefix) ||
+        child.prefix.length !== node.prefix.length + 2 ||
+        !child.prefix.startsWith(node.prefix) || child.prefix <= previous ||
+        !positiveSafeInteger(child.subtree_entry_count) ||
+        !validDigest(child.node_digest)) {
+        return false;
+      }
+      previous = child.prefix;
+    }
+    if (node.subtree_entry_count !== node.children.reduce(
+      (total, child) => total + child.subtree_entry_count,
+      0
+    )) return false;
+  } else {
+    return false;
+  }
+  const { node_digest: _digest, ...input } = node;
+  return node.node_digest === projectionDigest(input);
+}
+
+export function researchOperationsProjectionCapsuleTrieHasIntegrity(
+  rootRefs: ResearchOperationsProjectionCapsuleTrieNodeRef[],
+  nodes: ResearchOperationsProjectionCapsuleTrieNode[],
+  capsules: ResearchOperationsProjectionCapsule[]
+): boolean {
+  if (!Array.isArray(rootRefs) || rootRefs.length > 256 ||
+    !Array.isArray(nodes) || !Array.isArray(capsules)) {
+    return false;
+  }
+  const nodesByPrefix = new Map<string, ResearchOperationsProjectionCapsuleTrieNode>();
+  for (const node of nodes) {
+    if (!researchOperationsProjectionCapsuleTrieNodeHasIntegrity(node) ||
+      nodesByPrefix.has(node.prefix)) {
+      return false;
+    }
+    nodesByPrefix.set(node.prefix, node);
+  }
+  let previousRoot = "";
+  const pending: string[] = [];
+  for (const rootRef of rootRefs) {
+    if (!hasExactKeys(rootRef, [
+      "prefix",
+      "subtree_entry_count",
+      "node_digest"
+    ]) ||
+      !/^[0-9a-f]{2}$/.test(rootRef.prefix) ||
+      rootRef.prefix <= previousRoot ||
+      !positiveSafeInteger(rootRef.subtree_entry_count) ||
+      !validDigest(rootRef.node_digest)) {
+      return false;
+    }
+    const root = nodesByPrefix.get(rootRef.prefix);
+    if (!root || root.node_digest !== rootRef.node_digest ||
+      root.subtree_entry_count !== rootRef.subtree_entry_count) return false;
+    pending.push(root.prefix);
+    previousRoot = rootRef.prefix;
+  }
+  const reached = new Set<string>();
+  const projectedEntries = new Map<string, string>();
+  while (pending.length > 0) {
+    const prefix = pending.pop()!;
+    if (reached.has(prefix)) return false;
+    reached.add(prefix);
+    const node = nodesByPrefix.get(prefix);
+    if (!node) return false;
+    if (node.node_kind === "branch") {
+      for (const childRef of node.children) {
+        const child = nodesByPrefix.get(childRef.prefix);
+        if (!child || child.node_digest !== childRef.node_digest ||
+          child.subtree_entry_count !== childRef.subtree_entry_count) return false;
+        pending.push(child.prefix);
+      }
+    } else {
+      for (const entry of node.entries) {
+        if (projectedEntries.has(entry.research_work_item_id)) return false;
+        projectedEntries.set(
+          entry.research_work_item_id,
+          entry.capsule_digest
+        );
+      }
+    }
+  }
+  if (reached.size !== nodes.length || projectedEntries.size !== capsules.length) {
+    return false;
+  }
+  const expectedEntries = new Map<string, string>();
+  for (const capsule of capsules) {
+    if (!projectionIdentifier(capsule.research_work_item_id) ||
+      !validDigest(capsule.capsule_digest) ||
+      expectedEntries.has(capsule.research_work_item_id)) {
+      return false;
+    }
+    expectedEntries.set(capsule.research_work_item_id, capsule.capsule_digest);
+  }
+  return [...expectedEntries].every(([id, digest]) =>
+    projectedEntries.get(id) === digest
+  ) && rootRefs.reduce((total, reference) =>
+    total + reference.subtree_entry_count,
+    0
+  ) === capsules.length;
+}
+
+export function researchOperationsProjectionCapsuleTrieDigest(
+  rootRefs: ResearchOperationsProjectionCapsuleTrieNodeRef[]
+): string {
+  return projectionDigest({
+    algorithm: "sha256_byte_radix_merkle_v1",
+    root_refs: rootRefs
+  });
+}
+
+function sealResearchOperationsProjectionCapsule(
+  input: Omit<ResearchOperationsProjectionCapsule, "capsule_digest">
+): ResearchOperationsProjectionCapsule {
+  const capsule = {
+    ...input,
+    capsule_digest: projectionDigest(input)
+  };
+  if (persistedProjectionBytes(capsule) >
+    RESEARCH_OPERATIONS_CAPSULE_MAX_BYTES) {
+    throw new Error("research_operations_projection_capsule_too_large");
+  }
+  if (!researchOperationsProjectionCapsuleHasIntegrity(capsule)) {
+    throw new Error("research_operations_projection_capsule_invalid");
+  }
+  return capsule;
+}
+
+function sealResearchOperationsProjectionIndex(
+  input: Omit<ResearchOperationsProjectionIndexRecord, "projection_digest">
+): ResearchOperationsProjectionIndexRecord {
+  const index = {
+    ...input,
+    projection_digest: projectionDigest(input)
+  };
+  if (persistedProjectionBytes(index) >
+    RESEARCH_OPERATIONS_INDEX_MAX_BYTES) {
+    throw new Error("research_operations_projection_index_too_large");
+  }
+  if (!researchOperationsProjectionIndexHasIntegrity(index)) {
+    throw new Error("research_operations_projection_index_invalid");
+  }
+  return index;
+}
+
+export function researchOperationsProjectionCapsuleHasIntegrity(
+  capsule: ResearchOperationsProjectionCapsule
+): boolean {
+  const hasCommitment = capsule?.runtime_identity?.commitment_id !== undefined;
+  if (!capsule ||
+    !researchSessionDetailHasProjectionShape(capsule.inactive_detail) ||
+    !researchSessionDetailHasProjectionShape(capsule.active_queued_detail)) {
+    return false;
+  }
+  if (!hasExactKeys(capsule, [
+    "record_kind",
+    "version",
+    "research_work_item_id",
+    "runtime_identity",
+    "inactive_detail",
+    "active_queued_detail",
+    "graph_conflict",
+    "terminal_evidence_present",
+    "authority_status",
+    "capsule_digest"
+  ]) || !hasExactKeys(capsule.runtime_identity, [
+    "research_work_item_id",
+    "research_allocation_id",
+    "tick_id",
+    "tick_research_work_item_ids",
+    "direction_kind",
+    ...(hasCommitment ? ["commitment_id"] : []),
+    "concurrency_limit"
+  ]) || capsule.record_kind !==
+      "research_operations_projection_capsule" || capsule.version !== 1 ||
+    capsule.authority_status !== "read_only" ||
+    !projectionIdentifier(capsule.research_work_item_id) ||
+    capsule.research_work_item_id !==
+      capsule.runtime_identity?.research_work_item_id ||
+    capsule.research_work_item_id !==
+      capsule.inactive_detail?.research_work_item_id ||
+    capsule.research_work_item_id !==
+      capsule.active_queued_detail?.research_work_item_id ||
+    capsule.runtime_identity.research_allocation_id !==
+      capsule.inactive_detail.research_allocation_id ||
+    capsule.runtime_identity.research_allocation_id !==
+      capsule.active_queued_detail.research_allocation_id ||
+    capsule.runtime_identity.tick_id !== capsule.inactive_detail.tick_id ||
+    capsule.runtime_identity.tick_id !== capsule.active_queued_detail.tick_id ||
+    capsule.runtime_identity.direction_kind !==
+      capsule.inactive_detail.direction_kind ||
+    capsule.runtime_identity.direction_kind !==
+      capsule.active_queued_detail.direction_kind ||
+    !projectionIdentifier(capsule.runtime_identity.research_allocation_id) ||
+    !projectionIdentifier(capsule.runtime_identity.tick_id) ||
+    !researchDirectionKind(capsule.runtime_identity.direction_kind) ||
+    capsule.research_work_item_id !== researchWorkItemId({
+      research_allocation_id:
+        capsule.runtime_identity.research_allocation_id,
+      direction_kind: capsule.runtime_identity.direction_kind
+    }) ||
+    hasCommitment && !projectionIdentifier(
+      capsule.runtime_identity.commitment_id
+    ) || (capsule.runtime_identity.commitment_id === undefined) !==
+      (capsule.inactive_detail.commitment_id === undefined) ||
+    capsule.runtime_identity.commitment_id !==
+      capsule.inactive_detail.commitment_id ||
+    capsule.runtime_identity.commitment_id !==
+      capsule.active_queued_detail.commitment_id ||
+    !boundedUniqueProjectionIdentifiers(
+      capsule.runtime_identity.tick_research_work_item_ids,
+      RESEARCH_OPERATIONS_SESSION_LIMIT
+    ) || capsule.runtime_identity.tick_research_work_item_ids.length === 0 ||
+    !capsule.runtime_identity.tick_research_work_item_ids.includes(
+      capsule.research_work_item_id
+    ) || capsule.runtime_identity.tick_research_work_item_ids.some(
+      (id, index, ids) => index > 0 && ids[index - 1]! >= id
+    ) ||
+    !Number.isSafeInteger(capsule.runtime_identity.concurrency_limit) ||
+    capsule.runtime_identity.concurrency_limit < 1 ||
+    capsule.runtime_identity.concurrency_limit >
+      RESEARCH_OPERATIONS_SESSION_LIMIT ||
+    typeof capsule.graph_conflict !== "boolean" ||
+    typeof capsule.terminal_evidence_present !== "boolean" ||
+    !researchSessionDetailsShareImmutableProjection(
+      capsule.inactive_detail,
+      capsule.active_queued_detail
+    ) ||
+    capsule.terminal_evidence_present !==
+      capsule.inactive_detail.lifecycle_events.some((event) =>
+        event.event_kind === "checkpoint" || event.event_kind === "tick"
+      ) ||
+    capsule.graph_conflict && [
+      capsule.inactive_detail,
+      capsule.active_queued_detail
+    ].some((detail) => detail.projection_health !== "degraded" ||
+      detail.degraded_reasons.length === 0) ||
+    typeof capsule.capsule_digest !== "string" ||
+    persistedProjectionBytes(capsule) >
+      RESEARCH_OPERATIONS_CAPSULE_MAX_BYTES) {
+    return false;
+  }
+  const { capsule_digest: _digest, ...input } = capsule;
+  return capsule.capsule_digest === projectionDigest(input);
+}
+
+function researchSessionDetailHasProjectionShape(
+  value: unknown
+): value is ResearchSessionDetailReadModel {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const detail = value as ResearchSessionDetailReadModel;
+  const optionalBaseKeys = [
+    "research_worker_id",
+    "commitment_id",
+    "allocated_at",
+    "started_at",
+    "last_progress_at",
+    "completed_at",
+    "selected_submission_sequence",
+    "admitted_candidate_id"
+  ].filter((key) => key in detail);
+  const projectionKeys = [
+    ...(detail.trigger_availability === "available" ? ["trigger"] : []),
+    ...(detail.methodology_availability === "available" ? ["methodology"] : []),
+    ...(detail.provider_availability === "available" ? ["provider"] : []),
+    ...("model" in detail ? ["model"] : []),
+    ...("model_truncated" in detail ? ["model_truncated"] : [])
+  ];
+  const optionalDetailKeys = [
+    "admission_decision_ref",
+    "paper_handoff_conformance_ref"
+  ].filter((key) => key in detail);
+  const historyKeys = detail.submission_history_availability ===
+      "checkpoint_summary"
+    ? [
+        "recorded_submission_count",
+        "projected_submission_count",
+        "omitted_submission_count",
+        "submission_history_truncated"
+      ]
+    : [];
+  const selectedArtifactKeys = detail.selected_artifact_availability ===
+      "available"
+    ? ["selected_system_code_ref", "selected_system_code_artifact_digest"]
+    : [];
+  const expectedKeys = [...new Set([
+    "identity_kind",
+    "research_work_item_id",
+    "research_allocation_id",
+    "tick_id",
+    "direction_kind",
+    ...optionalBaseKeys,
+    "status",
+    "status_basis",
+    "projection_health",
+    "degraded_reasons",
+    "budget",
+    "latest_progress_summary",
+    "latest_progress_summary_truncated",
+    "trigger_availability",
+    "methodology_availability",
+    "provider_availability",
+    ...projectionKeys,
+    "authority_status",
+    "evidence_inputs",
+    "development_submissions",
+    ...optionalDetailKeys,
+    "notebook_summary",
+    "notebook_summary_truncated",
+    "lifecycle_events",
+    "provider_logs_availability",
+    "terminal_graph",
+    "submission_history_availability",
+    ...historyKeys,
+    "selected_artifact_availability",
+    ...selectedArtifactKeys
+  ])];
+  if (!hasExactKeys(detail, expectedKeys) ||
+    !researchSessionSummaryHasProjectionShape(detail) ||
+    !Array.isArray(detail.evidence_inputs) ||
+    detail.evidence_inputs.length > 24 ||
+    !detail.evidence_inputs.every(researchEvidenceInputHasProjectionShape) ||
+    new Set(detail.evidence_inputs.map((entry) => entry.evidence_artifact_id))
+      .size !== detail.evidence_inputs.length ||
+    !Array.isArray(detail.development_submissions) ||
+    detail.development_submissions.length > HISTORY_LIMIT ||
+    !detail.development_submissions.every(
+      researchDevelopmentSubmissionHasProjectionShape
+    ) ||
+    new Set(detail.development_submissions.map((entry) =>
+      entry.submission_sequence
+    )).size !== detail.development_submissions.length ||
+    detail.development_submissions.some((entry, index, entries) =>
+      index > 0 && entries[index - 1]!.submission_sequence >=
+        entry.submission_sequence
+    ) ||
+    (detail.admission_decision_ref !== undefined && !projectionRef(
+      detail.admission_decision_ref,
+      "candidate_admission_decision"
+    )) || (detail.paper_handoff_conformance_ref !== undefined && !projectionRef(
+      detail.paper_handoff_conformance_ref,
+      "paper_trading_handoff_conformance"
+    )) || !Array.isArray(detail.notebook_summary) ||
+    detail.notebook_summary.length > HISTORY_LIMIT ||
+    !detail.notebook_summary.every((summary) =>
+      projectionSanitizedText(summary, TEXT_LIMIT)
+    ) || !isDeepStrictEqual(
+      detail.notebook_summary,
+      detail.development_submissions.map((entry) => entry.summary)
+    ) || typeof detail.notebook_summary_truncated !== "boolean" ||
+    detail.notebook_summary_truncated !== detail.development_submissions.some(
+      (entry) => entry.summary_truncated
+    ) || !Array.isArray(detail.lifecycle_events) ||
+    detail.lifecycle_events.length === 0 ||
+    detail.lifecycle_events.length > HISTORY_LIMIT ||
+    !detail.lifecycle_events.every((event, index) =>
+      researchLifecycleEventHasProjectionShape(event, index + 1)
+    ) || detail.lifecycle_events.some((event, index, events) => {
+      const previous = events[index - 1];
+      return Boolean(previous) && (previous!.occurred_at > event.occurred_at ||
+        previous!.occurred_at === event.occurred_at &&
+          previous!.event_kind >= event.event_kind);
+    }) || new Set(detail.lifecycle_events.map((event) => event.event_kind)).size !==
+      detail.lifecycle_events.length ||
+    detail.provider_logs_availability !== "not_persisted" ||
+    !researchTerminalGraphHasProjectionShape(detail.terminal_graph) ||
+    !researchSubmissionHistoryHasProjectionShape(detail) ||
+    !researchSelectedArtifactHasProjectionShape(detail)) {
+    return false;
+  }
+  const terminalAdmission = detail.terminal_graph.admission;
+  const terminalConformance = detail.terminal_graph.paper_handoff_conformance;
+  if ((detail.admission_decision_ref === undefined) !==
+      (terminalAdmission === undefined) || terminalAdmission &&
+    detail.admission_decision_ref!.id !==
+      terminalAdmission.candidate_admission_decision_ref.id ||
+    (detail.paper_handoff_conformance_ref === undefined) !==
+      (terminalConformance === undefined) || terminalConformance &&
+    detail.paper_handoff_conformance_ref!.id !==
+      terminalConformance.paper_trading_handoff_conformance_ref.id) {
+    return false;
+  }
+  if (!researchSessionAuthorityBindingsHaveProjectionShape(detail)) {
+    return false;
+  }
+  if ((detail.selected_artifact_availability === "unavailable") !==
+      detail.degraded_reasons.includes("selected_artifact_unavailable") ||
+    detail.terminal_graph.admission?.status === "admitted" &&
+      detail.terminal_graph.admitted_arena_handoff === undefined &&
+      !detail.degraded_reasons.includes("terminal_admission_unavailable")) {
+    return false;
+  }
+  const allocationEvent = detail.lifecycle_events.find((event) =>
+    event.event_kind === "allocation"
+  );
+  const commitmentEvent = detail.lifecycle_events.find((event) =>
+    event.event_kind === "commitment"
+  );
+  const handoff = detail.terminal_graph.admitted_arena_handoff;
+  if (!allocationEvent ||
+    allocationEvent.source_ref.id !== detail.research_allocation_id ||
+    allocationEvent.occurred_at !== detail.allocated_at ||
+    (detail.commitment_id === undefined) !== (commitmentEvent === undefined) ||
+    commitmentEvent !== undefined && (
+      commitmentEvent.source_ref.id !== detail.commitment_id ||
+      commitmentEvent.occurred_at !== detail.started_at
+    ) || detail.last_progress_at !== detail.lifecycle_events.at(-1)!.occurred_at ||
+    detail.methodology_availability === "available" && !isDeepStrictEqual(
+      detail.methodology.evidence_artifact_ids,
+      detail.evidence_inputs.map((entry) => entry.evidence_artifact_id)
+    ) || detail.development_submissions.some((submission) =>
+      submission.submission_sequence >
+        detail.budget.max_development_submission_count
+    ) || detail.development_submissions.length >
+      detail.budget.development_submission_count ||
+    (detail.admitted_candidate_id === undefined) !== (handoff === undefined) ||
+    handoff !== undefined && (
+      handoff.candidate_ref.id !== detail.admitted_candidate_id ||
+      handoff.direction_kind !== detail.direction_kind ||
+      handoff.completed_at !== detail.completed_at
+    ) || detail.terminal_graph.artifact_lineage !== undefined && (
+      detail.selected_artifact_availability !== "available" ||
+      detail.terminal_graph.artifact_lineage.child_system_code_ref.id !==
+        detail.selected_system_code_ref.id
+    )) {
+    return false;
+  }
+  return true;
+}
+
+function researchSessionSummaryHasProjectionShape(
+  summary: ResearchSessionSummaryReadModel
+): boolean {
+  const statusValues: ResearchSessionSummaryReadModel["status"][] = [
+    "queued",
+    "allocating",
+    "running",
+    "admitted",
+    "duplicate",
+    "quarantined",
+    "finished_without_submission",
+    "failed_closed",
+    "recovering"
+  ];
+  const degradedReasons: ResearchSessionDegradedReason[] = [
+    "trigger_unavailable",
+    "methodology_unavailable",
+    "provider_unavailable",
+    "worker_unavailable",
+    "evidence_artifact_unavailable",
+    "selected_artifact_unavailable",
+    "evaluation_graph_conflict",
+    "admission_graph_conflict",
+    "terminal_admission_unavailable",
+    "inactive_incomplete_graph"
+  ];
+  if (summary.identity_kind !== "derived_projection" ||
+    !projectionIdentifier(summary.research_work_item_id) ||
+    !projectionIdentifier(summary.research_allocation_id) ||
+    !projectionIdentifier(summary.tick_id) ||
+    !researchDirectionKind(summary.direction_kind) ||
+    (summary.research_worker_id !== undefined && !projectionIdentifier(
+      summary.research_worker_id
+    )) || (summary.commitment_id !== undefined && !projectionIdentifier(
+      summary.commitment_id
+    )) || !statusValues.includes(summary.status) ||
+    !researchSessionStatusBasisHasProjectionShape(
+      summary.status_basis,
+      summary.status
+    ) || !["complete", "degraded"].includes(summary.projection_health) ||
+    !Array.isArray(summary.degraded_reasons) ||
+    summary.degraded_reasons.length > degradedReasons.length ||
+    !summary.degraded_reasons.every((reason) => degradedReasons.includes(reason)) ||
+    new Set(summary.degraded_reasons).size !== summary.degraded_reasons.length ||
+    (summary.projection_health === "complete") !==
+      (summary.degraded_reasons.length === 0) ||
+    !researchSessionBudgetHasProjectionShape(summary.budget) || [
+      summary.allocated_at,
+      summary.started_at,
+      summary.last_progress_at,
+      summary.completed_at
+    ].some((timestamp) => timestamp !== undefined && !projectionIso(timestamp)) ||
+    (summary.selected_submission_sequence !== undefined &&
+      !positiveSafeInteger(summary.selected_submission_sequence)) ||
+    (summary.admitted_candidate_id !== undefined && !projectionIdentifier(
+      summary.admitted_candidate_id
+    )) || !projectionSanitizedText(summary.latest_progress_summary, TEXT_LIMIT) ||
+    typeof summary.latest_progress_summary_truncated !== "boolean" ||
+    summary.authority_status !== "research_only" ||
+    !researchTriggerProjectionHasShape(summary) ||
+    !researchMethodologyProjectionHasShape(summary) ||
+    !researchProviderProjectionHasShape(summary)) {
+    return false;
+  }
+  const hasReason = (reason: ResearchSessionDegradedReason): boolean =>
+    summary.degraded_reasons.includes(reason);
+  if ((summary.trigger_availability === "unavailable") !==
+      hasReason("trigger_unavailable") ||
+    (summary.methodology_availability === "unavailable") !==
+      hasReason("methodology_unavailable") ||
+    (summary.provider_availability === "unavailable") !==
+      hasReason("provider_unavailable") ||
+    (summary.research_worker_id === undefined) !==
+      hasReason("worker_unavailable") ||
+    summary.status_basis.basis_kind === "incomplete_persisted_graph" &&
+      !hasReason("inactive_incomplete_graph")) {
+    return false;
+  }
+  return summary.allocated_at !== undefined &&
+    summary.last_progress_at !== undefined;
+}
+
+function researchSessionDetailsShareImmutableProjection(
+  inactive: ResearchSessionDetailReadModel,
+  active: ResearchSessionDetailReadModel
+): boolean {
+  const stripRuntimeStatus = (detail: ResearchSessionDetailReadModel) => {
+    const {
+      status: _status,
+      status_basis: _basis,
+      projection_health: _health,
+      degraded_reasons: _reasons,
+      latest_progress_summary: _progress,
+      latest_progress_summary_truncated: _progressTruncated,
+      ...immutable
+    } = detail;
+    return immutable;
+  };
+  return isDeepStrictEqual(stripRuntimeStatus(inactive), stripRuntimeStatus(active));
+}
+
+function researchSessionStatusBasisHasProjectionShape(
+  basis: ResearchSessionStatusBasisReadModel,
+  statusValue: ResearchSessionSummaryReadModel["status"]
+): boolean {
+  const hasSource = basis?.source_ref !== undefined;
+  if (!hasExactKeys(basis, [
+    "basis_kind",
+    ...(hasSource ? ["source_ref"] : []),
+    "authority_status"
+  ]) || basis.authority_status !== "read_only") return false;
+  const sourceMatches = (recordKind: string, required: boolean): boolean =>
+    required === hasSource && (!required || projectionRef(
+      basis.source_ref,
+      recordKind
+    ));
+  if (basis.basis_kind === "candidate_admission_decision") {
+    return ["admitted", "duplicate", "quarantined"].includes(statusValue) &&
+      sourceMatches("candidate_admission_decision", true);
+  }
+  if (basis.basis_kind === "research_worker_checkpoint") {
+    return ["finished_without_submission", "failed_closed"].includes(
+      statusValue
+    ) && sourceMatches("research_worker_checkpoint", true);
+  }
+  if (basis.basis_kind === "candidate_arena_tick") {
+    return ["finished_without_submission", "failed_closed"].includes(
+      statusValue
+    ) && sourceMatches("candidate_arena_tick", true);
+  }
+  if (basis.basis_kind === "runtime_research_work_item") {
+    return ["allocating", "running", "failed_closed"].includes(statusValue) &&
+      (statusValue === "running"
+        ? sourceMatches("research_preflight_commitment", true)
+        : !hasSource || projectionRef(
+            basis.source_ref,
+            "research_preflight_commitment"
+          ));
+  }
+  if (basis.basis_kind === "active_tick_queue") {
+    return statusValue === "queued" && sourceMatches(
+      "candidate_arena_research_allocation",
+      true
+    );
+  }
+  return basis.basis_kind === "incomplete_persisted_graph" &&
+    ["recovering", "failed_closed"].includes(statusValue) && !hasSource;
+}
+
+function researchSessionBudgetHasProjectionShape(
+  budget: ResearchSessionSummaryReadModel["budget"]
+): boolean {
+  return hasExactKeys(budget, [
+    "max_experiment_count",
+    "completed_experiment_count",
+    "max_development_submission_count",
+    "development_submission_count",
+    "remaining_development_submission_count",
+    "authority_status"
+  ]) && positiveSafeInteger(budget.max_experiment_count) &&
+    nonNegativeSafeInteger(budget.completed_experiment_count) &&
+    budget.completed_experiment_count <= budget.max_experiment_count &&
+    positiveSafeInteger(budget.max_development_submission_count) &&
+    nonNegativeSafeInteger(budget.development_submission_count) &&
+    budget.development_submission_count <=
+      budget.max_development_submission_count &&
+    nonNegativeSafeInteger(budget.remaining_development_submission_count) &&
+    budget.remaining_development_submission_count ===
+      budget.max_development_submission_count -
+        budget.development_submission_count &&
+    budget.authority_status === "research_only";
+}
+
+function researchTriggerProjectionHasShape(
+  summary: ResearchSessionSummaryReadModel
+): boolean {
+  if (summary.trigger_availability === "unavailable") return true;
+  if (summary.trigger_availability !== "available") return false;
+  const trigger = summary.trigger;
+  const hasSource = trigger.source_ref !== undefined;
+  const hasEvidenceRef = trigger.evidence_artifact_ref !== undefined;
+  const hasEvidenceDigest = trigger.evidence_artifact_digest !== undefined;
+  const eventRequiresEvidence = trigger.trigger_kind === "arena_event" ||
+    trigger.trigger_kind === "live_event";
+  return hasEvidenceRef === hasEvidenceDigest &&
+    (!hasEvidenceRef || hasSource) &&
+    (!eventRequiresEvidence || hasSource && hasEvidenceRef) &&
+    hasExactKeys(trigger, [
+    "trigger_kind",
+    "trigger_id",
+    "goal",
+    "goal_truncated",
+    "triggered_at",
+    ...(hasSource ? ["source_ref"] : []),
+    ...(hasEvidenceRef
+      ? ["evidence_artifact_ref", "evidence_artifact_digest"]
+      : []),
+    "authority_status"
+  ]) && ["goal", "time", "arena_event", "live_event", "recovery"].includes(
+    trigger.trigger_kind
+  ) && projectionIdentifier(trigger.trigger_id) &&
+    projectionSanitizedText(trigger.goal, TEXT_LIMIT) &&
+    typeof trigger.goal_truncated === "boolean" &&
+    projectionIso(trigger.triggered_at) && projectionIso(summary.allocated_at) &&
+    Date.parse(trigger.triggered_at) <= Date.parse(summary.allocated_at) &&
+    (!hasSource || projectionRef(
+      trigger.source_ref!
+    )) && (!hasEvidenceRef || projectionRef(
+      trigger.evidence_artifact_ref!,
+      "research_evidence_artifact"
+    ) && validDigest(trigger.evidence_artifact_digest)) &&
+    trigger.authority_status === "research_only";
+}
+
+function researchMethodologyProjectionHasShape(
+  summary: ResearchSessionSummaryReadModel
+): boolean {
+  if (summary.methodology_availability === "unavailable") return true;
+  if (summary.methodology_availability !== "available") return false;
+  const methodology = summary.methodology;
+  const hasSourceCandidate = methodology.source_candidate_id !== undefined;
+  return hasExactKeys(methodology, [
+    "direction_kind",
+    "hypothesis",
+    "hypothesis_truncated",
+    "method",
+    "method_truncated",
+    ...(hasSourceCandidate ? ["source_candidate_id"] : []),
+    "evidence_artifact_ids",
+    "authority_status"
+  ]) && methodology.direction_kind === summary.direction_kind &&
+    projectionSanitizedText(methodology.hypothesis, TEXT_LIMIT) &&
+    typeof methodology.hypothesis_truncated === "boolean" &&
+    projectionSanitizedText(methodology.method, TEXT_LIMIT) &&
+    typeof methodology.method_truncated === "boolean" &&
+    (!hasSourceCandidate || projectionIdentifier(
+      methodology.source_candidate_id!
+    )) && boundedUniqueProjectionIdentifiers(
+      methodology.evidence_artifact_ids,
+      24
+    ) && methodology.authority_status === "research_only";
+}
+
+function researchProviderProjectionHasShape(
+  summary: ResearchSessionSummaryReadModel
+): boolean {
+  if (summary.provider_availability === "unavailable") {
+    return !("provider" in summary) && !("model" in summary) &&
+      !("model_truncated" in summary);
+  }
+  if (summary.provider_availability !== "available" || ![
+    "codex_cli",
+    "claude_code",
+    "local_process",
+    "fixture_only"
+  ].includes(summary.provider)) return false;
+  const hasModel = summary.model !== undefined;
+  const hasModelTruncated = summary.model_truncated !== undefined;
+  return hasModel === hasModelTruncated && (!hasModel ||
+    projectionSanitizedText(summary.model!, TEXT_LIMIT) &&
+    typeof summary.model_truncated === "boolean");
+}
+
+function projectionSanitizedText(value: unknown, limit: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= limit &&
+    sanitizeResearchEvidenceText(value) === value;
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function researchEvidenceInputHasProjectionShape(
+  evidence: ResearchEvidenceArtifactReadModel
+): boolean {
+  if (!hasExactKeys(evidence, [
+    "evidence_artifact_id",
+    "source_kind",
+    "subject_ref",
+    "artifact_ref",
+    "artifact_digest",
+    "summary",
+    "truncated",
+    "captured_at",
+    "sanitization_status",
+    "qualification_evidence_hidden",
+    "authority_status"
+  ]) || !projectionIdentifier(evidence.evidence_artifact_id) || ![
+    "arena_paper_result",
+    "arena_trace",
+    "arena_failure",
+    "research_finding"
+  ].includes(evidence.source_kind) || !projectionRef(evidence.subject_ref) ||
+    !projectionRef(evidence.artifact_ref) || !validDigest(
+      evidence.artifact_digest
+    ) || !projectionSanitizedText(evidence.summary, TEXT_LIMIT) ||
+    typeof evidence.truncated !== "boolean" ||
+    !projectionIso(evidence.captured_at) ||
+    evidence.sanitization_status !== "sanitized" ||
+    evidence.qualification_evidence_hidden !== true ||
+    evidence.authority_status !== "research_only" ||
+    !researchEvidenceRolesMatchSource(evidence)) {
+    return false;
+  }
+  return true;
+}
+
+function researchEvidenceRolesMatchSource(evidence: {
+  source_kind: ResearchEvidenceArtifactReadModel["source_kind"];
+  subject_ref: Ref;
+  artifact_ref: Ref;
+}): boolean {
+  if (evidence.source_kind === "arena_paper_result" ||
+    evidence.source_kind === "arena_failure") {
+    return evidence.subject_ref.record_kind === "trading_system_candidate" &&
+      evidence.artifact_ref.record_kind === "paper_trading_evaluation";
+  }
+  if (evidence.source_kind === "arena_trace") {
+    return evidence.subject_ref.record_kind === "trading_system_candidate" &&
+      evidence.artifact_ref.record_kind === "paper_trading_observation";
+  }
+  return evidence.source_kind === "research_finding" &&
+    evidence.subject_ref.record_kind === "research_worker" &&
+    evidence.artifact_ref.record_kind === "research_finding";
+}
+
+function researchDevelopmentSubmissionHasProjectionShape(
+  submission: ResearchDevelopmentSubmissionReadModel
+): boolean {
+  const selected = submission.selected === true;
+  if (!hasExactKeys(submission, [
+    "submission_sequence",
+    "decision",
+    "agent_status",
+    "evaluation_status",
+    "risk_decision",
+    "net_revenue_usdt",
+    "summary",
+    "summary_truncated",
+    "selected",
+    "artifact_availability",
+    ...(selected
+      ? ["selected_system_code_ref", "selected_system_code_artifact_digest"]
+      : []),
+    "authority_status"
+  ]) || !positiveSafeInteger(submission.submission_sequence) ||
+    !["keep", "discard", "crash"].includes(submission.decision) ||
+    !["edited", "no_change", "failed"].includes(submission.agent_status) ||
+    !["accepted", "disqualified"].includes(submission.evaluation_status) ||
+    ![
+      "valid_order_request",
+      "invalid_order_request",
+      "no_order_request"
+    ].includes(submission.risk_decision) ||
+    !Number.isFinite(submission.net_revenue_usdt) ||
+    !projectionSanitizedText(submission.summary, TEXT_LIMIT) ||
+    typeof submission.summary_truncated !== "boolean" ||
+    submission.authority_status !== "research_only") return false;
+  return selected
+    ? submission.artifact_availability === "selected_system_code_available" &&
+      projectionRef(submission.selected_system_code_ref, "system_code") &&
+      validDigest(submission.selected_system_code_artifact_digest)
+    : submission.selected === false &&
+      submission.artifact_availability === "not_persisted";
+}
+
+function researchLifecycleEventHasProjectionShape(
+  event: ResearchLifecycleEventReadModel,
+  expectedSequence: number
+): boolean {
+  const sourceKindByEvent: Record<
+    ResearchLifecycleEventReadModel["event_kind"],
+    string
+  > = {
+    allocation: "candidate_arena_research_allocation",
+    commitment: "research_preflight_commitment",
+    evaluation: "trading_evaluation_result",
+    checkpoint: "research_worker_checkpoint",
+    tick: "candidate_arena_tick",
+    admission: "candidate_admission_decision",
+    handoff_conformance: "paper_trading_handoff_conformance"
+  };
+  return hasExactKeys(event, [
+    "sequence",
+    "occurred_at",
+    "event_kind",
+    "summary",
+    "summary_truncated",
+    "source_ref",
+    "sanitized",
+    "authority_status"
+  ]) && event.sequence === expectedSequence &&
+    Object.hasOwn(sourceKindByEvent, event.event_kind) &&
+    projectionIso(event.occurred_at) &&
+    projectionSanitizedText(event.summary, TEXT_LIMIT) &&
+    typeof event.summary_truncated === "boolean" &&
+    projectionRef(event.source_ref, sourceKindByEvent[event.event_kind]) &&
+    event.sanitized === true && event.authority_status === "read_only";
+}
+
+function researchSubmissionHistoryHasProjectionShape(
+  detail: ResearchSessionDetailReadModel
+): boolean {
+  if (detail.submission_history_availability ===
+      "unavailable_until_checkpoint") {
+    return detail.development_submissions.length === 0 &&
+      detail.budget.development_submission_count === 0;
+  }
+  return detail.submission_history_availability === "checkpoint_summary" &&
+    nonNegativeSafeInteger(detail.recorded_submission_count) &&
+    nonNegativeSafeInteger(detail.projected_submission_count) &&
+    nonNegativeSafeInteger(detail.omitted_submission_count) &&
+    detail.projected_submission_count ===
+      detail.development_submissions.length &&
+    detail.recorded_submission_count ===
+      detail.budget.development_submission_count &&
+    detail.recorded_submission_count >= detail.projected_submission_count &&
+    detail.omitted_submission_count === detail.recorded_submission_count -
+      detail.projected_submission_count &&
+    detail.submission_history_truncated ===
+      (detail.omitted_submission_count > 0);
+}
+
+function researchSelectedArtifactHasProjectionShape(
+  detail: ResearchSessionDetailReadModel
+): boolean {
+  if (detail.selected_submission_sequence !== undefined && (
+    detail.selected_submission_sequence >
+      detail.budget.max_development_submission_count ||
+    detail.submission_history_availability === "checkpoint_summary" &&
+      detail.selected_submission_sequence > detail.recorded_submission_count
+  ) || detail.submission_history_availability === "checkpoint_summary" &&
+    detail.development_submissions.some((submission) =>
+      submission.submission_sequence > detail.recorded_submission_count
+    )) {
+    return false;
+  }
+  const selectedSubmissions = detail.development_submissions.filter(
+    (submission) => submission.selected
+  );
+  if (selectedSubmissions.length > 1) return false;
+  if (detail.selected_artifact_availability === "available") {
+    if (!positiveSafeInteger(detail.selected_submission_sequence) ||
+      !projectionRef(detail.selected_system_code_ref, "system_code") ||
+      !validDigest(detail.selected_system_code_artifact_digest)) return false;
+    const selected = selectedSubmissions[0];
+    return !selected || selected.submission_sequence ===
+      detail.selected_submission_sequence &&
+      selected.selected_system_code_ref.id === detail.selected_system_code_ref.id &&
+      selected.selected_system_code_artifact_digest ===
+        detail.selected_system_code_artifact_digest;
+  }
+  if (selectedSubmissions.length !== 0) return false;
+  if (detail.selected_artifact_availability === "not_selected") {
+    return detail.selected_submission_sequence === undefined;
+  }
+  return detail.selected_artifact_availability === "unavailable" &&
+    (detail.selected_submission_sequence === undefined ||
+      positiveSafeInteger(detail.selected_submission_sequence));
+}
+
+function researchSessionAuthorityBindingsHaveProjectionShape(
+  detail: ResearchSessionDetailReadModel
+): boolean {
+  const graph = detail.terminal_graph;
+  const events = new Map(detail.lifecycle_events.map((event) => [
+    event.event_kind,
+    event
+  ]));
+  const allocationEvent = events.get("allocation");
+  const latestTerminalEventAt = ["tick", "checkpoint", "admission"]
+    .map((eventKind) => events.get(
+      eventKind as ResearchLifecycleEventReadModel["event_kind"]
+    )?.occurred_at)
+    .filter((timestamp): timestamp is string => timestamp !== undefined)
+    .sort()
+    .at(-1);
+  const expectedCompletedAt = [
+    "queued",
+    "allocating",
+    "running",
+    "recovering"
+  ].includes(detail.status) ? undefined : latestTerminalEventAt;
+  if (detail.lifecycle_events[0]?.event_kind !== "allocation" ||
+    allocationEvent?.occurred_at !== detail.allocated_at ||
+    detail.started_at !== undefined &&
+      Date.parse(detail.started_at) < Date.parse(detail.allocated_at!) ||
+    detail.completed_at !== expectedCompletedAt) {
+    return false;
+  }
+  const exactEvent = (
+    eventKind: ResearchLifecycleEventReadModel["event_kind"],
+    expectedId: string,
+    expectedAt?: string
+  ): boolean => {
+    const event = events.get(eventKind);
+    return event?.source_ref.id === expectedId &&
+      (expectedAt === undefined || event.occurred_at === expectedAt);
+  };
+  const evaluation = graph.selected_sealed_evaluation;
+  const admission = graph.admission;
+  const conformance = graph.paper_handoff_conformance;
+  if ((evaluation === undefined) !== !events.has("evaluation") || evaluation &&
+      !exactEvent(
+        "evaluation",
+        evaluation.trading_evaluation_result_ref.id,
+        evaluation.completed_at
+      ) || (admission === undefined) !== !events.has("admission") || admission &&
+      !exactEvent(
+        "admission",
+        admission.candidate_admission_decision_ref.id,
+        admission.decided_at
+      ) || (conformance === undefined) !== !events.has("handoff_conformance") ||
+    conformance && !exactEvent(
+      "handoff_conformance",
+      conformance.paper_trading_handoff_conformance_ref.id,
+      conformance.completed_at
+    )) {
+    return false;
+  }
+  const basis = detail.status_basis;
+  if (basis.basis_kind === "candidate_admission_decision") {
+    if (!admission || detail.status !== admission.status ||
+      basis.source_ref?.id !== admission.candidate_admission_decision_ref.id ||
+      !exactEvent("admission", basis.source_ref.id)) return false;
+  } else if (basis.basis_kind === "research_worker_checkpoint") {
+    if (!basis.source_ref || !exactEvent(
+      "checkpoint",
+      basis.source_ref.id
+    )) return false;
+  } else if (basis.basis_kind === "candidate_arena_tick") {
+    if (!basis.source_ref || !exactEvent(
+      "tick",
+      basis.source_ref.id
+    )) return false;
+  } else if (basis.basis_kind === "active_tick_queue") {
+    if (basis.source_ref?.id !== detail.research_allocation_id ||
+      !exactEvent("allocation", detail.research_allocation_id)) return false;
+  } else if (basis.basis_kind === "runtime_research_work_item") {
+    if (detail.status === "running") {
+      if (!detail.commitment_id || basis.source_ref?.id !== detail.commitment_id ||
+        !exactEvent("commitment", detail.commitment_id)) return false;
+    } else if (basis.source_ref !== undefined) {
+      return false;
+    }
+  }
+  if (detail.trigger_availability === "available" &&
+    detail.trigger.evidence_artifact_ref) {
+    const evidence = detail.evidence_inputs.filter((entry) =>
+      entry.evidence_artifact_id === detail.trigger.evidence_artifact_ref!.id
+    );
+    if (evidence.length !== 1 || evidence[0]!.artifact_digest !==
+        detail.trigger.evidence_artifact_digest ||
+      Date.parse(evidence[0]!.captured_at) >
+        Date.parse(detail.trigger.triggered_at) ||
+      detail.trigger.source_ref !== undefined && !exactSameRef(
+        evidence[0]!.artifact_ref,
+        detail.trigger.source_ref
+      )) return false;
+  }
+  const handoff = graph.admitted_arena_handoff;
+  return handoff === undefined ||
+    detail.selected_artifact_availability === "available" &&
+    graph.finding !== undefined &&
+    exactEvent(
+      "tick",
+      handoff.candidate_arena_tick_ref.id,
+      handoff.completed_at
+    );
+}
+
+function researchTerminalGraphHasProjectionShape(
+  graph: ResearchSessionTerminalGraphReadModel
+): boolean {
+  const hasEvaluation = graph?.selected_sealed_evaluation !== undefined;
+  const hasAdmission = graph?.admission !== undefined;
+  const hasConformance = graph?.paper_handoff_conformance !== undefined;
+  const hasFinding = graph?.finding !== undefined;
+  const hasLineage = graph?.artifact_lineage !== undefined;
+  const hasHandoff = graph?.admitted_arena_handoff !== undefined;
+  if (!hasExactKeys(graph, [
+    ...(hasEvaluation ? ["selected_sealed_evaluation"] : []),
+    ...(hasAdmission ? ["admission"] : []),
+    ...(hasConformance ? ["paper_handoff_conformance"] : []),
+    ...(hasFinding ? ["finding"] : []),
+    ...(hasLineage ? ["artifact_lineage"] : []),
+    ...(hasHandoff ? ["admitted_arena_handoff"] : []),
+    "authority_status"
+  ]) || graph.authority_status !== "read_only" ||
+    (hasEvaluation && !researchSelectedEvaluationHasProjectionShape(
+      graph.selected_sealed_evaluation!
+    )) || (hasAdmission && !researchAdmissionHasProjectionShape(
+      graph.admission!
+    )) || (hasConformance && !researchConformanceHasProjectionShape(
+      graph.paper_handoff_conformance!
+    )) || (hasFinding && !researchFindingReadModelHasProjectionShape(
+      graph.finding!
+    )) || (hasLineage && !researchLineageReadModelHasProjectionShape(
+      graph.artifact_lineage!
+    )) || (hasHandoff && !researchAdmittedHandoffHasProjectionShape(
+      graph.admitted_arena_handoff!
+    ))) return false;
+  if (hasLineage) {
+    if (!hasFinding || !graph.artifact_lineage!.source_finding_refs.some(
+      (reference) => reference.id === graph.finding!.research_finding_ref.id
+    )) return false;
+  }
+  if (!hasHandoff) return true;
+  return hasEvaluation && hasAdmission && hasConformance && hasFinding &&
+    graph.selected_sealed_evaluation!.result_status === "accepted" &&
+    graph.selected_sealed_evaluation!.evidence_disposition === "not_counted" &&
+    graph.admission!.status === "admitted" &&
+    graph.admission!.reason === "evaluation_accepted" &&
+    graph.paper_handoff_conformance!.status === "passed" &&
+    graph.paper_handoff_conformance!.reason === "passed" &&
+    graph.admitted_arena_handoff!.candidate_admission_decision_ref.id ===
+      graph.admission!.candidate_admission_decision_ref.id;
+}
+
+function researchSelectedEvaluationHasProjectionShape(
+  evaluation: NonNullable<
+    ResearchSessionTerminalGraphReadModel["selected_sealed_evaluation"]
+  >
+): boolean {
+  return hasExactKeys(evaluation, [
+    "trading_evaluation_result_ref",
+    "experiment_run_ref",
+    "evaluation_phase",
+    "result_status",
+    "evidence_disposition",
+    "completed_at",
+    "authority_status"
+  ]) && projectionRef(
+    evaluation.trading_evaluation_result_ref,
+    "trading_evaluation_result"
+  ) && projectionRef(evaluation.experiment_run_ref, "experiment_run") &&
+    evaluation.evaluation_phase === "sealed_admission" && [
+      "accepted",
+      "quarantined_for_review",
+      "disqualified"
+    ].includes(evaluation.result_status) && [
+      "not_counted",
+      "counted",
+      "quarantined_for_review"
+    ].includes(evaluation.evidence_disposition) &&
+    projectionIso(evaluation.completed_at) &&
+    evaluation.authority_status === "read_only";
+}
+
+function researchAdmissionHasProjectionShape(
+  admission: NonNullable<ResearchSessionTerminalGraphReadModel["admission"]>
+): boolean {
+  if (!hasExactKeys(admission, [
+    "candidate_admission_decision_ref",
+    "status",
+    "reason",
+    "decided_at",
+    "authority_status"
+  ]) || !projectionRef(
+    admission.candidate_admission_decision_ref,
+    "candidate_admission_decision"
+  ) || !projectionIso(admission.decided_at) ||
+    admission.authority_status !== "read_only") return false;
+  if (admission.status === "admitted") {
+    return admission.reason === "evaluation_accepted";
+  }
+  if (admission.status === "duplicate") {
+    return ["no_candidate_change", "behavior_duplicate"].includes(
+      admission.reason
+    );
+  }
+  return admission.status === "quarantined" && [
+    "research_worker_failed",
+    "experiment_failed",
+    "evaluation_disqualified",
+    "evaluation_quarantined",
+    "evidence_already_counted",
+    "evidence_quarantined",
+    "paper_handoff_conformance_failed",
+    "behavior_fingerprint_unavailable"
+  ].includes(admission.reason);
+}
+
+function researchConformanceHasProjectionShape(
+  conformance: NonNullable<
+    ResearchSessionTerminalGraphReadModel["paper_handoff_conformance"]
+  >
+): boolean {
+  return hasExactKeys(conformance, [
+    "paper_trading_handoff_conformance_ref",
+    "status",
+    "reason",
+    "completed_at",
+    "evidence_digest",
+    "authority_status"
+  ]) && projectionRef(
+    conformance.paper_trading_handoff_conformance_ref,
+    "paper_trading_handoff_conformance"
+  ) && (conformance.status === "passed") === (conformance.reason === "passed") &&
+    candidateArenaPaperHandoffReason(conformance.reason) &&
+    projectionIso(conformance.completed_at) &&
+    validDigest(conformance.evidence_digest) &&
+    conformance.authority_status === "read_only";
+}
+
+function researchFindingReadModelHasProjectionShape(
+  finding: NonNullable<ResearchSessionTerminalGraphReadModel["finding"]>
+): boolean {
+  return hasExactKeys(finding, [
+    "research_finding_ref",
+    "finding_kind",
+    "summary",
+    "summary_truncated",
+    "supporting_record_refs",
+    "created_at",
+    "sanitized",
+    "authority_status"
+  ]) && projectionRef(finding.research_finding_ref, "research_finding") && [
+    "positive_result",
+    "negative_result",
+    "failure_analysis",
+    "anti_hacking_case",
+    "duplicate_result",
+    "next_artifact_hint"
+  ].includes(finding.finding_kind) &&
+    projectionSanitizedText(finding.summary, TEXT_LIMIT) &&
+    typeof finding.summary_truncated === "boolean" &&
+    Array.isArray(finding.supporting_record_refs) &&
+    finding.supporting_record_refs.length <= HISTORY_LIMIT &&
+    finding.supporting_record_refs.every((reference) => projectionRef(reference)) &&
+    refsAreUnique(finding.supporting_record_refs) &&
+    projectionIso(finding.created_at) && finding.sanitized === true &&
+    finding.authority_status === "read_only";
+}
+
+function researchLineageReadModelHasProjectionShape(
+  lineage: NonNullable<
+    ResearchSessionTerminalGraphReadModel["artifact_lineage"]
+  >
+): boolean {
+  const hasParent = lineage.parent_system_code_ref !== undefined;
+  const hasWorker = lineage.created_by_research_worker_ref !== undefined;
+  return hasExactKeys(lineage, [
+    "artifact_lineage_ref",
+    "child_system_code_ref",
+    ...(hasParent ? ["parent_system_code_ref"] : []),
+    "source_finding_refs",
+    ...(hasWorker ? ["created_by_research_worker_ref"] : []),
+    "created_at",
+    "authority_status"
+  ]) && projectionRef(lineage.artifact_lineage_ref, "artifact_lineage") &&
+    projectionRef(lineage.child_system_code_ref, "system_code") &&
+    (!hasParent || projectionRef(lineage.parent_system_code_ref!, "system_code")) &&
+    Array.isArray(lineage.source_finding_refs) &&
+    lineage.source_finding_refs.length > 0 &&
+    lineage.source_finding_refs.length <= HISTORY_LIMIT &&
+    lineage.source_finding_refs.every((reference) => projectionRef(
+      reference,
+      "research_finding"
+    )) && refsAreUnique(lineage.source_finding_refs) &&
+    (!hasWorker || projectionRef(
+      lineage.created_by_research_worker_ref!,
+      "research_worker"
+    )) && projectionIso(lineage.created_at) &&
+    lineage.authority_status === "read_only";
+}
+
+function researchAdmittedHandoffHasProjectionShape(
+  handoff: NonNullable<
+    ResearchSessionTerminalGraphReadModel["admitted_arena_handoff"]
+  >
+): boolean {
+  return hasExactKeys(handoff, [
+    "candidate_arena_tick_ref",
+    "candidate_ref",
+    "direction_kind",
+    "candidate_admission_decision_ref",
+    "completed_at",
+    "authority_status"
+  ]) && projectionRef(handoff.candidate_arena_tick_ref, "candidate_arena_tick") &&
+    projectionRef(handoff.candidate_ref, "trading_system_candidate") &&
+    researchDirectionKind(handoff.direction_kind) && projectionRef(
+      handoff.candidate_admission_decision_ref,
+      "candidate_admission_decision"
+    ) && projectionIso(handoff.completed_at) &&
+    handoff.authority_status === "read_only";
+}
+
+export function researchOperationsProjectionIndexHasIntegrity(
+  index: ResearchOperationsProjectionIndexRecord
+): boolean {
+  if (!hasExactKeys(index, [
+    "record_kind",
+    "version",
+    "head_session_refs",
+    "open_tick_session_refs",
+    "open_tick_session_count",
+    "projected_open_tick_session_count",
+    "omitted_open_tick_session_count",
+    "open_tick_sessions_truncated",
+    "capsule_trie_root_refs",
+    "recorded_session_count",
+    "graph_conflict_count",
+    "incomplete_without_conflict_count",
+    "capsule_set_digest",
+    "session_membership",
+    "candidate_arena_evidence",
+    "projection_digest",
+    "authority_status"
+  ]) || index.record_kind !== "research_operations_projection_index" ||
+    index.version !== 1 || index.authority_status !== "read_only" ||
+    !Array.isArray(index.head_session_refs) ||
+    index.head_session_refs.length > RESEARCH_OPERATIONS_SESSION_LIMIT ||
+    !Array.isArray(index.open_tick_session_refs) ||
+    index.open_tick_session_refs.length > RESEARCH_OPERATIONS_OPEN_SESSION_LIMIT ||
+    !Number.isSafeInteger(index.open_tick_session_count) ||
+    index.open_tick_session_count < 0 ||
+    index.open_tick_session_count > index.recorded_session_count ||
+    !Number.isSafeInteger(index.projected_open_tick_session_count) ||
+    index.projected_open_tick_session_count < 0 ||
+    index.projected_open_tick_session_count >
+      RESEARCH_OPERATIONS_OPEN_SESSION_LIMIT ||
+    !Number.isSafeInteger(index.omitted_open_tick_session_count) ||
+    index.omitted_open_tick_session_count < 0 ||
+    index.projected_open_tick_session_count +
+      index.omitted_open_tick_session_count !== index.open_tick_session_count ||
+    index.open_tick_sessions_truncated !==
+      (index.omitted_open_tick_session_count > 0) ||
+    !Array.isArray(index.capsule_trie_root_refs) ||
+    index.capsule_trie_root_refs.length > 256 ||
+    !Number.isSafeInteger(index.recorded_session_count) ||
+    index.recorded_session_count < 0 ||
+    index.head_session_refs.length !== Math.min(
+      index.recorded_session_count,
+      RESEARCH_OPERATIONS_SESSION_LIMIT
+    ) ||
+    !Number.isSafeInteger(index.graph_conflict_count) ||
+    index.graph_conflict_count < 0 ||
+    !Number.isSafeInteger(index.incomplete_without_conflict_count) ||
+    index.incomplete_without_conflict_count < 0 ||
+    index.graph_conflict_count + index.incomplete_without_conflict_count >
+      index.recorded_session_count ||
+    !validDigest(index.capsule_set_digest) ||
+    !sessionMembershipHasIntegrity(
+      index.session_membership,
+      index.recorded_session_count
+    ) || !candidateArenaEvidenceHasProjectionShape(
+      index.candidate_arena_evidence
+    ) ||
+    persistedProjectionBytes(index) >
+      RESEARCH_OPERATIONS_INDEX_MAX_BYTES ||
+    typeof index.projection_digest !== "string") {
+    return false;
+  }
+  const seen = new Set<string>();
+  for (const reference of index.head_session_refs) {
+    if (!hasExactKeys(reference, [
+      "research_work_item_id",
+      "allocated_at",
+      "capsule_digest"
+    ]) || !projectionIdentifier(reference.research_work_item_id) ||
+      !safeIsoTimestamp(reference.allocated_at) ||
+      !validDigest(reference.capsule_digest) ||
+      seen.has(reference.research_work_item_id)) {
+      return false;
+    }
+    seen.add(reference.research_work_item_id);
+  }
+  const openTickIds = new Set<string>();
+  const openWorkItemIds = new Set<string>();
+  let projectedOpenTickSessionCount = 0;
+  for (const reference of index.open_tick_session_refs) {
+    if (!hasExactKeys(reference, [
+      "tick_id",
+      "research_work_item_ids"
+    ]) || !projectionIdentifier(reference.tick_id) ||
+      !Array.isArray(reference.research_work_item_ids) ||
+      reference.research_work_item_ids.length === 0 ||
+      openTickIds.has(reference.tick_id)) {
+      return false;
+    }
+    openTickIds.add(reference.tick_id);
+    for (const workItemId of reference.research_work_item_ids) {
+      if (!projectionIdentifier(workItemId) ||
+        openWorkItemIds.has(workItemId)) {
+        return false;
+      }
+      openWorkItemIds.add(workItemId);
+      projectedOpenTickSessionCount += 1;
+    }
+  }
+  if (projectedOpenTickSessionCount !==
+    index.projected_open_tick_session_count) {
+    return false;
+  }
+  let previousRootPrefix = "";
+  let rootedSessionCount = 0;
+  for (const reference of index.capsule_trie_root_refs) {
+    if (!hasExactKeys(reference, [
+      "prefix",
+      "subtree_entry_count",
+      "node_digest"
+    ]) ||
+      !/^[0-9a-f]{2}$/.test(reference.prefix) ||
+      reference.prefix <= previousRootPrefix ||
+      !positiveSafeInteger(reference.subtree_entry_count) ||
+      !validDigest(reference.node_digest)) {
+      return false;
+    }
+    rootedSessionCount += reference.subtree_entry_count;
+    previousRootPrefix = reference.prefix;
+  }
+  if (rootedSessionCount !== index.recorded_session_count ||
+    index.capsule_set_digest !== researchOperationsProjectionCapsuleTrieDigest(
+      index.capsule_trie_root_refs
+    )) return false;
+  const { projection_digest: _digest, ...input } = index;
+  return index.projection_digest === projectionDigest(input);
+}
+
+function assertResearchOperationsProjectionWindow(
+  window: ResearchOperationsProjectionWindow
+): void {
+  if (!window || !researchOperationsProjectionIndexHasIntegrity(window.index) ||
+    !Array.isArray(window.capsules) ||
+    window.capsules.some((capsule) =>
+      !researchOperationsProjectionCapsuleHasIntegrity(capsule)
+    ) || new Set(window.capsules.map((capsule) =>
+      capsule.research_work_item_id
+    )).size !== window.capsules.length) {
+    throw new Error("research_operations_projection_window_invalid");
+  }
+}
+
+function materializedDetail(
+  capsule: ResearchOperationsProjectionCapsule,
+  health: CandidateArenaRunnerHealthReadModel
+): ResearchSessionDetailReadModel {
+  if (capsule.runtime_identity.tick_id !== health.active_tick_id) {
+    return capsule.inactive_detail;
+  }
+  const base = capsule.active_queued_detail;
+  if (capsule.terminal_evidence_present || capsule.graph_conflict ||
+    !["queued", "allocating", "running"].includes(base.status)) {
+    return base;
+  }
+  const runtimeCandidates = health.active_research_work_items.filter((candidate) =>
+    candidate.research_work_item_id === capsule.research_work_item_id &&
+    candidate.research_allocation_id ===
+      capsule.runtime_identity.research_allocation_id &&
+    candidate.direction_kind === capsule.runtime_identity.direction_kind
+  );
+  if (runtimeCandidates.length !== 1) return base;
+  const runtime = runtimeCandidates[0]!;
+  if (runtime.phase === "failed_closed_pending_tick") {
+    return {
+      ...base,
+      status: "failed_closed",
+      status_basis: {
+        basis_kind: "runtime_research_work_item",
+        authority_status: "read_only"
+      },
+      latest_progress_summary: "Research failed closed.",
+      latest_progress_summary_truncated: false
+    };
+  }
+  const running = runtime.phase === "running" &&
+    capsule.runtime_identity.commitment_id !== undefined &&
+    runtime.commitment_id === capsule.runtime_identity.commitment_id;
+  return {
+    ...base,
+    status: running ? "running" : "allocating",
+    status_basis: {
+      basis_kind: "runtime_research_work_item",
+      ...(running
+        ? {
+            source_ref: {
+              record_kind: "research_preflight_commitment",
+              id: capsule.runtime_identity.commitment_id!
+            }
+          }
+        : {}),
+      authority_status: "read_only"
+    },
+    latest_progress_summary: running
+      ? "Research work is running."
+      : "Research work is allocating.",
+    latest_progress_summary_truncated: false
+  };
+}
+
+function materializedSessionCapacity(
+  capsules: ResearchOperationsProjectionCapsule[],
+  health: CandidateArenaRunnerHealthReadModel
+): { activeCount: number; queuedCount: number; hasActiveRuntimeFailure: boolean } {
+  let activeCount = 0;
+  let queuedCount = 0;
+  let hasActiveRuntimeFailure = false;
+  for (const capsule of capsules) {
+    if (capsule.terminal_evidence_present) continue;
+    const runtimes = health.active_research_work_items.filter((candidate) =>
+      candidate.research_work_item_id === capsule.research_work_item_id &&
+      candidate.research_allocation_id ===
+        capsule.runtime_identity.research_allocation_id &&
+      candidate.direction_kind === capsule.runtime_identity.direction_kind
+    );
+    if (runtimes.length !== 1) {
+      queuedCount += 1;
+    } else if (runtimes[0]!.phase === "failed_closed_pending_tick") {
+      hasActiveRuntimeFailure = true;
+    } else {
+      activeCount += 1;
+    }
+  }
+  return { activeCount, queuedCount, hasActiveRuntimeFailure };
+}
+
+function summaryFromDetail(
+  detail: ResearchSessionDetailReadModel
+): ResearchSessionSummaryWireReadModel {
+  const summary: ResearchSessionSummaryReadModel = {
+    identity_kind: detail.identity_kind,
+    research_work_item_id: detail.research_work_item_id,
+    research_allocation_id: detail.research_allocation_id,
+    tick_id: detail.tick_id,
+    direction_kind: detail.direction_kind,
+    ...(detail.research_worker_id !== undefined
+      ? { research_worker_id: detail.research_worker_id }
+      : {}),
+    ...(detail.commitment_id !== undefined
+      ? { commitment_id: detail.commitment_id }
+      : {}),
+    status: detail.status,
+    status_basis: detail.status_basis,
+    projection_health: detail.projection_health,
+    degraded_reasons: detail.degraded_reasons,
+    budget: detail.budget,
+    ...(detail.allocated_at !== undefined
+      ? { allocated_at: detail.allocated_at }
+      : {}),
+    ...(detail.started_at !== undefined ? { started_at: detail.started_at } : {}),
+    ...(detail.last_progress_at !== undefined
+      ? { last_progress_at: detail.last_progress_at }
+      : {}),
+    ...(detail.completed_at !== undefined
+      ? { completed_at: detail.completed_at }
+      : {}),
+    ...(detail.selected_submission_sequence !== undefined
+      ? { selected_submission_sequence: detail.selected_submission_sequence }
+      : {}),
+    ...(detail.admitted_candidate_id !== undefined
+      ? { admitted_candidate_id: detail.admitted_candidate_id }
+      : {}),
+    latest_progress_summary: detail.latest_progress_summary,
+    latest_progress_summary_truncated:
+      detail.latest_progress_summary_truncated,
+    ...(detail.trigger_availability === "available"
+      ? {
+          trigger_availability: "available" as const,
+          trigger: detail.trigger
+        }
+      : { trigger_availability: "unavailable" as const }),
+    ...(detail.methodology_availability === "available"
+      ? {
+          methodology_availability: "available" as const,
+          methodology: detail.methodology
+        }
+      : { methodology_availability: "unavailable" as const }),
+    ...(detail.provider_availability === "available"
+      ? {
+          provider_availability: "available" as const,
+          provider: detail.provider,
+          ...(detail.model !== undefined
+            ? {
+                model: detail.model,
+                model_truncated: detail.model_truncated!
+              }
+            : {})
+        }
+      : { provider_availability: "unavailable" as const }),
+    authority_status: "research_only"
+  };
+  return summaryForWire(summary);
+}
+
+function summaryForWire(
+  summary: ResearchSessionSummaryReadModel
+): ResearchSessionSummaryWireReadModel {
+  const {
+    trigger: _trigger,
+    methodology: _methodology,
+    provider: _provider,
+    model: _model,
+    model_truncated: _modelTruncated,
+    ...base
+  } = summary;
+  return {
+    ...base,
+    ...(summary.trigger_availability === "available"
+      ? { trigger_availability: "available" as const, trigger: summary.trigger }
+      : {
+          trigger_availability: "unavailable" as const,
+          trigger: {
+            compatibility_kind: "research_summary_v1_unavailable" as const,
+            trigger_kind: "unavailable" as const,
+            trigger_id: "unavailable" as const,
+            goal: "Research trigger unavailable." as const,
+            goal_truncated: false as const,
+            triggered_at: "" as const,
+            authority_status: "research_only" as const
+          }
+        }),
+    ...(summary.methodology_availability === "available"
+      ? {
+          methodology_availability: "available" as const,
+          methodology: summary.methodology
+        }
+      : {
+          methodology_availability: "unavailable" as const,
+          methodology: {
+            compatibility_kind: "research_summary_v1_unavailable" as const,
+            direction_kind: summary.direction_kind,
+            hypothesis: "Research methodology unavailable." as const,
+            hypothesis_truncated: false as const,
+            method: "Research methodology unavailable." as const,
+            method_truncated: false as const,
+            evidence_artifact_ids: [],
+            authority_status: "research_only" as const
+          }
+        }),
+    ...(summary.provider_availability === "available"
+      ? {
+          provider_availability: "available" as const,
+          provider: summary.provider,
+          ...(summary.model !== undefined
+            ? {
+                model: summary.model,
+                model_truncated: summary.model_truncated!
+              }
+            : {})
+        }
+      : {
+          provider_availability: "unavailable" as const,
+          provider: "unavailable" as const
+        })
+  };
+}
+
+function materializationHealth(
+  activeTickId?: string
+): CandidateArenaRunnerHealthReadModel {
+  return {
+    status: activeTickId ? "running" : "stopped",
+    tick_count: 0,
+    completed_tick_count: 0,
+    active_tick: activeTickId !== undefined,
+    ...(activeTickId ? { active_tick_id: activeTickId } : {}),
+    active_research_work_items: [],
+    consecutive_failure_count: 0,
+    runtime_coordination_authority: true,
+    evaluation_authority: false,
+    promotion_authority: false,
+    order_submission_authority: false,
+    live_exchange_authority: false,
+    authority_status: "runtime_coordination_only"
+  };
+}
+
+function createSessionMembership(ids: string[]):
+  ResearchOperationsProjectionIndexRecord["session_membership"] {
+  const bits = Buffer.alloc(SESSION_MEMBERSHIP_BIT_COUNT / 8);
+  for (const id of ids) {
+    for (const position of sessionMembershipPositions(id)) {
+      bits[position >> 3] |= 1 << (position & 7);
+    }
+  }
+  return {
+    algorithm: "sha256_bloom_v1",
+    bit_count: SESSION_MEMBERSHIP_BIT_COUNT,
+    hash_count: SESSION_MEMBERSHIP_HASH_COUNT,
+    encoded_bits: bits.toString("base64"),
+    member_count: ids.length
+  };
+}
+
+export function researchOperationsProjectionMayContainSession(
+  index: ResearchOperationsProjectionIndexRecord,
+  researchWorkItemId: string
+): boolean {
+  if (!researchOperationsProjectionIndexHasIntegrity(index)) return true;
+  const bits = Buffer.from(index.session_membership.encoded_bits, "base64");
+  return sessionMembershipPositions(researchWorkItemId).every((position) =>
+    (bits[position >> 3]! & (1 << (position & 7))) !== 0
+  );
+}
+
+function sessionMembershipPositions(id: string): number[] {
+  const hash = createHash("sha256").update(id).digest();
+  return Array.from({ length: SESSION_MEMBERSHIP_HASH_COUNT }, (_, index) =>
+    hash.readUInt32BE(index * 4) % SESSION_MEMBERSHIP_BIT_COUNT
+  );
+}
+
+function sessionMembershipHasIntegrity(
+  membership: ResearchOperationsProjectionIndexRecord["session_membership"],
+  recordedSessionCount: number
+): boolean {
+  if (!hasExactKeys(membership, [
+    "algorithm",
+    "bit_count",
+    "hash_count",
+    "encoded_bits",
+    "member_count"
+  ]) || membership.algorithm !== "sha256_bloom_v1" ||
+    membership.bit_count !== SESSION_MEMBERSHIP_BIT_COUNT ||
+    membership.hash_count !== SESSION_MEMBERSHIP_HASH_COUNT ||
+    membership.member_count !== recordedSessionCount ||
+    typeof membership.encoded_bits !== "string") {
+    return false;
+  }
+  const bits = Buffer.from(membership.encoded_bits, "base64");
+  return bits.length === SESSION_MEMBERSHIP_BIT_COUNT / 8 &&
+    bits.toString("base64") === membership.encoded_bits;
+}
+
+function materializeCandidateArenaEvidence(
+  graph: LoadedGraph,
+  index: ResearchOperationsProjectionIndex
+): ResearchOperationsProjectionIndexRecord["candidate_arena_evidence"] {
+  try {
+    const allocationTickIds = new Set<string>();
+    for (const allocation of graph.allocations) {
+      if (!allocationHasUniqueRawOrigin(allocation, index) ||
+        !allocationMatchesPolicyProvenance(allocation, index) ||
+        allocationTickIds.has(allocation.tick_id)) {
+        throw new Error("candidate_arena_projection_allocation_graph_invalid");
+      }
+      allocationTickIds.add(allocation.tick_id);
+    }
+    const tickIds = new Set<string>();
+    const canonicalBoundTicks = new Set<CandidateArenaTickRecord>();
+    for (const tick of graph.ticks) {
+      if (!candidateArenaTickHasRuntimeShape(tick) ||
+        !tickHasUniqueRawIdentity(tick, index) || tickIds.has(tick.tick_id)) {
+        throw new Error("candidate_arena_projection_tick_graph_invalid");
+      }
+      tickIds.add(tick.tick_id);
+      const hasAllocationRef = tick.research_allocation_ref !== undefined;
+      const hasAllocationDigest = tick.research_allocation_digest !== undefined;
+      if (hasAllocationRef !== hasAllocationDigest) {
+        throw new Error("candidate_arena_projection_tick_graph_invalid");
+      }
+      if (!hasAllocationRef) {
+        continue;
+      }
+      const allocationMatches = index.allocationsById.get(
+        tick.research_allocation_ref!.id
+      ) ?? [];
+      const allocation = allocationMatches.length === 1
+        ? allocationMatches[0]
+        : undefined;
+      if (!allocation || !tickMatchesAllocation(tick, allocation) ||
+        (index.ticksByAllocationKey.get(tickAllocationKey(
+          tick.tick_id,
+          allocation.candidate_arena_research_allocation_id
+        ))?.length ?? 0) !== 1) {
+        throw new Error("candidate_arena_projection_tick_graph_invalid");
+      }
+      canonicalBoundTicks.add(tick);
+    }
+    const ticks = [...graph.ticks]
+      .sort((left, right) =>
+        right.completed_at.localeCompare(left.completed_at) ||
+        right.tick_id.localeCompare(left.tick_id)
+      )
+      .slice(0, 10);
+    if (ticks.some((tick) =>
+      canonicalBoundTicks.has(tick) &&
+      !boundAuthorityResultsHaveCanonicalGraph(tick, graph, index)
+    )) {
+      throw new Error("candidate_arena_projection_created_graph_invalid");
+    }
+    const latestTicks = ticks.map((tick) =>
+      projectCandidateArenaTickReadModel(
+        tick,
+        tick.research_allocation_ref
+          ? index.allocationsById.get(tick.research_allocation_ref.id)?.[0]
+          : undefined
+      )
+    );
+    return {
+      availability: "available",
+      latest_ticks: latestTicks,
+      terminal_tick_ids: ticks
+        .filter((tick) => canonicalBoundTicks.has(tick))
+        .map((tick) => tick.tick_id),
+      research_population_diversity: buildResearchPopulationDiversity({
+        ticks: graph.ticks,
+        directions: graph.directions,
+        commitments: graph.commitments,
+        fingerprints: graph.fingerprints,
+        admissions: graph.admissions
+      }),
+      research_generalization: buildResearchGeneralizationReadModel({
+        protocols: graph.generalizationProtocols,
+        studies: graph.controlStudies,
+        studyOutcomes: graph.controlStudyOutcomes,
+        outcomes: graph.generalizationOutcomes,
+        decisions: graph.generalizationPolicyDecisions,
+        allocations: graph.allocations,
+        ticks: graph.ticks
+      })
+    };
+  } catch (error) {
+    if (error instanceof ResearchPopulationDiversityEvidenceError ||
+      error instanceof ResearchGeneralizationReadModelError ||
+      error instanceof Error && error.message.startsWith(
+        "candidate_arena_projection_"
+      )) {
+      return { availability: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function boundAuthorityResultsHaveCanonicalGraph(
+  tick: CandidateArenaTickRecord,
+  graph: LoadedGraph,
+  index: ResearchOperationsProjectionIndex
+): boolean {
+  return tick.direction_results.every((result) => {
+    if (![
+      "created",
+      "duplicate",
+      "quarantined"
+    ].includes(result.status)) return true;
+    return boundAuthorityResultHasCanonicalGraph(
+      tick,
+      result,
+      graph,
+      index
+    );
+  });
+}
+
+function boundAuthorityResultHasCanonicalGraph(
+  tick: CandidateArenaTickRecord,
+  result: CandidateArenaTickDirectionResultReadModel,
+  graph: LoadedGraph,
+  index: ResearchOperationsProjectionIndex
+): boolean {
+  const commitmentId = result.research_preflight?.commitment_id;
+  const commitmentMatches = typeof commitmentId === "string"
+    ? index.commitmentsById.get(commitmentId) ?? []
+    : [];
+  const commitment = commitmentMatches.length === 1
+    ? commitmentMatches[0]
+    : undefined;
+  const direction = commitment && exactRef(
+    commitment.research_direction_ref,
+    "research_direction"
+  ) ? index.directions.get(commitment.research_direction_ref.id) : undefined;
+  if (!commitment || !commitmentHasCanonicalRuntimeShape(commitment) ||
+    commitment.candidate_arena_tick_id !== tick.tick_id ||
+    !exactRef(
+      commitment.research_allocation_ref,
+      "candidate_arena_research_allocation",
+      tick.research_allocation_ref!.id
+    ) || direction?.direction_kind !== result.direction_kind) {
+    return false;
+  }
+
+  const admissionMatches = typeof result.admission_decision_id === "string"
+    ? index.admissionsById.get(result.admission_decision_id) ?? []
+    : [];
+  const admission = admissionMatches.length === 1
+    ? admissionMatches[0]
+    : undefined;
+  let policyConsistent = false;
+  try {
+    policyConsistent = Boolean(
+      admission && isCandidateAdmissionDecisionConsistent(admission)
+    );
+  } catch {
+    policyConsistent = false;
+  }
+  if (!admission || !policyConsistent ||
+    !terminalDirectionResultMatchesAdmission(result, admission) ||
+    !exactRef(
+      admission.research_preflight_commitment_ref,
+      "research_preflight_commitment",
+      commitment.research_preflight_commitment_id
+    ) || admission.research_preflight_commitment_digest !==
+      commitment.commitment_digest || !exactSameRef(
+        admission.source_system_code_ref,
+        commitment.source_system_code_ref
+      ) || admission.source_artifact_digest !==
+        commitment.source_artifact_digest) {
+    return false;
+  }
+
+  const evaluationMatches = index.evaluationsById.get(
+    admission.trading_evaluation_result_ref.id
+  ) ?? [];
+  const evaluation = evaluationMatches.length === 1
+    ? evaluationMatches[0]
+    : undefined;
+  const experiment = evaluation && exactRef(
+    evaluation.experiment_run_ref,
+    "experiment_run"
+  ) ? index.experiments.get(evaluation.experiment_run_ref.id) : undefined;
+  const selectedSystemCode = evaluation && exactRef(
+    evaluation.submitted_system_code_ref,
+    "system_code"
+  ) ? graph.systemCodes.get(evaluation.submitted_system_code_ref.id) : undefined;
+  const admissionSystemCode = exactRef(admission.system_code_ref, "system_code")
+    ? graph.systemCodes.get(admission.system_code_ref.id)
+    : undefined;
+  const findingMatches = index.findingsById.get(
+    admission.research_finding_ref.id
+  ) ?? [];
+  const finding = findingMatches.length === 1 ? findingMatches[0] : undefined;
+  const linkedEvaluation = evaluation !== undefined &&
+    evaluationHasRuntimeShape(evaluation) &&
+    evaluationHasAuthorityLinkageShape(evaluation);
+  const unsealedFailureEvaluation = evaluation !== undefined &&
+    unsealedFailureEvaluationHasRuntimeShape(evaluation) &&
+    result.status === "quarantined" && admission.status === "quarantined" &&
+    result.research_preflight?.sealed_terminal_status === "not_run" &&
+    result.paper_handoff_conformance === undefined &&
+    ((admission.reason === "research_worker_failed" &&
+      evaluation.disqualification_reason === "research_worker_failed") ||
+      (admission.reason === "experiment_failed" &&
+        evaluation.disqualification_reason === "runtime_crash") ||
+      (admission.reason === "evaluation_disqualified" &&
+        evaluation.disqualification_reason !== undefined)) &&
+    evaluation.result_status === "disqualified" &&
+    evaluation.evidence_disposition === "quarantined_for_review" && [
+      evaluation.research_preflight_commitment_ref,
+      evaluation.research_preflight_commitment_digest,
+      evaluation.submitted_system_code_ref,
+      evaluation.submitted_artifact_digest,
+      evaluation.sealed_admission_suite_digest,
+      evaluation.evaluation_phase,
+      evaluation.submission_sequence,
+      evaluation.selected_development_submission_sequence
+    ].every((value) => value === undefined) &&
+    systemCodeHasRuntimeShape(admissionSystemCode) &&
+    exactSameRef(admission.system_code_ref, experiment?.system_code_ref) &&
+    admission.submitted_artifact_digest === admissionSystemCode.artifact_digest;
+  if (!evaluation || !linkedEvaluation && !unsealedFailureEvaluation ||
+    !experimentHasRuntimeShape(experiment) ||
+    !finding || !findingHasRuntimeShape(finding) ||
+    linkedEvaluation && (!exactRef(
+      evaluation.research_preflight_commitment_ref,
+      "research_preflight_commitment",
+      commitment.research_preflight_commitment_id
+    ) || evaluation.research_preflight_commitment_digest !==
+      commitment.commitment_digest || evaluation.sealed_admission_suite_digest !==
+        commitment.sealed_admission_policy.suite_digest) || !exactRef(
+          admission.trading_evaluation_result_ref,
+          "trading_evaluation_result",
+          evaluation.trading_evaluation_result_id
+        ) || admission.evaluation_status !== evaluation.result_status ||
+    admission.evidence_disposition !== evaluation.evidence_disposition ||
+    !exactRef(
+      admission.experiment_run_ref,
+      "experiment_run",
+      experiment.experiment_run_id
+    ) || admission.experiment_status !== experiment.status ||
+    linkedEvaluation && !exactSameRef(
+      experiment.system_code_ref,
+      evaluation.submitted_system_code_ref
+    ) ||
+    !exactSameRef(
+      experiment.trading_evaluation_task_ref,
+      evaluation.trading_evaluation_task_ref
+    ) || linkedEvaluation && (!exactSameRef(admission.system_code_ref,
+      evaluation.submitted_system_code_ref) || admission.submitted_artifact_digest !==
+      evaluation.submitted_artifact_digest) || !exactSameRef(
+        experiment.research_worker_ref,
+        commitment.research_worker_ref
+      ) || !exactSameRef(
+        experiment.research_direction_ref,
+        commitment.research_direction_ref
+      ) || Date.parse(evaluation.completed_at) < Date.parse(experiment.submitted_at) ||
+    Date.parse(evaluation.completed_at) < Date.parse(commitment.committed_at) ||
+    Date.parse(admission.decided_at) < Date.parse(evaluation.completed_at) ||
+    !exactSameRef(
+        finding.research_worker_ref,
+        commitment.research_worker_ref
+      ) || !exactSameRef(
+        finding.research_direction_ref,
+        commitment.research_direction_ref
+      ) || !exactSameRef(finding.experiment_run_ref,
+      admission.experiment_run_ref) || !exactSameRef(
+        finding.trading_evaluation_result_ref,
+      admission.trading_evaluation_result_ref
+      ) || result.status !== "created" && result.finding !== finding.summary) {
+    return false;
+  }
+
+  const hasBehaviorFingerprint =
+    admission.research_behavior_fingerprint_ref !== undefined ||
+    admission.research_behavior_fingerprint_digest !== undefined ||
+    admission.matching_research_behavior_fingerprint_ref !== undefined ||
+    admission.matching_research_behavior_fingerprint_digest !== undefined;
+  const fingerprintSystemCode = linkedEvaluation
+    ? selectedSystemCode
+    : unsealedFailureEvaluation ? admissionSystemCode : undefined;
+  if (result.status !== "quarantined" && (
+    !evaluationHasRuntimeShape(evaluation) ||
+    !systemCodeHasRuntimeShape(selectedSystemCode) ||
+    evaluation.submitted_artifact_digest !== selectedSystemCode.artifact_digest ||
+    !boundAdmissionBehaviorFingerprintHasCanonicalGraph(
+      admission,
+      commitment,
+      selectedSystemCode,
+      graph,
+      index
+    )
+  ) || result.status === "quarantined" && hasBehaviorFingerprint && (
+    !systemCodeHasRuntimeShape(fingerprintSystemCode) ||
+    !boundAdmissionBehaviorFingerprintHasCanonicalGraph(
+      admission,
+      commitment,
+      fingerprintSystemCode,
+      graph,
+      index
+    )
+  )) {
+    return false;
+  }
+
+  if (result.status === "created" && (
+    admission.status !== "admitted" || admission.reason !== "evaluation_accepted" ||
+    evaluation.result_status !== "accepted" ||
+    evaluation.evidence_disposition !== "not_counted" ||
+    !safeIdentifier(result.candidate_id) ||
+    !systemCodeHasRuntimeShape(selectedSystemCode) ||
+    !candidateMaterializationMatches({
+      candidate: graph.candidates.get(result.candidate_id),
+      candidateId: result.candidate_id,
+      selectedSystemCode,
+      tick,
+      tickResult: result,
+      index
+    })
+  )) {
+    return false;
+  }
+
+  const conformanceFields = [
+    admission.paper_handoff_conformance_status,
+    admission.paper_trading_handoff_conformance_ref,
+    admission.paper_trading_handoff_conformance_digest
+  ].filter((value) => value !== undefined).length;
+  if (!result.paper_handoff_conformance) {
+    return conformanceFields === 0;
+  }
+  const conformance = index.conformances.get(
+    result.paper_handoff_conformance.conformance_id
+  );
+  const conformanceMatches = conformanceFields === 3 && conformance !== undefined &&
+    conformanceHasRuntimeShape(conformance, graph.conformances) &&
+    compactConformanceMatchesCanonical(
+      result.paper_handoff_conformance,
+      conformance
+    ) && admission.paper_handoff_conformance_status === conformance.status &&
+    exactRef(
+      admission.paper_trading_handoff_conformance_ref,
+      "paper_trading_handoff_conformance",
+      conformance.paper_trading_handoff_conformance_id
+    ) && admission.paper_trading_handoff_conformance_digest ===
+      conformance.evidence_digest && exactSameRef(
+        conformance.system_code_ref,
+        evaluation.submitted_system_code_ref
+      ) && conformance.system_code_artifact_digest ===
+      evaluation.submitted_artifact_digest && exactSameRef(
+        conformance.experiment_run_ref,
+        evaluation.experiment_run_ref
+      ) && exactSameRef(
+        conformance.trading_evaluation_task_ref,
+      evaluation.trading_evaluation_task_ref
+      );
+  return conformanceMatches;
+}
+
+function boundAdmissionBehaviorFingerprintHasCanonicalGraph(
+  admission: CandidateAdmissionDecisionRecord,
+  commitment: ResearchPreflightCommitmentRecord,
+  selectedSystemCode: SystemCodeRecord,
+  graph: LoadedGraph,
+  index: ResearchOperationsProjectionIndex
+): boolean {
+  const currentRef = admission.research_behavior_fingerprint_ref;
+  const currentDigest = admission.research_behavior_fingerprint_digest;
+  if (currentRef === undefined || currentDigest === undefined) {
+    return currentRef === undefined && currentDigest === undefined &&
+      admission.matching_research_behavior_fingerprint_ref === undefined &&
+      admission.matching_research_behavior_fingerprint_digest === undefined;
+  }
+  const currentMatches = index.fingerprintsById.get(currentRef.id) ?? [];
+  const current = currentMatches.length === 1 ? currentMatches[0] : undefined;
+  if (!current || !researchBehaviorFingerprintHasRuntimeShape(current) ||
+    current.fingerprint_digest !== canonicalDigest(
+      researchBehaviorFingerprintDigestInput(current)
+    ) || current.fingerprint_digest !== currentDigest || !exactRef(
+      current.research_preflight_commitment_ref,
+      "research_preflight_commitment",
+      commitment.research_preflight_commitment_id
+    ) || current.research_preflight_commitment_digest !==
+      commitment.commitment_digest || !exactRef(
+        current.system_code_ref,
+        "system_code",
+        selectedSystemCode.system_code_id
+      ) || current.system_code_artifact_digest !==
+      selectedSystemCode.artifact_digest || current.development_suite_version !==
+      commitment.development_policy.suite_version ||
+    current.development_suite_digest !== commitment.development_policy.suite_digest) {
+    return false;
+  }
+  const matchingRef = admission.matching_research_behavior_fingerprint_ref;
+  const matchingDigest = admission.matching_research_behavior_fingerprint_digest;
+  if (matchingRef === undefined || matchingDigest === undefined) {
+    return matchingRef === undefined && matchingDigest === undefined;
+  }
+  const matchingRecords = index.fingerprintsById.get(matchingRef.id) ?? [];
+  const matching = matchingRecords.length === 1 ? matchingRecords[0] : undefined;
+  return matching !== undefined && matching !== current &&
+    boundBehaviorFingerprintHasCanonicalSourceGraph(matching, graph, index) &&
+    matching.fingerprint_digest === matchingDigest &&
+    sameBehaviorFingerprintKey(matching, current);
+}
+
+function boundBehaviorFingerprintHasCanonicalSourceGraph(
+  fingerprint: ResearchBehaviorFingerprintRecord,
+  graph: LoadedGraph,
+  index: ResearchOperationsProjectionIndex
+): boolean {
+  if (!researchBehaviorFingerprintHasRuntimeShape(fingerprint) ||
+    fingerprint.fingerprint_digest !== canonicalDigest(
+      researchBehaviorFingerprintDigestInput(fingerprint)
+    )) {
+    return false;
+  }
+  const commitmentMatches = index.commitmentsById.get(
+    fingerprint.research_preflight_commitment_ref.id
+  ) ?? [];
+  const commitment = commitmentMatches.length === 1
+    ? commitmentMatches[0]
+    : undefined;
+  const systemCode = graph.systemCodes.get(fingerprint.system_code_ref.id);
+  return commitment !== undefined &&
+    commitmentHasCanonicalRuntimeShape(commitment) &&
+    systemCodeHasRuntimeShape(systemCode) && exactRef(
+      fingerprint.research_preflight_commitment_ref,
+      "research_preflight_commitment",
+      commitment.research_preflight_commitment_id
+    ) && fingerprint.research_preflight_commitment_digest ===
+      commitment.commitment_digest && exactRef(
+        fingerprint.system_code_ref,
+        "system_code",
+        systemCode.system_code_id
+      ) && fingerprint.system_code_artifact_digest ===
+      systemCode.artifact_digest && fingerprint.development_suite_version ===
+      commitment.development_policy.suite_version &&
+    fingerprint.development_suite_digest ===
+      commitment.development_policy.suite_digest;
+}
+
+function compactConformanceMatchesCanonical(
+  compact: CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"],
+  conformance: PaperTradingHandoffConformanceRecord | undefined
+): boolean {
+  if (!compact || !conformance) return compact === undefined && conformance === undefined;
+  const compactAttestation = compact.candidate_egress_attestation;
+  const attestationMatches = conformance.version === 2
+    ? Boolean(compactAttestation &&
+      compactAttestation.attestation_id ===
+        conformance.candidate_egress_attestation.attestation_id &&
+      compactAttestation.verification_status === "verified" &&
+      compactAttestation.enforcement_result === "enforced" &&
+      compactAttestation.network_policy_digest ===
+        conformance.candidate_egress_attestation.network_policy_digest &&
+      isDeepStrictEqual(
+        compactAttestation.denial_summary,
+        conformance.candidate_egress_attestation.denial_summary
+      ) && compactAttestation.authority_status === "research_only")
+    : compactAttestation === undefined;
+  return compact.conformance_id ===
+      conformance.paper_trading_handoff_conformance_id &&
+    compact.status === conformance.status && compact.reason === conformance.reason &&
+    compact.authority_status === "research_only" && attestationMatches;
+}
+
+function candidateArenaEvidenceHasProjectionShape(
+  value: ResearchOperationsProjectionIndexRecord["candidate_arena_evidence"]
+): boolean {
+  if (!value || !["available", "unavailable"].includes(value.availability)) {
+    return false;
+  }
+  if (value.availability === "unavailable") {
+    return hasExactKeys(value, ["availability"]);
+  }
+  if (!hasExactKeys(value, [
+    "availability",
+    "latest_ticks",
+    "terminal_tick_ids",
+    "research_population_diversity",
+    "research_generalization"
+  ]) || !Array.isArray(value.latest_ticks) || value.latest_ticks.length > 10 ||
+    !value.latest_ticks.every(candidateArenaTickReadModelHasProjectionShape) ||
+    value.latest_ticks.some((tick, index) => {
+      const previous = value.latest_ticks[index - 1];
+      return Boolean(previous) && (
+        previous!.completed_at < tick.completed_at ||
+        previous!.completed_at === tick.completed_at &&
+          previous!.tick_id < tick.tick_id
+      );
+    }) || new Set(value.latest_ticks.map((tick) => tick.tick_id)).size !==
+      value.latest_ticks.length || !Array.isArray(value.terminal_tick_ids) ||
+    value.terminal_tick_ids.length > value.latest_ticks.length ||
+    new Set(value.terminal_tick_ids).size !== value.terminal_tick_ids.length ||
+    !isDeepStrictEqual(
+      value.terminal_tick_ids,
+      value.latest_ticks
+        .filter((tick) => tick.research_allocation !== undefined)
+        .map((tick) => tick.tick_id)
+    ) || !researchPopulationDiversityHasRuntimeShape(
+      value.research_population_diversity
+    ) || !researchGeneralizationReadModelHasProjectionShape(
+      value.research_generalization
+    )) {
+    return false;
+  }
+  return true;
+}
+
+function candidateArenaTickReadModelHasProjectionShape(
+  tick: CandidateArenaTickReadModel
+): boolean {
+  const hasSource = tick.source_candidate !== undefined;
+  const hasAllocation = tick.research_allocation !== undefined;
+  const hasContinuation = tick.paper_trading_continuation !== undefined;
+  return hasExactKeys(tick, [
+    "tick_id",
+    "started_at",
+    "completed_at",
+    "status",
+    ...(hasSource ? ["source_candidate"] : []),
+    "created_candidate_ids",
+    "direction_results",
+    ...(hasAllocation ? ["research_allocation"] : []),
+    ...(hasContinuation ? ["paper_trading_continuation"] : []),
+    "authority_status"
+  ]) && projectionIdentifier(tick.tick_id) && projectionIso(tick.started_at) &&
+    projectionIso(tick.completed_at) &&
+    Date.parse(tick.completed_at) >= Date.parse(tick.started_at) &&
+    ["completed", "completed_with_errors", "failed"].includes(tick.status) &&
+    (!hasSource || candidateArenaTickSourceHasProjectionShape(
+      tick.source_candidate!
+    )) && boundedUniqueProjectionIdentifiers(tick.created_candidate_ids, 10) &&
+    Array.isArray(tick.direction_results) && tick.direction_results.length <= 10 &&
+    tick.direction_results.every(candidateArenaDirectionResultHasProjectionShape) &&
+    candidateArenaTickAuthorityGraphHasRuntimeShape(tick) &&
+    candidateArenaTickStatusMatchesProjection(tick) &&
+    candidateArenaAllocationMatchesProjectedDirections(tick) &&
+    (!hasAllocation || candidateArenaAllocationHasProjectionShape(
+      tick.research_allocation!,
+      tick.tick_id
+    )) && (!hasContinuation || candidateArenaContinuationHasProjectionShape(
+      tick.paper_trading_continuation!
+    )) && tick.authority_status === "not_live";
+}
+
+function candidateArenaTickStatusMatchesProjection(
+  tick: CandidateArenaTickReadModel
+): boolean {
+  return tick.status === deriveCandidateArenaTickStatus(
+    tick.direction_results
+  );
+}
+
+function candidateArenaAllocationMatchesProjectedDirections(
+  tick: CandidateArenaTickReadModel
+): boolean {
+  const allocation = tick.research_allocation;
+  return allocation === undefined ||
+    allocation.selected_directions.length === tick.direction_results.length &&
+    tick.direction_results.every((result, index) =>
+      result.direction_kind ===
+        allocation.selected_directions[index]?.direction_kind
+    );
+}
+
+function candidateArenaTickSourceHasProjectionShape(
+  source: NonNullable<CandidateArenaTickReadModel["source_candidate"]>
+): boolean {
+  const hasRevenue = source.net_revenue_usdt !== undefined;
+  return hasExactKeys(source, [
+    "source_kind",
+    "candidate_id",
+    "display_name",
+    ...(hasRevenue ? ["net_revenue_usdt"] : []),
+    "authority_status"
+  ]) && [
+    "fixture_seed",
+    "evaluated_arena_leader",
+    "paper_trading_evaluation_leader",
+    "explicit_candidate"
+  ].includes(source.source_kind) && projectionIdentifier(source.candidate_id) &&
+    projectionText(source.display_name, 256) &&
+    (!hasRevenue || Number.isFinite(source.net_revenue_usdt)) &&
+    source.authority_status === "not_live";
+}
+
+function candidateArenaDirectionResultHasProjectionShape(
+  result: CandidateArenaTickProjectedDirectionResultReadModel
+): boolean {
+  const optionalKeys = [
+    "agent_provider",
+    "agent_model",
+    "candidate_id",
+    "finding",
+    "error",
+    "admission_decision_id",
+    "admission_reason",
+    "net_revenue_usdt",
+    "research_efficiency",
+    "research_preflight",
+    "paper_handoff_conformance"
+  ].filter((key) => Object.hasOwn(result, key));
+  if (!hasExactKeys(result, ["direction_kind", "status", ...optionalKeys]) ||
+    !researchDirectionKind(result.direction_kind) || ![
+      "created",
+      "duplicate",
+      "quarantined",
+      "no_submission",
+      "failed",
+      "legacy_unverified"
+    ].includes(result.status) || result.agent_provider !== undefined && ![
+      "codex",
+      "fixture",
+      "claude_code"
+    ].includes(result.agent_provider) || result.agent_model !== undefined &&
+      !projectionText(result.agent_model, 256) || result.candidate_id !== undefined &&
+      !projectionIdentifier(result.candidate_id) || result.finding !== undefined &&
+      !projectionText(result.finding, 256) || result.error !== undefined &&
+      !projectionText(result.error, 256) || result.admission_decision_id !== undefined &&
+      !projectionIdentifier(result.admission_decision_id) ||
+    result.admission_reason !== undefined && ![
+      "evaluation_accepted",
+      "research_worker_failed",
+      "no_candidate_change",
+      "experiment_failed",
+      "evaluation_disqualified",
+      "evaluation_quarantined",
+      "evidence_already_counted",
+      "evidence_quarantined",
+      "paper_handoff_conformance_failed",
+      "behavior_duplicate",
+      "behavior_fingerprint_unavailable"
+    ].includes(result.admission_reason) || result.net_revenue_usdt !== undefined &&
+      !Number.isFinite(result.net_revenue_usdt) ||
+    result.research_efficiency !== undefined &&
+      !candidateArenaResearchEfficiencyHasProjectionShape(
+        result.research_efficiency
+      ) || result.research_preflight !== undefined &&
+      !candidateArenaResearchPreflightHasProjectionShape(
+        result.research_preflight
+      ) || result.paper_handoff_conformance !== undefined &&
+      !candidateArenaConformanceHasProjectionShape(
+        result.paper_handoff_conformance
+      )) {
+    return false;
+  }
+  if (result.status === "legacy_unverified") {
+    const hasEfficiency = result.research_efficiency !== undefined;
+    return hasExactKeys(result, [
+      "direction_kind",
+      "status",
+      "candidate_id",
+      "finding",
+      ...(hasEfficiency ? ["research_efficiency"] : [])
+    ]) && result.candidate_id !== undefined && result.finding !== undefined;
+  }
+  if (result.status === "created") return result.candidate_id !== undefined;
+  if (result.status === "failed") return result.error !== undefined;
+  if (result.status === "no_submission") {
+    return result.finding !== undefined && result.candidate_id === undefined &&
+      result.error === undefined && result.admission_decision_id === undefined &&
+      result.admission_reason === undefined &&
+      result.paper_handoff_conformance === undefined;
+  }
+  return result.finding !== undefined &&
+    result.admission_decision_id !== undefined &&
+    result.admission_reason !== undefined;
+}
+
+function candidateArenaResearchEfficiencyHasProjectionShape(
+  efficiency: NonNullable<
+    CandidateArenaTickDirectionResultReadModel["research_efficiency"]
+  >
+): boolean {
+  const hasDevelopment = efficiency.development !== undefined;
+  const hasSealed = efficiency.sealed_admission !== undefined;
+  return hasExactKeys(efficiency, [
+    "provider_request_total",
+    "runner_command_total",
+    "scenario_count",
+    "elapsed_ms",
+    ...(hasDevelopment ? ["development"] : []),
+    ...(hasSealed ? ["sealed_admission"] : []),
+    "authority_status"
+  ]) && [
+    efficiency.provider_request_total,
+    efficiency.runner_command_total,
+    efficiency.scenario_count,
+    efficiency.elapsed_ms
+  ].every(nonNegativeSafeInteger) && (!hasDevelopment ||
+    candidateArenaResearchEfficiencyPhaseHasProjectionShape(
+      efficiency.development!
+    )) && (!hasSealed ||
+    candidateArenaResearchEfficiencyPhaseHasProjectionShape(
+      efficiency.sealed_admission!
+    )) && efficiency.authority_status === "not_promotion_authority";
+}
+
+function candidateArenaResearchEfficiencyPhaseHasProjectionShape(
+  phase: NonNullable<
+    CandidateArenaTickDirectionResultReadModel["research_efficiency"]
+  >["development"]
+): boolean {
+  return hasExactKeys(phase, [
+    "submission_count",
+    "provider_request_total",
+    "runner_command_total",
+    "scenario_count",
+    "elapsed_ms"
+  ]) && [
+    phase?.submission_count,
+    phase?.provider_request_total,
+    phase?.runner_command_total,
+    phase?.scenario_count,
+    phase?.elapsed_ms
+  ].every(nonNegativeSafeInteger);
+}
+
+function candidateArenaResearchPreflightHasProjectionShape(
+  preflight: NonNullable<
+    CandidateArenaTickDirectionResultReadModel["research_preflight"]
+  >
+): boolean {
+  return hasExactKeys(preflight, [
+    "commitment_id",
+    "development_submission_count",
+    "sealed_terminal_status",
+    "reason",
+    "authority_status"
+  ]) && projectionIdentifier(preflight.commitment_id) &&
+    nonNegativeSafeInteger(preflight.development_submission_count) &&
+    preflight.development_submission_count <= 2 &&
+    (preflight.sealed_terminal_status === "accepted"
+      ? preflight.reason === "accepted"
+      : preflight.sealed_terminal_status === "rejected"
+        ? preflight.reason === "candidate_rejected"
+        : preflight.sealed_terminal_status === "not_run" &&
+          ["no_development_winner", "execution_failed"].includes(
+            preflight.reason
+          )) && preflight.authority_status === "not_promotion_authority";
+}
+
+function candidateArenaConformanceHasProjectionShape(
+  conformance: NonNullable<
+    CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+  >
+): boolean {
+  const hasAttestation = conformance.candidate_egress_attestation !== undefined;
+  return hasExactKeys(conformance, [
+    "conformance_id",
+    "status",
+    "reason",
+    ...(hasAttestation ? ["candidate_egress_attestation"] : []),
+    "authority_status"
+  ]) && projectionIdentifier(conformance.conformance_id) &&
+    ["passed", "rejected"].includes(conformance.status) &&
+    candidateArenaPaperHandoffReason(conformance.reason) &&
+    (conformance.status === "passed") === (conformance.reason === "passed") &&
+    (!hasAttestation || candidateArenaAttestationHasProjectionShape(
+      conformance.candidate_egress_attestation!
+    )) && conformance.authority_status === "research_only";
+}
+
+function candidateArenaAttestationHasProjectionShape(
+  attestation: NonNullable<NonNullable<
+    CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+  >["candidate_egress_attestation"]>
+): boolean {
+  const denial = attestation.denial_summary;
+  return hasExactKeys(attestation, [
+    "attestation_id",
+    "verification_status",
+    "enforcement_result",
+    "network_policy_digest",
+    "denial_summary",
+    "authority_status"
+  ]) && projectionIdentifier(attestation.attestation_id) &&
+    attestation.verification_status === "verified" &&
+    attestation.enforcement_result === "enforced" &&
+    validDigest(attestation.network_policy_digest) && hasExactKeys(denial, [
+      "required_probe_count",
+      "start_denied_probe_count",
+      "end_denied_probe_count",
+      "unexpected_allow_count"
+    ]) && [
+      denial.required_probe_count,
+      denial.start_denied_probe_count,
+      denial.end_denied_probe_count
+    ].every((count) =>
+      count === CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length
+    ) && denial.unexpected_allow_count === 0 &&
+    attestation.authority_status === "research_only";
+}
+
+function candidateArenaAllocationHasProjectionShape(
+  allocation: NonNullable<CandidateArenaTickReadModel["research_allocation"]>,
+  tickId: string
+): boolean {
+  const hasTrigger = allocation.trigger !== undefined;
+  if (!(hasExactKeys(allocation, [
+    "allocation_id",
+    "tick_id",
+    "allocation_mode",
+    "allocation_policy_basis",
+    ...(hasTrigger ? ["trigger"] : []),
+    "policy",
+    "selected_directions",
+    "deferred_directions",
+    "allocated_at",
+    "research_scheduling_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) && projectionIdentifier(allocation.allocation_id) &&
+    allocation.tick_id === tickId &&
+    ["adaptive_default", "static_control", "explicit"].includes(
+      allocation.allocation_mode
+    ) && candidateArenaAllocationBasisHasProjectionShape(
+      allocation.allocation_policy_basis
+    ) && (!hasTrigger || candidateArenaTriggerHasProjectionShape(
+      allocation.trigger!
+    )) && isDeepStrictEqual(
+      allocation.policy,
+      CANDIDATE_ARENA_RESEARCH_ALLOCATION_POLICY
+    ) && Array.isArray(allocation.selected_directions) &&
+    allocation.selected_directions.length <= 5 &&
+    allocation.selected_directions.every((selection) =>
+      hasExactKeys(selection, [
+        "direction_kind",
+        "selection_kind",
+        "priority",
+        "experiment_budget",
+        "signal_score",
+        "reasons"
+      ]) && researchDirectionKind(selection.direction_kind) && [
+        "focus",
+        "exploration",
+        "static_control",
+        "explicit"
+      ].includes(selection.selection_kind) &&
+      positiveSafeInteger(selection.priority) &&
+      positiveSafeInteger(selection.experiment_budget) &&
+      Number.isFinite(selection.signal_score) && Array.isArray(selection.reasons) &&
+      selection.reasons.length > 0 && selection.reasons.length <= 10 &&
+      new Set(selection.reasons).size === selection.reasons.length &&
+      selection.reasons.every((reason) =>
+        projectionText(reason, 256)
+      )
+    ) && Array.isArray(allocation.deferred_directions) &&
+    allocation.deferred_directions.length <= 7 &&
+    allocation.deferred_directions.every(researchDirectionKind) &&
+    projectionIso(allocation.allocated_at) &&
+    (!hasTrigger || Date.parse(allocation.trigger!.triggered_at) <=
+      Date.parse(allocation.allocated_at)) &&
+    allocation.research_scheduling_authority === true &&
+    allocation.promotion_authority === false &&
+    allocation.order_submission_authority === false &&
+    allocation.live_exchange_authority === false &&
+    allocation.authority_status === "research_only")) {
+    return false;
+  }
+
+  const selectedDirections = allocation.selected_directions.map(
+    (selection) => selection.direction_kind
+  );
+  const totalExperimentBudget = allocation.selected_directions.reduce(
+    (total, selection) => total + selection.experiment_budget,
+    0
+  );
+  if (new Set(selectedDirections).size !== selectedDirections.length ||
+    allocation.selected_directions.some(
+      (selection, index) => selection.priority !== index + 1
+    ) || totalExperimentBudget <= 0 || totalExperimentBudget >
+      allocation.policy.maximum_total_experiment_budget) {
+    return false;
+  }
+
+  const defaultDirections = [
+    "trend_following",
+    "mean_reversion",
+    "volatility_regime",
+    "funding_aware_risk",
+    "execution_cost_robustness"
+  ] as const satisfies readonly ResearchDirectionKind[];
+  if (allocation.allocation_mode === "explicit") {
+    const expectedDeferred = defaultDirections.filter(
+      (direction) => !selectedDirections.includes(direction)
+    );
+    return allocation.allocation_policy_basis.basis_kind === "explicit_request" &&
+      allocation.selected_directions.length >= 1 &&
+      allocation.selected_directions.every((selection) =>
+        selection.selection_kind === "explicit" &&
+        selection.experiment_budget ===
+          allocation.policy.explicit_experiment_budget &&
+        selection.signal_score === 0
+      ) && isDeepStrictEqual(allocation.deferred_directions, expectedDeferred);
+  }
+
+  const combinedDefaultDirections = [
+    ...selectedDirections,
+    ...allocation.deferred_directions
+  ];
+  if (combinedDefaultDirections.length !== defaultDirections.length ||
+    new Set(combinedDefaultDirections).size !== combinedDefaultDirections.length ||
+    !defaultDirections.every((direction) =>
+      combinedDefaultDirections.includes(direction)
+    )) {
+    return false;
+  }
+
+  if (allocation.allocation_mode === "static_control") {
+    return allocation.allocation_policy_basis.basis_kind === "explicit_request" &&
+      isDeepStrictEqual(selectedDirections, defaultDirections.slice(0, 3)) &&
+      allocation.selected_directions.every((selection, index) =>
+        selection.selection_kind === "static_control" &&
+        selection.experiment_budget === (index < 2 ? 2 : 1) &&
+        selection.signal_score === 0
+      );
+  }
+
+  const focusSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "focus"
+  );
+  const explorationSelections = allocation.selected_directions.filter(
+    (selection) => selection.selection_kind === "exploration"
+  );
+  return allocation.selected_directions.length ===
+      allocation.policy.default_direction_slot_count &&
+    focusSelections.length <= allocation.policy.maximum_focus_direction_count &&
+    explorationSelections.length >=
+      allocation.policy.minimum_exploration_direction_count &&
+    focusSelections.every((selection) =>
+      selection.experiment_budget === allocation.policy.focus_experiment_budget
+    ) && explorationSelections.every((selection) =>
+      selection.experiment_budget ===
+        allocation.policy.exploration_experiment_budget
+    ) && allocation.selected_directions.every((selection) =>
+      selection.selection_kind === "focus" ||
+      selection.selection_kind === "exploration"
+    );
+}
+
+function candidateArenaAllocationBasisHasProjectionShape(
+  basis: NonNullable<
+    CandidateArenaTickReadModel["research_allocation"]
+  >["allocation_policy_basis"]
+): boolean {
+  if (basis.basis_kind === "explicit_request" ||
+    basis.basis_kind === "repository_default") {
+    return hasExactKeys(basis, ["basis_kind"]);
+  }
+  if (basis.basis_kind === "research_allocation_policy_decision") {
+    return hasExactKeys(basis, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "study_outcome_ref",
+      "study_outcome_digest"
+    ]) && projectionRef(basis.policy_decision_ref,
+      "research_allocation_policy_decision") &&
+      validDigest(basis.policy_decision_digest) &&
+      projectionRef(basis.study_outcome_ref, "research_control_study_outcome") &&
+      validDigest(basis.study_outcome_digest);
+  }
+  return basis.basis_kind === "research_generalization_policy_decision" &&
+    hasExactKeys(basis, [
+      "basis_kind",
+      "policy_decision_ref",
+      "policy_decision_digest",
+      "generalization_outcome_ref",
+      "generalization_outcome_digest"
+    ]) && projectionRef(basis.policy_decision_ref,
+      "research_generalization_policy_decision") &&
+    validDigest(basis.policy_decision_digest) &&
+    projectionRef(basis.generalization_outcome_ref,
+      "research_generalization_outcome") &&
+    validDigest(basis.generalization_outcome_digest);
+}
+
+function candidateArenaTriggerHasProjectionShape(
+  trigger: NonNullable<NonNullable<
+    CandidateArenaTickReadModel["research_allocation"]
+  >["trigger"]>
+): boolean {
+  const hasSource = trigger.source_ref !== undefined;
+  const hasEvidenceRef = trigger.evidence_artifact_ref !== undefined;
+  const hasEvidenceDigest = trigger.evidence_artifact_digest !== undefined;
+  const eventRequiresEvidence = trigger.trigger_kind === "arena_event" ||
+    trigger.trigger_kind === "live_event";
+  return hasExactKeys(trigger, [
+    "trigger_kind",
+    "trigger_id",
+    "goal",
+    "triggered_at",
+    ...(hasSource ? ["source_ref"] : []),
+    ...(hasEvidenceRef
+      ? ["evidence_artifact_ref", "evidence_artifact_digest"]
+      : []),
+    "authority_status"
+  ]) && ["goal", "time", "arena_event", "live_event", "recovery"].includes(
+    trigger.trigger_kind
+  ) && projectionIdentifier(trigger.trigger_id) && projectionText(
+    trigger.goal,
+    500
+  ) && projectionIso(trigger.triggered_at) && (!hasSource ||
+    projectionRef(trigger.source_ref!)) && hasEvidenceRef === hasEvidenceDigest &&
+    (!hasEvidenceRef || hasSource) && (!eventRequiresEvidence ||
+      hasSource && hasEvidenceRef) && (!hasEvidenceRef ||
+    projectionRef(trigger.evidence_artifact_ref!, "research_evidence_artifact") &&
+    validDigest(trigger.evidence_artifact_digest)) &&
+    trigger.authority_status === "research_only";
+}
+
+function candidateArenaContinuationHasProjectionShape(
+  continuation: NonNullable<
+    CandidateArenaTickReadModel["paper_trading_continuation"]
+  >
+): boolean {
+  const hasCandidate = continuation.selected_candidate_id !== undefined;
+  const hasError = continuation.error !== undefined;
+  return hasExactKeys(continuation, [
+    "status",
+    "command_kind",
+    ...(hasCandidate ? ["selected_candidate_id"] : []),
+    ...(hasError ? ["error"] : []),
+    "authority_status"
+  ]) && ["started", "queued", "failed"].includes(continuation.status) &&
+    continuation.command_kind === "trading_run.start" &&
+    (!hasCandidate || projectionIdentifier(continuation.selected_candidate_id!)) &&
+    (!hasError || projectionText(continuation.error!, 256)) &&
+    continuation.authority_status === "not_live";
+}
+
+function researchGeneralizationReadModelHasProjectionShape(
+  readModel: ResearchGeneralizationReadModel
+): boolean {
+  return hasExactKeys(readModel, [
+    "status",
+    "protocol_count",
+    "outcome_count",
+    "active_protocol",
+    "latest_outcome",
+    "latest_policy_decision",
+    "effective_policy_decision",
+    "authority_status"
+  ]) && ["not_started", "collecting", "awaiting_outcome", "closed"].includes(
+    readModel.status
+  ) && nonNegativeSafeInteger(readModel.protocol_count) &&
+    nonNegativeSafeInteger(readModel.outcome_count) &&
+    (readModel.active_protocol === null ||
+      researchGeneralizationActiveProtocolHasProjectionShape(
+        readModel.active_protocol
+      )) && (readModel.latest_outcome === null ||
+      researchGeneralizationLatestOutcomeHasProjectionShape(
+        readModel.latest_outcome
+      )) && (readModel.latest_policy_decision === null ||
+      researchGeneralizationLatestPolicyDecisionHasProjectionShape(
+        readModel.latest_policy_decision
+      )) && (readModel.effective_policy_decision === null ||
+      researchGeneralizationEffectiveDecisionHasProjectionShape(
+        readModel.effective_policy_decision
+      )) && readModel.authority_status === "not_promotion_authority";
+}
+
+function researchGeneralizationActiveProtocolHasProjectionShape(
+  protocol: NonNullable<ResearchGeneralizationReadModel["active_protocol"]>
+): boolean {
+  return hasExactKeys(protocol, [
+    "research_generalization_protocol_id",
+    "committed_at",
+    "collection_deadline_at",
+    "status",
+    "planned_study_count",
+    "assigned_study_count",
+    "terminal_study_count",
+    "condition_blocks",
+    "next_action",
+    "authority_status"
+  ]) && projectionIdentifier(protocol.research_generalization_protocol_id) &&
+    projectionIso(protocol.committed_at) &&
+    projectionIso(protocol.collection_deadline_at) &&
+    ["collecting", "awaiting_outcome"].includes(protocol.status) && [
+      protocol.planned_study_count,
+      protocol.assigned_study_count,
+      protocol.terminal_study_count
+    ].every(nonNegativeSafeInteger) && protocol.assigned_study_count <=
+      protocol.planned_study_count && protocol.terminal_study_count <=
+      protocol.assigned_study_count && Array.isArray(protocol.condition_blocks) &&
+    protocol.condition_blocks.length === 3 &&
+    protocol.condition_blocks.every((block) => hasExactKeys(block, [
+      "condition_block",
+      "planned_study_count",
+      "assigned_study_count",
+      "terminal_study_count"
+    ]) && marketConditionBlock(block.condition_block) && [
+      block.planned_study_count,
+      block.assigned_study_count,
+      block.terminal_study_count
+    ].every(nonNegativeSafeInteger) && block.assigned_study_count <=
+      block.planned_study_count && block.terminal_study_count <=
+      block.assigned_study_count) && [
+      "collect_precommitted_studies",
+      "complete_assigned_studies",
+      "await_outcome_reconciliation"
+    ].includes(protocol.next_action) && protocol.authority_status === "research_only";
+}
+
+function researchGeneralizationLatestOutcomeHasProjectionShape(
+  outcome: NonNullable<ResearchGeneralizationReadModel["latest_outcome"]>
+): boolean {
+  return hasExactKeys(outcome, [
+    "research_generalization_outcome_id",
+    "research_generalization_protocol_id",
+    "inference_status",
+    "adjudicated_at",
+    "planned_study_count",
+    "completed_study_count",
+    "non_tied_study_count",
+    "tied_study_count",
+    "missing_study_count",
+    "ineligible_study_count",
+    "distinct_baseline_count",
+    "equal_weight_mean_rate_difference",
+    "exact_sign_test_p_value",
+    "harmful_condition_blocks",
+    "policy_decision_eligibility",
+    "next_action",
+    "policy_replacement_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) && projectionIdentifier(outcome.research_generalization_outcome_id) &&
+    projectionIdentifier(outcome.research_generalization_protocol_id) && [
+      "generalization_supported",
+      "generalization_not_supported",
+      "insufficient_generalization_evidence"
+    ].includes(outcome.inference_status) && projectionIso(outcome.adjudicated_at) && [
+      outcome.planned_study_count,
+      outcome.completed_study_count,
+      outcome.non_tied_study_count,
+      outcome.tied_study_count,
+      outcome.missing_study_count,
+      outcome.ineligible_study_count,
+      outcome.distinct_baseline_count
+    ].every(nonNegativeSafeInteger) &&
+    (outcome.equal_weight_mean_rate_difference === null ||
+      Number.isFinite(outcome.equal_weight_mean_rate_difference)) &&
+    Number.isFinite(outcome.exact_sign_test_p_value) &&
+    outcome.exact_sign_test_p_value >= 0 &&
+    outcome.exact_sign_test_p_value <= 1 &&
+    Array.isArray(outcome.harmful_condition_blocks) &&
+    outcome.harmful_condition_blocks.length <= 3 &&
+    outcome.harmful_condition_blocks.every(marketConditionBlock) &&
+    new Set(outcome.harmful_condition_blocks).size ===
+      outcome.harmful_condition_blocks.length && [
+      "eligible_for_separate_generalization_policy_decision",
+      "not_eligible"
+    ].includes(outcome.policy_decision_eligibility) && [
+      "review_broad_research_allocation_policy",
+      "retain_negative_generalization_evidence",
+      "complete_or_redesign_generalization_protocol"
+    ].includes(outcome.next_action) &&
+    outcome.policy_replacement_authority === false &&
+    outcome.promotion_authority === false &&
+    outcome.order_submission_authority === false &&
+    outcome.live_exchange_authority === false &&
+    outcome.authority_status === "not_live";
+}
+
+function researchGeneralizationLatestPolicyDecisionHasProjectionShape(
+  decision: NonNullable<
+    ResearchGeneralizationReadModel["latest_policy_decision"]
+  >
+): boolean {
+  return hasExactKeys(decision, [
+    "research_generalization_policy_decision_id",
+    "research_generalization_protocol_id",
+    "research_generalization_outcome_id",
+    "decision_status",
+    "decision_reason",
+    "effective_default_mode",
+    "decided_at",
+    "research_policy_selection_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) && projectionIdentifier(
+    decision.research_generalization_policy_decision_id
+  ) && projectionIdentifier(decision.research_generalization_protocol_id) &&
+    projectionIdentifier(decision.research_generalization_outcome_id) &&
+    (decision.decision_status === "approved"
+      ? decision.decision_reason ===
+          "supported_cross_condition_adaptive_effect" &&
+        decision.effective_default_mode === "adaptive_default"
+      : decision.decision_status === "not_approved" &&
+        decision.decision_reason === "generalization_outcome_not_eligible" &&
+        decision.effective_default_mode === null) &&
+    projectionIso(decision.decided_at) &&
+    decision.research_policy_selection_authority === true &&
+    decision.evaluation_authority === false &&
+    decision.promotion_authority === false &&
+    decision.order_submission_authority === false &&
+    decision.live_exchange_authority === false &&
+    decision.authority_status === "research_policy_only";
+}
+
+function researchGeneralizationEffectiveDecisionHasProjectionShape(
+  decision: NonNullable<
+    ResearchGeneralizationReadModel["effective_policy_decision"]
+  >
+): boolean {
+  return hasExactKeys(decision, [
+    "research_generalization_policy_decision_id",
+    "research_generalization_protocol_id",
+    "research_generalization_outcome_id",
+    "effective_default_mode",
+    "decided_at",
+    "application",
+    "research_policy_selection_authority",
+    "evaluation_authority",
+    "promotion_authority",
+    "order_submission_authority",
+    "live_exchange_authority",
+    "authority_status"
+  ]) && projectionIdentifier(
+    decision.research_generalization_policy_decision_id
+  ) && projectionIdentifier(decision.research_generalization_protocol_id) &&
+    projectionIdentifier(decision.research_generalization_outcome_id) &&
+    decision.effective_default_mode === "adaptive_default" &&
+    projectionIso(decision.decided_at) &&
+    researchGeneralizationApplicationHasProjectionShape(decision.application) &&
+    decision.research_policy_selection_authority === true &&
+    decision.evaluation_authority === false &&
+    decision.promotion_authority === false &&
+    decision.order_submission_authority === false &&
+    decision.live_exchange_authority === false &&
+    decision.authority_status === "research_policy_only";
+}
+
+function researchGeneralizationApplicationHasProjectionShape(
+  application: NonNullable<
+    ResearchGeneralizationReadModel["effective_policy_decision"]
+  >["application"]
+): boolean {
+  return hasExactKeys(application, [
+    "application_status",
+    "allocation_count",
+    "completed_tick_count",
+    "latest_allocation"
+  ]) && ["awaiting_allocation", "allocated", "completed_tick"].includes(
+    application.application_status
+  ) && nonNegativeSafeInteger(application.allocation_count) &&
+    nonNegativeSafeInteger(application.completed_tick_count) &&
+    application.completed_tick_count <= application.allocation_count &&
+    (application.latest_allocation === null || hasExactKeys(
+      application.latest_allocation,
+      [
+        "candidate_arena_research_allocation_id",
+        "tick_id",
+        "allocated_at",
+        "completed_at"
+      ]
+    ) && projectionIdentifier(
+      application.latest_allocation.candidate_arena_research_allocation_id
+    ) && projectionIdentifier(application.latest_allocation.tick_id) &&
+      projectionIso(application.latest_allocation.allocated_at) &&
+      (application.latest_allocation.completed_at === null ||
+        projectionIso(application.latest_allocation.completed_at)));
+}
+
+function projectionIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 200 &&
+    value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value) &&
+    safeId(value, { maxLength: 200 }) === value;
+}
+
+function projectionRef(value: unknown, recordKind?: string): value is Ref {
+  return hasExactKeys(value, ["record_kind", "id"]) &&
+    projectionIdentifier((value as Ref).record_kind) &&
+    projectionIdentifier((value as Ref).id) &&
+    (recordKind === undefined || (value as Ref).record_kind === recordKind);
+}
+
+function projectionText(value: unknown, limit: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= limit &&
+    sanitizeResearchEvidenceText(value) === value;
+}
+
+function projectionIso(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) &&
+    new Date(Date.parse(value)).toISOString() === value;
+}
+
+function nonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function boundedUniqueProjectionIdentifiers(
+  values: unknown,
+  limit: number
+): values is string[] {
+  return Array.isArray(values) && values.length <= limit &&
+    values.every(projectionIdentifier) && new Set(values).size === values.length;
+}
+
+function researchDirectionKind(value: unknown): value is ResearchDirectionKind {
+  return [
+    "trend_following",
+    "mean_reversion",
+    "volatility_regime",
+    "funding_aware_risk",
+    "liquidation_aware_risk",
+    "execution_cost_robustness",
+    "other"
+  ].includes(value as ResearchDirectionKind);
+}
+
+function marketConditionBlock(value: unknown): value is "long" | "short" | "flat" {
+  return value === "long" || value === "short" || value === "flat";
+}
+
+function candidateArenaPaperHandoffReason(
+  value: unknown
+): value is NonNullable<
+  CandidateArenaTickDirectionResultReadModel["paper_handoff_conformance"]
+>["reason"] {
+  return [
+    "passed",
+    "runner_crash",
+    "execution_timed_out",
+    "provider_protocol_incomplete",
+    "provider_protocol_violation",
+    "provider_request_limit_exceeded",
+    "paper_decision_missing",
+    "paper_decision_ambiguous",
+    "paper_event_invalid",
+    "runtime_heartbeat_missing",
+    "runtime_stop_missing",
+    "instance_identity_mismatch",
+    "artifact_digest_mismatch",
+    "hidden_evaluator_field",
+    "candidate_self_report",
+    "private_or_live_authority"
+  ].includes(value as string);
 }
 
 function buildSource(input: {
@@ -701,9 +4312,18 @@ function buildSource(input: {
       index
     })
   );
+  const terminalAdmissionConflict = Boolean(
+    admissionCandidate && checkpoint?.terminal_status === "failed_closed" &&
+    !checkpointAdmissionAgrees(
+      checkpoint,
+      admissionCandidate,
+      tickResult
+    )
+  );
   const admissionIntegrityConflict = admissionGraphConflict ||
     behaviorComparisonRequired && !behaviorComparisonExact;
-  const admission = admissionCandidate && validFinding && behaviorComparisonExact
+  const admission = admissionCandidate && validFinding && behaviorComparisonExact &&
+    !terminalAdmissionConflict
     ? admissionCandidate
     : undefined;
   const conformance = admission ? validConformance : undefined;
@@ -763,19 +4383,9 @@ function buildSource(input: {
     )
   );
   const evidenceInputs: ResearchEvidenceArtifactReadModel[] = [];
-  let missingEvidence = false;
-  for (const binding of commitment?.methodology?.evidence_bindings ?? []) {
-    const record = exactRef(binding.evidence_artifact_ref, "research_evidence_artifact")
-      ? index.evidence.get(binding.evidence_artifact_ref.id)
-      : undefined;
-    if (!record || !validDigest(binding.evidence_artifact_digest) ||
-      !validDigest(record.artifact_digest) ||
-      record.artifact_digest !== binding.evidence_artifact_digest ||
-      record.sanitization_status !== "sanitized" ||
-      Date.parse(record.captured_at) > Date.parse(commitment!.committed_at)) {
-      missingEvidence = true;
-      continue;
-    }
+  const appendEvidenceInput = (record: ResearchEvidenceArtifactRecord): void => {
+    if (evidenceInputs.some((entry) => entry.evidence_artifact_id ===
+      record.research_evidence_artifact_id)) return;
     const evidenceSummary = bounded(record.summary);
     evidenceInputs.push({
       evidence_artifact_id: record.research_evidence_artifact_id,
@@ -790,6 +4400,31 @@ function buildSource(input: {
       qualification_evidence_hidden: true,
       authority_status: "research_only"
     });
+  };
+  const triggerEvidenceExact = triggerEvidenceMatches(
+    allocation.trigger,
+    index.evidence
+  );
+  if (triggerEvidenceExact && allocation.trigger?.evidence_artifact_ref) {
+    const triggerEvidence = index.evidence.get(
+      allocation.trigger.evidence_artifact_ref.id
+    );
+    if (triggerEvidence) appendEvidenceInput(triggerEvidence);
+  }
+  let missingEvidence = false;
+  for (const binding of commitment?.methodology?.evidence_bindings ?? []) {
+    const record = exactRef(binding.evidence_artifact_ref, "research_evidence_artifact")
+      ? index.evidence.get(binding.evidence_artifact_ref.id)
+      : undefined;
+    if (!record || !validDigest(binding.evidence_artifact_digest) ||
+      !validDigest(record.artifact_digest) ||
+      record.artifact_digest !== binding.evidence_artifact_digest ||
+      record.sanitization_status !== "sanitized" ||
+      Date.parse(record.captured_at) > Date.parse(commitment!.committed_at)) {
+      missingEvidence = true;
+      continue;
+    }
+    appendEvidenceInput(record);
   }
   const latestEvidenceRecord = (commitment?.methodology?.evidence_bindings ?? [])
     .map((binding) => {
@@ -822,16 +4457,18 @@ function buildSource(input: {
     selectedSystemCode,
     selectedArtifactExact,
     selectedArtifactExpected,
+    candidateMaterializationExact,
     evaluationChainAmbiguous: evaluationChainConflict,
     evaluationGraphConflict,
     admissionGraphConflict,
     admissionIntegrityConflict,
+    terminalAdmissionConflict,
     terminalGraphComplete,
     evidenceInputs,
     ...(latestEvidenceRecord ? {
       latestEvidenceSummary: latestEvidenceRecord.summary
     } : {}),
-    triggerEvidenceExact: triggerEvidenceMatches(allocation.trigger, index.evidence),
+    triggerEvidenceExact,
     missingEvidence: missingEvidence || Boolean(
       commitment?.methodology?.evidence_bindings.length && evidenceInputs.length === 0
     )
@@ -884,6 +4521,7 @@ function projectSummary(
     identity_kind: "derived_projection",
     research_work_item_id: source.workItemId,
     research_allocation_id: source.allocation.candidate_arena_research_allocation_id,
+    tick_id: source.allocation.tick_id,
     direction_kind: source.selection.direction_kind,
     ...(source.worker ? { research_worker_id: source.worker.research_worker_id } : {}),
     ...(source.commitment ? {
@@ -950,9 +4588,11 @@ function projectSummary(
         ...(methodology.source_candidate_id
           ? { source_candidate_id: methodology.source_candidate_id }
           : {}),
-        evidence_artifact_ids: source.evidenceInputs.map((entry) =>
-          entry.evidence_artifact_id
-        ),
+        evidence_artifact_ids: source.evidenceInputs
+          .filter((entry) => methodology.evidence_bindings.some((binding) =>
+            binding.evidence_artifact_ref.id === entry.evidence_artifact_id
+          ))
+          .map((entry) => entry.evidence_artifact_id),
         authority_status: "research_only"
       }
     } : { methodology_availability: "unavailable" as const }),
@@ -976,8 +4616,10 @@ function projectDetail(
   const { selected_submission_sequence: _summarySelection, ...summaryWithoutSelection } = summary;
   const currentEntries = (source.checkpoint?.notebook.recent_entries ?? [])
     .filter((candidate) => candidate.candidate_arena_tick_id === source.commitment?.candidate_arena_tick_id)
-    .sort((left, right) => left.iteration - right.iteration || left.sequence - right.sequence)
-    .slice(-HISTORY_LIMIT);
+    .sort((left, right) => left.iteration - right.iteration || left.sequence - right.sequence);
+  if (currentEntries.length > HISTORY_LIMIT) {
+    throw new Error("research_operations_projection_submission_history_unbounded");
+  }
   const selectedSequence = source.evaluation?.selected_development_submission_sequence;
   const submissions: ResearchDevelopmentSubmissionReadModel[] = currentEntries.map((candidate) => {
     const selected = candidate.iteration === selectedSequence && source.selectedArtifactExact &&
@@ -1281,10 +4923,12 @@ function lifecycleEvents(source: SessionSource): ResearchLifecycleEventReadModel
     sanitized: true,
     authority_status: "read_only"
   });
+  if (pending.length > HISTORY_LIMIT) {
+    throw new Error("research_operations_projection_lifecycle_history_unbounded");
+  }
   return pending
     .sort((left, right) => left.occurred_at.localeCompare(right.occurred_at) ||
       left.event_kind.localeCompare(right.event_kind))
-    .slice(-HISTORY_LIMIT)
     .map((event, index) => ({ ...event, sequence: index + 1 }));
 }
 
@@ -1412,6 +5056,11 @@ function degradedReasons(source: SessionSource): ResearchSessionDegradedReason[]
   }
   if (source.admissionGraphConflict) {
     addReason(reasons, "admission_graph_conflict");
+  }
+  if (source.terminalAdmissionConflict) {
+    addReason(reasons, "admission_graph_conflict");
+    addReason(reasons, "inactive_incomplete_graph");
+    addReason(reasons, "terminal_admission_unavailable");
   }
   if (source.evaluationGraphConflict) {
     addReason(reasons, "evaluation_graph_conflict");
@@ -2123,6 +5772,28 @@ function evaluationHasRuntimeShape(evaluation: TradingEvaluationResultRecord): b
     ...(evaluation.quarantine_reason === undefined ? [] : ["quarantine_reason"]),
     "completed_at", "authority_status"
   ])) return false;
+  return evaluationBaseHasRuntimeShape(evaluation) &&
+    tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(evaluation);
+}
+
+function unsealedFailureEvaluationHasRuntimeShape(
+  evaluation: TradingEvaluationResultRecord
+): boolean {
+  if (!hasExactKeys(evaluation, [
+    "record_kind", "version", "trading_evaluation_result_id", "experiment_run_ref",
+    "trading_evaluation_task_ref", "evaluator_ref", "result_status", "evidence_disposition",
+    "score_summary", "metric_refs", "evaluator_trace_ref",
+    ...(evaluation.disqualification_reason === undefined ? [] : ["disqualification_reason"]),
+    ...(evaluation.quarantine_reason === undefined ? [] : ["quarantine_reason"]),
+    "completed_at", "authority_status"
+  ])) return false;
+  return evaluationBaseHasRuntimeShape(evaluation) &&
+    tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(evaluation);
+}
+
+function evaluationBaseHasRuntimeShape(
+  evaluation: TradingEvaluationResultRecord
+): boolean {
   return evaluation.record_kind === "trading_evaluation_result" && evaluation.version === 1 &&
     safeIdentifier(evaluation.trading_evaluation_result_id) &&
     exactRef(evaluation.experiment_run_ref, "experiment_run") &&
@@ -2133,9 +5804,8 @@ function evaluationHasRuntimeShape(evaluation: TradingEvaluationResultRecord): b
       evaluation.evidence_disposition
     ) && evaluationScoreHasRuntimeShape(evaluation.score_summary) &&
     Array.isArray(evaluation.metric_refs) && evaluation.metric_refs.every((candidate) =>
-      exactRef(candidate, "metric_snapshot")) &&
+      exactRef(candidate, "metric_snapshot")) && refsAreUnique(evaluation.metric_refs) &&
     exactRef(evaluation.evaluator_trace_ref, "trace_placeholder") &&
-    tradingEvaluationResultResearchPreflightLinkageHasRuntimeShape(evaluation) &&
     (evaluation.disqualification_reason === undefined || [
       "lookahead_leakage", "data_leakage", "survivorship_bias", "cost_model_bypass",
       "funding_ignored", "liquidation_ignored", "seed_cherry_pick", "oos_overfit",
@@ -2147,6 +5817,31 @@ function evaluationHasRuntimeShape(evaluation: TradingEvaluationResultRecord): b
       "manual_review_required", "partial_trace"
     ].includes(evaluation.quarantine_reason)) && safeIsoTimestamp(evaluation.completed_at) &&
     ["not_counted", "counted"].includes(evaluation.authority_status);
+}
+
+function evaluationHasAuthorityLinkageShape(
+  evaluation: TradingEvaluationResultRecord
+): boolean {
+  return evaluation?.record_kind === "trading_evaluation_result" &&
+    evaluation.version === 1 &&
+    safeIdentifier(evaluation.trading_evaluation_result_id) &&
+    exactRef(evaluation.experiment_run_ref, "experiment_run") &&
+    exactRef(evaluation.trading_evaluation_task_ref, "trading_evaluation_task") &&
+    exactRef(evaluation.research_preflight_commitment_ref,
+      "research_preflight_commitment") &&
+    validDigest(evaluation.research_preflight_commitment_digest) &&
+    exactRef(evaluation.submitted_system_code_ref, "system_code") &&
+    validDigest(evaluation.submitted_artifact_digest) &&
+    validDigest(evaluation.sealed_admission_suite_digest) &&
+    evaluation.evaluation_phase === "sealed_admission" &&
+    evaluation.submission_sequence === 1 &&
+    Number.isInteger(evaluation.selected_development_submission_sequence) &&
+    safeIsoTimestamp(evaluation.completed_at) &&
+    ["accepted", "quarantined_for_review", "disqualified"].includes(
+      evaluation.result_status
+    ) && ["not_counted", "counted", "quarantined_for_review"].includes(
+      evaluation.evidence_disposition
+    ) && ["not_counted", "counted"].includes(evaluation.authority_status);
 }
 
 function evaluationScoreHasRuntimeShape(
@@ -2524,6 +6219,7 @@ function findingHasRuntimeShape(finding: ResearchFindingRecord): boolean {
       "duplicate_result", "next_artifact_hint"
     ].includes(finding.finding_kind) && typeof finding.summary === "string" &&
     Array.isArray(finding.supporting_record_refs) &&
+    finding.supporting_record_refs.length <= HISTORY_LIMIT &&
     finding.supporting_record_refs.every(validRef) &&
     refsAreUnique(finding.supporting_record_refs) && safeIsoTimestamp(finding.created_at) &&
     finding.authority_status === "research_trace_only";
@@ -2535,6 +6231,7 @@ function lineageHasRuntimeShape(lineage: ArtifactLineageRecord): boolean {
     exactRef(lineage.child_system_code_ref, "system_code") &&
     (!lineage.parent_system_code_ref || exactRef(lineage.parent_system_code_ref, "system_code")) &&
     Array.isArray(lineage.source_finding_refs) && lineage.source_finding_refs.length > 0 &&
+    lineage.source_finding_refs.length <= HISTORY_LIMIT &&
     lineage.source_finding_refs.every((candidate) => exactRef(candidate, "research_finding")) &&
     refsAreUnique(lineage.source_finding_refs) &&
     (!lineage.created_by_research_worker_ref ||
@@ -3067,8 +6764,14 @@ function terminalProgress(
 }
 
 function compareSessions(
-  left: ResearchSessionSummaryReadModel,
-  right: ResearchSessionSummaryReadModel
+  left: Pick<
+    ResearchSessionSummaryReadModel,
+    "allocated_at" | "research_allocation_id" | "direction_kind"
+  >,
+  right: Pick<
+    ResearchSessionSummaryReadModel,
+    "allocated_at" | "research_allocation_id" | "direction_kind"
+  >
 ): number {
   return (right.allocated_at ?? "").localeCompare(left.allocated_at ?? "") ||
     left.research_allocation_id.localeCompare(right.research_allocation_id) ||
@@ -3193,6 +6896,11 @@ function systemCodeIdsForSessionSeeds(
       addExactSystemCodeId(result, commitment?.source_system_code_ref);
       const commitmentId = commitment?.research_preflight_commitment_id;
       if (typeof commitmentId !== "string") continue;
+      for (const admission of index.admissionsByCommitmentId.get(
+        commitmentId
+      ) ?? []) {
+        addExactSystemCodeId(result, admission?.system_code_ref);
+      }
       for (const evaluation of index.evaluationsByCommitmentId.get(commitmentId) ?? []) {
         addExactSystemCodeId(result, evaluation?.submitted_system_code_ref);
         const evaluationId = evaluation?.trading_evaluation_result_id;
@@ -3626,6 +7334,10 @@ function createResearchOperationsProjectionIndex(
       graph.admissions,
       (admission) => admission?.trading_evaluation_result_ref?.id
     ),
+    admissionsByCommitmentId: groupedIndex(
+      graph.admissions,
+      (admission) => admission?.research_preflight_commitment_ref?.id
+    ),
     admissionsById: groupedIndex(
       graph.admissions,
       (admission) => admission?.candidate_admission_decision_id
@@ -3841,6 +7553,7 @@ function canonicalEvidenceIndex(
     safeIdentifier(record.research_evidence_artifact_id) &&
     privacySafeEvidenceRef(record.subject_ref) &&
     privacySafeEvidenceRef(record.artifact_ref) &&
+    researchEvidenceRolesMatchSource(record) &&
     record.artifact_digest === canonicalDigest(
       researchEvidenceArtifactDigestInput(record)
     ) &&

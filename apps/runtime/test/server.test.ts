@@ -22,6 +22,10 @@ import { FixtureTradingResearchAgentAdapter } from
 import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import { decideCandidateArenaResearchAllocation } from
   "@ouroboros/application/candidate/research-allocation";
+import { buildResearchGeneralizationReadModel } from
+  "@ouroboros/application/candidate/research-generalization-read-model";
+import { buildResearchPopulationDiversity } from
+  "@ouroboros/application/candidate/research-population-diversity";
 import { researchWorkItemId } from
   "@ouroboros/application/candidate/research-work-item";
 import type { ResearchControlStudyExecutionLeasePort } from
@@ -177,6 +181,47 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("keeps the operator readable when an origin-compatible oversized Research source blocks only the new projection", async () => {
+    const { allocation, tick } = await persistLegacyOversizedResearchSource(
+      tmpDir
+    );
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      recoverPaperTradingSessionsOnStart: false
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/api/operator" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        operator: {
+          candidate_arena: {
+            latest_ticks: [{
+              tick_id: tick.tick_id,
+              research_allocation: {
+                allocation_id:
+                  allocation.candidate_arena_research_allocation_id,
+                selected_directions: [{
+                  direction_kind: "trend_following",
+                  reasons: [expect.stringMatching(/^x{256}$/u)]
+                }]
+              }
+            }]
+          },
+          research_operations: {
+            projection_kind: "research_operations",
+            availability: "unavailable",
+            loop_status: "degraded",
+            sessions: []
+          }
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("re-sanitizes legacy Arena and continuation failures before authenticated operator output", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -297,11 +342,16 @@ describe("runtime canonical operator API", () => {
   });
 
   it("authenticates before revealing an exact missing Research session", async () => {
+    const store = new LocalStore(tmpDir);
     const server = await buildRuntimeTestServer({
-      store: new LocalStore(tmpDir),
+      store,
       operatorApiToken: "test-operator-token",
       recoverPaperTradingSessionsOnStart: false
     });
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    );
     const encodedMissingId = "research%2Fsession%201";
 
     try {
@@ -332,6 +382,109 @@ describe("runtime canonical operator API", () => {
         error: "research_session_not_found",
         research_work_item_id: "research/session 1"
       });
+      expect(projectionReads).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("classifies malformed and wrong-prefix Research work-item ids as exact misses without projection reads", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    ).mockRejectedValue(new Error("projection_read_must_not_run"));
+    const invalidIds = [
+      "research-session-v1-private",
+      `wrong-session-v1-${"a".repeat(64)}`,
+      `research-session-v1-${"A".repeat(64)}`
+    ];
+
+    try {
+      for (const researchWorkItemId of invalidIds) {
+        const response = await server.inject({
+          method: "GET",
+          url: `/api/research/sessions/${researchWorkItemId}`,
+          headers: {
+            "x-ouroboros-operator-token": "test-operator-token"
+          }
+        });
+        expect(response.statusCode).toBe(404);
+        expect(response.json()).toEqual({
+          error: "research_session_not_found",
+          research_work_item_id: researchWorkItemId
+        });
+      }
+      expect(projectionReads).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects a Research work-item path over 200 characters at the router boundary without projection reads", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    ).mockRejectedValue(new Error("projection_read_must_not_run"));
+    const overlongId = `research-session-v1-${"a".repeat(181)}`;
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/research/sessions/${overlongId}`,
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        statusCode: 404,
+        error: "Not Found"
+      });
+      expect(projectionReads).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads the projection for a canonical-shaped missing Research work-item id", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildRuntimeTestServer({
+      store,
+      operatorApiToken: "test-operator-token",
+      recoverPaperTradingSessionsOnStart: false
+    });
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    );
+    const researchWorkItemId = `research-session-v1-${"c".repeat(64)}`;
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/research/sessions/${researchWorkItemId}`,
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
+        error: "research_session_not_found",
+        research_work_item_id: researchWorkItemId
+      });
+      expect(projectionReads).toHaveBeenCalledTimes(1);
     } finally {
       await server.close();
     }
@@ -352,20 +505,23 @@ describe("runtime canonical operator API", () => {
       `https://operator:${urlPassword}@example.test/private`,
       `access_token=${tokenValue}`
     ].join(" ");
-    const allocationReads = vi.spyOn(store, "listCandidateArenaResearchAllocations")
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    )
       .mockRejectedValue(new Error(rawFailure));
 
     try {
       const unauthorized = await server.inject({
         method: "GET",
-        url: "/api/research/sessions/research-session-v1-private"
+        url: `/api/research/sessions/research-session-v1-${"d".repeat(64)}`
       });
       expect(unauthorized.statusCode).toBe(401);
-      expect(allocationReads).not.toHaveBeenCalled();
+      expect(projectionReads).not.toHaveBeenCalled();
 
       const response = await server.inject({
         method: "GET",
-        url: "/api/research/sessions/research-session-v1-private",
+        url: `/api/research/sessions/research-session-v1-${"d".repeat(64)}`,
         headers: {
           "x-ouroboros-operator-token": "test-operator-token"
         }
@@ -376,6 +532,7 @@ describe("runtime canonical operator API", () => {
         error: "research_operations_unavailable",
         availability: "unavailable"
       });
+      expect(projectionReads).toHaveBeenCalledTimes(1);
       for (const privateValue of [privateOwner, urlPassword, tokenValue, rawFailure]) {
         expect(response.body).not.toContain(privateValue);
       }
@@ -1332,26 +1489,56 @@ describe("runtime canonical operator API", () => {
     }
   });
 
-  it("projects exact effective policy application without duplicate arena reads", async () => {
+  it("projects exact effective policy application from materialized Arena evidence", async () => {
     const fixture = researchGeneralizationApplicationFixture();
     const store = new LocalStore(tmpDir);
-    vi.spyOn(store, "listResearchGeneralizationProtocols")
-      .mockResolvedValue([fixture.protocol]);
-    vi.spyOn(store, "listResearchControlStudies").mockResolvedValue([]);
-    vi.spyOn(store, "listResearchControlStudyOutcomes").mockResolvedValue([]);
-    vi.spyOn(store, "listResearchGeneralizationOutcomes")
-      .mockResolvedValue([fixture.outcome]);
-    vi.spyOn(store, "listResearchGeneralizationPolicyDecisions")
-      .mockResolvedValue([fixture.decision]);
+    const server = await buildRuntimeTestServer({ store });
+    const projectionReads = vi.spyOn(
+      store,
+      "readCandidateArenaEvidenceProjection"
+    ).mockResolvedValue({
+      availability: "available",
+      latest_ticks: [],
+      terminal_tick_ids: [],
+      research_population_diversity: buildResearchPopulationDiversity({
+        ticks: [],
+        directions: [],
+        commitments: [],
+        fingerprints: [],
+        admissions: []
+      }),
+      research_generalization: buildResearchGeneralizationReadModel({
+        protocols: [fixture.protocol],
+        studies: [],
+        studyOutcomes: [],
+        outcomes: [fixture.outcome],
+        decisions: [fixture.decision],
+        allocations: [fixture.allocation],
+        ticks: [fixture.tick]
+      }),
+      projection_digest: serverTestDigest("f")
+    });
+    const rawRead = async (): Promise<never> => {
+      throw new Error("raw_candidate_arena_evidence_read");
+    };
     const allocationReads = vi.spyOn(
       store,
       "listCandidateArenaResearchAllocations"
-    ).mockResolvedValue([fixture.allocation]);
+    ).mockImplementation(rawRead);
     const tickReads = vi.spyOn(store, "listCandidateArenaTicks")
-      .mockResolvedValue([fixture.tick]);
-    const server = await buildRuntimeTestServer({ store });
-    allocationReads.mockClear();
-    tickReads.mockClear();
+      .mockImplementation(rawRead);
+    const generalizationReads = [
+      vi.spyOn(store, "listResearchGeneralizationProtocols")
+        .mockImplementation(rawRead),
+      vi.spyOn(store, "listResearchControlStudies")
+        .mockImplementation(rawRead),
+      vi.spyOn(store, "listResearchControlStudyOutcomes")
+        .mockImplementation(rawRead),
+      vi.spyOn(store, "listResearchGeneralizationOutcomes")
+        .mockImplementation(rawRead),
+      vi.spyOn(store, "listResearchGeneralizationPolicyDecisions")
+        .mockImplementation(rawRead)
+    ];
 
     try {
       const response = await server.inject({
@@ -1393,8 +1580,12 @@ describe("runtime canonical operator API", () => {
         authority_status: "not_promotion_authority"
       });
       expect(JSON.stringify(projection)).not.toContain("allocation_digest");
-      expect(allocationReads).toHaveBeenCalledTimes(1);
-      expect(tickReads).toHaveBeenCalledTimes(1);
+      expect(projectionReads).toHaveBeenCalledTimes(1);
+      expect(allocationReads).not.toHaveBeenCalled();
+      expect(tickReads).not.toHaveBeenCalled();
+      for (const read of generalizationReads) {
+        expect(read).not.toHaveBeenCalled();
+      }
     } finally {
       await server.close();
     }
@@ -1404,7 +1595,10 @@ describe("runtime canonical operator API", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildRuntimeTestServer({ store });
     const privateFailure = "research-private-read-failure-sentinel";
-    vi.spyOn(store, "listResearchWorkers")
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    )
       .mockRejectedValue(new Error(privateFailure));
 
     try {
@@ -1437,6 +1631,7 @@ describe("runtime canonical operator API", () => {
           authority_status: "not_live"
         }
       });
+      expect(projectionReads).toHaveBeenCalledTimes(1);
       expect(response.body).not.toContain(privateFailure);
     } finally {
       await server.close();
@@ -3346,7 +3541,7 @@ async function persistRuntimeResearchSessionFixture(
     tick_id: allocation.tick_id,
     started_at: allocation.allocated_at,
     completed_at: "2026-07-23T00:00:05.000Z",
-    status: "completed_with_errors",
+    status: "failed",
     created_candidate_refs: [],
     direction_results: [{
       direction_kind: "trend_following",
@@ -3375,6 +3570,79 @@ async function persistRuntimeResearchSessionFixture(
     research_allocation_id: allocation.candidate_arena_research_allocation_id,
     direction_kind: "trend_following"
   });
+}
+
+async function persistLegacyOversizedResearchSource(root: string): Promise<{
+  allocation: CandidateArenaResearchAllocationRecord;
+  tick: CandidateArenaTickRecord;
+}> {
+  const allocation = decideCandidateArenaResearchAllocation({
+    tickId: "legacy-oversized-operator",
+    allocatedAt: "2026-07-29T00:00:00.000Z",
+    allocationMode: "explicit",
+    allocationPolicyBasis: { basis_kind: "explicit_request" },
+    explicitDirections: ["trend_following"],
+    findingClusters: [],
+    latestTicks: [],
+    priorAllocations: [],
+    completedTickIds: []
+  });
+  allocation.selected_directions[0]!.reasons = ["x".repeat(300 * 1024)];
+  allocation.allocation_digest = serverTestExactDigest(
+    candidateArenaResearchAllocationDigestInput(allocation)
+  );
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: "candidate-arena-tick-legacy-oversized-operator",
+    tick_id: allocation.tick_id,
+    started_at: allocation.allocated_at,
+    completed_at: "2026-07-29T00:00:01.000Z",
+    status: "failed",
+    created_candidate_refs: [],
+    direction_results: [{
+      direction_kind: "trend_following",
+      status: "failed",
+      error: "Legacy Research session failed before projection migration."
+    }],
+    research_allocation_ref: {
+      record_kind: "candidate_arena_research_allocation",
+      id: allocation.candidate_arena_research_allocation_id
+    },
+    research_allocation_digest: allocation.allocation_digest,
+    authority_status: "not_live"
+  };
+  const allocationDir = path.join(
+    root,
+    "candidate-arena-research-allocations",
+    "items"
+  );
+  const tickDir = path.join(root, "candidate-arena-ticks", "items");
+  await Promise.all([
+    mkdir(allocationDir, { recursive: true }),
+    mkdir(tickDir, { recursive: true })
+  ]);
+  await Promise.all([
+    writeFile(
+      path.join(
+        allocationDir,
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      ),
+      `${JSON.stringify(allocation, null, 2)}\n`,
+      "utf8"
+    ),
+    writeFile(
+      path.join(
+        tickDir,
+        `${encodeURIComponent(tick.candidate_arena_tick_id)}.json`
+      ),
+      `${JSON.stringify(tick, null, 2)}\n`,
+      "utf8"
+    )
+  ]);
+  return { allocation, tick };
 }
 
 function serverTestExactDigest(value: string): string {

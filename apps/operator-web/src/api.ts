@@ -27,6 +27,11 @@ import type {
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
+import {
+  isCanonicalResearchWorkItemId,
+  isSafeResearchSessionDetailResponse
+} from
+  "./research-session-response";
 
 const runtimeBaseUrl = import.meta.env.VITE_OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 const operatorApiToken = import.meta.env.VITE_OUROBOROS_OPERATOR_API_TOKEN;
@@ -179,20 +184,61 @@ export async function fetchResearchSessionDetail(
   researchWorkItemId: string,
   signal?: AbortSignal
 ): Promise<ResearchSessionDetailReadModel | undefined> {
+  if (!isCanonicalResearchWorkItemId(researchWorkItemId)) {
+    throw new Error("Failed to load Research session: invalid identifier");
+  }
   const response = await runtimeFetch(
     `${runtimeBaseUrl}/api/research/sessions/${encodeURIComponent(researchWorkItemId)}`,
     signal ? { signal } : undefined
   );
   if (response.status === 404) {
-    return undefined;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error("Failed to load Research session: 404");
+    }
+    if (isExactResearchSessionNotFound(body, researchWorkItemId)) {
+      return undefined;
+    }
+    throw new Error("Failed to load Research session: 404");
   }
   if (!response.ok) {
     throw new Error(`Failed to load Research session: ${response.status}`);
   }
-  const body = (await response.json()) as {
-    research_session: ResearchSessionDetailReadModel;
-  };
-  return body.research_session;
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Failed to load Research session: invalid response");
+  }
+  const envelope = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : undefined;
+  const detail = envelope && Object.keys(envelope).length === 1 &&
+      Object.hasOwn(envelope, "research_session")
+    ? envelope.research_session
+    : undefined;
+  if (!isSafeResearchSessionDetailResponse(detail, researchWorkItemId)) {
+    throw new Error("Failed to load Research session: invalid response");
+  }
+  return detail;
+}
+
+function isExactResearchSessionNotFound(
+  body: unknown,
+  requestedResearchWorkItemId: string
+): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return false;
+  }
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  return keys.length === 2 &&
+    keys.includes("error") &&
+    keys.includes("research_work_item_id") &&
+    record.error === "research_session_not_found" &&
+    record.research_work_item_id === requestedResearchWorkItemId;
 }
 
 export async function startCandidateArena(): Promise<CandidateArenaReadModel> {

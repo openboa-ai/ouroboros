@@ -15,6 +15,9 @@ import type {
 } from "../candidate/arena";
 import { OperatorReadError, OperatorService } from "./operator";
 
+const VALID_MISSING_RESEARCH_WORK_ITEM_ID =
+  `research-session-v1-${"a".repeat(64)}`;
+
 describe("OperatorService autonomous Arena control", () => {
   let root: string;
 
@@ -123,8 +126,51 @@ describe("OperatorService autonomous Arena control", () => {
       sessions_truncated: false,
       authority_status: "research_only"
     });
-    await expect(service.readResearchSessionDetail("research-session-v1-missing"))
+    await expect(service.readResearchSessionDetail(VALID_MISSING_RESEARCH_WORK_ITEM_ID))
       .resolves.toBeUndefined();
+  });
+
+  it("treats non-canonical Research work-item ids as exact misses before reading the projection", async () => {
+    const store = new LocalStore(root);
+    await store.initialize();
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    ).mockRejectedValue(new Error("projection_read_must_not_run"));
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: stoppedArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: unexpectedPaperEvidenceAdapter()
+    });
+
+    for (const researchWorkItemId of [
+      "research-session-v1-private",
+      `wrong-session-v1-${"a".repeat(64)}`,
+      `research-session-v1-${"A".repeat(64)}`,
+      `research-session-v1-${"a".repeat(181)}`
+    ]) {
+      await expect(service.readResearchSessionDetail(researchWorkItemId))
+        .resolves.toBeUndefined();
+    }
+    expect(projectionReads).not.toHaveBeenCalled();
+  });
+
+  it("reads the projection for a canonical-shaped missing Research work-item id", async () => {
+    const store = new LocalStore(root);
+    await store.initialize();
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    );
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: stoppedArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: unexpectedPaperEvidenceAdapter()
+    });
+
+    await expect(service.readResearchSessionDetail(VALID_MISSING_RESEARCH_WORK_ITEM_ID))
+      .resolves.toBeUndefined();
+    expect(projectionReads).toHaveBeenCalledTimes(1);
   });
 
   it("classifies exact Research detail projection failures without exposing their cause", async () => {
@@ -138,7 +184,10 @@ describe("OperatorService autonomous Arena control", () => {
       `https://operator:${urlPassword}@example.test/private`,
       `access_token=${tokenValue}`
     ].join(" ");
-    vi.spyOn(store, "listCandidateArenaResearchAllocations")
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    )
       .mockRejectedValue(new Error(rawFailure));
     const service = new OperatorService({
       store,
@@ -147,7 +196,7 @@ describe("OperatorService autonomous Arena control", () => {
     });
 
     const failure = await service
-      .readResearchSessionDetail("research-session-v1-private")
+      .readResearchSessionDetail(`research-session-v1-${"b".repeat(64)}`)
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(OperatorReadError);
@@ -158,6 +207,7 @@ describe("OperatorService autonomous Arena control", () => {
         availability: "unavailable"
       }
     });
+    expect(projectionReads).toHaveBeenCalledTimes(1);
     const serialized = `${String(failure)} ${JSON.stringify(failure)}`;
     for (const privateValue of [privateOwner, urlPassword, tokenValue, rawFailure]) {
       expect(serialized).not.toContain(privateValue);
@@ -168,7 +218,10 @@ describe("OperatorService autonomous Arena control", () => {
     const store = new LocalStore(root);
     await store.initialize();
     const privateFailure = "operator-private-research-read-failure";
-    vi.spyOn(store, "listResearchWorkers")
+    const projectionReads = vi.spyOn(
+      store,
+      "readResearchOperationsProjectionWindow"
+    )
       .mockRejectedValue(new Error(privateFailure));
     const service = new OperatorService({
       store,
@@ -186,6 +239,7 @@ describe("OperatorService autonomous Arena control", () => {
     });
     expect(operator.candidate_arena.authority_status).toBe("not_live");
     expect(operator.paper_trading_board.authority_status).toBe("not_live");
+    expect(projectionReads).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(operator)).not.toContain(privateFailure);
   });
 
@@ -420,21 +474,25 @@ describe("OperatorService autonomous Arena control", () => {
     });
 
     await service.executeCommand("arena.start", undefined);
-    const returned = await continuation?.(outcome);
-    await waitForPersistedContinuation(store, outcome.tick_id);
+    try {
+      const returned = await continuation?.(outcome);
+      await waitForPersistedContinuation(store, outcome.tick_id);
 
-    const stored = (await store.listCandidateArenaTicks())
-      .find((tick) => tick.tick_id === outcome.tick_id);
-    const storedFailure = stored?.paper_trading_continuation?.error;
-    const returnedFailure = returned?.error;
-    for (const summary of [storedFailure, returnedFailure]) {
-      expect(summary).toContain("[private-path]");
-      expect(summary).toContain("[external-url]");
-      expect(summary).toContain("[redacted]");
-      expect(summary?.length).toBeLessThanOrEqual(256);
-    }
-    for (const sentinel of [privateOwner, urlPassword, tokenValue]) {
-      expect(JSON.stringify({ stored, returned })).not.toContain(sentinel);
+      const stored = (await store.listCandidateArenaTicks())
+        .find((tick) => tick.tick_id === outcome.tick_id);
+      const storedFailure = stored?.paper_trading_continuation?.error;
+      const returnedFailure = returned?.error;
+      for (const summary of [storedFailure, returnedFailure]) {
+        expect(summary).toContain("[private-path]");
+        expect(summary).toContain("[external-url]");
+        expect(summary).toContain("[redacted]");
+        expect(summary?.length).toBeLessThanOrEqual(256);
+      }
+      for (const sentinel of [privateOwner, urlPassword, tokenValue]) {
+        expect(JSON.stringify({ stored, returned })).not.toContain(sentinel);
+      }
+    } finally {
+      await service.executeCommand("arena.stop", undefined);
     }
   });
 

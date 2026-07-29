@@ -198,6 +198,7 @@ describe("Research and Arena operations read-model contracts", () => {
       identity_kind: "derived_projection",
       research_work_item_id: "research-session-v1-digest",
       research_allocation_id: "allocation-legacy",
+      tick_id: "tick-legacy",
       direction_kind: "trend_following",
       status: "recovering",
       status_basis: {
@@ -505,6 +506,7 @@ describe("Research and Arena operations read-model contracts", () => {
         identity_kind: "derived_projection",
         research_work_item_id: "work-item-1",
         research_allocation_id: "allocation-1",
+        tick_id: "tick-1",
         direction_kind: "execution_cost_robustness",
         research_worker_id: "worker-1",
         commitment_id: "commitment-1",
@@ -555,8 +557,14 @@ describe("Research and Arena operations read-model contracts", () => {
       authority_status: "research_only"
     };
 
+    const researchSummary = research.sessions[0]!;
+    if (researchSummary.trigger_availability !== "available" ||
+      researchSummary.methodology_availability !== "available" ||
+      researchSummary.provider_availability !== "available") {
+      throw new Error("expected_available_research_summary");
+    }
     const researchDetail: ResearchSessionDetailReadModel = {
-      ...research.sessions[0],
+      ...researchSummary,
       evidence_inputs: [{
         evidence_artifact_id: "evidence-1",
         source_kind: "arena_failure",

@@ -68,6 +68,8 @@ import {
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
 const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
 const MAX_ARENA_PAPER_START_OUTCOMES = 32;
+const CANONICAL_RESEARCH_WORK_ITEM_ID_PATTERN =
+  /^research-session-v1-[0-9a-f]{64}$/u;
 
 export class OperatorCommandError extends Error {
   constructor(
@@ -234,6 +236,9 @@ export class OperatorService {
   async readResearchSessionDetail(
     researchWorkItemId: string
   ): Promise<ResearchSessionDetailReadModel | undefined> {
+    if (!CANONICAL_RESEARCH_WORK_ITEM_ID_PATTERN.test(researchWorkItemId)) {
+      return undefined;
+    }
     try {
       return await this.researchOperationsProjection().readSessionDetail(researchWorkItemId);
     } catch {

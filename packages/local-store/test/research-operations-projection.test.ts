@@ -1,9 +1,34 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  utimes,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { ResearchOperationsProjectionService } from "@ouroboros/application";
+import { describe, expect, it, vi } from "vitest";
+import * as processStartMarkerModule from "../src/process-start-marker";
+import {
+  ResearchOperationsProjectionService,
+  materializeResearchOperationsProjectionCapsuleTrie,
+  researchOperationsProjectionCapsuleHasIntegrity,
+  researchOperationsProjectionCapsuleTrieDigest,
+  researchOperationsProjectionCapsuleRouteHash
+} from "@ouroboros/application";
+import { ResearchOperationsProjectionCompatibilityError } from
+  "@ouroboros/application/ports/store";
+import type {
+  CandidateArenaEvidenceProjection,
+  ResearchOperationsProjectionCapsule,
+  ResearchOperationsProjectionCapsuleTrieNode,
+  ResearchOperationsProjectionIndexRecord
+} from "@ouroboros/application/ports/store";
 import { decideResearchMemoryControlStudy } from
   "../../application/src/candidate/research-memory-control-study";
 import { researchWorkItemId } from
@@ -24,6 +49,7 @@ import {
   type CandidateArenaTickDirectionResultReadModel,
   type CandidateArenaTickRecord,
   type ExperimentRunRecord,
+  type ArtifactLineageRecord,
   type PaperTradingHandoffConformanceRecord,
   type ResearchDirectionRecord,
   type ResearchEvidenceArtifactRecord,
@@ -47,6 +73,3872 @@ type OracleCase =
   | "restart_recovery";
 
 describe("LocalStore ResearchOperationsProjectionService oracle", () => {
+  it("publishes one sanitized bounded capsule per session", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-capsule-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const graph = await store.runResearchOperationsProjectionBatch(() =>
+        persistBaseGraph(store, "sanitized-capsule")
+      );
+      const workItemId = researchWorkItemId({
+        research_allocation_id:
+          graph.allocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const capsulePath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "items",
+        `${encodeURIComponent(workItemId)}.json`
+      );
+      const indexPath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      );
+      const [capsule, index] = await Promise.all([
+        readFile(capsulePath, "utf8"),
+        readFile(indexPath, "utf8")
+      ]);
+
+      expect(Buffer.byteLength(capsule, "utf8")).toBeLessThanOrEqual(256 * 1024);
+      expect(Buffer.byteLength(index, "utf8")).toBeLessThanOrEqual(256 * 1024);
+      for (const privateValue of [
+        "artifact_path",
+        "entrypoint",
+        "workspace_key",
+        `/tmp/${graph.source.system_code_id}.py`,
+        graph.worker.workspace_key!
+      ]) {
+        expect(capsule).not.toContain(privateValue);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("coalesces a logical Research graph mutation into one projection publish", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-batch-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const materialize = vi.spyOn(
+        ResearchOperationsProjectionService.prototype,
+        "materializeProjection"
+      );
+
+      await store.runResearchOperationsProjectionBatch(() =>
+        persistBaseGraph(store, "batched-graph")
+      );
+
+      expect(materialize).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("caches the exact writeJson bytes when the caller mutates during the publication-lock wait", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-write-snapshot-"
+    ));
+    let heldLock: unknown;
+    let restartedReader: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const privateStore = store as unknown as {
+        acquireResearchOperationsProjectionPublicationLock(): Promise<unknown>;
+        releaseResearchOperationsProjectionPublicationLock(
+          owner: unknown
+        ): Promise<void>;
+        writeJson(filePath: string, value: unknown): Promise<void>;
+        cachedResearchOperationsProjectionRecords<T>(
+          collection: string
+        ): T[];
+      };
+      const finding = standaloneFinding(
+        "canonical-write-snapshot",
+        "2026-07-29T00:00:00.000Z"
+      ) as ResearchFindingRecord & { omitted_projection_note?: string };
+      finding.omitted_projection_note = undefined;
+      const initialSummary = finding.summary;
+      const serializedSnapshot = `${JSON.stringify(finding, null, 2)}\n`;
+      const expectedSnapshot = JSON.parse(
+        serializedSnapshot
+      ) as ResearchFindingRecord;
+      const findingPath = path.join(
+        root,
+        "research-findings",
+        "items",
+        `${encodeURIComponent(finding.research_finding_id)}.json`
+      );
+
+      heldLock = await privateStore
+        .acquireResearchOperationsProjectionPublicationLock();
+      const write = privateStore.writeJson(findingPath, finding);
+      await waitForCurrentProcessProjectionLockClaim(root);
+      finding.summary = "Caller mutation must not enter the published snapshot.";
+      await privateStore.releaseResearchOperationsProjectionPublicationLock(
+        heldLock
+      );
+      heldLock = undefined;
+      await write;
+
+      expect(await readFile(findingPath, "utf8")).toBe(serializedSnapshot);
+      const cached = privateStore
+        .cachedResearchOperationsProjectionRecords<ResearchFindingRecord>(
+          "research-findings"
+        );
+      const cachedFinding = cached.find((candidate) =>
+        candidate.research_finding_id === finding.research_finding_id
+      );
+      expect(cachedFinding).toStrictEqual(expectedSnapshot);
+      expect(cachedFinding?.summary).toBe(initialSummary);
+      expect(Object.keys(cachedFinding ?? {})).not.toContain(
+        "omitted_projection_note"
+      );
+
+      const restartedResultPath = path.join(root, "restarted-write-cache.json");
+      restartedReader = spawnProjectionSourceCacheReader({
+        root,
+        collection: "research-findings",
+        resultPath: restartedResultPath
+      });
+      await waitForChild(restartedReader);
+      const restartedCache = await readJsonFile<ResearchFindingRecord[]>(
+        restartedResultPath
+      );
+      expect(restartedCache.find((candidate) =>
+        candidate.research_finding_id === finding.research_finding_id
+      )).toStrictEqual(cachedFinding);
+    } finally {
+      if (heldLock !== undefined) {
+        await (new LocalStore(root) as unknown as {
+          releaseResearchOperationsProjectionPublicationLock(
+            owner: unknown
+          ): Promise<void>;
+        }).releaseResearchOperationsProjectionPublicationLock(heldLock);
+      }
+      restartedReader?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("caches the exact create-only bytes when the caller mutates during the publication-lock wait", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-create-only-snapshot-"
+    ));
+    let heldLock: unknown;
+    let restartedReader: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const privateStore = store as unknown as {
+        acquireResearchOperationsProjectionPublicationLock(): Promise<unknown>;
+        releaseResearchOperationsProjectionPublicationLock(
+          owner: unknown
+        ): Promise<void>;
+        writeJsonCreateOnly(
+          filePath: string,
+          value: unknown
+        ): Promise<"created" | "exists">;
+        cachedResearchOperationsProjectionRecords<T>(
+          collection: string
+        ): T[];
+      };
+      const source = systemCode(
+        "canonical-create-only-snapshot",
+        digest("canonical-create-only-snapshot"),
+        "2026-07-29T00:00:00.000Z"
+      ) as SystemCodeRecord & { omitted_projection_note?: string };
+      if (source.artifact_kind !== "python_file") {
+        throw new Error("canonical_create_only_snapshot_must_be_python");
+      }
+      source.omitted_projection_note = undefined;
+      const initialArtifactPath = source.artifact_path;
+      const serializedSnapshot = `${JSON.stringify(source, null, 2)}\n`;
+      const expectedSnapshot = JSON.parse(
+        serializedSnapshot
+      ) as SystemCodeRecord;
+      const sourcePath = path.join(
+        root,
+        "system-codes",
+        "items",
+        `${encodeURIComponent(source.system_code_id)}.json`
+      );
+
+      heldLock = await privateStore
+        .acquireResearchOperationsProjectionPublicationLock();
+      const write = privateStore.writeJsonCreateOnly(sourcePath, source);
+      await waitForCurrentProcessProjectionLockClaim(root);
+      source.artifact_path = "/tmp/caller-mutation-must-not-persist.py";
+      await privateStore.releaseResearchOperationsProjectionPublicationLock(
+        heldLock
+      );
+      heldLock = undefined;
+      await expect(write).resolves.toBe("created");
+
+      expect(await readFile(sourcePath, "utf8")).toBe(serializedSnapshot);
+      const cached = privateStore
+        .cachedResearchOperationsProjectionRecords<SystemCodeRecord>(
+          "system-codes"
+        );
+      const cachedSource = cached.find((candidate) =>
+        candidate.system_code_id === source.system_code_id
+      );
+      expect(cachedSource).toStrictEqual(expectedSnapshot);
+      if (cachedSource?.artifact_kind !== "python_file") {
+        throw new Error("cached_create_only_snapshot_must_be_python");
+      }
+      expect(cachedSource.artifact_path).toBe(initialArtifactPath);
+      expect(Object.keys(cachedSource ?? {})).not.toContain(
+        "omitted_projection_note"
+      );
+
+      const restartedResultPath = path.join(
+        root,
+        "restarted-create-only-cache.json"
+      );
+      restartedReader = spawnProjectionSourceCacheReader({
+        root,
+        collection: "system-codes",
+        resultPath: restartedResultPath
+      });
+      await waitForChild(restartedReader);
+      const restartedCache = await readJsonFile<SystemCodeRecord[]>(
+        restartedResultPath
+      );
+      expect(restartedCache.find((candidate) =>
+        candidate.system_code_id === source.system_code_id
+      )).toStrictEqual(cachedSource);
+    } finally {
+      if (heldLock !== undefined) {
+        await (new LocalStore(root) as unknown as {
+          releaseResearchOperationsProjectionPublicationLock(
+            owner: unknown
+          ): Promise<void>;
+        }).releaseResearchOperationsProjectionPublicationLock(heldLock);
+      }
+      restartedReader?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("drains a live detached source operation before releasing the projection lock", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-live-descendant-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const finding = standaloneFinding(
+        "live-detached-source",
+        "2026-07-29T00:00:00.000Z"
+      );
+      const findingPath = path.join(
+        root,
+        "research-findings",
+        "items",
+        `${encodeURIComponent(finding.research_finding_id)}.json`
+      );
+      const privateStore = store as unknown as {
+        captureResearchOperationsProjectionSourceSnapshot(
+          filePath: string
+        ): Promise<void>;
+        releaseResearchOperationsProjectionPublicationLock(
+          owner: unknown
+        ): Promise<void>;
+      };
+      const captureSnapshot = privateStore
+        .captureResearchOperationsProjectionSourceSnapshot.bind(store);
+      const releaseProjectionLock = privateStore
+        .releaseResearchOperationsProjectionPublicationLock.bind(store);
+      let sourceSnapshotEntered!: () => void;
+      const sourceSnapshotEnteredGate = new Promise<void>((resolve) => {
+        sourceSnapshotEntered = resolve;
+      });
+      let releaseSourceSnapshot!: () => void;
+      const sourceSnapshotGate = new Promise<void>((resolve) => {
+        releaseSourceSnapshot = resolve;
+      });
+      let lockReleaseStarted!: () => void;
+      const lockReleaseStartedGate = new Promise<void>((resolve) => {
+        lockReleaseStarted = resolve;
+      });
+      let gateSnapshot = true;
+      vi.spyOn(
+        privateStore,
+        "captureResearchOperationsProjectionSourceSnapshot"
+      ).mockImplementation(async (filePath) => {
+        await captureSnapshot(filePath);
+        if (gateSnapshot && filePath === findingPath) {
+          gateSnapshot = false;
+          sourceSnapshotEntered();
+          await sourceSnapshotGate;
+        }
+      });
+      vi.spyOn(
+        privateStore,
+        "releaseResearchOperationsProjectionPublicationLock"
+      ).mockImplementation(async (owner) => {
+        lockReleaseStarted();
+        await releaseProjectionLock(owner);
+      });
+      let detachedWrite!: Promise<ResearchFindingRecord>;
+
+      const batch = store.runResearchOperationsProjectionBatch(async () => {
+        detachedWrite = store.recordResearchFinding(finding);
+        void detachedWrite.catch(() => undefined);
+        await sourceSnapshotEnteredGate;
+      });
+      await sourceSnapshotEnteredGate;
+
+      const releasedBeforeDescendant = await Promise.race([
+        lockReleaseStartedGate.then(() => true),
+        new Promise<false>((resolve) => setImmediate(() => resolve(false)))
+      ]);
+      expect(releasedBeforeDescendant).toBe(false);
+
+      releaseSourceSnapshot();
+      await expect(Promise.all([batch, detachedWrite])).resolves.toEqual([
+        undefined,
+        finding
+      ]);
+      await expect(readJsonFile<ResearchFindingRecord>(findingPath)).resolves
+        .toEqual(finding);
+      await expect(stoppedService(store).readOperations()).resolves.toMatchObject({
+        availability: "available",
+        recorded_session_count: 0
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("queues a stale descendant that starts after its batch scope closes", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-closed-descendant-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const first = allocationFixture("closed-descendant-first");
+      const stale = allocationFixture("closed-descendant-stale");
+      const stalePath = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items",
+        `${encodeURIComponent(
+          stale.candidate_arena_research_allocation_id
+        )}.json`
+      );
+      const privateStore = store as unknown as {
+        captureResearchOperationsProjectionSourceSnapshot(
+          filePath: string
+        ): Promise<void>;
+        flushResearchOperationsProjection(): Promise<void>;
+      };
+      const captureSnapshot = privateStore
+        .captureResearchOperationsProjectionSourceSnapshot.bind(store);
+      const flushProjection = privateStore
+        .flushResearchOperationsProjection.bind(store);
+      let staleSourceEntered!: () => void;
+      const staleSourceEnteredGate = new Promise<void>((resolve) => {
+        staleSourceEntered = resolve;
+      });
+      vi.spyOn(
+        privateStore,
+        "captureResearchOperationsProjectionSourceSnapshot"
+      ).mockImplementation(async (filePath) => {
+        if (filePath === stalePath) staleSourceEntered();
+        await captureSnapshot(filePath);
+      });
+      let flushEntered!: () => void;
+      const flushEnteredGate = new Promise<void>((resolve) => {
+        flushEntered = resolve;
+      });
+      let releaseFlush!: () => void;
+      const flushGate = new Promise<void>((resolve) => {
+        releaseFlush = resolve;
+      });
+      let gateFlush = true;
+      vi.spyOn(
+        privateStore,
+        "flushResearchOperationsProjection"
+      ).mockImplementation(async () => {
+        if (gateFlush) {
+          gateFlush = false;
+          flushEntered();
+          await flushGate;
+        }
+        await flushProjection();
+      });
+      let startStale!: () => void;
+      const staleStartGate = new Promise<void>((resolve) => {
+        startStale = resolve;
+      });
+      let staleWrite!: Promise<CandidateArenaResearchAllocationRecord>;
+
+      const batch = store.runResearchOperationsProjectionBatch(async () => {
+        await store.recordCandidateArenaResearchAllocation(first);
+        staleWrite = staleStartGate.then(() =>
+          store.recordCandidateArenaResearchAllocation(stale)
+        );
+        void staleWrite.catch(() => undefined);
+      });
+      await flushEnteredGate;
+      startStale();
+
+      const enteredBeforeClosedBatchReleased = await Promise.race([
+        staleSourceEnteredGate.then(() => true),
+        new Promise<false>((resolve) => setImmediate(() => resolve(false)))
+      ]);
+      expect(enteredBeforeClosedBatchReleased).toBe(false);
+
+      releaseFlush();
+      await expect(Promise.all([batch, staleWrite])).resolves.toEqual([
+        undefined,
+        stale
+      ]);
+      await expect(stoppedService(store).readOperations()).resolves.toMatchObject({
+        availability: "available",
+        recorded_session_count: 2,
+        projected_session_count: 2
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("aggregates independent task and live detached descendant failures", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-descendant-failures-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const invalidFinding = {
+        ...standaloneFinding(
+          "invalid-live-descendant",
+          "2026-07-29T00:00:00.000Z"
+        ),
+        version: 2
+      } as unknown as ResearchFindingRecord;
+      const taskFailure = new Error("outer_batch_task_failed");
+      let detachedFailure!: Promise<ResearchFindingRecord>;
+      let caught: unknown;
+
+      try {
+        await store.runResearchOperationsProjectionBatch(async () => {
+          detachedFailure = store.recordResearchFinding(invalidFinding);
+          void detachedFailure.catch(() => undefined);
+          throw taskFailure;
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(AggregateError);
+      const failures = (caught as AggregateError).errors;
+      expect(failures).toContain(taskFailure);
+      expect(failures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_research_finding_input" })
+      ]));
+      await expect(detachedFailure).rejects.toMatchObject({
+        code: "invalid_research_finding_input"
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back a source after a projection publish failure", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-replay-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const allocation = allocationFixture("projection-replay");
+      const privateStore = store as unknown as {
+        writeJson(filePath: string, value: unknown): Promise<void>;
+      };
+      const originalWriteJson = privateStore.writeJson.bind(store);
+      const writeJson = vi.spyOn(privateStore, "writeJson");
+      let failIndexOnce = true;
+      writeJson.mockImplementation(async (filePath, value) => {
+        if (failIndexOnce && filePath === path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "index.json"
+        )) {
+          failIndexOnce = false;
+          throw new Error("projection_index_publish_failed");
+        }
+        await originalWriteJson(filePath, value);
+      });
+
+      await expect(store.runResearchOperationsProjectionBatch(() =>
+        store.recordCandidateArenaResearchAllocation(allocation)
+      )).rejects.toThrow("projection_index_publish_failed");
+      await expect(stoppedService(store).readOperations()).resolves.toMatchObject({
+        availability: "available",
+        recorded_session_count: 0
+      });
+      await expect(readFile(path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items",
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      ), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+      writeJson.mockRestore();
+      await expect(store.runResearchOperationsProjectionBatch(() =>
+        store.recordCandidateArenaResearchAllocation(allocation)
+      )).resolves.toEqual(allocation);
+      await expect(stoppedService(store).readOperations()).resolves.toMatchObject({
+        recorded_session_count: 1,
+        projected_session_count: 1
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves a published source when the caller fails after projection publication", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-post-publish-failure-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const allocation = allocationFixture("post-publish-failure");
+
+      await expect(store.runResearchOperationsProjectionBatch(async () => {
+        await store.recordCandidateArenaResearchAllocation(allocation);
+        throw new Error("caller_failed_after_source_write");
+      })).rejects.toThrow("caller_failed_after_source_write");
+
+      await expect(store.getCandidateArenaResearchAllocation(
+        allocation.candidate_arena_research_allocation_id
+      )).resolves.toEqual(allocation);
+      await expect(stoppedService(store).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 1,
+          projected_session_count: 1
+        });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back an acknowledged source rename and cold-initializes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-source-fail-"));
+    let failCommittedWrite = false;
+    const store = new LocalStore(root, {
+      writeTransaction: {
+        run: async (write) => {
+          const result = await write();
+          if (failCommittedWrite) {
+            failCommittedWrite = false;
+            throw new Error("source_transaction_failed_after_rename");
+          }
+          return result;
+        }
+      }
+    });
+    let initializer: ChildProcess | undefined;
+    try {
+      await store.initialize();
+      const allocation = allocationFixture("source-fail-replay");
+      failCommittedWrite = true;
+
+      await expect(store.recordCandidateArenaResearchAllocation(allocation))
+        .rejects.toThrow("source_transaction_failed_after_rename");
+      await expect(readFile(path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items",
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      ), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stoppedService(store).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 0
+        });
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+
+      await expect(store.recordCandidateArenaResearchAllocation(allocation))
+        .resolves.toEqual(allocation);
+      await expect(stoppedService(store).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 1
+        });
+    } finally {
+      initializer?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps projection write-through active across same-root transaction wrappers", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-transaction-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const guarded = store.withWriteTransaction({
+        run: (write) => write()
+      });
+
+      const graph = await persistBaseGraph(guarded, "transaction-wrapper");
+
+      await expect(stoppedService(store).readOperations()).resolves.toMatchObject({
+        recorded_session_count: 1,
+        projected_session_count: 1,
+        sessions: [expect.objectContaining({
+          research_allocation_id:
+            graph.allocation.candidate_arena_research_allocation_id
+        })]
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes overlapping same-root batches until each projection is readable", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-overlap-"));
+    try {
+      const firstStore = new LocalStore(root);
+      await firstStore.initialize();
+      const secondStore = firstStore.withWriteTransaction({
+        run: (write) => write()
+      });
+      let releaseFirst!: () => void;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      let firstWritten!: () => void;
+      const firstWrittenGate = new Promise<void>((resolve) => {
+        firstWritten = resolve;
+      });
+      let releaseSecond!: () => void;
+      const secondGate = new Promise<void>((resolve) => {
+        releaseSecond = resolve;
+      });
+      let secondStarted!: () => void;
+      const secondStartedGate = new Promise<void>((resolve) => {
+        secondStarted = resolve;
+      });
+      let secondTaskStarted = false;
+
+      const firstBatch = firstStore.runResearchOperationsProjectionBatch(
+        async () => {
+          await firstStore.recordCandidateArenaResearchAllocation(
+            allocationFixture("overlap-first")
+          );
+          firstWritten();
+          await firstGate;
+        }
+      );
+      await firstWrittenGate;
+      const secondBatch = secondStore.runResearchOperationsProjectionBatch(
+        async () => {
+          secondTaskStarted = true;
+          secondStarted();
+          await secondGate;
+          await secondStore.recordCandidateArenaResearchAllocation(
+            allocationFixture("overlap-second")
+          );
+        }
+      );
+      await Promise.resolve();
+      expect(secondTaskStarted).toBe(false);
+
+      releaseFirst();
+      await firstBatch;
+      await expect(stoppedService(firstStore).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 1 });
+
+      await secondStartedGate;
+      releaseSecond();
+      await secondBatch;
+      await expect(stoppedService(secondStore).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 2 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for an active projection batch before reading CandidateArena evidence", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-arena-read-wait-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      let releaseBatch!: () => void;
+      const batchGate = new Promise<void>((resolve) => {
+        releaseBatch = resolve;
+      });
+      let sourceWritten!: () => void;
+      const sourceWrittenGate = new Promise<void>((resolve) => {
+        sourceWritten = resolve;
+      });
+
+      const batch = store.runResearchOperationsProjectionBatch(async () => {
+        await store.recordCandidateArenaResearchAllocation(
+          allocationFixture("arena-read-wait")
+        );
+        sourceWritten();
+        await batchGate;
+      });
+      await sourceWrittenGate;
+
+      let settled = false;
+      const read = store.readCandidateArenaEvidenceProjection().then((value) => {
+        settled = true;
+        return value;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      releaseBatch();
+      await batch;
+      await expect(read).resolves.toMatchObject({
+        availability: "available"
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat a detached stale batch context as the active batch owner", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-arena-stale-batch-read-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      let releaseDetachedRead!: () => void;
+      const detachedReadGate = new Promise<void>((resolve) => {
+        releaseDetachedRead = resolve;
+      });
+      let detachedRead!: Promise<
+        | { status: "fulfilled"; value: CandidateArenaEvidenceProjection }
+        | { status: "rejected"; reason: unknown }
+      >;
+
+      await store.runResearchOperationsProjectionBatch(async () => {
+        detachedRead = detachedReadGate.then(() =>
+          store.readCandidateArenaEvidenceProjection()
+        ).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason })
+        );
+      });
+
+      let releaseSecondBatch!: () => void;
+      const secondBatchGate = new Promise<void>((resolve) => {
+        releaseSecondBatch = resolve;
+      });
+      let secondSourceWritten!: () => void;
+      const secondSourceWrittenGate = new Promise<void>((resolve) => {
+        secondSourceWritten = resolve;
+      });
+      const secondBatch = store.runResearchOperationsProjectionBatch(
+        async () => {
+          await store.recordCandidateArenaResearchAllocation(
+            allocationFixture("stale-batch-read")
+          );
+          secondSourceWritten();
+          await secondBatchGate;
+        }
+      );
+      await secondSourceWrittenGate;
+
+      let detachedReadSettled = false;
+      void detachedRead.then(() => {
+        detachedReadSettled = true;
+      });
+      releaseDetachedRead();
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      expect(detachedReadSettled).toBe(false);
+
+      releaseSecondBatch();
+      await secondBatch;
+      await expect(detachedRead).resolves.toMatchObject({
+        status: "fulfilled",
+        value: { availability: "available" }
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps comparison writers and projection batches in one lock order", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-lock-order-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const privateStore = store as unknown as {
+        withComparisonEvidenceWriteTransaction<T>(
+          task: () => Promise<T>
+        ): Promise<T>;
+      };
+      let directStarted!: () => void;
+      const directStartedGate = new Promise<void>((resolve) => {
+        directStarted = resolve;
+      });
+      let releaseDirect!: () => void;
+      const directGate = new Promise<void>((resolve) => {
+        releaseDirect = resolve;
+      });
+      let batchStarted!: () => void;
+      const batchStartedGate = new Promise<void>((resolve) => {
+        batchStarted = resolve;
+      });
+
+      const directWrite = privateStore.withComparisonEvidenceWriteTransaction(
+        async () => {
+          directStarted();
+          await directGate;
+          await store.recordCandidateArenaResearchAllocation(
+            allocationFixture("lock-order-direct")
+          );
+        }
+      );
+      await directStartedGate;
+      const batchWrite = store.runResearchOperationsProjectionBatch(async () => {
+        batchStarted();
+        await privateStore.withComparisonEvidenceWriteTransaction(async () => {
+          await store.recordCandidateArenaResearchAllocation(
+            allocationFixture("lock-order-batch")
+          );
+        });
+      });
+
+      await Promise.race([
+        batchStartedGate,
+        new Promise<void>((resolve) => setTimeout(resolve, 75))
+      ]);
+      releaseDirect();
+
+      await expect(withTimeout(
+        Promise.all([directWrite, batchWrite]),
+        1_000,
+        "comparison_projection_lock_order_deadlock"
+      )).resolves.toBeDefined();
+      await expect(stoppedService(store).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 2 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps same-root transaction wrappers in the shared lock order", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-wrapper-order-"));
+    try {
+      const batchStore = new LocalStore(root);
+      await batchStore.initialize();
+      const directStore = batchStore.withWriteTransaction({
+        run: (write) => write()
+      });
+      const privateDirectStore = directStore as unknown as {
+        withComparisonEvidenceWriteTransaction<T>(
+          task: () => Promise<T>
+        ): Promise<T>;
+      };
+      let directStarted!: () => void;
+      const directStartedGate = new Promise<void>((resolve) => {
+        directStarted = resolve;
+      });
+      let releaseDirect!: () => void;
+      const directGate = new Promise<void>((resolve) => {
+        releaseDirect = resolve;
+      });
+      let batchStarted!: () => void;
+      const batchStartedGate = new Promise<void>((resolve) => {
+        batchStarted = resolve;
+      });
+
+      const directWrite = privateDirectStore
+        .withComparisonEvidenceWriteTransaction(async () => {
+          directStarted();
+          await directGate;
+          await directStore.recordCandidateArenaResearchAllocation(
+            allocationFixture("wrapper-order-direct")
+          );
+        });
+      await directStartedGate;
+      const batchWrite = batchStore.runResearchOperationsProjectionBatch(
+        async () => {
+          batchStarted();
+          await privateDirectStore.withComparisonEvidenceWriteTransaction(
+            async () => {
+              await directStore.recordCandidateArenaResearchAllocation(
+                allocationFixture("wrapper-order-batch")
+              );
+            }
+          );
+        }
+      );
+
+      await Promise.race([
+        batchStartedGate,
+        new Promise<void>((resolve) => setTimeout(resolve, 75))
+      ]);
+      releaseDirect();
+
+      await expect(withTimeout(
+        Promise.all([directWrite, batchWrite]),
+        1_000,
+        "same_root_wrapper_lock_order_deadlock"
+      )).resolves.toBeDefined();
+      await expect(stoppedService(batchStore).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 2 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates source cache entries across relative and absolute root aliases", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-alias-"));
+    const relativeRoot = path.relative(process.cwd(), root);
+    try {
+      const relativeStore = new LocalStore(relativeRoot);
+      await relativeStore.initialize();
+      const allocation = allocationFixture("root-alias");
+      await relativeStore.recordCandidateArenaResearchAllocation(allocation);
+
+      const absoluteStore = new LocalStore(root);
+      await absoluteStore.recordCandidateArenaResearchAllocation(allocation);
+
+      await expect(stoppedService(absoluteStore).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 1,
+          projected_session_count: 1
+        });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes stale initialized writers across processes before index publication", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-process-"));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-process-control-"
+    ));
+    const childReady = path.join(controlRoot, "child-ready");
+    const childStart = path.join(controlRoot, "child-start");
+    const childSourceWritten = path.join(controlRoot, "child-source-written");
+    const childRelease = path.join(controlRoot, "child-release");
+    let child: ChildProcess | undefined;
+    try {
+      const parentStore = new LocalStore(root);
+      await parentStore.initialize();
+      const childAllocation = allocationFixture("process-child");
+      const parentAllocation = allocationFixture("process-parent");
+      child = spawnProjectionWriter({
+        root,
+        allocation: childAllocation,
+        readyPath: childReady,
+        startPath: childStart,
+        sourceWrittenPath: childSourceWritten,
+        releasePath: childRelease
+      });
+      await waitForFile(childReady, child);
+      await writeFile(childStart, "start\n", "utf8");
+      await waitForFile(childSourceWritten, child);
+
+      let parentSettled = false;
+      const parentWrite = parentStore
+        .recordCandidateArenaResearchAllocation(parentAllocation)
+        .then((value) => {
+          parentSettled = true;
+          return value;
+        });
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      const settledWhileChildHeldPublication = parentSettled;
+
+      await writeFile(childRelease, "release\n", "utf8");
+      await Promise.all([parentWrite, waitForChild(child)]);
+      const index = JSON.parse(await readFile(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      ), "utf8")) as { recorded_session_count: number };
+
+      expect(settledWhileChildHeldPublication).toBe(false);
+      expect(index.recorded_session_count).toBe(2);
+    } finally {
+      child?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("keeps the source generation stable while initialized processes alternate reads", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-process-readers-"
+    ));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-process-readers-control-"
+    ));
+    const childReady = path.join(controlRoot, "child-ready");
+    const firstRead = path.join(controlRoot, "first-read");
+    const firstDone = path.join(controlRoot, "first-done");
+    const secondRead = path.join(controlRoot, "second-read");
+    const secondDone = path.join(controlRoot, "second-done");
+    const generationPath = path.join(
+      root,
+      ".locks",
+      "research-operations-projection-generation.json"
+    );
+    let child: ChildProcess | undefined;
+    try {
+      child = spawnInitializedProjectionReader({
+        root,
+        readyPath: childReady,
+        reads: [
+          { startPath: firstRead, donePath: firstDone },
+          { startPath: secondRead, donePath: secondDone }
+        ]
+      });
+      await waitForFile(childReady, child);
+      const parentStore = new LocalStore(root);
+      await parentStore.initialize();
+      await parentStore.recordCandidateArenaResearchAllocation(
+        allocationFixture("process-reader-catch-up")
+      );
+      const baselineGeneration = (await readJsonFile<{ generation: string }>(
+        generationPath
+      )).generation;
+
+      await writeFile(firstRead, "read\n", "utf8");
+      await waitForFile(firstDone, child);
+      await expect(readJsonFile<{ recorded_session_count: number }>(firstDone))
+        .resolves.toEqual({ recorded_session_count: 1 });
+      expect((await readJsonFile<{ generation: string }>(generationPath))
+        .generation).toBe(baselineGeneration);
+
+      await expect(parentStore.readResearchOperationsProjectionWindow({
+        session_limit: 100
+      })).resolves.toMatchObject({
+        index: { recorded_session_count: 1 }
+      });
+      expect((await readJsonFile<{ generation: string }>(generationPath))
+        .generation).toBe(baselineGeneration);
+
+      await writeFile(secondRead, "read\n", "utf8");
+      await waitForFile(secondDone, child);
+      await waitForChild(child);
+      await expect(readJsonFile<{ recorded_session_count: number }>(secondDone))
+        .resolves.toEqual({ recorded_session_count: 1 });
+      expect((await readJsonFile<{ generation: string }>(generationPath))
+        .generation).toBe(baselineGeneration);
+    } finally {
+      child?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("keeps generation stable across a no-op second-process initialize without rescanning an existing reader", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-noop-initialize-"
+    ));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-noop-initialize-control-"
+    ));
+    const readerReady = path.join(controlRoot, "reader-ready");
+    const readerStart = path.join(controlRoot, "reader-start");
+    const readerResult = path.join(controlRoot, "reader-result.json");
+    const generationPath = path.join(
+      root,
+      ".locks",
+      "research-operations-projection-generation.json"
+    );
+    let reader: ChildProcess | undefined;
+    let initializer: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      await store.recordCandidateArenaResearchAllocation(
+        allocationFixture("noop-initialize-existing")
+      );
+      reader = spawnInitializedProjectionRefreshProbe({
+        root,
+        readyPath: readerReady,
+        startPath: readerStart,
+        resultPath: readerResult
+      });
+      await waitForFile(readerReady, reader);
+      const baselineGeneration = (await readJsonFile<{ generation: string }>(
+        generationPath
+      )).generation;
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+
+      expect((await readJsonFile<{ generation: string }>(generationPath))
+        .generation).toBe(baselineGeneration);
+      await writeFile(readerStart, "read\n", "utf8");
+      await waitForFile(readerResult, reader);
+      await waitForChild(reader);
+      await expect(readJsonFile<{
+        recorded_session_count: number;
+        source_cache_refresh_count: number;
+      }>(readerResult)).resolves.toEqual({
+        recorded_session_count: 1,
+        source_cache_refresh_count: 0
+      });
+    } finally {
+      reader?.kill("SIGKILL");
+      initializer?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("advances generation once for concurrent first source mutations", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-first-mutation-generation-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      const privateStore = store as unknown as {
+        advanceResearchOperationsProjectionSourceGeneration(): Promise<string>;
+      };
+      const advanceGeneration = vi.spyOn(
+        privateStore,
+        "advanceResearchOperationsProjectionSourceGeneration"
+      );
+
+      await store.runResearchOperationsProjectionBatch(() => Promise.all([
+        store.recordResearchFinding(standaloneFinding(
+          "concurrent-first-generation-a",
+          "2026-07-29T00:00:00.000Z"
+        )),
+        store.recordResearchFinding(standaloneFinding(
+          "concurrent-first-generation-b",
+          "2026-07-29T00:00:01.000Z"
+        ))
+      ]));
+
+      expect(advanceGeneration).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("holds the cross-process publication lock through source rollback", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-process-rollback-"
+    ));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-process-rollback-control-"
+    ));
+    const childStarted = path.join(controlRoot, "child-started");
+    let child: ChildProcess | undefined;
+    let releaseRollback: (() => void) | undefined;
+    let parentWrite: Promise<
+      | { status: "fulfilled" }
+      | { status: "rejected"; reason: unknown }
+    > | undefined;
+    try {
+      let failParentSource = false;
+      const parentStore = new LocalStore(root, {
+        writeTransaction: {
+          run: async (write) => {
+            const result = await write();
+            if (failParentSource) {
+              failParentSource = false;
+              throw new Error("parent_source_failed_after_rename");
+            }
+            return result;
+          }
+        }
+      });
+      await parentStore.initialize();
+      const parentAllocation = allocationFixture("process-rollback-parent");
+      const childAllocation = allocationFixture("process-rollback-child");
+      const allocationPath = (
+        allocation: CandidateArenaResearchAllocationRecord
+      ) => path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items",
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      );
+      const privateStore = parentStore as unknown as {
+        restoreResearchOperationsProjectionSourceSnapshots(
+          snapshots: Map<string, string | undefined>
+        ): Promise<void>;
+      };
+      const restoreSnapshots = privateStore
+        .restoreResearchOperationsProjectionSourceSnapshots.bind(parentStore);
+      let rollbackEntered!: () => void;
+      const rollbackEnteredGate = new Promise<void>((resolve) => {
+        rollbackEntered = resolve;
+      });
+      const rollbackGate = new Promise<void>((resolve) => {
+        releaseRollback = resolve;
+      });
+      vi.spyOn(
+        privateStore,
+        "restoreResearchOperationsProjectionSourceSnapshots"
+      ).mockImplementation(async (snapshots) => {
+        rollbackEntered();
+        await rollbackGate;
+        await restoreSnapshots(snapshots);
+      });
+
+      failParentSource = true;
+      parentWrite = parentStore
+        .recordCandidateArenaResearchAllocation(parentAllocation)
+        .then(
+          () => ({ status: "fulfilled" as const }),
+          (reason) => ({ status: "rejected" as const, reason })
+        );
+      await rollbackEnteredGate;
+      child = spawnUninitializedProjectionWriter(
+        root,
+        childAllocation,
+        childStarted
+      );
+      await waitForFile(childStarted, child);
+      await waitForProjectionLockClaim(root, child);
+
+      await expect(readJsonFile<CandidateArenaResearchAllocationRecord>(
+        allocationPath(parentAllocation)
+      )).resolves.toEqual(parentAllocation);
+      await expect(readFile(allocationPath(childAllocation), "utf8"))
+        .rejects.toMatchObject({ code: "ENOENT" });
+
+      const releaseHeldRollback = releaseRollback;
+      if (releaseHeldRollback === undefined) {
+        throw new Error("rollback gate was not initialized");
+      }
+      releaseHeldRollback();
+      releaseRollback = undefined;
+      const [parentOutcome] = await Promise.all([
+        parentWrite,
+        waitForChild(child)
+      ]);
+      expect(parentOutcome).toMatchObject({
+        status: "rejected",
+        reason: expect.objectContaining({
+          message: "parent_source_failed_after_rename"
+        })
+      });
+      await expect(readFile(allocationPath(parentAllocation), "utf8"))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readJsonFile<CandidateArenaResearchAllocationRecord>(
+        allocationPath(childAllocation)
+      )).resolves.toEqual(childAllocation);
+      const index = await readJsonFile<{ recorded_session_count: number }>(
+        path.join(root, "read-models", "research-operations", "index.json")
+      );
+      expect(index.recorded_session_count).toBe(1);
+    } finally {
+      releaseRollback?.();
+      child?.kill("SIGKILL");
+      await parentWrite?.catch(() => undefined);
+      vi.restoreAllMocks();
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("bootstraps projection write-through for an uninitialized process writer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-uninitialized-"));
+    let child: ChildProcess | undefined;
+    try {
+      const initializedStore = new LocalStore(root);
+      await initializedStore.initialize();
+      child = spawnUninitializedProjectionWriter(
+        root,
+        allocationFixture("uninitialized-process")
+      );
+
+      await waitForChild(child);
+
+      await expect(stoppedService(initializedStore).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 1,
+          projected_session_count: 1
+        });
+    } finally {
+      child?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("serializes conflicting same-ID SystemCode validation across processes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-system-code-race-"));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-system-code-race-control-"
+    ));
+    const firstReady = path.join(controlRoot, "first-ready");
+    const secondReady = path.join(controlRoot, "second-ready");
+    const secondStarted = path.join(controlRoot, "second-started");
+    const firstRelease = path.join(controlRoot, "first-release");
+    const secondRelease = path.join(controlRoot, "second-release");
+    const firstResult = path.join(controlRoot, "first-result.json");
+    const secondResult = path.join(controlRoot, "second-result.json");
+    let first: ChildProcess | undefined;
+    let second: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const firstSystemCode = systemCode(
+        "cross-process-system-code",
+        digest("cross-process-system-code-first"),
+        "2026-07-28T00:00:00.000Z"
+      );
+      const secondSystemCode = {
+        ...firstSystemCode,
+        artifact_digest: digest("cross-process-system-code-second")
+      };
+      first = spawnConflictingSystemCodeWriter({
+        root,
+        systemCode: firstSystemCode,
+        readyPath: firstReady,
+        releasePath: firstRelease,
+        resultPath: firstResult
+      });
+      await waitForFile(firstReady, first);
+      second = spawnConflictingSystemCodeWriter({
+        root,
+        systemCode: secondSystemCode,
+        startedPath: secondStarted,
+        readyPath: secondReady,
+        releasePath: secondRelease,
+        resultPath: secondResult
+      });
+      await waitForFile(secondStarted, second);
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      let secondSawAbsenceBeforeFirstCommitted = true;
+      try {
+        await access(secondReady);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        secondSawAbsenceBeforeFirstCommitted = false;
+      }
+
+      await writeFile(firstRelease, "release\n", "utf8");
+      await waitForFile(firstResult, first);
+      await waitForChild(first);
+      if (secondSawAbsenceBeforeFirstCommitted) {
+        await writeFile(secondRelease, "release\n", "utf8");
+      }
+      await waitForFile(secondResult, second);
+      await waitForChild(second);
+
+      const [firstOutcome, secondOutcome] = await Promise.all([
+        readJsonFile<ProjectionWriterOutcome>(firstResult),
+        readJsonFile<ProjectionWriterOutcome>(secondResult)
+      ]);
+      expect(secondSawAbsenceBeforeFirstCommitted).toBe(false);
+      expect(firstOutcome).toEqual({ status: "recorded" });
+      expect(secondOutcome).toMatchObject({
+        status: "rejected",
+        code: "authority_evidence_identity_conflict"
+      });
+      await expect(store.getSystemCode(firstSystemCode.system_code_id))
+        .resolves.toEqual(firstSystemCode);
+    } finally {
+      first?.kill("SIGKILL");
+      second?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("serializes reset behind an active cross-process projection writer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-reset-"));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-reset-control-"
+    ));
+    const childReady = path.join(controlRoot, "child-ready");
+    const childStart = path.join(controlRoot, "child-start");
+    const childSourceWritten = path.join(controlRoot, "child-source-written");
+    const childRelease = path.join(controlRoot, "child-release");
+    let child: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      child = spawnProjectionWriter({
+        root,
+        allocation: allocationFixture("reset-child"),
+        readyPath: childReady,
+        startPath: childStart,
+        sourceWrittenPath: childSourceWritten,
+        releasePath: childRelease
+      });
+      await waitForFile(childReady, child);
+      await writeFile(childStart, "start\n", "utf8");
+      await waitForFile(childSourceWritten, child);
+
+      let resetSettled = false;
+      const reset = store.reset().then(() => {
+        resetSettled = true;
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      const settledWhileChildHeldPublication = resetSettled;
+
+      await writeFile(childRelease, "release\n", "utf8");
+      await Promise.all([reset, waitForChild(child)]);
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+
+      expect(settledWhileChildHeldPublication).toBe(false);
+      await expect(stoppedService(restarted).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 0 });
+    } finally {
+      child?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("repairs a corrupt projection generation marker during reset", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-generation-reset-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const generationPath = path.join(
+        root,
+        ".locks",
+        "research-operations-projection-generation.json"
+      );
+      await writeFile(generationPath, "{corrupt\n", "utf8");
+
+      await expect(store.reset()).resolves.toBeUndefined();
+      const repairedGeneration = JSON.parse(
+        await readFile(generationPath, "utf8")
+      ) as { record_kind: string; version: number; generation: string };
+      expect(repairedGeneration).toMatchObject({
+        record_kind: "research_operations_projection_source_generation",
+        version: 1,
+        generation: expect.any(String)
+      });
+
+      await store.initialize();
+      await expect(stoppedService(store).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 0 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reclaims stale projection lock and generation debris", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-lock-debris-"));
+    try {
+      const lockRoot = path.join(
+        root,
+        ".locks",
+        "research-operations-projection-publication"
+      );
+      const orphanedClaim = path.join(lockRoot, "claim-interrupted");
+      const ownerlessTransition = path.join(lockRoot, "transition");
+      const generationTemp = path.join(
+        root,
+        ".locks",
+        "research-operations-projection-generation.json.99999999.dead.tmp"
+      );
+      await Promise.all([
+        mkdir(orphanedClaim, { recursive: true }),
+        mkdir(ownerlessTransition, { recursive: true }),
+        mkdir(path.dirname(generationTemp), { recursive: true })
+      ]);
+      await Promise.all([
+        writeFile(path.join(orphanedClaim, "owner.json"), "{partial\n", "utf8"),
+        writeFile(generationTemp, "partial\n", "utf8")
+      ]);
+      const staleAt = new Date(Date.now() - 60_000);
+      await Promise.all([
+        utimes(orphanedClaim, staleAt, staleAt),
+        utimes(path.join(orphanedClaim, "owner.json"), staleAt, staleAt)
+      ]);
+
+      const store = new LocalStore(root);
+      await store.initialize();
+
+      await expect(readFile(path.join(orphanedClaim, "owner.json"), "utf8"))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(path.join(ownerlessTransition, "owner.json"), "utf8"))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(generationTemp, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves a live ownerless claim when its start marker is unavailable", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-live-claim-"));
+    const marker = vi.spyOn(processStartMarkerModule, "processStartMarker")
+      .mockResolvedValue(undefined);
+    try {
+      const liveClaim = path.join(
+        root,
+        ".locks",
+        "research-operations-projection-publication",
+        `claim-${process.pid}-${"0".repeat(16)}-` +
+          "00000000-0000-4000-8000-000000000000"
+      );
+      await mkdir(liveClaim, { recursive: true });
+
+      const store = new LocalStore(root);
+      await store.initialize();
+
+      await expect(access(liveClaim)).resolves.toBeUndefined();
+    } finally {
+      marker.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recreates deleted capsules when a stale writer replays after external reset", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-reset-replay-"));
+    let child: ChildProcess | undefined;
+    try {
+      const staleStore = new LocalStore(root);
+      await staleStore.initialize();
+      const allocation = allocationFixture("external-reset-replay");
+      await staleStore.recordCandidateArenaResearchAllocation(allocation);
+      const workItemId = researchWorkItemId({
+        research_allocation_id:
+          allocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const capsulePath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "items",
+        `${encodeURIComponent(workItemId)}.json`
+      );
+
+      child = spawnProjectionReset(root);
+      await waitForChild(child);
+      await expect(readFile(capsulePath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      await expect(staleStore.recordCandidateArenaResearchAllocation(allocation))
+        .resolves.toEqual(allocation);
+      await expect(readFile(capsulePath, "utf8")).resolves.toContain(workItemId);
+      await expect(stoppedService(staleStore).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 1,
+          projected_session_count: 1
+        });
+    } finally {
+      child?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("repairs missing and corrupt derived files on rebuild and cold restart", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-derived-repair-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const existing = allocationFixture("derived-repair-existing");
+      await store.recordCandidateArenaResearchAllocation(existing);
+      const workItemId = researchWorkItemId({
+        research_allocation_id:
+          existing.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const routePrefix = researchOperationsProjectionCapsuleRouteHash(
+        workItemId
+      ).slice(0, 2);
+      const projectionRoot = path.join(
+        root,
+        "read-models",
+        "research-operations"
+      );
+      const capsulePath = path.join(
+        projectionRoot,
+        "items",
+        `${encodeURIComponent(workItemId)}.json`
+      );
+      const trieNodePath = path.join(
+        projectionRoot,
+        "trie",
+        `${routePrefix}.json`
+      );
+      const [canonicalCapsule, canonicalTrieNode] = await Promise.all([
+        readFile(capsulePath, "utf8"),
+        readFile(trieNodePath, "utf8")
+      ]);
+      let next: CandidateArenaResearchAllocationRecord | undefined;
+      for (let index = 0; index < 1_000; index += 1) {
+        const candidate = allocationFixture(`derived-repair-next-${index}`);
+        const candidateWorkItemId = researchWorkItemId({
+          research_allocation_id:
+            candidate.candidate_arena_research_allocation_id,
+          direction_kind: "trend_following"
+        });
+        if (!researchOperationsProjectionCapsuleRouteHash(candidateWorkItemId)
+          .startsWith(routePrefix)) {
+          next = candidate;
+          break;
+        }
+      }
+      expect(next).toBeDefined();
+
+      await Promise.all([
+        rm(capsulePath, { force: true }),
+        writeFile(trieNodePath, "{}\n", "utf8")
+      ]);
+      await store.recordCandidateArenaResearchAllocation(next!);
+
+      await expect(readFile(capsulePath, "utf8")).resolves
+        .toBe(canonicalCapsule);
+      await expect(readFile(trieNodePath, "utf8")).resolves
+        .toBe(canonicalTrieNode);
+
+      await Promise.all([
+        writeFile(capsulePath, "{}\n", "utf8"),
+        rm(trieNodePath, { force: true })
+      ]);
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+
+      await expect(readFile(capsulePath, "utf8")).resolves
+        .toBe(canonicalCapsule);
+      await expect(readFile(trieNodePath, "utf8")).resolves
+        .toBe(canonicalTrieNode);
+      await expect(stoppedService(restarted).readSessionDetail(workItemId))
+        .resolves.toMatchObject({ research_work_item_id: workItemId });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers a killed cross-process writer from its pre-write generation fence", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-killed-"));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-killed-control-"
+    ));
+    const childReady = path.join(controlRoot, "child-ready");
+    const childStart = path.join(controlRoot, "child-start");
+    const childSourceWritten = path.join(controlRoot, "child-source-written");
+    const childRelease = path.join(controlRoot, "child-release");
+    let child: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      child = spawnProjectionWriter({
+        root,
+        allocation: allocationFixture("killed-child"),
+        readyPath: childReady,
+        startPath: childStart,
+        sourceWrittenPath: childSourceWritten,
+        releasePath: childRelease
+      });
+      await waitForFile(childReady, child);
+      await writeFile(childStart, "start\n", "utf8");
+      await waitForFile(childSourceWritten, child);
+
+      const childExit = waitForAnyChildExit(child);
+      child.kill("SIGKILL");
+      await childExit;
+      await store.recordCandidateArenaResearchAllocation(
+        allocationFixture("killed-parent")
+      );
+
+      const index = JSON.parse(await readFile(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      ), "utf8")) as { recorded_session_count: number };
+      expect(index.recorded_session_count).toBe(2);
+    } finally {
+      child?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("rebuilds a missing index after a writer dies immediately after invalidation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-invalidation-kill-"));
+    const controlRoot = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-invalidation-kill-control-"
+    ));
+    const invalidatedPath = path.join(controlRoot, "index-invalidated");
+    const releasePath = path.join(controlRoot, "release");
+    let invalidatingWriter: ChildProcess | undefined;
+    let freshWriter: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      await store.recordCandidateArenaResearchAllocation(
+        allocationFixture("invalidation-existing")
+      );
+      invalidatingWriter = spawnProjectionInvalidatingWriter({
+        root,
+        allocation: allocationFixture("invalidation-killed"),
+        invalidatedPath,
+        releasePath
+      });
+      await waitForFile(invalidatedPath, invalidatingWriter);
+      await expect(readFile(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      ), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+      const invalidatingExit = waitForAnyChildExit(invalidatingWriter);
+      invalidatingWriter.kill("SIGKILL");
+      await invalidatingExit;
+      freshWriter = spawnUninitializedProjectionWriter(
+        root,
+        allocationFixture("invalidation-fresh")
+      );
+      await waitForChild(freshWriter);
+
+      const index = await readJsonFile<{ recorded_session_count: number }>(
+        path.join(root, "read-models", "research-operations", "index.json")
+      );
+      expect(index.recorded_session_count).toBe(2);
+      await expect(stoppedService(new LocalStore(root)).readOperations())
+        .resolves.toMatchObject({
+          availability: "available",
+          recorded_session_count: 2,
+          projected_session_count: 2
+        });
+    } finally {
+      invalidatingWriter?.kill("SIGKILL");
+      freshWriter?.kill("SIGKILL");
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(controlRoot, { recursive: true, force: true })
+      ]);
+    }
+  }, 20_000);
+
+  it("rejects an allocation whose persisted serialization crosses the byte bound", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-size-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const allocation = allocationFixture("oversized-source");
+      allocation.selected_directions[0]!.reasons = ["seed"];
+      allocation.allocation_digest = digest(
+        candidateArenaResearchAllocationDigestInput(allocation)
+      );
+      const maximumBytes = 256 * 1024;
+      const initialSerializedBytes = Buffer.byteLength(
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      );
+      allocation.selected_directions[0]!.reasons[0] += "x".repeat(
+        maximumBytes + 1 - initialSerializedBytes
+      );
+      allocation.allocation_digest = digest(
+        candidateArenaResearchAllocationDigestInput(allocation)
+      );
+      const compactBytes = Buffer.byteLength(JSON.stringify(allocation), "utf8");
+      const persistedBytes = Buffer.byteLength(
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      );
+      const sourcePath = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items",
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      );
+      expect(compactBytes).toBeLessThanOrEqual(maximumBytes);
+      expect(persistedBytes).toBe(maximumBytes + 1);
+
+      await expect(store.recordCandidateArenaResearchAllocation(allocation))
+        .rejects.toMatchObject({
+          code: "research_operations_projection_source_record_too_large",
+          details: {
+            collection: "candidate-arena-research-allocations",
+            serialized_bytes: maximumBytes + 1
+          }
+        });
+      await expect(readFile(sourcePath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+      await expect(stoppedService(restarted).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 0
+        });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an oversized non-root projection source before a cold restart", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-non-root-source-size-"
+    ));
+    let initializer: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const direction: ResearchDirectionRecord = {
+        record_kind: "research_direction",
+        version: 1,
+        research_direction_id: "serialized-source-over-bound",
+        direction_kind: "trend_following",
+        market_scope: "external_trading_api_fixture",
+        prompt_seed: "seed",
+        created_at: "2026-07-29T00:00:00.000Z",
+        authority_status: "research_seed_only"
+      };
+      const maximumBytes = 256 * 1024;
+      const initialSerializedBytes = Buffer.byteLength(
+        `${JSON.stringify(direction, null, 2)}\n`,
+        "utf8"
+      );
+      direction.prompt_seed += "x".repeat(
+        maximumBytes + 1 - initialSerializedBytes
+      );
+      const compactBytes = Buffer.byteLength(JSON.stringify(direction), "utf8");
+      const persistedBytes = Buffer.byteLength(
+        `${JSON.stringify(direction, null, 2)}\n`,
+        "utf8"
+      );
+      const sourcePath = path.join(
+        root,
+        "research-directions",
+        "items",
+        `${encodeURIComponent(direction.research_direction_id)}.json`
+      );
+      expect(compactBytes).toBeLessThanOrEqual(maximumBytes);
+      expect(persistedBytes).toBe(maximumBytes + 1);
+
+      await expect(store.recordResearchDirection(direction)).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_too_large",
+        details: {
+          collection: "research-directions",
+          serialized_bytes: maximumBytes + 1
+        }
+      });
+      await expect(readFile(sourcePath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+      await expect(stoppedService(new LocalStore(root)).readOperations())
+        .resolves.toMatchObject({
+          availability: "available",
+          recorded_session_count: 0
+        });
+    } finally {
+      initializer?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("rejects an oversized create-only projection source before publication", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-create-only-source-size-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const source = systemCode(
+        "serialized-create-only-over-bound",
+        digest("serialized-create-only-over-bound"),
+        "2026-07-29T00:00:00.000Z"
+      );
+      if (source.artifact_kind !== "python_file") {
+        throw new Error("serialized_create_only_fixture_not_python");
+      }
+      const maximumBytes = 256 * 1024;
+      const initialSerializedBytes = Buffer.byteLength(
+        `${JSON.stringify(source, null, 2)}\n`,
+        "utf8"
+      );
+      source.artifact_path += "x".repeat(
+        maximumBytes + 1 - initialSerializedBytes
+      );
+      const compactBytes = Buffer.byteLength(JSON.stringify(source), "utf8");
+      const persistedBytes = Buffer.byteLength(
+        `${JSON.stringify(source, null, 2)}\n`,
+        "utf8"
+      );
+      const sourcePath = path.join(
+        root,
+        "system-codes",
+        "items",
+        `${encodeURIComponent(source.system_code_id)}.json`
+      );
+      expect(compactBytes).toBeLessThanOrEqual(maximumBytes);
+      expect(persistedBytes).toBe(maximumBytes + 1);
+
+      await expect(store.recordSystemCode(source)).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_too_large",
+        details: {
+          collection: "system-codes",
+          serialized_bytes: maximumBytes + 1
+        }
+      });
+      await expect(readFile(sourcePath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+      await expect(stoppedService(restarted).readOperations()).resolves
+        .toMatchObject({
+          availability: "available",
+          recorded_session_count: 0
+        });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists and cold-reloads non-root sources at and below the byte bound", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-source-exact-size-"
+    ));
+    let initializer: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const maximumBytes = 256 * 1024;
+      const directions = [maximumBytes - 1, maximumBytes].map((targetBytes) => {
+        const direction: ResearchDirectionRecord = {
+          record_kind: "research_direction",
+          version: 1,
+          research_direction_id: `serialized-source-bound-${targetBytes}`,
+          direction_kind: "trend_following",
+          market_scope: "external_trading_api_fixture",
+          prompt_seed: "seed",
+          created_at: "2026-07-29T00:00:00.000Z",
+          authority_status: "research_seed_only"
+        };
+        const initialSerializedBytes = Buffer.byteLength(
+          `${JSON.stringify(direction, null, 2)}\n`,
+          "utf8"
+        );
+        direction.prompt_seed += "x".repeat(targetBytes - initialSerializedBytes);
+        return { direction, targetBytes };
+      });
+      for (const { direction, targetBytes } of directions) {
+        const persisted = `${JSON.stringify(direction, null, 2)}\n`;
+        const sourcePath = path.join(
+          root,
+          "research-directions",
+          "items",
+          `${encodeURIComponent(direction.research_direction_id)}.json`
+        );
+        expect(Buffer.byteLength(persisted, "utf8")).toBe(targetBytes);
+        await expect(store.recordResearchDirection(direction)).resolves
+          .toEqual(direction);
+        await expect(readFile(sourcePath, "utf8")).resolves.toBe(persisted);
+      }
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+      for (const { direction } of directions) {
+        await expect(new LocalStore(root).getResearchDirection(
+          direction.research_direction_id
+        )).resolves.toEqual(direction);
+      }
+    } finally {
+      initializer?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("isolates an origin-compatible oversized source from cold initialization", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-cold-source-size-"
+    ));
+    try {
+      const allocation = allocationFixture("oversized-cold-source");
+      allocation.selected_directions[0]!.reasons = ["x".repeat(300 * 1024)];
+      allocation.allocation_digest = digest(
+        candidateArenaResearchAllocationDigestInput(allocation)
+      );
+      const sourceDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      const sourcePath = path.join(
+        sourceDir,
+        `${encodeURIComponent(
+          allocation.candidate_arena_research_allocation_id
+        )}.json`
+      );
+      await mkdir(sourceDir, { recursive: true });
+      await writeFile(
+        sourcePath,
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      );
+      const store = new LocalStore(root);
+      const readJson = vi.spyOn(
+        store as unknown as { readJson(filePath: string): Promise<unknown> },
+        "readJson"
+      );
+
+      await expect(store.initialize()).resolves.toBeUndefined();
+      expect(readJson.mock.calls.some(([filePath]) => filePath === sourcePath))
+        .toBe(false);
+      await expect(store.listCandidateArenaResearchAllocations()).resolves
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            candidate_arena_research_allocation_id:
+              allocation.candidate_arena_research_allocation_id
+          })
+        ]));
+      for (const read of [
+        () => store.readResearchOperationsProjectionWindow({
+          session_limit: 100
+        }),
+        () => store.readCandidateArenaEvidenceProjection()
+      ]) {
+        const error = await read().catch((reason: unknown) => reason);
+        expect(error).toBeInstanceOf(
+          ResearchOperationsProjectionCompatibilityError
+        );
+        expect(error).toMatchObject({
+          message: "research_operations_projection_compatibility_blocked",
+          reason: "legacy_source_oversized"
+        });
+      }
+
+      const postUpgradeDirection: ResearchDirectionRecord = {
+        record_kind: "research_direction",
+        version: 1,
+        research_direction_id: "post-legacy-upgrade-direction",
+        direction_kind: "trend_following",
+        market_scope: "external_trading_api_fixture",
+        prompt_seed: "Bounded writes remain durable while projection migration is pending.",
+        created_at: "2026-07-29T00:00:00.000Z",
+        authority_status: "research_seed_only"
+      };
+      await expect(store.recordResearchDirection(postUpgradeDirection))
+        .resolves.toEqual(postUpgradeDirection);
+      await expect(store.getResearchDirection(
+        postUpgradeDirection.research_direction_id
+      )).resolves.toEqual(postUpgradeDirection);
+      await expect(store.readResearchOperationsProjectionWindow({
+        session_limit: 100
+      })).rejects.toMatchObject({
+        message: "research_operations_projection_compatibility_blocked",
+        reason: "legacy_source_oversized"
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a non-object raw projection source container on cold start", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-cold-source-container-"
+    ));
+    try {
+      const sourceDir = path.join(root, "research-workers", "items");
+      await mkdir(sourceDir, { recursive: true });
+      await writeFile(path.join(sourceDir, "array.json"), "[]\n", "utf8");
+
+      await expect(new LocalStore(root).initialize()).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_invalid",
+        details: { collection: "research-workers" }
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a raw projection source whose record kind does not match its collection", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-cold-source-record-kind-"
+    ));
+    try {
+      const sourceDir = path.join(root, "research-workers", "items");
+      await mkdir(sourceDir, { recursive: true });
+      await writeFile(path.join(sourceDir, "wrong-kind.json"), `${JSON.stringify({
+        record_kind: "research_direction",
+        version: 1
+      })}\n`, "utf8");
+
+      await expect(new LocalStore(root).initialize()).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_invalid",
+        details: { collection: "research-workers" }
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects oversized Finding and Lineage sources before a cold initialize", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-source-bounds-"));
+    let initializer: ChildProcess | undefined;
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const finding = standaloneFinding(
+        "oversized-finding",
+        "2026-07-28T00:01:00.000Z"
+      );
+      finding.supporting_record_refs = Array.from({ length: 101 }, (_, index) =>
+        ref("research_evidence_artifact", `support-${index}`)
+      );
+      const findingPath = path.join(
+        root,
+        "research-findings",
+        "items",
+        `${encodeURIComponent(finding.research_finding_id)}.json`
+      );
+
+      await expect(store.recordResearchFinding(finding)).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_too_large"
+      });
+      await expect(readFile(findingPath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      const sourceFindings = Array.from({ length: 101 }, (_, index) =>
+        standaloneFinding(
+          `lineage-source-${index}`,
+          `2026-07-28T00:${String(index % 60).padStart(2, "0")}:00.000Z`
+        )
+      );
+      await store.runResearchOperationsProjectionBatch(async () => {
+        for (const sourceFinding of sourceFindings) {
+          await store.recordResearchFinding(sourceFinding);
+        }
+      });
+      const childSystemCode = systemCode(
+        "oversized-lineage-child",
+        digest("oversized-lineage-child"),
+        "2026-07-28T01:00:00.000Z"
+      );
+      await store.recordSystemCode(childSystemCode);
+      const lineage: ArtifactLineageRecord = {
+        record_kind: "artifact_lineage",
+        version: 1,
+        artifact_lineage_id: "oversized-lineage",
+        child_system_code_ref: ref(
+          "system_code",
+          childSystemCode.system_code_id
+        ),
+        source_finding_refs: sourceFindings.map((sourceFinding) =>
+          ref("research_finding", sourceFinding.research_finding_id)
+        ),
+        created_at: "2026-07-28T01:00:01.000Z",
+        authority_status: "lineage_only"
+      };
+      const lineagePath = path.join(
+        root,
+        "artifact-lineages",
+        "items",
+        `${encodeURIComponent(lineage.artifact_lineage_id)}.json`
+      );
+
+      await expect(store.recordArtifactLineage(lineage)).rejects.toMatchObject({
+        code: "research_operations_projection_source_record_too_large"
+      });
+      await expect(readFile(lineagePath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+      const index = await readJsonFile<{ recorded_session_count: number }>(
+        path.join(root, "read-models", "research-operations", "index.json")
+      );
+      expect(index.recorded_session_count).toBe(0);
+    } finally {
+      initializer?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("serializes same-root cache refresh with a concurrent source write", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-refresh-"));
+    try {
+      const writer = new LocalStore(root);
+      await writer.initialize();
+      const existing = allocationFixture("refresh-existing");
+      await writer.runResearchOperationsProjectionBatch(() =>
+        writer.recordCandidateArenaResearchAllocation(existing)
+      );
+      const reloader = new LocalStore(root);
+      const privateReloader = reloader as unknown as {
+        readBoundedResearchOperationsProjectionSourceJson(
+          filePath: string,
+          collection: string
+        ): Promise<Record<string, unknown>>;
+      };
+      const originalReadSource = privateReloader
+        .readBoundedResearchOperationsProjectionSourceJson.bind(reloader);
+      let releaseRefresh!: () => void;
+      const refreshGate = new Promise<void>((resolve) => {
+        releaseRefresh = resolve;
+      });
+      let refreshBlocked!: () => void;
+      const refreshBlockedGate = new Promise<void>((resolve) => {
+        refreshBlocked = resolve;
+      });
+      let blocked = false;
+      vi.spyOn(
+        privateReloader,
+        "readBoundedResearchOperationsProjectionSourceJson"
+      ).mockImplementation(
+        async (filePath, collection) => {
+          if (!blocked && filePath === path.join(
+            root,
+            "candidate-arena-research-allocations",
+            "items",
+            `${encodeURIComponent(
+              existing.candidate_arena_research_allocation_id
+            )}.json`
+          )) {
+            blocked = true;
+            refreshBlocked();
+            await refreshGate;
+          }
+          return originalReadSource(filePath, collection);
+        }
+      );
+
+      const initialize = reloader.initialize();
+      await refreshBlockedGate;
+      let writeFinished = false;
+      const concurrent = allocationFixture("refresh-concurrent");
+      const write = writer.recordCandidateArenaResearchAllocation(concurrent)
+        .then((value) => {
+          writeFinished = true;
+          return value;
+        });
+      await Promise.resolve();
+      expect(writeFinished).toBe(false);
+
+      releaseRefresh();
+      await Promise.all([initialize, write]);
+      await expect(stoppedService(reloader).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 2 });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes a first initialization refresh with a same-root source write", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-first-refresh-"));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      const existing = allocationFixture("first-refresh-existing");
+      await writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            existing.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(existing, null, 2)}\n`,
+        "utf8"
+      );
+      const initializer = new LocalStore(root);
+      const privateInitializer = initializer as unknown as {
+        readBoundedResearchOperationsProjectionSourceJson(
+          filePath: string,
+          collection: string
+        ): Promise<Record<string, unknown>>;
+      };
+      const originalReadSource = privateInitializer
+        .readBoundedResearchOperationsProjectionSourceJson.bind(initializer);
+      let releaseRefresh!: () => void;
+      const refreshGate = new Promise<void>((resolve) => {
+        releaseRefresh = resolve;
+      });
+      let refreshBlocked!: () => void;
+      const refreshBlockedGate = new Promise<void>((resolve) => {
+        refreshBlocked = resolve;
+      });
+      let blocked = false;
+      vi.spyOn(
+        privateInitializer,
+        "readBoundedResearchOperationsProjectionSourceJson"
+      ).mockImplementation(
+        async (filePath, collection) => {
+          if (!blocked && filePath.startsWith(allocationDir)) {
+            blocked = true;
+            refreshBlocked();
+            await refreshGate;
+          }
+          return originalReadSource(filePath, collection);
+        }
+      );
+
+      const initialize = initializer.initialize();
+      await refreshBlockedGate;
+      const writer = new LocalStore(root);
+      let writeFinished = false;
+      const concurrent = allocationFixture("first-refresh-concurrent");
+      const write = writer.recordCandidateArenaResearchAllocation(concurrent)
+        .then((value) => {
+          writeFinished = true;
+          return value;
+        });
+      await Promise.resolve();
+      expect(writeFinished).toBe(false);
+
+      releaseRefresh();
+      await Promise.all([initialize, write]);
+      await expect(stoppedService(initializer).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 2 });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes the stale index before a cold capsule replay begins", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-cold-fence-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      await store.runResearchOperationsProjectionBatch(() =>
+        store.recordCandidateArenaResearchAllocation(
+          allocationFixture("cold-fence")
+        )
+      );
+      const privateStore = store as unknown as {
+        researchOperationsProjectionCoordinator: {
+          initialized: boolean;
+          readable: boolean;
+          dirty: boolean;
+        };
+      };
+      privateStore.researchOperationsProjectionCoordinator.initialized = false;
+      privateStore.researchOperationsProjectionCoordinator.readable = false;
+      privateStore.researchOperationsProjectionCoordinator.dirty = false;
+
+      const restarted = new LocalStore(root);
+      const privateRestarted = restarted as unknown as {
+        writeJson(filePath: string, value: unknown): Promise<void>;
+      };
+      const originalWriteJson = privateRestarted.writeJson.bind(restarted);
+      let releaseCapsule!: () => void;
+      const capsuleGate = new Promise<void>((resolve) => {
+        releaseCapsule = resolve;
+      });
+      let capsuleBlocked!: () => void;
+      const capsuleBlockedGate = new Promise<void>((resolve) => {
+        capsuleBlocked = resolve;
+      });
+      let blocked = false;
+      vi.spyOn(privateRestarted, "writeJson").mockImplementation(
+        async (filePath, value) => {
+          if (!blocked && filePath.startsWith(path.join(
+            root,
+            "read-models",
+            "research-operations",
+            "items"
+          ))) {
+            blocked = true;
+            capsuleBlocked();
+            await capsuleGate;
+          }
+          await originalWriteJson(filePath, value);
+        }
+      );
+
+      const initialize = restarted.initialize();
+      await capsuleBlockedGate;
+      await expect(readFile(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      ), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+      releaseCapsule();
+      await initialize;
+      await expect(stoppedService(restarted).readOperations()).resolves
+        .toMatchObject({ recorded_session_count: 1 });
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not parse unrelated historical records during summary or detail refresh", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-window-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const graph = await persistBaseGraph(store, "bounded-window");
+      const unrelatedExperiment: ExperimentRunRecord = {
+        record_kind: "experiment_run",
+        version: 1,
+        experiment_run_id: "experiment-unrelated-history",
+        research_worker_ref: ref("research_worker", graph.worker.research_worker_id),
+        research_direction_ref: ref(
+          "research_direction",
+          graph.direction.research_direction_id
+        ),
+        system_code_ref: ref("system_code", graph.source.system_code_id),
+        trading_evaluation_task_ref: ref(
+          "trading_evaluation_task",
+          "unrelated-history-task"
+        ),
+        trace_ref: ref("trace_placeholder", "unrelated-history-trace"),
+        submitted_at: "2026-07-23T00:00:02.000Z",
+        status: "evaluated",
+        authority_status: "not_live"
+      };
+      await store.recordExperimentRun(unrelatedExperiment);
+      const unrelatedPath = path.join(
+        root,
+        "experiment-runs",
+        "items",
+        `${unrelatedExperiment.experiment_run_id}.json`
+      );
+      const readJson = vi.spyOn(
+        store as unknown as {
+          readJson(filePath: string): Promise<unknown>;
+        },
+        "readJson"
+      );
+      const service = stoppedService(store);
+
+      const operations = await service.readOperations();
+      await service.readSessionDetail(researchWorkItemId({
+        research_allocation_id:
+          graph.allocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      }));
+
+      expect(operations).toMatchObject({
+        recorded_session_count: 1,
+        projected_session_count: 1,
+        omitted_session_count: 0
+      });
+      expect(readJson.mock.calls.some(([filePath]) =>
+        filePath === unrelatedPath
+      )).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an exact miss when a Bloom false positive has no trie entry", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-bloom-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const graph = await store.runResearchOperationsProjectionBatch(() =>
+        persistBaseGraph(store, "bloom-false-positive")
+      );
+      const existingId = researchWorkItemId({
+        research_allocation_id:
+          graph.allocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const rootPrefix = researchOperationsProjectionCapsuleRouteHash(existingId)
+        .slice(0, 2);
+      let absentId = "";
+      for (let index = 0; index < 10_000; index += 1) {
+        const candidate = `research-session-v1-absent-${index}`;
+        if (researchOperationsProjectionCapsuleRouteHash(candidate)
+          .startsWith(rootPrefix)) {
+          absentId = candidate;
+          break;
+        }
+      }
+      expect(absentId).not.toBe("");
+      const indexPath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      );
+      const projectionIndex = JSON.parse(
+        await readFile(indexPath, "utf8")
+      ) as Record<string, unknown> & {
+        projection_digest: string;
+        session_membership: { encoded_bits: string };
+      };
+      projectionIndex.session_membership.encoded_bits = Buffer.alloc(
+        32_768 / 8,
+        0xff
+      ).toString("base64");
+      const { projection_digest: _digest, ...indexInput } = projectionIndex;
+      projectionIndex.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(
+        indexPath,
+        `${JSON.stringify(projectionIndex, null, 2)}\n`,
+        "utf8"
+      );
+
+      await expect(stoppedService(store).readSessionDetail(absentId))
+        .resolves.toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a resealed head reference that is absent from the committed trie", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-stale-head-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      await store.recordCandidateArenaResearchAllocation(
+        allocationFixture("stale-head")
+      );
+      const indexPath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      );
+      const projectionIndex = await readJsonFile<
+        ResearchOperationsProjectionIndexRecord
+      >(indexPath);
+      projectionIndex.head_session_refs[0]!.research_work_item_id =
+        `research-session-v1-${"f".repeat(64)}`;
+      const { projection_digest: _digest, ...indexInput } = projectionIndex;
+      projectionIndex.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(
+        indexPath,
+        `${JSON.stringify(projectionIndex, null, 2)}\n`,
+        "utf8"
+      );
+
+      await expect(stoppedService(store).readOperations()).rejects.toThrow(
+        "research_operations_projection_capsule_unbound"
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("traverses a branched trie for an off-page exact read and fails closed on child damage", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-trie-branch-"));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      const targetRootPrefix = "00";
+      const allocations = collidingAllocationFixtures(
+        "trie-branch",
+        targetRootPrefix,
+        120
+      );
+      await Promise.all(allocations.map((allocation) => writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            allocation.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      )));
+
+      const store = new LocalStore(root);
+      await store.initialize();
+      const indexPath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      );
+      const projectionIndex = await readJsonFile<Record<string, unknown> & {
+        head_session_refs: Array<{ research_work_item_id: string }>;
+        projection_digest: string;
+        session_membership: { encoded_bits: string };
+      }>(indexPath);
+      const headIds = new Set(projectionIndex.head_session_refs.map((reference) =>
+        reference.research_work_item_id
+      ));
+      const targetWorkItemId = allocations.map((allocation) =>
+        researchWorkItemId({
+          research_allocation_id:
+            allocation.candidate_arena_research_allocation_id,
+          direction_kind: "trend_following"
+        })
+      ).find((id) => !headIds.has(id));
+      expect(targetWorkItemId).toBeDefined();
+      const targetRouteHash = researchOperationsProjectionCapsuleRouteHash(
+        targetWorkItemId!
+      );
+      const trieDir = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "trie"
+      );
+      const rootNodePath = path.join(
+        trieDir,
+        `${targetRouteHash.slice(0, 2)}.json`
+      );
+      const rootNode = await readJsonFile<ResearchOperationsProjectionCapsuleTrieNode>(
+        rootNodePath
+      );
+      expect(rootNode.node_kind).toBe("branch");
+      if (rootNode.node_kind !== "branch") {
+        throw new Error("expected branched projection trie root");
+      }
+      const childRef = rootNode.children.find((child) =>
+        child.prefix === targetRouteHash.slice(0, 4)
+      );
+      expect(childRef).toBeDefined();
+      const childPath = path.join(trieDir, `${childRef!.prefix}.json`);
+      const childText = await readFile(childPath, "utf8");
+      for (const entry of await readdir(trieDir)) {
+        if (!entry.endsWith(".json")) continue;
+        expect(Buffer.byteLength(
+          await readFile(path.join(trieDir, entry), "utf8"),
+          "utf8"
+        )).toBeLessThanOrEqual(256 * 1024);
+      }
+
+      projectionIndex.session_membership.encoded_bits = Buffer.alloc(
+        32_768 / 8,
+        0
+      ).toString("base64");
+      const { projection_digest: _digest, ...indexInput } = projectionIndex;
+      projectionIndex.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(
+        indexPath,
+        `${JSON.stringify(projectionIndex, null, 2)}\n`,
+        "utf8"
+      );
+      const readProjectionJson = vi.spyOn(
+        store as unknown as {
+          readBoundedResearchOperationsProjectionJson(
+            filePath: string,
+            tooLargeError: string
+          ): Promise<unknown>;
+        },
+        "readBoundedResearchOperationsProjectionJson"
+      );
+
+      await expect(stoppedService(store).readSessionDetail(targetWorkItemId!))
+        .resolves.toMatchObject({
+          research_work_item_id: targetWorkItemId
+        });
+      expect(readProjectionJson.mock.calls.map(([filePath]) => filePath)).toEqual([
+        indexPath,
+        rootNodePath,
+        childPath,
+        path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "items",
+          `${encodeURIComponent(targetWorkItemId!)}.json`
+        ),
+        indexPath
+      ]);
+
+      await rm(childPath, { force: true });
+      await expect(stoppedService(store).readSessionDetail(targetWorkItemId!))
+        .rejects.toThrow(
+          "research_operations_projection_capsule_trie_node_missing"
+        );
+      const corruptChild = JSON.parse(childText) as Record<string, unknown> & {
+        subtree_entry_count: number;
+      };
+      corruptChild.subtree_entry_count += 1;
+      await writeFile(
+        childPath,
+        `${JSON.stringify(corruptChild, null, 2)}\n`,
+        "utf8"
+      );
+      await expect(stoppedService(store).readSessionDetail(targetWorkItemId!))
+        .rejects.toThrow(
+          "research_operations_projection_capsule_trie_node_invalid"
+        );
+    } finally {
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("rejects oversized projection index, trie node, and capsule files before parsing", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-read-bound-"));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const graph = await store.runResearchOperationsProjectionBatch(() =>
+        persistBaseGraph(store, "read-bound")
+      );
+      const workItemId = researchWorkItemId({
+        research_allocation_id:
+          graph.allocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const projectionRoot = path.join(
+        root,
+        "read-models",
+        "research-operations"
+      );
+      const indexPath = path.join(projectionRoot, "index.json");
+      const trieNodePath = path.join(
+        projectionRoot,
+        "trie",
+        `${researchOperationsProjectionCapsuleRouteHash(workItemId)
+          .slice(0, 2)}.json`
+      );
+      const capsulePath = path.join(
+        projectionRoot,
+        "items",
+        `${encodeURIComponent(workItemId)}.json`
+      );
+      const [indexText, trieNodeText, capsuleText] = await Promise.all([
+        readFile(indexPath, "utf8"),
+        readFile(trieNodePath, "utf8"),
+        readFile(capsulePath, "utf8")
+      ]);
+      const oversized = "x".repeat(256 * 1024 + 1);
+      const readExact = () => store.readResearchOperationsProjectionWindow({
+        session_limit: 0,
+        exact_research_work_item_id: workItemId
+      });
+
+      await writeFile(indexPath, oversized, "utf8");
+      await expect(readExact()).rejects.toThrow(
+        "research_operations_projection_index_too_large"
+      );
+      await writeFile(indexPath, indexText, "utf8");
+
+      await writeFile(trieNodePath, oversized, "utf8");
+      await expect(readExact()).rejects.toThrow(
+        "research_operations_projection_capsule_trie_node_too_large"
+      );
+      await writeFile(trieNodePath, trieNodeText, "utf8");
+
+      await writeFile(capsulePath, oversized, "utf8");
+      await expect(readExact()).rejects.toThrow(
+        "research_operations_projection_capsule_too_large"
+      );
+      await writeFile(capsulePath, capsuleText, "utf8");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back a partial leaf-to-branch publication before cold restart", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-trie-fault-"));
+    let initializer: ChildProcess | undefined;
+    try {
+      const collidingAllocations = collidingAllocationFixtures(
+        "trie-transition",
+        "00",
+        120
+      );
+      const capsuleInputs = collidingAllocations.map((allocation) => {
+        const id = researchWorkItemId({
+          research_allocation_id:
+            allocation.candidate_arena_research_allocation_id,
+          direction_kind: "trend_following"
+        });
+        return {
+          research_work_item_id: id,
+          capsule_digest: digest(`trie-transition-${id}`)
+        } as ResearchOperationsProjectionCapsule;
+      });
+      let transitionCount = 0;
+      for (let count = 2; count <= capsuleInputs.length; count += 1) {
+        const trie = materializeResearchOperationsProjectionCapsuleTrie(
+          capsuleInputs.slice(0, count)
+        );
+        if (trie.nodes.find((node) => node.prefix === "00")?.node_kind ===
+          "branch") {
+          transitionCount = count;
+          break;
+        }
+      }
+      expect(transitionCount).toBeGreaterThan(1);
+      const initialAllocations = collidingAllocations.slice(
+        0,
+        transitionCount - 1
+      );
+      const transitionAllocation = collidingAllocations[transitionCount - 1]!;
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      await Promise.all(initialAllocations.map((allocation) => writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            allocation.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      )));
+
+      const store = new LocalStore(root);
+      await store.initialize();
+      const projectionRoot = path.join(
+        root,
+        "read-models",
+        "research-operations"
+      );
+      const trieDir = path.join(projectionRoot, "trie");
+      const rootNodePath = path.join(trieDir, "00.json");
+      const indexPath = path.join(projectionRoot, "index.json");
+      await expect(readJsonFile<ResearchOperationsProjectionCapsuleTrieNode>(
+        rootNodePath
+      )).resolves.toMatchObject({
+        node_kind: "leaf",
+        subtree_entry_count: initialAllocations.length
+      });
+      const privateStore = store as unknown as {
+        writeJson(filePath: string, value: unknown): Promise<void>;
+      };
+      const originalWriteJson = privateStore.writeJson.bind(store);
+      const writeJson = vi.spyOn(privateStore, "writeJson");
+      const trieNodesPublishedBeforeFault: string[] = [];
+      let failTransitionIndex = true;
+      writeJson.mockImplementation(async (filePath, value) => {
+        if (failTransitionIndex && filePath === indexPath) {
+          failTransitionIndex = false;
+          throw new Error("trie_transition_index_publish_failed");
+        }
+        await originalWriteJson(filePath, value);
+        if (failTransitionIndex && filePath.startsWith(`${trieDir}${path.sep}`)) {
+          trieNodesPublishedBeforeFault.push(filePath);
+        }
+      });
+
+      await expect(store.recordCandidateArenaResearchAllocation(
+        transitionAllocation
+      )).rejects.toThrow("trie_transition_index_publish_failed");
+      writeJson.mockRestore();
+      expect(trieNodesPublishedBeforeFault.length).toBeGreaterThan(1);
+      expect(trieNodesPublishedBeforeFault.at(-1)).toBe(rootNodePath);
+      await expect(readFile(path.join(
+        allocationDir,
+        `${encodeURIComponent(
+          transitionAllocation.candidate_arena_research_allocation_id
+        )}.json`
+      ), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readJsonFile<{ recorded_session_count: number }>(indexPath))
+        .resolves.toMatchObject({
+          recorded_session_count: initialAllocations.length
+        });
+      await expect(readJsonFile<ResearchOperationsProjectionCapsuleTrieNode>(
+        rootNodePath
+      )).resolves.toMatchObject({
+        node_kind: "leaf",
+        subtree_entry_count: initialAllocations.length
+      });
+      expect((await readdir(trieDir)).filter((entry) => entry.endsWith(".json")))
+        .toEqual(["00.json"]);
+
+      initializer = spawnProjectionInitializer(root);
+      await waitForChild(initializer);
+      const initialWorkItemId = researchWorkItemId({
+        research_allocation_id:
+          initialAllocations[0]!.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const headWindow = await store.readResearchOperationsProjectionWindow({
+        session_limit: 100
+      });
+      const exactWindow = await store.readResearchOperationsProjectionWindow({
+        session_limit: 0,
+        exact_research_work_item_id: initialWorkItemId
+      });
+      expect(exactWindow.capsules).toEqual([
+        headWindow.capsules.find((capsule) =>
+          capsule.research_work_item_id === initialWorkItemId
+        )
+      ]);
+
+      await expect(store.recordCandidateArenaResearchAllocation(
+        transitionAllocation
+      )).resolves.toEqual(transitionAllocation);
+      const [transitionIndex, transitionRoot] = await Promise.all([
+        readJsonFile<{
+          recorded_session_count: number;
+          capsule_trie_root_refs: Array<{
+            prefix: string;
+            subtree_entry_count: number;
+          }>;
+        }>(indexPath),
+        readJsonFile<ResearchOperationsProjectionCapsuleTrieNode>(rootNodePath)
+      ]);
+      expect(transitionIndex.recorded_session_count).toBe(transitionCount);
+      expect(transitionIndex.capsule_trie_root_refs).toEqual([
+        expect.objectContaining({
+          prefix: "00",
+          subtree_entry_count: transitionCount
+        })
+      ]);
+      expect(transitionRoot).toMatchObject({
+        node_kind: "branch",
+        subtree_entry_count: transitionCount
+      });
+      if (transitionRoot.node_kind !== "branch") {
+        throw new Error("expected branch after transition retry");
+      }
+      expect(new Set((await readdir(trieDir))
+        .filter((entry) => entry.endsWith(".json"))))
+        .toEqual(new Set([
+          "00.json",
+          ...transitionRoot.children.map((child) => `${child.prefix}.json`)
+        ]));
+    } finally {
+      vi.restoreAllMocks();
+      initializer?.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("reads a fixed 100-session window and one exact capsule after cold restart", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-year-"));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      const tickDir = path.join(root, "candidate-arena-ticks", "items");
+      await Promise.all([
+        mkdir(allocationDir, { recursive: true }),
+        mkdir(tickDir, { recursive: true })
+      ]);
+      const allocations = Array.from({ length: 365 }, (_, index) => {
+        const allocation = allocationFixture(
+          `year-${String(index).padStart(3, "0")}`
+        );
+        if (index === 0) {
+          allocation.selected_directions.push(
+            {
+              direction_kind: "mean_reversion",
+              selection_kind: "explicit",
+              priority: 2,
+              experiment_budget: 1,
+              signal_score: 0,
+              reasons: ["test_explicit_direction"]
+            },
+            {
+              direction_kind: "volatility_regime",
+              selection_kind: "explicit",
+              priority: 3,
+              experiment_budget: 1,
+              signal_score: 0,
+              reasons: ["test_explicit_direction"]
+            }
+          );
+          allocation.deferred_directions = [
+            "funding_aware_risk",
+            "execution_cost_robustness"
+          ];
+        }
+        allocation.allocated_at = new Date(
+          Date.parse("2026-01-01T00:00:00.000Z") + index * 86_400_000
+        ).toISOString();
+        allocation.allocation_digest = digest(
+          candidateArenaResearchAllocationDigestInput(allocation)
+        );
+        return allocation;
+      });
+      for (const allocation of allocations) {
+        await writeFile(
+          path.join(
+            allocationDir,
+            `${encodeURIComponent(
+              allocation.candidate_arena_research_allocation_id
+            )}.json`
+          ),
+          `${JSON.stringify(allocation, null, 2)}\n`,
+          "utf8"
+        );
+      }
+      for (const allocation of allocations.slice(1)) {
+        const tick = tickFixture(allocation, {
+          direction_kind: "trend_following",
+          status: "no_submission",
+          finding: "Research finished without a selection."
+        });
+        tick.started_at = allocation.allocated_at;
+        tick.completed_at = new Date(
+          Date.parse(allocation.allocated_at) + 1_000
+        ).toISOString();
+        await writeFile(
+          path.join(
+            tickDir,
+            `${encodeURIComponent(tick.candidate_arena_tick_id)}.json`
+          ),
+          `${JSON.stringify(tick, null, 2)}\n`,
+          "utf8"
+        );
+      }
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+      const readJson = vi.spyOn(
+        restarted as unknown as {
+          readJson(filePath: string): Promise<unknown>;
+        },
+        "readJson"
+      );
+      const readProjectionJson = vi.spyOn(
+        restarted as unknown as {
+          readBoundedResearchOperationsProjectionJson(
+            filePath: string,
+            tooLargeError: string
+          ): Promise<unknown>;
+        },
+        "readBoundedResearchOperationsProjectionJson"
+      );
+      const service = stoppedService(restarted);
+
+      const operations = await service.readOperations();
+
+      expect(operations).toMatchObject({
+        loop_status: "degraded",
+        recorded_session_count: 367,
+        projected_session_count: 100,
+        omitted_session_count: 267,
+        sessions_truncated: true
+      });
+      const stoppedTrieReads = readProjectionJson.mock.calls.filter(
+        ([filePath]) => filePath.startsWith(path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "trie"
+        ))
+      );
+      expect(stoppedTrieReads.length).toBeGreaterThan(0);
+      expect(stoppedTrieReads.length).toBeLessThanOrEqual(100 * 32);
+      expect(new Set(stoppedTrieReads.map(([filePath]) => filePath)).size)
+        .toBe(stoppedTrieReads.length);
+      expect(readProjectionJson.mock.calls).toHaveLength(
+        102 + stoppedTrieReads.length
+      );
+      expect(readProjectionJson.mock.calls.every(([filePath]) =>
+        filePath.startsWith(path.join(root, "read-models", "research-operations"))
+      )).toBe(true);
+
+      readJson.mockClear();
+      readProjectionJson.mockClear();
+      const activeAllocation = allocations[0]!;
+      const activeWorkItemId = researchWorkItemId({
+        research_allocation_id:
+          activeAllocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      const runningService = new ResearchOperationsProjectionService({
+        store: restarted,
+        runnerHealth: () => ({
+          status: "running",
+          tick_count: 365,
+          completed_tick_count: 364,
+          active_tick: true,
+          active_tick_id: activeAllocation.tick_id,
+          active_research_work_items: [{
+            identity_kind: "derived_projection",
+            research_work_item_id: activeWorkItemId,
+            research_allocation_id:
+              activeAllocation.candidate_arena_research_allocation_id,
+            direction_kind: "trend_following",
+            phase: "allocating"
+          }],
+          consecutive_failure_count: 0,
+          runtime_coordination_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "runtime_coordination_only"
+        })
+      });
+      const runningOperations = await runningService.readOperations();
+
+      expect(runningOperations).toMatchObject({
+        loop_status: "running",
+        capacity: {
+          active_session_count: 1,
+          queued_session_count: 2
+        },
+        recorded_session_count: 367,
+        projected_session_count: 100,
+        omitted_session_count: 267
+      });
+      expect(runningOperations.sessions.some((session) =>
+        session.research_work_item_id === activeWorkItemId
+      )).toBe(false);
+      const activeAllocationWorkItemIds = activeAllocation.selected_directions.map(
+        (selection) => researchWorkItemId({
+          research_allocation_id:
+            activeAllocation.candidate_arena_research_allocation_id,
+          direction_kind: selection.direction_kind
+        })
+      );
+      const trieReads = readProjectionJson.mock.calls.filter(([filePath]) =>
+        filePath.startsWith(path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "trie"
+        ))
+      );
+      expect(trieReads.length).toBeGreaterThan(0);
+      expect(trieReads.length).toBeLessThanOrEqual(
+        (100 + activeAllocationWorkItemIds.length) * 32
+      );
+      expect(new Set(trieReads.map(([filePath]) => filePath)).size)
+        .toBe(trieReads.length);
+      expect(readProjectionJson.mock.calls).toHaveLength(105 + trieReads.length);
+      expect(readProjectionJson.mock.calls.every(([filePath]) =>
+        filePath.startsWith(path.join(root, "read-models", "research-operations"))
+      )).toBe(true);
+
+      const terminalContinuationService = new ResearchOperationsProjectionService({
+        store: restarted,
+        runnerHealth: () => ({
+          status: "running",
+          tick_count: 365,
+          completed_tick_count: 365,
+          active_tick: true,
+          active_tick_id: allocations.at(-1)!.tick_id,
+          active_research_work_items: [],
+          consecutive_failure_count: 0,
+          runtime_coordination_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "runtime_coordination_only"
+        })
+      });
+      await expect(terminalContinuationService.readOperations()).resolves
+        .toMatchObject({
+          capacity: {
+            active_session_count: 0,
+            queued_session_count: 0
+          }
+        });
+
+      readJson.mockClear();
+      readProjectionJson.mockClear();
+      const exact = await service.readSessionDetail(researchWorkItemId({
+        research_allocation_id:
+          allocations[0]!.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      }));
+
+      expect(exact).toMatchObject({
+        research_allocation_id:
+          allocations[0]!.candidate_arena_research_allocation_id,
+        status: "recovering"
+      });
+      const exactTrieReads = readProjectionJson.mock.calls.filter(
+        ([filePath]) => filePath.startsWith(path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "trie"
+        ))
+      );
+      expect(exactTrieReads.length).toBeGreaterThan(0);
+      expect(exactTrieReads.length).toBeLessThanOrEqual(32);
+      expect(readProjectionJson.mock.calls).toHaveLength(
+        3 + exactTrieReads.length
+      );
+      expect(readProjectionJson.mock.calls.every(([filePath]) =>
+        filePath.startsWith(path.join(root, "read-models", "research-operations"))
+      )).toBe(true);
+
+      const nextAllocation = allocationFixture("year-new");
+      nextAllocation.allocated_at = "2027-01-01T00:00:00.000Z";
+      nextAllocation.allocation_digest = digest(
+        candidateArenaResearchAllocationDigestInput(nextAllocation)
+      );
+      const nextAllocationPath = path.join(
+        allocationDir,
+        `${encodeURIComponent(
+          nextAllocation.candidate_arena_research_allocation_id
+        )}.json`
+      );
+      const writeJson = vi.spyOn(
+        restarted as unknown as {
+          writeJson(filePath: string, value: unknown): Promise<void>;
+        },
+        "writeJson"
+      );
+      const materialize = vi.spyOn(
+        ResearchOperationsProjectionService.prototype,
+        "materializeProjection"
+      );
+      readJson.mockClear();
+      readProjectionJson.mockClear();
+
+      await restarted.runResearchOperationsProjectionBatch(() =>
+        restarted.recordCandidateArenaResearchAllocation(nextAllocation)
+      );
+
+      expect(materialize).toHaveBeenCalledTimes(1);
+      expect(readJson.mock.calls.filter(([filePath]) =>
+        (filePath.startsWith(allocationDir) || filePath.startsWith(tickDir)) &&
+        filePath !== nextAllocationPath
+      )).toEqual([]);
+      expect(writeJson.mock.calls.map(([filePath]) => filePath)).toEqual([
+        nextAllocationPath,
+        path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "items",
+          `${encodeURIComponent(researchWorkItemId({
+            research_allocation_id:
+              nextAllocation.candidate_arena_research_allocation_id,
+            direction_kind: "trend_following"
+          }))}.json`
+        ),
+        path.join(
+          root,
+          "read-models",
+          "research-operations",
+          "trie",
+          `${researchOperationsProjectionCapsuleRouteHash(researchWorkItemId({
+            research_allocation_id:
+              nextAllocation.candidate_arena_research_allocation_id,
+            direction_kind: "trend_following"
+          })).slice(0, 2)}.json`
+        ),
+        path.join(root, "read-models", "research-operations", "index.json")
+      ]);
+      writeJson.mockRestore();
+      materialize.mockRestore();
+
+      await rm(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "items",
+        `${encodeURIComponent(activeWorkItemId)}.json`
+      ), { force: true });
+      await expect(runningService.readOperations()).rejects.toThrow(
+        "research_operations_projection_capsule_missing"
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a resealed off-page graph-conflict aggregate not derived from sources", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-off-page-aggregate-"
+    ));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      const allocations = Array.from({ length: 101 }, (_, index) =>
+        allocationFixture(`off-page-aggregate-${String(index).padStart(3, "0")}`)
+      );
+      await Promise.all(allocations.map((allocation) => writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            allocation.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      )));
+      const store = new LocalStore(root);
+      await store.initialize();
+      const indexPath = path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      );
+      const index = await readJsonFile<ResearchOperationsProjectionIndexRecord>(
+        indexPath
+      );
+      expect(index).toMatchObject({
+        recorded_session_count: 101,
+        graph_conflict_count: 0,
+        incomplete_without_conflict_count: 101
+      });
+      index.graph_conflict_count = 1;
+      index.incomplete_without_conflict_count = 100;
+      const { projection_digest: _projectionDigest, ...indexInput } = index;
+      index.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+
+      await expect(stoppedService(store).readOperations()).rejects.toThrow(
+        "research_operations_projection_source_mismatch"
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a coordinated reseal of an off-page capsule tick identity", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-off-page-capsule-"
+    ));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      const allocations = Array.from({ length: 101 }, (_, index) =>
+        allocationFixture(`off-page-capsule-${String(index).padStart(3, "0")}`)
+      );
+      await Promise.all(allocations.map((allocation) => writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            allocation.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      )));
+      const store = new LocalStore(root);
+      await store.initialize();
+      const projectionRoot = path.join(
+        root,
+        "read-models",
+        "research-operations"
+      );
+      const indexPath = path.join(projectionRoot, "index.json");
+      const index = await readJsonFile<ResearchOperationsProjectionIndexRecord>(
+        indexPath
+      );
+      const headIds = new Set(index.head_session_refs.map((reference) =>
+        reference.research_work_item_id
+      ));
+      const capsuleFiles = (await readdir(path.join(projectionRoot, "items")))
+        .filter((entry) => entry.endsWith(".json"));
+      const capsules = await Promise.all(capsuleFiles.map((entry) =>
+        readJsonFile<ResearchOperationsProjectionCapsule>(path.join(
+          projectionRoot,
+          "items",
+          entry
+        ))
+      ));
+      const forged = capsules.find((capsule) =>
+        !headIds.has(capsule.research_work_item_id)
+      );
+      expect(forged).toBeDefined();
+      forged!.runtime_identity.tick_id = "tick-forged-off-page";
+      forged!.inactive_detail.tick_id = "tick-forged-off-page";
+      forged!.active_queued_detail.tick_id = "tick-forged-off-page";
+      const { capsule_digest: _capsuleDigest, ...capsuleInput } = forged!;
+      forged!.capsule_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(capsuleInput)
+      );
+      expect(researchOperationsProjectionCapsuleHasIntegrity(forged!)).toBe(true);
+
+      const trie = materializeResearchOperationsProjectionCapsuleTrie(capsules);
+      await Promise.all([
+        writeFile(
+          path.join(
+            projectionRoot,
+            "items",
+            `${encodeURIComponent(forged!.research_work_item_id)}.json`
+          ),
+          `${JSON.stringify(forged, null, 2)}\n`,
+          "utf8"
+        ),
+        ...trie.nodes.map((node) => writeFile(
+          path.join(projectionRoot, "trie", `${node.prefix}.json`),
+          `${JSON.stringify(node, null, 2)}\n`,
+          "utf8"
+        ))
+      ]);
+      index.capsule_trie_root_refs = trie.root_refs;
+      index.capsule_set_digest = researchOperationsProjectionCapsuleTrieDigest(
+        trie.root_refs
+      );
+      const { projection_digest: _projectionDigest, ...indexInput } = index;
+      index.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+
+      await expect(stoppedService(store).readSessionDetail(
+        forged!.research_work_item_id
+      )).rejects.toThrow("research_operations_projection_source_mismatch");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects resealed allocation, commitment, and conflict fields not derived from sources", async () => {
+    const mutations: Array<{
+      label: string;
+      mutate(
+        capsule: ResearchOperationsProjectionCapsule,
+        index: ResearchOperationsProjectionIndexRecord
+      ): void;
+    }> = [
+      {
+        label: "allocation-capacity",
+        mutate: (capsule) => {
+          capsule.runtime_identity.concurrency_limit += 1;
+        }
+      },
+      {
+        label: "commitment-identity",
+        mutate: (capsule) => {
+          const commitmentId = "research-preflight-forged-source-binding";
+          capsule.runtime_identity.commitment_id = commitmentId;
+          for (const detail of [
+            capsule.inactive_detail,
+            capsule.active_queued_detail
+          ]) {
+            detail.commitment_id = commitmentId;
+            const event = detail.lifecycle_events.find((candidate) =>
+              candidate.event_kind === "commitment"
+            );
+            expect(event).toBeDefined();
+            event!.source_ref.id = commitmentId;
+          }
+        }
+      },
+      {
+        label: "graph-conflict",
+        mutate: (capsule, index) => {
+          capsule.graph_conflict = true;
+          for (const detail of [
+            capsule.inactive_detail,
+            capsule.active_queued_detail
+          ]) {
+            detail.degraded_reasons.push("admission_graph_conflict");
+          }
+          index.graph_conflict_count = 1;
+          index.incomplete_without_conflict_count = 0;
+        }
+      }
+    ];
+
+    for (const mutation of mutations) {
+      const root = await mkdtemp(path.join(
+        os.tmpdir(),
+        `ouroboros-research-source-binding-${mutation.label}-`
+      ));
+      try {
+        const store = new LocalStore(root);
+        await store.initialize();
+        await persistBaseGraph(store, `source-binding-${mutation.label}`);
+        const projectionRoot = path.join(
+          root,
+          "read-models",
+          "research-operations"
+        );
+        const indexPath = path.join(projectionRoot, "index.json");
+        const index = await readJsonFile<ResearchOperationsProjectionIndexRecord>(
+          indexPath
+        );
+        expect(index.head_session_refs).toHaveLength(1);
+        const workItemId = index.head_session_refs[0]!.research_work_item_id;
+        const capsulePath = path.join(
+          projectionRoot,
+          "items",
+          `${encodeURIComponent(workItemId)}.json`
+        );
+        const capsule = await readJsonFile<ResearchOperationsProjectionCapsule>(
+          capsulePath
+        );
+
+        mutation.mutate(capsule, index);
+        const { capsule_digest: _capsuleDigest, ...capsuleInput } = capsule;
+        capsule.capsule_digest = digest(
+          paperTradingComparisonPersistedRecordDigestInput(capsuleInput)
+        );
+        expect(
+          researchOperationsProjectionCapsuleHasIntegrity(capsule),
+          mutation.label
+        ).toBe(true);
+        const trie = materializeResearchOperationsProjectionCapsuleTrie([
+          capsule
+        ]);
+        index.head_session_refs[0]!.capsule_digest = capsule.capsule_digest;
+        index.capsule_trie_root_refs = trie.root_refs;
+        index.capsule_set_digest = researchOperationsProjectionCapsuleTrieDigest(
+          trie.root_refs
+        );
+        const { projection_digest: _projectionDigest, ...indexInput } = index;
+        index.projection_digest = digest(
+          paperTradingComparisonPersistedRecordDigestInput(indexInput)
+        );
+        await Promise.all([
+          writeFile(capsulePath, `${JSON.stringify(capsule, null, 2)}\n`, "utf8"),
+          ...trie.nodes.map((node) => writeFile(
+            path.join(projectionRoot, "trie", `${node.prefix}.json`),
+            `${JSON.stringify(node, null, 2)}\n`,
+            "utf8"
+          )),
+          writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8")
+        ]);
+
+        await expect(stoppedService(store).readSessionDetail(workItemId))
+          .rejects.toThrow("research_operations_projection_source_mismatch");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("binds an exact active session when its open tick is omitted from the bounded root", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ouroboros-research-open-bound-"));
+    try {
+      const allocationDir = path.join(
+        root,
+        "candidate-arena-research-allocations",
+        "items"
+      );
+      await mkdir(allocationDir, { recursive: true });
+      const allocations = Array.from({ length: 1_501 }, (_, index) => {
+        const allocation = allocationFixture(
+          `open-${String(index).padStart(4, "0")}`
+        );
+        if (index === 0) {
+          allocation.selected_directions = [
+            allocation.selected_directions[0]!,
+            {
+              ...allocation.selected_directions[0]!,
+              direction_kind: "mean_reversion",
+              priority: 2
+            },
+            {
+              ...allocation.selected_directions[0]!,
+              direction_kind: "volatility_regime",
+              priority: 3
+            }
+          ];
+          allocation.deferred_directions = [
+            "funding_aware_risk",
+            "execution_cost_robustness"
+          ];
+        }
+        allocation.allocated_at = new Date(
+          Date.parse("2026-01-01T00:00:00.000Z") + index * 1_000
+        ).toISOString();
+        allocation.allocation_digest = digest(
+          candidateArenaResearchAllocationDigestInput(allocation)
+        );
+        return allocation;
+      });
+      await Promise.all(allocations.map((allocation) => writeFile(
+        path.join(
+          allocationDir,
+          `${encodeURIComponent(
+            allocation.candidate_arena_research_allocation_id
+          )}.json`
+        ),
+        `${JSON.stringify(allocation, null, 2)}\n`,
+        "utf8"
+      )));
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+      const index = JSON.parse(await readFile(path.join(
+        root,
+        "read-models",
+        "research-operations",
+        "index.json"
+      ), "utf8")) as {
+        open_tick_session_refs: Array<{ tick_id: string }>;
+        open_tick_session_count: number;
+        projected_open_tick_session_count: number;
+        omitted_open_tick_session_count: number;
+        open_tick_sessions_truncated: boolean;
+      };
+      const activeAllocation = allocations[0]!;
+      const activeWorkItemId = researchWorkItemId({
+        research_allocation_id:
+          activeAllocation.candidate_arena_research_allocation_id,
+        direction_kind: "trend_following"
+      });
+      expect(index).toMatchObject({
+        open_tick_session_count: 1_503,
+        projected_open_tick_session_count: 100,
+        omitted_open_tick_session_count: 1_403,
+        open_tick_sessions_truncated: true
+      });
+      expect(index.open_tick_session_refs.some((reference) =>
+        reference.tick_id === activeAllocation.tick_id
+      )).toBe(false);
+
+      const runningService = new ResearchOperationsProjectionService({
+        store: restarted,
+        runnerHealth: () => ({
+          status: "running",
+          tick_count: 1_501,
+          completed_tick_count: 0,
+          active_tick: true,
+          active_tick_id: activeAllocation.tick_id,
+          active_research_work_items: [{
+            identity_kind: "derived_projection",
+            research_work_item_id: activeWorkItemId,
+            research_allocation_id:
+              activeAllocation.candidate_arena_research_allocation_id,
+            direction_kind: "trend_following",
+            phase: "allocating"
+          }],
+          consecutive_failure_count: 0,
+          runtime_coordination_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "runtime_coordination_only"
+        })
+      });
+
+      await expect(runningService.readOperations()).resolves.toMatchObject({
+        availability: "available",
+        recorded_session_count: 1_503,
+        capacity: {
+          active_session_count: 1,
+          queued_session_count: 2
+        }
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("rejects active tick siblings with conflicting allocation capacity provenance", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-research-active-sibling-provenance-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const allocation = allocationFixture("active-sibling-provenance");
+      allocation.selected_directions.push({
+        ...allocation.selected_directions[0]!,
+        direction_kind: "mean_reversion",
+        priority: 2
+      });
+      allocation.deferred_directions = allocation.deferred_directions.filter(
+        (direction) => direction !== "mean_reversion"
+      );
+      allocation.allocation_digest = digest(
+        candidateArenaResearchAllocationDigestInput(allocation)
+      );
+      await store.recordCandidateArenaResearchAllocation(allocation);
+
+      const projectionRoot = path.join(
+        root,
+        "read-models",
+        "research-operations"
+      );
+      const workItemIds = allocation.selected_directions.map((selection) =>
+        researchWorkItemId({
+          research_allocation_id:
+            allocation.candidate_arena_research_allocation_id,
+          direction_kind: selection.direction_kind
+        })
+      ).sort();
+      const capsules = await Promise.all(workItemIds.map((workItemId) =>
+        readJsonFile<ResearchOperationsProjectionCapsule>(path.join(
+          projectionRoot,
+          "items",
+          `${encodeURIComponent(workItemId)}.json`
+        ))
+      ));
+      const forged = capsules[1]!;
+      forged.runtime_identity.concurrency_limit += 1;
+      const { capsule_digest: _capsuleDigest, ...capsuleInput } = forged;
+      forged.capsule_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(capsuleInput)
+      );
+
+      const trie = materializeResearchOperationsProjectionCapsuleTrie(capsules);
+      await Promise.all([
+        writeFile(
+          path.join(
+            projectionRoot,
+            "items",
+            `${encodeURIComponent(forged.research_work_item_id)}.json`
+          ),
+          `${JSON.stringify(forged, null, 2)}\n`,
+          "utf8"
+        ),
+        ...trie.nodes.map((node) => writeFile(
+          path.join(projectionRoot, "trie", `${node.prefix}.json`),
+          `${JSON.stringify(node, null, 2)}\n`,
+          "utf8"
+        ))
+      ]);
+      const indexPath = path.join(projectionRoot, "index.json");
+      const index = await readJsonFile<ResearchOperationsProjectionIndexRecord>(
+        indexPath
+      );
+      const capsuleDigests = new Map(capsules.map((capsule) => [
+        capsule.research_work_item_id,
+        capsule.capsule_digest
+      ]));
+      for (const reference of index.head_session_refs) {
+        reference.capsule_digest = capsuleDigests.get(
+          reference.research_work_item_id
+        )!;
+      }
+      index.capsule_trie_root_refs = trie.root_refs;
+      index.capsule_set_digest = researchOperationsProjectionCapsuleTrieDigest(
+        trie.root_refs
+      );
+      const { projection_digest: _projectionDigest, ...indexInput } = index;
+      index.projection_digest = digest(
+        paperTradingComparisonPersistedRecordDigestInput(indexInput)
+      );
+      await writeFile(
+        indexPath,
+        `${JSON.stringify(index, null, 2)}\n`,
+        "utf8"
+      );
+
+      const runningService = new ResearchOperationsProjectionService({
+        store,
+        runnerHealth: () => ({
+          status: "running",
+          tick_count: 1,
+          completed_tick_count: 0,
+          active_tick: true,
+          active_tick_id: allocation.tick_id,
+          active_research_work_items: [{
+            identity_kind: "derived_projection",
+            research_work_item_id: workItemIds[0]!,
+            research_allocation_id:
+              allocation.candidate_arena_research_allocation_id,
+            direction_kind: allocation.selected_directions[0]!.direction_kind,
+            phase: "allocating"
+          }],
+          consecutive_failure_count: 0,
+          runtime_coordination_authority: true,
+          evaluation_authority: false,
+          promotion_authority: false,
+          order_submission_authority: false,
+          live_exchange_authority: false,
+          authority_status: "runtime_coordination_only"
+        })
+      });
+
+      await expect(runningService.readOperations()).rejects.toThrow(
+        "research_operations_projection_active_tick_siblings_mismatch"
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("restart-projects every canonical terminal graph written by LocalStore", async () => {
     const cases: Array<{
       kind: OracleCase;
@@ -365,6 +4257,7 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
       );
 
       const restarted = new LocalStore(root);
+      await restarted.initialize();
       await expect(restarted.listCandidateAdmissionDecisions()).resolves.toHaveLength(2);
       const service = new ResearchOperationsProjectionService({
         store: restarted,
@@ -875,7 +4768,15 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
 
       const restarted = new LocalStore(root);
       await restarted.initialize();
-      expect(await restarted.listResearchWorkerCheckpoints()).toHaveLength(3);
+      await expect(restarted.listResearchWorkerCheckpoints()).rejects
+        .toMatchObject({
+          code: "research_worker_checkpoint_reload_failed",
+          details: {
+            duplicate_commitment_ids: [
+              prior.commitment.research_preflight_commitment_id
+            ]
+          }
+        });
       const operations = await stoppedService(restarted).readOperations();
       const currentRow = operations.sessions.find((session) =>
         session.research_allocation_id ===
@@ -894,6 +4795,55 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
       expect(detail?.lifecycle_events.map((event) => event.event_kind)).not.toEqual(
         expect.arrayContaining(["evaluation", "checkpoint", "handoff_conformance", "admission"])
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects raw duplicate checkpoint identities before lifecycle recovery", async () => {
+    const root = await mkdtemp(path.join(
+      os.tmpdir(),
+      "ouroboros-checkpoint-identity-ownership-"
+    ));
+    try {
+      const store = new LocalStore(root);
+      await store.initialize();
+      const graph = await persistBaseGraph(store, "checkpoint-identity-owner");
+      const checkpoint = checkpointFixture(graph, {
+        terminalReason: "finished_without_submission"
+      });
+      await store.recordResearchWorkerCheckpoint(checkpoint);
+      const duplicatePath = path.join(
+        root,
+        "research-worker-checkpoints",
+        "items",
+        "raw-alias-for-checkpoint.json"
+      );
+      await writeFile(
+        duplicatePath,
+        `${JSON.stringify(checkpoint, null, 2)}\n`,
+        "utf8"
+      );
+
+      const restarted = new LocalStore(root);
+      await restarted.initialize();
+      await expect(restarted.listResearchWorkerCheckpoints()).rejects
+        .toMatchObject({
+          code: "research_worker_checkpoint_reload_failed",
+          details: {
+            duplicate_checkpoint_ids: [
+              checkpoint.research_worker_checkpoint_id
+            ],
+            duplicate_commitment_ids: [
+              checkpoint.research_preflight_commitment_ref.id
+            ]
+          }
+        });
+      await expect(restarted.getResearchWorkerCheckpoint(
+        checkpoint.research_worker_checkpoint_id
+      )).rejects.toMatchObject({
+        code: "research_worker_checkpoint_reload_failed"
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1013,11 +4963,15 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
 
       const restarted = new LocalStore(root);
       await restarted.initialize();
-      const checkpoints = await restarted.listResearchWorkerCheckpoints();
-      expect(checkpoints).toHaveLength(2);
-      expect(checkpoints.every((candidate) =>
-        candidate.research_preflight_commitment_ref.id ===
-          prior.commitment.research_preflight_commitment_id)).toBe(true);
+      await expect(restarted.listResearchWorkerCheckpoints()).rejects
+        .toMatchObject({
+          code: "research_worker_checkpoint_reload_failed",
+          details: {
+            duplicate_commitment_ids: [
+              prior.commitment.research_preflight_commitment_id
+            ]
+          }
+        });
       const restartedService = stoppedService(restarted);
       const currentRow = (await restartedService.readOperations()).sessions.find((session) =>
         session.research_allocation_id ===
@@ -1050,6 +5004,382 @@ describe("LocalStore ResearchOperationsProjectionService oracle", () => {
     }
   });
 });
+
+const projectionWriterOutput = new WeakMap<ChildProcess, {
+  stdout: string[];
+  stderr: string[];
+}>();
+
+type ProjectionWriterOutcome =
+  | { status: "recorded" }
+  | { status: "rejected"; code?: string; message?: string };
+
+async function readJsonFile<T>(filePath: string): Promise<T> {
+  return JSON.parse(await readFile(filePath, "utf8")) as T;
+}
+
+async function waitForCurrentProcessProjectionLockClaim(
+  root: string,
+  timeoutMs = 10_000
+): Promise<void> {
+  const lockRoot = path.join(
+    root,
+    ".locks",
+    "research-operations-projection-publication"
+  );
+  const claimPrefix = `claim-${process.pid}-`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await readdir(lockRoot)).some((entry) =>
+        entry.startsWith(claimPrefix)
+      )) {
+        return;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("LocalStore did not wait on the projection publication lock");
+}
+
+function spawnProjectionSourceCacheReader(input: {
+  root: string;
+  collection: string;
+  resultPath: string;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const store = new LocalStore(${JSON.stringify(input.root)});`,
+    "await store.initialize();",
+    `const records = store.cachedResearchOperationsProjectionRecords(${JSON.stringify(
+      input.collection
+    )});`,
+    `await writeFile(${JSON.stringify(
+      input.resultPath
+    )}, JSON.stringify(records), "utf8");`
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnUninitializedProjectionWriter(
+  root: string,
+  allocation: CandidateArenaResearchAllocationRecord,
+  startedPath?: string
+): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const root = ${JSON.stringify(root)};`,
+    `const allocation = JSON.parse(Buffer.from(${JSON.stringify(
+      Buffer.from(JSON.stringify(allocation), "utf8").toString("base64")
+    )}, "base64").toString("utf8"));`,
+    `const startedPath = ${JSON.stringify(startedPath)};`,
+    "const store = new LocalStore(root);",
+    "if (startedPath) await writeFile(startedPath, \"started\\n\", \"utf8\");",
+    "await store.recordCandidateArenaResearchAllocation(allocation);"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnProjectionInitializer(root: string): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const store = new LocalStore(${JSON.stringify(root)});`,
+    "await store.initialize();"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnInitializedProjectionReader(input: {
+  root: string;
+  readyPath: string;
+  reads: Array<{ startPath: string; donePath: string }>;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { access, writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const root = ${JSON.stringify(input.root)};`,
+    `const readyPath = ${JSON.stringify(input.readyPath)};`,
+    `const reads = ${JSON.stringify(input.reads)};`,
+    "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
+    "const waitFor = async (target) => { for (;;) { try { await access(target); return; } catch (error) { if (error?.code !== \"ENOENT\") throw error; } await delay(5); } };",
+    "const store = new LocalStore(root);",
+    "await store.initialize();",
+    "await writeFile(readyPath, \"ready\\n\", \"utf8\");",
+    "for (const read of reads) { await waitFor(read.startPath); const window = await store.readResearchOperationsProjectionWindow({ session_limit: 100 }); await writeFile(read.donePath, JSON.stringify({ recorded_session_count: window.index.recorded_session_count }), \"utf8\"); }"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnInitializedProjectionRefreshProbe(input: {
+  root: string;
+  readyPath: string;
+  startPath: string;
+  resultPath: string;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { access, writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const store = new LocalStore(${JSON.stringify(input.root)});`,
+    "await store.initialize();",
+    "const refresh = store.refreshResearchOperationsProjectionSourceCache.bind(store);",
+    "let sourceCacheRefreshCount = 0;",
+    "store.refreshResearchOperationsProjectionSourceCache = async () => { sourceCacheRefreshCount += 1; await refresh(); };",
+    `await writeFile(${JSON.stringify(input.readyPath)}, "ready\\n", "utf8");`,
+    `for (;;) { try { await access(${JSON.stringify(
+      input.startPath
+    )}); break; } catch (error) { if (error?.code !== "ENOENT") throw error; await new Promise((resolve) => setTimeout(resolve, 5)); } }`,
+    "const window = await store.readResearchOperationsProjectionWindow({ session_limit: 100 });",
+    `await writeFile(${JSON.stringify(input.resultPath)}, JSON.stringify({ recorded_session_count: window.index.recorded_session_count, source_cache_refresh_count: sourceCacheRefreshCount }), "utf8");`
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnProjectionReset(root: string): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const store = new LocalStore(${JSON.stringify(root)});`,
+    "await store.reset();"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnConflictingSystemCodeWriter(input: {
+  root: string;
+  systemCode: SystemCodeRecord;
+  startedPath?: string;
+  readyPath: string;
+  releasePath: string;
+  resultPath: string;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { access, writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const root = ${JSON.stringify(input.root)};`,
+    `const systemCode = JSON.parse(Buffer.from(${JSON.stringify(
+      Buffer.from(JSON.stringify(input.systemCode), "utf8").toString("base64")
+    )}, "base64").toString("utf8"));`,
+    `const readyPath = ${JSON.stringify(input.readyPath)};`,
+    `const startedPath = ${JSON.stringify(input.startedPath)};`,
+    `const releasePath = ${JSON.stringify(input.releasePath)};`,
+    `const resultPath = ${JSON.stringify(input.resultPath)};`,
+    "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
+    "const waitFor = async (target) => { for (;;) { try { await access(target); return; } catch (error) { if (error?.code !== \"ENOENT\") throw error; } await delay(5); } };",
+    "const store = new LocalStore(root);",
+    "if (startedPath) await writeFile(startedPath, \"started\\n\", \"utf8\");",
+    "const assertIdentity = store.assertExactAuthorityIdentity.bind(store);",
+    "store.assertExactAuthorityIdentity = async (identityInput) => { const identity = await assertIdentity(identityInput); await writeFile(readyPath, identity + \"\\n\", \"utf8\"); await waitFor(releasePath); return identity; };",
+    "let outcome;",
+    "try { await store.recordSystemCode(systemCode); outcome = { status: \"recorded\" }; } catch (error) { outcome = { status: \"rejected\", code: error?.code, message: error?.message }; }",
+    "await writeFile(resultPath, JSON.stringify(outcome), \"utf8\");"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnProjectionInvalidatingWriter(input: {
+  root: string;
+  allocation: CandidateArenaResearchAllocationRecord;
+  invalidatedPath: string;
+  releasePath: string;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { access, writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const root = ${JSON.stringify(input.root)};`,
+    `const allocation = JSON.parse(Buffer.from(${JSON.stringify(
+      Buffer.from(JSON.stringify(input.allocation), "utf8").toString("base64")
+    )}, "base64").toString("utf8"));`,
+    `const invalidatedPath = ${JSON.stringify(input.invalidatedPath)};`,
+    `const releasePath = ${JSON.stringify(input.releasePath)};`,
+    "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
+    "const waitFor = async (target) => { for (;;) { try { await access(target); return; } catch (error) { if (error?.code !== \"ENOENT\") throw error; } await delay(5); } };",
+    "const store = new LocalStore(root);",
+    "await store.initialize();",
+    "const invalidate = store.invalidateResearchOperationsProjectionIndex.bind(store);",
+    "let intercept = true;",
+    "store.invalidateResearchOperationsProjectionIndex = async () => { await invalidate(); if (intercept) { intercept = false; await writeFile(invalidatedPath, \"invalidated\\n\", \"utf8\"); await waitFor(releasePath); } };",
+    "await store.recordCandidateArenaResearchAllocation(allocation);"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnProjectionWriter(input: {
+  root: string;
+  allocation: CandidateArenaResearchAllocationRecord;
+  readyPath: string;
+  startPath: string;
+  sourceWrittenPath: string;
+  releasePath: string;
+}): ChildProcess {
+  const localStoreUrl = new URL("../src/index.ts", import.meta.url).href;
+  const source = [
+    'import { access, writeFile } from "node:fs/promises";',
+    `const { LocalStore } = await import(${JSON.stringify(localStoreUrl)});`,
+    `const root = ${JSON.stringify(input.root)};`,
+    `const allocation = JSON.parse(Buffer.from(${JSON.stringify(
+      Buffer.from(JSON.stringify(input.allocation), "utf8").toString("base64")
+    )}, "base64").toString("utf8"));`,
+    `const readyPath = ${JSON.stringify(input.readyPath)};`,
+    `const startPath = ${JSON.stringify(input.startPath)};`,
+    `const sourceWrittenPath = ${JSON.stringify(input.sourceWrittenPath)};`,
+    `const releasePath = ${JSON.stringify(input.releasePath)};`,
+    "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
+    "const waitFor = async (target) => { for (;;) { try { await access(target); return; } catch (error) { if (error?.code !== \"ENOENT\") throw error; } await delay(5); } };",
+    "let gateNextPublish = false;",
+    "const store = new LocalStore(root, { writeTransaction: { run: async (write) => { const result = await write(); if (gateNextPublish) { gateNextPublish = false; await writeFile(sourceWrittenPath, \"written\\n\", \"utf8\"); await waitFor(releasePath); } return result; } } });",
+    "await store.initialize();",
+    "await writeFile(readyPath, \"ready\\n\", \"utf8\");",
+    "await waitFor(startPath);",
+    "gateNextPublish = true;",
+    "await store.recordCandidateArenaResearchAllocation(allocation);"
+  ].join("\n");
+  return spawnTrackedProjectionWriter(source);
+}
+
+function spawnTrackedProjectionWriter(source: string): ChildProcess {
+  const child = spawn(process.execPath, [
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "-e",
+    source
+  ], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const output = { stdout: [] as string[], stderr: [] as string[] };
+  projectionWriterOutput.set(child, output);
+  child.stdout?.on("data", (chunk: Buffer | string) => {
+    output.stdout.push(String(chunk));
+  });
+  child.stderr?.on("data", (chunk: Buffer | string) => {
+    output.stderr.push(String(chunk));
+  });
+  return child;
+}
+
+async function waitForProjectionLockClaim(
+  root: string,
+  child: ChildProcess,
+  timeoutMs = 10_000
+): Promise<void> {
+  if (child.pid === undefined) {
+    throw new Error("projection writer has no process id");
+  }
+  const lockRoot = path.join(
+    root,
+    ".locks",
+    "research-operations-projection-publication"
+  );
+  const claimPrefix = `claim-${child.pid}-`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await readdir(lockRoot)).some((entry) =>
+        entry.startsWith(claimPrefix)
+      )) {
+        return;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (child.exitCode !== null) {
+      throw projectionWriterError(child, "before waiting on the publication lock");
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw projectionWriterError(child, "before claiming the publication lock");
+}
+
+async function waitForFile(
+  filePath: string,
+  child: ChildProcess,
+  timeoutMs = 10_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await readFile(filePath, "utf8");
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (child.exitCode !== null) {
+      throw projectionWriterError(child, "before publishing its signal");
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw projectionWriterError(child, `before ${filePath} was published`);
+}
+
+function waitForChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null) {
+    return child.exitCode === 0
+      ? Promise.resolve()
+      : Promise.reject(projectionWriterError(child, "with a failure"));
+  }
+  return new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(projectionWriterError(
+        child,
+        `with code ${String(code)} and signal ${String(signal)}`
+      ));
+    });
+  });
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function waitForAnyChildExit(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", () => resolve());
+  });
+}
+
+function projectionWriterError(child: ChildProcess, reason: string): Error {
+  const output = projectionWriterOutput.get(child);
+  return new Error([
+    `projection writer exited ${reason}`,
+    output?.stdout.join("") ?? "",
+    output?.stderr.join("") ?? ""
+  ].filter(Boolean).join("\n"));
+}
 
 function stoppedService(store: LocalStore): ResearchOperationsProjectionService {
   return new ResearchOperationsProjectionService({
@@ -1733,6 +6063,29 @@ function allocationFixture(suffix: string): CandidateArenaResearchAllocationReco
   return allocation;
 }
 
+function collidingAllocationFixtures(
+  label: string,
+  rootPrefix: string,
+  count: number
+): CandidateArenaResearchAllocationRecord[] {
+  const suffixes: string[] = [];
+  for (let index = 0; suffixes.length < count && index < 100_000; index += 1) {
+    const suffix = `${label}-${index}`;
+    const workItemId = researchWorkItemId({
+      research_allocation_id: `allocation-${suffix}`,
+      direction_kind: "trend_following"
+    });
+    if (researchOperationsProjectionCapsuleRouteHash(workItemId)
+      .startsWith(rootPrefix)) {
+      suffixes.push(suffix);
+    }
+  }
+  if (suffixes.length !== count) {
+    throw new Error(`could not derive ${count} ${rootPrefix} trie collisions`);
+  }
+  return suffixes.map(allocationFixture);
+}
+
 function checkpointFixture(
   graph: BaseGraph,
   input: {
@@ -1834,7 +6187,7 @@ function tickFixture(
     tick_id: allocation.tick_id,
     started_at: allocation.allocated_at,
     completed_at: "2026-07-23T00:00:07.000Z",
-    status: result.status === "failed" ? "completed_with_errors" : "completed",
+    status: result.status === "failed" ? "failed" : "completed",
     created_candidate_refs: result.candidate_id
       ? [ref("trading_system_candidate", result.candidate_id)]
       : [],

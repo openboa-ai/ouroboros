@@ -12,6 +12,7 @@ import {
   type CandidateAdmissionStatus
 } from "./candidate-admission-policy";
 import {
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateEgressAttestationHasRuntimeShape,
   type CandidateEgressAttestation
 } from "./candidate-egress-attestation";
@@ -174,6 +175,25 @@ export const RESEARCH_DIRECTION_KINDS = [
 export type ResearchWorkerStatus = "active" | "failed" | "retired";
 
 export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
+
+export const CANDIDATE_ARENA_IDENTIFIER_MAX_LENGTH = 200;
+
+export function candidateArenaIdentifierHasRuntimeShape(
+  value: unknown
+): value is string {
+  return typeof value === "string" && value.length > 0 &&
+    value.length <= CANDIDATE_ARENA_IDENTIFIER_MAX_LENGTH &&
+    /^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?$/.test(value);
+}
+
+function candidateArenaRefHasRuntimeShape(
+  value: unknown,
+  recordKind?: string
+): value is Ref {
+  return comparisonRef(value, recordKind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.record_kind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.id);
+}
 
 export type CandidateArenaDirectionResultStatus =
   | "created"
@@ -1652,7 +1672,7 @@ export function sanitizeResearchEvidenceText(value: string): string {
     .replace(/\b[A-Za-z]:[\\\/](?![\\\/])[^\s<>"']+/g, "[private-path]")
     .replace(/(^|[^A-Za-z0-9._~\/-])\/(?!\/)[^\s<>"']+/g, "$1[private-path]")
     .replace(
-      /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
+      /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?!\[redacted\](?:$|[\s,}\]]))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
       "$1$2[redacted]"
     );
 }
@@ -2398,8 +2418,11 @@ export function researchPreflightCommitmentHasRuntimeShape(
     "commitment_digest"
   ]) || value.record_kind !== "research_preflight_commitment" ||
     value.version !== 1 ||
-    !comparisonString(value.research_preflight_commitment_id) ||
-    !comparisonString(value.candidate_arena_tick_id) ||
+    !candidateArenaIdentifierHasRuntimeShape(
+      value.research_preflight_commitment_id
+    ) || !candidateArenaIdentifierHasRuntimeShape(
+      value.candidate_arena_tick_id
+    ) ||
     !comparisonRef(value.research_direction_ref, "research_direction") ||
     !comparisonRef(value.research_worker_ref, "research_worker") ||
     !comparisonRef(
@@ -7499,8 +7522,9 @@ export function researchTriggerHasRuntimeShape(
     !comparisonString(value.goal) || value.goal.length > 1_000 ||
     value.goal !== sanitizeResearchEvidenceText(value.goal) ||
     !comparisonIso(value.triggered_at) ||
-    (hasSource && !comparisonRef(value.source_ref)) ||
-    (hasEvidenceRef && !comparisonRef(
+    !candidateArenaIdentifierHasRuntimeShape(value.trigger_id) ||
+    (hasSource && !candidateArenaRefHasRuntimeShape(value.source_ref)) ||
+    (hasEvidenceRef && !candidateArenaRefHasRuntimeShape(
       value.evidence_artifact_ref,
       "research_evidence_artifact"
     )) || (hasEvidenceDigest && !comparisonDigest(
@@ -7545,8 +7569,9 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     "authority_status"
   ]) || value.record_kind !== "candidate_arena_research_allocation" ||
     value.version !== 1 ||
-    !comparisonString(value.candidate_arena_research_allocation_id) ||
-    !comparisonString(value.tick_id) ||
+    !candidateArenaIdentifierHasRuntimeShape(
+      value.candidate_arena_research_allocation_id
+    ) || !candidateArenaIdentifierHasRuntimeShape(value.tick_id) ||
     !candidateArenaResearchAllocationMode(value.allocation_mode) ||
     !candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       value.allocation_policy_basis
@@ -7555,7 +7580,7 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     !candidateArenaResearchAllocationPolicyHasRuntimeShape(value.policy) ||
     !Array.isArray(value.source_tick_refs) ||
     value.source_tick_refs.some((item) =>
-      !comparisonRef(item, "candidate_arena_tick")
+      !candidateArenaRefHasRuntimeShape(item, "candidate_arena_tick")
     ) || !candidateArenaAllocationStringsUnique(
       value.source_tick_refs.map((item) => item.id)
     ) ||
@@ -7688,12 +7713,12 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       "policy_decision_digest",
       "study_outcome_ref",
       "study_outcome_digest"
-    ]) && comparisonRef(
+    ]) && candidateArenaRefHasRuntimeShape(
       value.policy_decision_ref,
       "research_allocation_policy_decision"
     ) && researchControlCampaignSha256Digest(
       value.policy_decision_digest
-    ) && comparisonRef(
+    ) && candidateArenaRefHasRuntimeShape(
       value.study_outcome_ref,
       "research_control_study_outcome"
     ) && researchControlCampaignSha256Digest(value.study_outcome_digest);
@@ -7705,12 +7730,12 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       "policy_decision_digest",
       "generalization_outcome_ref",
       "generalization_outcome_digest"
-    ]) && comparisonRef(
+    ]) && candidateArenaRefHasRuntimeShape(
       value.policy_decision_ref,
       "research_generalization_policy_decision"
     ) && researchControlCampaignSha256Digest(
       value.policy_decision_digest
-    ) && comparisonRef(
+    ) && candidateArenaRefHasRuntimeShape(
       value.generalization_outcome_ref,
       "research_generalization_outcome"
     ) && researchControlCampaignSha256Digest(
@@ -7821,7 +7846,9 @@ export type ResearchControlCampaignArmKind =
   | "static_control";
 
 export interface ResearchExperimentBaselineSnapshot {
-  protocol_version: "local_store_regular_files_v1";
+  protocol_version:
+    | "local_store_regular_files_v1"
+    | "local_store_regular_files_v2";
   snapshot_digest: string;
   regular_file_count: number;
   total_bytes: number;
@@ -12477,7 +12504,8 @@ function researchExperimentBaselineHasRuntimeShape(
     "regular_file_count",
     "total_bytes",
     "exclusion_policy"
-  ]) && value.protocol_version === "local_store_regular_files_v1" &&
+  ]) && (value.protocol_version === "local_store_regular_files_v1" ||
+    value.protocol_version === "local_store_regular_files_v2") &&
     researchControlCampaignSha256Digest(value.snapshot_digest) &&
     comparisonPositive(value.regular_file_count) &&
     comparisonPositive(value.total_bytes) &&
@@ -13424,6 +13452,13 @@ export interface CandidateArenaTickDirectionResultReadModel {
   };
 }
 
+export type CandidateArenaTickProjectedDirectionResultReadModel = Omit<
+  CandidateArenaTickDirectionResultReadModel,
+  "status"
+> & {
+  status: CandidateArenaDirectionResultStatus | "legacy_unverified";
+};
+
 export interface CandidateArenaTickReadModel {
   tick_id: string;
   started_at: string;
@@ -13431,7 +13466,7 @@ export interface CandidateArenaTickReadModel {
   status: CandidateArenaTickStatus;
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
-  direction_results: CandidateArenaTickDirectionResultReadModel[];
+  direction_results: CandidateArenaTickProjectedDirectionResultReadModel[];
   research_allocation?: CandidateArenaResearchAllocationReadModel;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
@@ -13453,6 +13488,21 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export function deriveCandidateArenaTickStatus(
+  directionResults: readonly Pick<
+    CandidateArenaTickProjectedDirectionResultReadModel,
+    "status"
+  >[]
+): CandidateArenaTickStatus {
+  const failedCount = directionResults.filter(
+    (result) => result.status === "failed"
+  ).length;
+  if (failedCount === 0) return "completed";
+  return failedCount < directionResults.length
+    ? "completed_with_errors"
+    : "failed";
+}
+
 export function candidateArenaTickHasRuntimeShape(
   value: unknown
 ): value is CandidateArenaTickRecord {
@@ -13460,8 +13510,8 @@ export function candidateArenaTickHasRuntimeShape(
   const hasAllocationRef = value.research_allocation_ref !== undefined;
   const hasAllocationDigest = value.research_allocation_digest !== undefined;
   return value.record_kind === "candidate_arena_tick" && value.version === 1 &&
-    candidateArenaTickNonEmpty(value.candidate_arena_tick_id) &&
-    candidateArenaTickNonEmpty(value.tick_id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.candidate_arena_tick_id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.tick_id) &&
     comparisonIso(value.started_at) &&
     comparisonIso(value.completed_at) &&
     Date.parse(value.completed_at) >= Date.parse(value.started_at) &&
@@ -13473,6 +13523,9 @@ export function candidateArenaTickHasRuntimeShape(
       candidateArenaTickRef(item, "trading_system_candidate")) &&
     Array.isArray(value.direction_results) &&
     value.direction_results.every(candidateArenaTickDirectionResultHasRuntimeShape) &&
+    value.status === deriveCandidateArenaTickStatus(
+      value.direction_results as CandidateArenaTickDirectionResultReadModel[]
+    ) &&
     hasAllocationRef === hasAllocationDigest &&
     (!hasAllocationRef || candidateArenaTickRef(
       value.research_allocation_ref,
@@ -13482,6 +13535,168 @@ export function candidateArenaTickHasRuntimeShape(
       candidateArenaTickContinuationHasRuntimeShape(
         value.paper_trading_continuation
       )) && value.authority_status === "not_live";
+}
+
+export function candidateArenaTickAuthorityGraphHasRuntimeShape(
+  value: unknown
+): boolean {
+  if (!comparisonObject(value) || !Array.isArray(value.direction_results)) {
+    return false;
+  }
+  const hasCreatedRefs = Array.isArray(value.created_candidate_refs);
+  const hasCreatedIds = Array.isArray(value.created_candidate_ids);
+  if (hasCreatedRefs === hasCreatedIds) return false;
+  const authorityMode = candidateArenaTickAuthorityGraphMode(
+    value,
+    hasCreatedRefs
+  );
+  if (authorityMode === undefined) return false;
+  const candidateBindings = (hasCreatedRefs
+    ? value.created_candidate_refs
+    : value.created_candidate_ids) as unknown[];
+  const createdCandidateIds = hasCreatedRefs
+    ? candidateBindings.map((reference) =>
+        candidateArenaTickRef(reference, "trading_system_candidate")
+          ? reference.id
+          : undefined
+      )
+    : candidateBindings.map((candidateId) =>
+        candidateArenaTickNonEmpty(candidateId) ? candidateId : undefined
+      );
+  if (createdCandidateIds.some((candidateId) => candidateId === undefined) ||
+    new Set(createdCandidateIds).size !== createdCandidateIds.length ||
+    !value.direction_results.every((result) =>
+      candidateArenaTickDirectionAuthorityHasRuntimeShape(result, authorityMode)
+    )) {
+    return false;
+  }
+  const candidateResultStatus = authorityMode === "legacy_compact"
+    ? "legacy_unverified"
+    : "created";
+  const resultCandidateIds = value.direction_results
+    .filter((result) =>
+      comparisonObject(result) && result.status === candidateResultStatus
+    )
+    .map((result) => result.candidate_id);
+  const uniqueResultCandidateIds = new Set(
+    resultCandidateIds.filter(candidateArenaTickNonEmpty)
+  );
+  return resultCandidateIds.every(candidateArenaTickNonEmpty) &&
+    (authorityMode !== "bound" ||
+      uniqueResultCandidateIds.size === resultCandidateIds.length) &&
+    uniqueResultCandidateIds.size === createdCandidateIds.length &&
+    createdCandidateIds.every((candidateId) =>
+      candidateId !== undefined && uniqueResultCandidateIds.has(candidateId)
+    );
+}
+
+type CandidateArenaTickAuthorityGraphMode =
+  | "bound"
+  | "legacy_raw"
+  | "legacy_compact";
+
+function candidateArenaTickAuthorityGraphMode(
+  value: Record<string, unknown>,
+  hasCreatedRefs: boolean
+): CandidateArenaTickAuthorityGraphMode | undefined {
+  if (hasCreatedRefs) {
+    if (value.research_allocation !== undefined) return undefined;
+    const hasAllocationRef = value.research_allocation_ref !== undefined;
+    const hasAllocationDigest = value.research_allocation_digest !== undefined;
+    if (hasAllocationRef !== hasAllocationDigest) return undefined;
+    return hasAllocationRef ? "bound" : "legacy_raw";
+  }
+  if (value.research_allocation_ref !== undefined ||
+    value.research_allocation_digest !== undefined) {
+    return undefined;
+  }
+  return value.research_allocation === undefined ? "legacy_compact" : "bound";
+}
+
+function candidateArenaTickDirectionAuthorityHasRuntimeShape(
+  value: unknown,
+  authorityMode: CandidateArenaTickAuthorityGraphMode
+): boolean {
+  if (!comparisonObject(value)) return false;
+  const hasCandidate = value.candidate_id !== undefined;
+  const hasError = value.error !== undefined;
+  const hasAdmissionId = value.admission_decision_id !== undefined;
+  const hasAdmissionReason = value.admission_reason !== undefined;
+  const hasNetRevenue = value.net_revenue_usdt !== undefined;
+  const conformance = value.paper_handoff_conformance;
+  const hasConformance = conformance !== undefined;
+  const preflight = value.research_preflight;
+  if (value.status === "created") {
+    const hasCreatedCandidateShape =
+      candidateArenaTickNonEmpty(value.candidate_id) && !hasError;
+    if (authorityMode === "legacy_raw") {
+      return hasCreatedCandidateShape && !hasAdmissionId &&
+        !hasAdmissionReason && !hasConformance;
+    }
+    if (authorityMode === "legacy_compact") return false;
+    return hasCreatedCandidateShape &&
+      candidateArenaTickNonEmpty(value.admission_decision_id) &&
+      value.admission_reason === "evaluation_accepted" &&
+      candidateArenaResearchPreflightHasRuntimeShape(preflight) &&
+      comparisonObject(preflight) &&
+      preflight.sealed_terminal_status === "accepted" &&
+      preflight.reason === "accepted" &&
+      candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+      comparisonObject(conformance) &&
+      conformance.status === "passed" && conformance.reason === "passed";
+  }
+  if (value.status === "legacy_unverified") {
+    const hasEfficiency = value.research_efficiency !== undefined;
+    return authorityMode === "legacy_compact" && comparisonHasExactKeys(value, [
+      "direction_kind",
+      "status",
+      "candidate_id",
+      "finding",
+      ...(hasEfficiency ? ["research_efficiency"] : [])
+    ]) && candidateArenaTickNonEmpty(value.candidate_id) &&
+      candidateArenaTickNonEmpty(value.finding) && (!hasEfficiency ||
+        candidateArenaResearchEfficiencyHasRuntimeShape(
+          value.research_efficiency
+        ));
+  }
+  if (value.status === "failed") {
+    return candidateArenaTickNonEmpty(value.error) && !hasCandidate &&
+      !hasAdmissionId && !hasAdmissionReason && !hasNetRevenue &&
+      !hasConformance;
+  }
+  if (value.status === "no_submission") {
+    return candidateArenaTickNonEmpty(value.finding) && !hasCandidate &&
+      !hasError && !hasAdmissionId && !hasAdmissionReason && !hasNetRevenue &&
+      !hasConformance;
+  }
+  if (value.status === "duplicate") {
+    return candidateArenaTickNonEmpty(value.finding) && !hasCandidate &&
+      !hasError && candidateArenaTickNonEmpty(value.admission_decision_id) &&
+      (value.admission_reason === "no_candidate_change" ||
+        value.admission_reason === "behavior_duplicate") && !hasNetRevenue &&
+      (!hasConformance ||
+        candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+        comparisonObject(conformance) &&
+        conformance.status === "passed" && conformance.reason === "passed");
+  }
+  if (value.status !== "quarantined" ||
+    !candidateArenaTickNonEmpty(value.finding) || hasCandidate || hasError ||
+    !candidateArenaTickNonEmpty(value.admission_decision_id) || hasNetRevenue ||
+    value.admission_reason === "evaluation_accepted" ||
+    value.admission_reason === "no_candidate_change" ||
+    value.admission_reason === "behavior_duplicate" ||
+    !candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason)) {
+    return false;
+  }
+  return value.admission_reason === "paper_handoff_conformance_failed"
+    ? candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+        comparisonObject(conformance) &&
+        conformance.status === "rejected" && conformance.reason !== "passed"
+    : value.admission_reason === "behavior_fingerprint_unavailable"
+      ? candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+          comparisonObject(conformance) &&
+          conformance.status === "passed" && conformance.reason === "passed"
+      : !hasConformance;
 }
 
 function candidateArenaTickStatusHasRuntimeShape(value: unknown): boolean {
@@ -13495,8 +13710,8 @@ function candidateArenaTickNonEmpty(value: unknown): value is string {
 
 function candidateArenaTickRef(value: unknown, kind?: string): value is Ref {
   return comparisonObject(value) &&
-    candidateArenaTickNonEmpty(value.record_kind) &&
-    candidateArenaTickNonEmpty(value.id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.record_kind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.id) &&
     (kind === undefined || value.record_kind === kind);
 }
 
@@ -13507,7 +13722,7 @@ function candidateArenaTickSha256Digest(value: unknown): value is string {
 function candidateArenaTickSourceHasRuntimeShape(value: unknown): boolean {
   return comparisonObject(value) &&
     candidateArenaTickSourceKindHasRuntimeShape(value.source_kind) &&
-    candidateArenaTickNonEmpty(value.candidate_id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.candidate_id) &&
     candidateArenaTickNonEmpty(value.display_name) &&
     (value.net_revenue_usdt === undefined ||
       comparisonFinite(value.net_revenue_usdt)) &&
@@ -13525,7 +13740,7 @@ function candidateArenaTickContinuationHasRuntimeShape(value: unknown): boolean 
       value.status === "failed") &&
     value.command_kind === "trading_run.start" &&
     (value.selected_candidate_id === undefined ||
-      candidateArenaTickNonEmpty(value.selected_candidate_id)) &&
+      candidateArenaIdentifierHasRuntimeShape(value.selected_candidate_id)) &&
     (value.error === undefined || candidateArenaTickNonEmpty(value.error)) &&
     value.authority_status === "not_live";
 }
@@ -13534,11 +13749,20 @@ function candidateArenaTickDirectionResultHasRuntimeShape(value: unknown): boole
   if (!comparisonObject(value) || !candidateArenaResearchDirection(
     value.direction_kind
   ) || !candidateArenaTickDirectionStatusHasRuntimeShape(value.status) ||
-    (value.candidate_id !== undefined && !candidateArenaTickNonEmpty(value.candidate_id)) ||
+    (value.agent_provider !== undefined &&
+      (typeof value.agent_provider !== "string" || ![
+        "codex",
+        "fixture",
+        "claude_code"
+      ].includes(value.agent_provider))) ||
+    (value.agent_model !== undefined &&
+      !candidateArenaTickNonEmpty(value.agent_model)) ||
+    (value.candidate_id !== undefined &&
+      !candidateArenaIdentifierHasRuntimeShape(value.candidate_id)) ||
     (value.finding !== undefined && !candidateArenaTickNonEmpty(value.finding)) ||
     (value.error !== undefined && !candidateArenaTickNonEmpty(value.error)) ||
     (value.admission_decision_id !== undefined &&
-      !candidateArenaTickNonEmpty(value.admission_decision_id)) ||
+      !candidateArenaIdentifierHasRuntimeShape(value.admission_decision_id)) ||
     (value.admission_reason !== undefined &&
       !candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason)) ||
     (value.net_revenue_usdt !== undefined &&
@@ -13555,8 +13779,25 @@ function candidateArenaTickDirectionResultHasRuntimeShape(value: unknown): boole
       ))) {
     return false;
   }
-  if (value.status === "created") return candidateArenaTickNonEmpty(value.candidate_id);
-  if (value.status === "failed") return candidateArenaTickNonEmpty(value.error);
+  if (value.status === "created") {
+    return candidateArenaIdentifierHasRuntimeShape(value.candidate_id) &&
+      value.error === undefined;
+  }
+  if (value.status === "failed") {
+    const lifecycleKeys = [
+      "agent_provider",
+      "agent_model",
+      "finding",
+      "research_efficiency",
+      "research_preflight"
+    ].filter((key) => value[key] !== undefined);
+    return comparisonHasExactKeys(value, [
+      "direction_kind",
+      "status",
+      ...lifecycleKeys,
+      "error"
+    ]) && candidateArenaTickNonEmpty(value.error);
+  }
   if (value.status === "no_submission") {
     return candidateArenaTickNonEmpty(value.finding) && value.candidate_id === undefined &&
       value.error === undefined && value.admission_decision_id === undefined &&
@@ -13564,7 +13805,7 @@ function candidateArenaTickDirectionResultHasRuntimeShape(value: unknown): boole
       value.paper_handoff_conformance === undefined;
   }
   return candidateArenaTickNonEmpty(value.finding) &&
-    candidateArenaTickNonEmpty(value.admission_decision_id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.admission_decision_id) &&
     candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason);
 }
 
@@ -13591,9 +13832,12 @@ function candidateArenaCompactConformanceHasRuntimeShape(value: unknown): boolea
     "reason",
     ...(hasAttestation ? ["candidate_egress_attestation"] : []),
     "authority_status"
-  ]) && candidateArenaTickNonEmpty(value.conformance_id) &&
+  ]) && candidateArenaIdentifierHasRuntimeShape(value.conformance_id) &&
     (value.status === "passed" || value.status === "rejected") &&
-    candidateArenaTickNonEmpty(value.reason) && (!hasAttestation ||
+    candidateArenaTickNonEmpty(value.reason) &&
+    (value.status === "passed"
+      ? value.reason === "passed"
+      : value.reason !== "passed") && (!hasAttestation ||
       candidateArenaCompactEgressAttestationHasRuntimeShape(
         value.candidate_egress_attestation
       )) && value.authority_status === "research_only";
@@ -13613,7 +13857,7 @@ function candidateArenaCompactEgressAttestationHasRuntimeShape(
     return false;
   }
   const denial = value.denial_summary;
-  return candidateArenaTickNonEmpty(value.attestation_id) &&
+  return candidateArenaIdentifierHasRuntimeShape(value.attestation_id) &&
     value.verification_status === "verified" &&
     value.enforcement_result === "enforced" &&
     candidateArenaTickSha256Digest(value.network_policy_digest) &&
@@ -13626,7 +13870,9 @@ function candidateArenaCompactEgressAttestationHasRuntimeShape(
       denial.required_probe_count,
       denial.start_denied_probe_count,
       denial.end_denied_probe_count
-    ].every((count) => Number.isSafeInteger(count) && Number(count) >= 0) &&
+    ].every((count) =>
+      count === CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length
+    ) &&
     denial.unexpected_allow_count === 0 &&
     value.authority_status === "research_only";
 }
@@ -13665,7 +13911,7 @@ function candidateArenaResearchPreflightHasRuntimeShape(value: unknown): boolean
     "sealed_terminal_status",
     "reason",
     "authority_status"
-  ]) && candidateArenaTickNonEmpty(value.commitment_id) &&
+  ]) && candidateArenaIdentifierHasRuntimeShape(value.commitment_id) &&
     Number.isInteger(value.development_submission_count) &&
     Number(value.development_submission_count) >= 0 &&
     Number(value.development_submission_count) <= 2 &&
@@ -14849,6 +15095,7 @@ interface ResearchSessionSummaryBaseReadModel {
   identity_kind: "derived_projection";
   research_work_item_id: string;
   research_allocation_id: string;
+  tick_id: string;
   direction_kind: ResearchDirectionKind;
   research_worker_id?: string;
   commitment_id?: string;
@@ -14899,6 +15146,7 @@ type ResearchProviderProjectionReadModel =
       provider_availability: "unavailable";
       provider?: never;
       model?: never;
+      model_truncated?: never;
     };
 
 export type ResearchSessionSummaryReadModel =
@@ -14906,6 +15154,74 @@ export type ResearchSessionSummaryReadModel =
   ResearchTriggerProjectionReadModel &
   ResearchMethodologyProjectionReadModel &
   ResearchProviderProjectionReadModel;
+
+export interface ResearchSessionSummaryUnavailableTriggerCompatibilityReadModel {
+  compatibility_kind: "research_summary_v1_unavailable";
+  trigger_kind: "unavailable";
+  trigger_id: "unavailable";
+  goal: "Research trigger unavailable.";
+  goal_truncated: false;
+  triggered_at: "";
+  authority_status: "research_only";
+}
+
+export interface ResearchSessionSummaryUnavailableMethodologyCompatibilityReadModel {
+  compatibility_kind: "research_summary_v1_unavailable";
+  direction_kind: ResearchDirectionKind;
+  hypothesis: "Research methodology unavailable.";
+  hypothesis_truncated: false;
+  method: "Research methodology unavailable.";
+  method_truncated: false;
+  evidence_artifact_ids: [];
+  authority_status: "research_only";
+}
+
+type ResearchTriggerSummaryWireReadModel =
+  | {
+      trigger_availability: "available";
+      trigger: ResearchOperationsTriggerReadModel;
+    }
+  | {
+      trigger_availability: "unavailable";
+      trigger: ResearchSessionSummaryUnavailableTriggerCompatibilityReadModel;
+    };
+
+type ResearchMethodologySummaryWireReadModel =
+  | {
+      methodology_availability: "available";
+      methodology: ResearchMethodologyReadModel;
+    }
+  | {
+      methodology_availability: "unavailable";
+      methodology:
+        ResearchSessionSummaryUnavailableMethodologyCompatibilityReadModel;
+    };
+
+type ResearchProviderSummaryWireReadModel =
+  | {
+      provider_availability: "available";
+      provider: ProviderKind;
+      model?: string;
+      model_truncated?: boolean;
+    }
+  | {
+      provider_availability: "unavailable";
+      provider: "unavailable";
+      model?: never;
+      model_truncated?: never;
+    };
+
+/**
+ * Operator summary wire shape. `availability` on the owning operations model is
+ * the v2 discriminator; these explicit unavailable placeholders keep the
+ * required v1 fields crash-safe while v2 consumers use the availability flags
+ * and never treat the placeholders as source evidence.
+ */
+export type ResearchSessionSummaryWireReadModel =
+  ResearchSessionSummaryBaseReadModel &
+  ResearchTriggerSummaryWireReadModel &
+  ResearchMethodologySummaryWireReadModel &
+  ResearchProviderSummaryWireReadModel;
 
 interface ResearchDevelopmentSubmissionBaseReadModel {
   submission_sequence: number;
@@ -15126,7 +15442,7 @@ export interface ResearchOperationsReadModel {
     active_session_count: number;
     queued_session_count: number;
   };
-  sessions: ResearchSessionSummaryReadModel[];
+  sessions: ResearchSessionSummaryWireReadModel[];
   recorded_session_count: number;
   projected_session_count: number;
   omitted_session_count: number;

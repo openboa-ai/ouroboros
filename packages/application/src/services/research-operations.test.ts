@@ -6,6 +6,7 @@ import {
   candidateArenaResearchAllocationDigestInput,
   candidateEgressAttestationDigestInput,
   candidateEgressNetworkPolicyDigestInput,
+  deriveCandidateArenaTickStatus,
   paperTradingHandoffConformanceDigestInput,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
@@ -67,9 +68,15 @@ import { decideResearchGeneralizationPolicyDecision } from
 import { decideResearchMemoryControlStudy } from
   "../candidate/research-memory-control-study";
 import { researchWorkItemId } from "../candidate/research-work-item";
-import type { OuroborosStorePort } from "../ports/store";
+import type {
+  OuroborosStorePort,
+  ResearchOperationsProjectionCapsule
+} from "../ports/store";
 import { safeId } from "../safe-id";
-import { ResearchOperationsProjectionService } from "./research-operations";
+import {
+  ResearchOperationsProjectionService,
+  researchOperationsProjectionCapsuleHasIntegrity
+} from "./research-operations";
 
 describe("ResearchOperationsProjectionService", () => {
   it("returns an authoritative empty projection", async () => {
@@ -113,6 +120,464 @@ describe("ResearchOperationsProjectionService", () => {
     expect(result.sessions).toHaveLength(1);
     expect(allocationReads).not.toHaveBeenCalled();
     expect(tickReads).not.toHaveBeenCalled();
+  });
+
+  it("rejects resealed capsules with forged work-item identity or terminal evidence", async () => {
+    const fixture = graphFixture();
+    fixture.addAllocation("capsule-integrity", ["trend_following"]);
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+
+    const forgedIdentity = structuredClone(original);
+    const forgedWorkItemId = "research-work-item-v1-forged-canonical-identity";
+    forgedIdentity.research_work_item_id = forgedWorkItemId;
+    forgedIdentity.runtime_identity.research_work_item_id = forgedWorkItemId;
+    forgedIdentity.inactive_detail.research_work_item_id = forgedWorkItemId;
+    forgedIdentity.active_queued_detail.research_work_item_id = forgedWorkItemId;
+    resealProjectionCapsule(forgedIdentity);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedIdentity))
+      .toBe(false);
+
+    const forgedCommitment = structuredClone(original);
+    forgedCommitment.runtime_identity.commitment_id = "commitment-forged";
+    resealProjectionCapsule(forgedCommitment);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedCommitment))
+      .toBe(false);
+
+    const forgedTick = structuredClone(original);
+    forgedTick.runtime_identity.tick_id = "tick-forged";
+    resealProjectionCapsule(forgedTick);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedTick))
+      .toBe(false);
+
+    const forgedHealth = structuredClone(original);
+    for (const detail of [
+      forgedHealth.inactive_detail,
+      forgedHealth.active_queued_detail
+    ]) {
+      detail.projection_health = "complete";
+      detail.degraded_reasons = [];
+    }
+    resealProjectionCapsule(forgedHealth);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedHealth))
+      .toBe(false);
+
+    const forgedTerminalEvidence = structuredClone(original);
+    expect(forgedTerminalEvidence.terminal_evidence_present).toBe(false);
+    forgedTerminalEvidence.terminal_evidence_present = true;
+    resealProjectionCapsule(forgedTerminalEvidence);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedTerminalEvidence
+    )).toBe(false);
+  });
+
+  it("rejects resealed capsule authority that diverges from persisted lifecycle bindings", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-lifecycle-authority",
+      ["trend_following"]
+    );
+    fixture.addTerminalGraph(allocation, "trend_following", "admitted");
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+
+    const forgedCommitment = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.commitment_id = "commitment-forged-consistently";
+      }
+    );
+    forgedCommitment.runtime_identity.commitment_id =
+      "commitment-forged-consistently";
+    resealProjectionCapsule(forgedCommitment);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedCommitment))
+      .toBe(false);
+
+    const forgedCompletedAt = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.completed_at = detail.terminal_graph.admission!.decided_at;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedCompletedAt))
+      .toBe(false);
+
+    const forgedActiveCompletion = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.status = "running";
+        detail.status_basis = {
+          basis_kind: "runtime_research_work_item",
+          source_ref: {
+            record_kind: "research_preflight_commitment",
+            id: detail.commitment_id!
+          },
+          authority_status: "read_only"
+        };
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedActiveCompletion
+    )).toBe(false);
+
+    const forgedMissingCompletion = structuredClone(original);
+    delete forgedMissingCompletion.inactive_detail.completed_at;
+    delete forgedMissingCompletion.active_queued_detail.completed_at;
+    resealProjectionCapsule(forgedMissingCompletion);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedMissingCompletion
+    )).toBe(false);
+  });
+
+  it("rejects resealed active status bases that do not bind the exact allocation or commitment", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-active-status-basis",
+      ["trend_following"]
+    );
+    const commitment = fixture.addCommitment(allocation, "trend_following");
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+    expect(original.active_queued_detail).toMatchObject({
+      status: "queued",
+      status_basis: {
+        basis_kind: "active_tick_queue",
+        source_ref: { id: allocation.candidate_arena_research_allocation_id }
+      }
+    });
+
+    const forgedQueueSource = structuredClone(original);
+    forgedQueueSource.active_queued_detail.status_basis.source_ref!.id =
+      "allocation-forged-active-queue-source";
+    resealProjectionCapsule(forgedQueueSource);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedQueueSource))
+      .toBe(false);
+
+    const validRunning = structuredClone(original);
+    validRunning.active_queued_detail.status = "running";
+    validRunning.active_queued_detail.status_basis = {
+      basis_kind: "runtime_research_work_item",
+      source_ref: ref(
+        "research_preflight_commitment",
+        commitment.research_preflight_commitment_id
+      ),
+      authority_status: "read_only"
+    };
+    validRunning.active_queued_detail.latest_progress_summary =
+      "Research work is running.";
+    resealProjectionCapsule(validRunning);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(validRunning))
+      .toBe(true);
+
+    const forgedRuntimeSource = structuredClone(validRunning);
+    forgedRuntimeSource.active_queued_detail.status_basis.source_ref!.id =
+      "commitment-forged-runtime-source";
+    resealProjectionCapsule(forgedRuntimeSource);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedRuntimeSource))
+      .toBe(false);
+
+    const forgedAllocatingSource = structuredClone(original);
+    forgedAllocatingSource.active_queued_detail.status = "allocating";
+    forgedAllocatingSource.active_queued_detail.status_basis = {
+      basis_kind: "runtime_research_work_item",
+      source_ref: ref(
+        "research_preflight_commitment",
+        commitment.research_preflight_commitment_id
+      ),
+      authority_status: "read_only"
+    };
+    resealProjectionCapsule(forgedAllocatingSource);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedAllocatingSource
+    )).toBe(false);
+  });
+
+  it("rejects resealed admitted handoff and lineage authority drift", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-handoff-authority",
+      ["trend_following"]
+    );
+    fixture.addTerminalGraph(allocation, "trend_following", "admitted");
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+
+    const forgedAllocationEvent = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.lifecycle_events.find((event) =>
+          event.event_kind === "allocation"
+        )!.source_ref.id = "allocation-forged-lifecycle-source";
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedAllocationEvent
+    )).toBe(false);
+
+    const forgedEvaluationTime = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        const evaluation = detail.terminal_graph.selected_sealed_evaluation!;
+        detail.lifecycle_events.find((event) =>
+          event.event_kind === "evaluation"
+        )!.occurred_at = after(evaluation.completed_at, 100);
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedEvaluationTime
+    )).toBe(false);
+
+    const forgedHandoffTick = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.terminal_graph.admitted_arena_handoff!
+          .candidate_arena_tick_ref.id = "tick-forged-handoff-source";
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedHandoffTick))
+      .toBe(false);
+
+    const missingFinding = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        delete detail.terminal_graph.finding;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(missingFinding))
+      .toBe(false);
+
+    const forgedLineageChild = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.terminal_graph.artifact_lineage!.child_system_code_ref.id =
+          "system-code-forged-lineage-child";
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedLineageChild))
+      .toBe(false);
+
+    const forgedLineageFinding = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.terminal_graph.artifact_lineage!.source_finding_refs[0]!.id =
+          "finding-forged-lineage-source";
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedLineageFinding
+    )).toBe(false);
+  });
+
+  it("rejects resealed checkpoint history that exceeds its exact submission budget", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-submission-budget",
+      ["trend_following"]
+    );
+    const graph = fixture.addTerminalGraph(
+      allocation,
+      "trend_following",
+      "admitted"
+    );
+    const terminalCheckpoint = checkpoint(
+      fixture,
+      graph.commitment,
+      "admission_recorded",
+      [entry(graph.commitment.candidate_arena_tick_id, 1)],
+      1,
+      1,
+      graph.admission.candidate_admission_decision_id
+    );
+    terminalCheckpoint.closed_at = after(allocation.allocated_at, 4_500);
+    terminalCheckpoint.checkpoint_digest = digest(
+      researchWorkerCheckpointDigestInput(terminalCheckpoint)
+    );
+    fixture.checkpoints.push(terminalCheckpoint);
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+    expect(original.inactive_detail).toMatchObject({
+      selected_submission_sequence: 1,
+      recorded_submission_count: 1,
+      budget: {
+        max_development_submission_count: 1,
+        development_submission_count: 1
+      },
+      development_submissions: [
+        { submission_sequence: 1, selected: true }
+      ]
+    });
+
+    const forgedSelectedSequence = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.selected_submission_sequence = 2;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedSelectedSequence
+    )).toBe(false);
+
+    const forgedSubmissionSequence = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.development_submissions[0]!.submission_sequence = 2;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedSubmissionSequence
+    )).toBe(false);
+
+    const forgedRecordedCount = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.recorded_submission_count = 2;
+        detail.omitted_submission_count = 1;
+        detail.submission_history_truncated = true;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(
+      forgedRecordedCount
+    )).toBe(false);
+  });
+
+  it("rejects an uncheckpointed resealed capsule that claims submission usage", async () => {
+    const fixture = graphFixture();
+    fixture.addAllocation("capsule-uncheckpointed-budget", ["trend_following"]);
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(original.inactive_detail.submission_history_availability)
+      .toBe("unavailable_until_checkpoint");
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+
+    const forgedUsage = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.budget.development_submission_count = 1;
+        detail.budget.remaining_development_submission_count = 0;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedUsage))
+      .toBe(false);
+  });
+
+  it("rejects resealed trigger evidence with forged source binding or chronology", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-trigger-evidence",
+      ["trend_following"],
+      0,
+      false
+    );
+    const evidence = evidenceArtifact(
+      "capsule-trigger-evidence",
+      allocation.allocated_at
+    );
+    fixture.evidence.push(evidence);
+    bindArenaEvidence(allocation, evidence);
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+    expect(original.inactive_detail).toMatchObject({
+      trigger_availability: "available",
+      trigger: {
+        source_ref: evidence.artifact_ref,
+        evidence_artifact_ref: {
+          id: evidence.research_evidence_artifact_id
+        },
+        evidence_artifact_digest: evidence.artifact_digest
+      },
+      evidence_inputs: [{
+        evidence_artifact_id: evidence.research_evidence_artifact_id,
+        artifact_digest: evidence.artifact_digest
+      }]
+    });
+
+    const forgedDigest = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        if (detail.trigger_availability !== "available") {
+          throw new Error("expected available trigger");
+        }
+        detail.trigger.evidence_artifact_digest = digest("forged-evidence");
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedDigest))
+      .toBe(false);
+
+    const missingSource = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        if (detail.trigger_availability !== "available") {
+          throw new Error("expected available trigger");
+        }
+        delete detail.trigger.source_ref;
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(missingSource))
+      .toBe(false);
+
+    const forgedSource = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        if (detail.trigger_availability !== "available") {
+          throw new Error("expected available trigger");
+        }
+        detail.trigger.source_ref = ref(
+          "research_finding",
+          "finding-forged-trigger-source"
+        );
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedSource))
+      .toBe(false);
+
+    const forgedChronology = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        if (detail.trigger_availability !== "available") {
+          throw new Error("expected available trigger");
+        }
+        detail.trigger.triggered_at = after(evidence.captured_at, -1);
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedChronology))
+      .toBe(false);
+  });
+
+  it("does not let a graph-conflict capsule claim a complete projection", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation(
+      "capsule-graph-conflict",
+      ["trend_following"]
+    );
+    const graph = fixture.addTerminalGraph(
+      allocation,
+      "trend_following",
+      "admitted"
+    );
+    fixture.admissions.push({
+      ...structuredClone(graph.admission),
+      candidate_admission_decision_id: "admission-second-graph-owner"
+    });
+    const { capsules } = await fixture.service.materializeProjection();
+    const original = capsules[0]!;
+    expect(original.graph_conflict).toBe(true);
+    expect(researchOperationsProjectionCapsuleHasIntegrity(original)).toBe(true);
+
+    const forgedComplete = resealedProjectionCapsuleMutation(
+      original,
+      (detail) => {
+        detail.projection_health = "complete";
+        detail.degraded_reasons = [];
+      }
+    );
+    expect(researchOperationsProjectionCapsuleHasIntegrity(forgedComplete))
+      .toBe(false);
   });
 
   it("projects two exact active entries and queues only the unstarted third selection", async () => {
@@ -204,6 +669,40 @@ describe("ResearchOperationsProjectionService", () => {
       status: "failed_closed",
       status_basis: { basis_kind: "runtime_research_work_item" },
       latest_progress_summary: "Research failed closed."
+    });
+  });
+
+  it("projects a sole failed direction from an exact failed aggregate tick", async () => {
+    const fixture = graphFixture();
+    const allocation = fixture.addAllocation("sole-failed-tick", [
+      "trend_following"
+    ]);
+    const terminalTick = tick(allocation, [{
+      direction_kind: "trend_following",
+      status: "failed",
+      error: "Research failed closed."
+    }]);
+    expect(terminalTick.status).toBe("failed");
+    fixture.ticks.push(terminalTick);
+
+    const detail = await fixture.service.readSessionDetail(
+      workId(allocation, "trend_following")
+    );
+
+    expect(detail).toMatchObject({
+      status: "failed_closed",
+      status_basis: {
+        basis_kind: "candidate_arena_tick",
+        source_ref: { id: terminalTick.candidate_arena_tick_id }
+      },
+      completed_at: terminalTick.completed_at,
+      latest_progress_summary: "Research failed closed.",
+      projection_health: "degraded",
+      degraded_reasons: expect.arrayContaining([
+        "methodology_unavailable",
+        "worker_unavailable",
+        "provider_unavailable"
+      ])
     });
   });
 
@@ -1107,6 +1606,180 @@ describe("ResearchOperationsProjectionService", () => {
       }
     }));
   });
+
+  it("fails compact Arena evidence closed for missing or cross-graph created authority", async () => {
+    const baseline = graphFixture();
+    const baselineAllocation = baseline.addAllocation(
+      "arena-projection-authority-baseline",
+      ["trend_following"]
+    );
+    baseline.addTerminalGraph(
+      baselineAllocation,
+      "trend_following",
+      "admitted"
+    );
+    expect((await baseline.service.materializeProjection()).index
+      .candidate_arena_evidence.availability).toBe("available");
+
+    const cases = [
+      "missing_admission",
+      "swapped_admission",
+      "swapped_conformance",
+      "swapped_commitment",
+      "swapped_candidate"
+    ] as const;
+    for (const testCase of cases) {
+      const fixture = graphFixture();
+      const firstAllocation = fixture.addAllocation(
+        `arena-authority-${testCase}-first`,
+        ["trend_following"]
+      );
+      fixture.addTerminalGraph(
+        firstAllocation,
+        "trend_following",
+        "admitted"
+      );
+      const secondAllocation = fixture.addAllocation(
+        `arena-authority-${testCase}-second`,
+        ["mean_reversion"],
+        10_000
+      );
+      const secondGraph = fixture.addTerminalGraph(
+        secondAllocation,
+        "mean_reversion",
+        "admitted"
+      );
+      const firstTick = fixture.ticks[0]!;
+      const firstResult = firstTick.direction_results[0]!;
+      if (testCase === "missing_admission") {
+        firstResult.admission_decision_id = "admission-does-not-exist";
+      } else if (testCase === "swapped_admission") {
+        firstResult.admission_decision_id =
+          secondGraph.admission.candidate_admission_decision_id;
+      } else if (testCase === "swapped_conformance") {
+        firstResult.paper_handoff_conformance!.conformance_id =
+          secondGraph.conformance.paper_trading_handoff_conformance_id;
+      } else if (testCase === "swapped_commitment") {
+        firstResult.research_preflight!.commitment_id =
+          secondGraph.commitment.research_preflight_commitment_id;
+      } else {
+        const secondCandidateId = `candidate-${secondAllocation.tick_id}`;
+        firstResult.candidate_id = secondCandidateId;
+        firstTick.created_candidate_refs = [{
+          record_kind: "trading_system_candidate",
+          id: secondCandidateId
+        }];
+      }
+
+      const { index } = await fixture.service.materializeProjection();
+
+      expect(index.candidate_arena_evidence.availability, testCase)
+        .toBe("unavailable");
+    }
+  });
+
+  it.each(["duplicate", "quarantined"] as const)(
+    "fails compact Arena evidence closed for cross-graph %s authority",
+    async (status) => {
+      const addAuthorityGraph = (
+        fixture: Fixture,
+        allocation: CandidateArenaResearchAllocationRecord,
+        direction: ResearchDirectionKind
+      ): TerminalFixture => {
+        const graph = fixture.addTerminalGraph(
+          allocation,
+          direction,
+          status === "duplicate" ? "duplicate" : "admitted"
+        );
+        if (status === "duplicate") return graph;
+
+        graph.conformance.status = "rejected";
+        graph.conformance.reason = "paper_decision_missing";
+        graph.conformance.provider_request_count = 0;
+        delete graph.conformance.decision_event_kind;
+        graph.conformance.heartbeat_count = 0;
+        graph.conformance.runnable_paper_handoff = false;
+        graph.conformance.evidence_digest = digest(
+          paperTradingHandoffConformanceDigestInput(graph.conformance)
+        );
+        graph.admission.paper_handoff_conformance_status = "rejected";
+        graph.admission.paper_trading_handoff_conformance_digest =
+          graph.conformance.evidence_digest;
+        graph.admission.status = "quarantined";
+        graph.admission.reason = "paper_handoff_conformance_failed";
+        graph.admission.runnable_paper_handoff = false;
+        const tickRecord = fixture.ticks.at(-1)!;
+        const tickResult = tickRecord.direction_results[0]!;
+        tickRecord.created_candidate_refs = [];
+        tickResult.status = "quarantined";
+        delete tickResult.candidate_id;
+        tickResult.finding = graph.finding.summary;
+        tickResult.admission_reason = graph.admission.reason;
+        tickResult.paper_handoff_conformance = {
+          conformance_id:
+            graph.conformance.paper_trading_handoff_conformance_id,
+          status: "rejected",
+          reason: graph.conformance.reason,
+          authority_status: "research_only"
+        };
+        return graph;
+      };
+
+      const baseline = graphFixture();
+      const baselineAllocation = baseline.addAllocation(
+        `arena-projection-${status}-baseline`,
+        ["trend_following"]
+      );
+      addAuthorityGraph(baseline, baselineAllocation, "trend_following");
+      expect((await baseline.service.materializeProjection()).index
+        .candidate_arena_evidence.availability).toBe("available");
+
+      for (const testCase of [
+        "swapped_admission",
+        "swapped_conformance",
+        "swapped_commitment"
+      ] as const) {
+        const fixture = graphFixture();
+        const firstAllocation = fixture.addAllocation(
+          `arena-${status}-${testCase}-first`,
+          ["trend_following"]
+        );
+        addAuthorityGraph(fixture, firstAllocation, "trend_following");
+        const secondAllocation = fixture.addAllocation(
+          `arena-${status}-${testCase}-second`,
+          ["mean_reversion"],
+          10_000
+        );
+        const secondGraph = addAuthorityGraph(
+          fixture,
+          secondAllocation,
+          "mean_reversion"
+        );
+        const firstResult = fixture.ticks[0]!.direction_results[0]!;
+        if (testCase === "swapped_admission") {
+          firstResult.admission_decision_id =
+            secondGraph.admission.candidate_admission_decision_id;
+        } else if (testCase === "swapped_conformance") {
+          firstResult.paper_handoff_conformance!.conformance_id =
+            secondGraph.conformance.paper_trading_handoff_conformance_id;
+        } else {
+          firstResult.research_preflight!.commitment_id =
+            secondGraph.commitment.research_preflight_commitment_id;
+        }
+
+        const materialization = fixture.service.materializeProjection();
+        if (testCase !== "swapped_admission") {
+          const { index } = await materialization;
+          expect(index.candidate_arena_evidence.availability, testCase)
+            .toBe("unavailable");
+        } else {
+          await expect(materialization, testCase).rejects.toThrow(
+            "research_operations_projection_capsule_invalid"
+          );
+        }
+      }
+    }
+  );
 
   it("keeps admission visible but suppresses candidate authority for missing or mismatched materialization", async () => {
     for (const condition of ["missing", "mismatched"] as const) {
@@ -3660,6 +4333,54 @@ describe("ResearchOperationsProjectionService", () => {
     expect(malformed).toMatchObject({
       degraded_reasons: expect.arrayContaining(["evidence_artifact_unavailable"])
     });
+
+    const wrongRoleFixture = graphFixture();
+    const wrongRoleAllocation = wrongRoleFixture.addAllocation(
+      "wrong-role-evidence",
+      ["trend_following"],
+      0,
+      false
+    );
+    const wrongRoleEvidence = evidenceArtifact(
+      "wrong-role-evidence",
+      wrongRoleAllocation.allocated_at
+    );
+    wrongRoleEvidence.subject_ref = ref(
+      "research_finding",
+      "finding-used-as-subject"
+    );
+    wrongRoleEvidence.artifact_digest = digest(
+      researchEvidenceArtifactDigestInput(wrongRoleEvidence)
+    );
+    wrongRoleFixture.evidence.push(wrongRoleEvidence);
+    bindArenaEvidence(wrongRoleAllocation, wrongRoleEvidence);
+    const wrongRoleCommitment = wrongRoleFixture.addCommitment(
+      wrongRoleAllocation,
+      "trend_following"
+    );
+    wrongRoleCommitment.methodology!.evidence_bindings = [{
+      evidence_artifact_ref: ref(
+        "research_evidence_artifact",
+        wrongRoleEvidence.research_evidence_artifact_id
+      ) as { record_kind: "research_evidence_artifact"; id: string },
+      evidence_artifact_digest: wrongRoleEvidence.artifact_digest
+    }];
+    wrongRoleCommitment.commitment_digest = digest(
+      researchPreflightCommitmentDigestInput(wrongRoleCommitment)
+    );
+
+    const wrongRole = await wrongRoleFixture.service.readSessionDetail(
+      workId(wrongRoleAllocation, "trend_following")
+    );
+    expect(wrongRole).not.toHaveProperty("commitment_id");
+    expect(wrongRole).toMatchObject({
+      evidence_inputs: [],
+      projection_health: "degraded",
+      degraded_reasons: expect.arrayContaining([
+        "evidence_artifact_unavailable",
+        "inactive_incomplete_graph"
+      ])
+    });
   });
 
   it("rejects privacy-unsafe evidence ref IDs before they reach the projection", async () => {
@@ -3711,17 +4432,21 @@ describe("ResearchOperationsProjectionService", () => {
       const detail = await fixture.service.readSessionDetail(
         workId(allocation, "trend_following")
       );
-      const rendered = JSON.stringify(detail);
+      const rendered = JSON.stringify(detail) ?? "";
 
-      expect(detail, testCase.suffix).not.toHaveProperty("commitment_id");
-      expect(detail, testCase.suffix).toMatchObject({
-        evidence_inputs: [],
-        projection_health: "degraded",
-        degraded_reasons: expect.arrayContaining([
-          "evidence_artifact_unavailable",
-          "inactive_incomplete_graph"
-        ])
-      });
+      if (testCase.field === "subject_ref") {
+        expect(detail, testCase.suffix).not.toHaveProperty("commitment_id");
+        expect(detail, testCase.suffix).toMatchObject({
+          evidence_inputs: [],
+          projection_health: "degraded",
+          degraded_reasons: expect.arrayContaining([
+            "evidence_artifact_unavailable",
+            "inactive_incomplete_graph"
+          ])
+        });
+      } else {
+        expect(detail, testCase.suffix).toBeUndefined();
+      }
       expect(rendered, testCase.suffix).not.toContain(testCase.unsafeId);
       for (const secret of [
         "private-owner",
@@ -3878,7 +4603,7 @@ describe("ResearchOperationsProjectionService", () => {
       const requestedId = testCase.prepare(fixture);
 
       const detail = await fixture.service.readSessionDetail(requestedId);
-      const rendered = JSON.stringify(detail);
+      const rendered = JSON.stringify(detail) ?? "";
 
       expect(rendered, testCase.suffix).not.toContain(testCase.marker);
     }
@@ -4312,6 +5037,17 @@ describe("ResearchOperationsProjectionService", () => {
         "inactive_incomplete_graph"
       ])
     });
+
+    const summary = (await fixture.service.readOperations()).sessions[0]!;
+    expect(() => mapWithOriginMainResearchSummary(summary)).not.toThrow();
+    expect(mapWithOriginMainResearchSummary(summary)).toEqual({
+      triggerKind: "unavailable",
+      goal: "Research trigger unavailable.",
+      direction: "other",
+      hypothesis: "Research methodology unavailable.",
+      method: "Research methodology unavailable.",
+      provider: "unavailable"
+    });
   });
 
   it("rejects a re-sealed memory-control study with a forged deterministic identity", async () => {
@@ -4545,6 +5281,33 @@ describe("ResearchOperationsProjectionService", () => {
     expect(older.tick_id).toBe("tick-recovering-loop");
   });
 });
+
+function mapWithOriginMainResearchSummary(value: unknown): {
+  triggerKind: string;
+  goal: string;
+  direction: string;
+  hypothesis: string;
+  method: string;
+  provider: string;
+} {
+  const session = value as {
+    trigger: { trigger_kind: string; goal: string };
+    methodology: {
+      direction_kind: string;
+      hypothesis: string;
+      method: string;
+    };
+    provider: string;
+  };
+  return {
+    triggerKind: session.trigger.trigger_kind,
+    goal: session.trigger.goal,
+    direction: session.methodology.direction_kind,
+    hypothesis: session.methodology.hypothesis,
+    method: session.methodology.method,
+    provider: session.provider
+  };
+}
 
 function stoppedHealth(): CandidateArenaRunnerHealthReadModel {
   return {
@@ -6041,9 +6804,7 @@ function tick(
     tick_id: allocation.tick_id,
     started_at: allocation.allocated_at,
     completed_at: after(allocation.allocated_at, 5_000),
-    status: results.some((candidate) => candidate.status === "failed")
-      ? "completed_with_errors"
-      : "completed",
+    status: deriveCandidateArenaTickStatus(results),
     created_candidate_refs: results.flatMap((candidate) => candidate.candidate_id
       ? [ref("trading_system_candidate", candidate.candidate_id)]
       : []),
@@ -6191,6 +6952,26 @@ function ref(record_kind: string, id: string): { record_kind: string; id: string
 
 function digest(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function resealProjectionCapsule(
+  capsule: ResearchOperationsProjectionCapsule
+): void {
+  const { capsule_digest: _digest, ...input } = capsule;
+  capsule.capsule_digest = digest(
+    paperTradingComparisonPersistedRecordDigestInput(input)
+  );
+}
+
+function resealedProjectionCapsuleMutation(
+  capsule: ResearchOperationsProjectionCapsule,
+  mutate: (detail: ResearchSessionDetailReadModel) => void
+): ResearchOperationsProjectionCapsule {
+  const mutated = structuredClone(capsule);
+  mutate(mutated.inactive_detail);
+  mutate(mutated.active_queued_detail);
+  resealProjectionCapsule(mutated);
+  return mutated;
 }
 
 function after(value: string, milliseconds: number): string {

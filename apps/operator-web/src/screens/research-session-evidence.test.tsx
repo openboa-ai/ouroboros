@@ -8,6 +8,7 @@ function admittedDetail(): ResearchSessionDetailReadModel {
     identity_kind: "derived_projection",
     research_work_item_id: "work-item/exact 1",
     research_allocation_id: "allocation-1",
+    tick_id: "arena-tick-1",
     direction_kind: "execution_cost_robustness",
     research_worker_id: "worker-1",
     commitment_id: "commitment-1",

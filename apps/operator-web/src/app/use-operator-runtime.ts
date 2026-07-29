@@ -270,8 +270,7 @@ export function useOperatorRuntime(
       researchDetailLoading: Boolean(
         pendingResearchDetailWorkItemId &&
         current.researchDetail?.research_work_item_id !== pendingResearchDetailWorkItemId
-      ),
-      researchDetailError: undefined
+      )
     }));
 
     const rootRefreshController = new AbortController();
@@ -353,7 +352,6 @@ export function useOperatorRuntime(
         ? errorMessage(gatewayResult.reason)
         : undefined,
       arenaDetailError: undefined,
-      researchDetailError: undefined,
       lastOperatorReadAt: operatorResult.status === "fulfilled"
         ? new Date().toISOString()
         : current.lastOperatorReadAt
@@ -513,6 +511,10 @@ export function stateAfterOperatorSelectionChange(
   selectedArenaSystemId: string | undefined,
   selectedResearchWorkItemId: string | undefined
 ): OperatorRuntimeState {
+  const retainsResearchDetail = Boolean(
+    selectedResearchWorkItemId &&
+    current.researchDetail?.research_work_item_id === selectedResearchWorkItemId
+  );
   return {
     ...current,
     refreshing: false,
@@ -522,12 +524,11 @@ export function stateAfterOperatorSelectionChange(
       : undefined,
     arenaDetailLoading: false,
     arenaDetailError: undefined,
-    researchDetail: selectedResearchWorkItemId &&
-      current.researchDetail?.research_work_item_id === selectedResearchWorkItemId
-      ? current.researchDetail
-      : undefined,
+    researchDetail: retainsResearchDetail ? current.researchDetail : undefined,
     researchDetailLoading: false,
-    researchDetailError: undefined
+    researchDetailError: retainsResearchDetail
+      ? current.researchDetailError
+      : undefined
   };
 }
 

@@ -152,14 +152,18 @@ export function ResearchScreen({
     sessionAvailable: selected !== undefined,
     detailLoading: detailLoading === true
   });
-  const activeSessions = view.sessions.filter((session) => [
-    "allocating",
-    "running",
-    "awaiting_selection",
-    "sealed_admission",
-    "recovering"
-  ].includes(session.status));
-  const recordedSessionCount = view.sessionWindow?.recordedCount ?? view.sessions.length;
+  const authoritativeSessionWindow = view.availability === "authoritative"
+    ? view.sessionWindow
+    : undefined;
+  const visibleCapacity = view.availability === "authoritative" ||
+      view.availability === "compatibility"
+    ? view.capacity
+    : undefined;
+  const recordedSessionCount = authoritativeSessionWindow?.recordedCount ??
+    (view.availability === "compatibility" ? view.sessions.length : undefined);
+  const activeSessionDetail = visibleCapacity
+    ? `${visibleCapacity.active_session_count} active`
+    : "Active unavailable";
 
   useEffect(() => {
     if (detailFocusPhase !== "none") {
@@ -196,6 +200,8 @@ export function ResearchScreen({
               status={view.availability}
               label={view.availability === "authoritative"
                 ? "Session projection"
+                : view.availability === "compatibility"
+                  ? "Legacy summary compatibility"
                 : view.availability === "history_only"
                   ? "History only"
                   : "Projection unavailable"}
@@ -251,6 +257,16 @@ export function ResearchScreen({
             </AlertDescription>
           </Alert>
         </div>
+      ) : view.availability === "compatibility" ? (
+        <div className="px-4 pb-4">
+          <Alert variant="info">
+            <FileClock aria-hidden="true" />
+            <AlertTitle>Legacy summary compatibility</AlertTitle>
+            <AlertDescription>
+              Older Research summary fields remain visible. Version-2 projection health, bounded-window counts, and exact detail evidence are unavailable until the runtime is upgraded.
+            </AlertDescription>
+          </Alert>
+        </div>
       ) : view.availability === "unavailable" ? (
         <div className="px-4 pb-4">
           <Alert variant="warning">
@@ -266,17 +282,17 @@ export function ResearchScreen({
       <OperatorMetricStrip metrics={[
         {
           label: "Actual sessions",
-          value: String(recordedSessionCount),
-          detail: view.sessionWindow?.truncated
-            ? `${activeSessions.length} active · ${view.sessionWindow.projectedCount} projected · ${view.sessionWindow.omittedCount} omitted`
-            : `${activeSessions.length} active`
+          value: recordedSessionCount === undefined ? "Unavailable" : String(recordedSessionCount),
+          detail: authoritativeSessionWindow?.truncated
+            ? `${activeSessionDetail} · ${authoritativeSessionWindow.projectedCount} projected · ${authoritativeSessionWindow.omittedCount} omitted`
+            : activeSessionDetail
         },
         {
           label: "Capacity",
-          value: view.capacity ? `${view.capacity.active_session_count} / ${view.capacity.max_concurrent_sessions}` : "Unavailable",
-          detail: view.capacity ? `${view.capacity.queued_session_count} queued` : "Projection required"
+          value: visibleCapacity ? `${visibleCapacity.active_session_count} / ${visibleCapacity.max_concurrent_sessions}` : "Unavailable",
+          detail: visibleCapacity ? `${visibleCapacity.queued_session_count} queued` : "Projection required"
         },
-        { label: "Completed ticks", value: String(view.history.length), detail: "Historical outcomes" },
+        { label: "Recent ticks", value: String(view.history.length), detail: "Latest bounded outcomes" },
         { label: "Authority", value: "Research only", detail: "No admission self-authority" }
       ]} />
 

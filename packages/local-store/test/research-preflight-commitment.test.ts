@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -80,6 +80,44 @@ describe("LocalStore ResearchPreflightCommitment", () => {
     });
     await expect(store.recordResearchPreflightCommitment(changed)).rejects.toMatchObject({
       code: "research_preflight_commitment_conflict"
+    });
+  });
+
+  it("rejects an oversized commitment id at write and cold-read boundaries", async () => {
+    const graph = await persistSupport(store);
+    const writeRecord = commitmentFixture(graph);
+    writeRecord.research_preflight_commitment_id = "c".repeat(201);
+    withCommitmentDigest(writeRecord);
+
+    await expect(store.recordResearchPreflightCommitment(writeRecord))
+      .rejects.toMatchObject({
+        code: "invalid_research_preflight_commitment_input"
+      });
+
+    const legacyRecord = commitmentFixture(graph);
+    legacyRecord.research_preflight_commitment_id = "c".repeat(500);
+    withCommitmentDigest(legacyRecord);
+    const itemsDir = path.join(
+      storeRoot,
+      "research-preflight-commitments",
+      "items"
+    );
+    await mkdir(itemsDir, { recursive: true });
+    await writeFile(
+      path.join(itemsDir, "legacy-invalid-commitment.json"),
+      `${JSON.stringify(legacyRecord)}\n`,
+      "utf8"
+    );
+
+    const coldReader = new LocalStore(storeRoot);
+    await expect(coldReader.listResearchPreflightCommitments())
+      .rejects.toMatchObject({
+        code: "research_preflight_commitment_reload_failed"
+      });
+
+    const restarted = new LocalStore(storeRoot);
+    await expect(restarted.initialize()).rejects.toMatchObject({
+      code: "research_preflight_commitment_reload_failed"
     });
   });
 
