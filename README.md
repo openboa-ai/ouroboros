@@ -143,8 +143,8 @@ modes, not exclusive runtime type constraints.
 
 The Agentic Loop repeats `context -> model inference -> tool execution -> observation` inside one
 bounded `ResearchWorkerSession`. Its purpose is to produce an attributable candidate artifact and
-stop at final output, the turn limit, or terminal failure. The model can propose actions and use
-tools; it cannot evaluate its own admission or grant trading authority.
+stop at final output, the enforced session timeout, or terminal failure. The model can propose
+actions and use tools; it cannot evaluate its own admission or grant trading authority.
 
 ### Evaluation loop — Goal-based
 
@@ -154,10 +154,11 @@ The Evaluation Loop starts from committed success criteria and iterates immutabl
 submissions against aggregate feedback. Before agent effects, `ResearchPreflightCommitment` binds
 the declared methodology plus development and sealed-admission suite identities, submission limits,
 and feedback-release policies; the session timeout is enforced separately. The worker may explicitly
-select one frozen `SystemCode` or finish without a submission. Feedback can start another development
-iteration only before that decision; selection, no submission, and fail-closed termination end the
-worker session and never return to mutable success criteria. This development evaluation still has
-no admission authority.
+select one frozen `SystemCode` or finish without a submission. Before that terminal decision,
+aggregate feedback can start another immutable development submission under the same committed
+criteria. Selection, no submission, and fail-closed termination close development without reopening
+the criteria or starting another iteration. This development evaluation still has no admission
+authority.
 
 ### Research loop — Time-based
 

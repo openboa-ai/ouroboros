@@ -98,7 +98,7 @@ Primary request: Explain one Agent Loop and why it repeats.
 Style reference: match the approved Ouroboros system-structure image exactly in background, line weight, typography, spacing, and orange use.
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom.
 Large text verbatim: "AGENTIC LOOP", "TURN-BASED", "CONTEXT", "MODEL INFERENCE", "TOOL EXECUTION", "OBSERVATION".
-Small text verbatim: "ResearchWorkerSession", "bounded provider session · candidate artifact", "stop · final output / max turns / terminal failure".
+Small text verbatim: "ResearchWorkerSession", "bounded provider session · candidate artifact", "stop · final output / session timeout / terminal failure".
 Color: black structure, orange return path from OBSERVATION to CONTEXT.
 Constraints: one loop only, strong hierarchy between large portable terms and small Ouroboros mapping, large calm whitespace.
 Avoid: other scopes, comparison grid, legend, headline, hands, people, robot, chart, logo, gradient, dark background, UI cards, shadow, 3D.
@@ -116,7 +116,8 @@ Style reference: match the approved Ouroboros system-structure image exactly in 
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom.
 Large text verbatim: "EVALUATION LOOP", "GOAL-BASED", "SUCCESS CRITERIA", "ITERATION", "EVALUATION", "SELECTION".
 Small text verbatim: "ResearchPreflightCommitment", "methodology · development + sealed-admission limits", "SystemCode · explicit frozen selection".
-Color: black structure, orange return path from EVALUATION to SUCCESS CRITERIA. SELECTION is a
+Color: black structure, orange return path from EVALUATION to ITERATION. SUCCESS CRITERIA is an
+immutable initial input and is not the target of the return path. SELECTION is a
 separate terminal node reached by one black arrow from EVALUATION and has no outgoing return.
 Constraints: one loop only, one purpose only, large calm whitespace.
 Avoid: other scopes, comparison grid, legend, headline, hands, people, robot, trading chart, logo, gradient, dark background, UI cards, shadow, 3D.

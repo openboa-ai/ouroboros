@@ -69,12 +69,14 @@ CONTEXT -> MODEL INFERENCE -> TOOL EXECUTION -> OBSERVATION -> CONTEXT
 
 - Representative mode: `TURN-BASED`
 - Small mapping: `ResearchWorkerSession`; one bounded provider session producing a candidate artifact
-- Stop: `final output`, `max turns`, more context required, or terminal failure
+- Stop: `final output`, enforced session timeout, more context required, or terminal failure
 
 ### 3. Evaluation Loop — Goal-based
 
 ```text
-SUCCESS CRITERIA -> ITERATION -> EVALUATION -> SUCCESS CRITERIA
+SUCCESS CRITERIA -> ITERATION -> EVALUATION
+                       ^              |
+                       +--------------+
                                       |
                                       +-> terminal SELECTION
 ```
