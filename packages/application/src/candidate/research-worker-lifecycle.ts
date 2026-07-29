@@ -6,6 +6,7 @@ import {
   researchWorkerCheckpointHasRuntimeShape,
   type CandidateAdmissionDecisionRecord,
   type CandidateArenaTickDirectionResultReadModel,
+  type CandidateInspectReadModel,
   type ProviderKind,
   type ResearchDirectionKind,
   type ResearchDirectionRecord,
@@ -213,15 +214,25 @@ export async function closeResearchWorkerCheckpoint(input: {
     previousCheckpoint?.closed_at,
     admission?.decided_at
   ]);
-  const terminalAdmission = input.terminal_reason !== "restart_recovery" &&
-    admission &&
+  const resultAdmission = admission &&
     researchWorkerTerminalResultMatchesAdmission(
       input.terminal_direction_result,
       admission
     )
     ? admission
     : undefined;
-  const terminalDirectionResult = terminalAdmission
+  const recoveredAdmission = input.terminal_reason === "restart_recovery" &&
+    admission
+    ? await recoverPersistedAdmissionClosure({
+        store: input.store,
+        commitment: input.commitment,
+        direction: input.direction,
+        admission,
+        development_submission_count: currentEntries.length
+      })
+    : undefined;
+  const terminalAdmission = resultAdmission ?? recoveredAdmission;
+  const terminalDirectionResult = resultAdmission
     ? input.terminal_direction_result
     : admission || input.terminal_reason === "restart_recovery"
       ? undefined
@@ -324,6 +335,91 @@ function researchWorkerTerminalResultMatchesAdmission(
       ? result.status === "duplicate"
       : admission.status === "quarantined" &&
         result.status === "quarantined";
+}
+
+async function recoverPersistedAdmissionClosure(input: {
+  store: OuroborosStorePort;
+  commitment: ResearchPreflightCommitmentRecord;
+  direction: ResearchDirectionRecord;
+  admission: CandidateAdmissionDecisionRecord;
+  development_submission_count: number;
+}): Promise<CandidateAdmissionDecisionRecord | undefined> {
+  const admissions = (await input.store.listCandidateAdmissionDecisions())
+    .filter((admission) =>
+      admission.research_preflight_commitment_ref?.id ===
+        input.commitment.research_preflight_commitment_id &&
+      admission.research_preflight_commitment_digest ===
+        input.commitment.commitment_digest
+    );
+  if (admissions.length !== 1 ||
+    admissions[0]?.candidate_admission_decision_id !==
+      input.admission.candidate_admission_decision_id) {
+    return undefined;
+  }
+  const evaluation = await input.store.getTradingEvaluationResult(
+    input.admission.trading_evaluation_result_ref.id
+  );
+  const selectedSequence = evaluation?.selected_development_submission_sequence;
+  if (!evaluation ||
+    evaluation.research_preflight_commitment_ref?.id !==
+      input.commitment.research_preflight_commitment_id ||
+    evaluation.research_preflight_commitment_digest !==
+      input.commitment.commitment_digest ||
+    !Number.isInteger(selectedSequence) || Number(selectedSequence) < 1 ||
+    Number(selectedSequence) > input.development_submission_count) {
+    return undefined;
+  }
+  if (input.admission.status !== "admitted") return input.admission;
+  const candidate = await findPersistedAdmittedCandidate({
+    store: input.store,
+    admission: input.admission,
+    commitment: input.commitment,
+    direction: input.direction
+  });
+  return candidate ? input.admission : undefined;
+}
+
+export async function findPersistedAdmittedCandidate(input: {
+  store: OuroborosStorePort;
+  admission: CandidateAdmissionDecisionRecord;
+  commitment: ResearchPreflightCommitmentRecord;
+  direction: ResearchDirectionRecord;
+}): Promise<CandidateInspectReadModel | undefined> {
+  const candidates = (await Promise.all(
+    (await input.store.listCandidates()).map((candidate) =>
+      input.store.getCandidate(candidate.candidate_id)
+    )
+  )).filter((candidate): candidate is CandidateInspectReadModel =>
+    candidate !== undefined
+  ).filter((candidate) =>
+    candidate.status === "materialized" &&
+    candidate.system_code?.ref?.id === input.admission.system_code_ref.id &&
+    candidate.full_cycle_lineage?.handoff_status === "runnable" &&
+    candidate.full_cycle_lineage.generated?.system_code_ref.id ===
+      input.admission.system_code_ref.id &&
+    candidate.full_cycle_lineage.generated.artifact_digest ===
+      input.admission.submitted_artifact_digest &&
+    candidate.full_cycle_lineage.source.system_code_ref?.id ===
+      input.admission.source_system_code_ref.id &&
+    candidate.full_cycle_lineage.evidence?.direction_kind ===
+      input.direction.direction_kind &&
+    candidate.full_cycle_lineage.evidence.evaluation_status ===
+      input.admission.evaluation_status &&
+    candidate.full_cycle_lineage.materialized?.trading_system_id ===
+      candidate.candidate_id &&
+    candidate.full_cycle_lineage.materialized.candidate_version_id ===
+      candidate.candidate_version.candidate_version_id &&
+    candidate.materialization_attempt?.status === "materialized" &&
+    candidate.materialization_attempt.resulting_candidate_ref?.id ===
+      candidate.candidate_id &&
+    candidate.materialization_attempt.idempotency_key.endsWith(
+      `:${safeId(
+        `candidate-arena-${safeId(input.commitment.candidate_arena_tick_id)}` +
+          `-${safeId(input.direction.direction_kind)}`
+      )}`
+    )
+  );
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 export async function recoverIncompleteResearchWorkerCheckpoints(input: {

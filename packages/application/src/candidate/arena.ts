@@ -104,6 +104,7 @@ import {
 } from "./research-generalization-read-model";
 import {
   closeResearchWorkerCheckpoint,
+  findPersistedAdmittedCandidate,
   recoverIncompleteResearchWorkerCheckpoints,
   researchWorkerCheckpointDevelopmentSubmissionCount,
   resolveResearchWorkerLifecycle
@@ -721,8 +722,10 @@ export async function runCandidateArenaTick(
       return {
         status: "completed",
         tick_id: tickId,
-        created_candidate_count: 0,
-        created_candidate_ids: [],
+        created_candidate_count: recoveredTick.created_candidate_refs.length,
+        created_candidate_ids: recoveredTick.created_candidate_refs.map(
+          (candidate) => candidate.id
+        ),
         arena
       };
     }
@@ -923,6 +926,7 @@ async function recordRecoveredCandidateArenaTick(input: {
   const evidenceByDirection = new Map<ResearchDirectionKind, {
     commitment: ResearchPreflightCommitmentRecord;
     checkpoint: ResearchWorkerCheckpointRecord;
+    direction: ResearchDirectionRecord;
   }>();
   for (const commitment of allocationCommitments) {
     const direction = directionsById.get(commitment.research_direction_ref.id);
@@ -940,11 +944,12 @@ async function recordRecoveredCandidateArenaTick(input: {
     }
     evidenceByDirection.set(direction.direction_kind, {
       commitment,
-      checkpoint
+      checkpoint,
+      direction
     });
   }
-  const directionResults = input.allocation.selected_directions.map(
-    (selection) => {
+  const directionResults = await Promise.all(
+    input.allocation.selected_directions.map(async (selection) => {
       const evidence = evidenceByDirection.get(selection.direction_kind);
       if (!evidence) {
         return recoveredCandidateArenaFailedDirection(
@@ -996,6 +1001,14 @@ async function recordRecoveredCandidateArenaTick(input: {
             "candidate_arena_research_allocation_recovery_unavailable"
           );
         }
+        const recoveredResult = await recoveredAdmissionDirectionResult({
+          store: input.store,
+          commitment: evidence.commitment,
+          checkpoint: evidence.checkpoint,
+          direction: evidence.direction,
+          admission
+        });
+        if (recoveredResult) return recoveredResult;
       }
       if (evidence.checkpoint.terminal_reason === "admission_recorded" ||
         evidence.checkpoint.terminal_reason ===
@@ -1009,7 +1022,7 @@ async function recordRecoveredCandidateArenaTick(input: {
       throw new Error(
         "candidate_arena_research_allocation_recovery_unavailable"
       );
-    }
+    })
   );
   const createdCandidateIds = directionResults.flatMap((result) =>
     result.status === "created" && result.candidate_id
@@ -1046,6 +1059,85 @@ async function recordRecoveredCandidateArenaTick(input: {
     authority_status: "not_live"
   };
   return input.store.recordCandidateArenaTick(tick);
+}
+
+async function recoveredAdmissionDirectionResult(input: {
+  store: OuroborosStorePort;
+  commitment: ResearchPreflightCommitmentRecord;
+  checkpoint: ResearchWorkerCheckpointRecord;
+  direction: ResearchDirectionRecord;
+  admission: CandidateAdmissionDecisionRecord;
+}): Promise<CandidateArenaTickDirectionResultReadModel | undefined> {
+  const [findings, conformance] = await Promise.all([
+    input.store.listResearchFindings(),
+    input.admission.paper_trading_handoff_conformance_ref
+      ? input.store.getPaperTradingHandoffConformance(
+          input.admission.paper_trading_handoff_conformance_ref.id
+        )
+      : Promise.resolve(undefined)
+  ]);
+  const finding = findings.find((candidate) =>
+    candidate.research_finding_id === input.admission.research_finding_ref.id
+  );
+  if (!finding ||
+    (input.admission.paper_trading_handoff_conformance_ref && !conformance)) {
+    return undefined;
+  }
+  const researchPreflight: CandidateArenaResearchPreflightReadModel = {
+    commitment_id: input.commitment.research_preflight_commitment_id,
+    development_submission_count:
+      input.checkpoint.development_budget.recorded_submission_count,
+    sealed_terminal_status: input.admission.evaluation_status === "accepted"
+      ? "accepted"
+      : "rejected",
+    reason: input.admission.evaluation_status === "accepted"
+      ? "accepted"
+      : "candidate_rejected",
+    authority_status: "not_promotion_authority"
+  };
+  const common = {
+    direction_kind: input.direction.direction_kind,
+    admission_decision_id:
+      input.admission.candidate_admission_decision_id,
+    admission_reason: input.admission.reason,
+    ...(conformance
+      ? {
+          paper_handoff_conformance:
+            compactPaperHandoffConformance(conformance)
+        }
+      : {}),
+    research_preflight: researchPreflight
+  };
+  if (input.admission.status !== "admitted") {
+    return {
+      ...common,
+      status: input.admission.status,
+      finding: finding.summary
+    };
+  }
+  if (!conformance || conformance.status !== "passed" ||
+    !conformance.runnable_paper_handoff) {
+    return undefined;
+  }
+  const candidate = await findPersistedAdmittedCandidate({
+    store: input.store,
+    commitment: input.commitment,
+    direction: input.direction,
+    admission: input.admission
+  });
+  const evidence = candidate?.full_cycle_lineage?.evidence;
+  const profitLoss = evidence?.profit_loss;
+  if (!candidate || !profitLoss) return undefined;
+  return {
+    ...common,
+    status: "created",
+    candidate_id: candidate.candidate_id,
+    finding: findingSummaryForProfitLoss(
+      profitLoss,
+      evidence.evaluation_status
+    ),
+    net_revenue_usdt: profitLoss.net_revenue_usdt
+  };
 }
 
 function recoveredCandidateArenaResearchPreflight(

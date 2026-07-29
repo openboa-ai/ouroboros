@@ -1616,10 +1616,10 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
-  it("fails closed an orphan admission without replaying materialization", async () => {
-    const interrupted = new CheckpointDisabledStore(tmpDir);
+  it("recovers an exact orphan admission without replaying materialization", async () => {
+    const interrupted = new TerminalPersistenceDisabledStore(tmpDir);
     await interrupted.initialize();
-    await runCandidateArenaTick({
+    await expect(runCandidateArenaTick({
       store: interrupted,
       tickId: "worker-restart-admission",
       now: () => "2026-07-12T10:00:00.000Z",
@@ -1629,8 +1629,20 @@ describe("CandidateArena paper evidence context", () => {
       agentFactory: () => new LifecycleResearchAgent([]),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
-    });
-    await expect(interrupted.listCandidateAdmissionDecisions()).resolves.toHaveLength(1);
+    })).rejects.toThrow("simulated tick persistence interruption");
+    const [admission] = await interrupted.listCandidateAdmissionDecisions();
+    expect(admission).toBeDefined();
+    const admittedCandidates = (await Promise.all(
+      (await interrupted.listCandidates()).map((candidate) =>
+        interrupted.getCandidate(candidate.candidate_id)
+      )
+    )).filter((candidate) =>
+      candidate?.full_cycle_lineage?.generated?.system_code_ref.id ===
+        admission?.system_code_ref.id
+    );
+    expect(admittedCandidates).toHaveLength(1);
+    const admittedCandidate = admittedCandidates[0];
+    expect(admittedCandidate).toBeDefined();
     await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
 
     const restarted = new LocalStore(tmpDir);
@@ -1649,14 +1661,77 @@ describe("CandidateArena paper evidence context", () => {
     expect(materializationCount).toBe(0);
     expect(recovered).toEqual([expect.objectContaining({
       candidate_arena_tick_id: "worker-restart-admission",
+      terminal_status: "completed",
+      terminal_reason: "admission_recorded",
+      candidate_admission_decision_ref: {
+        record_kind: "candidate_admission_decision",
+        id: admission?.candidate_admission_decision_id
+      }
+    })]);
+    expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
+    await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
+
+    const recoveredTick = await runCandidateArenaTick({
+      store: restarted,
+      tickId: "worker-restart-admission",
+      now: () => "2026-07-12T12:00:00.000Z",
+      researchAgent: "codex",
+      agentFactory: () => {
+        throw new Error("recovery must not start a new provider");
+      },
+      effectedAllocationRecoveryMode: "record_failed_tick"
+    });
+    const recoveredDirection = recoveredTick.arena.latest_ticks.find((tick) =>
+      tick.tick_id === "worker-restart-admission"
+    )?.direction_results[0];
+    expect(recoveredDirection).toMatchObject({
+      direction_kind: "trend_following",
+      status: "created",
+      candidate_id: admittedCandidate?.candidate_id,
+      admission_decision_id: admission?.candidate_admission_decision_id,
+      admission_reason: "evaluation_accepted"
+    });
+    expect(recoveredDirection).not.toHaveProperty("research_efficiency");
+    expect(recoveredTick).toMatchObject({
+      created_candidate_count: 1,
+      created_candidate_ids: [admittedCandidate?.candidate_id]
+    });
+  });
+
+  it("fails closed when restart recovery finds admission without materialization", async () => {
+    const interrupted = new TerminalPersistenceDisabledStore(tmpDir);
+    await interrupted.initialize();
+    interrupted.materializeCandidate = async () => {
+      throw new Error("simulated materialization interruption");
+    };
+    await expect(runCandidateArenaTick({
+      store: interrupted,
+      tickId: "worker-restart-incomplete-admission",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
+      agentFactory: () => new LifecycleResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    })).rejects.toThrow("simulated tick persistence interruption");
+    await expect(interrupted.listCandidateAdmissionDecisions()).resolves.toHaveLength(1);
+    await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    const recovered = await recoverIncompleteResearchWorkerCheckpoints({
+      store: restarted,
+      recovered_at: "2026-07-12T11:00:00.000Z"
+    });
+
+    expect(recovered).toEqual([expect.objectContaining({
+      candidate_arena_tick_id: "worker-restart-incomplete-admission",
       terminal_status: "failed_closed",
       terminal_reason: "restart_recovery"
     })]);
-    expect(recovered[0]).not.toHaveProperty(
-      "candidate_admission_decision_ref"
-    );
+    expect(recovered[0]).not.toHaveProperty("candidate_admission_decision_ref");
     expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
-    await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
   });
 
   it("quarantines a crashed candidate run before runnable candidate materialization", async () => {
@@ -4505,6 +4580,14 @@ class CheckpointDisabledStore extends LocalStore {
     _checkpoint: ResearchWorkerCheckpointRecord
   ): Promise<ResearchWorkerCheckpointRecord> {
     throw new Error("simulated checkpoint persistence interruption");
+  }
+}
+
+class TerminalPersistenceDisabledStore extends CheckpointDisabledStore {
+  override async recordCandidateArenaTick(
+    _tick: CandidateArenaTickRecord
+  ): Promise<CandidateArenaTickRecord> {
+    throw new Error("simulated tick persistence interruption");
   }
 }
 
