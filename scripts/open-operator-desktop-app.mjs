@@ -2,19 +2,17 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import {
+  acquireDesktopNativeBuildLock,
+  inspectDesktopBuildStorage,
+  preflightDesktopBuildStorage,
+  releaseDesktopNativeBuildLock,
+  verifyDesktopReleaseStamp
+} from "./operator-desktop-build-storage.mjs";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
-const appPath = join(
-  repoRoot,
-  "apps",
-  "operator-desktop",
-  "src-tauri",
-  "target",
-  "release",
-  "bundle",
-  "macos",
-  "Ouroboros Operator.app"
-);
+const buildStorage = inspectDesktopBuildStorage(repoRoot);
+const appPath = buildStorage.app_bundle_path;
 const appExecutable = join(appPath, "Contents", "MacOS", "ouroboros-operator-desktop");
 const bundleIdentifier = "ai.openboa.ouroboros.operator";
 const launchServicesRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
@@ -32,6 +30,25 @@ const requiredLoopCommands = [
 
 if (process.platform !== "darwin") {
   console.error("open_operator_desktop_app_requires_macos");
+  process.exit(1);
+}
+
+const storagePreflight = preflightDesktopBuildStorage(repoRoot, buildStorage);
+if (storagePreflight.status !== "ready") {
+  console.error(JSON.stringify(storagePreflight));
+  process.exit(1);
+}
+const buildLock = acquireDesktopNativeBuildLock({
+  preflight: storagePreflight,
+  repoRoot,
+  label: "open"
+});
+process.once("exit", () => releaseDesktopNativeBuildLock(buildLock));
+
+const releaseState = verifyDesktopReleaseStamp(repoRoot);
+if (releaseState.status !== "release_current") {
+  console.error(`operator_desktop_release_not_current:${releaseState.status}`);
+  console.error("Run npm run package:operator-desktop first.");
   process.exit(1);
 }
 

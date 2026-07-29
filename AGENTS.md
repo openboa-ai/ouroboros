@@ -358,15 +358,40 @@ Before launching an app surface:
 3. Verify `apps/operator-desktop/package.json` and `apps/operator-desktop/src-tauri/tauri.conf.json`
    exist after sync. If a newly synced dependency is missing, run `npm install` from the repo root
    before launching.
-4. Launch source-checkout Desktop development with `npm run dev:operator-desktop`. This builds the
+4. Run `npm run audit:operator-desktop-storage`, then use only the repository Desktop commands.
+   They route every registered worktree through the control checkout's shared
+   `.cache/operator-desktop/cargo-target`, require at least 8 GiB free, cap that target at 6 GiB,
+   postflight the same limits, and hold one native-build lease. Do not bypass the lease with direct
+   `cargo`/`tauri` commands or a conflicting `CARGO_TARGET_DIR`. Symlinked storage paths, interrupted
+   cleanup quarantines, and an existing stale-lock recovery guard fail closed; never auto-delete or
+   auto-reclaim an ambiguous lock. A `recovery_guard_present` result is not repairable by `clean`:
+   inspect the reported owner and liveness, verify the exact owner PID and every repo-scoped native
+   process are absent, and escalate. Only after explicit user approval may an agent unlink the one
+   exact reported `<control-checkout>/.cache/operator-desktop/native-build.lock.recovery` path, then
+   rerun the audit. For other capacity or legacy-output blocks, stop the named repo-scoped native
+   process and use `npm run clean:operator-desktop-storage` explicitly. That command resumes only
+   recognized cleanup quarantines and may remove only the shared target, registered legacy
+   `src-tauri/target` directories, and release stamp, never source, worktrees, Docker data, runtime
+   stores, or evidence.
+   For any wider disk-pressure cleanup, first prove the worktree is clean, merged, has no open PR,
+   and is not active. Process command text alone is insufficient: inspect process working
+   directories too (`lsof` CWD on macOS). A process whose CWD is inside the worktree keeps it
+   active even when its command omits the path. Only regenerable dependency/build output such as
+   `node_modules` may be removed under the user's cleanup authority; preserve source, `.ouroboros`,
+   evidence, runtime stores, Docker data, and the worktree itself unless the normal released-lease
+   cleanup contract is fully satisfied. Record that `npm install` restores removed dependencies.
+5. Launch source-checkout Desktop development with `npm run dev:operator-desktop`. This builds the
    shared Operator UI into the Tauri `frontendDist` target and opens the native macOS app; it does
    not require `npm run dev:operator-web`.
-5. For packaged-app checks, use `npm run package:operator-desktop`, then
+6. For packaged-app checks, use `npm run package:operator-desktop`, then
    `npm run open:operator-desktop`, then `npm run verify:operator-desktop-release`.
-6. Verify the native process, not only HTTP or browser reachability. On macOS,
+   Packaging invalidates the prior stamp before build, freezes the exact source state through
+   signing, binds a digest of every app-bundle byte into the new stamp, and publishes no usable
+   stamp when the build, signing, source-stability, or postflight capacity check fails.
+7. Verify the native process, not only HTTP or browser reachability. On macOS,
    `pgrep -fl ouroboros-operator-desktop` and System Events process checks are valid evidence. The
    runtime health endpoint is supporting evidence: `curl -fsS http://127.0.0.1:4173/health`.
-7. Use `npm run dev:operator-web` only when the user asks for the browser development surface or a
+8. Use `npm run dev:operator-web` only when the user asks for the browser development surface or a
    Web-specific UI check. Use `ouroboros tui` only when the user asks for the terminal interface.
 
 Ouroboros Desktop is Tauri, not Electron. The Web app is shared UI source and a browser/development

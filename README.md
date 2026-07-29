@@ -72,6 +72,7 @@ First-run prerequisites are Node.js 24 and npm; Rust and Cargo for native Tauri 
 
 ```bash
 npm install
+npm run audit:operator-desktop-storage
 npm run dev:operator-desktop
 ```
 
@@ -185,6 +186,7 @@ Replay and backtest are research feedback rather than final economic evidence au
 npm run package:operator-desktop
 npm run open:operator-desktop
 npm run verify:operator-desktop-release
+npm run audit:operator-desktop-storage
 ```
 
 ### Develop and validate

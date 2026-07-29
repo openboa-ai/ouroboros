@@ -33,9 +33,19 @@ describe("Operator desktop app", () => {
     expect(packageJson.devDependencies).not.toHaveProperty("electron");
     expect(packageJson.scripts?.build).toBe("node scripts/check-build.mjs");
     expect(packageJson.scripts?.["build:frontend"]).toBe("node scripts/build-frontend.mjs");
-    expect(packageJson.scripts?.dev).toBe("tauri dev");
+    expect(packageJson.scripts?.dev).toBe("node scripts/run-tauri.mjs dev");
     expect(packageJson.scripts?.package).toBe("node scripts/package-app.mjs");
+    expect(packageJson.scripts?.tauri).toBe("node scripts/run-tauri.mjs");
     expect(packageJson.scripts?.typecheck).toBe("npm run build");
+    expect(rootPackageJson.scripts?.["audit:operator-desktop-storage"]).toBe(
+      "node scripts/operator-desktop-build-storage.mjs audit --repo-root ."
+    );
+    expect(rootPackageJson.scripts?.["clean:operator-desktop-storage"]).toBe(
+      "node scripts/operator-desktop-build-storage.mjs clean --repo-root ."
+    );
+    expect(rootPackageJson.scripts?.["check:repo-guards"]).toContain(
+      "npm run audit:operator-desktop-storage"
+    );
   });
 
   it("keeps Linux CI from requiring macOS desktop native packaging dependencies", () => {
@@ -360,6 +370,9 @@ describe("Operator desktop app", () => {
     expect(verifier).toContain("bundled_runtime_manifest_present");
     expect(verifier).toContain("bundled_runtime_sidecar_present");
     expect(verifier).toContain("bundled_runtime_sidecar_executable");
+    expect(verifier).toContain("inspectDesktopBuildStorage");
+    expect(verifier).toContain("preflightDesktopBuildStorage");
+    expect(verifier).toContain("verifyDesktopReleaseStamp");
   });
 
   it("opens and measures the native Desktop app instead of a browser render by default", () => {
@@ -394,10 +407,16 @@ describe("Operator desktop app", () => {
     expect(opener).toContain("operator_desktop_open_fallback:direct_executable");
     expect(opener).toContain('"ouroboros-operator-desktop"');
     expect(opener).toContain("operator_desktop_app_bundle_missing");
+    expect(opener).toContain("inspectDesktopBuildStorage");
+    expect(opener).toContain("preflightDesktopBuildStorage");
+    expect(opener).toContain("verifyDesktopReleaseStamp");
     expect(measurement).toContain("desktop_app_render");
     expect(measurement).toContain("measureDesktopAppRender");
     expect(measurement).toContain("screencapture");
     expect(measurement).toContain("DesktopAppRenderFailure");
+    expect(measurement).toContain("inspectDesktopBuildStorage");
+    expect(measurement).toContain("preflightDesktopBuildStorage");
+    expect(measurement).toContain("verifyDesktopReleaseStamp");
     expect(measurement).toContain("desktop_app_bundle_missing");
     expect(measurement).toContain("desktop_app_exited_before_capture");
     expect(measurement).toContain("assertDesktopAppStillRunning");
@@ -423,7 +442,9 @@ describe("Operator desktop app", () => {
     expect(packager).toContain('"codesign"');
     expect(packager).toContain('"--deep"');
     expect(packager).toContain('"--sign"');
-    expect(packager).toContain('"Ouroboros Operator.app"');
+    expect(packager).toContain("inspectDesktopBuildStorage");
+    expect(packager).toContain("runDesktopBuildCommand");
+    expect(packager).toContain("writeDesktopReleaseStamp");
   });
 
   it("ships a source-backed runtime sidecar launcher for packaged local app runs", () => {

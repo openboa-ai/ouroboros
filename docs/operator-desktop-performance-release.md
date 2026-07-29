@@ -15,6 +15,47 @@ shared Operator UI into the Tauri `frontendDist` target and opens the native app
 the `apps/operator-web` dev server. Use `npm run dev:operator-web` only when directly developing the
 shared browser/development surface.
 
+## Native Build Storage
+
+All official Desktop commands resolve the Git common directory and share one Cargo target at
+`<control-checkout>/.cache/operator-desktop/cargo-target`. This prevents every issue or Codex
+worktree from retaining its own multi-gigabyte `src-tauri/target`. A repository-owned lock
+serializes native check, development, package, open, verify, measure, and cleanup access so a
+different branch cannot overwrite a bundle in use. A package release stamp binds the source
+worktree, Git head, tracked and untracked source-state digest, exact app path, and full app-bundle
+digest; open, verify, and measurement fail closed when the source or any bundle byte differs.
+Packaging invalidates the prior stamp before build, requires the source to remain unchanged through
+signing, and writes a new stamp only after the bundle exists and the storage postflight passes.
+
+Run the read-only audit before native work:
+
+```bash
+npm run audit:operator-desktop-storage
+```
+
+Native preflight requires 8 GiB free and keeps the shared target at or below a 6 GiB high-water
+mark; the same limits are checked again after every native command. Do not set a conflicting
+`CARGO_TARGET_DIR` or call `cargo`/`tauri` directly to bypass those checks. Symlinked storage,
+recognized interrupted-cleanup quarantines, and ambiguous stale recovery guards fail closed. If
+preflight reports a live repo-scoped owner, stop that exact process first. Never auto-reclaim an
+existing recovery guard. `clean` deliberately refuses `recovery_guard_present`; inspect the audit's
+bounded owner and liveness, verify the owner PID and all repo-scoped native processes are absent,
+then escalate. Only with explicit user approval may the one exact reported
+`<control-checkout>/.cache/operator-desktop/native-build.lock.recovery` file be unlinked; rerun the
+audit immediately. For ordinary build-output cleanup, run the explicit guarded command:
+
+```bash
+npm run clean:operator-desktop-storage
+```
+
+It removes only the shared target, legacy `apps/operator-desktop/src-tauri/target` directories in
+registered worktrees, recognized cleanup quarantines, and the release stamp. It refuses cleanup
+while a related native Desktop, Cargo, Rust compiler, or Node/Tauri CLI process is active, never
+follows storage symlinks, and never removes source, a worktree, Docker data, runtime stores, or
+evidence. `OUROBOROS_DESKTOP_MIN_FREE_GIB` and
+`OUROBOROS_DESKTOP_MAX_TARGET_GIB` may tighten the defaults; they must not weaken repository CI or
+be used to bypass a local capacity failure.
+
 ## Agent Launch Checklist
 
 When an operator asks to launch "the app", launch Desktop first. Desktop is the Tauri app in
@@ -56,6 +97,7 @@ Use this checklist before opening anything:
 3. For a source checkout, prefer the native development app:
 
    ```bash
+   npm run audit:operator-desktop-storage
    npm run dev:operator-desktop
    ```
 
@@ -179,10 +221,11 @@ npm run verify:operator-desktop-release
 The current release artifact is the local macOS app bundle:
 
 ```text
-apps/operator-desktop/src-tauri/target/release/bundle/macos/Ouroboros Operator.app
+<control-checkout>/.cache/operator-desktop/cargo-target/release/bundle/macos/Ouroboros Operator.app
 ```
 
 The release verification command checks the app bundle, executable, Tauri bundle config, runtime
-manifest resource, executable runtime sidecar launcher resource, Tauri dependency, and absence of
-Electron. Developer ID signing, DMG installer creation, and Apple notarization remain explicit
-release gates because they require external Apple credentials and signing policy.
+manifest resource, executable runtime sidecar launcher resource, exact source-state release stamp,
+Tauri dependency, and absence of Electron. Developer ID signing, DMG installer creation, and Apple
+notarization remain explicit release gates because they require external Apple credentials and
+signing policy.

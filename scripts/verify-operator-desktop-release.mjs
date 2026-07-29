@@ -2,9 +2,28 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import {
+  acquireDesktopNativeBuildLock,
+  inspectDesktopBuildStorage,
+  preflightDesktopBuildStorage,
+  releaseDesktopNativeBuildLock,
+  verifyDesktopReleaseStamp
+} from "./operator-desktop-build-storage.mjs";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const desktopRoot = join(repoRoot, "apps", "operator-desktop");
+const buildStorage = inspectDesktopBuildStorage(repoRoot);
+const storagePreflight = preflightDesktopBuildStorage(repoRoot, buildStorage);
+if (storagePreflight.status !== "ready") {
+  console.error(JSON.stringify(storagePreflight));
+  process.exit(1);
+}
+const buildLock = acquireDesktopNativeBuildLock({
+  preflight: storagePreflight,
+  repoRoot,
+  label: "verify-release"
+});
+process.once("exit", () => releaseDesktopNativeBuildLock(buildLock));
 const tauriConfigPath = join(desktopRoot, "src-tauri", "tauri.conf.json");
 const runtimeManifestPath = join(
   desktopRoot,
@@ -20,15 +39,7 @@ const runtimeSidecarPath = join(
   "runtime",
   "ouroboros-runtime"
 );
-const appPath = join(
-  desktopRoot,
-  "src-tauri",
-  "target",
-  "release",
-  "bundle",
-  "macos",
-  "Ouroboros Operator.app"
-);
+const appPath = buildStorage.app_bundle_path;
 const appExecutable = join(appPath, "Contents", "MacOS", "ouroboros-operator-desktop");
 const bundledRuntimeManifestPath = join(
   appPath,
@@ -48,7 +59,9 @@ const bundledRuntimeSidecarPath = join(
 );
 
 const checks = [];
+const releaseState = verifyDesktopReleaseStamp(repoRoot);
 
+check("release_stamp_current", releaseState.status === "release_current", releaseState.status);
 check("tauri_config_present", existsSync(tauriConfigPath), tauriConfigPath);
 check("runtime_manifest_present", existsSync(runtimeManifestPath), runtimeManifestPath);
 check("runtime_sidecar_present", existsSync(runtimeSidecarPath), runtimeSidecarPath);

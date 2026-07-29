@@ -3,8 +3,16 @@ import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { spawn } from "node:child_process";
+import {
+  acquireDesktopNativeBuildLock,
+  inspectDesktopBuildStorage,
+  preflightDesktopBuildStorage,
+  releaseDesktopNativeBuildLock,
+  verifyDesktopReleaseStamp
+} from "./operator-desktop-build-storage.mjs";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
+const buildStorage = inspectDesktopBuildStorage(repoRoot);
 const runtimeUrl = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 const runtimeEndpoint = parseRuntimeEndpoint(runtimeUrl);
 const outDir = process.env.OUROBOROS_PERF_OUT_DIR ?? "/tmp/ouroboros-performance";
@@ -24,6 +32,19 @@ mkdirSync(outDir, { recursive: true });
 const startedAt = performance.now();
 let runtimeChild;
 let desktopAppChild;
+const storagePreflight = desktopAppEnabled
+  ? preflightDesktopBuildStorage(repoRoot, buildStorage)
+  : buildStorage;
+if (desktopAppEnabled && storagePreflight.status !== "ready") {
+  throw new Error(`operator_desktop_measure_storage_preflight_failed:${JSON.stringify(storagePreflight)}`);
+}
+const desktopBuildLock = desktopAppEnabled
+  ? acquireDesktopNativeBuildLock({
+      preflight: storagePreflight,
+      repoRoot,
+      label: "measure"
+    })
+  : undefined;
 
 class DesktopAppRenderFailure extends Error {
   constructor(message) {
@@ -70,6 +91,9 @@ try {
   }
   if (runtimeChild) {
     runtimeChild.kill();
+  }
+  if (desktopBuildLock) {
+    releaseDesktopNativeBuildLock(desktopBuildLock);
   }
 }
 
@@ -146,20 +170,14 @@ function measureWebAssets() {
 }
 
 function measureDesktopBundle() {
-  const appPath = join(
-    repoRoot,
-    "apps",
-    "operator-desktop",
-    "src-tauri",
-    "target",
-    "release",
-    "bundle",
-    "macos",
-    "Ouroboros Operator.app"
-  );
+  const appPath = buildStorage.app_bundle_path;
   const executable = join(appPath, "Contents", "MacOS", "ouroboros-operator-desktop");
+  const releaseState = verifyDesktopReleaseStamp(repoRoot);
   return {
-    status: existsSync(executable) ? "present" : "missing",
+    status: existsSync(executable) && releaseState.status === "release_current"
+      ? "present"
+      : "missing",
+    release_status: releaseState.status,
     app_path: appPath,
     executable_path: executable,
     executable_bytes: existsSync(executable) ? statSync(executable).size : 0

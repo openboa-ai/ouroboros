@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { runDesktopBuildCommand } from "../../../scripts/operator-desktop-build-storage.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const desktopRoot = path.resolve(scriptDir, "..");
+const repoRoot = path.resolve(desktopRoot, "../..");
 
 const platform = process.env.OUROBOROS_OPERATOR_DESKTOP_PLATFORM ?? process.platform;
 const linuxNativePackages = ["glib-2.0", "gtk+-3.0", "webkit2gtk-4.1"];
@@ -29,8 +36,12 @@ function pkgConfigCommand() {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
-    stdio: "inherit"
+  const result = runDesktopBuildCommand({
+    repoRoot,
+    label: "cargo:check",
+    command,
+    args,
+    cwd: desktopRoot
   });
 
   if (result.error) {

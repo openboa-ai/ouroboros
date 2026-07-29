@@ -393,6 +393,28 @@ issue worktree owns one branch and one logical writer lease. Parallel issues als
 build output and service ports; a shared mutable external resource requires an explicit lease,
 while shared read-only caches are acceptable.
 
+Operator Desktop native output is the narrow shared-cache exception. Every official Desktop
+check, development, package, open, verify, measure, audit, and clean path resolves the Git common
+directory and uses `<control-checkout>/.cache/operator-desktop/cargo-target`. Audit is a read-only
+snapshot; every path that builds, opens, verifies, measures, or cleans holds one exclusive
+native-build lease. The preflight fails below 8 GiB available space, after the shared target exceeds
+6 GiB, when any registered worktree retains a legacy `apps/operator-desktop/src-tauri/target`, when
+an interrupted cleanup quarantine or symlinked storage component exists, or when a conflicting
+`CARGO_TARGET_DIR` or repo-scoped native owner exists. The same capacity check runs after each
+native command. Package publication invalidates the previous stamp before building, freezes the
+exact source state through signing, and binds the source worktree, head, source-state digest,
+bundle path, and full app-bundle digest in a new release stamp. Failed builds, signing, source
+drift, missing bundles, or failed capacity postflight publish no usable stamp. Stale recovery guards
+are never auto-reclaimed because lock ownership is ambiguous. Audit reports a bounded owner and
+liveness when readable. `clean` also refuses this state; removal of the one exact reported recovery
+guard requires absent owner/native-process evidence and explicit user approval, followed by a fresh
+audit. `npm run check:repo-guards` audits this contract.
+Cleanup is always explicit through `npm run clean:operator-desktop-storage`; it removes only the
+shared target, registered legacy Desktop targets, recognized interrupted-cleanup quarantines, and
+release stamp after native ownership is clear. It never follows storage symlinks or removes a
+worktree, source, Docker data, runtime store, or evidence. This exception does not authorize sharing
+any other mutable build output without its own lease and integrity contract.
+
 Recovery begins with the git common directory, `git worktree list --porcelain`, branch ownership,
 per-worktree dirty state, open PR heads, and active workpad leases. Resume one exact matching
 frontier. A duplicate event or stale task must not create another worktree, branch, writer, issue,
@@ -405,6 +427,14 @@ merge evidence and `released` writer-lease state. Then verify the worktree is cl
 from the control checkout, remove it, and delete local and remote branches as appropriate. Missing
 readback, dirty state, or an active lease keeps `cleanup_state: pending`; cleanup never discards
 work automatically. Linear-only issues set every repo workspace field to `not_applicable`.
+
+Disk-pressure recovery does not weaken that boundary. Before pruning regenerable dependency or
+build output from an older worktree, prove it is clean, merged, has no open PR, and has no process
+whose command or working directory references it. CWD inspection is mandatory because a running
+process may omit the worktree path from its command. Under explicit cleanup authority,
+`node_modules` may be removed and later restored with `npm install`; source, worktrees,
+`.ouroboros`, evidence, runtime stores, and Docker data remain protected until normal released-lease
+cleanup is complete.
 
 ## Scope Budget
 

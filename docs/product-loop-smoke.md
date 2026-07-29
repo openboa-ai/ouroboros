@@ -126,6 +126,7 @@ ouroboros researcher provider set fixture
 ouroboros arena tick
 ouroboros arena cycle
 ouroboros status --json
+npm run audit:operator-desktop-storage
 npm run package:operator-desktop
 npm run open:operator-desktop
 npm run verify:operator-desktop-release
@@ -142,7 +143,13 @@ The primary interactive operator surface is the Tauri Desktop app in `apps/opera
 `apps/operator-web` remains the shared Operator UI source and browser/development surface, not the
 default operator verification target. `npm run package:operator-desktop` must build the shared
 Operator UI bundle and produce a local macOS app bundle at
-`apps/operator-desktop/src-tauri/target/release/bundle/macos/Ouroboros Operator.app`.
+`<control-checkout>/.cache/operator-desktop/cargo-target/release/bundle/macos/Ouroboros Operator.app`.
+`npm run audit:operator-desktop-storage` fails if any registered worktree retains the old local
+`apps/operator-desktop/src-tauri/target` layout, a recognized interrupted-cleanup quarantine, or a
+symlinked storage path. Use the explicit guarded `npm run clean:operator-desktop-storage` command
+after related native processes stop. Native commands share one target, enforce the 8 GiB free-space
+floor and 6 GiB target ceiling both before and after execution, and never auto-reclaim an ambiguous
+stale recovery guard.
 `npm run open:operator-desktop` opens that packaged app without opening a browser; use
 `npm run dev:operator-desktop` for the native app development loop without starting the Web dev
 server, and use `npm run dev:operator-web` only when developing the shared UI surface directly.

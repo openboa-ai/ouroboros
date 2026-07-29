@@ -6,9 +6,9 @@
   "scripts": {
     "build": "node scripts/check-build.mjs",
     "build:frontend": "node scripts/build-frontend.mjs",
-    "dev": "tauri dev",
+    "dev": "node scripts/run-tauri.mjs dev",
     "package": "node scripts/package-app.mjs",
-    "tauri": "tauri",
+    "tauri": "node scripts/run-tauri.mjs",
     "typecheck": "npm run build"
   },
   "devDependencies": {
