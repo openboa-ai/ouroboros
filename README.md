@@ -125,7 +125,8 @@ implemented runtime policy. Today `RuntimeSupervisor` reconciles three fixed per
 selected paper lifecycle, `arena.start` intent, and research-study scheduling. It does not inspect
 `MarketDataPort` signals to choose among generic Agentic, Evaluation, or Research workflows.
 `CandidateArena` and `ResearchWorkerSession` generate frozen `SystemCode` candidates.
-`CandidateAdmissionDecision` and `PaperTradingEvaluation` remain external decision boundaries, and
+`CandidateAdmissionDecision` is the external admission gate; `PaperTradingEvaluation` accumulates
+prospective evidence that separate qualification, comparison, and promotion decisions can consume.
 `Finding`, `Lineage`, `Gateway`, and `Ledger` evidence inform the next frontier. No generated path
 bypasses admission or grants itself paper rank, private exchange access, or live-trading authority.
 

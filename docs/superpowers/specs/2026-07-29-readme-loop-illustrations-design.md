@@ -47,7 +47,8 @@ Small Ouroboros mappings:
 EXTERNAL SIGNALS        MarketDataPort + Arena evidence
 WORKFLOW ORCHESTRATION  target composition; bounded workflow orchestration
 CANDIDATE GENERATION    CandidateArena + ResearchWorkerSession; proposes SystemCode
-EXTERNAL EVALUATION     CandidateAdmissionDecision + PaperTradingEvaluation; decides what counts
+EXTERNAL EVALUATION     CandidateAdmissionDecision; admission gate
+                        PaperTradingEvaluation; prospective evidence
 PERSISTED EVIDENCE      Finding + Lineage + Gateway + Ledger; informs the next frontier
 ```
 
@@ -55,7 +56,7 @@ The image explains the target composition, not every persisted record or an alre
 generic scheduling policy. It must make four facts visible:
 
 1. Target workflow orchestration can observe market and Arena evidence.
-2. Candidate generation and external evaluation remain separate authority boundaries.
+2. Candidate generation, admission authority, and prospective paper evidence remain distinct.
 3. Only externally admitted work reaches paper evaluation, and its evidence informs the next frontier.
 4. The current `RuntimeSupervisor` reconciles three fixed persisted lanes: selected paper,
    `arena.start` intent, and research-study scheduling.
