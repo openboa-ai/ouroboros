@@ -50,8 +50,8 @@ Scene/backdrop: warm mist off-white #F8F7F5 with faint paper-like support shapes
 Style/medium: restrained editorial technical diagram, precise black ink #17120F, Inter-like sans-serif, one controlled orange #F37021. Rounded rectangles with generous corner radius; no circles.
 Composition: five evenly spaced rounded-rectangle groups from left to right on one horizontal route. Draw one orange return path with rounded corners from the final group back to WORKFLOW ORCHESTRATION.
 Large text verbatim: "EXTERNAL SIGNALS", "WORKFLOW ORCHESTRATION", "CANDIDATE GENERATION", "EXTERNAL EVALUATION", "PERSISTED EVIDENCE".
-Small text verbatim: "MarketDataPort + Arena evidence", "RuntimeSupervisor · schedules bounded work", "CandidateArena + ResearchWorkerSession · proposes SystemCode", "CandidateAdmissionDecision + PaperTradingEvaluation · decides what counts", "Finding + Lineage + Gateway + Ledger · informs the next frontier".
-Authority rule: the only path into PaperTradingEvaluation passes through CandidateAdmissionDecision. Workflow orchestration chooses bounded work; external evaluation still decides what counts.
+Small text verbatim: "MarketDataPort + Arena evidence", "Target composition · bounded workflow orchestration", "CandidateArena + ResearchWorkerSession · proposes SystemCode", "CandidateAdmissionDecision + PaperTradingEvaluation · decides what counts", "Finding + Lineage + Gateway + Ledger · informs the next frontier", "CURRENT RUNTIME · RuntimeSupervisor reconciles selected paper · arena.start intent · research-study scheduler".
+Authority rule: the only path into PaperTradingEvaluation passes through CandidateAdmissionDecision. Target workflow orchestration chooses bounded work; external evaluation still decides what counts. The current RuntimeSupervisor is separately labeled with its three fixed lanes.
 Constraints: one primary idea, large readable spacing, no node crowding, no bypass connection, orange only for the operations return and admission gate.
 Avoid: headline, slogan, hands, people, robots, candlestick charts, currency, gradient, dark background, UI cards, 3D, shadow, logo, watermark.
 ```
@@ -116,7 +116,8 @@ Style reference: match the approved Ouroboros system-structure image exactly in 
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom.
 Large text verbatim: "EVALUATION LOOP", "GOAL-BASED", "SUCCESS CRITERIA", "ITERATION", "EVALUATION", "SELECTION".
 Small text verbatim: "ResearchPreflightCommitment", "method + budget + stop condition", "SystemCode · explicit frozen selection".
-Color: black structure, orange return path from SELECTION to SUCCESS CRITERIA.
+Color: black structure, orange return path from EVALUATION to SUCCESS CRITERIA. SELECTION is a
+separate terminal node reached by one black arrow from EVALUATION and has no outgoing return.
 Constraints: one loop only, one purpose only, large calm whitespace.
 Avoid: other scopes, comparison grid, legend, headline, hands, people, robot, trading chart, logo, gradient, dark background, UI cards, shadow, 3D.
 ```
@@ -148,15 +149,17 @@ Asset type: Ouroboros README engineering-blog loop figure
 Primary request: Explain Operations as the proactive outer loop that improves the other three loops.
 Style reference: match the approved Ouroboros system-structure image exactly in background, line weight, typography, spacing, and orange use.
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom. BOUNDED RUN contains three compact choices, not three new diagrams.
-Large text verbatim: "ORCHESTRATION LOOP", "PROACTIVE", "SIGNAL", "WORKFLOW ORCHESTRATION", "BOUNDED RUN", "PERSISTED STATE", "NEXT WAKE".
-Small text verbatim: "market + Arena evidence", "RuntimeSupervisor", "Agent workflow · Experiment workflow · Research workflow", "checkpoint + attributable result".
+Large text verbatim: "ORCHESTRATION LOOP", "PROACTIVE", "TARGET COMPOSITION", "SIGNAL", "WORKFLOW ORCHESTRATION", "BOUNDED RUN", "PERSISTED STATE", "NEXT WAKE".
+Small text verbatim: "market + Arena evidence", "target composition", "Agent workflow · Evaluation workflow · Research workflow", "CURRENT RUNTIME · RuntimeSupervisor", "fixed lanes · selected paper / arena.start intent / research-study scheduler", "checkpoint + attributable result".
 Color: black structure, orange signal, selected-workflow marker, and final return path.
 Authority rule: do not show Operations granting admission, paper rank, private access, or live authority.
 Constraints: one meta-loop only; the three inner-loop names are choices inside one node, not three additional diagrams.
 Avoid: full system pipeline, paper-arena topology, comparison grid, legend, headline, hands, people, robot, candlestick chart, logo, gradient, dark background, UI cards, shadow, 3D.
 ```
 
-Inspect it at original detail. Reject it unless market/Arena evidence visibly leads to choosing Agent, Experiment, or Research improvement and the result persists before the next wake.
+Inspect it at original detail. Reject it unless target market/Arena evidence visibly leads to
+choosing Agent, Evaluation, or Research improvement, the result persists before the next wake,
+and the current `RuntimeSupervisor` is separately described as reconciling three fixed lanes.
 
 - [x] **Step 5: Copy and crop all four approved images**
 

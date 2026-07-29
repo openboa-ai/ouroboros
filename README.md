@@ -117,10 +117,13 @@ that informs the next candidate generation.
 
 ### Functional architecture
 
-![Ouroboros routes external market and Arena signals through workflow orchestration, candidate generation, external evaluation, and persisted evidence that informs the next frontier](docs/assets/ouroboros-system-structure-v3.png)
+![Ouroboros target composition routes external market and Arena signals through workflow orchestration, candidate generation, external evaluation, and persisted evidence, while the current RuntimeSupervisor reconciles three fixed persisted lanes](docs/assets/ouroboros-system-structure-v3.png)
 
 The portable systems terms are large; the exact Ouroboros components and their roles appear below
-them. `RuntimeSupervisor` turns market and Arena signals into bounded work.
+them. The figure shows the target composition, not a claim that every connection is already an
+implemented runtime policy. Today `RuntimeSupervisor` reconciles three fixed persisted lanes:
+selected paper lifecycle, `arena.start` intent, and research-study scheduling. It does not inspect
+`MarketDataPort` signals to choose among generic Agentic, Evaluation, or Research workflows.
 `CandidateArena` and `ResearchWorkerSession` generate frozen `SystemCode` candidates.
 `CandidateAdmissionDecision` and `PaperTradingEvaluation` remain external decision boundaries, and
 `Finding`, `Lineage`, `Gateway`, and `Ledger` evidence inform the next frontier. No generated path
@@ -149,7 +152,9 @@ tools; it cannot evaluate its own admission or grant trading authority.
 The Evaluation Loop starts from committed success criteria and iterates immutable development
 submissions against aggregate feedback. `ResearchPreflightCommitment` freezes the method, budget,
 evaluator opportunity, and stop condition before agent effects. The worker may explicitly select
-one frozen `SystemCode`; this development evaluation still has no admission authority.
+one frozen `SystemCode` or finish without a submission. Feedback can start another development
+iteration only before that decision; frozen selection is terminal for the worker session and never
+returns to mutable success criteria. This development evaluation still has no admission authority.
 
 ### Research loop — Time-based
 
@@ -162,13 +167,16 @@ window remains bounded even when research recurs on a time-based schedule.
 
 ### Operations: orchestration loop — Proactive
 
-![The proactive Orchestration Loop observes market and Arena signals, chooses a bounded Agent, Experiment, or Research workflow, persists its checkpoint, and schedules the next wake](docs/assets/ouroboros-orchestration-loop-v3.png)
+![The target proactive Orchestration Loop observes market and Arena signals, chooses a bounded Agent, Evaluation, or Research workflow, persists its checkpoint, and schedules the next wake; the current RuntimeSupervisor instead reconciles three fixed persisted lanes](docs/assets/ouroboros-orchestration-loop-v3.png)
 
-The Operations Loop is the outer orchestration loop that causes the preceding three loops to run.
-`RuntimeSupervisor` observes market and Arena evidence, reconciles Agentic, Evaluation, and
-Research work, opens one bounded run, persists a `RuntimeSupervisorCheckpoint`, and records the
-next wake. It may improve the researcher, experiment, agent behavior, or the research direction;
-it never grades its own output or gains evaluation, order, private, or live authority.
+The Operations Loop is the target outer orchestration composition that can cause the preceding
+three loops to run: observe signals, choose one bounded workflow, persist its result, and schedule
+the next wake. That target may improve the researcher, evaluation method, agent behavior, or
+research direction, but it is not the current `RuntimeSupervisor` policy. The implemented
+supervisor reconciles selected-paper lifecycle, persisted `arena.start` intent, and research-study
+scheduler state as three fixed lanes, with lifecycle and recovery checkpoints. It does not use
+market signals to open a generic workflow, grade its own output, or gain evaluation, order,
+private, or live authority.
 
 Agentic, Evaluation, and Research work are implemented as bounded paths. Continuous 24/365
 operation is the target composition; production-duration autonomy, complete soak evidence, and

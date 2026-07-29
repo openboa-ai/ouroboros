@@ -45,17 +45,20 @@ Small Ouroboros mappings:
 
 ```text
 EXTERNAL SIGNALS        MarketDataPort + Arena evidence
-WORKFLOW ORCHESTRATION  RuntimeSupervisor; schedules bounded work
+WORKFLOW ORCHESTRATION  target composition; bounded workflow orchestration
 CANDIDATE GENERATION    CandidateArena + ResearchWorkerSession; proposes SystemCode
 EXTERNAL EVALUATION     CandidateAdmissionDecision + PaperTradingEvaluation; decides what counts
 PERSISTED EVIDENCE      Finding + Lineage + Gateway + Ledger; informs the next frontier
 ```
 
-The image explains ownership, not every persisted record. It must make three facts visible:
+The image explains the target composition, not every persisted record or an already implemented
+generic scheduling policy. It must make four facts visible:
 
-1. Workflow orchestration observes market and Arena evidence.
-2. RuntimeSupervisor decides which bounded Agent, Experiment, or Research workflow to start.
-3. Only externally admitted work reaches paper evaluation, and its evidence returns to Operations.
+1. Target workflow orchestration can observe market and Arena evidence.
+2. Candidate generation and external evaluation remain separate authority boundaries.
+3. Only externally admitted work reaches paper evaluation, and its evidence informs the next frontier.
+4. The current `RuntimeSupervisor` reconciles three fixed persisted lanes: selected paper,
+   `arena.start` intent, and research-study scheduling.
 
 ### 2. Agentic Loop — Turn-based
 
@@ -70,13 +73,16 @@ CONTEXT -> MODEL INFERENCE -> TOOL EXECUTION -> OBSERVATION -> CONTEXT
 ### 3. Evaluation Loop — Goal-based
 
 ```text
-SUCCESS CRITERIA -> ITERATION -> EVALUATION -> SELECTION -> SUCCESS CRITERIA
+SUCCESS CRITERIA -> ITERATION -> EVALUATION -> SUCCESS CRITERIA
+                                      |
+                                      +-> terminal SELECTION
 ```
 
 - Representative mode: `GOAL-BASED`
 - Small mapping: `ResearchPreflightCommitment`; precommitted method, budget, submissions, and stop condition
 - Small mapping: `SystemCode`; frozen candidate artifact selected explicitly before admission
-- Stop: explicit selection, goal reached, budget exhausted, or fail-closed termination
+- Stop: explicit selection or no submission is terminal; budget exhaustion or fail-closed
+  termination also closes the session
 
 ### 4. Research Loop — Time-based
 
@@ -96,10 +102,12 @@ SIGNAL -> WORKFLOW ORCHESTRATION -> BOUNDED RUN -> PERSISTED STATE -> NEXT WAKE
 ```
 
 - Representative mode: `PROACTIVE`
-- Small mapping: `RuntimeSupervisor`; reconciles CandidateArena, selected paper, and research scheduling
-- `BOUNDED RUN` visibly offers `Agent workflow`, `Experiment workflow`, and `Research workflow`
-- Operations is the outer loop that observes market/Arena signals and creates or reopens bounded
-  Agent, Experiment, and Research work.
+- The illustrated generic workflow choice is a target composition, not current runtime policy
+- Small mapping: current `RuntimeSupervisor`; reconciles selected paper, persisted `arena.start`
+  intent, and research-study scheduling as fixed lanes
+- `BOUNDED RUN` visibly offers `Agent workflow`, `Evaluation workflow`, and `Research workflow`
+- Target Operations is the outer loop that observes market/Arena signals and creates or reopens
+  bounded Agent, Evaluation, and Research work.
 - It does not grant admission, paper rank, private exchange access, or live trading authority.
 
 The four mode-to-scope pairings are representative explanatory matches, not exclusive runtime type
