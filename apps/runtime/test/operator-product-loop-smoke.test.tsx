@@ -1549,9 +1549,10 @@ describe("operator product loop smoke", { timeout: 90_000 }, () => {
       return candidate;
     };
     const getConformance = store.getPaperTradingHandoffConformance.bind(store);
+    let hideConformanceDuringPaperStart = false;
     store.getPaperTradingHandoffConformance = async (conformanceId) => {
-      await getConformance(conformanceId);
-      return undefined;
+      const conformance = await getConformance(conformanceId);
+      return hideConformanceDuringPaperStart ? undefined : conformance;
     };
     let providerStartCount = 0;
     const server = await buildServer({
@@ -1565,7 +1566,14 @@ describe("operator product loop smoke", { timeout: 90_000 }, () => {
       marketDataPort: fakeGatewayMarketDataPort(),
       candidateArenaTickIntervalMs: 60_000,
       paperTradingEvaluationIntervalMs: 60_000,
-      paperTradingSandboxIntervalMs: 1_000
+      paperTradingSandboxIntervalMs: 1_000,
+      onArenaPaperRuntimeCreated(service) {
+        const reconcile = service.reconcile.bind(service);
+        service.reconcile = async () => {
+          hideConformanceDuringPaperStart = true;
+          return reconcile();
+        };
+      }
     });
 
     try {

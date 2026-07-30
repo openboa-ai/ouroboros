@@ -270,6 +270,30 @@ describe("ResearchControlCampaignReport", () => {
     expect(researchControlCampaignReportHasRuntimeShape(reportFixture())).toBe(true);
   });
 
+  it("accepts legacy and explicit no-submission diagnostics with distinct digests", () => {
+    const legacy = reportFixture();
+    const legacyDigestInput = researchControlCampaignReportDigestInput(legacy);
+    expect(Object.hasOwn(
+      legacy.arms[0]!.diagnostics,
+      "no_submission_count"
+    )).toBe(false);
+    expect(researchControlCampaignReportHasRuntimeShape(legacy)).toBe(true);
+
+    const current = structuredClone(legacy) as any;
+    for (const arm of current.arms) {
+      arm.diagnostics.failed_count = 0;
+      arm.diagnostics.no_submission_count = 1;
+    }
+
+    expect(researchControlCampaignReportHasRuntimeShape(current)).toBe(true);
+    expect(researchControlCampaignReportDigestInput(current)).not.toBe(
+      legacyDigestInput
+    );
+
+    current.arms[0].diagnostics.failed_count = 1;
+    expect(researchControlCampaignReportHasRuntimeShape(current)).toBe(false);
+  });
+
   it("binds both diagnostics and reservations without admitting a winner", () => {
     const baseline = reportFixture();
     const digestInput = researchControlCampaignReportDigestInput(baseline);

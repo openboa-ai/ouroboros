@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -79,6 +79,71 @@ describe("LocalStore CandidateArenaResearchAllocation", () => {
     await expect(store.recordCandidateArenaResearchAllocation(mutated))
       .rejects.toMatchObject({
         code: "candidate_arena_research_allocation_conflict"
+      });
+  });
+
+  it("rejects a projection-incompatible allocation identifier at the write boundary", async () => {
+    const allocation = allocationFixture();
+    allocation.candidate_arena_research_allocation_id = "a".repeat(201);
+    allocation.allocation_digest = allocationDigest(allocation);
+
+    await expect(store.recordCandidateArenaResearchAllocation(allocation))
+      .rejects.toMatchObject({
+        code: "invalid_candidate_arena_research_allocation_input"
+      });
+  });
+
+  it("fails closed on a legacy allocation identifier that cannot be projected", async () => {
+    const allocation = allocationFixture();
+    allocation.candidate_arena_research_allocation_id = "a".repeat(500);
+    allocation.allocation_digest = allocationDigest(allocation);
+    const itemsDir = path.join(
+      storeRoot,
+      "candidate-arena-research-allocations",
+      "items"
+    );
+    await mkdir(itemsDir, { recursive: true });
+    await writeFile(
+      path.join(itemsDir, "legacy-invalid-allocation.json"),
+      `${JSON.stringify(allocation)}\n`,
+      "utf8"
+    );
+
+    const coldReader = new LocalStore(storeRoot);
+    await expect(coldReader.listCandidateArenaResearchAllocations())
+      .rejects.toMatchObject({
+        code: "candidate_arena_research_allocation_reload_failed"
+      });
+  });
+
+  it("rejects and cold-read fails a nested allocation ref above the projection bound", async () => {
+    const allocation = allocationFixture();
+    allocation.source_tick_refs = [{
+      record_kind: "candidate_arena_tick",
+      id: "s".repeat(201)
+    }];
+    allocation.allocation_digest = allocationDigest(allocation);
+
+    await expect(store.recordCandidateArenaResearchAllocation(allocation))
+      .rejects.toMatchObject({
+        code: "invalid_candidate_arena_research_allocation_input"
+      });
+
+    const itemsDir = path.join(
+      storeRoot,
+      "candidate-arena-research-allocations",
+      "items"
+    );
+    await mkdir(itemsDir, { recursive: true });
+    await writeFile(
+      path.join(itemsDir, "legacy-invalid-nested-allocation.json"),
+      `${JSON.stringify(allocation)}\n`,
+      "utf8"
+    );
+    const coldReader = new LocalStore(storeRoot);
+    await expect(coldReader.listCandidateArenaResearchAllocations())
+      .rejects.toMatchObject({
+        code: "candidate_arena_research_allocation_reload_failed"
       });
   });
 
@@ -280,6 +345,133 @@ describe("LocalStore CandidateArenaResearchAllocation", () => {
     await expect(store.listCandidateArenaTicks()).resolves.toEqual([tick]);
   });
 
+  it("rejects a tick whose aggregate status contradicts its direction results", async () => {
+    const allocation = allocationFixture();
+    await store.recordCandidateArenaResearchAllocation(allocation);
+    const tick = tickFixture(allocation);
+    tick.status = "completed_with_errors";
+
+    await expect(store.recordCandidateArenaTick(tick)).rejects.toMatchObject({
+      code: "invalid_candidate_arena_tick_input"
+    });
+  });
+
+  it.each([
+    {
+      name: "candidate id",
+      mutate: (result: Record<string, unknown>) => {
+        result.candidate_id = "candidate-forged";
+      }
+    },
+    {
+      name: "admission decision id",
+      mutate: (result: Record<string, unknown>) => {
+        result.admission_decision_id = "admission-forged";
+      }
+    },
+    {
+      name: "admission reason",
+      mutate: (result: Record<string, unknown>) => {
+        result.admission_reason = "research_worker_failed";
+      }
+    },
+    {
+      name: "admission ref",
+      mutate: (result: Record<string, unknown>) => {
+        result.candidate_admission_decision_ref = {
+          record_kind: "candidate_admission_decision",
+          id: "admission-forged"
+        };
+      }
+    },
+    {
+      name: "admission digest",
+      mutate: (result: Record<string, unknown>) => {
+        result.admission_decision_digest = `sha256:${"a".repeat(64)}`;
+      }
+    },
+    {
+      name: "admission status",
+      mutate: (result: Record<string, unknown>) => {
+        result.admission_status = "admitted";
+      }
+    },
+    {
+      name: "net revenue",
+      mutate: (result: Record<string, unknown>) => {
+        result.net_revenue_usdt = 1;
+      }
+    },
+    {
+      name: "paper handoff conformance",
+      mutate: (result: Record<string, unknown>) => {
+        result.paper_handoff_conformance = {
+          conformance_id: "conformance-forged",
+          status: "rejected",
+          reason: "runner_crash",
+          authority_status: "research_only"
+        };
+      }
+    }
+  ])("rejects and cold-read fails failed-result $name authority", async ({
+    name,
+    mutate
+  }) => {
+    const allocation = allocationFixture();
+    await store.recordCandidateArenaResearchAllocation(allocation);
+
+    const contradictory = tickFixture(allocation);
+    mutate(contradictory.direction_results[0] as unknown as Record<
+      string,
+      unknown
+    >);
+    await expect(store.recordCandidateArenaTick(contradictory))
+      .rejects.toMatchObject({ code: "invalid_candidate_arena_tick_input" });
+
+    const itemsDir = path.join(storeRoot, "candidate-arena-ticks", "items");
+    await mkdir(itemsDir, { recursive: true });
+    await writeFile(
+      path.join(itemsDir, `legacy-failed-${name.replaceAll(" ", "-")}.json`),
+      `${JSON.stringify(contradictory)}\n`,
+      "utf8"
+    );
+    const coldReader = new LocalStore(storeRoot);
+    await expect(coldReader.listCandidateArenaTicks()).rejects.toMatchObject({
+      code: "candidate_arena_tick_reload_failed"
+    });
+  });
+
+  it("rejects an oversized nested tick ref before persistence", async () => {
+    const allocation = allocationFixture();
+    await store.recordCandidateArenaResearchAllocation(allocation);
+    const oversizedRef = tickFixture(allocation);
+    oversizedRef.created_candidate_refs = [{
+      record_kind: "trading_system_candidate",
+      id: "c".repeat(201)
+    }];
+
+    await expect(store.recordCandidateArenaTick(oversizedRef))
+      .rejects.toMatchObject({ code: "invalid_candidate_arena_tick_input" });
+  });
+
+  it("fails closed when a legacy tick on disk violates the aggregate invariant", async () => {
+    const allocation = allocationFixture();
+    const tick = tickFixture(allocation);
+    tick.status = "completed_with_errors";
+    const itemsDir = path.join(storeRoot, "candidate-arena-ticks", "items");
+    await mkdir(itemsDir, { recursive: true });
+    await writeFile(
+      path.join(itemsDir, "legacy-invalid-tick.json"),
+      `${JSON.stringify(tick)}\n`,
+      "utf8"
+    );
+
+    const coldReader = new LocalStore(storeRoot);
+    await expect(coldReader.listCandidateArenaTicks()).rejects.toMatchObject({
+      code: "candidate_arena_tick_reload_failed"
+    });
+  });
+
   it.each([
     ["error", "unexpected failure"],
     ["net revenue", 12.5],
@@ -297,6 +489,7 @@ describe("LocalStore CandidateArenaResearchAllocation", () => {
     await store.recordCandidateArenaResearchAllocation(allocation);
     const tick = tickFixture(allocation);
     const result = tick.direction_results[0] as any;
+    tick.status = "completed_with_errors";
     result.status = "no_submission";
     result.finding = "ResearchWorker finished without selecting a submission.";
     delete result.error;

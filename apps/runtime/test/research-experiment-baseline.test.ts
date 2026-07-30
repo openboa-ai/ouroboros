@@ -52,7 +52,7 @@ describe("ResearchExperiment baseline", () => {
 
     expect(first).toEqual(second);
     expect(first).toEqual({
-      protocol_version: "local_store_regular_files_v1",
+      protocol_version: "local_store_regular_files_v2",
       snapshot_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       regular_file_count: 2,
       total_bytes: 4,
@@ -93,6 +93,46 @@ describe("ResearchExperiment baseline", () => {
   });
 
   it.each([
+    "research_control_campaign_evidence_only",
+    "research_experiment_evidence_only"
+  ] as const)(
+    "ignores reconstructible read models and runtime locks under %s",
+    async (exclusionPolicy) => {
+      const root = path.join(tmpDir, `derived-${exclusionPolicy}`);
+      await mkdir(root, { recursive: true });
+      await writeFile(path.join(root, "state.json"), "before\n", "utf8");
+      const expected = await captureResearchExperimentBaseline({
+        root,
+        maximumRegularFileCount: 10,
+        maximumTotalBytes: 1_000,
+        exclusionPolicy
+      });
+
+      await mkdir(path.join(root, "read-models/research-operations"), {
+        recursive: true
+      });
+      await writeFile(
+        path.join(root, "read-models/research-operations/index.json"),
+        "derived projection\n",
+        "utf8"
+      );
+      await mkdir(path.join(root, ".locks"), { recursive: true });
+      await writeFile(
+        path.join(root, ".locks/research-operations-generation.json"),
+        "runtime generation\n",
+        "utf8"
+      );
+
+      await expect(verifyResearchExperimentBaseline({
+        root,
+        expected,
+        maximumRegularFileCount: 10,
+        maximumTotalBytes: 1_000
+      })).resolves.toBeUndefined();
+    }
+  );
+
+  it.each([
     ["empty", async (_root: string) => undefined,
       "research_experiment_baseline_empty"],
     ["temporary file", async (root: string) => {
@@ -126,6 +166,18 @@ describe("ResearchExperiment baseline", () => {
     const destinationRoot = path.join(tmpDir, "copies/baseline");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(path.join(sourceRoot, "state.json"), "before\n", "utf8");
+    await mkdir(path.join(sourceRoot, "read-models"), { recursive: true });
+    await writeFile(
+      path.join(sourceRoot, "read-models/index.json"),
+      "derived\n",
+      "utf8"
+    );
+    await mkdir(path.join(sourceRoot, ".locks"), { recursive: true });
+    await writeFile(
+      path.join(sourceRoot, ".locks/generation.json"),
+      "runtime\n",
+      "utf8"
+    );
     const expected = await captureResearchExperimentBaseline({
       root: sourceRoot,
       maximumRegularFileCount: 10,
@@ -145,6 +197,10 @@ describe("ResearchExperiment baseline", () => {
       maximumRegularFileCount: 10,
       maximumTotalBytes: 1_000
     });
+    await expect(readdir(path.join(destinationRoot, "read-models")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readdir(path.join(destinationRoot, ".locks")))
+      .rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(path.dirname(destinationRoot))).sort()).toEqual([
       "baseline"
     ]);
@@ -159,6 +215,162 @@ describe("ResearchExperiment baseline", () => {
     })).rejects.toMatchObject({
       code: "research_experiment_baseline_digest_mismatch"
     });
+  });
+
+  it.each([
+    [
+      "research_control_campaign_evidence_only",
+      "local_store_regular_files_v1"
+    ],
+    [
+      "research_control_campaign_evidence_only",
+      "local_store_regular_files_v2"
+    ],
+    [
+      "research_experiment_evidence_only",
+      "local_store_regular_files_v1"
+    ],
+    [
+      "research_experiment_evidence_only",
+      "local_store_regular_files_v2"
+    ]
+  ] as const)(
+    "physically excludes %s collections when copying a %s baseline",
+    async (exclusionPolicy, protocolVersion) => {
+      const sourceRoot = path.join(
+        tmpDir,
+        `policy-copy-source-${exclusionPolicy}-${protocolVersion}`
+      );
+      const destinationRoot = path.join(
+        tmpDir,
+        `policy-copy-destination-${exclusionPolicy}-${protocolVersion}`
+      );
+      const controlEvidencePath = path.join(
+        sourceRoot,
+        "research-control-campaigns/items/control.json"
+      );
+      const memoryEvidencePath = path.join(
+        sourceRoot,
+        "research-memory-control-studies/items/memory.json"
+      );
+      await mkdir(path.dirname(controlEvidencePath), { recursive: true });
+      await mkdir(path.dirname(memoryEvidencePath), { recursive: true });
+      await writeFile(path.join(sourceRoot, "state.json"), "before\n", "utf8");
+      await writeFile(controlEvidencePath, "control evidence\n", "utf8");
+      await writeFile(memoryEvidencePath, "memory evidence\n", "utf8");
+      const expected = await captureResearchExperimentBaseline({
+        root: sourceRoot,
+        maximumRegularFileCount: 10,
+        maximumTotalBytes: 1_000,
+        exclusionPolicy,
+        protocolVersion
+      });
+
+      await ensureResearchExperimentStoreCopy({
+        sourceRoot,
+        destinationRoot,
+        expected,
+        maximumRegularFileCount: 10,
+        maximumTotalBytes: 1_000
+      });
+
+      await expect(readdir(path.join(
+        destinationRoot,
+        "research-control-campaigns"
+      ))).rejects.toMatchObject({ code: "ENOENT" });
+      if (exclusionPolicy === "research_experiment_evidence_only") {
+        await expect(readdir(path.join(
+          destinationRoot,
+          "research-memory-control-studies"
+        ))).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        await expect(readdir(path.join(
+          destinationRoot,
+          "research-memory-control-studies/items"
+        ))).resolves.toEqual(["memory.json"]);
+      }
+    }
+  );
+
+  it("resumes a pre-projection v1 baseline while preserving legacy derived files", async () => {
+    const sourceRoot = path.join(tmpDir, "legacy-source");
+    const destinationRoot = path.join(tmpDir, "legacy-copy");
+    await mkdir(path.join(sourceRoot, "read-models"), { recursive: true });
+    await mkdir(path.join(sourceRoot, ".locks"), { recursive: true });
+    await writeFile(path.join(sourceRoot, "state.json"), "before\n", "utf8");
+    await writeFile(
+      path.join(sourceRoot, "read-models/index.json"),
+      "legacy derived\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(sourceRoot, ".locks/generation.json"),
+      "legacy runtime\n",
+      "utf8"
+    );
+    const expected = await captureResearchExperimentBaseline({
+      root: sourceRoot,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      protocolVersion: "local_store_regular_files_v1"
+    });
+
+    await mkdir(path.join(sourceRoot, "read-models/research-operations"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(sourceRoot, "read-models/research-operations/index.json"),
+      "new projection\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(
+        sourceRoot,
+        ".locks/research-operations-projection-generation.json"
+      ),
+      "new generation\n",
+      "utf8"
+    );
+    await mkdir(path.join(
+      sourceRoot,
+      ".locks/research-operations-projection-publication/active"
+    ), { recursive: true });
+    await writeFile(path.join(
+      sourceRoot,
+      ".locks/research-operations-projection-publication/active/owner.json"
+    ), "new owner\n", "utf8");
+
+    expect(expected).toMatchObject({
+      protocol_version: "local_store_regular_files_v1",
+      regular_file_count: 3
+    });
+    await expect(verifyResearchExperimentBaseline({
+      root: sourceRoot,
+      expected,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    })).resolves.toBeUndefined();
+    await ensureResearchExperimentStoreCopy({
+      sourceRoot,
+      destinationRoot,
+      expected,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    });
+    await expect(readdir(path.join(destinationRoot, "read-models")))
+      .resolves.toEqual(["index.json"]);
+    await expect(readdir(path.join(destinationRoot, ".locks")))
+      .resolves.toEqual(["generation.json"]);
+    await expect(readdir(path.join(
+      destinationRoot,
+      "read-models/research-operations"
+    ))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(verifyResearchExperimentBaseline({
+      root: destinationRoot,
+      expected,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000
+    })).resolves.toBeUndefined();
   });
 });
 

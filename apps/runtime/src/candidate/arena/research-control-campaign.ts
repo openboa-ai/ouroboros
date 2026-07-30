@@ -43,7 +43,13 @@ import {
   researchControlCampaignPaperEvaluationProtocolDigestInput,
   type ResearchControlCampaignArmIntentRecord,
   type ResearchControlCampaignArmKind,
+  type CandidateAdmissionDecisionRecord,
+  type CandidateArenaResearchAllocationRecord,
+  type CandidateArenaTickRecord,
+  type ResearchBehaviorFingerprintRecord,
+  type ResearchDirectionRecord,
   type ResearchExperimentBaselineSnapshot,
+  type ResearchPreflightCommitmentRecord,
   type ResearchControlCampaignPaperComparator,
   type ResearchControlCampaignPaperEvaluationProtocol,
   type ResearchControlCampaignRecord,
@@ -51,7 +57,8 @@ import {
   type ResearchExperimentSource,
   type ResearchControlCampaignOutcomeRecord,
   type ResearchControlCampaignPaperScheduleRecord,
-  type ResearchControlCampaignPaperSlotOutcomeRecord
+  type ResearchControlCampaignPaperSlotOutcomeRecord,
+  type TradingPromotionRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import type {
@@ -145,6 +152,7 @@ export interface CaptureResearchControlCampaignSnapshotInput {
   root: string;
   maximumRegularFileCount: number;
   maximumTotalBytes: number;
+  protocolVersion?: ResearchExperimentBaselineSnapshot["protocol_version"];
 }
 
 export interface RunResearchControlCampaignInput {
@@ -893,20 +901,41 @@ async function prepareArm(input: {
     });
   }
   const store = input.sourceStore.atRoot(input.root);
-  const armCampaign = await store.getResearchControlCampaign(
-    input.campaign.research_control_campaign_id
+  await bindExactArmCampaignComparator({
+    store,
+    sourceStore: input.sourceStore,
+    campaign: input.campaign,
+    armKind: input.armKind
+  });
+  const armCampaigns = await store.listResearchControlCampaigns();
+  const armCampaign = armCampaigns.find((candidate) =>
+    candidate.research_control_campaign_id ===
+      input.campaign.research_control_campaign_id
   );
-  if (!armCampaign || !isDeepStrictEqual(armCampaign, input.campaign)) {
+  if (armCampaigns.length > 0 && (armCampaigns.length !== 1 ||
+    !armCampaign || !isDeepStrictEqual(armCampaign, input.campaign))) {
     throw runtimeError(
       "research_control_campaign_workspace_conflict",
-      "ResearchControlCampaign arm does not contain exact campaign evidence.",
+      "ResearchControlCampaign arm contains conflicting campaign evidence.",
       { arm_kind: input.armKind }
     );
   }
-  const existingIntent = await store.getResearchControlCampaignArmIntent(
-    intent.research_control_campaign_arm_intent_id
+  const existingIntents = await store.listResearchControlCampaignArmIntents();
+  const existingIntent = existingIntents.find((candidate) =>
+    candidate.research_control_campaign_arm_intent_id ===
+      intent.research_control_campaign_arm_intent_id
   );
-  if (!existingIntent) {
+  if (existingIntents.length > 1 || existingIntents.some((candidate) =>
+    candidate.research_control_campaign_arm_intent_id !==
+      intent.research_control_campaign_arm_intent_id
+  )) {
+    throw runtimeError(
+      "research_control_campaign_workspace_conflict",
+      "ResearchControlCampaign arm contains unrelated intent evidence.",
+      { arm_kind: input.armKind }
+    );
+  }
+  if (!armCampaign || !existingIntent) {
     const ticks = await store.listCandidateArenaTicks();
     const allocations = await store.listCandidateArenaResearchAllocations();
     if (ticks.some((tick) => intent.tick_ids.includes(tick.tick_id)) ||
@@ -924,6 +953,20 @@ async function prepareArm(input: {
         input.campaign.policy.maximum_baseline_regular_file_count,
       maximumTotalBytes: input.campaign.policy.maximum_baseline_total_bytes
     });
+    if (!armCampaign) {
+      const recorded = await store.recordResearchControlCampaign(
+        input.campaign
+      );
+      if (!isDeepStrictEqual(recorded, input.campaign)) {
+        throw runtimeError(
+          "research_control_campaign_workspace_conflict",
+          "ResearchControlCampaign arm did not preserve exact campaign evidence.",
+          { arm_kind: input.armKind }
+        );
+      }
+    }
+  }
+  if (!existingIntent) {
     await store.recordResearchControlCampaignArmIntent(intent);
   } else if (!isDeepStrictEqual(existingIntent, intent)) {
     throw runtimeError(
@@ -933,6 +976,77 @@ async function prepareArm(input: {
     );
   }
   return { armKind: input.armKind, intent, store, root: input.root };
+}
+
+async function bindExactArmCampaignComparator(input: {
+  store: LocalStore;
+  sourceStore: LocalStore;
+  campaign: ResearchControlCampaignRecord;
+  armKind: ResearchControlCampaignArmKind;
+}): Promise<void> {
+  const comparator = input.campaign.paper_comparator;
+  if (comparator.comparator_status !== "trading_review") return;
+  const persistedLookup = input.store.getTradingPromotion.bind(input.store);
+  const persisted = await persistedLookup(comparator.trading_promotion_ref.id);
+  if (persisted) {
+    assertExactCampaignComparatorPromotion(
+      persisted,
+      comparator,
+      input.campaign.committed_at,
+      input.armKind
+    );
+    return;
+  }
+  const sourcePromotion = await input.sourceStore.getTradingPromotion(
+    comparator.trading_promotion_ref.id
+  );
+  assertExactCampaignComparatorPromotion(
+    sourcePromotion,
+    comparator,
+    input.campaign.committed_at,
+    input.armKind
+  );
+  const exactPromotion = structuredClone(sourcePromotion!);
+  input.store.getTradingPromotion = async (promotionId) => {
+    const local = await persistedLookup(promotionId);
+    if (local) return local;
+    return promotionId === exactPromotion.trading_promotion_id
+      ? structuredClone(exactPromotion)
+      : undefined;
+  };
+}
+
+function assertExactCampaignComparatorPromotion(
+  promotion: TradingPromotionRecord | undefined,
+  comparator: Extract<
+    ResearchControlCampaignPaperComparator,
+    { comparator_status: "trading_review" }
+  >,
+  campaignCommittedAt: string,
+  armKind: ResearchControlCampaignArmKind
+): asserts promotion is TradingPromotionRecord {
+  if (!promotion ||
+    !paperTradingComparisonTradingPromotionHasRuntimeShape(promotion) ||
+    comparator.trading_promotion_ref.record_kind !== "trading_promotion" ||
+    promotion.trading_promotion_id !== comparator.trading_promotion_ref.id ||
+    comparator.trading_promotion_digest !== canonicalDigest(
+      paperTradingComparisonTradingPromotionDigestInput(promotion)
+    ) || !paperTradingComparisonRefsEqual(
+      promotion.candidate_ref,
+      comparator.candidate_ref
+    ) || !paperTradingComparisonRefsEqual(
+      promotion.candidate_version_ref,
+      comparator.candidate_version_ref
+    ) || !paperTradingComparisonRefsEqual(
+      promotion.paper_trading_evaluation_ref,
+      comparator.paper_trading_evaluation_ref
+    ) || Date.parse(promotion.promoted_at) > Date.parse(campaignCommittedAt)) {
+    throw runtimeError(
+      "research_control_campaign_workspace_conflict",
+      "ResearchControlCampaign arm comparator provenance is unavailable or mismatched.",
+      { arm_kind: armKind }
+    );
+  }
 }
 
 async function loadArmEvidence(
@@ -951,12 +1065,20 @@ async function loadArmEvidence(
       arm.store.listResearchBehaviorFingerprints(),
       arm.store.listCandidateAdmissionDecisions()
     ]);
+    const populationEvidence = researchControlCampaignPopulationEvidence({
+      ticks,
+      allocations,
+      directions,
+      commitments,
+      admissions,
+      fingerprints
+    });
     const populationDiversity = buildResearchPopulationDiversity({
       ticks,
       directions,
       commitments,
-      fingerprints,
-      admissions
+      fingerprints: populationEvidence.fingerprints,
+      admissions: populationEvidence.admissions
     });
     const candidateClosures = await resolveCandidateClosures(
       arm.store,
@@ -966,7 +1088,8 @@ async function loadArmEvidence(
       root: arm.root,
       maximumRegularFileCount:
         campaign.policy.maximum_baseline_regular_file_count,
-      maximumTotalBytes: campaign.policy.maximum_baseline_total_bytes
+      maximumTotalBytes: campaign.policy.maximum_baseline_total_bytes,
+      protocolVersion: campaign.baseline.protocol_version
     });
     const completedAt = timeAtOrAfter(
       arm.intent.committed_at,
@@ -989,6 +1112,164 @@ async function loadArmEvidence(
       { arm_kind: arm.armKind, reason: conciseError(error) }
     );
   }
+}
+
+function researchControlCampaignPopulationEvidence(input: {
+  ticks: CandidateArenaTickRecord[];
+  allocations: CandidateArenaResearchAllocationRecord[];
+  directions: ResearchDirectionRecord[];
+  commitments: ResearchPreflightCommitmentRecord[];
+  admissions: CandidateAdmissionDecisionRecord[];
+  fingerprints: ResearchBehaviorFingerprintRecord[];
+}): {
+  admissions: CandidateAdmissionDecisionRecord[];
+  fingerprints: ResearchBehaviorFingerprintRecord[];
+} {
+  const admissionsById = new Map<string, CandidateAdmissionDecisionRecord>();
+  for (const admission of input.admissions) {
+    if (admissionsById.has(admission.candidate_admission_decision_id)) {
+      throw new Error("research_control_campaign_admission_ambiguous");
+    }
+    admissionsById.set(
+      admission.candidate_admission_decision_id,
+      admission
+    );
+  }
+  const allocationsById = uniqueEvidenceMap(
+    input.allocations,
+    (allocation) => allocation.candidate_arena_research_allocation_id,
+    "research_control_campaign_allocation_ambiguous"
+  );
+  const directionsById = uniqueEvidenceMap(
+    input.directions,
+    (direction) => direction.research_direction_id,
+    "research_control_campaign_direction_ambiguous"
+  );
+  const commitmentsById = uniqueEvidenceMap(
+    input.commitments,
+    (commitment) => commitment.research_preflight_commitment_id,
+    "research_control_campaign_commitment_ambiguous"
+  );
+  const selectedAdmissions = new Map<string, CandidateAdmissionDecisionRecord>();
+  const selectedCommitments = new Set<string>();
+  for (const tick of input.ticks) {
+    const allocation = tick.research_allocation_ref
+      ? allocationsById.get(tick.research_allocation_ref.id)
+      : undefined;
+    if (!allocation || tick.research_allocation_ref?.record_kind !==
+        "candidate_arena_research_allocation" ||
+      tick.research_allocation_digest !== allocation.allocation_digest ||
+      tick.tick_id !== allocation.tick_id) {
+      throw new Error(
+        "research_control_campaign_terminal_allocation_binding_invalid"
+      );
+    }
+    for (const result of tick.direction_results) {
+      if (result.status === "failed" || result.status === "no_submission") {
+        continue;
+      }
+      const admission = result.admission_decision_id
+        ? admissionsById.get(result.admission_decision_id)
+        : undefined;
+      const commitmentId = result.research_preflight?.commitment_id;
+      const commitment = commitmentId
+        ? commitmentsById.get(commitmentId)
+        : undefined;
+      const direction = commitment
+        ? directionsById.get(commitment.research_direction_ref.id)
+        : undefined;
+      const expectedAdmissionStatus = result.status === "created"
+        ? "admitted"
+        : result.status;
+      if (!admission || !commitment || !direction ||
+        admission.status !== expectedAdmissionStatus ||
+        result.admission_reason !== admission.reason ||
+        admission.research_preflight_commitment_ref?.id !== commitmentId ||
+        admission.research_preflight_commitment_digest !==
+          commitment.commitment_digest ||
+        commitment.candidate_arena_tick_id !== tick.tick_id ||
+        commitment.research_allocation_ref.record_kind !==
+          "candidate_arena_research_allocation" ||
+        commitment.research_allocation_ref.id !==
+          allocation.candidate_arena_research_allocation_id ||
+        commitment.research_allocation_digest !== allocation.allocation_digest ||
+        direction.direction_kind !== result.direction_kind ||
+        selectedCommitments.has(commitment.research_preflight_commitment_id) ||
+        selectedAdmissions.has(admission.candidate_admission_decision_id)) {
+        throw new Error(
+          "research_control_campaign_terminal_admission_binding_invalid"
+        );
+      }
+      selectedCommitments.add(commitment.research_preflight_commitment_id);
+      selectedAdmissions.set(
+        admission.candidate_admission_decision_id,
+        admission
+      );
+    }
+  }
+
+  const fingerprintBindings = new Map<string, {
+    digest: string;
+    commitmentId: string;
+    commitmentDigest: string;
+  }>();
+  for (const admission of selectedAdmissions.values()) {
+    if (!admission.research_behavior_fingerprint_ref) continue;
+    const fingerprintDigest = admission.research_behavior_fingerprint_digest;
+    const commitmentId = admission.research_preflight_commitment_ref?.id;
+    const commitmentDigest = admission.research_preflight_commitment_digest;
+    if (!fingerprintDigest || !commitmentId || !commitmentDigest ||
+      fingerprintBindings.has(
+        admission.research_behavior_fingerprint_ref.id
+      )) {
+      throw new Error(
+        "research_control_campaign_terminal_fingerprint_binding_invalid"
+      );
+    }
+    fingerprintBindings.set(
+      admission.research_behavior_fingerprint_ref.id,
+      {
+        digest: fingerprintDigest,
+        commitmentId,
+        commitmentDigest
+      }
+    );
+  }
+  const selectedFingerprints: ResearchBehaviorFingerprintRecord[] = [];
+  for (const [fingerprintId, binding] of fingerprintBindings) {
+    const matches = input.fingerprints.filter((fingerprint) =>
+      fingerprint.research_behavior_fingerprint_id === fingerprintId
+    );
+    if (matches.length !== 1 ||
+      matches[0]!.fingerprint_digest !== binding.digest ||
+      matches[0]!.research_preflight_commitment_ref.id !==
+        binding.commitmentId ||
+      matches[0]!.research_preflight_commitment_digest !==
+        binding.commitmentDigest) {
+      throw new Error(
+        "research_control_campaign_terminal_fingerprint_binding_invalid"
+      );
+    }
+    selectedFingerprints.push(matches[0]!);
+  }
+  return {
+    admissions: [...selectedAdmissions.values()],
+    fingerprints: selectedFingerprints
+  };
+}
+
+function uniqueEvidenceMap<T>(
+  values: readonly T[],
+  id: (value: T) => string,
+  errorCode: string
+): Map<string, T> {
+  const result = new Map<string, T>();
+  for (const value of values) {
+    const valueId = id(value);
+    if (result.has(valueId)) throw new Error(errorCode);
+    result.set(valueId, value);
+  }
+  return result;
 }
 
 async function resolveCandidateClosures(

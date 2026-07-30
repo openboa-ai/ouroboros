@@ -2,14 +2,17 @@ import {
   access,
   link,
   mkdir,
+  open,
   readFile,
   readdir,
   rename,
   rm,
+  stat,
   unlink,
   writeFile
 } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import {
   currentProcessStartMarker,
@@ -17,8 +20,26 @@ import {
 } from "./process-start-marker";
 import { decideResearchMemoryControlPairOutcome } from
   "@ouroboros/application/candidate/research-memory-control-study-outcome";
+import {
+  ResearchOperationsProjectionService,
+  RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES,
+  researchOperationsProjectionCapsuleHasIntegrity,
+  researchOperationsProjectionCapsuleRouteHash,
+  researchOperationsProjectionCapsuleTrieNodeHasIntegrity,
+  researchOperationsProjectionIndexHasIntegrity,
+  researchOperationsProjectionSourceRecordHasBoundedShape
+} from "@ouroboros/application/services/research-operations";
+import { ResearchOperationsProjectionCompatibilityError } from
+  "@ouroboros/application/ports/store";
 import type {
+  CandidateArenaEvidenceProjection,
+  OuroborosStorePort,
   PaperTradingComparisonWindowClosureGraphSnapshot,
+  ReadResearchOperationsProjectionWindowInput,
+  ResearchOperationsProjectionCapsule,
+  ResearchOperationsProjectionCapsuleTrieNode,
+  ResearchOperationsProjectionIndexRecord,
+  ResearchOperationsProjectionWindow,
   ResearchMemoryControlPairOutcomePersistenceInput
 } from "@ouroboros/application/ports/store";
 import {
@@ -67,6 +88,8 @@ import {
   canonicalResearchEvidenceArtifactSummary,
   candidateArenaResearchAllocationDigestInput,
   candidateArenaResearchAllocationHasRuntimeShape,
+  candidateArenaTickAuthorityGraphHasRuntimeShape,
+  candidateArenaTickHasRuntimeShape,
   candidateEgressAttestationIdForConformance,
   decidePaperTradingQualification,
   isCandidateAdmissionDecisionConsistent,
@@ -408,6 +431,7 @@ export type LocalStoreErrorCode =
   | "sandbox_reload_failed"
   | "invalid_research_finding_input"
   | "invalid_candidate_admission_decision_input"
+  | "candidate_admission_graph_conflict"
   | "candidate_admission_decision_reload_failed"
   | "invalid_artifact_lineage_input"
   | "invalid_improvement_proposal_input"
@@ -470,6 +494,8 @@ export type LocalStoreErrorCode =
   | "candidate_arena_research_allocation_policy_decision_mismatch"
   | "candidate_arena_research_allocation_reference_not_found"
   | "candidate_arena_research_allocation_tick_graph_mismatch"
+  | "research_operations_projection_source_record_invalid"
+  | "research_operations_projection_source_record_too_large"
   | "invalid_research_control_campaign_input"
   | "research_control_campaign_digest_mismatch"
   | "research_control_campaign_paper_protocol_digest_mismatch"
@@ -564,6 +590,8 @@ export type LocalStoreErrorCode =
   | "research_memory_control_study_reload_failed"
   | "research_memory_control_publication_lock_corrupt"
   | "research_memory_control_publication_lock_unavailable"
+  | "research_operations_projection_publication_lock_corrupt"
+  | "research_operations_projection_publication_lock_unavailable"
   | "invalid_research_memory_control_pair_outcome_input"
   | "research_memory_control_pair_outcome_digest_mismatch"
   | "research_memory_control_pair_outcome_identity_mismatch"
@@ -603,6 +631,7 @@ export type LocalStoreErrorCode =
   | "research_allocation_policy_decision_conflict"
   | "research_allocation_policy_decision_reload_failed"
   | "invalid_candidate_arena_tick_input"
+  | "candidate_arena_tick_reload_failed"
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
   | "improvement_proposal_not_found"
@@ -907,6 +936,78 @@ type Collection =
   | "research-allocation-policy-decisions"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
+
+const RESEARCH_OPERATIONS_PROJECTION_COLLECTIONS = new Set<Collection>([
+  "system-codes",
+  "candidates",
+  "candidate-materialization-attempts",
+  "candidate-versions",
+  "research-findings",
+  "artifact-lineages",
+  "research-directions",
+  "research-workers",
+  "research-preflight-commitments",
+  "research-worker-checkpoints",
+  "research-evidence-artifacts",
+  "research-behavior-fingerprints",
+  "experiment-runs",
+  "paper-trading-handoff-conformances",
+  "candidate-admission-decisions",
+  "candidate-arena-research-allocations",
+  "research-control-studies",
+  "research-control-study-outcomes",
+  "research-memory-control-studies",
+  "research-generalization-protocols",
+  "research-generalization-outcomes",
+  "research-generalization-policy-decisions",
+  "research-allocation-policy-decisions",
+  "candidate-arena-ticks",
+  "trading-evaluation-results"
+]);
+const RESEARCH_OPERATIONS_PROJECTION_BOUNDED_ROOT_COLLECTIONS =
+  new Set<Collection>([
+    "artifact-lineages",
+    "candidate-arena-research-allocations",
+    "candidate-arena-ticks",
+    "research-findings"
+  ]);
+const RESEARCH_OPERATIONS_PROJECTION_SOURCE_RECORD_KINDS = new Map<
+  Collection,
+  string
+>([
+  ["system-codes", "system_code"],
+  ["candidates", "trading_system_candidate"],
+  ["candidate-materialization-attempts", "candidate_materialization_attempt"],
+  ["candidate-versions", "candidate_version"],
+  ["research-findings", "research_finding"],
+  ["artifact-lineages", "artifact_lineage"],
+  ["research-directions", "research_direction"],
+  ["research-workers", "research_worker"],
+  ["research-preflight-commitments", "research_preflight_commitment"],
+  ["research-worker-checkpoints", "research_worker_checkpoint"],
+  ["research-evidence-artifacts", "research_evidence_artifact"],
+  ["research-behavior-fingerprints", "research_behavior_fingerprint"],
+  ["experiment-runs", "experiment_run"],
+  ["paper-trading-handoff-conformances", "paper_trading_handoff_conformance"],
+  ["candidate-admission-decisions", "candidate_admission_decision"],
+  ["candidate-arena-research-allocations", "candidate_arena_research_allocation"],
+  ["research-control-studies", "research_control_study"],
+  ["research-control-study-outcomes", "research_control_study_outcome"],
+  ["research-memory-control-studies", "research_memory_control_study"],
+  ["research-generalization-protocols", "research_generalization_protocol"],
+  ["research-generalization-outcomes", "research_generalization_outcome"],
+  ["research-generalization-policy-decisions", "research_generalization_policy_decision"],
+  ["research-allocation-policy-decisions", "research_allocation_policy_decision"],
+  ["candidate-arena-ticks", "candidate_arena_tick"],
+  ["trading-evaluation-results", "trading_evaluation_result"]
+]);
+const RESEARCH_OPERATIONS_PROJECTION_SOURCE_RECORD_VERSION_OVERRIDES = new Map<
+  Collection,
+  readonly number[]
+>([
+  ["paper-trading-handoff-conformances", [1, 2]]
+]);
+const RESEARCH_OPERATIONS_PROJECTION_FILE_MAX_BYTES = 256 * 1024;
 
 interface FixtureItem {
   collection: Collection;
@@ -1533,6 +1634,7 @@ interface ResearchMemoryControlPairSourceGraphRecord {
 
 const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_ATTEMPTS = 5_000;
 const RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS = 2;
+const RESEARCH_OPERATIONS_PROJECTION_ORPHANED_CLAIM_GRACE_MS = 30_000;
 
 export interface LocalStoreWriteTransaction {
   run<T>(write: () => Promise<T>): Promise<T>;
@@ -1542,15 +1644,117 @@ export interface LocalStoreOptions {
   writeTransaction?: LocalStoreWriteTransaction;
 }
 
+interface ResearchOperationsProjectionCoordinator {
+  queue: Promise<void>;
+  batchQueue: Promise<void>;
+  comparisonEvidenceWriteQueue: Promise<void>;
+  activeComparisonEvidenceWriteToken?: symbol;
+  activeBatchScope?: ResearchOperationsProjectionBatchScope;
+  initialized: boolean;
+  readable: boolean;
+  dirty: boolean;
+  sourceCompatibilityBlocked: boolean;
+  revision: number;
+  batchDepth: number;
+  indexInvalidation?: Promise<void>;
+  sourceRecords: Map<Collection, Map<string, unknown>>;
+  candidateReadModels: Map<string, CandidateInspectReadModel>;
+  capsuleDigests: Map<string, string>;
+  capsuleTrieNodeDigests: Map<string, string>;
+  projectionSourceBindingDigest?: string;
+  sourceGeneration?: string;
+  activeSourceWriteSnapshots?: Map<string, string | undefined>;
+}
+
+type ResearchOperationsProjectionBatchOperationOutcome =
+  | { status: "fulfilled" }
+  | { status: "rejected"; reason: unknown };
+
+interface ResearchOperationsProjectionBatchScope {
+  phase: "open" | "draining" | "closed";
+  sourceGenerationMode: "lazy" | "advance" | "observe";
+  sourceMutationGenerationAdvanced: boolean;
+  sourceMutationGenerationAdvance?: Promise<string>;
+  sourceGeneration?: string;
+  pendingOperations: Set<
+    Promise<ResearchOperationsProjectionBatchOperationOutcome>
+  >;
+}
+
+interface ResearchOperationsProjectionBatchLeaseOptions {
+  synchronizeFromDisk?: boolean;
+  sourceGenerationMode?: "advance" | "observe";
+}
+
+const researchOperationsProjectionCoordinators = new Map<
+  string,
+  WeakRef<ResearchOperationsProjectionCoordinator>
+>();
+const researchOperationsProjectionCoordinatorFinalizer =
+  new FinalizationRegistry<{
+    key: string;
+    reference: WeakRef<ResearchOperationsProjectionCoordinator>;
+  }>(({ key, reference }) => {
+    if (researchOperationsProjectionCoordinators.get(key) === reference) {
+      researchOperationsProjectionCoordinators.delete(key);
+    }
+  });
+const researchOperationsProjectionBatchContext = new AsyncLocalStorage<
+  Map<
+    ResearchOperationsProjectionCoordinator,
+    ResearchOperationsProjectionBatchScope
+  >
+>();
+const comparisonEvidenceWriteContext = new AsyncLocalStorage<
+  Map<ResearchOperationsProjectionCoordinator, symbol>
+>();
+const researchRootPublicationContext = new AsyncLocalStorage<
+  Map<string, symbol>
+>();
+const activeResearchRootPublicationTokens = new Map<string, symbol>();
+
+function researchOperationsProjectionCoordinator(
+  storeRoot: string
+): ResearchOperationsProjectionCoordinator {
+  const key = path.resolve(storeRoot);
+  let coordinator = researchOperationsProjectionCoordinators.get(key)?.deref();
+  if (!coordinator) {
+    coordinator = {
+      queue: Promise.resolve(),
+      batchQueue: Promise.resolve(),
+      comparisonEvidenceWriteQueue: Promise.resolve(),
+      initialized: false,
+      readable: false,
+      dirty: false,
+      sourceCompatibilityBlocked: false,
+      revision: 0,
+      batchDepth: 0,
+      sourceRecords: new Map(),
+      candidateReadModels: new Map(),
+      capsuleDigests: new Map(),
+      capsuleTrieNodeDigests: new Map()
+    };
+    const reference = new WeakRef(coordinator);
+    researchOperationsProjectionCoordinators.set(key, reference);
+    researchOperationsProjectionCoordinatorFinalizer.register(
+      coordinator,
+      { key, reference }
+    );
+  }
+  return coordinator;
+}
+
 export class LocalStore {
   private candidateProjectionSelfHealPromise?: Promise<void>;
-  private projectionRebuildQueue: Promise<void> = Promise.resolve();
-  private comparisonEvidenceWriteQueue: Promise<void> = Promise.resolve();
+  private readonly researchOperationsProjectionCoordinator:
+    ResearchOperationsProjectionCoordinator;
 
   constructor(
     private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT,
     private readonly options: LocalStoreOptions = {}
   ) {
+    this.researchOperationsProjectionCoordinator =
+      researchOperationsProjectionCoordinator(this.storeRoot);
     if (options.writeTransaction &&
       typeof options.writeTransaction.run !== "function") {
       throw new TypeError("LocalStore write transaction is invalid");
@@ -1569,9 +1773,45 @@ export class LocalStore {
     return new LocalStore(this.storeRoot, { writeTransaction });
   }
 
-  private withComparisonEvidenceWriteTransaction<T>(task: () => Promise<T>): Promise<T> {
-    const queued = this.comparisonEvidenceWriteQueue.then(task);
-    this.comparisonEvidenceWriteQueue = queued.then(
+  private get comparisonEvidenceWriteQueue(): Promise<void> {
+    return this.researchOperationsProjectionCoordinator
+      .comparisonEvidenceWriteQueue;
+  }
+
+  private async withComparisonEvidenceWriteTransaction<T>(
+    task: () => Promise<T>,
+    projectionOptions: ResearchOperationsProjectionBatchLeaseOptions = {}
+  ): Promise<T> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const activeTransactions = comparisonEvidenceWriteContext.getStore();
+    if (activeTransactions?.get(coordinator) ===
+      coordinator.activeComparisonEvidenceWriteToken &&
+      coordinator.activeComparisonEvidenceWriteToken !== undefined) {
+      return this.withResearchOperationsProjectionBatchLease(
+        task,
+        projectionOptions
+      );
+    }
+    const queued = coordinator.comparisonEvidenceWriteQueue.then(async () => {
+      const token = Symbol("comparison_evidence_write");
+      coordinator.activeComparisonEvidenceWriteToken = token;
+      const context = new Map(activeTransactions ?? []);
+      context.set(coordinator, token);
+      try {
+        return await comparisonEvidenceWriteContext.run(
+          context,
+          () => this.withResearchOperationsProjectionBatchLease(
+            task,
+            projectionOptions
+          )
+        );
+      } finally {
+        if (coordinator.activeComparisonEvidenceWriteToken === token) {
+          coordinator.activeComparisonEvidenceWriteToken = undefined;
+        }
+      }
+    });
+    coordinator.comparisonEvidenceWriteQueue = queued.then(
       () => undefined,
       () => undefined
     );
@@ -1581,11 +1821,46 @@ export class LocalStore {
   private async withResearchMemoryControlPublicationTransaction<T>(
     task: () => Promise<T>
   ): Promise<T> {
+    return this.withResearchOperationsProjectionBatchLease(() =>
+      this.withResearchMemoryControlPublicationLockTransaction(task)
+    );
+  }
+
+  private async withResearchMemoryControlPublicationLockTransaction<T>(
+    task: () => Promise<T>
+  ): Promise<T> {
+    const rootKey = path.resolve(this.storeRoot);
+    const activeRoots = researchRootPublicationContext.getStore();
+    const inheritedToken = activeRoots?.get(rootKey);
+    if (inheritedToken !== undefined &&
+      activeResearchRootPublicationTokens.get(rootKey) === inheritedToken) {
+      return task();
+    }
     const owner = await this.acquireResearchMemoryControlPublicationLock();
+    const token = Symbol("research_root_publication");
+    activeResearchRootPublicationTokens.set(rootKey, token);
+    const context = new Map(activeRoots ?? []);
+    context.set(rootKey, token);
     try {
+      return await researchRootPublicationContext.run(context, task);
+    } finally {
+      if (activeResearchRootPublicationTokens.get(rootKey) === token) {
+        activeResearchRootPublicationTokens.delete(rootKey);
+      }
+      await this.releaseResearchMemoryControlPublicationLock(owner);
+    }
+  }
+
+  private async withResearchOperationsProjectionPublicationTransaction<T>(
+    task: () => Promise<T>
+  ): Promise<T> {
+    const owner = await this
+      .acquireResearchOperationsProjectionPublicationLock();
+    try {
+      await this.cleanupResearchOperationsProjectionGenerationTemps();
       return await task();
     } finally {
-      await this.releaseResearchMemoryControlPublicationLock(owner);
+      await this.releaseResearchOperationsProjectionPublicationLock(owner);
     }
   }
 
@@ -2513,10 +2788,44 @@ export class LocalStore {
   }
 
   async reset(): Promise<void> {
-    await rm(this.storeRoot, { recursive: true, force: true });
+    await this.withResearchOperationsProjectionBatchLease(async () => {
+      const coordinator = this.researchOperationsProjectionCoordinator;
+      coordinator.initialized = false;
+      coordinator.readable = false;
+      coordinator.dirty = false;
+      coordinator.sourceCompatibilityBlocked = false;
+      coordinator.revision += 1;
+      coordinator.indexInvalidation = undefined;
+      coordinator.sourceRecords.clear();
+      coordinator.candidateReadModels.clear();
+      coordinator.capsuleDigests.clear();
+      coordinator.capsuleTrieNodeDigests.clear();
+      coordinator.projectionSourceBindingDigest = undefined;
+      let entries: string[] = [];
+      try {
+        entries = await readdir(this.storeRoot);
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+      await Promise.all(entries
+        .filter((entry) => entry !== ".locks")
+        .map((entry) => rm(path.join(this.storeRoot, entry), {
+          recursive: true,
+          force: true
+        })));
+    }, {
+      synchronizeFromDisk: false,
+      sourceGenerationMode: "advance"
+    });
   }
 
   async seedFixture(): Promise<void> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.seedFixtureUnlocked()
+    );
+  }
+
+  private async seedFixtureUnlocked(): Promise<void> {
     for (const item of createFixtureRecords()) {
       const targetPath = this.itemPath(item.collection, item.id, item.itemDir);
       if (await pathExists(targetPath)) {
@@ -2527,15 +2836,85 @@ export class LocalStore {
   }
 
   async rebuildProjections(): Promise<void> {
-    const queuedRebuild = this.projectionRebuildQueue.then(async () => {
-      await this.rebuildProjectionsUnlocked();
+    await this.withResearchOperationsProjectionBatchLease(async () => {
+      const coordinator = this.researchOperationsProjectionCoordinator;
+      const revision = coordinator.initialized
+        ? this.markResearchOperationsProjectionDirty()
+        : coordinator.revision;
+      const includeResearchOperations = coordinator.batchDepth === 0;
+      await this.enqueueResearchOperationsProjection(async () => {
+        if (coordinator.initialized || includeResearchOperations) {
+          await this.invalidateResearchOperationsProjectionIndex();
+        }
+        await this.rebuildProjectionsUnlocked(includeResearchOperations);
+        if (includeResearchOperations && coordinator.initialized) {
+          this.markResearchOperationsProjectionReadable(revision);
+        }
+      });
     });
-    this.projectionRebuildQueue = queuedRebuild.catch(() => {});
-    await queuedRebuild;
   }
 
-  private async rebuildProjectionsUnlocked(): Promise<void> {
+  private async flushResearchOperationsProjection(): Promise<void> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (!coordinator.initialized || !coordinator.dirty ||
+      coordinator.batchDepth > 0) return;
+    const revision = coordinator.revision;
+    await this.enqueueResearchOperationsProjection(async () => {
+      await this.invalidateResearchOperationsProjectionIndex();
+      await this.rebuildResearchOperationsProjectionUnlocked();
+      this.markResearchOperationsProjectionReadable(revision);
+    });
+  }
+
+  private markResearchOperationsProjectionDirty(): number {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    coordinator.revision += 1;
+    coordinator.dirty = true;
+    coordinator.readable = false;
+    return coordinator.revision;
+  }
+
+  private markResearchOperationsProjectionReadable(revision: number): void {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (coordinator.sourceCompatibilityBlocked) {
+      coordinator.dirty = false;
+      coordinator.readable = false;
+      coordinator.indexInvalidation = undefined;
+      return;
+    }
+    if (coordinator.revision !== revision || coordinator.batchDepth > 0) return;
+    coordinator.dirty = false;
+    coordinator.readable = true;
+    coordinator.indexInvalidation = undefined;
+  }
+
+  private enqueueResearchOperationsProjection<T>(
+    task: () => Promise<T>
+  ): Promise<T> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const queued = coordinator.queue.then(task);
+    coordinator.queue = queued.then(
+      () => undefined,
+      () => undefined
+    );
+    return queued;
+  }
+
+  private invalidateResearchOperationsProjectionIndex(): Promise<void> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    coordinator.indexInvalidation = unlink(
+      this.researchOperationsProjectionIndexPath()
+    ).catch((error: unknown) => {
+      if (!isMissingFileError(error)) throw error;
+    });
+    return coordinator.indexInvalidation;
+  }
+
+  private async rebuildProjectionsUnlocked(
+    includeResearchOperations = true
+  ): Promise<void> {
     const candidates = await this.readCollection<TradingSystemCandidateRecord>("candidates");
+    this.researchOperationsProjectionCoordinator.candidateReadModels.clear();
     const summaries = candidates
       .map((candidate) => this.toCandidateSummary(candidate))
       .sort((a, b) => a.candidate_id.localeCompare(b.candidate_id));
@@ -2550,6 +2929,10 @@ export class LocalStore {
 
     for (const candidate of candidates) {
       const readModel = await this.buildCandidateInspectReadModel(candidate.candidate_id);
+      this.researchOperationsProjectionCoordinator.candidateReadModels.set(
+        candidate.candidate_id,
+        readModel
+      );
       await this.writeJson(
         path.join(this.storeRoot, "read-models/candidates/items", storeJsonFileName(candidate.candidate_id)),
         readModel
@@ -2608,12 +2991,1319 @@ export class LocalStore {
         sandboxDetail
       );
     }
+    if (includeResearchOperations) {
+      await this.rebuildResearchOperationsProjectionUnlocked();
+    }
+  }
+
+  private researchOperationsProjectionRoot(): string {
+    return path.join(this.storeRoot, "read-models/research-operations");
+  }
+
+  private researchOperationsProjectionIndexPath(): string {
+    return path.join(this.researchOperationsProjectionRoot(), "index.json");
+  }
+
+  private researchOperationsProjectionSourceGenerationPath(): string {
+    return path.join(
+      this.storeRoot,
+      ".locks",
+      "research-operations-projection-generation.json"
+    );
+  }
+
+  private async readResearchOperationsProjectionSourceGeneration(): Promise<
+    string | undefined
+  > {
+    let value: unknown;
+    try {
+      value = await this.readJson<unknown>(
+        this.researchOperationsProjectionSourceGenerationPath()
+      );
+    } catch (error) {
+      if (isMissingFileError(error)) return undefined;
+      if (error instanceof SyntaxError) return undefined;
+      throw error;
+    }
+    if (!isPlainObject(value) ||
+      !sameJson(Object.keys(value).sort(), [
+        "generation",
+        "record_kind",
+        "version"
+      ]) ||
+      value.record_kind !== "research_operations_projection_source_generation" ||
+      value.version !== 1 || typeof value.generation !== "string" ||
+      value.generation.length === 0 || value.generation.length > 100) {
+      return undefined;
+    }
+    return value.generation;
+  }
+
+  private async advanceResearchOperationsProjectionSourceGeneration(): Promise<
+    string
+  > {
+    const filePath = this.researchOperationsProjectionSourceGenerationPath();
+    const generation = randomUUID();
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const temporaryPath = `${filePath}.${process.pid}.${generation}.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify({
+      record_kind: "research_operations_projection_source_generation",
+      version: 1,
+      generation
+    }, null, 2)}\n`, "utf8");
+    try {
+      await rename(temporaryPath, filePath);
+    } finally {
+      try {
+        await unlink(temporaryPath);
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+    }
+    return generation;
+  }
+
+  private researchOperationsProjectionCapsulePath(
+    researchWorkItemId: string
+  ): string {
+    return path.join(
+      this.researchOperationsProjectionRoot(),
+      "items",
+      storeJsonFileName(researchWorkItemId)
+    );
+  }
+
+  private researchOperationsProjectionCapsuleTrieNodePath(
+    prefix: string
+  ): string {
+    return path.join(
+      this.researchOperationsProjectionRoot(),
+      "trie",
+      `${prefix}.json`
+    );
+  }
+
+  private async refreshResearchOperationsProjectionSourceCache(): Promise<void> {
+    const cache = new Map<Collection, Map<string, unknown>>();
+    for (const collection of RESEARCH_OPERATIONS_PROJECTION_COLLECTIONS) {
+      const items = new Map<string, unknown>();
+      const dir = path.join(this.storeRoot, collection, "items");
+      let entries: string[] = [];
+      try {
+        entries = (await readdir(dir))
+          .filter((entry) => entry.endsWith(".json"))
+          .sort();
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+      for (const entry of entries) {
+        const filePath = path.join(dir, entry);
+        items.set(
+          path.resolve(filePath),
+          await this.readBoundedResearchOperationsProjectionSourceJson(
+            filePath,
+            collection
+          )
+        );
+      }
+      cache.set(collection, items);
+    }
+    this.researchOperationsProjectionCoordinator.sourceRecords = cache;
+    this.researchOperationsProjectionCoordinator
+      .sourceCompatibilityBlocked = false;
+  }
+
+  private async hasDurableResearchOperationsProjectionSources(): Promise<boolean> {
+    for (const collection of RESEARCH_OPERATIONS_PROJECTION_COLLECTIONS) {
+      try {
+        if ((await readdir(path.join(this.storeRoot, collection, "items")))
+          .some((entry) => entry.endsWith(".json"))) {
+          return true;
+        }
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+    }
+    return false;
+  }
+
+  private async synchronizeResearchOperationsProjectionFromDisk(): Promise<
+    void
+  > {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const revision = coordinator.initialized
+      ? this.markResearchOperationsProjectionDirty()
+      : coordinator.revision;
+    coordinator.dirty = true;
+    coordinator.readable = false;
+    await this.invalidateResearchOperationsProjectionIndex();
+    await this.refreshResearchOperationsProjectionSourceCache();
+    coordinator.candidateReadModels.clear();
+    coordinator.capsuleDigests.clear();
+    coordinator.capsuleTrieNodeDigests.clear();
+    coordinator.projectionSourceBindingDigest = undefined;
+    await this.rebuildProjectionsUnlocked(true);
+    coordinator.initialized = true;
+    if (coordinator.batchDepth === 0) {
+      this.markResearchOperationsProjectionReadable(revision);
+    }
+  }
+
+  private updateResearchOperationsProjectionSourceCache(
+    filePath: string,
+    value: unknown
+  ): void {
+    const normalizedFilePath = path.resolve(filePath);
+    const parts = path.relative(
+      path.resolve(this.storeRoot),
+      normalizedFilePath
+    ).split(path.sep);
+    const collection = parts[0] as Collection;
+    let records = this.researchOperationsProjectionCoordinator.sourceRecords
+      .get(collection);
+    if (!records) {
+      records = new Map();
+      this.researchOperationsProjectionCoordinator.sourceRecords.set(
+        collection,
+        records
+      );
+    }
+    records.set(normalizedFilePath, structuredClone(value));
+  }
+
+  private cachedResearchOperationsProjectionRecords<T>(
+    collection: Collection
+  ): T[] {
+    return [...(this.researchOperationsProjectionCoordinator.sourceRecords
+      .get(collection)?.entries() ?? [])]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, value]) => structuredClone(value) as T);
+  }
+
+  private researchOperationsProjectionStore(): OuroborosStorePort {
+    const records = <T>(collection: Collection) =>
+      Promise.resolve(this.cachedResearchOperationsProjectionRecords<T>(collection));
+    const allocations = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "candidate-arena-research-allocations"
+      ).map((allocation) =>
+        this.assertPersistedCandidateArenaResearchAllocation(allocation)
+      );
+      for (const allocation of values) {
+        await this.assertCandidateArenaResearchAllocationTrigger(allocation);
+      }
+      return values.sort(compareCandidateArenaResearchAllocations);
+    };
+    const directions = async () =>
+      this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-directions"
+      ).map((direction) => {
+        if (!isResearchDirectionRecord(direction)) {
+          throw new LocalStoreError(
+            "research_direction_reload_failed",
+            "persisted ResearchDirection is unreadable or corrupt"
+          );
+        }
+        return direction;
+      }).sort(compareResearchDirections);
+    const commitments = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-preflight-commitments"
+      ).map((commitment) =>
+        this.assertPersistedResearchPreflightCommitment(commitment)
+      );
+      for (const commitment of values) {
+        await this.assertResearchPreflightCommitmentGraph(commitment);
+      }
+      return values.sort(compareResearchPreflightCommitments);
+    };
+    const fingerprints = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-behavior-fingerprints"
+      ).map((fingerprint) =>
+        this.assertPersistedResearchBehaviorFingerprint(fingerprint)
+      );
+      for (const fingerprint of values) {
+        await this.assertResearchBehaviorFingerprintGraph(fingerprint);
+      }
+      return values.sort(compareResearchBehaviorFingerprints);
+    };
+    const admissions = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<
+        CandidateAdmissionDecisionRecord
+      >("candidate-admission-decisions");
+      await Promise.all(values.map((decision) =>
+        this.assertCandidateAdmissionDecisionIntegrity(
+          decision,
+          "candidate_admission_decision_reload_failed"
+        )
+      ));
+      return values.sort(compareCandidateAdmissionDecisions);
+    };
+    const generalizationProtocols = async () =>
+      this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-generalization-protocols"
+      ).map((protocol) =>
+        this.assertPersistedResearchGeneralizationProtocol(protocol)
+      ).sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_generalization_protocol_id.localeCompare(
+          right.research_generalization_protocol_id
+        )
+      );
+    const controlStudies = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-control-studies"
+      ).map((study) => this.assertPersistedResearchControlStudy(study));
+      await Promise.all(values.map((study) =>
+        this.assertResearchControlStudyGeneralizationGraph(study)
+      ));
+      this.assertResearchControlStudyGeneralizationSet(values);
+      return values.sort((left, right) =>
+        left.committed_at.localeCompare(right.committed_at) ||
+        left.research_control_study_id.localeCompare(
+          right.research_control_study_id
+        )
+      );
+    };
+    const controlStudyOutcomes = async () =>
+      this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-control-study-outcomes"
+      ).map((outcome) =>
+        this.assertPersistedResearchControlStudyOutcome(outcome)
+      ).sort((left, right) =>
+        left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+        left.research_control_study_outcome_id.localeCompare(
+          right.research_control_study_outcome_id
+        )
+      );
+    const generalizationOutcomes = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-generalization-outcomes"
+      ).map((outcome) =>
+        this.assertPersistedResearchGeneralizationOutcome(outcome)
+      );
+      await Promise.all(values.map((outcome) =>
+        this.assertResearchGeneralizationOutcomeGraph(outcome, true)
+      ));
+      return values.sort((left, right) =>
+        left.adjudicated_at.localeCompare(right.adjudicated_at) ||
+        left.research_generalization_outcome_id.localeCompare(
+          right.research_generalization_outcome_id
+        )
+      );
+    };
+    const generalizationPolicyDecisions = async () => {
+      const values = this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-generalization-policy-decisions"
+      ).map((decision) =>
+        this.assertPersistedResearchGeneralizationPolicyDecision(decision)
+      );
+      await Promise.all(values.map((decision) =>
+        this.assertResearchGeneralizationPolicyDecisionGraph(decision, true)
+      ));
+      return values.sort((left, right) =>
+        left.decided_at.localeCompare(right.decided_at) ||
+        left.research_generalization_policy_decision_id.localeCompare(
+          right.research_generalization_policy_decision_id
+        )
+      );
+    };
+    const allocationPolicyDecisions = async () =>
+      this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-allocation-policy-decisions"
+      ).map((decision) =>
+        this.assertPersistedResearchAllocationPolicyDecision(decision)
+      ).sort((left, right) =>
+        left.decided_at.localeCompare(right.decided_at) ||
+        left.research_allocation_policy_decision_id.localeCompare(
+          right.research_allocation_policy_decision_id
+        )
+      );
+    const memoryControlStudies = async () =>
+      this.cachedResearchOperationsProjectionRecords<unknown>(
+        "research-memory-control-studies"
+      ).map((study) => this.assertPersistedResearchMemoryControlStudy(study))
+        .sort((left, right) =>
+          left.committed_at.localeCompare(right.committed_at) ||
+          left.research_memory_control_study_id.localeCompare(
+            right.research_memory_control_study_id
+          )
+        );
+    return {
+      listCandidateArenaResearchAllocations: allocations,
+      listCandidateArenaTicks: () => records("candidate-arena-ticks"),
+      listResearchPreflightCommitments: commitments,
+      listResearchWorkers: () => records("research-workers"),
+      listResearchDirections: directions,
+      listResearchEvidenceArtifacts: () => records("research-evidence-artifacts"),
+      listResearchBehaviorFingerprints: fingerprints,
+      listResearchWorkerCheckpoints: () => records(
+        "research-worker-checkpoints"
+      ),
+      listTradingEvaluationResults: () => records("trading-evaluation-results"),
+      listExperimentRuns: () => records("experiment-runs"),
+      listCandidateAdmissionDecisions: admissions,
+      listPaperTradingHandoffConformances: () => records(
+        "paper-trading-handoff-conformances"
+      ),
+      listResearchFindings: () => records("research-findings"),
+      listArtifactLineages: () => records("artifact-lineages"),
+      listResearchAllocationPolicyDecisions: allocationPolicyDecisions,
+      listResearchGeneralizationPolicyDecisions:
+        generalizationPolicyDecisions,
+      listResearchControlStudies: controlStudies,
+      listResearchControlStudyOutcomes: controlStudyOutcomes,
+      listResearchGeneralizationProtocols: generalizationProtocols,
+      listResearchGeneralizationOutcomes: generalizationOutcomes,
+      listResearchMemoryControlStudies: memoryControlStudies,
+      getSystemCode: async (systemCodeId: string) => {
+        const matches = this.cachedResearchOperationsProjectionRecords<
+          SystemCodeRecord
+        >("system-codes").filter((record) =>
+          record.system_code_id === systemCodeId
+        );
+        return matches.length === 1 ? matches[0] : undefined;
+      },
+      getCandidate: async (candidateId: string) =>
+        this.researchOperationsProjectionCoordinator.candidateReadModels.get(
+          candidateId
+        )
+    } as OuroborosStorePort;
+  }
+
+  private async researchOperationsProjectionCapsuleFileHasDigest(
+    researchWorkItemId: string,
+    expectedDigest: string
+  ): Promise<boolean> {
+    try {
+      const capsule = await this.readBoundedResearchOperationsProjectionJson<
+        ResearchOperationsProjectionCapsule
+      >(
+        this.researchOperationsProjectionCapsulePath(researchWorkItemId),
+        "research_operations_projection_capsule_too_large"
+      );
+      return researchOperationsProjectionCapsuleHasIntegrity(capsule) &&
+        capsule.research_work_item_id === researchWorkItemId &&
+        capsule.capsule_digest === expectedDigest;
+    } catch (error) {
+      if (isMissingFileError(error) || error instanceof SyntaxError ||
+        error instanceof Error && error.message ===
+          "research_operations_projection_capsule_too_large") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private async researchOperationsProjectionTrieNodeFileHasDigest(
+    prefix: string,
+    expectedDigest: string
+  ): Promise<boolean> {
+    try {
+      const node = await this.readBoundedResearchOperationsProjectionJson<
+        ResearchOperationsProjectionCapsuleTrieNode
+      >(
+        this.researchOperationsProjectionCapsuleTrieNodePath(prefix),
+        "research_operations_projection_capsule_trie_node_too_large"
+      );
+      return researchOperationsProjectionCapsuleTrieNodeHasIntegrity(node) &&
+        node.prefix === prefix && node.node_digest === expectedDigest;
+    } catch (error) {
+      if (isMissingFileError(error) || error instanceof SyntaxError ||
+        error instanceof Error && error.message ===
+          "research_operations_projection_capsule_trie_node_too_large") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private async rebuildResearchOperationsProjectionUnlocked(): Promise<void> {
+    if (this.researchOperationsProjectionCoordinator
+      .sourceCompatibilityBlocked) {
+      return;
+    }
+    const materialized = await new ResearchOperationsProjectionService({
+      store: this.researchOperationsProjectionStore(),
+      runnerHealth: () => ({
+        status: "stopped",
+        tick_count: 0,
+        completed_tick_count: 0,
+        active_tick: false,
+        active_research_work_items: [],
+        consecutive_failure_count: 0,
+        runtime_coordination_authority: true,
+        evaluation_authority: false,
+        promotion_authority: false,
+        order_submission_authority: false,
+        live_exchange_authority: false,
+        authority_status: "runtime_coordination_only"
+      })
+    }).materializeProjection();
+    const itemsDir = path.join(this.researchOperationsProjectionRoot(), "items");
+    const trieDir = path.join(this.researchOperationsProjectionRoot(), "trie");
+    await rm(path.join(
+      this.researchOperationsProjectionRoot(),
+      "shards"
+    ), { recursive: true, force: true });
+    const expectedFiles = new Set(materialized.capsules.map((capsule) =>
+      storeJsonFileName(capsule.research_work_item_id)
+    ));
+    const expectedIds = new Set(materialized.capsules.map((capsule) =>
+      capsule.research_work_item_id
+    ));
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (coordinator.capsuleDigests.size === 0) {
+      let existingFiles: string[] = [];
+      try {
+        existingFiles = await readdir(itemsDir);
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+      for (const existing of existingFiles) {
+        if (existing.endsWith(".json") && !expectedFiles.has(existing)) {
+          await unlink(path.join(itemsDir, existing));
+        }
+      }
+    } else {
+      for (const existingId of coordinator.capsuleDigests.keys()) {
+        if (!expectedIds.has(existingId)) {
+          try {
+            await unlink(this.researchOperationsProjectionCapsulePath(existingId));
+          } catch (error) {
+            if (!isMissingFileError(error)) throw error;
+          }
+        }
+      }
+    }
+    for (const capsule of materialized.capsules) {
+      const cachedDigest = coordinator.capsuleDigests.get(
+        capsule.research_work_item_id
+      );
+      if (cachedDigest !== capsule.capsule_digest ||
+        !await this.researchOperationsProjectionCapsuleFileHasDigest(
+          capsule.research_work_item_id,
+          capsule.capsule_digest
+        )) {
+        await this.writeJson(
+          this.researchOperationsProjectionCapsulePath(
+            capsule.research_work_item_id
+          ),
+          capsule
+        );
+      }
+    }
+    const trieNodesChildrenFirst = [...materialized.capsule_trie_nodes].sort(
+      (left, right) => right.prefix.length - left.prefix.length ||
+        left.prefix.localeCompare(right.prefix)
+    );
+    const expectedTrieNodeFiles = new Set(
+      trieNodesChildrenFirst.map((node) => `${node.prefix}.json`)
+    );
+    const expectedTrieNodePrefixes = new Set(
+      trieNodesChildrenFirst.map((node) => node.prefix)
+    );
+    if (coordinator.capsuleTrieNodeDigests.size === 0) {
+      let existingFiles: string[] = [];
+      try {
+        existingFiles = await readdir(trieDir);
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+      for (const existing of existingFiles) {
+        if (existing.endsWith(".json") &&
+          !expectedTrieNodeFiles.has(existing)) {
+          await unlink(path.join(trieDir, existing));
+        }
+      }
+    } else {
+      for (const existingPrefix of coordinator.capsuleTrieNodeDigests.keys()) {
+        if (!expectedTrieNodePrefixes.has(existingPrefix)) {
+          try {
+            await unlink(
+              this.researchOperationsProjectionCapsuleTrieNodePath(
+                existingPrefix
+              )
+            );
+          } catch (error) {
+            if (!isMissingFileError(error)) throw error;
+          }
+        }
+      }
+    }
+    for (const node of trieNodesChildrenFirst) {
+      const cachedDigest = coordinator.capsuleTrieNodeDigests.get(node.prefix);
+      if (cachedDigest !== node.node_digest ||
+        !await this.researchOperationsProjectionTrieNodeFileHasDigest(
+          node.prefix,
+          node.node_digest
+        )) {
+        await this.writeJson(
+          this.researchOperationsProjectionCapsuleTrieNodePath(node.prefix),
+          node
+        );
+      }
+    }
+    await this.writeJson(
+      this.researchOperationsProjectionIndexPath(),
+      materialized.index
+    );
+    coordinator.capsuleDigests = new Map(materialized.capsules.map((capsule) => [
+      capsule.research_work_item_id,
+      capsule.capsule_digest
+    ]));
+    coordinator.capsuleTrieNodeDigests = new Map(
+      trieNodesChildrenFirst.map((node) => [
+        node.prefix,
+        node.node_digest
+      ])
+    );
+    coordinator.projectionSourceBindingDigest = this
+      .researchOperationsProjectionIndexSourceBindingDigest(
+        materialized.index
+      );
   }
 
   async initialize(): Promise<void> {
-    await this.seedFixture();
-    await this.recoverPaperTradingComparisonResearchReleases();
-    await this.rebuildProjections();
+    await this.withComparisonEvidenceWriteTransaction(
+      () => this.seedFixtureUnlocked(),
+      { synchronizeFromDisk: false }
+    );
+    await this.withComparisonEvidenceWriteTransaction(
+      () => this.recoverPaperTradingComparisonResearchReleasesUnlocked(),
+      { synchronizeFromDisk: false }
+    );
+    await this.withResearchOperationsProjectionBatchLease(async () => {
+      const coordinator = this.researchOperationsProjectionCoordinator;
+      const revision = coordinator.initialized
+        ? this.markResearchOperationsProjectionDirty()
+        : coordinator.revision;
+      await this.enqueueResearchOperationsProjection(async () => {
+        await this.invalidateResearchOperationsProjectionIndex();
+        try {
+          await this.refreshResearchOperationsProjectionSourceCache();
+          coordinator.candidateReadModels.clear();
+          coordinator.capsuleDigests.clear();
+          coordinator.capsuleTrieNodeDigests.clear();
+          coordinator.projectionSourceBindingDigest = undefined;
+          await this.rebuildProjectionsUnlocked(true);
+          coordinator.initialized = true;
+          this.markResearchOperationsProjectionReadable(revision);
+        } catch (error) {
+          if (!(error instanceof LocalStoreError) || error.code !==
+            "research_operations_projection_source_record_too_large") {
+            throw error;
+          }
+          coordinator.sourceRecords.clear();
+          coordinator.sourceCompatibilityBlocked = true;
+          coordinator.candidateReadModels.clear();
+          coordinator.capsuleDigests.clear();
+          coordinator.capsuleTrieNodeDigests.clear();
+          coordinator.projectionSourceBindingDigest = undefined;
+          await this.rebuildProjectionsUnlocked(false);
+          coordinator.initialized = true;
+          coordinator.readable = false;
+          coordinator.dirty = false;
+          coordinator.indexInvalidation = undefined;
+        }
+      });
+    }, {
+      synchronizeFromDisk: false,
+      sourceGenerationMode: "observe"
+    });
+  }
+
+  async runResearchOperationsProjectionBatch<T>(
+    task: () => Promise<T>
+  ): Promise<T> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const inheritedScope = researchOperationsProjectionBatchContext
+      .getStore()?.get(coordinator);
+    if (inheritedScope !== undefined &&
+      inheritedScope === coordinator.activeBatchScope &&
+      inheritedScope.phase !== "closed") {
+      return this.withResearchOperationsProjectionBatchLease(task);
+    }
+    const outcome = await this.withComparisonEvidenceWriteTransaction(
+      async () => {
+        coordinator.batchDepth = 1;
+        let taskOutcome:
+          | { status: "fulfilled"; value: T }
+          | { status: "rejected"; reason: unknown };
+        try {
+          taskOutcome = { status: "fulfilled", value: await task() };
+        } catch (reason) {
+          taskOutcome = { status: "rejected", reason };
+        }
+        const descendantFailures = await this
+          .drainActiveResearchOperationsProjectionBatchScope();
+        const uncoveredDescendantFailures = descendantFailures.filter(
+          (reason) => taskOutcome.status !== "rejected" ||
+            reason !== taskOutcome.reason
+        );
+        try {
+          if (uncoveredDescendantFailures.length > 0) {
+            const failures = taskOutcome.status === "rejected"
+              ? [taskOutcome.reason, ...uncoveredDescendantFailures]
+              : uncoveredDescendantFailures;
+            throw this.researchOperationsProjectionBatchFailure(
+              failures,
+              "Research operations task and detached descendants failed"
+            );
+          }
+        } finally {
+          coordinator.batchDepth = 0;
+        }
+        try {
+          if (coordinator.dirty) {
+            await this.flushResearchOperationsProjection();
+          }
+        } catch (publicationError) {
+          if (taskOutcome.status === "rejected") {
+            throw new AggregateError(
+              [taskOutcome.reason, publicationError],
+              "Research operations task and projection publication both failed"
+            );
+          }
+          throw publicationError;
+        }
+        return taskOutcome;
+      }
+    );
+    if (outcome.status === "rejected") throw outcome.reason;
+    return outcome.value;
+  }
+
+  private async withResearchOperationsProjectionBatchLease<T>(
+    task: () => Promise<T>,
+    options: ResearchOperationsProjectionBatchLeaseOptions = {}
+  ): Promise<T> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const activeBatches = researchOperationsProjectionBatchContext.getStore();
+    const inheritedScope = activeBatches?.get(coordinator);
+    if (inheritedScope !== undefined &&
+      inheritedScope === coordinator.activeBatchScope &&
+      inheritedScope.phase !== "closed") {
+      return this.registerResearchOperationsProjectionBatchOperation(
+        inheritedScope,
+        task
+      );
+    }
+    const previousBatch = coordinator.batchQueue.catch(() => undefined);
+    let releaseBatch!: () => void;
+    const batchGate = new Promise<void>((resolve) => {
+      releaseBatch = resolve;
+    });
+    coordinator.batchQueue = previousBatch.then(() => batchGate);
+    await previousBatch;
+    const batchScope: ResearchOperationsProjectionBatchScope = {
+      phase: "open",
+      sourceGenerationMode: options.sourceGenerationMode ?? "lazy",
+      sourceMutationGenerationAdvanced: false,
+      pendingOperations: new Set()
+    };
+    coordinator.activeBatchScope = batchScope;
+    const sourceWriteSnapshots = new Map<string, string | undefined>();
+    coordinator.activeSourceWriteSnapshots = sourceWriteSnapshots;
+    const context = new Map(activeBatches ?? []);
+    context.set(coordinator, batchScope);
+    try {
+      return await this.withResearchOperationsProjectionPublicationTransaction(
+        async () => {
+          try {
+            let persistedGeneration = coordinator.sourceGeneration;
+            if (options.synchronizeFromDisk !== false ||
+              options.sourceGenerationMode === "observe") {
+              persistedGeneration = await this
+                .readResearchOperationsProjectionSourceGeneration();
+            }
+            if (options.synchronizeFromDisk !== false) {
+              const existingProjection = await pathExists(
+                this.researchOperationsProjectionIndexPath()
+              );
+              const uninitializedSourcesWithoutGeneration =
+                !coordinator.initialized && !existingProjection &&
+                persistedGeneration === undefined &&
+                coordinator.sourceGeneration === undefined &&
+                await this.hasDurableResearchOperationsProjectionSources();
+              if (
+                (coordinator.initialized &&
+                  persistedGeneration !== coordinator.sourceGeneration) ||
+                (!coordinator.initialized && (
+                  existingProjection ||
+                  persistedGeneration !== undefined &&
+                    persistedGeneration !== coordinator.sourceGeneration ||
+                  uninitializedSourcesWithoutGeneration
+                ))
+              ) {
+                await this.enqueueResearchOperationsProjection(() =>
+                  this.synchronizeResearchOperationsProjectionFromDisk()
+                );
+              }
+            }
+            batchScope.sourceGeneration = options.sourceGenerationMode ===
+              "advance"
+              ? await this
+                  .advanceResearchOperationsProjectionSourceGeneration()
+              : persistedGeneration;
+            batchScope.sourceMutationGenerationAdvanced =
+              options.sourceGenerationMode === "advance";
+            let taskOutcome:
+              | { status: "fulfilled"; value: T }
+              | { status: "rejected"; reason: unknown };
+            try {
+              taskOutcome = {
+                status: "fulfilled",
+                value: await researchOperationsProjectionBatchContext.run(
+                  context,
+                  task
+                )
+              };
+            } catch (reason) {
+              taskOutcome = { status: "rejected", reason };
+            }
+            const descendantFailures = batchScope.phase === "closed"
+              ? []
+              : await this.drainResearchOperationsProjectionBatchScope(
+                  batchScope
+                );
+            const failures = taskOutcome.status === "rejected"
+              ? [taskOutcome.reason, ...descendantFailures]
+              : descendantFailures;
+            if (failures.length > 0) {
+              throw this.researchOperationsProjectionBatchFailure(
+                failures,
+                "Research operations projection batch operations failed"
+              );
+            }
+            if (taskOutcome.status === "rejected") {
+              throw taskOutcome.reason;
+            }
+            if (options.sourceGenerationMode === "observe" &&
+              sourceWriteSnapshots.size > 0) {
+              throw new Error(
+                "research_operations_projection_read_catch_up_mutated_source"
+              );
+            }
+            if (coordinator.dirty && coordinator.batchDepth === 0) {
+              await this.flushResearchOperationsProjection();
+            }
+            coordinator.sourceGeneration = batchScope.sourceGeneration;
+            return taskOutcome.value;
+          } catch (error) {
+            if (sourceWriteSnapshots.size > 0) {
+              try {
+                await this.restoreResearchOperationsProjectionSourceSnapshots(
+                  sourceWriteSnapshots
+                );
+                if (coordinator.initialized) {
+                  await this.enqueueResearchOperationsProjection(() =>
+                    this.synchronizeResearchOperationsProjectionFromDisk()
+                  );
+                }
+              } catch (recoveryError) {
+                coordinator.dirty = true;
+                coordinator.readable = false;
+                throw new AggregateError(
+                  [error, recoveryError],
+                  "Research operations source publication and rollback both failed"
+                );
+              }
+            }
+            throw error;
+          }
+        }
+      );
+    } finally {
+      if (coordinator.activeSourceWriteSnapshots === sourceWriteSnapshots) {
+        coordinator.activeSourceWriteSnapshots = undefined;
+      }
+      batchScope.phase = "closed";
+      if (coordinator.activeBatchScope === batchScope) {
+        coordinator.activeBatchScope = undefined;
+      }
+      releaseBatch();
+    }
+  }
+
+  private registerResearchOperationsProjectionBatchOperation<T>(
+    scope: ResearchOperationsProjectionBatchScope,
+    task: () => Promise<T>
+  ): Promise<T> {
+    let operation: Promise<T>;
+    try {
+      operation = task();
+    } catch (reason) {
+      operation = Promise.reject(reason);
+    }
+    const tracked: Promise<ResearchOperationsProjectionBatchOperationOutcome> =
+      operation.then(
+        (): ResearchOperationsProjectionBatchOperationOutcome => ({
+          status: "fulfilled"
+        }),
+        (reason): ResearchOperationsProjectionBatchOperationOutcome => ({
+          status: "rejected",
+          reason
+        })
+    );
+    scope.pendingOperations.add(tracked);
+    return operation;
+  }
+
+  private async drainActiveResearchOperationsProjectionBatchScope(): Promise<
+    unknown[]
+  > {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const scope = researchOperationsProjectionBatchContext
+      .getStore()?.get(coordinator);
+    if (scope === undefined || scope !== coordinator.activeBatchScope ||
+      scope.phase === "closed") {
+      return [];
+    }
+    return this.drainResearchOperationsProjectionBatchScope(scope);
+  }
+
+  private async drainResearchOperationsProjectionBatchScope(
+    scope: ResearchOperationsProjectionBatchScope
+  ): Promise<unknown[]> {
+    scope.phase = "draining";
+    const failures: unknown[] = [];
+    while (scope.pendingOperations.size > 0) {
+      const pending = [...scope.pendingOperations];
+      for (const operation of pending) {
+        scope.pendingOperations.delete(operation);
+      }
+      const outcomes = await Promise.all(pending);
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected") failures.push(outcome.reason);
+      }
+    }
+    scope.phase = "closed";
+    return failures;
+  }
+
+  private researchOperationsProjectionBatchFailure(
+    failures: unknown[],
+    message: string
+  ): unknown {
+    const uniqueFailures = [...new Set(failures)];
+    return uniqueFailures.length === 1
+      ? uniqueFailures[0]
+      : new AggregateError(uniqueFailures, message);
+  }
+
+  private async ensureResearchOperationsProjectionSourceMutationGeneration():
+    Promise<void> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const scope = researchOperationsProjectionBatchContext
+      .getStore()?.get(coordinator);
+    if (scope === undefined || scope !== coordinator.activeBatchScope ||
+      scope.phase === "closed") {
+      throw new Error(
+        "research_operations_projection_source_mutation_without_batch"
+      );
+    }
+    if (scope.sourceGenerationMode === "observe") {
+      throw new Error(
+        "research_operations_projection_read_catch_up_mutated_source"
+      );
+    }
+    if (scope.sourceMutationGenerationAdvanced) return;
+    scope.sourceMutationGenerationAdvance ??= this
+      .advanceResearchOperationsProjectionSourceGeneration();
+    scope.sourceGeneration = await scope.sourceMutationGenerationAdvance;
+    scope.sourceMutationGenerationAdvanced = true;
+  }
+
+  private async synchronizeResearchOperationsProjectionReadGeneration():
+    Promise<void> {
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (!coordinator.initialized) return;
+    const activeScope = researchOperationsProjectionBatchContext
+      .getStore()?.get(coordinator);
+    if (activeScope !== undefined &&
+      activeScope === coordinator.activeBatchScope &&
+      activeScope.phase !== "closed") {
+      return;
+    }
+    const persistedGeneration = await this
+      .readResearchOperationsProjectionSourceGeneration();
+    if (persistedGeneration === coordinator.sourceGeneration) return;
+    await this.withResearchOperationsProjectionBatchLease(
+      async () => undefined,
+      { sourceGenerationMode: "observe" }
+    );
+  }
+
+  private researchOperationsProjectionIndexSourceBindingDigest(
+    index: ResearchOperationsProjectionIndexRecord
+  ): string {
+    // Bloom membership is a bounded lookup hint and may return false positives.
+    // Exact authority remains bound by the source-derived trie and capsules.
+    const {
+      session_membership: _sessionMembership,
+      projection_digest: _projectionDigest,
+      ...sourceBinding
+    } = index;
+    return `sha256:${createHash("sha256")
+      .update(paperTradingComparisonPersistedRecordDigestInput(sourceBinding))
+      .digest("hex")}`;
+  }
+
+  async readResearchOperationsProjectionWindow(
+    input: ReadResearchOperationsProjectionWindowInput
+  ): Promise<ResearchOperationsProjectionWindow> {
+    await this.synchronizeResearchOperationsProjectionReadGeneration();
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (coordinator.sourceCompatibilityBlocked) {
+      throw new ResearchOperationsProjectionCompatibilityError(
+        "legacy_source_oversized"
+      );
+    }
+    if (!coordinator.initialized || !coordinator.readable || coordinator.dirty) {
+      throw new Error("research_operations_projection_not_initialized");
+    }
+    const readRevision = coordinator.revision;
+    if (!Number.isSafeInteger(input?.session_limit) || input.session_limit < 0 ||
+      input.session_limit > 100 ||
+      input.active_tick_id !== undefined &&
+        (typeof input.active_tick_id !== "string" ||
+          input.active_tick_id.length === 0 || input.active_tick_id.length > 200) ||
+      input.active_research_work_item_ids !== undefined &&
+        (!Array.isArray(input.active_research_work_item_ids) ||
+          input.active_research_work_item_ids.length > 100 ||
+          input.active_research_work_item_ids.some((id) =>
+            typeof id !== "string" || id.length === 0 || id.length > 200
+          )) || input.exact_research_work_item_id !== undefined &&
+        (typeof input.exact_research_work_item_id !== "string" ||
+          input.exact_research_work_item_id.length === 0 ||
+          input.exact_research_work_item_id.length > 200) ||
+      input.expected_projection_digest !== undefined &&
+        (typeof input.expected_projection_digest !== "string" ||
+          input.expected_projection_digest.length > 100)) {
+      throw new TypeError("Research operations projection window input is invalid");
+    }
+    const index = await this.readBoundedResearchOperationsProjectionJson<
+      ResearchOperationsProjectionIndexRecord
+    >(
+      this.researchOperationsProjectionIndexPath(),
+      "research_operations_projection_index_too_large"
+    );
+    if (!researchOperationsProjectionIndexHasIntegrity(index)) {
+      throw new Error("research_operations_projection_index_invalid");
+    }
+    if (input.expected_projection_digest !== undefined &&
+      input.expected_projection_digest !== index.projection_digest) {
+      throw new Error("research_operations_projection_generation_mismatch");
+    }
+    const headRefs = index.head_session_refs.slice(0, input.session_limit);
+    const requiredHeadDigests = new Map(headRefs.map((reference) => [
+      reference.research_work_item_id,
+      reference.capsule_digest
+    ]));
+    const runtimeActiveIds = new Set(
+      input.active_research_work_item_ids ?? []
+    );
+    const activeIds = new Set(runtimeActiveIds);
+    const activeTickIds = new Set<string>();
+    let activeTickRootWorkItemIds: string[] | undefined;
+    let activeTickSiblingIds: string[] | undefined;
+    let activeTickResearchAllocationId: string | undefined;
+    let activeTickConcurrencyLimit: number | undefined;
+    if (input.active_tick_id) {
+      const activeTickRefs = index.open_tick_session_refs.filter(
+        (reference) => reference.tick_id === input.active_tick_id
+      );
+      const terminalTickAlreadyPersisted =
+        index.candidate_arena_evidence.availability === "available" &&
+        index.candidate_arena_evidence.terminal_tick_ids.includes(
+          input.active_tick_id
+        );
+      if (activeTickRefs.length === 0 && activeIds.size === 0 &&
+        terminalTickAlreadyPersisted) {
+        // CandidateArena keeps active_tick_id during its bounded continuation
+        // after terminal tick evidence has removed every open Research session.
+      } else if (activeTickRefs.length === 0 && activeIds.size > 0 &&
+        index.open_tick_sessions_truncated) {
+        // The bounded root may omit an older still-open tick. Exact runtime IDs
+        // remain fail-closed because every loaded capsule is bound back to this
+        // active tick below.
+      } else if (activeTickRefs.length !== 1) {
+        throw new Error("research_operations_projection_active_tick_missing");
+      } else {
+        activeTickRootWorkItemIds = [
+          ...activeTickRefs[0]!.research_work_item_ids
+        ].sort();
+        for (const workItemId of activeTickRootWorkItemIds) {
+          activeIds.add(workItemId);
+        }
+      }
+      for (const workItemId of activeIds) activeTickIds.add(workItemId);
+    }
+    const requiredIds = new Set([
+      ...requiredHeadDigests.keys(),
+      ...activeIds
+    ]);
+    const requestedIds = new Set([
+      ...headRefs.map((reference) => reference.research_work_item_id),
+      ...activeIds,
+      ...(input.exact_research_work_item_id
+        ? [input.exact_research_work_item_id]
+        : [])
+    ]);
+    const trieRootRefs = new Map(index.capsule_trie_root_refs.map((reference) =>
+      [reference.prefix, reference] as const
+    ));
+    const loadedTrieNodes = new Map<
+      string,
+      ResearchOperationsProjectionCapsuleTrieNode
+    >();
+    const expectedCapsuleDigest = async (
+      id: string
+    ): Promise<string | undefined> => {
+      const headDigest = requiredHeadDigests.get(id);
+      const routeHash = researchOperationsProjectionCapsuleRouteHash(id);
+      let prefix = routeHash.slice(0, 2);
+      let expectedNodeRef = trieRootRefs.get(prefix);
+      if (!expectedNodeRef) {
+        if (!requiredIds.has(id) && input.exact_research_work_item_id === id) {
+          return undefined;
+        }
+        throw new Error("research_operations_projection_capsule_unbound");
+      }
+      for (let depth = 0; depth < 32; depth += 1) {
+        let node = loadedTrieNodes.get(prefix);
+        if (!node) {
+          try {
+            node = await this.readBoundedResearchOperationsProjectionJson<
+              ResearchOperationsProjectionCapsuleTrieNode
+            >(
+              this.researchOperationsProjectionCapsuleTrieNodePath(prefix),
+              "research_operations_projection_capsule_trie_node_too_large"
+            );
+          } catch (error) {
+            if (isMissingFileError(error)) {
+              throw new Error(
+                "research_operations_projection_capsule_trie_node_missing"
+              );
+            }
+            throw error;
+          }
+          if (!researchOperationsProjectionCapsuleTrieNodeHasIntegrity(node) ||
+            node.prefix !== prefix ||
+            node.node_digest !== expectedNodeRef.node_digest ||
+            node.subtree_entry_count !==
+              expectedNodeRef.subtree_entry_count) {
+            throw new Error(
+              "research_operations_projection_capsule_trie_node_invalid"
+            );
+          }
+          loadedTrieNodes.set(prefix, node);
+        } else if (node.node_digest !== expectedNodeRef.node_digest ||
+          node.subtree_entry_count !== expectedNodeRef.subtree_entry_count) {
+          throw new Error(
+            "research_operations_projection_capsule_trie_node_invalid"
+          );
+        }
+        if (node.node_kind === "leaf") {
+          const entries = node.entries.filter((entry) =>
+            entry.research_work_item_id === id
+          );
+          if (entries.length === 1) {
+            const trieDigest = entries[0]!.capsule_digest;
+            if (headDigest !== undefined && headDigest !== trieDigest) {
+              throw new Error(
+                "research_operations_projection_head_trie_mismatch"
+              );
+            }
+            return trieDigest;
+          }
+          if (entries.length === 0 && !requiredIds.has(id) &&
+            input.exact_research_work_item_id === id) {
+            return undefined;
+          }
+          throw new Error("research_operations_projection_capsule_unbound");
+        }
+        const childPrefix = routeHash.slice(0, prefix.length + 2);
+        const children = node.children.filter((child) =>
+          child.prefix === childPrefix
+        );
+        if (children.length !== 1) {
+          if (children.length === 0 && !requiredIds.has(id) &&
+            input.exact_research_work_item_id === id) {
+            return undefined;
+          }
+          throw new Error("research_operations_projection_capsule_unbound");
+        }
+        prefix = childPrefix;
+        expectedNodeRef = children[0]!;
+      }
+      throw new Error("research_operations_projection_capsule_trie_depth_invalid");
+    };
+    const capsules: ResearchOperationsProjectionCapsule[] = [];
+    let capsuleSourceMismatch = false;
+    for (const id of requestedIds) {
+      const expectedDigest = await expectedCapsuleDigest(id);
+      if (!expectedDigest) continue;
+      if (coordinator.capsuleDigests.get(id) !== expectedDigest) {
+        capsuleSourceMismatch = true;
+      }
+      let capsule: ResearchOperationsProjectionCapsule | undefined;
+      try {
+        capsule = await this.readBoundedResearchOperationsProjectionJson<
+          ResearchOperationsProjectionCapsule
+        >(
+          this.researchOperationsProjectionCapsulePath(id),
+          "research_operations_projection_capsule_too_large"
+        );
+      } catch (error) {
+        if (!isMissingFileError(error)) throw error;
+      }
+      if (!capsule) {
+        if (requiredIds.has(id) || input.exact_research_work_item_id === id) {
+          throw new Error("research_operations_projection_capsule_missing");
+        }
+        continue;
+      }
+      if (!researchOperationsProjectionCapsuleHasIntegrity(capsule) ||
+        capsule.research_work_item_id !== id ||
+        expectedDigest !== capsule.capsule_digest ||
+        activeTickIds.has(id) && (
+          capsule.runtime_identity.tick_id !== input.active_tick_id ||
+          runtimeActiveIds.has(id) && capsule.terminal_evidence_present &&
+            !capsule.graph_conflict
+        )) {
+        throw new Error("research_operations_projection_capsule_invalid");
+      }
+      if (activeTickIds.has(id)) {
+        const siblingIds =
+          capsule.runtime_identity.tick_research_work_item_ids;
+        if (activeTickSiblingIds === undefined) {
+          activeTickSiblingIds = [...siblingIds];
+          activeTickResearchAllocationId =
+            capsule.runtime_identity.research_allocation_id;
+          activeTickConcurrencyLimit =
+            capsule.runtime_identity.concurrency_limit;
+        } else if (!sameJson(activeTickSiblingIds, siblingIds)) {
+          throw new Error(
+            "research_operations_projection_active_tick_siblings_mismatch"
+          );
+        } else if (capsule.runtime_identity.research_allocation_id !==
+            activeTickResearchAllocationId ||
+          capsule.runtime_identity.concurrency_limit !==
+            activeTickConcurrencyLimit) {
+          throw new Error(
+            "research_operations_projection_active_tick_siblings_mismatch"
+          );
+        }
+        for (const siblingId of siblingIds) {
+          activeIds.add(siblingId);
+          activeTickIds.add(siblingId);
+          requiredIds.add(siblingId);
+          requestedIds.add(siblingId);
+        }
+      }
+      capsules.push(capsule);
+    }
+    if (input.active_tick_id && activeTickSiblingIds !== undefined) {
+      const siblingIds = activeTickSiblingIds;
+      const activeTickCapsules = capsules.filter((capsule) =>
+        siblingIds.includes(capsule.research_work_item_id)
+      );
+      if (activeTickCapsules.length !== siblingIds.length ||
+        activeTickCapsules.some((capsule) =>
+          capsule.runtime_identity.tick_id !== input.active_tick_id ||
+          capsule.runtime_identity.research_allocation_id !==
+            activeTickResearchAllocationId ||
+          capsule.runtime_identity.concurrency_limit !==
+            activeTickConcurrencyLimit ||
+          !sameJson(
+            capsule.runtime_identity.tick_research_work_item_ids,
+            siblingIds
+          )
+        )) {
+        throw new Error(
+          "research_operations_projection_active_tick_siblings_mismatch"
+        );
+      }
+      if (activeTickRootWorkItemIds !== undefined) {
+        const openSiblingIds = activeTickCapsules
+          .filter((capsule) => !capsule.terminal_evidence_present)
+          .map((capsule) => capsule.research_work_item_id)
+          .sort();
+        if (!sameJson(openSiblingIds, activeTickRootWorkItemIds)) {
+          throw new Error(
+            "research_operations_projection_active_tick_siblings_mismatch"
+          );
+        }
+      }
+    }
+    if (capsuleSourceMismatch) {
+      throw new Error("research_operations_projection_source_mismatch");
+    }
+    if (this.researchOperationsProjectionIndexSourceBindingDigest(index) !==
+      coordinator.projectionSourceBindingDigest) {
+      throw new Error("research_operations_projection_source_mismatch");
+    }
+    const confirmedIndex = await this.readBoundedResearchOperationsProjectionJson<
+      ResearchOperationsProjectionIndexRecord
+    >(
+      this.researchOperationsProjectionIndexPath(),
+      "research_operations_projection_index_too_large"
+    );
+    if (!researchOperationsProjectionIndexHasIntegrity(confirmedIndex) ||
+      confirmedIndex.projection_digest !== index.projection_digest ||
+      coordinator.revision !== readRevision || !coordinator.readable ||
+      coordinator.dirty) {
+      throw new Error("research_operations_projection_changed_during_read");
+    }
+    return { index, capsules };
+  }
+
+  async readCandidateArenaEvidenceProjection():
+    Promise<CandidateArenaEvidenceProjection> {
+    await this.synchronizeResearchOperationsProjectionReadGeneration();
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    const activeScope = researchOperationsProjectionBatchContext
+      .getStore()?.get(coordinator);
+    const ownsActiveBatch = activeScope !== undefined &&
+      activeScope === coordinator.activeBatchScope &&
+      activeScope.phase !== "closed";
+    if (!ownsActiveBatch) {
+      while (coordinator.dirty || !coordinator.readable) {
+        const pendingBatch = coordinator.batchQueue;
+        await pendingBatch.catch(() => undefined);
+        await coordinator.queue.catch(() => undefined);
+        if (pendingBatch === coordinator.batchQueue) break;
+      }
+    }
+    if (coordinator.sourceCompatibilityBlocked) {
+      throw new ResearchOperationsProjectionCompatibilityError(
+        "legacy_source_oversized"
+      );
+    }
+    if (!coordinator.initialized || !coordinator.readable || coordinator.dirty) {
+      throw new Error("candidate_arena_evidence_projection_not_initialized");
+    }
+    const revision = coordinator.revision;
+    const index = await this.readBoundedResearchOperationsProjectionJson<
+      ResearchOperationsProjectionIndexRecord
+    >(
+      this.researchOperationsProjectionIndexPath(),
+      "research_operations_projection_index_too_large"
+    );
+    if (!researchOperationsProjectionIndexHasIntegrity(index) ||
+      this.researchOperationsProjectionIndexSourceBindingDigest(index) !==
+        coordinator.projectionSourceBindingDigest ||
+      coordinator.revision !== revision || !coordinator.readable ||
+      coordinator.dirty) {
+      throw new Error("candidate_arena_evidence_projection_invalid");
+    }
+    return {
+      ...index.candidate_arena_evidence,
+      projection_digest: index.projection_digest
+    };
   }
 
   async listCandidates(): Promise<CandidateSummaryReadModel[]> {
@@ -3171,7 +4861,20 @@ export class LocalStore {
     if (identity === "exact_replay") {
       return systemCode;
     }
-    await this.writeJson(this.itemPath("system-codes", systemCode.system_code_id), systemCode);
+    const publication = await this.writeJsonCreateOnly(
+      this.itemPath("system-codes", systemCode.system_code_id),
+      systemCode
+    );
+    if (publication === "exists") {
+      const winner = await this.getSystemCode(systemCode.system_code_id);
+      if (!winner || !sameJson(winner, systemCode)) {
+        throw new LocalStoreError(
+          "authority_evidence_identity_conflict",
+          `system_code:${systemCode.system_code_id} is immutable under its deterministic identity`
+        );
+      }
+      return winner;
+    }
     return systemCode;
   }
 
@@ -3179,7 +4882,9 @@ export class LocalStore {
     decision: CandidateAdmissionDecisionRecord
   ): Promise<CandidateAdmissionDecisionRecord> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordCandidateAdmissionDecisionUnlocked(decision)
+      () => this.withResearchMemoryControlPublicationTransaction(
+        () => this.recordCandidateAdmissionDecisionUnlocked(decision)
+      )
     );
   }
 
@@ -3199,6 +4904,37 @@ export class LocalStore {
     });
     if (identity === "exact_replay") {
       return decision;
+    }
+    const conflictingDecision = (await this.listCandidateAdmissionDecisions())
+      .find((candidate) =>
+        candidate.candidate_admission_decision_id !==
+          decision.candidate_admission_decision_id && (
+          candidate.trading_evaluation_result_ref.id ===
+            decision.trading_evaluation_result_ref.id ||
+          candidate.research_preflight_commitment_ref?.id !== undefined &&
+            candidate.research_preflight_commitment_ref.id ===
+              decision.research_preflight_commitment_ref?.id
+        )
+      );
+    if (conflictingDecision) {
+      throw new LocalStoreError(
+        "candidate_admission_graph_conflict",
+        "CandidateAdmissionDecision commitment or Evaluation graph already has a distinct owner",
+        {
+          candidate_admission_decision_id:
+            decision.candidate_admission_decision_id,
+          conflicting_candidate_admission_decision_id:
+            conflictingDecision.candidate_admission_decision_id,
+          ...(decision.research_preflight_commitment_ref
+            ? {
+                research_preflight_commitment_id:
+                  decision.research_preflight_commitment_ref.id
+              }
+            : {}),
+          trading_evaluation_result_id:
+            decision.trading_evaluation_result_ref.id
+        }
+      );
     }
     await this.writeJson(
       this.itemPath(
@@ -4063,6 +5799,14 @@ export class LocalStore {
   async recordResearchGeneralizationProtocol(
     protocol: ResearchGeneralizationProtocolRecord
   ): Promise<ResearchGeneralizationProtocolRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchGeneralizationProtocolUnlocked(protocol)
+    );
+  }
+
+  private async recordResearchGeneralizationProtocolUnlocked(
+    protocol: ResearchGeneralizationProtocolRecord
+  ): Promise<ResearchGeneralizationProtocolRecord> {
     if (!researchGeneralizationProtocolHasRuntimeShape(protocol)) {
       throw new LocalStoreError(
         "invalid_research_generalization_protocol_input",
@@ -4216,6 +5960,14 @@ export class LocalStore {
   }
 
   async recordResearchControlStudy(
+    study: ResearchControlStudyRecord
+  ): Promise<ResearchControlStudyRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchControlStudyUnlocked(study)
+    );
+  }
+
+  private async recordResearchControlStudyUnlocked(
     study: ResearchControlStudyRecord
   ): Promise<ResearchControlStudyRecord> {
     if (!researchControlStudyHasRuntimeShape(study)) {
@@ -4519,6 +6271,14 @@ export class LocalStore {
   async recordResearchControlStudyOutcome(
     outcome: ResearchControlStudyOutcomeRecord
   ): Promise<ResearchControlStudyOutcomeRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchControlStudyOutcomeUnlocked(outcome)
+    );
+  }
+
+  private async recordResearchControlStudyOutcomeUnlocked(
+    outcome: ResearchControlStudyOutcomeRecord
+  ): Promise<ResearchControlStudyOutcomeRecord> {
     if (!researchControlStudyOutcomeHasRuntimeShape(outcome)) {
       throw new LocalStoreError(
         "invalid_research_control_study_outcome_input",
@@ -4786,7 +6546,7 @@ export class LocalStore {
       return plannedTickIds.has(preflight.candidate_arena_tick_id);
     });
     const tickEffect = ticks.some((tick) => {
-      if (!isCandidateArenaTickRecord(tick)) {
+      if (!candidateArenaTickHasRuntimeShape(tick)) {
         throw new LocalStoreError(
           "research_memory_control_study_effect_graph_corrupt",
           "CandidateArena tick effect graph is corrupt"
@@ -6053,6 +7813,14 @@ export class LocalStore {
   }
 
   async recordResearchControlCampaign(
+    campaign: ResearchControlCampaignRecord
+  ): Promise<ResearchControlCampaignRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchControlCampaignUnlocked(campaign)
+    );
+  }
+
+  private async recordResearchControlCampaignUnlocked(
     campaign: ResearchControlCampaignRecord
   ): Promise<ResearchControlCampaignRecord> {
     if (!researchControlCampaignHasRuntimeShape(campaign)) {
@@ -7606,6 +9374,14 @@ export class LocalStore {
   async recordResearchDirection(
     direction: ResearchDirectionRecord
   ): Promise<ResearchDirectionRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchDirectionUnlocked(direction)
+    );
+  }
+
+  private async recordResearchDirectionUnlocked(
+    direction: ResearchDirectionRecord
+  ): Promise<ResearchDirectionRecord> {
     if (!isResearchDirectionRecord(direction)) {
       throw new LocalStoreError(
         "invalid_research_direction_input",
@@ -7661,6 +9437,14 @@ export class LocalStore {
   }
 
   async recordResearchWorker(worker: ResearchWorkerRecord): Promise<ResearchWorkerRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchWorkerUnlocked(worker)
+    );
+  }
+
+  private async recordResearchWorkerUnlocked(
+    worker: ResearchWorkerRecord
+  ): Promise<ResearchWorkerRecord> {
     if (!isResearchWorkerRecord(worker)) {
       throw new LocalStoreError(
         "invalid_research_worker_input",
@@ -8238,6 +10022,7 @@ export class LocalStore {
     const checkpoints = (await this.readCollection<unknown>(
       "research-worker-checkpoints"
     )).map((value) => this.assertPersistedResearchWorkerCheckpoint(value));
+    this.assertResearchWorkerCheckpointCollectionUnique(checkpoints);
     const existing = checkpoints.find((candidate) =>
       candidate.research_worker_checkpoint_id ===
         checkpoint.research_worker_checkpoint_id
@@ -8284,6 +10069,7 @@ export class LocalStore {
     const checkpoints = (await this.readCollection<unknown>(
       "research-worker-checkpoints"
     )).map((candidate) => this.assertPersistedResearchWorkerCheckpoint(candidate));
+    this.assertResearchWorkerCheckpointCollectionUnique(checkpoints);
     await this.assertResearchWorkerCheckpointGraph(checkpoint, checkpoints);
     return checkpoint;
   }
@@ -8292,6 +10078,7 @@ export class LocalStore {
     const checkpoints = (await this.readCollection<unknown>(
       "research-worker-checkpoints"
     )).map((value) => this.assertPersistedResearchWorkerCheckpoint(value));
+    this.assertResearchWorkerCheckpointCollectionUnique(checkpoints);
     for (const checkpoint of checkpoints) {
       await this.assertResearchWorkerCheckpointGraph(checkpoint, checkpoints);
     }
@@ -8921,11 +10708,57 @@ export class LocalStore {
     return value;
   }
 
+  private assertResearchWorkerCheckpointCollectionUnique(
+    checkpoints: ResearchWorkerCheckpointRecord[]
+  ): void {
+    const checkpointsById = new Map<string, number>();
+    const checkpointsByCommitmentId = new Map<string, number>();
+    for (const checkpoint of checkpoints) {
+      checkpointsById.set(
+        checkpoint.research_worker_checkpoint_id,
+        (checkpointsById.get(checkpoint.research_worker_checkpoint_id) ?? 0) + 1
+      );
+      const commitmentId = checkpoint.research_preflight_commitment_ref.id;
+      checkpointsByCommitmentId.set(
+        commitmentId,
+        (checkpointsByCommitmentId.get(commitmentId) ?? 0) + 1
+      );
+    }
+    const duplicateCheckpointIds = [...checkpointsById]
+      .filter(([, count]) => count > 1)
+      .map(([checkpointId]) => checkpointId)
+      .sort();
+    const duplicateCommitmentIds = [...checkpointsByCommitmentId]
+      .filter(([, count]) => count > 1)
+      .map(([commitmentId]) => commitmentId)
+      .sort();
+    if (duplicateCheckpointIds.length === 0 &&
+      duplicateCommitmentIds.length === 0) {
+      return;
+    }
+    throw new LocalStoreError(
+      "research_worker_checkpoint_reload_failed",
+      "persisted ResearchWorkerCheckpoint ownership is ambiguous",
+      {
+        duplicate_checkpoint_ids: duplicateCheckpointIds,
+        duplicate_commitment_ids: duplicateCommitmentIds
+      }
+    );
+  }
+
   private async assertResearchWorkerCheckpointGraph(
     checkpoint: ResearchWorkerCheckpointRecord,
     persistedCheckpoints: ResearchWorkerCheckpointRecord[]
   ): Promise<void> {
-    const [worker, direction, commitment, admission, commitments] = await Promise.all([
+    const terminalDirectionResult = checkpoint.terminal_direction_result;
+    const [
+      worker,
+      direction,
+      commitment,
+      admission,
+      commitments,
+      terminalCandidate
+    ] = await Promise.all([
       this.getResearchWorker(checkpoint.research_worker_ref.id),
       this.getResearchDirection(checkpoint.research_direction_ref.id),
       this.getResearchPreflightCommitment(
@@ -8936,10 +10769,15 @@ export class LocalStore {
             checkpoint.candidate_admission_decision_ref.id
           )
         : Promise.resolve(undefined),
-      this.listResearchPreflightCommitments()
+      this.listResearchPreflightCommitments(),
+      terminalDirectionResult?.status === "created" &&
+        terminalDirectionResult.candidate_id
+        ? this.getCandidate(terminalDirectionResult.candidate_id)
+        : Promise.resolve(undefined)
     ]);
     if (!worker || !direction || !commitment ||
-      (checkpoint.candidate_admission_decision_ref && !admission)) {
+      (checkpoint.candidate_admission_decision_ref && !admission) ||
+      (terminalDirectionResult?.status === "created" && !terminalCandidate)) {
       throw new LocalStoreError(
         "research_worker_checkpoint_reference_not_found",
         "ResearchWorkerCheckpoint reference was not found",
@@ -8961,6 +10799,58 @@ export class LocalStore {
         }
       );
     }
+    const [
+      researchFindings,
+      terminalConformance,
+      terminalSystemCode,
+      terminalEvaluation
+    ] =
+      await Promise.all([
+        admission ? this.listResearchFindings() : Promise.resolve([]),
+        admission?.paper_trading_handoff_conformance_ref
+          ? this.getPaperTradingHandoffConformance(
+              admission.paper_trading_handoff_conformance_ref.id
+            )
+          : Promise.resolve(undefined),
+        admission
+          ? this.getSystemCode(admission.system_code_ref.id)
+          : Promise.resolve(undefined),
+        admission
+          ? this.getTradingEvaluationResult(
+              admission.trading_evaluation_result_ref.id
+            )
+          : Promise.resolve(undefined)
+      ]);
+    const terminalFinding = admission
+      ? researchFindings.find((finding) =>
+          finding.research_finding_id === admission.research_finding_ref.id
+        )
+      : undefined;
+    const terminalPreflight = terminalDirectionResult?.research_preflight;
+    const sealedTerminalEvaluation =
+      terminalEvaluation?.evaluation_phase === "sealed_admission"
+        ? terminalEvaluation
+        : undefined;
+    const expectedPreflightStatus = sealedTerminalEvaluation
+      ? sealedTerminalEvaluation.result_status === "accepted"
+        ? "accepted"
+        : "rejected"
+      : "not_run";
+    const expectedPreflightReason = sealedTerminalEvaluation
+      ? sealedTerminalEvaluation.result_status === "accepted"
+        ? "accepted"
+        : "candidate_rejected"
+      : admission ||
+          checkpoint.terminal_reason === "finished_without_submission"
+        ? "no_development_winner"
+        : "execution_failed";
+    const terminalEfficiency = terminalDirectionResult?.research_efficiency;
+    const developmentEfficiency = terminalEfficiency?.development;
+    const sealedEfficiency = terminalEfficiency?.sealed_admission;
+    const terminalEfficiencyRequired = terminalDirectionResult !== undefined &&
+      terminalDirectionResult.status !== "failed";
+    // Compatibility contract: top-level efficiency totals are the development
+    // phase totals consumed by campaign diagnostics. Sealed metrics stay nested.
 
     const workerCommitments = commitments
       .filter((candidate) =>
@@ -9098,6 +10988,145 @@ export class LocalStore {
         : undefined,
       admission && Date.parse(checkpoint.closed_at) < Date.parse(admission.decided_at)
         ? "closed_at.before_admission"
+        : undefined,
+      terminalDirectionResult && admission &&
+        terminalDirectionResult.status !== (
+          admission.status === "admitted" ? "created" : admission.status
+        )
+        ? "terminal_direction_result.status"
+        : undefined,
+      terminalDirectionResult &&
+        terminalDirectionResult.direction_kind !== direction.direction_kind
+        ? "terminal_direction_result.direction_kind"
+        : undefined,
+      terminalDirectionResult?.research_preflight &&
+        terminalDirectionResult.research_preflight.commitment_id !==
+          commitment.research_preflight_commitment_id
+        ? "terminal_direction_result.research_preflight.commitment_id"
+        : undefined,
+      terminalDirectionResult && !terminalPreflight
+        ? "terminal_direction_result.research_preflight"
+        : undefined,
+      terminalPreflight &&
+        terminalPreflight.development_submission_count !==
+          checkpoint.development_budget.recorded_submission_count
+        ? "terminal_direction_result.research_preflight.development_submission_count"
+        : undefined,
+      terminalPreflight &&
+        terminalPreflight.sealed_terminal_status !== expectedPreflightStatus
+        ? "terminal_direction_result.research_preflight.sealed_terminal_status"
+        : undefined,
+      terminalPreflight &&
+        terminalPreflight.reason !== expectedPreflightReason
+        ? "terminal_direction_result.research_preflight.reason"
+        : undefined,
+      terminalEfficiencyRequired && !terminalEfficiency
+        ? "terminal_direction_result.research_efficiency"
+        : undefined,
+      terminalEfficiencyRequired && !developmentEfficiency
+        ? "terminal_direction_result.research_efficiency.development"
+        : undefined,
+      terminalEfficiencyRequired && !sealedEfficiency
+        ? "terminal_direction_result.research_efficiency.sealed_admission"
+        : undefined,
+      developmentEfficiency &&
+        developmentEfficiency.submission_count !==
+          checkpoint.development_budget.recorded_submission_count
+        ? "terminal_direction_result.research_efficiency.development.submission_count"
+        : undefined,
+      developmentEfficiency && terminalEfficiency &&
+        (terminalEfficiency.provider_request_total !==
+          developmentEfficiency.provider_request_total ||
+        terminalEfficiency.runner_command_total !==
+          developmentEfficiency.runner_command_total ||
+        terminalEfficiency.scenario_count !==
+          developmentEfficiency.scenario_count ||
+        terminalEfficiency.elapsed_ms !== developmentEfficiency.elapsed_ms)
+        ? "terminal_direction_result.research_efficiency.development_totals"
+        : undefined,
+      sealedEfficiency &&
+        sealedEfficiency.submission_count !==
+          (sealedTerminalEvaluation ? 1 : 0)
+        ? "terminal_direction_result.research_efficiency.sealed_admission.submission_count"
+        : undefined,
+      terminalDirectionResult?.admission_decision_id &&
+        terminalDirectionResult.admission_decision_id !==
+          admission?.candidate_admission_decision_id
+        ? "terminal_direction_result.admission_decision_id"
+        : undefined,
+      terminalDirectionResult && admission &&
+        terminalDirectionResult.admission_reason !== admission.reason
+        ? "terminal_direction_result.admission_reason"
+        : undefined,
+      terminalDirectionResult && admission && !terminalFinding
+        ? "terminal_direction_result.research_finding"
+        : undefined,
+      terminalDirectionResult && terminalFinding &&
+        terminalDirectionResult.status !== "created" &&
+        terminalDirectionResult.finding !== terminalFinding.summary
+        ? "terminal_direction_result.finding"
+        : undefined,
+      terminalDirectionResult && admission &&
+        !sameJson(
+          terminalDirectionResult.paper_handoff_conformance,
+          terminalConformance
+            ? compactCandidateArenaCheckpointConformance(terminalConformance)
+            : undefined
+        )
+        ? "terminal_direction_result.paper_handoff_conformance"
+        : undefined,
+      terminalDirectionResult && admission && !terminalSystemCode
+        ? "terminal_direction_result.system_code"
+        : undefined,
+      terminalCandidate && admission && terminalSystemCode &&
+        (terminalCandidate.system_code?.ref?.id !==
+          admission.system_code_ref.id ||
+        terminalCandidate.full_cycle_lineage?.generated?.system_code_ref.id !==
+          admission.system_code_ref.id ||
+        terminalCandidate.full_cycle_lineage.generated.artifact_digest !==
+          admission.submitted_artifact_digest ||
+        terminalSystemCode.artifact_digest !==
+          admission.submitted_artifact_digest)
+        ? "terminal_direction_result.candidate.system_code"
+        : undefined,
+      terminalCandidate &&
+        terminalCandidate.full_cycle_lineage?.evidence?.direction_kind !==
+          direction.direction_kind
+        ? "terminal_direction_result.candidate.direction_kind"
+        : undefined,
+      terminalCandidate && terminalDirectionResult?.status === "created" &&
+        terminalDirectionResult.net_revenue_usdt !==
+          terminalCandidate.full_cycle_lineage?.evidence?.profit_loss
+            ?.net_revenue_usdt
+        ? "terminal_direction_result.candidate.net_revenue_usdt"
+        : undefined,
+      terminalCandidate && terminalDirectionResult?.status === "created" &&
+        terminalDirectionResult.finding !== (
+          (terminalCandidate.full_cycle_lineage?.evidence?.profit_loss
+            ?.net_revenue_usdt ?? 0) >= 0
+            ? "Candidate produced non-negative net revenue after costs."
+            : "Candidate remained executable but lost money after costs."
+        )
+        ? "terminal_direction_result.candidate.finding"
+        : undefined,
+      terminalCandidate &&
+        (terminalCandidate.full_cycle_lineage?.handoff_status !== "runnable" ||
+        terminalCandidate.full_cycle_lineage.materialized
+          ?.trading_system_id !== terminalCandidate.candidate_id ||
+        terminalCandidate.full_cycle_lineage.materialized
+          ?.candidate_version_id !==
+            terminalCandidate.candidate_version.candidate_version_id ||
+        terminalCandidate.materialization_attempt?.status !== "materialized" ||
+        terminalCandidate.materialization_attempt.resulting_candidate_ref?.id !==
+          terminalCandidate.candidate_id ||
+        !terminalCandidate.materialization_attempt.idempotency_key.endsWith(
+          `:${candidateArenaCheckpointSafeId(
+            `candidate-arena-${candidateArenaCheckpointSafeId(
+              checkpoint.candidate_arena_tick_id
+            )}-${candidateArenaCheckpointSafeId(direction.direction_kind)}`
+          )}`
+        ))
+        ? "terminal_direction_result.candidate.materialization"
         : undefined
     ].filter((field): field is string => Boolean(field));
     if (graphMismatchFields.length > 0) {
@@ -9122,7 +11151,8 @@ export class LocalStore {
   private async recordCandidateArenaTickUnlocked(
     tick: CandidateArenaTickRecord
   ): Promise<CandidateArenaTickRecord> {
-    if (!isCandidateArenaTickRecord(tick)) {
+    if (!candidateArenaTickHasRuntimeShape(tick) ||
+      !candidateArenaTickAuthorityGraphHasRuntimeShape(tick)) {
       throw new LocalStoreError(
         "invalid_candidate_arena_tick_input",
         "invalid Candidate Arena tick input",
@@ -9162,8 +11192,22 @@ export class LocalStore {
   }
 
   async listCandidateArenaTicks(): Promise<CandidateArenaTickRecord[]> {
-    return (await this.readCollection<CandidateArenaTickRecord>("candidate-arena-ticks"))
+    return (await this.readCollection<unknown>("candidate-arena-ticks"))
+      .map((tick) => this.assertPersistedCandidateArenaTick(tick))
       .sort(compareCandidateArenaTicks);
+  }
+
+  private assertPersistedCandidateArenaTick(
+    value: unknown
+  ): CandidateArenaTickRecord {
+    if (!candidateArenaTickHasRuntimeShape(value) ||
+      !candidateArenaTickAuthorityGraphHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        "candidate_arena_tick_reload_failed",
+        "persisted CandidateArena tick is unreadable or corrupt"
+      );
+    }
+    return value;
   }
 
   async recordAgentProfile(profile: AgentProfileRecord): Promise<AgentProfileRecord> {
@@ -16009,14 +18053,19 @@ export class LocalStore {
   async recoverPaperTradingComparisonResearchReleases(): Promise<
     PaperTradingComparisonResearchReleaseRecord[]
   > {
-    return this.withComparisonEvidenceWriteTransaction(async () => {
-      const releases = await this.listPaperTradingComparisonResearchReleases();
-      for (const release of releases) {
-        await this.validatePaperTradingComparisonResearchReleaseGraph(release);
-        await this.materializePaperTradingComparisonResearchRelease(release);
-      }
-      return releases;
-    });
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recoverPaperTradingComparisonResearchReleasesUnlocked()
+    );
+  }
+
+  private async recoverPaperTradingComparisonResearchReleasesUnlocked():
+    Promise<PaperTradingComparisonResearchReleaseRecord[]> {
+    const releases = await this.listPaperTradingComparisonResearchReleases();
+    for (const release of releases) {
+      await this.validatePaperTradingComparisonResearchReleaseGraph(release);
+      await this.materializePaperTradingComparisonResearchRelease(release);
+    }
+    return releases;
   }
 
   private assertPersistedPaperTradingComparisonResearchRelease(
@@ -18783,6 +20832,14 @@ export class LocalStore {
   async recordCandidateMaterializationFailure(
     failure: CandidateMaterializationFailureInput
   ): Promise<CandidateMaterializationOutcome> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordCandidateMaterializationFailureUnlocked(failure)
+    );
+  }
+
+  private async recordCandidateMaterializationFailureUnlocked(
+    failure: CandidateMaterializationFailureInput
+  ): Promise<CandidateMaterializationOutcome> {
     const existing = await this.findMaterializationAttemptByIdempotencyKey(failure.idempotency_key);
     if (existing) {
       return this.toMaterializationOutcome(existing);
@@ -19994,6 +22051,357 @@ export class LocalStore {
     }
   }
 
+  private researchOperationsProjectionPublicationLockPaths(): {
+    root: string;
+    active: string;
+    activeOwner: string;
+    transition: string;
+    transitionOwner: string;
+  } {
+    const root = path.join(
+      this.storeRoot,
+      ".locks",
+      "research-operations-projection-publication"
+    );
+    const active = path.join(root, "active");
+    const transition = path.join(root, "transition");
+    return {
+      root,
+      active,
+      activeOwner: path.join(active, "owner.json"),
+      transition,
+      transitionOwner: path.join(transition, "owner.json")
+    };
+  }
+
+  private async acquireResearchOperationsProjectionPublicationLock(): Promise<
+    ResearchMemoryControlPublicationLockOwner
+  > {
+    const paths = this.researchOperationsProjectionPublicationLockPaths();
+    const processStartMarker = await currentProcessStartMarker();
+    const owner: ResearchMemoryControlPublicationLockOwner = {
+      token: randomUUID(),
+      pid: process.pid,
+      process_start_marker: processStartMarker,
+      acquired_at: new Date().toISOString()
+    };
+    await mkdir(paths.root, { recursive: true });
+    await this.cleanupResearchOperationsProjectionPublicationDebris(paths);
+    const processMarkerDigest = createHash("sha256")
+      .update(owner.process_start_marker)
+      .digest("hex")
+      .slice(0, 16);
+    const claim = path.join(
+      paths.root,
+      `claim-${owner.pid}-${processMarkerDigest}-${owner.token}`
+    );
+    const claimOwner = path.join(claim, "owner.json");
+    await mkdir(claim);
+    await writeFile(
+      claimOwner,
+      `${JSON.stringify(owner, null, 2)}\n`,
+      "utf8"
+    );
+    try {
+      for (let attempt = 0;
+        attempt < RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_ATTEMPTS;
+        attempt += 1) {
+        await this.recoverResearchOperationsProjectionPublicationTransition(
+          paths
+        );
+        try {
+          await rename(claim, paths.active);
+          return owner;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
+        }
+        const current = await this
+          .readResearchOperationsProjectionPublicationLockOwner(
+            paths.activeOwner
+          );
+        if (!current) {
+          if (!await pathExists(paths.active)) continue;
+          throw new LocalStoreError(
+            "research_operations_projection_publication_lock_corrupt",
+            "Research operations projection publication lock has no complete owner"
+          );
+        }
+        if (await researchMemoryControlPublicationOwnerIsAlive(current)) {
+          await waitForResearchMemoryControlPublicationLock();
+          continue;
+        }
+        await this.transitionStaleResearchOperationsProjectionPublicationLock(
+          paths,
+          current
+        );
+      }
+      throw new LocalStoreError(
+        "research_operations_projection_publication_lock_unavailable",
+        "Research operations projection publication lock did not become available"
+      );
+    } finally {
+      await rm(claim, { recursive: true, force: true });
+    }
+  }
+
+  private async releaseResearchOperationsProjectionPublicationLock(
+    owner: ResearchMemoryControlPublicationLockOwner
+  ): Promise<void> {
+    const paths = this.researchOperationsProjectionPublicationLockPaths();
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const current = await this
+        .readResearchOperationsProjectionPublicationLockOwner(
+          paths.activeOwner
+        );
+      if (current) {
+        if (!sameResearchMemoryControlPublicationLockOwner(current, owner)) {
+          throw new LocalStoreError(
+            "research_operations_projection_publication_lock_corrupt",
+            "Research operations projection publication lock ownership changed"
+          );
+        }
+        const retiring = path.join(paths.root, `retiring-${owner.token}`);
+        const retiringOwner = path.join(retiring, "owner.json");
+        try {
+          await rename(paths.active, retiring);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") {
+            await waitForResearchMemoryControlPublicationLock();
+            continue;
+          }
+          if (code === "EEXIST" || code === "ENOTEMPTY") {
+            throw new LocalStoreError(
+              "research_operations_projection_publication_lock_corrupt",
+              "Research operations projection retirement identity already exists",
+              { cause: error }
+            );
+          }
+          throw error;
+        }
+        const retiredOwner = await this
+          .readResearchOperationsProjectionPublicationLockOwner(retiringOwner);
+        if (!retiredOwner || !sameResearchMemoryControlPublicationLockOwner(
+          retiredOwner,
+          owner
+        )) {
+          throw new LocalStoreError(
+            "research_operations_projection_publication_lock_corrupt",
+            "Research operations projection retirement changed ownership"
+          );
+        }
+        await rm(retiring, { recursive: true, force: true });
+        return;
+      }
+      const transitioning = await this
+        .readResearchOperationsProjectionPublicationLockOwner(
+          paths.transitionOwner
+        );
+      if (transitioning && sameResearchMemoryControlPublicationLockOwner(
+        transitioning,
+        owner
+      )) {
+        await this.restoreResearchOperationsProjectionPublicationTransition(
+          paths
+        );
+        continue;
+      }
+      await waitForResearchMemoryControlPublicationLock();
+    }
+    throw new LocalStoreError(
+      "research_operations_projection_publication_lock_corrupt",
+      "Research operations projection publication lock disappeared before release"
+    );
+  }
+
+  private async cleanupResearchOperationsProjectionPublicationDebris(
+    paths: ReturnType<
+      LocalStore["researchOperationsProjectionPublicationLockPaths"]
+    >
+  ): Promise<void> {
+    const entries = await readdir(paths.root);
+    for (const entry of entries) {
+      if (entry.startsWith("retiring-")) {
+        const retiring = path.join(paths.root, entry);
+        const owner = await this
+          .readResearchOperationsProjectionPublicationLockOwner(
+            path.join(retiring, "owner.json")
+          );
+        if (!owner || !await researchMemoryControlPublicationOwnerIsAlive(owner)) {
+          await rm(retiring, { recursive: true, force: true });
+        }
+        continue;
+      }
+      if (!entry.startsWith("claim-")) continue;
+      const claim = path.join(paths.root, entry);
+      let owner: ResearchMemoryControlPublicationLockOwner | undefined;
+      try {
+        owner = await this
+          .readResearchOperationsProjectionPublicationLockOwner(
+            path.join(claim, "owner.json")
+          );
+      } catch (error) {
+        if (!(error instanceof LocalStoreError) || error.code !==
+          "research_operations_projection_publication_lock_corrupt") {
+          throw error;
+        }
+      }
+      if (owner && await researchMemoryControlPublicationOwnerIsAlive(owner)) {
+        continue;
+      }
+      if (!owner && await this
+        .researchOperationsProjectionClaimMayStillBePreparing(entry, claim)) {
+        continue;
+      }
+      await rm(claim, { recursive: true, force: true });
+    }
+  }
+
+  private async researchOperationsProjectionClaimMayStillBePreparing(
+    entry: string,
+    claimPath: string
+  ): Promise<boolean> {
+    const namedOwner = /^claim-(\d+)-([0-9a-f]{16})-[0-9a-f-]+$/
+      .exec(entry);
+    if (namedOwner) {
+      const pid = Number(namedOwner[1]);
+      if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+        return true;
+      }
+      const marker = await processStartMarker(pid);
+      return marker === undefined || createHash("sha256").update(marker)
+        .digest("hex").slice(0, 16) === namedOwner[2];
+    }
+    try {
+      const metadata = await stat(claimPath);
+      return Date.now() - metadata.mtimeMs <
+        RESEARCH_OPERATIONS_PROJECTION_ORPHANED_CLAIM_GRACE_MS;
+    } catch (error) {
+      if (isMissingFileError(error)) return false;
+      throw error;
+    }
+  }
+
+  private async cleanupResearchOperationsProjectionGenerationTemps(): Promise<
+    void
+  > {
+    const generationPath = this
+      .researchOperationsProjectionSourceGenerationPath();
+    const directory = path.dirname(generationPath);
+    const prefix = `${path.basename(generationPath)}.`;
+    let entries: string[];
+    try {
+      entries = await readdir(directory);
+    } catch (error) {
+      if (isMissingFileError(error)) return;
+      throw error;
+    }
+    await Promise.all(entries
+      .filter((entry) => entry.startsWith(prefix) && entry.endsWith(".tmp"))
+      .map((entry) => rm(path.join(directory, entry), { force: true })));
+  }
+
+  private async transitionStaleResearchOperationsProjectionPublicationLock(
+    paths: ReturnType<
+      LocalStore["researchOperationsProjectionPublicationLockPaths"]
+    >,
+    expected: ResearchMemoryControlPublicationLockOwner
+  ): Promise<void> {
+    try {
+      await rename(paths.active, paths.transition);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EEXIST" || code === "ENOTEMPTY") {
+        return;
+      }
+      throw error;
+    }
+    const moved = await this
+      .readResearchOperationsProjectionPublicationLockOwner(
+        paths.transitionOwner
+      );
+    const expectedMoved = moved !== undefined &&
+      sameResearchMemoryControlPublicationLockOwner(moved, expected);
+    if (!expectedMoved || (moved &&
+      await researchMemoryControlPublicationOwnerIsAlive(moved))) {
+      await this.restoreResearchOperationsProjectionPublicationTransition(
+        paths
+      );
+      return;
+    }
+    await rm(paths.transition, { recursive: true, force: true });
+  }
+
+  private async recoverResearchOperationsProjectionPublicationTransition(
+    paths: ReturnType<
+      LocalStore["researchOperationsProjectionPublicationLockPaths"]
+    >
+  ): Promise<void> {
+    if (!await pathExists(paths.transition)) return;
+    const owner = await this
+      .readResearchOperationsProjectionPublicationLockOwner(
+        paths.transitionOwner
+      );
+    if (!owner) {
+      if (!await pathExists(paths.transition)) return;
+      await rm(paths.transition, { recursive: true, force: true });
+      return;
+    }
+    if (await researchMemoryControlPublicationOwnerIsAlive(owner)) {
+      await this.restoreResearchOperationsProjectionPublicationTransition(
+        paths
+      );
+      return;
+    }
+    await rm(paths.transition, { recursive: true, force: true });
+  }
+
+  private async restoreResearchOperationsProjectionPublicationTransition(
+    paths: ReturnType<
+      LocalStore["researchOperationsProjectionPublicationLockPaths"]
+    >
+  ): Promise<void> {
+    try {
+      await rename(paths.transition, paths.active);
+    } catch (error) {
+      if (isMissingFileError(error)) return;
+      throw new LocalStoreError(
+        "research_operations_projection_publication_lock_corrupt",
+        "Research operations projection transition could not be restored",
+        { cause: error }
+      );
+    }
+  }
+
+  private async readResearchOperationsProjectionPublicationLockOwner(
+    ownerPath: string
+  ): Promise<ResearchMemoryControlPublicationLockOwner | undefined> {
+    let value: unknown;
+    try {
+      value = JSON.parse(await readFile(ownerPath, "utf8"));
+    } catch (error) {
+      if (isMissingFileError(error) || error instanceof SyntaxError) {
+        return undefined;
+      }
+      throw error;
+    }
+    if (!isPlainObject(value) || typeof value.token !== "string" ||
+      !value.token || !Number.isSafeInteger(value.pid) ||
+      Number(value.pid) <= 0 || !nonEmpty(value.process_start_marker) ||
+      !isIsoTimestamp(value.acquired_at)) {
+      throw new LocalStoreError(
+        "research_operations_projection_publication_lock_corrupt",
+        "Research operations projection publication lock owner is corrupt"
+      );
+    }
+    return value as unknown as ResearchMemoryControlPublicationLockOwner;
+  }
+
   private researchMemoryControlPublicationLockPaths(): {
     root: string;
     active: string;
@@ -20268,14 +22676,188 @@ export class LocalStore {
     return JSON.parse(text) as T;
   }
 
+  private async readBoundedResearchOperationsProjectionJson<T>(
+    filePath: string,
+    tooLargeError: string
+  ): Promise<T> {
+    const handle = await open(filePath, "r");
+    try {
+      const metadata = await handle.stat();
+      if (!metadata.isFile() || metadata.size >
+        RESEARCH_OPERATIONS_PROJECTION_FILE_MAX_BYTES) {
+        throw new Error(tooLargeError);
+      }
+      const buffer = Buffer.alloc(
+        RESEARCH_OPERATIONS_PROJECTION_FILE_MAX_BYTES + 1
+      );
+      let bytesRead = 0;
+      while (bytesRead < buffer.length) {
+        const result = await handle.read(
+          buffer,
+          bytesRead,
+          buffer.length - bytesRead,
+          bytesRead
+        );
+        if (result.bytesRead === 0) break;
+        bytesRead += result.bytesRead;
+      }
+      if (bytesRead > RESEARCH_OPERATIONS_PROJECTION_FILE_MAX_BYTES) {
+        throw new Error(tooLargeError);
+      }
+      return JSON.parse(buffer.subarray(0, bytesRead).toString("utf8")) as T;
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private async readBoundedResearchOperationsProjectionSourceJson(
+    filePath: string,
+    collection: Collection
+  ): Promise<Record<string, unknown>> {
+    const handle = await open(filePath, "r");
+    try {
+      const metadata = await handle.stat();
+      if (!metadata.isFile()) {
+        throw new LocalStoreError(
+          "research_operations_projection_source_record_invalid",
+          "Research operations projection source record is not a file",
+          { collection }
+        );
+      }
+      if (metadata.size > RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES) {
+        throw new LocalStoreError(
+          "research_operations_projection_source_record_too_large",
+          "Research operations projection source record exceeds its byte bound",
+          { collection, serialized_bytes: metadata.size }
+        );
+      }
+      const buffer = Buffer.alloc(
+        RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES + 1
+      );
+      let bytesRead = 0;
+      while (bytesRead < buffer.length) {
+        const result = await handle.read(
+          buffer,
+          bytesRead,
+          buffer.length - bytesRead,
+          bytesRead
+        );
+        if (result.bytesRead === 0) break;
+        bytesRead += result.bytesRead;
+      }
+      if (bytesRead > RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES) {
+        throw new LocalStoreError(
+          "research_operations_projection_source_record_too_large",
+          "Research operations projection source record exceeds its byte bound",
+          { collection, serialized_bytes: bytesRead }
+        );
+      }
+      return this.parseResearchOperationsProjectionSourceSnapshot(
+        filePath,
+        collection,
+        buffer.subarray(0, bytesRead).toString("utf8"),
+        bytesRead
+      );
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private parseResearchOperationsProjectionSourceSnapshot(
+    filePath: string,
+    collection: Collection,
+    serialized: string,
+    serializedBytes: number
+  ): Record<string, unknown> {
+    let value: unknown;
+    try {
+      value = JSON.parse(serialized) as unknown;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new LocalStoreError(
+        "research_operations_projection_source_record_invalid",
+        "Research operations projection source record is not valid JSON",
+        { collection, cause: error }
+      );
+    }
+    if (!isPlainObject(value)) {
+      throw new LocalStoreError(
+        "research_operations_projection_source_record_invalid",
+        "Research operations projection source record must be an object",
+        { collection }
+      );
+    }
+    const expectedRecordKind =
+      RESEARCH_OPERATIONS_PROJECTION_SOURCE_RECORD_KINDS.get(collection);
+    const expectedVersions =
+      RESEARCH_OPERATIONS_PROJECTION_SOURCE_RECORD_VERSION_OVERRIDES
+        .get(collection) ?? [1];
+    if (expectedRecordKind === undefined ||
+      value.record_kind !== expectedRecordKind ||
+      typeof value.version !== "number" ||
+      !expectedVersions.includes(value.version)) {
+      throw new LocalStoreError(
+        "research_operations_projection_source_record_invalid",
+        "Research operations projection source record kind or version is invalid",
+        { collection }
+      );
+    }
+    this.assertResearchOperationsProjectionSourceRecordSize(
+      filePath,
+      value,
+      serializedBytes
+    );
+    return value;
+  }
+
   private async writeJson(filePath: string, value: unknown): Promise<void> {
-    await this.publish(async () => {
+    const serialized = `${JSON.stringify(value, null, 2)}\n`;
+    const sourceCollection = this
+      .researchOperationsProjectionSourceCollection(filePath);
+    const sourceSnapshot = sourceCollection === undefined
+      ? undefined
+      : this.parseResearchOperationsProjectionSourceSnapshot(
+          filePath,
+          sourceCollection,
+          serialized,
+          Buffer.byteLength(serialized, "utf8")
+        );
+    const write = () => this.publish(async () => {
       await mkdir(path.dirname(filePath), { recursive: true });
       const tmpPath = `${filePath}.tmp`;
       // LocalStore writes validated records to encoded paths under storeRoot.
       // codeql[js/http-to-file-access]
-      await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+      await writeFile(tmpPath, serialized, "utf8");
+      if (sourceCollection !== undefined) {
+        await this
+          .ensureResearchOperationsProjectionSourceMutationGeneration();
+      }
       await rename(tmpPath, filePath);
+    });
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (sourceCollection === undefined) {
+      await write();
+      return;
+    }
+    await this.withResearchOperationsProjectionBatchLease(async () => {
+      await this.captureResearchOperationsProjectionSourceSnapshot(filePath);
+      if (!coordinator.initialized) {
+        await write();
+        return;
+      }
+      const revision = this.markResearchOperationsProjectionDirty();
+      await this.enqueueResearchOperationsProjection(async () => {
+        await this.invalidateResearchOperationsProjectionIndex();
+        await write();
+        this.updateResearchOperationsProjectionSourceCache(
+          filePath,
+          sourceSnapshot
+        );
+        if (coordinator.batchDepth === 0) {
+          await this.rebuildResearchOperationsProjectionUnlocked();
+          this.markResearchOperationsProjectionReadable(revision);
+        }
+      });
     });
   }
 
@@ -20283,17 +22865,35 @@ export class LocalStore {
     filePath: string,
     value: unknown
   ): Promise<"created" | "exists"> {
-    return this.publish(async () => {
+    const serialized = `${JSON.stringify(value, null, 2)}\n`;
+    const sourceCollection = this
+      .researchOperationsProjectionSourceCollection(filePath);
+    const sourceSnapshot = sourceCollection === undefined
+      ? undefined
+      : this.parseResearchOperationsProjectionSourceSnapshot(
+          filePath,
+          sourceCollection,
+          serialized,
+          Buffer.byteLength(serialized, "utf8")
+        );
+    const write = () => this.publish(async () => {
       await mkdir(path.dirname(filePath), { recursive: true });
+      if (sourceCollection !== undefined && await pathExists(filePath)) {
+        return "exists";
+      }
       const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
       // LocalStore writes validated records to encoded paths under storeRoot.
       // codeql[js/http-to-file-access]
       await writeFile(
         temporaryPath,
-        `${JSON.stringify(value, null, 2)}\n`,
+        serialized,
         "utf8"
       );
       try {
+        if (sourceCollection !== undefined) {
+          await this
+            .ensureResearchOperationsProjectionSourceMutationGeneration();
+        }
         await link(temporaryPath, filePath);
         return "created";
       } catch (error) {
@@ -20309,6 +22909,119 @@ export class LocalStore {
         }
       }
     });
+    const coordinator = this.researchOperationsProjectionCoordinator;
+    if (sourceCollection === undefined) {
+      return write();
+    }
+    return this.withResearchOperationsProjectionBatchLease(async () => {
+      await this.captureResearchOperationsProjectionSourceSnapshot(filePath);
+      if (!coordinator.initialized) {
+        return write();
+      }
+      const revision = this.markResearchOperationsProjectionDirty();
+      return this.enqueueResearchOperationsProjection(async () => {
+        await this.invalidateResearchOperationsProjectionIndex();
+        const result = await write();
+        if (result === "created") {
+          this.updateResearchOperationsProjectionSourceCache(
+            filePath,
+            sourceSnapshot
+          );
+        }
+        if (coordinator.batchDepth === 0) {
+          await this.rebuildResearchOperationsProjectionUnlocked();
+          this.markResearchOperationsProjectionReadable(revision);
+        }
+        return result;
+      });
+    });
+  }
+
+  private researchOperationsProjectionSourceCollection(
+    filePath: string
+  ): Collection | undefined {
+    const parts = path.relative(this.storeRoot, filePath).split(path.sep);
+    const collection = parts[0] as Collection;
+    return parts.length === 3 && parts[1] === "items" &&
+      RESEARCH_OPERATIONS_PROJECTION_COLLECTIONS.has(collection)
+      ? collection
+      : undefined;
+  }
+
+  private async captureResearchOperationsProjectionSourceSnapshot(
+    filePath: string
+  ): Promise<void> {
+    const snapshots = this.researchOperationsProjectionCoordinator
+      .activeSourceWriteSnapshots;
+    const normalizedFilePath = path.resolve(filePath);
+    if (!snapshots || snapshots.has(normalizedFilePath)) return;
+    try {
+      snapshots.set(normalizedFilePath, await readFile(normalizedFilePath, "utf8"));
+    } catch (error) {
+      if (!isMissingFileError(error)) throw error;
+      snapshots.set(normalizedFilePath, undefined);
+    }
+  }
+
+  private async restoreResearchOperationsProjectionSourceSnapshots(
+    snapshots: Map<string, string | undefined>
+  ): Promise<void> {
+    for (const [filePath, previous] of [...snapshots].reverse()) {
+      if (previous === undefined) {
+        try {
+          await unlink(filePath);
+        } catch (error) {
+          if (!isMissingFileError(error)) throw error;
+        }
+        continue;
+      }
+      await mkdir(path.dirname(filePath), { recursive: true });
+      const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.rollback`;
+      await writeFile(temporaryPath, previous, "utf8");
+      try {
+        await rename(temporaryPath, filePath);
+      } finally {
+        try {
+          await unlink(temporaryPath);
+        } catch (error) {
+          if (!isMissingFileError(error)) throw error;
+        }
+      }
+    }
+  }
+
+  private assertResearchOperationsProjectionSourceRecordSize(
+    filePath: string,
+    value: unknown,
+    serializedBytes: number
+  ): void {
+    const parts = path.relative(this.storeRoot, filePath).split(path.sep);
+    const collection = parts[0] as Collection;
+    if (parts.length !== 3 || parts[1] !== "items" ||
+      !RESEARCH_OPERATIONS_PROJECTION_COLLECTIONS.has(collection)) {
+      return;
+    }
+    if (serializedBytes > RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES) {
+      throw new LocalStoreError(
+        "research_operations_projection_source_record_too_large",
+        "Research operations projection source record exceeds its byte bound",
+        { collection, serialized_bytes: serializedBytes }
+      );
+    }
+    if (!RESEARCH_OPERATIONS_PROJECTION_BOUNDED_ROOT_COLLECTIONS.has(collection) ||
+      researchOperationsProjectionSourceRecordHasBoundedShape(
+      value as CandidateArenaResearchAllocationRecord | CandidateArenaTickRecord |
+        ResearchFindingRecord | ArtifactLineageRecord
+    )) {
+      return;
+    }
+    throw new LocalStoreError(
+      "research_operations_projection_source_record_too_large",
+      `Research operations projection root source record is invalid or exceeds ${
+        RESEARCH_OPERATIONS_SOURCE_RECORD_MAX_BYTES
+      } bytes`,
+      { collection, serialized_bytes: serializedBytes }
+    );
   }
 
   private publish<T>(write: () => Promise<T>): Promise<T> {
@@ -21907,40 +24620,6 @@ function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord
   );
 }
 
-function isCandidateArenaTickRecord(value: unknown): value is CandidateArenaTickRecord {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const raw = value as Partial<CandidateArenaTickRecord>;
-  return (
-    raw.record_kind === "candidate_arena_tick" &&
-    raw.version === 1 &&
-    nonEmpty(raw.candidate_arena_tick_id) &&
-    nonEmpty(raw.tick_id) &&
-    nonEmpty(raw.started_at) &&
-    nonEmpty(raw.completed_at) &&
-    isCandidateArenaTickStatus(raw.status) &&
-    (raw.source_candidate === undefined || isCandidateArenaTickSource(raw.source_candidate)) &&
-    Array.isArray(raw.created_candidate_refs) &&
-    raw.created_candidate_refs.every((item) => isRef(item, "trading_system_candidate")) &&
-    Array.isArray(raw.direction_results) &&
-    raw.direction_results.every(isCandidateArenaTickDirectionResult) &&
-    (
-      raw.research_allocation_ref === undefined &&
-        raw.research_allocation_digest === undefined ||
-      isRef(
-        raw.research_allocation_ref,
-        "candidate_arena_research_allocation"
-      ) && nonEmpty(raw.research_allocation_digest)
-    ) &&
-    (
-      raw.paper_trading_continuation === undefined ||
-      isCandidateArenaTickPaperTradingContinuation(raw.paper_trading_continuation)
-    ) &&
-    raw.authority_status === "not_live"
-  );
-}
-
 function isArtifactLineageRecord(value: unknown): value is ArtifactLineageRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -22116,250 +24795,6 @@ function isResearchOrchestrationRunStatus(value: unknown): boolean {
 
 function isExperimentRunStatus(value: unknown): boolean {
   return value === "submitted" || value === "evaluated" || value === "failed" || value === "discarded";
-}
-
-function isCandidateArenaTickStatus(value: unknown): boolean {
-  return value === "completed" || value === "completed_with_errors" || value === "failed";
-}
-
-function isCandidateArenaTickSourceKind(value: unknown): boolean {
-  return (
-    value === "fixture_seed" ||
-    value === "evaluated_arena_leader" ||
-    value === "paper_trading_evaluation_leader" ||
-    value === "explicit_candidate"
-  );
-}
-
-function isCandidateArenaTickSource(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const raw = value as Record<string, unknown>;
-  const hasNetRevenue = raw.net_revenue_usdt === undefined ||
-    (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
-  return (
-    isCandidateArenaTickSourceKind(raw.source_kind) &&
-    nonEmpty(raw.candidate_id) &&
-    nonEmpty(raw.display_name) &&
-    hasNetRevenue &&
-    raw.authority_status === "not_live"
-  );
-}
-
-function isCandidateArenaDirectionResultStatus(value: unknown): boolean {
-  return value === "created" ||
-    value === "duplicate" ||
-    value === "quarantined" ||
-    value === "no_submission" ||
-    value === "failed";
-}
-
-function isCandidateArenaTickPaperTradingContinuation(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const raw = value as {
-    status?: unknown;
-    command_kind?: unknown;
-    selected_candidate_id?: unknown;
-    error?: unknown;
-    authority_status?: unknown;
-  };
-  const hasSelectedCandidateId = raw.selected_candidate_id === undefined || nonEmpty(raw.selected_candidate_id);
-  const hasError = raw.error === undefined || nonEmpty(raw.error);
-  return (
-    (raw.status === "started" || raw.status === "queued" ||
-      raw.status === "failed") &&
-    raw.command_kind === "trading_run.start" &&
-    hasSelectedCandidateId &&
-    hasError &&
-    raw.authority_status === "not_live"
-  );
-}
-
-function isCandidateArenaResearchDirection(value: unknown): boolean {
-  return (
-    value === "trend_following" ||
-    value === "mean_reversion" ||
-    value === "volatility_regime" ||
-    value === "funding_aware_risk" ||
-    value === "liquidation_aware_risk" ||
-    value === "execution_cost_robustness" ||
-    value === "other"
-  );
-}
-
-function isCandidateArenaTickDirectionResult(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const raw = value as {
-    direction_kind?: unknown;
-    status?: unknown;
-    candidate_id?: unknown;
-    finding?: unknown;
-    error?: unknown;
-    admission_decision_id?: unknown;
-    admission_reason?: unknown;
-    net_revenue_usdt?: unknown;
-    research_efficiency?: unknown;
-    research_preflight?: unknown;
-    paper_handoff_conformance?: unknown;
-  };
-  const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
-  const hasFinding = raw.finding === undefined || nonEmpty(raw.finding);
-  const hasError = raw.error === undefined || nonEmpty(raw.error);
-  const hasAdmissionDecisionId = raw.admission_decision_id === undefined ||
-    nonEmpty(raw.admission_decision_id);
-  const hasAdmissionReason = raw.admission_reason === undefined ||
-    isCandidateAdmissionReason(raw.admission_reason);
-  const hasNetRevenue = raw.net_revenue_usdt === undefined ||
-    (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
-  const hasResearchEfficiency = raw.research_efficiency === undefined ||
-    isCandidateArenaResearchEfficiency(raw.research_efficiency);
-  const hasResearchPreflight = raw.research_preflight === undefined ||
-    isCandidateArenaResearchPreflight(raw.research_preflight);
-  const hasPaperHandoffConformance = raw.paper_handoff_conformance === undefined ||
-    isCandidateArenaPaperHandoffConformance(raw.paper_handoff_conformance);
-  return (
-    isCandidateArenaResearchDirection(raw.direction_kind) &&
-    isCandidateArenaDirectionResultStatus(raw.status) &&
-    hasCandidateId &&
-    hasFinding &&
-    hasError &&
-    hasAdmissionDecisionId &&
-    hasAdmissionReason &&
-    hasNetRevenue &&
-    hasResearchEfficiency &&
-    hasResearchPreflight &&
-    hasPaperHandoffConformance &&
-    (
-      raw.status === "created"
-        ? nonEmpty(raw.candidate_id)
-        : raw.status === "failed"
-          ? nonEmpty(raw.error)
-          : raw.status === "no_submission"
-            ? nonEmpty(raw.finding) &&
-              raw.candidate_id === undefined &&
-              raw.error === undefined &&
-              raw.admission_decision_id === undefined &&
-              raw.admission_reason === undefined &&
-              raw.net_revenue_usdt === undefined &&
-              raw.paper_handoff_conformance === undefined
-            : nonEmpty(raw.finding) &&
-            nonEmpty(raw.admission_decision_id) &&
-            isCandidateAdmissionReason(raw.admission_reason)
-    )
-  );
-}
-
-function isCandidateArenaPaperHandoffConformance(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const raw = value as Record<string, unknown>;
-  const hasAttestation = raw.candidate_egress_attestation !== undefined;
-  return Object.keys(raw).length === (hasAttestation ? 5 : 4) &&
-    nonEmpty(raw.conformance_id) &&
-    (raw.status === "passed" || raw.status === "rejected") &&
-    nonEmpty(raw.reason) &&
-    (!hasAttestation ||
-      isCandidateArenaCompactEgressAttestation(
-        raw.candidate_egress_attestation
-      )) &&
-    raw.authority_status === "research_only";
-}
-
-function isCandidateArenaCompactEgressAttestation(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const raw = value as Record<string, unknown>;
-  const denial = raw.denial_summary as Record<string, unknown> | undefined;
-  return Object.keys(raw).sort().join(",") === [
-    "attestation_id",
-    "authority_status",
-    "denial_summary",
-    "enforcement_result",
-    "network_policy_digest",
-    "verification_status"
-  ].sort().join(",") &&
-    nonEmpty(raw.attestation_id) &&
-    raw.verification_status === "verified" &&
-    raw.enforcement_result === "enforced" &&
-    isSha256Digest(raw.network_policy_digest) &&
-    denial !== undefined &&
-    Object.keys(denial).sort().join(",") === [
-      "required_probe_count",
-      "start_denied_probe_count",
-      "end_denied_probe_count",
-      "unexpected_allow_count"
-    ].sort().join(",") &&
-    [
-      denial.required_probe_count,
-      denial.start_denied_probe_count,
-      denial.end_denied_probe_count
-    ].every((count) => Number.isSafeInteger(count) && Number(count) >= 0) &&
-    denial.unexpected_allow_count === 0 &&
-    raw.authority_status === "research_only";
-}
-
-function isCandidateArenaResearchEfficiency(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const raw = value as Record<string, unknown>;
-  return (
-    typeof raw.provider_request_total === "number" &&
-    Number.isFinite(raw.provider_request_total) &&
-    raw.provider_request_total >= 0 &&
-    typeof raw.runner_command_total === "number" &&
-    Number.isFinite(raw.runner_command_total) &&
-    raw.runner_command_total >= 0 &&
-    typeof raw.scenario_count === "number" &&
-    Number.isFinite(raw.scenario_count) &&
-    raw.scenario_count >= 0 &&
-    typeof raw.elapsed_ms === "number" &&
-    Number.isFinite(raw.elapsed_ms) &&
-    raw.elapsed_ms >= 0 &&
-    (raw.development === undefined ||
-      isCandidateArenaResearchEfficiencyPhase(raw.development)) &&
-    (raw.sealed_admission === undefined ||
-      isCandidateArenaResearchEfficiencyPhase(raw.sealed_admission)) &&
-    raw.authority_status === "not_promotion_authority"
-  );
-}
-
-function isCandidateArenaResearchEfficiencyPhase(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const raw = value as Record<string, unknown>;
-  return [
-    raw.submission_count,
-    raw.provider_request_total,
-    raw.runner_command_total,
-    raw.scenario_count,
-    raw.elapsed_ms
-  ].every((metric) =>
-    typeof metric === "number" && Number.isInteger(metric) && metric >= 0
-  );
-}
-
-function isCandidateArenaResearchPreflight(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const raw = value as Record<string, unknown>;
-  return Object.keys(raw).length === 5 &&
-    nonEmpty(raw.commitment_id) &&
-    typeof raw.development_submission_count === "number" &&
-    Number.isInteger(raw.development_submission_count) &&
-    raw.development_submission_count >= 0 &&
-    raw.development_submission_count <= 2 &&
-    (raw.sealed_terminal_status === "accepted" ||
-      raw.sealed_terminal_status === "rejected" ||
-      raw.sealed_terminal_status === "not_run") &&
-    (raw.sealed_terminal_status === "accepted"
-      ? raw.reason === "accepted"
-      : raw.sealed_terminal_status === "rejected"
-        ? raw.reason === "candidate_rejected"
-        : raw.reason === "no_development_winner" ||
-          raw.reason === "execution_failed") &&
-    raw.authority_status === "not_promotion_authority";
 }
 
 function isTradingEvaluationResultStatus(value: unknown): boolean {
@@ -22894,6 +25329,63 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+function candidateArenaCheckpointSafeId(value: string): string {
+  let normalized = "";
+  let insertedSeparator = false;
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    const safe = character === "-" || character === "_" ||
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122);
+    if (safe) {
+      normalized += character;
+      insertedSeparator = false;
+    } else if (!insertedSeparator) {
+      normalized += "-";
+      insertedSeparator = true;
+    }
+    if (normalized.length > 96) break;
+  }
+  let start = 0;
+  let end = normalized.length;
+  while (start < end && normalized[start] === "-") {
+    start += 1;
+  }
+  while (end > start && normalized[end - 1] === "-") {
+    end -= 1;
+  }
+  return normalized.slice(start, end).slice(0, 96) || "empty";
+}
+
+function compactCandidateArenaCheckpointConformance(
+  record: PaperTradingHandoffConformanceRecord
+) {
+  return {
+    conformance_id: record.paper_trading_handoff_conformance_id,
+    status: record.status,
+    reason: record.reason,
+    ...(record.version === 2
+      ? {
+          candidate_egress_attestation: {
+            attestation_id:
+              record.candidate_egress_attestation.attestation_id,
+            verification_status: "verified" as const,
+            enforcement_result: "enforced" as const,
+            network_policy_digest:
+              record.candidate_egress_attestation.network_policy_digest,
+            denial_summary: {
+              ...record.candidate_egress_attestation.denial_summary,
+              unexpected_allow_count: 0 as const
+            },
+            authority_status: "research_only" as const
+          }
+        }
+      : {}),
+    authority_status: "research_only" as const
+  };
 }
 
 function comparePaperTradingEvaluations(
@@ -23884,11 +26376,8 @@ async function researchMemoryControlPublicationOwnerIsAlive(
 }
 
 async function waitForResearchMemoryControlPublicationLock(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(
-      resolve,
-      RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS
-    );
-    timer.unref?.();
-  });
+  await new Promise<void>((resolve) => setTimeout(
+    resolve,
+    RESEARCH_MEMORY_CONTROL_PUBLICATION_LOCK_RETRY_MS
+  ));
 }

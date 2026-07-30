@@ -3,6 +3,7 @@ import type {
   AgentProfileRecord,
   ArtifactLineageRecord,
   CandidateAdmissionDecisionRecord,
+  CandidateArenaReadModel,
   CandidateArenaResearchAllocationRecord,
   CandidateArenaTickRecord,
   CandidateEvaluationRunOutcome,
@@ -21,6 +22,7 @@ import type {
   ResearchBehaviorFingerprintRecord,
   ResearchDirectionRecord,
   ResearchEvidenceArtifactRecord,
+  ResearchEvidenceArtifactReadModel,
   ResearchControlCampaignArmIntentRecord,
   ResearchControlCampaignOutcomeRecord,
   ResearchControlCampaignPaperScheduleRecord,
@@ -38,6 +40,8 @@ import type {
   ResearchMemoryControlStudyOutcomeRecord,
   ResearchMemoryControlStudyRecord,
   ResearchPreflightCommitmentRecord,
+  ResearchSessionDetailReadModel,
+  ResearchDirectionKind,
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
   ResearchWorkerRecord,
@@ -122,6 +126,144 @@ export interface ResearchMemoryControlPairOutcomePersistenceInput {
   source_graph: DecideResearchMemoryControlPairOutcomeInput;
 }
 
+export type ResearchOperationsProjectionCompatibilityReason =
+  "legacy_source_oversized";
+
+export class ResearchOperationsProjectionCompatibilityError extends Error {
+  readonly name = "ResearchOperationsProjectionCompatibilityError";
+
+  constructor(
+    readonly reason: ResearchOperationsProjectionCompatibilityReason
+  ) {
+    super("research_operations_projection_compatibility_blocked");
+  }
+}
+
+export type CandidateArenaEvidenceProjection =
+  | {
+      availability: "available";
+      latest_ticks: CandidateArenaReadModel["latest_ticks"];
+      terminal_tick_ids: string[];
+      research_population_diversity:
+        CandidateArenaReadModel["research_population_diversity"];
+      research_generalization: CandidateArenaReadModel["research_generalization"];
+      projection_digest: string;
+    }
+  | {
+      availability: "unavailable";
+      projection_digest: string;
+    };
+
+export interface ResearchOperationsProjectionRuntimeIdentity {
+  research_work_item_id: string;
+  research_allocation_id: string;
+  tick_id: string;
+  tick_research_work_item_ids: string[];
+  direction_kind: ResearchDirectionKind;
+  commitment_id?: string;
+  concurrency_limit: number;
+}
+
+export interface ResearchOperationsProjectionCapsule {
+  record_kind: "research_operations_projection_capsule";
+  version: 1;
+  research_work_item_id: string;
+  runtime_identity: ResearchOperationsProjectionRuntimeIdentity;
+  inactive_detail: ResearchSessionDetailReadModel;
+  active_queued_detail: ResearchSessionDetailReadModel;
+  graph_conflict: boolean;
+  terminal_evidence_present: boolean;
+  capsule_digest: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchOperationsProjectionHeadRef {
+  research_work_item_id: string;
+  allocated_at: string;
+  capsule_digest: string;
+}
+
+export interface ResearchOperationsProjectionOpenTickRef {
+  tick_id: string;
+  research_work_item_ids: string[];
+}
+
+export interface ResearchOperationsProjectionCapsuleTrieLeafEntry {
+  research_work_item_id: string;
+  capsule_digest: string;
+}
+
+interface ResearchOperationsProjectionCapsuleTrieNodeBase {
+  record_kind: "research_operations_projection_capsule_trie_node";
+  version: 1;
+  prefix: string;
+  subtree_entry_count: number;
+  node_digest: string;
+  authority_status: "read_only";
+}
+
+export type ResearchOperationsProjectionCapsuleTrieNode =
+  | (ResearchOperationsProjectionCapsuleTrieNodeBase & {
+      node_kind: "leaf";
+      entries: ResearchOperationsProjectionCapsuleTrieLeafEntry[];
+    })
+  | (ResearchOperationsProjectionCapsuleTrieNodeBase & {
+      node_kind: "branch";
+      children: ResearchOperationsProjectionCapsuleTrieNodeRef[];
+    });
+
+export interface ResearchOperationsProjectionCapsuleTrieNodeRef {
+  prefix: string;
+  subtree_entry_count: number;
+  node_digest: string;
+}
+
+type CandidateArenaEvidenceProjectionPayload =
+  CandidateArenaEvidenceProjection extends infer Projection
+    ? Projection extends CandidateArenaEvidenceProjection
+      ? Omit<Projection, "projection_digest">
+      : never
+    : never;
+
+export interface ResearchOperationsProjectionIndexRecord {
+  record_kind: "research_operations_projection_index";
+  version: 1;
+  head_session_refs: ResearchOperationsProjectionHeadRef[];
+  open_tick_session_refs: ResearchOperationsProjectionOpenTickRef[];
+  open_tick_session_count: number;
+  projected_open_tick_session_count: number;
+  omitted_open_tick_session_count: number;
+  open_tick_sessions_truncated: boolean;
+  capsule_trie_root_refs: ResearchOperationsProjectionCapsuleTrieNodeRef[];
+  recorded_session_count: number;
+  graph_conflict_count: number;
+  incomplete_without_conflict_count: number;
+  capsule_set_digest: string;
+  session_membership: {
+    algorithm: "sha256_bloom_v1";
+    bit_count: number;
+    hash_count: number;
+    encoded_bits: string;
+    member_count: number;
+  };
+  candidate_arena_evidence: CandidateArenaEvidenceProjectionPayload;
+  projection_digest: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchOperationsProjectionWindow {
+  index: ResearchOperationsProjectionIndexRecord;
+  capsules: ResearchOperationsProjectionCapsule[];
+}
+
+export interface ReadResearchOperationsProjectionWindowInput {
+  session_limit: number;
+  active_tick_id?: string;
+  active_research_work_item_ids?: string[];
+  exact_research_work_item_id?: string;
+  expected_projection_digest?: string;
+}
+
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
 export const FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 
@@ -187,6 +329,11 @@ export interface OuroborosStorePort {
   listCandidateArenaResearchAllocations(): Promise<
     CandidateArenaResearchAllocationRecord[]
   >;
+  readResearchOperationsProjectionWindow?(
+    input: ReadResearchOperationsProjectionWindowInput
+  ): Promise<ResearchOperationsProjectionWindow>;
+  readCandidateArenaEvidenceProjection?(): Promise<CandidateArenaEvidenceProjection>;
+  runResearchOperationsProjectionBatch?<T>(task: () => Promise<T>): Promise<T>;
   recordResearchControlCampaign(
     campaign: ResearchControlCampaignRecord
   ): Promise<ResearchControlCampaignRecord>;
@@ -374,9 +521,11 @@ export interface OuroborosStorePort {
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
   getExperimentRun(experimentRunId: string): Promise<ExperimentRunRecord | undefined>;
+  listExperimentRuns(): Promise<ExperimentRunRecord[]>;
   getTradingEvaluationResult(
     evaluationResultId: string
   ): Promise<TradingEvaluationResultRecord | undefined>;
+  listTradingEvaluationResults(): Promise<TradingEvaluationResultRecord[]>;
   recordPaperTradingHandoffConformance(
     record: PaperTradingHandoffConformanceRecord
   ): Promise<PaperTradingHandoffConformanceRecord>;

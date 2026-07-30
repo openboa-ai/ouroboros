@@ -194,7 +194,13 @@ Two cooperating product loops turn research effort into inspectable paper eviden
 - **Research** bounds candidate-generation sessions, freezes and selects submissions, owns external admission, and retains released memory.
 - **Arena** queues and runs already-admitted TradingSystems in isolated paper sessions and compares their paper evidence.
 
-Research and Arena are separate views while persisted operational detail is currently an Arena surface. The current Research view does not yet provide a complete persisted session, detail, and log projection.
+Research and Arena are separate views. Research now reads a bounded materialized operations
+projection and exact persisted session detail from the authoritative allocation, commitment,
+checkpoint, admission, and terminal-tick graph. Provider stdout and stderr are intentionally not
+persisted; the detail reports that absence instead of presenting synthetic logs. The domain keeps
+`OperatorReadModel.research_operations` optional only for producer/consumer version-skew
+compatibility, while the current Operator service always emits either the available projection or
+its fail-closed unavailable state.
 
 The five operator views expose those loops from different operational angles:
 
@@ -219,6 +225,8 @@ Candidate Arena -> Trading System -> System Code -> research preflight -> select
 ### Built
 
 - Codex-first bounded ResearchWorker sessions with bounded tools, workspaces, explicit submission timing, and snapshot selection.
+- Bounded materialized Research operations plus canonical-ID exact session detail in the Operator
+  Research workspace, including explicit degraded and restart-recovery evidence.
 - Immutable SystemCode identity, external admission, and paper-handoff conformance.
 - Isolated public-data `BTCUSDT` USD-M futures paper operation through Gateway with fake accounts, execution, and Ledgers.
 - Recorded fees, funding, slippage, risk, provenance, and append-only paper evidence.

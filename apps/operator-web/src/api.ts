@@ -20,12 +20,18 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureWriteInput,
+  ResearchSessionDetailReadModel,
   RunControlAuditInput,
   RunControlAuditOutcome,
   SandboxDetailReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
+import {
+  isCanonicalResearchWorkItemId,
+  isSafeResearchSessionDetailResponse
+} from
+  "./research-session-response";
 
 const runtimeBaseUrl = import.meta.env.VITE_OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 const operatorApiToken = import.meta.env.VITE_OUROBOROS_OPERATOR_API_TOKEN;
@@ -74,8 +80,13 @@ export async function fetchTradingExecutionModeContracts(): Promise<TradingSyste
   return body.trading_system_execution_mode_contracts;
 }
 
-export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
-  const response = await runtimeFetch(`${runtimeBaseUrl}/api/gateway/environment`);
+export async function fetchTradingGatewayEnvironment(
+  signal?: AbortSignal
+): Promise<TradingGatewayEnvironmentReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/gateway/environment`,
+    signal ? { signal } : undefined
+  );
   if (!response.ok) {
     throw new Error(`Failed to load trading gateway environment: ${response.status}`);
   }
@@ -138,8 +149,13 @@ export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
   return operator.candidate_arena;
 }
 
-export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
-  const response = await runtimeFetch(`${runtimeBaseUrl}/api/operator`);
+export async function fetchOperatorReadModel(
+  signal?: AbortSignal
+): Promise<OperatorReadModel> {
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/operator`,
+    signal ? { signal } : undefined
+  );
   if (!response.ok) {
     throw new Error(`Failed to load Ouroboros operator: ${response.status}`);
   }
@@ -148,10 +164,12 @@ export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
 }
 
 export async function fetchArenaTradingSystemDetail(
-  candidateId: string
+  candidateId: string,
+  signal?: AbortSignal
 ): Promise<ArenaTradingSystemDetailReadModel> {
   const response = await runtimeFetch(
-    `${runtimeBaseUrl}/api/arena/trading-systems/${encodeURIComponent(candidateId)}`
+    `${runtimeBaseUrl}/api/arena/trading-systems/${encodeURIComponent(candidateId)}`,
+    signal ? { signal } : undefined
   );
   if (!response.ok) {
     throw new Error(`Failed to load Arena system ${candidateId}: ${response.status}`);
@@ -160,6 +178,67 @@ export async function fetchArenaTradingSystemDetail(
     arena_trading_system: ArenaTradingSystemDetailReadModel;
   };
   return body.arena_trading_system;
+}
+
+export async function fetchResearchSessionDetail(
+  researchWorkItemId: string,
+  signal?: AbortSignal
+): Promise<ResearchSessionDetailReadModel | undefined> {
+  if (!isCanonicalResearchWorkItemId(researchWorkItemId)) {
+    throw new Error("Failed to load Research session: invalid identifier");
+  }
+  const response = await runtimeFetch(
+    `${runtimeBaseUrl}/api/research/sessions/${encodeURIComponent(researchWorkItemId)}`,
+    signal ? { signal } : undefined
+  );
+  if (response.status === 404) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error("Failed to load Research session: 404");
+    }
+    if (isExactResearchSessionNotFound(body, researchWorkItemId)) {
+      return undefined;
+    }
+    throw new Error("Failed to load Research session: 404");
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to load Research session: ${response.status}`);
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Failed to load Research session: invalid response");
+  }
+  const envelope = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : undefined;
+  const detail = envelope && Object.keys(envelope).length === 1 &&
+      Object.hasOwn(envelope, "research_session")
+    ? envelope.research_session
+    : undefined;
+  if (!isSafeResearchSessionDetailResponse(detail, researchWorkItemId)) {
+    throw new Error("Failed to load Research session: invalid response");
+  }
+  return detail;
+}
+
+function isExactResearchSessionNotFound(
+  body: unknown,
+  requestedResearchWorkItemId: string
+): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return false;
+  }
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  return keys.length === 2 &&
+    keys.includes("error") &&
+    keys.includes("research_work_item_id") &&
+    record.error === "research_session_not_found" &&
+    record.research_work_item_id === requestedResearchWorkItemId;
 }
 
 export async function startCandidateArena(): Promise<CandidateArenaReadModel> {

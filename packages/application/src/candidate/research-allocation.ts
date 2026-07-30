@@ -18,6 +18,7 @@ import {
   type CandidateArenaResearchAllocationSignal,
   type CandidateArenaResearchEfficiencyReadModel,
   type CandidateArenaTickDirectionResultReadModel,
+  type CandidateArenaTickProjectedDirectionResultReadModel,
   type CandidateArenaTickReadModel,
   type PaperTradingFailureKind,
   type ResearchAllocationPolicyDecisionRecord,
@@ -428,7 +429,8 @@ export function candidateArenaResearchEfficiencyBudgetFocus(
 ): CandidateArenaAdaptiveDirectionFocus[] {
   return [...latestResearchOutcomeByDirection(latestTicks).entries()]
     .flatMap(([direction, result]) =>
-      result.status === "created" && result.research_efficiency
+      (result.status === "created" || result.status === "legacy_unverified") &&
+        result.research_efficiency
         ? [{
             direction,
             focusScore: researchEfficiencyBudgetFocusScore(
@@ -633,10 +635,10 @@ function completedSelectionHistory(
 
 function latestResearchOutcomeByDirection(
   latestTicks: CandidateArenaTickReadModel[]
-): Map<ResearchDirectionKind, CandidateArenaTickDirectionResultReadModel> {
+): Map<ResearchDirectionKind, CandidateArenaTickProjectedDirectionResultReadModel> {
   const latest = new Map<
     ResearchDirectionKind,
-    CandidateArenaTickDirectionResultReadModel
+    CandidateArenaTickProjectedDirectionResultReadModel
   >();
   for (const tick of latestTicks) {
     for (const result of tick.direction_results) {
@@ -651,7 +653,7 @@ function latestResearchOutcomeByDirection(
 }
 
 function recentOutcomeAdjustment(
-  status: CandidateArenaTickDirectionResultReadModel["status"] | undefined
+  status: CandidateArenaTickProjectedDirectionResultReadModel["status"] | undefined
 ): number {
   switch (status) {
     case "duplicate": return -15;
@@ -659,15 +661,18 @@ function recentOutcomeAdjustment(
     case "no_submission": return -5;
     case "failed": return -10;
     case "created":
+    case "legacy_unverified":
     case undefined:
       return 0;
   }
 }
 
 function recentOutcomeReason(
-  status: CandidateArenaTickDirectionResultReadModel["status"] | undefined
+  status: CandidateArenaTickProjectedDirectionResultReadModel["status"] | undefined
 ): string | undefined {
-  return status && status !== "created" ? `recent_outcome:${status}` : undefined;
+  return status && status !== "created" && status !== "legacy_unverified"
+    ? `recent_outcome:${status}`
+    : undefined;
 }
 
 function compareOldestAllocation(

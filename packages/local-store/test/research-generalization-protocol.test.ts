@@ -128,6 +128,31 @@ describe("LocalStore ResearchGeneralizationProtocol", () => {
       });
   });
 
+  it("fails cold projection rebuild closed for a stale cached protocol digest", async () => {
+    const protocol = protocolFixture("cold-cache-protocol");
+    await store.recordResearchGeneralizationProtocol(protocol);
+    const stale = structuredClone(protocol);
+    stale.timing_policy.collection_deadline_at =
+      "2026-07-14T00:00:00.000Z";
+    await writeFile(
+      path.join(
+        root,
+        "research-generalization-protocols",
+        "items",
+        `${encodeURIComponent(
+          protocol.research_generalization_protocol_id
+        )}.json`
+      ),
+      `${JSON.stringify(stale, null, 2)}\n`,
+      "utf8"
+    );
+
+    const restarted = new LocalStore(root);
+    await expect(restarted.initialize()).rejects.toMatchObject({
+      code: "research_generalization_protocol_reload_failed"
+    });
+  });
+
   it("rejects a protocol published after one planned study", async () => {
     const protocol = protocolFixture();
     const slot = protocol.study_slots[0]!;

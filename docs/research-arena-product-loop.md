@@ -1,10 +1,14 @@
 # Research And Arena Product Loop
 
-Status: target product and operator contract with partial implementation. RA-03A now implements
-the persisted evidence-fed Research execution path; Research operations projection and UX remain
-RA-03B. This document defines
-what the continuously operating Research and Arena surfaces mean. It does not claim that the
-current scheduler, read models, or UI already satisfy the contract.
+Status: active product and operator contract with partial broader implementation. RA-03A
+implements the persisted evidence-fed Research execution path. RA-03B now implements the bounded
+materialized Research operations projection, canonical-ID exact detail API, and Operator Research
+master/detail UX. The `OperatorReadModel.research_operations` field remains optional only for
+producer/consumer version-skew compatibility; the current Operator service always emits either an
+available projection or its fail-closed unavailable state. This implementation status describes
+the current OURO-238 branch and is not a claim that review, CI, or merge is complete. The remaining
+24/365 and future-authority clauses in this document continue to describe their explicit target
+boundaries.
 
 ## Product Boundary
 
@@ -64,10 +68,24 @@ Each session exposes:
 - resulting admission, duplicate, quarantine, no-submission, or failed-closed state;
 - exact admitted candidate and SystemCode link when one exists.
 
+The Research row identity is a derived projection key, not a new persisted authority. Version 1
+hashes the canonical allocation-and-direction pair as
+`research-session-v1-<full-sha256>`. Runtime health names the exact active tick and only the work
+items whose bounded direction tasks have actually started. Its `allocating`, `running`, and
+`failed_closed_pending_tick` phases are read-only coordination evidence; they do not replace the
+persisted allocation, commitment, checkpoint, admission, or terminal tick graph.
+
 Development submissions and the selected result bind only `system_code` records. The terminal
 Research detail links bind the exact `candidate_admission_decision` and
 `paper_trading_handoff_conformance` records; consumers never infer those edges from an arbitrary
 reference.
+
+The current persisted graph identifies only the exact explicitly selected artifact. Non-selected
+immutable submission summaries are reconstructed from the terminal
+`ResearchWorkerCheckpoint` entries for that exact tick. Their artifact identity is explicitly
+`not_persisted`: a projection must not invent or borrow a `SystemCode` reference or digest from the
+selected submission. Before a terminal checkpoint exists, durable submission detail is reported as
+unavailable rather than read from a mutable notebook or provider log.
 
 The supported lifecycle is `queued`, `allocating`, `running`, `awaiting_selection`,
 `sealed_admission`, `admitted`, `duplicate`, `quarantined`, `finished_without_submission`,
@@ -77,6 +95,10 @@ only when policy still requests work. Restart sequence recovery includes persist
 well as completed ticks, so a crash after allocation cannot reuse a tick identity. One Arena-event
 artifact digest may be claimed by only one allocation across LocalStore processes; an orphaned
 claim remains consumed rather than being silently replayed.
+
+`awaiting_selection` and `sealed_admission` remain reserved lifecycle vocabulary. The current
+persisted graph has no durable mid-session selection record, so the Research projection does not
+emit either state without future exact evidence.
 
 ### Research Evidence Input
 
@@ -229,10 +251,28 @@ The additive domain projections are:
 | `ResearchOperationsReadModel` | Loop health, capacity, and actual queued or persisted Research sessions. |
 | `ResearchSessionDetailReadModel` | One session's trigger, methodology, evidence, submissions, result, and logs. |
 
-Operator migration may expose these fields optionally until the owning builders and UI ship. An
-absent projection means unavailable, not an empty or successful loop. Once the builders are
-implemented, the projections become required API state and compatibility views can be retired in a
-separate migration.
+`OperatorReadModel.research_operations` stays optional at the domain boundary solely so clients
+and runtimes at different versions can interoperate. The current `OperatorService` always emits
+the field: a successful materialized read is `available`, including when it contains zero
+sessions, and an isolated read failure is emitted as the bounded `unavailable` fallback. A missing
+field therefore identifies an older or incompatible producer, not an authoritative empty or
+successful loop. Within the field, absence of `availability` identifies the legacy v1 summary
+wire shape; the current Web maps a structurally valid v1 producer as an explicit compatibility
+view rather than dereferencing v2-only fields or claiming v2 projection completeness. Current v2
+summary rows retain v1's required top-level `trigger`, `methodology`, and `provider` fields so an
+older Web cannot crash on a degraded row. When persisted source evidence is unavailable, those v1
+fields contain only explicit `unavailable` compatibility placeholders; `trigger_availability`,
+`methodology_availability`, and `provider_availability` remain the sole v2 evidence authority, and
+v2 consumers must not present the placeholders as source evidence. The exact Research detail
+route resolves a canonical work-item ID independently of the bounded operations summary, so a
+URL-selected historical session remains inspectable even when it is outside the current list
+window.
+
+`ResearchOperationsReadModel.availability` distinguishes a successful rebuild from its isolated
+read-failure fallback. A successful rebuild is `available` even when it contains zero sessions;
+the bounded fallback is `unavailable`, keeps the loop `degraded`, exposes no inferred sessions, and
+does not disclose the raw read error. Operator surfaces must not present that fallback as an
+authoritative or healthy empty Research queue.
 
 ## Delivery Slices
 
@@ -244,8 +284,9 @@ track:
    detail projections, Desktop UX, and rendered validation.
 3. `OURO-237` (RA-03A): implement bounded goal/time/event/recovery Research execution, sanitized
    immutable evidence inputs, exact preflight methodology binding, and restart-safe terminal state.
-4. `OURO-238` (RA-03B): derive Research session list/detail projections from the persisted graph,
-   connect Desktop UX, and complete rendered validation.
+4. `OURO-238` (RA-03B): implements bounded materialized Research session list/detail projections
+   from the persisted graph, canonical-ID off-page detail reads, and the Desktop Research UX;
+   current-head promotion remains a separate delivery gate.
 5. Operations tickets independently harden process ownership, Sandbox cleanup, restart recovery,
    and the final two-hour unattended evidence run.
 

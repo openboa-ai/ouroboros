@@ -23,6 +23,25 @@ describe("ResearchPreflightCommitment", () => {
     })).toBe(researchPreflightCommitmentDigestInput(record));
   });
 
+  it.each([
+    ["commitment id", "research_preflight_commitment_id"],
+    ["CandidateArena tick id", "candidate_arena_tick_id"]
+  ] as const)("accepts a canonical 200-character %s and rejects longer identifiers", (
+    _label,
+    field
+  ) => {
+    const exactBoundary = commitmentFixture();
+    exactBoundary[field] = "a".repeat(200);
+    expect(researchPreflightCommitmentHasRuntimeShape(exactBoundary)).toBe(true);
+
+    for (const length of [201, 500, 501]) {
+      const overBoundary = commitmentFixture();
+      overBoundary[field] = "a".repeat(length);
+      expect(researchPreflightCommitmentHasRuntimeShape(overBoundary),
+        `${field}:${length}`).toBe(false);
+    }
+  });
+
   it("freezes identity, allocation, policies, budgets, time, and authority in digest input", () => {
     const baseline = commitmentFixture();
     const digestInput = researchPreflightCommitmentDigestInput(baseline);

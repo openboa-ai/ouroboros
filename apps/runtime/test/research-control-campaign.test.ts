@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,14 +13,21 @@ import type { TradingArtifactRunner } from
 import { validateOrderRequest } from
   "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
+  AgentEditInput,
+  AgentEditResult,
+  ManagedResearchAgent,
   ReplayTradingApiProviderSession,
   ReplayTradingCandidateInput,
+  ResearchWorkerSessionInput,
+  ResearchWorkerSessionResult,
   TradingProviderRequestLog,
   TradingResearchAgentAdapter,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
 import {
   researchControlCampaignReportHasRuntimeShape,
+  researchWorkerCheckpointDigestInput,
+  type ResearchWorkerCheckpointRecord,
   type TradingPromotionRecord
 } from "@ouroboros/domain";
 import {
@@ -113,7 +121,7 @@ describe("ResearchControlCampaign snapshots", () => {
 
     expect(first).toEqual(second);
     expect(first).toEqual({
-      protocol_version: "local_store_regular_files_v1",
+      protocol_version: "local_store_regular_files_v2",
       snapshot_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       regular_file_count: 2,
       total_bytes: 4,
@@ -144,6 +152,54 @@ describe("ResearchControlCampaign snapshots", () => {
     });
     expect(changed.snapshot_digest).not.toBe(first.snapshot_digest);
     expect(changed.regular_file_count).toBe(4);
+  });
+
+  it("keeps final snapshot semantics on a persisted v1 campaign protocol", async () => {
+    const root = path.join(tmpDir, "legacy-final-snapshot");
+    await mkdir(path.join(root, "read-models"), { recursive: true });
+    await mkdir(path.join(root, ".locks"), { recursive: true });
+    await writeFile(path.join(root, "state.json"), "state\n", "utf8");
+    await writeFile(
+      path.join(root, "read-models/index.json"),
+      "legacy derived\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(root, ".locks/generation.json"),
+      "legacy generation\n",
+      "utf8"
+    );
+    const baseline = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      protocolVersion: "local_store_regular_files_v1"
+    });
+    await mkdir(path.join(root, "read-models/research-operations"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(root, "read-models/research-operations/index.json"),
+      "new projection\n",
+      "utf8"
+    );
+    await writeFile(
+      path.join(
+        root,
+        ".locks/research-operations-projection-generation.json"
+      ),
+      "new generation\n",
+      "utf8"
+    );
+
+    const finalSnapshot = await captureResearchControlCampaignSnapshot({
+      root,
+      maximumRegularFileCount: 10,
+      maximumTotalBytes: 1_000,
+      protocolVersion: baseline.protocol_version
+    });
+
+    expect(finalSnapshot).toEqual(baseline);
   });
 
   it.each([
@@ -270,12 +326,31 @@ describe("ResearchControlCampaign runtime", () => {
       ?.allocation_mode).toBe("adaptive_default");
     expect((await controlStore.listCandidateArenaResearchAllocations())[0]
       ?.allocation_mode).toBe("static_control");
+    const sourceIntents = await sourceStore
+      .listResearchControlCampaignArmIntents();
+    expect(await adaptiveStore.listResearchControlCampaigns()).toEqual([
+      outcome.campaign
+    ]);
+    expect(await controlStore.listResearchControlCampaigns()).toEqual([
+      outcome.campaign
+    ]);
+    expect(await adaptiveStore.listResearchControlCampaignArmIntents())
+      .toEqual(sourceIntents.filter((intent) =>
+        intent.arm_kind === "adaptive_treatment"
+      ));
+    expect(await controlStore.listResearchControlCampaignArmIntents())
+      .toEqual(sourceIntents.filter((intent) =>
+        intent.arm_kind === "static_control"
+      ));
     expect(adaptiveTicks[0]!.tick_id).not.toBe(controlTicks[0]!.tick_id);
     expect(adaptiveTicks[0]!.direction_results).toHaveLength(3);
     expect(controlTicks[0]!.direction_results).toHaveLength(3);
 
     const baselineStore = new LocalStore(outcome.baselineRoot);
     expect(await baselineStore.listCandidateArenaTicks()).toEqual([]);
+    expect(await baselineStore.listResearchControlCampaigns()).toEqual([]);
+    expect(await baselineStore.listResearchControlCampaignArmIntents())
+      .toEqual([]);
     await verifyResearchControlCampaignSnapshot({
       root: outcome.baselineRoot,
       expected: outcome.campaign.baseline,
@@ -286,6 +361,103 @@ describe("ResearchControlCampaign runtime", () => {
     expect(JSON.stringify(outcome.report)).not.toMatch(
       /winner|sealed_terminal_score|fingerprint_digest|store_root/
     );
+  });
+
+  it("fails closed when a planned tick imports a foreign admitted result", async () => {
+    const sourceStore = new LocalStore(path.join(tmpDir, "foreign-tick-source"));
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(tmpDir, "foreign-tick-workspace");
+    let foreignResultInjected = false;
+    let failure: unknown;
+
+    try {
+      await runResearchControlCampaign({
+        ...campaignRunInput(
+          sourceStore,
+          workspaceRoot,
+          runCandidateArenaTick
+        ),
+        idempotencyKey: "runtime-foreign-tick-admission-001",
+        runTick: async (tickInput) => {
+          if (tickInput.researchAllocationMode !== "static_control") {
+            return runCandidateArenaTick(tickInput);
+          }
+          const store = tickInput.store as LocalStore;
+          const plannedTickId = tickInput.tickId!;
+          const foreignTickId = `${plannedTickId}-foreign`;
+          await runCandidateArenaTick({
+            ...tickInput,
+            tickId: foreignTickId
+          });
+          const foreignTick = (await store.listCandidateArenaTicks()).find(
+            (tick) => tick.tick_id === foreignTickId
+          );
+          const foreignResult = foreignTick?.direction_results.find(
+            (result) => result.status === "created"
+          );
+          if (!foreignResult) {
+            throw new Error("fixture_expected_foreign_admitted_result");
+          }
+          const outcome = await runCandidateArenaTick(tickInput);
+          const plannedTick = (await store.listCandidateArenaTicks()).find(
+            (tick) => tick.tick_id === plannedTickId
+          );
+          if (!plannedTick) {
+            throw new Error("fixture_expected_planned_tick");
+          }
+          const substituted = structuredClone(plannedTick);
+          const directionIndex = substituted.direction_results.findIndex(
+            (result) => result.direction_kind === foreignResult.direction_kind
+          );
+          if (directionIndex < 0) {
+            throw new Error("fixture_expected_matching_planned_direction");
+          }
+          substituted.direction_results[directionIndex] =
+            structuredClone(foreignResult);
+          substituted.created_candidate_refs = substituted.direction_results
+            .flatMap((result) => result.status === "created"
+              ? [{
+                  record_kind: "trading_system_candidate",
+                  id: result.candidate_id!
+                }]
+              : []);
+          const failedCount = substituted.direction_results.filter(
+            (result) => result.status === "failed"
+          ).length;
+          substituted.status = failedCount === 0
+            ? "completed"
+            : failedCount < substituted.direction_results.length
+              ? "completed_with_errors"
+              : "failed";
+          await writeFile(path.join(
+            store.root(),
+            "candidate-arena-ticks",
+            "items",
+            `${substituted.candidate_arena_tick_id}.json`
+          ), `${JSON.stringify(substituted)}\n`, "utf8");
+          foreignResultInjected = true;
+          return outcome;
+        }
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(
+      foreignResultInjected,
+      failure instanceof Error ? `${failure.name}: ${failure.message} ${
+        JSON.stringify((failure as ResearchControlCampaignRuntimeError).details)
+      }` :
+        String(failure)
+    ).toBe(true);
+    expect(failure).toMatchObject({
+      code: "research_control_campaign_arm_evidence_invalid",
+      details: {
+        arm_kind: "static_control",
+        reason: "research_control_campaign_terminal_admission_binding_invalid"
+      }
+    });
+    expect(await sourceStore.listResearchControlCampaignReports()).toEqual([]);
   });
 
   it("returns an exact terminal report without another worker effect", async () => {
@@ -413,6 +585,1155 @@ describe("ResearchControlCampaign runtime", () => {
     expect(researchControlCampaignReportHasRuntimeShape(resumed.report)).toBe(true);
   });
 
+  it("accounts for a recovered precommitted arm without repeating provider effects", async () => {
+    const sourceStore = new LocalStore(path.join(tmpDir, "orphan-source"));
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(tmpDir, "orphan-workspace");
+    let providerEffectCount = 0;
+    const baseInput = campaignRunInput(
+      sourceStore,
+      workspaceRoot,
+      runCandidateArenaTick
+    );
+    const input = {
+      ...baseInput,
+      idempotencyKey: "runtime-orphan-recovery-001",
+      replayProviderFactory: async (
+        candidateInput: ReplayTradingCandidateInput
+      ) => {
+        providerEffectCount += 1;
+        return networklessReplayProvider(candidateInput);
+      }
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordCommitment =
+          store.recordResearchPreflightCommitment.bind(store);
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordResearchPreflightCommitment = async (commitment) => {
+          await recordCommitment(commitment);
+          throw new Error("synthetic_crash_after_commitment");
+        };
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_crash_before_terminal_tick");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordResearchPreflightCommitment = recordCommitment;
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStoreBeforeRestart = new LocalStore(
+      paths.armRoots.static_control
+    );
+    const effectsBeforeRestart = providerEffectCount;
+    expect(await staticStoreBeforeRestart.listCandidateArenaTicks()).toEqual([]);
+    expect(await staticStoreBeforeRestart.listResearchPreflightCommitments())
+      .not.toHaveLength(0);
+    expect(await staticStoreBeforeRestart.listResearchWorkerCheckpoints())
+      .toEqual([]);
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(providerEffectCount).toBe(effectsBeforeRestart);
+    const reopenedStaticStore = new LocalStore(paths.armRoots.static_control);
+    const [ticks, allocations, checkpoints] = await Promise.all([
+      reopenedStaticStore.listCandidateArenaTicks(),
+      reopenedStaticStore.listCandidateArenaResearchAllocations(),
+      reopenedStaticStore.listResearchWorkerCheckpoints()
+    ]);
+    const staticCampaignArm = campaign.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )!;
+    const recoveredAllocation = allocations.find((allocation) =>
+      allocation.tick_id === staticCampaignArm.tick_ids[0]
+    )!;
+    expect(ticks).toEqual([expect.objectContaining({
+      tick_id: staticCampaignArm.tick_ids[0],
+      status: "failed",
+      created_candidate_refs: [],
+      research_allocation_ref: {
+        record_kind: "candidate_arena_research_allocation",
+        id: recoveredAllocation.candidate_arena_research_allocation_id
+      },
+      research_allocation_digest: recoveredAllocation.allocation_digest,
+      direction_results: recoveredAllocation.selected_directions.map(
+        (selection) => expect.objectContaining({
+          direction_kind: selection.direction_kind,
+          status: "failed",
+          error: "candidate_arena_restart_recovery"
+        })
+      )
+    })]);
+    expect(checkpoints).not.toHaveLength(0);
+    expect(checkpoints.every((checkpoint) =>
+      checkpoint.terminal_status === "failed_closed" &&
+      checkpoint.terminal_reason === "restart_recovery"
+    )).toBe(true);
+    const staticArm = resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    );
+    expect(staticArm).toMatchObject({
+      diagnostics: {
+        attempt_count: ticks[0]!.direction_results.length,
+        admitted_candidate_count: 0,
+        duplicate_count: 0,
+        quarantined_count: 0,
+        failed_count: ticks[0]!.direction_results.length,
+        provider_request_total: 0,
+        runner_command_total: 0,
+        scenario_count: 0,
+        elapsed_ms: 0
+      },
+      paper_candidate_slots: [{ status: "no_admitted_candidate" }]
+    });
+  });
+
+  it("accounts for a post-checkpoint crash without rewriting terminal evidence", async () => {
+    const sourceStore = new LocalStore(path.join(tmpDir, "terminal-source"));
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(tmpDir, "terminal-workspace");
+    let providerEffectCount = 0;
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-terminal-recovery-001",
+      replayProviderFactory: async (
+        candidateInput: ReplayTradingCandidateInput
+      ) => {
+        providerEffectCount += 1;
+        return networklessReplayProvider(candidateInput);
+      }
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_crash_after_terminal_checkpoints");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStoreBeforeRestart = new LocalStore(
+      paths.armRoots.static_control
+    );
+    const [commitmentsBeforeRestart, checkpointsBeforeRestart] =
+      await Promise.all([
+        staticStoreBeforeRestart.listResearchPreflightCommitments(),
+        staticStoreBeforeRestart.listResearchWorkerCheckpoints()
+      ]);
+    const effectsBeforeRestart = providerEffectCount;
+    expect(effectsBeforeRestart).toBeGreaterThan(0);
+    expect(await staticStoreBeforeRestart.listCandidateArenaTicks()).toEqual([]);
+    expect(checkpointsBeforeRestart).toHaveLength(
+      commitmentsBeforeRestart.length
+    );
+    expect(checkpointsBeforeRestart).not.toHaveLength(0);
+    expect(checkpointsBeforeRestart.some((checkpoint) =>
+      checkpoint.terminal_reason === "restart_recovery"
+    )).toBe(false);
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(providerEffectCount).toBe(effectsBeforeRestart);
+    const reopenedStaticStore = new LocalStore(paths.armRoots.static_control);
+    const [ticks, allocations, checkpointsAfterRestart] = await Promise.all([
+      reopenedStaticStore.listCandidateArenaTicks(),
+      reopenedStaticStore.listCandidateArenaResearchAllocations(),
+      reopenedStaticStore.listResearchWorkerCheckpoints()
+    ]);
+    expect(checkpointsAfterRestart).toEqual(checkpointsBeforeRestart);
+    const staticCampaignArm = campaign.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )!;
+    const recoveredAllocation = allocations.find((allocation) =>
+      allocation.tick_id === staticCampaignArm.tick_ids[0]
+    )!;
+    const terminalResults = recoveredAllocation.selected_directions.map(
+      (selection) => checkpointsBeforeRestart.find((checkpoint) =>
+        checkpoint.terminal_direction_result?.direction_kind ===
+          selection.direction_kind
+      )!.terminal_direction_result!
+    );
+    const createdCandidateIds = terminalResults.flatMap((result) =>
+      result.status === "created" && result.candidate_id
+        ? [result.candidate_id]
+        : []
+    );
+    expect(ticks).toEqual([expect.objectContaining({
+      tick_id: staticCampaignArm.tick_ids[0],
+      status: "completed",
+      created_candidate_refs: createdCandidateIds.map((candidateId) => ({
+        record_kind: "trading_system_candidate",
+        id: candidateId
+      })),
+      direction_results: terminalResults
+    })]);
+    const expectedProviderRequests = terminalResults.reduce(
+      (total, result) =>
+        total + (result.research_efficiency?.provider_request_total ?? 0),
+      0
+    );
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        attempt_count: ticks[0]!.direction_results.length,
+        admitted_candidate_count: terminalResults.filter((result) =>
+          result.status === "created"
+        ).length,
+        duplicate_count: terminalResults.filter((result) =>
+          result.status === "duplicate"
+        ).length,
+        quarantined_count: 0,
+        failed_count: 0,
+        provider_request_total: expectedProviderRequests
+      },
+      paper_candidate_slots: [{ status: "candidate_reserved" }]
+    });
+  });
+
+  it("preserves exact admitted results beside a restart-recovered direction", async () => {
+    const sourceStore = new LocalStore(path.join(tmpDir, "mixed-source"));
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(tmpDir, "mixed-workspace");
+    let providerEffectCount = 0;
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-mixed-recovery-001",
+      replayProviderFactory: async (
+        candidateInput: ReplayTradingCandidateInput
+      ) => {
+        providerEffectCount += 1;
+        return networklessReplayProvider(candidateInput);
+      }
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordCommitment =
+          store.recordResearchPreflightCommitment.bind(store);
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordResearchPreflightCommitment = async (commitment) => {
+          await recordCommitment(commitment);
+          const direction = await store.getResearchDirection(
+            commitment.research_direction_ref.id
+          );
+          if (direction?.direction_kind === "volatility_regime") {
+            throw new Error("synthetic_mixed_crash_after_commitment");
+          }
+          return commitment;
+        };
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_mixed_crash_before_tick");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordResearchPreflightCommitment = recordCommitment;
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStoreBeforeRestart = new LocalStore(
+      paths.armRoots.static_control
+    );
+    const checkpointsBeforeRestart =
+      await staticStoreBeforeRestart.listResearchWorkerCheckpoints();
+    const effectsBeforeRestart = providerEffectCount;
+    expect(checkpointsBeforeRestart).toHaveLength(2);
+    expect(checkpointsBeforeRestart.every((checkpoint) =>
+      checkpoint.terminal_direction_result !== undefined
+    )).toBe(true);
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(providerEffectCount).toBe(effectsBeforeRestart);
+    const reopenedStaticStore = new LocalStore(paths.armRoots.static_control);
+    const [ticks, allocations, checkpointsAfterRestart] = await Promise.all([
+      reopenedStaticStore.listCandidateArenaTicks(),
+      reopenedStaticStore.listCandidateArenaResearchAllocations(),
+      reopenedStaticStore.listResearchWorkerCheckpoints()
+    ]);
+    const staticCampaignArm = campaign.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )!;
+    const allocation = allocations.find((candidate) =>
+      candidate.tick_id === staticCampaignArm.tick_ids[0]
+    )!;
+    const recoveredTick = ticks.find((tick) =>
+      tick.tick_id === staticCampaignArm.tick_ids[0]
+    )!;
+    expect(recoveredTick.direction_results.slice(0, 2)).toEqual(
+      allocation.selected_directions.slice(0, 2).map((selection) =>
+        checkpointsBeforeRestart.find((checkpoint) =>
+          checkpoint.terminal_direction_result?.direction_kind ===
+            selection.direction_kind
+        )!.terminal_direction_result
+      )
+    );
+    expect(recoveredTick.direction_results[2]).toMatchObject({
+      direction_kind: "volatility_regime",
+      status: "failed",
+      error: "candidate_arena_restart_recovery"
+    });
+    expect(recoveredTick.direction_results[2]!.research_efficiency)
+      .toBeUndefined();
+    const restartCheckpoint = checkpointsAfterRestart.find((checkpoint) =>
+      checkpoint.terminal_reason === "restart_recovery"
+    )!;
+    expect(restartCheckpoint).toMatchObject({
+      terminal_status: "failed_closed",
+      terminal_reason: "restart_recovery"
+    });
+    expect(restartCheckpoint).not.toHaveProperty(
+      "candidate_admission_decision_ref"
+    );
+    expect(restartCheckpoint).not.toHaveProperty("terminal_direction_result");
+    const preservedProviderRequests = recoveredTick.direction_results
+      .slice(0, 2)
+      .reduce((total, result) =>
+        total + (result.research_efficiency?.provider_request_total ?? 0), 0
+      );
+    expect(preservedProviderRequests).toBeGreaterThan(0);
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        admitted_candidate_count: 1,
+        duplicate_count: 1,
+        failed_count: 1,
+        provider_request_total: preservedProviderRequests
+      },
+      paper_candidate_slots: [{ status: "candidate_reserved" }]
+    });
+  });
+
+  it.each([
+    ["persisted materialization", true],
+    ["missing materialization", false]
+  ])(
+    "recovers exact admissions with %s and excludes incomplete authority",
+    async (_label, materializeBeforeCrash) => {
+      const suffix = materializeBeforeCrash ? "materialized" : "unmaterialized";
+      const sourceStore = new LocalStore(
+        path.join(tmpDir, `orphan-admission-${suffix}-source`)
+      );
+      await sourceStore.initialize();
+      const workspaceRoot = path.join(
+        tmpDir,
+        `orphan-admission-${suffix}-workspace`
+      );
+      let providerEffectCount = 0;
+      const input = {
+        ...campaignRunInput(
+          sourceStore,
+          workspaceRoot,
+          runCandidateArenaTick
+        ),
+        idempotencyKey: `runtime-orphan-admission-${suffix}-001`,
+        replayProviderFactory: async (
+          candidateInput: ReplayTradingCandidateInput
+        ) => {
+          providerEffectCount += 1;
+          return networklessReplayProvider(candidateInput);
+        }
+      };
+
+      await expect(runResearchControlCampaign({
+        ...input,
+        runTick: async (tickInput) => {
+          if (tickInput.researchAllocationMode !== "static_control") {
+            return runCandidateArenaTick(tickInput);
+          }
+          const store = tickInput.store as LocalStore;
+          const recordCheckpoint =
+            store.recordResearchWorkerCheckpoint.bind(store);
+          const recordTick = store.recordCandidateArenaTick.bind(store);
+          const materializeCandidate =
+            store.materializeCandidate.bind(store);
+          store.recordResearchWorkerCheckpoint = async () => {
+            throw new Error("synthetic_crash_before_checkpoint");
+          };
+          store.recordCandidateArenaTick = async () => {
+            throw new Error("synthetic_crash_before_terminal_tick");
+          };
+          if (!materializeBeforeCrash) {
+            store.materializeCandidate = async () => {
+              throw new Error("synthetic_crash_before_materialization");
+            };
+          }
+          try {
+            return await runCandidateArenaTick(tickInput);
+          } finally {
+            store.recordResearchWorkerCheckpoint = recordCheckpoint;
+            store.recordCandidateArenaTick = recordTick;
+            store.materializeCandidate = materializeCandidate;
+          }
+        }
+      })).rejects.toMatchObject({
+        code: "research_control_campaign_arm_tick_failed"
+      });
+
+      const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+      const paths = researchControlCampaignWorkspacePaths({
+        workspaceRoot,
+        campaignId: campaign.research_control_campaign_id,
+        sourceRoot: sourceStore.root()
+      });
+      const staticStoreBeforeRestart = new LocalStore(
+        paths.armRoots.static_control
+      );
+      const staticCampaignArm = campaign.arms.find((arm) =>
+        arm.arm_kind === "static_control"
+      )!;
+      const [
+        allocationsBeforeRestart,
+        commitmentsBeforeRestart,
+        admissionsBeforeRestart
+      ] = await Promise.all([
+        staticStoreBeforeRestart.listCandidateArenaResearchAllocations(),
+        staticStoreBeforeRestart.listResearchPreflightCommitments(),
+        staticStoreBeforeRestart.listCandidateAdmissionDecisions()
+      ]);
+      const staticAllocation = allocationsBeforeRestart.find((allocation) =>
+        allocation.tick_id === staticCampaignArm.tick_ids[0]
+      )!;
+      const staticCommitmentIds = new Set(
+        commitmentsBeforeRestart
+          .filter((commitment) =>
+            commitment.research_allocation_ref.id ===
+              staticAllocation.candidate_arena_research_allocation_id
+          )
+          .map((commitment) =>
+            commitment.research_preflight_commitment_id
+          )
+      );
+      const staticAdmissions = admissionsBeforeRestart.filter((admission) =>
+        staticCommitmentIds.has(
+          admission.research_preflight_commitment_ref!.id
+        )
+      );
+      const admittedSystemCodeIds = new Set(
+        staticAdmissions
+          .filter((admission) => admission.status === "admitted")
+          .map((admission) => admission.system_code_ref.id)
+      );
+      const candidatesBeforeRestart =
+        await staticStoreBeforeRestart.listCandidates();
+      const candidateVersionsBeforeRestart = await Promise.all(
+        candidatesBeforeRestart.map((candidate) =>
+          staticStoreBeforeRestart.getCandidateVersion(
+            candidate.active_version_id
+          )
+        )
+      );
+      const materializedAdmissionCandidates =
+        candidateVersionsBeforeRestart.filter((version) =>
+          admittedSystemCodeIds.has(version?.system_code_ref?.id ?? "")
+        );
+      const materializedSystemCodeIds = new Set(
+        candidateVersionsBeforeRestart.flatMap((version) =>
+          version?.system_code_ref?.id ? [version.system_code_ref.id] : []
+        )
+      );
+      const effectsBeforeRestart = providerEffectCount;
+      expect(await staticStoreBeforeRestart.listCandidateArenaTicks())
+        .toEqual([]);
+      expect(await staticStoreBeforeRestart.listResearchWorkerCheckpoints())
+        .toEqual([]);
+      expect(staticAdmissions.some((admission) =>
+        admission.status === "admitted"
+      )).toBe(true);
+      expect(materializedAdmissionCandidates.length).toBe(
+        materializeBeforeCrash ? 1 : 0
+      );
+
+      const resumed = await runResearchControlCampaign(input);
+
+      expect(providerEffectCount).toBe(effectsBeforeRestart);
+      const reopenedStaticStore = new LocalStore(
+        paths.armRoots.static_control
+      );
+      const [ticks, checkpoints] = await Promise.all([
+        reopenedStaticStore.listCandidateArenaTicks(),
+        reopenedStaticStore.listResearchWorkerCheckpoints()
+      ]);
+      const recoverableAdmissions = staticAdmissions.filter((admission) =>
+        admission.status !== "admitted" ||
+        materializedSystemCodeIds.has(admission.system_code_ref.id)
+      );
+      const expectedAdmittedCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "admitted"
+      ).length;
+      const expectedDuplicateCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "duplicate"
+      ).length;
+      const expectedQuarantinedCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "quarantined"
+      ).length;
+      const expectedFailedCount =
+        staticAllocation.selected_directions.length -
+        recoverableAdmissions.length;
+      expect(checkpoints).toHaveLength(staticCommitmentIds.size);
+      for (const commitment of commitmentsBeforeRestart.filter((candidate) =>
+        staticCommitmentIds.has(candidate.research_preflight_commitment_id)
+      )) {
+        const admission = staticAdmissions.find((candidate) =>
+          candidate.research_preflight_commitment_ref?.id ===
+            commitment.research_preflight_commitment_id
+        );
+        const checkpoint = checkpoints.find((candidate) =>
+          candidate.research_preflight_commitment_ref.id ===
+            commitment.research_preflight_commitment_id
+        );
+        const recoverable = admission && recoverableAdmissions.some(
+          (candidate) => candidate.candidate_admission_decision_id ===
+            admission.candidate_admission_decision_id
+        );
+        expect(checkpoint).toMatchObject(recoverable
+          ? {
+              terminal_status: "completed",
+              terminal_reason: "admission_recorded",
+              candidate_admission_decision_ref: {
+                record_kind: "candidate_admission_decision",
+                id: admission.candidate_admission_decision_id
+              }
+            }
+          : {
+              terminal_status: "failed_closed",
+              terminal_reason: "restart_recovery"
+            });
+        expect(checkpoint).not.toHaveProperty("terminal_direction_result");
+        if (!recoverable) {
+          expect(checkpoint).not.toHaveProperty(
+            "candidate_admission_decision_ref"
+          );
+        }
+      }
+      const recoveredTick = ticks[0]!;
+      expect(ticks).toEqual([expect.objectContaining({
+        tick_id: staticCampaignArm.tick_ids[0],
+        status: expectedFailedCount === 0
+          ? "completed"
+          : expectedFailedCount === staticAllocation.selected_directions.length
+            ? "failed"
+            : "completed_with_errors"
+      })]);
+      expect(recoveredTick.created_candidate_refs).toHaveLength(
+        expectedAdmittedCount
+      );
+      expect(new Set(recoveredTick.direction_results.flatMap((result) =>
+        result.admission_decision_id ? [result.admission_decision_id] : []
+      ))).toEqual(new Set(recoverableAdmissions.map((admission) =>
+        admission.candidate_admission_decision_id
+      )));
+      expect(recoveredTick.direction_results.filter((result) =>
+        result.status === "failed"
+      ).every((result) =>
+        result.error === "candidate_arena_restart_recovery" &&
+        result.admission_decision_id === undefined
+      )).toBe(true);
+      expect(recoveredTick.direction_results.every((result) =>
+        result.research_efficiency === undefined
+      )).toBe(true);
+      expect(resumed.report.arms.find((arm) =>
+        arm.arm_kind === "static_control"
+      )).toMatchObject({
+        diagnostics: {
+          attempt_count: staticAllocation.selected_directions.length,
+          admitted_candidate_count: expectedAdmittedCount,
+          duplicate_count: expectedDuplicateCount,
+          quarantined_count: expectedQuarantinedCount,
+          failed_count: expectedFailedCount,
+          provider_request_total: 0,
+          runner_command_total: 0,
+          scenario_count: 0,
+          elapsed_ms: 0
+        },
+        population_diversity: {
+          observed_behaviors: {
+            admitted_submission_count: expectedAdmittedCount,
+            exact_behavior_duplicate_count: expectedDuplicateCount
+          }
+        },
+        paper_candidate_slots: [{
+          status: expectedAdmittedCount === 1
+            ? "candidate_reserved"
+            : "no_admitted_candidate"
+        }]
+      });
+    }
+  );
+
+  it("does not auto-promote a post-admission execution failure", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "post-admission-failure-source")
+    );
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(
+      tmpDir,
+      "post-admission-failure-workspace"
+    );
+    const outcome = await runResearchControlCampaign({
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-post-admission-failure-001",
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const materializeCandidate = store.materializeCandidate.bind(store);
+        store.materializeCandidate = async () => {
+          throw new Error("synthetic_post_admission_execution_failure");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.materializeCandidate = materializeCandidate;
+        }
+      }
+    });
+
+    const staticStore = new LocalStore(outcome.armRoots.static_control);
+    const [ticks, admissions, checkpoints] = await Promise.all([
+      staticStore.listCandidateArenaTicks(),
+      staticStore.listCandidateAdmissionDecisions(),
+      staticStore.listResearchWorkerCheckpoints()
+    ]);
+    const admitted = admissions.find((admission) =>
+      admission.status === "admitted"
+    )!;
+    const failedCheckpoint = checkpoints.find((checkpoint) =>
+      checkpoint.research_preflight_commitment_ref.id ===
+        admitted.research_preflight_commitment_ref!.id
+    )!;
+    expect(failedCheckpoint).toMatchObject({
+      terminal_status: "failed_closed",
+      terminal_reason: "execution_failed"
+    });
+    expect(failedCheckpoint).not.toHaveProperty(
+      "candidate_admission_decision_ref"
+    );
+    expect(failedCheckpoint).not.toHaveProperty("terminal_direction_result");
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0]!.direction_results.some((result) =>
+      result.status === "failed" &&
+      result.admission_decision_id === undefined &&
+      result.candidate_id === undefined &&
+      result.paper_handoff_conformance === undefined
+    )).toBe(true);
+    expect(outcome.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        admitted_candidate_count: 0,
+        failed_count: 1
+      },
+      population_diversity: {
+        observed_behaviors: {
+          admitted_submission_count: 0
+        }
+      },
+      paper_candidate_slots: [{
+        status: "no_admitted_candidate"
+      }]
+    });
+  });
+
+  it("recovers a post-admission failed checkpoint without replay", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "post-admission-checkpoint-source")
+    );
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(
+      tmpDir,
+      "post-admission-checkpoint-workspace"
+    );
+    let providerEffectCount = 0;
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-post-admission-checkpoint-001",
+      replayProviderFactory: async (
+        candidateInput: ReplayTradingCandidateInput
+      ) => {
+        providerEffectCount += 1;
+        return networklessReplayProvider(candidateInput);
+      }
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const materializeCandidate = store.materializeCandidate.bind(store);
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.materializeCandidate = async () => {
+          throw new Error("synthetic_post_admission_execution_failure");
+        };
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_post_failure_checkpoint_crash");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.materializeCandidate = materializeCandidate;
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStoreBeforeRestart = new LocalStore(
+      paths.armRoots.static_control
+    );
+    const failedCheckpoints = (await staticStoreBeforeRestart
+      .listResearchWorkerCheckpoints()).filter((checkpoint) =>
+      checkpoint.terminal_status === "failed_closed" &&
+      checkpoint.terminal_reason === "execution_failed"
+    );
+    const effectsBeforeRestart = providerEffectCount;
+    expect(failedCheckpoints).toHaveLength(1);
+    expect(failedCheckpoints[0]).not.toHaveProperty(
+      "candidate_admission_decision_ref"
+    );
+    expect(failedCheckpoints[0]).not.toHaveProperty(
+      "terminal_direction_result"
+    );
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(providerEffectCount).toBe(effectsBeforeRestart);
+    const reopenedStaticStore = new LocalStore(
+      paths.armRoots.static_control
+    );
+    const [tick] = await reopenedStaticStore.listCandidateArenaTicks();
+    expect(tick?.direction_results.some((result) =>
+      result.status === "failed" &&
+      result.error === "candidate_arena_checkpoint_execution_failed" &&
+      result.admission_decision_id === undefined &&
+      result.candidate_id === undefined
+    )).toBe(true);
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        admitted_candidate_count: 0,
+        failed_count: 1
+      },
+      paper_candidate_slots: [{
+        status: "no_admitted_candidate"
+      }]
+    });
+  });
+
+  it("reports completed no-submission directions separately from failures", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "no-submission-source")
+    );
+    await sourceStore.initialize();
+    const agent = new FinishWithoutSubmissionResearchAgent();
+    const outcome = await runResearchControlCampaign({
+      ...campaignRunInput(
+        sourceStore,
+        path.join(tmpDir, "no-submission-workspace"),
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-no-submission-001",
+      researchAgent: "codex",
+      researchAgentIdentity: agent.agent,
+      agentFactory: () => agent
+    });
+
+    expect(agent.runSessionCount).toBe(6);
+    expect(outcome.report.arms).toEqual([
+      expect.objectContaining({
+        diagnostics: expect.objectContaining({
+          attempt_count: 3,
+          admitted_candidate_count: 0,
+          duplicate_count: 0,
+          quarantined_count: 0,
+          failed_count: 0,
+          no_submission_count: 3
+        }),
+        paper_candidate_slots: [{
+          sequence: 1,
+          tick_ref: expect.objectContaining({
+            record_kind: "candidate_arena_tick"
+          }),
+          status: "no_admitted_candidate"
+        }]
+      }),
+      expect.objectContaining({
+        diagnostics: expect.objectContaining({
+          attempt_count: 3,
+          admitted_candidate_count: 0,
+          duplicate_count: 0,
+          quarantined_count: 0,
+          failed_count: 0,
+          no_submission_count: 3
+        }),
+        paper_candidate_slots: [{
+          sequence: 1,
+          tick_ref: expect.objectContaining({
+            record_kind: "candidate_arena_tick"
+          }),
+          status: "no_admitted_candidate"
+        }]
+      })
+    ]);
+  });
+
+  it("recovers exact no-submission checkpoint results without replay", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "recovered-no-submission-source")
+    );
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(
+      tmpDir,
+      "recovered-no-submission-workspace"
+    );
+    const agent = new FinishWithoutSubmissionResearchAgent();
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-recovered-no-submission-001",
+      researchAgent: "codex" as const,
+      researchAgentIdentity: agent.agent,
+      agentFactory: () => agent
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_no_submission_post_checkpoint_crash");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+    const sessionCountBeforeRestart = agent.runSessionCount;
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(agent.runSessionCount).toBe(sessionCountBeforeRestart);
+    const staticStore = new LocalStore(
+      resumed.armRoots.static_control
+    );
+    const [tick] = await staticStore.listCandidateArenaTicks();
+    expect(tick?.direction_results).toHaveLength(3);
+    expect(tick?.direction_results.every((result) =>
+      result.status === "no_submission"
+    )).toBe(true);
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        attempt_count: 3,
+        admitted_candidate_count: 0,
+        duplicate_count: 0,
+        quarantined_count: 0,
+        failed_count: 0,
+        no_submission_count: 3
+      },
+      paper_candidate_slots: [{
+        status: "no_admitted_candidate"
+      }]
+    });
+  });
+
+  it("reconstructs legacy admission checkpoints without replay or fabricated efficiency", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "legacy-admission-source")
+    );
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(
+      tmpDir,
+      "legacy-admission-workspace"
+    );
+    let providerEffectCount = 0;
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-legacy-admission-001",
+      replayProviderFactory: async (
+        candidateInput: ReplayTradingCandidateInput
+      ) => {
+        providerEffectCount += 1;
+        return networklessReplayProvider(candidateInput);
+      }
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordCheckpoint =
+          store.recordResearchWorkerCheckpoint.bind(store);
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordResearchWorkerCheckpoint = async (checkpoint) =>
+          recordCheckpoint(legacyCheckpointWithoutTerminalResult(checkpoint));
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_legacy_admission_tick_crash");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordResearchWorkerCheckpoint = recordCheckpoint;
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStore = new LocalStore(paths.armRoots.static_control);
+    const legacyCheckpoints =
+      await staticStore.listResearchWorkerCheckpoints();
+    const effectsBeforeRestart = providerEffectCount;
+    expect(legacyCheckpoints).not.toHaveLength(0);
+    expect(legacyCheckpoints.every((checkpoint) =>
+      checkpoint.terminal_reason === "admission_recorded" &&
+      checkpoint.terminal_direction_result === undefined
+    )).toBe(true);
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(providerEffectCount).toBe(effectsBeforeRestart);
+    expect(await staticStore.listResearchWorkerCheckpoints())
+      .toEqual(legacyCheckpoints);
+    const admissions = await staticStore.listCandidateAdmissionDecisions();
+    const admissionsById = new Map(admissions.map((admission) => [
+      admission.candidate_admission_decision_id,
+      admission
+    ]));
+    const [tick] = await staticStore.listCandidateArenaTicks();
+    expect(tick?.created_candidate_refs).toHaveLength(1);
+    expect(tick?.direction_results).toHaveLength(3);
+    for (const result of tick!.direction_results) {
+      const admission = result.admission_decision_id
+        ? admissionsById.get(result.admission_decision_id)
+        : undefined;
+      expect(admission).toBeDefined();
+      expect(result.status).toBe(admission?.status === "admitted"
+        ? "created"
+        : admission?.status);
+      expect(result.research_efficiency).toBeUndefined();
+    }
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        admitted_candidate_count: 1,
+        duplicate_count: 2,
+        quarantined_count: 0,
+        failed_count: 0,
+        no_submission_count: 0
+      },
+      population_diversity: {
+        observed_behaviors: {
+          admitted_submission_count: 1,
+          exact_behavior_duplicate_count: 2
+        }
+      },
+      paper_candidate_slots: [{
+        status: "candidate_reserved"
+      }]
+    });
+  });
+
+  it("fails closed legacy no-submission checkpoints without replay", async () => {
+    const sourceStore = new LocalStore(
+      path.join(tmpDir, "legacy-no-submission-source")
+    );
+    await sourceStore.initialize();
+    const workspaceRoot = path.join(
+      tmpDir,
+      "legacy-no-submission-workspace"
+    );
+    const agent = new FinishWithoutSubmissionResearchAgent();
+    const input = {
+      ...campaignRunInput(
+        sourceStore,
+        workspaceRoot,
+        runCandidateArenaTick
+      ),
+      idempotencyKey: "runtime-legacy-no-submission-001",
+      researchAgent: "codex" as const,
+      researchAgentIdentity: agent.agent,
+      agentFactory: () => agent
+    };
+
+    await expect(runResearchControlCampaign({
+      ...input,
+      runTick: async (tickInput) => {
+        if (tickInput.researchAllocationMode !== "static_control") {
+          return runCandidateArenaTick(tickInput);
+        }
+        const store = tickInput.store as LocalStore;
+        const recordCheckpoint =
+          store.recordResearchWorkerCheckpoint.bind(store);
+        const recordTick = store.recordCandidateArenaTick.bind(store);
+        store.recordResearchWorkerCheckpoint = async (checkpoint) =>
+          recordCheckpoint(legacyCheckpointWithoutTerminalResult(checkpoint));
+        store.recordCandidateArenaTick = async () => {
+          throw new Error("synthetic_legacy_no_submission_tick_crash");
+        };
+        try {
+          return await runCandidateArenaTick(tickInput);
+        } finally {
+          store.recordResearchWorkerCheckpoint = recordCheckpoint;
+          store.recordCandidateArenaTick = recordTick;
+        }
+      }
+    })).rejects.toMatchObject({
+      code: "research_control_campaign_arm_tick_failed"
+    });
+
+    const campaign = (await sourceStore.listResearchControlCampaigns())[0]!;
+    const paths = researchControlCampaignWorkspacePaths({
+      workspaceRoot,
+      campaignId: campaign.research_control_campaign_id,
+      sourceRoot: sourceStore.root()
+    });
+    const staticStore = new LocalStore(paths.armRoots.static_control);
+    const legacyCheckpoints =
+      await staticStore.listResearchWorkerCheckpoints();
+    const sessionCountBeforeRestart = agent.runSessionCount;
+    expect(legacyCheckpoints).toHaveLength(3);
+    expect(legacyCheckpoints.every((checkpoint) =>
+      checkpoint.terminal_reason === "finished_without_submission" &&
+      checkpoint.terminal_direction_result === undefined
+    )).toBe(true);
+
+    const resumed = await runResearchControlCampaign(input);
+
+    expect(agent.runSessionCount).toBe(sessionCountBeforeRestart);
+    expect(await staticStore.listResearchWorkerCheckpoints())
+      .toEqual(legacyCheckpoints);
+    const [tick] = await staticStore.listCandidateArenaTicks();
+    expect(tick?.direction_results.every((result) =>
+      result.status === "failed" &&
+      result.error === "candidate_arena_recovery_evidence_unavailable" &&
+      result.candidate_id === undefined &&
+      result.admission_decision_id === undefined &&
+      result.paper_handoff_conformance === undefined &&
+      result.research_efficiency === undefined
+    )).toBe(true);
+    expect(resumed.report.arms.find((arm) =>
+      arm.arm_kind === "static_control"
+    )).toMatchObject({
+      diagnostics: {
+        failed_count: 3,
+        no_submission_count: 0
+      },
+      paper_candidate_slots: [{
+        status: "no_admitted_candidate"
+      }]
+    });
+  });
+
   it("rejects a campaign workspace nested under the source store", async () => {
     const sourceStore = new LocalStore(path.join(tmpDir, "nested-source"));
     await sourceStore.initialize();
@@ -494,6 +1815,35 @@ function boundPaperEvaluationProtocol():
   };
 }
 
+class FinishWithoutSubmissionResearchAgent
+implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-codex-trading-research",
+    provider: "codex",
+    permission_policy: "artifact_workspace_only"
+  };
+  runSessionCount = 0;
+
+  async improveArtifact(_input: AgentEditInput): Promise<AgentEditResult> {
+    throw new Error("no_submission_legacy_edit_path_used");
+  }
+
+  async runSession(
+    input: ResearchWorkerSessionInput
+  ): Promise<ResearchWorkerSessionResult> {
+    this.runSessionCount += 1;
+    const finished = await input.tools.finishWithoutSubmission({
+      idempotency_key: "campaign-finish-without-submission",
+      reason: "No development submission should enter sealed admission."
+    });
+    return {
+      status: finished.session_status,
+      summary: finished.reason,
+      provider_command_count: 1
+    };
+  }
+}
+
 class TradingReviewCampaignStore extends LocalStore {
   override async getLatestTradingPromotion(): Promise<TradingPromotionRecord> {
     return runtimeTradingPromotion();
@@ -552,6 +1902,17 @@ function runtimeTradingPromotion(): TradingPromotionRecord {
 
 function fixtureAgentFactory(): TradingResearchAgentAdapter {
   return new FixtureTradingResearchAgentAdapter();
+}
+
+function legacyCheckpointWithoutTerminalResult(
+  checkpoint: ResearchWorkerCheckpointRecord
+): ResearchWorkerCheckpointRecord {
+  const legacy = structuredClone(checkpoint);
+  delete legacy.terminal_direction_result;
+  legacy.checkpoint_digest = `sha256:${createHash("sha256")
+    .update(researchWorkerCheckpointDigestInput(legacy))
+    .digest("hex")}`;
+  return legacy;
 }
 
 function networklessArtifactRunner(): TradingArtifactRunner {

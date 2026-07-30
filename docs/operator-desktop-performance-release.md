@@ -101,8 +101,10 @@ The packaged runtime contract is recorded in
 `apps/operator-desktop/src-tauri/resources/runtime/ouroboros-runtime.manifest.json`. The executable
 launcher lives at `apps/operator-desktop/src-tauri/resources/runtime/ouroboros-runtime`. Both files
 are bundled as Tauri resources under the app's `Contents/Resources/resources/runtime/` directory for
-local packaged app runs. The shared Operator UI bundle still talks only to `GET /api/operator` and
-`POST /api/commands`.
+local packaged app runs. The shared Operator UI bundle reads `GET /api/operator`,
+`GET /api/gateway/environment`, and the authenticated exact-detail resources
+`GET /api/arena/trading-systems/:candidateId` and
+`GET /api/research/sessions/:researchWorkItemId`; it uses `POST /api/commands` for mutations.
 
 ## Background Runtime Status
 

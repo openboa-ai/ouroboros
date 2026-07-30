@@ -126,13 +126,18 @@ between ticks can close the window aggregate while each internally single-cohort
 measured; a conflict inside one tick closes that tick too.
 Admission classifications join only through the exact commitment graph. Missing historical links
 are ignored, while a window commitment missing its ResearchDirection fails the derived read. The
-same bounded read model enters CandidateArena and next-worker context without raw IDs, digests,
-observations, scenarios, sealed outcomes, or paper evidence.
+same bounded read model enters CandidateArena and next-worker context without raw commitment or
+fingerprint IDs, digests, observations, scenarios, sealed outcomes, or paper evidence. Its bounded
+newest-first tick series intentionally retains each exact public `tick_id` as the cross-section key.
 
 `ResearchControlCampaign` freezes an adaptive allocation treatment and static equal-maximum-bound
-control before either arm effect. Its canonical store snapshot excludes only campaign evidence
-collections to avoid self-reference; candidate, Finding, Lineage, checkpoint, duplicate-baseline,
-and artifact state remain covered. The actual single-file research source is sealed and copied
+control before either arm effect. Its canonical v2 store snapshot excludes campaign evidence plus
+reconstructible `.locks` and `read-models`; candidate, Finding, Lineage, checkpoint,
+duplicate-baseline, and artifact state remain covered. Legacy v1 verification preserves previously
+covered derived files while ignoring only the later-owned Research operations projection,
+generation, and publication-lock paths. This preserves the verified v1 snapshot-check and
+arm-copy scope after an upgrade; complete persisted-v1 coordinator resumption is not claimed here.
+The actual single-file research source is sealed and copied
 separately so compatibility SystemCode artifact identifiers cannot masquerade as the bytes used by
 both arms. Each arm has its own LocalStore, worker state, candidate artifacts, and exact tick IDs.
 The primary store retains campaign, coordinator arm intents, the terminal report, the deterministic

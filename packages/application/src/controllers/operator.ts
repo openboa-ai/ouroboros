@@ -3,9 +3,14 @@ import {
   OUROBOROS_COMMAND_KINDS,
   type ArenaTradingSystemDetailReadModel,
   type OperatorReadModel,
-  type OuroborosCommandRequest
+  type OuroborosCommandRequest,
+  type ResearchSessionDetailReadModel
 } from "@ouroboros/domain";
-import { OperatorCommandError, type OperatorService } from "../services/operator";
+import {
+  OperatorCommandError,
+  OperatorReadError,
+  type OperatorService
+} from "../services/operator";
 
 export interface OperatorControllerResponse {
   statusCode: number;
@@ -17,6 +22,9 @@ export interface OperatorController {
   readArenaTradingSystemDetail(
     candidateId: string
   ): Promise<OperatorControllerResponse>;
+  readResearchSessionDetail(
+    researchWorkItemId: string
+  ): Promise<OperatorControllerResponse>;
   dispatchCommand(request: OuroborosCommandRequest | undefined): Promise<OperatorControllerResponse>;
 }
 
@@ -25,6 +33,8 @@ export function createOperatorController(service: OperatorService): OperatorCont
     readOperator: () => service.readOperator(),
     readArenaTradingSystemDetail: (candidateId) =>
       readArenaTradingSystemDetail(service, candidateId),
+    readResearchSessionDetail: (researchWorkItemId) =>
+      readResearchSessionDetail(service, researchWorkItemId),
     dispatchCommand: (request) => dispatchOperatorCommand(service, request)
   };
 }
@@ -42,6 +52,36 @@ async function readArenaTradingSystemDetail(
         body: {
           error: "arena_trading_system_not_found",
           candidate_id: candidateId
+        }
+      };
+}
+
+async function readResearchSessionDetail(
+  service: OperatorService,
+  researchWorkItemId: string
+): Promise<OperatorControllerResponse> {
+  let detail: ResearchSessionDetailReadModel | undefined;
+  try {
+    detail = await service.readResearchSessionDetail(researchWorkItemId);
+  } catch (error) {
+    if (!(error instanceof OperatorReadError)) {
+      throw error;
+    }
+    return {
+      statusCode: error.statusCode,
+      body: {
+        error: error.error,
+        ...error.details
+      }
+    };
+  }
+  return detail
+    ? { statusCode: 200, body: { research_session: detail } }
+    : {
+        statusCode: 404,
+        body: {
+          error: "research_session_not_found",
+          research_work_item_id: researchWorkItemId
         }
       };
 }

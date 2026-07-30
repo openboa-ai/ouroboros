@@ -585,6 +585,7 @@ function armDiagnostics(ticks: CandidateArenaTickRecord[]) {
     duplicate_count: countStatus(results, "duplicate"),
     quarantined_count: countStatus(results, "quarantined"),
     failed_count: countStatus(results, "failed"),
+    no_submission_count: countStatus(results, "no_submission"),
     provider_request_total: sum(efficiency, "provider_request_total"),
     runner_command_total: sum(efficiency, "runner_command_total"),
     scenario_count: sum(efficiency, "scenario_count"),

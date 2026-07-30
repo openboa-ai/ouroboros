@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CandidateArenaRunner,
+  candidateArenaRunnerTickCountFromTicks,
   recoverIncompleteResearchWorkerCheckpoints,
   runCandidateArenaTick
 } from "@ouroboros/application/candidate/arena";
@@ -1616,12 +1618,12 @@ describe("CandidateArena paper evidence context", () => {
     });
   });
 
-  it("reconstructs terminal admission closure without replaying materialization", async () => {
-    const interrupted = new CheckpointDisabledStore(tmpDir);
+  it("recovers an exact orphan admission without replaying materialization", async () => {
+    const interrupted = new TerminalPersistenceDisabledStore(tmpDir);
     await interrupted.initialize();
-    await runCandidateArenaTick({
+    await expect(runCandidateArenaTick({
       store: interrupted,
-      tickId: "worker-restart-admission",
+      tickId: "tick-1",
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
@@ -1629,8 +1631,20 @@ describe("CandidateArena paper evidence context", () => {
       agentFactory: () => new LifecycleResearchAgent([]),
       artifactRunner: networklessReplayArtifactRunner(),
       replayProviderFactory: networklessReplayTradingApiProvider
-    });
-    await expect(interrupted.listCandidateAdmissionDecisions()).resolves.toHaveLength(1);
+    })).rejects.toThrow("simulated tick persistence interruption");
+    const [admission] = await interrupted.listCandidateAdmissionDecisions();
+    expect(admission).toBeDefined();
+    const admittedCandidates = (await Promise.all(
+      (await interrupted.listCandidates()).map((candidate) =>
+        interrupted.getCandidate(candidate.candidate_id)
+      )
+    )).filter((candidate) =>
+      candidate?.full_cycle_lineage?.generated?.system_code_ref.id ===
+        admission?.system_code_ref.id
+    );
+    expect(admittedCandidates).toHaveLength(1);
+    const admittedCandidate = admittedCandidates[0];
+    expect(admittedCandidate).toBeDefined();
     await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
 
     const restarted = new LocalStore(tmpDir);
@@ -1648,14 +1662,101 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(materializationCount).toBe(0);
     expect(recovered).toEqual([expect.objectContaining({
-      candidate_arena_tick_id: "worker-restart-admission",
+      candidate_arena_tick_id: "tick-1",
       terminal_status: "completed",
       terminal_reason: "admission_recorded",
-      candidate_admission_decision_ref: expect.objectContaining({
-        record_kind: "candidate_admission_decision"
-      })
+      candidate_admission_decision_ref: {
+        record_kind: "candidate_admission_decision",
+        id: admission?.candidate_admission_decision_id
+      }
     })]);
+    expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
     await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
+
+    const runner = new CandidateArenaRunner({
+      store: restarted,
+      now: () => "2026-07-12T12:00:00.000Z",
+      researchAgent: "codex",
+      agentFactory: () => {
+        throw new Error("recovery must not start a new provider");
+      }
+    });
+    const persistedTicks = await restarted.listCandidateArenaTicks();
+    const persistedAllocations = await restarted
+      .listCandidateArenaResearchAllocations();
+    const persistedCommitments = await restarted
+      .listResearchPreflightCommitments();
+    const effectedTickIds = new Set(persistedCommitments.map((commitment) =>
+      commitment.candidate_arena_tick_id
+    ));
+    runner.restoreTickCount(
+      candidateArenaRunnerTickCountFromTicks(
+        persistedTicks,
+        persistedAllocations,
+        effectedTickIds
+      ),
+      [
+        ...persistedTicks.map((tick) => tick.tick_id),
+        ...persistedAllocations
+          .filter((allocation) => !effectedTickIds.has(allocation.tick_id))
+          .map((allocation) => allocation.tick_id)
+      ]
+    );
+    const recoveredTick = await runner.tick({
+      trigger_kind: "recovery",
+      goal: "Recover the exact admitted allocation before new effects."
+    });
+    const recoveredDirection = recoveredTick.arena.latest_ticks.find((tick) =>
+      tick.tick_id === "tick-1"
+    )?.direction_results[0];
+    expect(recoveredDirection).toMatchObject({
+      direction_kind: "trend_following",
+      status: "created",
+      candidate_id: admittedCandidate?.candidate_id,
+      admission_decision_id: admission?.candidate_admission_decision_id,
+      admission_reason: "evaluation_accepted"
+    });
+    expect(recoveredDirection).not.toHaveProperty("research_efficiency");
+    expect(recoveredTick).toMatchObject({
+      created_candidate_count: 1,
+      created_candidate_ids: [admittedCandidate?.candidate_id]
+    });
+  });
+
+  it("fails closed when restart recovery finds admission without materialization", async () => {
+    const interrupted = new TerminalPersistenceDisabledStore(tmpDir);
+    await interrupted.initialize();
+    interrupted.materializeCandidate = async () => {
+      throw new Error("simulated materialization interruption");
+    };
+    await expect(runCandidateArenaTick({
+      store: interrupted,
+      tickId: "worker-restart-incomplete-admission",
+      now: () => "2026-07-12T10:00:00.000Z",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      researchAgentDescriptor: lifecycleResearchAgentDescriptor(),
+      agentFactory: () => new LifecycleResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    })).rejects.toThrow("simulated tick persistence interruption");
+    await expect(interrupted.listCandidateAdmissionDecisions()).resolves.toHaveLength(1);
+    await expect(interrupted.listResearchWorkerCheckpoints()).resolves.toEqual([]);
+
+    const restarted = new LocalStore(tmpDir);
+    await restarted.initialize();
+    const recovered = await recoverIncompleteResearchWorkerCheckpoints({
+      store: restarted,
+      recovered_at: "2026-07-12T11:00:00.000Z"
+    });
+
+    expect(recovered).toEqual([expect.objectContaining({
+      candidate_arena_tick_id: "worker-restart-incomplete-admission",
+      terminal_status: "failed_closed",
+      terminal_reason: "restart_recovery"
+    })]);
+    expect(recovered[0]).not.toHaveProperty("candidate_admission_decision_ref");
+    expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
   });
 
   it("quarantines a crashed candidate run before runnable candidate materialization", async () => {
@@ -4109,6 +4210,13 @@ class ResearchAllocationPolicyOverlayStore extends LocalStore {
     private readonly decisions: ResearchAllocationPolicyDecisionRecord[]
   ) {
     super(root);
+    // This test-only overlay injects a policy decision that is intentionally
+    // absent from the persisted LocalStore graph. Keep this policy-resolver
+    // test on the optional legacy evidence port instead of asking the compact
+    // projection to attest an unpersisted decision.
+    Object.defineProperty(this, "readCandidateArenaEvidenceProjection", {
+      value: undefined
+    });
   }
 
   override async listResearchAllocationPolicyDecisions(): Promise<
@@ -4497,6 +4605,14 @@ class CheckpointDisabledStore extends LocalStore {
     _checkpoint: ResearchWorkerCheckpointRecord
   ): Promise<ResearchWorkerCheckpointRecord> {
     throw new Error("simulated checkpoint persistence interruption");
+  }
+}
+
+class TerminalPersistenceDisabledStore extends CheckpointDisabledStore {
+  override async recordCandidateArenaTick(
+    _tick: CandidateArenaTickRecord
+  ): Promise<CandidateArenaTickRecord> {
+    throw new Error("simulated tick persistence interruption");
   }
 }
 
@@ -5097,11 +5213,6 @@ async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
         }
       }
     ],
-    research_allocation_ref: {
-      record_kind: "candidate_arena_research_allocation",
-      id: allocation.candidate_arena_research_allocation_id
-    },
-    research_allocation_digest: allocation.allocation_digest,
     authority_status: "not_live"
   };
   await store.recordCandidateArenaTick(tick);

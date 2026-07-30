@@ -59,6 +59,47 @@ describe("ResearchWorkerCheckpoint", () => {
     expect(researchWorkerCheckpointHasRuntimeShape(noSubmission)).toBe(true);
   });
 
+  it("binds an optional exact terminal direction result into the checkpoint digest", () => {
+    const checkpoint = checkpointFixture();
+    checkpoint.terminal_direction_result = terminalDirectionResult();
+    expect(researchWorkerCheckpointHasRuntimeShape(checkpoint)).toBe(true);
+
+    const changed = structuredClone(checkpoint);
+    changed.terminal_direction_result!.research_efficiency!
+      .provider_request_total += 1;
+    expect(researchWorkerCheckpointDigestInput(changed))
+      .not.toBe(researchWorkerCheckpointDigestInput(checkpoint));
+
+    const mismatchedAdmission = structuredClone(checkpoint);
+    mismatchedAdmission.terminal_direction_result!.admission_decision_id =
+      "candidate-admission-decision-other";
+    expect(researchWorkerCheckpointHasRuntimeShape(mismatchedAdmission))
+      .toBe(false);
+
+    const missingEfficiency = structuredClone(checkpoint);
+    delete missingEfficiency.terminal_direction_result!.research_efficiency;
+    expect(researchWorkerCheckpointHasRuntimeShape(missingEfficiency))
+      .toBe(false);
+
+    const missingDevelopment = structuredClone(checkpoint);
+    delete missingDevelopment.terminal_direction_result!.research_efficiency!
+      .development;
+    expect(researchWorkerCheckpointHasRuntimeShape(missingDevelopment))
+      .toBe(false);
+
+    const efficiencyDrift = structuredClone(checkpoint);
+    efficiencyDrift.terminal_direction_result!.research_efficiency!
+      .provider_request_total += 1;
+    expect(researchWorkerCheckpointHasRuntimeShape(efficiencyDrift))
+      .toBe(false);
+
+    const restart = structuredClone(checkpoint);
+    restart.terminal_status = "failed_closed";
+    restart.terminal_reason = "restart_recovery";
+    delete restart.candidate_admission_decision_ref;
+    expect(researchWorkerCheckpointHasRuntimeShape(restart)).toBe(false);
+  });
+
   it("accepts an empty first checkpoint after pre-entry process loss", () => {
     const failed = checkpointFixture();
     delete failed.previous_checkpoint_ref;
@@ -297,6 +338,54 @@ function checkpointFixture(): ResearchWorkerCheckpointRecord {
     order_submission_authority: false,
     live_exchange_authority: false,
     authority_status: "research_only"
+  };
+}
+
+function terminalDirectionResult():
+  NonNullable<ResearchWorkerCheckpointRecord["terminal_direction_result"]> {
+  return {
+    direction_kind: "trend_following",
+    status: "created",
+    agent_provider: "fixture",
+    candidate_id: "candidate-tick-7",
+    finding: "Candidate produced non-negative net revenue after costs.",
+    admission_decision_id: "candidate-admission-decision-tick-7",
+    admission_reason: "evaluation_accepted",
+    net_revenue_usdt: 1.25,
+    research_efficiency: {
+      provider_request_total: 6,
+      runner_command_total: 2,
+      scenario_count: 2,
+      elapsed_ms: 1_000,
+      development: {
+        submission_count: 1,
+        provider_request_total: 6,
+        runner_command_total: 2,
+        scenario_count: 2,
+        elapsed_ms: 1_000
+      },
+      sealed_admission: {
+        submission_count: 1,
+        provider_request_total: 3,
+        runner_command_total: 1,
+        scenario_count: 1,
+        elapsed_ms: 500
+      },
+      authority_status: "not_promotion_authority"
+    },
+    research_preflight: {
+      commitment_id: "research-preflight-tick-7",
+      development_submission_count: 1,
+      sealed_terminal_status: "accepted",
+      reason: "accepted",
+      authority_status: "not_promotion_authority"
+    },
+    paper_handoff_conformance: {
+      conformance_id: "paper-handoff-conformance-tick-7",
+      status: "passed",
+      reason: "passed",
+      authority_status: "research_only"
+    }
   };
 }
 

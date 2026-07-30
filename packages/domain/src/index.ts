@@ -12,6 +12,7 @@ import {
   type CandidateAdmissionStatus
 } from "./candidate-admission-policy";
 import {
+  CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS,
   candidateEgressAttestationHasRuntimeShape,
   type CandidateEgressAttestation
 } from "./candidate-egress-attestation";
@@ -174,6 +175,25 @@ export const RESEARCH_DIRECTION_KINDS = [
 export type ResearchWorkerStatus = "active" | "failed" | "retired";
 
 export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
+
+export const CANDIDATE_ARENA_IDENTIFIER_MAX_LENGTH = 200;
+
+export function candidateArenaIdentifierHasRuntimeShape(
+  value: unknown
+): value is string {
+  return typeof value === "string" && value.length > 0 &&
+    value.length <= CANDIDATE_ARENA_IDENTIFIER_MAX_LENGTH &&
+    /^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?$/.test(value);
+}
+
+function candidateArenaRefHasRuntimeShape(
+  value: unknown,
+  recordKind?: string
+): value is Ref {
+  return comparisonRef(value, recordKind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.record_kind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.id);
+}
 
 export type CandidateArenaDirectionResultStatus =
   | "created"
@@ -1652,7 +1672,7 @@ export function sanitizeResearchEvidenceText(value: string): string {
     .replace(/\b[A-Za-z]:[\\\/](?![\\\/])[^\s<>"']+/g, "[private-path]")
     .replace(/(^|[^A-Za-z0-9._~\/-])\/(?!\/)[^\s<>"']+/g, "$1[private-path]")
     .replace(
-      /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
+      /(^|[^A-Za-z0-9_])(["']?(?:(?:[A-Za-z][A-Za-z0-9_-]*[_-])?(?:api[_-]?key|api[_-]?secret|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|credential))["']?\s*[:=]\s*)(?!\[redacted\](?:$|[\s,}\]]))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)/gi,
       "$1$2[redacted]"
     );
 }
@@ -1981,6 +2001,7 @@ export interface ResearchWorkerCheckpointRecord extends BaseRecord {
   terminal_status: ResearchWorkerCheckpointTerminalStatus;
   terminal_reason: ResearchWorkerCheckpointTerminalReason;
   candidate_admission_decision_ref?: Ref;
+  terminal_direction_result?: CandidateArenaTickDirectionResultReadModel;
   closed_at: string;
   checkpoint_digest: string;
   notebook_continuation_authority: true;
@@ -2016,6 +2037,9 @@ export function researchWorkerCheckpointDigestInput(
     ...(record.candidate_admission_decision_ref
       ? { candidate_admission_decision_ref: record.candidate_admission_decision_ref }
       : {}),
+    ...(record.terminal_direction_result
+      ? { terminal_direction_result: record.terminal_direction_result }
+      : {}),
     closed_at: record.closed_at,
     notebook_continuation_authority: record.notebook_continuation_authority,
     evaluation_authority: record.evaluation_authority,
@@ -2034,6 +2058,10 @@ export function researchWorkerCheckpointHasRuntimeShape(
   const hasPreviousRef = Object.hasOwn(value, "previous_checkpoint_ref");
   const hasPreviousDigest = Object.hasOwn(value, "previous_checkpoint_digest");
   const hasAdmissionRef = Object.hasOwn(value, "candidate_admission_decision_ref");
+  const hasTerminalDirectionResult = Object.hasOwn(
+    value,
+    "terminal_direction_result"
+  );
   if (hasPreviousRef !== hasPreviousDigest || !comparisonHasExactKeys(value, [
     "record_kind",
     "version",
@@ -2050,6 +2078,7 @@ export function researchWorkerCheckpointHasRuntimeShape(
     "terminal_status",
     "terminal_reason",
     ...(hasAdmissionRef ? ["candidate_admission_decision_ref"] : []),
+    ...(hasTerminalDirectionResult ? ["terminal_direction_result"] : []),
     "closed_at",
     "checkpoint_digest",
     "notebook_continuation_authority",
@@ -2078,6 +2107,10 @@ export function researchWorkerCheckpointHasRuntimeShape(
     value.notebook.total_entry_count !==
       value.development_budget.cumulative_recorded_submission_count ||
     !researchWorkerCheckpointTerminalHasRuntimeShape(value, hasAdmissionRef) ||
+    !researchWorkerCheckpointTerminalDirectionResultHasRuntimeShape(
+      value,
+      hasTerminalDirectionResult
+    ) ||
     !comparisonIso(value.closed_at) ||
     !researchPreflightSha256Digest(value.checkpoint_digest) ||
     value.notebook_continuation_authority !== true ||
@@ -2090,6 +2123,67 @@ export function researchWorkerCheckpointHasRuntimeShape(
     return false;
   }
   return true;
+}
+
+function researchWorkerCheckpointTerminalDirectionResultHasRuntimeShape(
+  value: Record<string, unknown>,
+  hasTerminalDirectionResult: boolean
+): boolean {
+  if (!hasTerminalDirectionResult) return true;
+  if (value.terminal_reason === "restart_recovery" ||
+    !candidateArenaTickDirectionResultHasRuntimeShape(
+      value.terminal_direction_result
+    )) {
+    return false;
+  }
+  const result = value.terminal_direction_result as
+    CandidateArenaTickDirectionResultReadModel;
+  const preflight = result.research_preflight;
+  if (!preflight ||
+    preflight.development_submission_count !==
+      (value.development_budget as
+        ResearchWorkerCheckpointRecord["development_budget"])
+        .recorded_submission_count) {
+    return false;
+  }
+  if (result.status === "failed") {
+    return value.terminal_reason === "execution_failed" &&
+      preflight.sealed_terminal_status === "not_run" &&
+      preflight.reason === "execution_failed";
+  }
+  const efficiency = result.research_efficiency;
+  const development = efficiency?.development;
+  const sealedAdmission = efficiency?.sealed_admission;
+  if (!efficiency || !development || !sealedAdmission ||
+    efficiency.provider_request_total !==
+      development.provider_request_total ||
+    efficiency.runner_command_total !==
+      development.runner_command_total ||
+    efficiency.scenario_count !== development.scenario_count ||
+    efficiency.elapsed_ms !== development.elapsed_ms ||
+    development.submission_count !==
+      preflight.development_submission_count) {
+    return false;
+  }
+  if (value.terminal_reason === "finished_without_submission") {
+    return result.status === "no_submission" &&
+      preflight.sealed_terminal_status === "not_run" &&
+      preflight.reason === "no_development_winner" &&
+      sealedAdmission.submission_count === 0;
+  }
+  if (value.terminal_reason !== "admission_recorded" ||
+    (result.status !== "created" && result.status !== "duplicate" &&
+      result.status !== "quarantined") ||
+    result.admission_decision_id !==
+      (value.candidate_admission_decision_ref as Ref | undefined)?.id ||
+    result.admission_reason === undefined) {
+    return false;
+  }
+  return result.status !== "created" || (
+    preflight.sealed_terminal_status === "accepted" &&
+    preflight.reason === "accepted" &&
+    result.paper_handoff_conformance?.status === "passed"
+  );
 }
 
 function researchWorkerWorkspaceKey(value: unknown): value is string {
@@ -2324,8 +2418,11 @@ export function researchPreflightCommitmentHasRuntimeShape(
     "commitment_digest"
   ]) || value.record_kind !== "research_preflight_commitment" ||
     value.version !== 1 ||
-    !comparisonString(value.research_preflight_commitment_id) ||
-    !comparisonString(value.candidate_arena_tick_id) ||
+    !candidateArenaIdentifierHasRuntimeShape(
+      value.research_preflight_commitment_id
+    ) || !candidateArenaIdentifierHasRuntimeShape(
+      value.candidate_arena_tick_id
+    ) ||
     !comparisonRef(value.research_direction_ref, "research_direction") ||
     !comparisonRef(value.research_worker_ref, "research_worker") ||
     !comparisonRef(
@@ -7425,8 +7522,9 @@ export function researchTriggerHasRuntimeShape(
     !comparisonString(value.goal) || value.goal.length > 1_000 ||
     value.goal !== sanitizeResearchEvidenceText(value.goal) ||
     !comparisonIso(value.triggered_at) ||
-    (hasSource && !comparisonRef(value.source_ref)) ||
-    (hasEvidenceRef && !comparisonRef(
+    !candidateArenaIdentifierHasRuntimeShape(value.trigger_id) ||
+    (hasSource && !candidateArenaRefHasRuntimeShape(value.source_ref)) ||
+    (hasEvidenceRef && !candidateArenaRefHasRuntimeShape(
       value.evidence_artifact_ref,
       "research_evidence_artifact"
     )) || (hasEvidenceDigest && !comparisonDigest(
@@ -7471,8 +7569,9 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     "authority_status"
   ]) || value.record_kind !== "candidate_arena_research_allocation" ||
     value.version !== 1 ||
-    !comparisonString(value.candidate_arena_research_allocation_id) ||
-    !comparisonString(value.tick_id) ||
+    !candidateArenaIdentifierHasRuntimeShape(
+      value.candidate_arena_research_allocation_id
+    ) || !candidateArenaIdentifierHasRuntimeShape(value.tick_id) ||
     !candidateArenaResearchAllocationMode(value.allocation_mode) ||
     !candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       value.allocation_policy_basis
@@ -7481,7 +7580,7 @@ export function candidateArenaResearchAllocationHasRuntimeShape(
     !candidateArenaResearchAllocationPolicyHasRuntimeShape(value.policy) ||
     !Array.isArray(value.source_tick_refs) ||
     value.source_tick_refs.some((item) =>
-      !comparisonRef(item, "candidate_arena_tick")
+      !candidateArenaRefHasRuntimeShape(item, "candidate_arena_tick")
     ) || !candidateArenaAllocationStringsUnique(
       value.source_tick_refs.map((item) => item.id)
     ) ||
@@ -7614,12 +7713,12 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       "policy_decision_digest",
       "study_outcome_ref",
       "study_outcome_digest"
-    ]) && comparisonRef(
+    ]) && candidateArenaRefHasRuntimeShape(
       value.policy_decision_ref,
       "research_allocation_policy_decision"
     ) && researchControlCampaignSha256Digest(
       value.policy_decision_digest
-    ) && comparisonRef(
+    ) && candidateArenaRefHasRuntimeShape(
       value.study_outcome_ref,
       "research_control_study_outcome"
     ) && researchControlCampaignSha256Digest(value.study_outcome_digest);
@@ -7631,12 +7730,12 @@ function candidateArenaResearchAllocationPolicyBasisHasRuntimeShape(
       "policy_decision_digest",
       "generalization_outcome_ref",
       "generalization_outcome_digest"
-    ]) && comparisonRef(
+    ]) && candidateArenaRefHasRuntimeShape(
       value.policy_decision_ref,
       "research_generalization_policy_decision"
     ) && researchControlCampaignSha256Digest(
       value.policy_decision_digest
-    ) && comparisonRef(
+    ) && candidateArenaRefHasRuntimeShape(
       value.generalization_outcome_ref,
       "research_generalization_outcome"
     ) && researchControlCampaignSha256Digest(
@@ -7747,7 +7846,9 @@ export type ResearchControlCampaignArmKind =
   | "static_control";
 
 export interface ResearchExperimentBaselineSnapshot {
-  protocol_version: "local_store_regular_files_v1";
+  protocol_version:
+    | "local_store_regular_files_v1"
+    | "local_store_regular_files_v2";
   snapshot_digest: string;
   regular_file_count: number;
   total_bytes: number;
@@ -8137,6 +8238,7 @@ export interface ResearchControlCampaignDiagnostics {
   duplicate_count: number;
   quarantined_count: number;
   failed_count: number;
+  no_submission_count?: number;
   provider_request_total: number;
   runner_command_total: number;
   scenario_count: number;
@@ -12402,7 +12504,8 @@ function researchExperimentBaselineHasRuntimeShape(
     "regular_file_count",
     "total_bytes",
     "exclusion_policy"
-  ]) && value.protocol_version === "local_store_regular_files_v1" &&
+  ]) && (value.protocol_version === "local_store_regular_files_v1" ||
+    value.protocol_version === "local_store_regular_files_v2") &&
     researchControlCampaignSha256Digest(value.snapshot_digest) &&
     comparisonPositive(value.regular_file_count) &&
     comparisonPositive(value.total_bytes) &&
@@ -12634,12 +12737,18 @@ function researchControlCampaignDiagnosticsHasRuntimeShape(
   value: unknown,
   tickCount: number
 ): value is ResearchControlCampaignDiagnostics {
-  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+  if (!comparisonObject(value)) return false;
+  const hasNoSubmissionCount = Object.hasOwn(
+    value,
+    "no_submission_count"
+  );
+  if (!comparisonHasExactKeys(value, [
     "attempt_count",
     "admitted_candidate_count",
     "duplicate_count",
     "quarantined_count",
     "failed_count",
+    ...(hasNoSubmissionCount ? ["no_submission_count"] : []),
     "provider_request_total",
     "runner_command_total",
     "scenario_count",
@@ -12650,6 +12759,7 @@ function researchControlCampaignDiagnosticsHasRuntimeShape(
     value.duplicate_count,
     value.quarantined_count,
     value.failed_count,
+    ...(hasNoSubmissionCount ? [value.no_submission_count] : []),
     value.provider_request_total,
     value.runner_command_total,
     value.scenario_count,
@@ -12658,10 +12768,11 @@ function researchControlCampaignDiagnosticsHasRuntimeShape(
     return false;
   }
   const diagnostics = value as unknown as ResearchControlCampaignDiagnostics;
+  const noSubmissionCount = diagnostics.no_submission_count ?? 0;
   return diagnostics.attempt_count === tickCount * 3 &&
     diagnostics.attempt_count === diagnostics.admitted_candidate_count +
       diagnostics.duplicate_count + diagnostics.quarantined_count +
-      diagnostics.failed_count;
+      diagnostics.failed_count + noSubmissionCount;
 }
 
 function researchControlCampaignPaperCandidateSlotHasRuntimeShape(
@@ -13341,6 +13452,13 @@ export interface CandidateArenaTickDirectionResultReadModel {
   };
 }
 
+export type CandidateArenaTickProjectedDirectionResultReadModel = Omit<
+  CandidateArenaTickDirectionResultReadModel,
+  "status"
+> & {
+  status: CandidateArenaDirectionResultStatus | "legacy_unverified";
+};
+
 export interface CandidateArenaTickReadModel {
   tick_id: string;
   started_at: string;
@@ -13348,7 +13466,7 @@ export interface CandidateArenaTickReadModel {
   status: CandidateArenaTickStatus;
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
-  direction_results: CandidateArenaTickDirectionResultReadModel[];
+  direction_results: CandidateArenaTickProjectedDirectionResultReadModel[];
   research_allocation?: CandidateArenaResearchAllocationReadModel;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
@@ -13368,6 +13486,443 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   research_allocation_digest?: string;
   paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
+}
+
+export function deriveCandidateArenaTickStatus(
+  directionResults: readonly Pick<
+    CandidateArenaTickProjectedDirectionResultReadModel,
+    "status"
+  >[]
+): CandidateArenaTickStatus {
+  const failedCount = directionResults.filter(
+    (result) => result.status === "failed"
+  ).length;
+  if (failedCount === 0) return "completed";
+  return failedCount < directionResults.length
+    ? "completed_with_errors"
+    : "failed";
+}
+
+export function candidateArenaTickHasRuntimeShape(
+  value: unknown
+): value is CandidateArenaTickRecord {
+  if (!comparisonObject(value)) return false;
+  const hasAllocationRef = value.research_allocation_ref !== undefined;
+  const hasAllocationDigest = value.research_allocation_digest !== undefined;
+  return value.record_kind === "candidate_arena_tick" && value.version === 1 &&
+    candidateArenaIdentifierHasRuntimeShape(value.candidate_arena_tick_id) &&
+    candidateArenaIdentifierHasRuntimeShape(value.tick_id) &&
+    comparisonIso(value.started_at) &&
+    comparisonIso(value.completed_at) &&
+    Date.parse(value.completed_at) >= Date.parse(value.started_at) &&
+    candidateArenaTickStatusHasRuntimeShape(value.status) &&
+    (value.source_candidate === undefined ||
+      candidateArenaTickSourceHasRuntimeShape(value.source_candidate)) &&
+    Array.isArray(value.created_candidate_refs) &&
+    value.created_candidate_refs.every((item) =>
+      candidateArenaTickRef(item, "trading_system_candidate")) &&
+    Array.isArray(value.direction_results) &&
+    value.direction_results.every(candidateArenaTickDirectionResultHasRuntimeShape) &&
+    value.status === deriveCandidateArenaTickStatus(
+      value.direction_results as CandidateArenaTickDirectionResultReadModel[]
+    ) &&
+    hasAllocationRef === hasAllocationDigest &&
+    (!hasAllocationRef || candidateArenaTickRef(
+      value.research_allocation_ref,
+      "candidate_arena_research_allocation"
+    ) && candidateArenaTickNonEmpty(value.research_allocation_digest)) &&
+    (value.paper_trading_continuation === undefined ||
+      candidateArenaTickContinuationHasRuntimeShape(
+        value.paper_trading_continuation
+      )) && value.authority_status === "not_live";
+}
+
+export function candidateArenaTickAuthorityGraphHasRuntimeShape(
+  value: unknown
+): boolean {
+  if (!comparisonObject(value) || !Array.isArray(value.direction_results)) {
+    return false;
+  }
+  const hasCreatedRefs = Array.isArray(value.created_candidate_refs);
+  const hasCreatedIds = Array.isArray(value.created_candidate_ids);
+  if (hasCreatedRefs === hasCreatedIds) return false;
+  const authorityMode = candidateArenaTickAuthorityGraphMode(
+    value,
+    hasCreatedRefs
+  );
+  if (authorityMode === undefined) return false;
+  const candidateBindings = (hasCreatedRefs
+    ? value.created_candidate_refs
+    : value.created_candidate_ids) as unknown[];
+  const createdCandidateIds = hasCreatedRefs
+    ? candidateBindings.map((reference) =>
+        candidateArenaTickRef(reference, "trading_system_candidate")
+          ? reference.id
+          : undefined
+      )
+    : candidateBindings.map((candidateId) =>
+        candidateArenaTickNonEmpty(candidateId) ? candidateId : undefined
+      );
+  if (createdCandidateIds.some((candidateId) => candidateId === undefined) ||
+    new Set(createdCandidateIds).size !== createdCandidateIds.length ||
+    !value.direction_results.every((result) =>
+      candidateArenaTickDirectionAuthorityHasRuntimeShape(result, authorityMode)
+    )) {
+    return false;
+  }
+  const candidateResultStatus = authorityMode === "legacy_compact"
+    ? "legacy_unverified"
+    : "created";
+  const resultCandidateIds = value.direction_results
+    .filter((result) =>
+      comparisonObject(result) && result.status === candidateResultStatus
+    )
+    .map((result) => result.candidate_id);
+  const uniqueResultCandidateIds = new Set(
+    resultCandidateIds.filter(candidateArenaTickNonEmpty)
+  );
+  return resultCandidateIds.every(candidateArenaTickNonEmpty) &&
+    (authorityMode !== "bound" ||
+      uniqueResultCandidateIds.size === resultCandidateIds.length) &&
+    uniqueResultCandidateIds.size === createdCandidateIds.length &&
+    createdCandidateIds.every((candidateId) =>
+      candidateId !== undefined && uniqueResultCandidateIds.has(candidateId)
+    );
+}
+
+type CandidateArenaTickAuthorityGraphMode =
+  | "bound"
+  | "legacy_raw"
+  | "legacy_compact";
+
+function candidateArenaTickAuthorityGraphMode(
+  value: Record<string, unknown>,
+  hasCreatedRefs: boolean
+): CandidateArenaTickAuthorityGraphMode | undefined {
+  if (hasCreatedRefs) {
+    if (value.research_allocation !== undefined) return undefined;
+    const hasAllocationRef = value.research_allocation_ref !== undefined;
+    const hasAllocationDigest = value.research_allocation_digest !== undefined;
+    if (hasAllocationRef !== hasAllocationDigest) return undefined;
+    return hasAllocationRef ? "bound" : "legacy_raw";
+  }
+  if (value.research_allocation_ref !== undefined ||
+    value.research_allocation_digest !== undefined) {
+    return undefined;
+  }
+  return value.research_allocation === undefined ? "legacy_compact" : "bound";
+}
+
+function candidateArenaTickDirectionAuthorityHasRuntimeShape(
+  value: unknown,
+  authorityMode: CandidateArenaTickAuthorityGraphMode
+): boolean {
+  if (!comparisonObject(value)) return false;
+  const hasCandidate = value.candidate_id !== undefined;
+  const hasError = value.error !== undefined;
+  const hasAdmissionId = value.admission_decision_id !== undefined;
+  const hasAdmissionReason = value.admission_reason !== undefined;
+  const hasNetRevenue = value.net_revenue_usdt !== undefined;
+  const conformance = value.paper_handoff_conformance;
+  const hasConformance = conformance !== undefined;
+  const preflight = value.research_preflight;
+  if (value.status === "created") {
+    const hasCreatedCandidateShape =
+      candidateArenaTickNonEmpty(value.candidate_id) && !hasError;
+    if (authorityMode === "legacy_raw") {
+      return hasCreatedCandidateShape && !hasAdmissionId &&
+        !hasAdmissionReason && !hasConformance;
+    }
+    if (authorityMode === "legacy_compact") return false;
+    return hasCreatedCandidateShape &&
+      candidateArenaTickNonEmpty(value.admission_decision_id) &&
+      value.admission_reason === "evaluation_accepted" &&
+      candidateArenaResearchPreflightHasRuntimeShape(preflight) &&
+      comparisonObject(preflight) &&
+      preflight.sealed_terminal_status === "accepted" &&
+      preflight.reason === "accepted" &&
+      candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+      comparisonObject(conformance) &&
+      conformance.status === "passed" && conformance.reason === "passed";
+  }
+  if (value.status === "legacy_unverified") {
+    const hasEfficiency = value.research_efficiency !== undefined;
+    return authorityMode === "legacy_compact" && comparisonHasExactKeys(value, [
+      "direction_kind",
+      "status",
+      "candidate_id",
+      "finding",
+      ...(hasEfficiency ? ["research_efficiency"] : [])
+    ]) && candidateArenaTickNonEmpty(value.candidate_id) &&
+      candidateArenaTickNonEmpty(value.finding) && (!hasEfficiency ||
+        candidateArenaResearchEfficiencyHasRuntimeShape(
+          value.research_efficiency
+        ));
+  }
+  if (value.status === "failed") {
+    return candidateArenaTickNonEmpty(value.error) && !hasCandidate &&
+      !hasAdmissionId && !hasAdmissionReason && !hasNetRevenue &&
+      !hasConformance;
+  }
+  if (value.status === "no_submission") {
+    return candidateArenaTickNonEmpty(value.finding) && !hasCandidate &&
+      !hasError && !hasAdmissionId && !hasAdmissionReason && !hasNetRevenue &&
+      !hasConformance;
+  }
+  if (value.status === "duplicate") {
+    return candidateArenaTickNonEmpty(value.finding) && !hasCandidate &&
+      !hasError && candidateArenaTickNonEmpty(value.admission_decision_id) &&
+      (value.admission_reason === "no_candidate_change" ||
+        value.admission_reason === "behavior_duplicate") && !hasNetRevenue &&
+      (!hasConformance ||
+        candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+        comparisonObject(conformance) &&
+        conformance.status === "passed" && conformance.reason === "passed");
+  }
+  if (value.status !== "quarantined" ||
+    !candidateArenaTickNonEmpty(value.finding) || hasCandidate || hasError ||
+    !candidateArenaTickNonEmpty(value.admission_decision_id) || hasNetRevenue ||
+    value.admission_reason === "evaluation_accepted" ||
+    value.admission_reason === "no_candidate_change" ||
+    value.admission_reason === "behavior_duplicate" ||
+    !candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason)) {
+    return false;
+  }
+  return value.admission_reason === "paper_handoff_conformance_failed"
+    ? candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+        comparisonObject(conformance) &&
+        conformance.status === "rejected" && conformance.reason !== "passed"
+    : value.admission_reason === "behavior_fingerprint_unavailable"
+      ? candidateArenaCompactConformanceHasRuntimeShape(conformance) &&
+          comparisonObject(conformance) &&
+          conformance.status === "passed" && conformance.reason === "passed"
+      : !hasConformance;
+}
+
+function candidateArenaTickStatusHasRuntimeShape(value: unknown): boolean {
+  return value === "completed" || value === "completed_with_errors" ||
+    value === "failed";
+}
+
+function candidateArenaTickNonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function candidateArenaTickRef(value: unknown, kind?: string): value is Ref {
+  return comparisonObject(value) &&
+    candidateArenaIdentifierHasRuntimeShape(value.record_kind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.id) &&
+    (kind === undefined || value.record_kind === kind);
+}
+
+function candidateArenaTickSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+function candidateArenaTickSourceHasRuntimeShape(value: unknown): boolean {
+  return comparisonObject(value) &&
+    candidateArenaTickSourceKindHasRuntimeShape(value.source_kind) &&
+    candidateArenaIdentifierHasRuntimeShape(value.candidate_id) &&
+    candidateArenaTickNonEmpty(value.display_name) &&
+    (value.net_revenue_usdt === undefined ||
+      comparisonFinite(value.net_revenue_usdt)) &&
+    value.authority_status === "not_live";
+}
+
+function candidateArenaTickSourceKindHasRuntimeShape(value: unknown): boolean {
+  return value === "fixture_seed" || value === "evaluated_arena_leader" ||
+    value === "paper_trading_evaluation_leader" || value === "explicit_candidate";
+}
+
+function candidateArenaTickContinuationHasRuntimeShape(value: unknown): boolean {
+  return comparisonObject(value) &&
+    (value.status === "started" || value.status === "queued" ||
+      value.status === "failed") &&
+    value.command_kind === "trading_run.start" &&
+    (value.selected_candidate_id === undefined ||
+      candidateArenaIdentifierHasRuntimeShape(value.selected_candidate_id)) &&
+    (value.error === undefined || candidateArenaTickNonEmpty(value.error)) &&
+    value.authority_status === "not_live";
+}
+
+function candidateArenaTickDirectionResultHasRuntimeShape(value: unknown): boolean {
+  if (!comparisonObject(value) || !candidateArenaResearchDirection(
+    value.direction_kind
+  ) || !candidateArenaTickDirectionStatusHasRuntimeShape(value.status) ||
+    (value.agent_provider !== undefined &&
+      (typeof value.agent_provider !== "string" || ![
+        "codex",
+        "fixture",
+        "claude_code"
+      ].includes(value.agent_provider))) ||
+    (value.agent_model !== undefined &&
+      !candidateArenaTickNonEmpty(value.agent_model)) ||
+    (value.candidate_id !== undefined &&
+      !candidateArenaIdentifierHasRuntimeShape(value.candidate_id)) ||
+    (value.finding !== undefined && !candidateArenaTickNonEmpty(value.finding)) ||
+    (value.error !== undefined && !candidateArenaTickNonEmpty(value.error)) ||
+    (value.admission_decision_id !== undefined &&
+      !candidateArenaIdentifierHasRuntimeShape(value.admission_decision_id)) ||
+    (value.admission_reason !== undefined &&
+      !candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason)) ||
+    (value.net_revenue_usdt !== undefined &&
+      !comparisonFinite(value.net_revenue_usdt)) ||
+    (value.research_efficiency !== undefined &&
+      !candidateArenaResearchEfficiencyHasRuntimeShape(
+        value.research_efficiency
+      )) || (value.research_preflight !== undefined &&
+      !candidateArenaResearchPreflightHasRuntimeShape(
+        value.research_preflight
+      )) || (value.paper_handoff_conformance !== undefined &&
+      !candidateArenaCompactConformanceHasRuntimeShape(
+        value.paper_handoff_conformance
+      ))) {
+    return false;
+  }
+  if (value.status === "created") {
+    return candidateArenaIdentifierHasRuntimeShape(value.candidate_id) &&
+      value.error === undefined;
+  }
+  if (value.status === "failed") {
+    const lifecycleKeys = [
+      "agent_provider",
+      "agent_model",
+      "finding",
+      "research_efficiency",
+      "research_preflight"
+    ].filter((key) => value[key] !== undefined);
+    return comparisonHasExactKeys(value, [
+      "direction_kind",
+      "status",
+      ...lifecycleKeys,
+      "error"
+    ]) && candidateArenaTickNonEmpty(value.error);
+  }
+  if (value.status === "no_submission") {
+    return candidateArenaTickNonEmpty(value.finding) && value.candidate_id === undefined &&
+      value.error === undefined && value.admission_decision_id === undefined &&
+      value.admission_reason === undefined && value.net_revenue_usdt === undefined &&
+      value.paper_handoff_conformance === undefined;
+  }
+  return candidateArenaTickNonEmpty(value.finding) &&
+    candidateArenaIdentifierHasRuntimeShape(value.admission_decision_id) &&
+    candidateArenaAdmissionReasonHasRuntimeShape(value.admission_reason);
+}
+
+function candidateArenaTickDirectionStatusHasRuntimeShape(value: unknown): boolean {
+  return value === "created" || value === "duplicate" || value === "quarantined" ||
+    value === "no_submission" || value === "failed";
+}
+
+function candidateArenaAdmissionReasonHasRuntimeShape(value: unknown): boolean {
+  return value === "evaluation_accepted" || value === "research_worker_failed" ||
+    value === "no_candidate_change" || value === "experiment_failed" ||
+    value === "evaluation_disqualified" || value === "evaluation_quarantined" ||
+    value === "evidence_already_counted" || value === "evidence_quarantined" ||
+    value === "paper_handoff_conformance_failed" || value === "behavior_duplicate" ||
+    value === "behavior_fingerprint_unavailable";
+}
+
+function candidateArenaCompactConformanceHasRuntimeShape(value: unknown): boolean {
+  if (!comparisonObject(value)) return false;
+  const hasAttestation = value.candidate_egress_attestation !== undefined;
+  return comparisonHasExactKeys(value, [
+    "conformance_id",
+    "status",
+    "reason",
+    ...(hasAttestation ? ["candidate_egress_attestation"] : []),
+    "authority_status"
+  ]) && candidateArenaIdentifierHasRuntimeShape(value.conformance_id) &&
+    (value.status === "passed" || value.status === "rejected") &&
+    candidateArenaTickNonEmpty(value.reason) &&
+    (value.status === "passed"
+      ? value.reason === "passed"
+      : value.reason !== "passed") && (!hasAttestation ||
+      candidateArenaCompactEgressAttestationHasRuntimeShape(
+        value.candidate_egress_attestation
+      )) && value.authority_status === "research_only";
+}
+
+function candidateArenaCompactEgressAttestationHasRuntimeShape(
+  value: unknown
+): boolean {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "attestation_id",
+    "verification_status",
+    "enforcement_result",
+    "network_policy_digest",
+    "denial_summary",
+    "authority_status"
+  ]) || !comparisonObject(value.denial_summary)) {
+    return false;
+  }
+  const denial = value.denial_summary;
+  return candidateArenaIdentifierHasRuntimeShape(value.attestation_id) &&
+    value.verification_status === "verified" &&
+    value.enforcement_result === "enforced" &&
+    candidateArenaTickSha256Digest(value.network_policy_digest) &&
+    comparisonHasExactKeys(denial, [
+      "required_probe_count",
+      "start_denied_probe_count",
+      "end_denied_probe_count",
+      "unexpected_allow_count"
+    ]) && [
+      denial.required_probe_count,
+      denial.start_denied_probe_count,
+      denial.end_denied_probe_count
+    ].every((count) =>
+      count === CANDIDATE_EGRESS_REQUIRED_DENY_TARGETS.length
+    ) &&
+    denial.unexpected_allow_count === 0 &&
+    value.authority_status === "research_only";
+}
+
+function candidateArenaResearchEfficiencyHasRuntimeShape(value: unknown): boolean {
+  return comparisonObject(value) && [
+    value.provider_request_total,
+    value.runner_command_total,
+    value.scenario_count,
+    value.elapsed_ms
+  ].every((metric) => comparisonNonNegativeFinite(metric)) &&
+    (value.development === undefined ||
+      candidateArenaResearchEfficiencyPhaseHasRuntimeShape(value.development)) &&
+    (value.sealed_admission === undefined ||
+      candidateArenaResearchEfficiencyPhaseHasRuntimeShape(
+        value.sealed_admission
+      )) && value.authority_status === "not_promotion_authority";
+}
+
+function candidateArenaResearchEfficiencyPhaseHasRuntimeShape(
+  value: unknown
+): boolean {
+  return comparisonObject(value) && [
+    value.submission_count,
+    value.provider_request_total,
+    value.runner_command_total,
+    value.scenario_count,
+    value.elapsed_ms
+  ].every((metric) => Number.isInteger(metric) && Number(metric) >= 0);
+}
+
+function candidateArenaResearchPreflightHasRuntimeShape(value: unknown): boolean {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "commitment_id",
+    "development_submission_count",
+    "sealed_terminal_status",
+    "reason",
+    "authority_status"
+  ]) && candidateArenaIdentifierHasRuntimeShape(value.commitment_id) &&
+    Number.isInteger(value.development_submission_count) &&
+    Number(value.development_submission_count) >= 0 &&
+    Number(value.development_submission_count) <= 2 &&
+    (value.sealed_terminal_status === "accepted"
+      ? value.reason === "accepted"
+      : value.sealed_terminal_status === "rejected"
+        ? value.reason === "candidate_rejected"
+        : value.sealed_terminal_status === "not_run" &&
+          (value.reason === "no_development_winner" ||
+            value.reason === "execution_failed")) &&
+    value.authority_status === "not_promotion_authority";
 }
 
 export interface CandidateArenaTickPaperTradingContinuationReadModel {
@@ -14441,6 +14996,11 @@ export type ResearchSessionStatus =
   | "failed_closed"
   | "recovering";
 
+export type ResearchSessionProjectionStatus = Exclude<
+  ResearchSessionStatus,
+  "awaiting_selection" | "sealed_admission"
+>;
+
 export interface ResearchTriggerReadModel {
   trigger_kind: ResearchTriggerKind;
   trigger_id: string;
@@ -14452,6 +15012,11 @@ export interface ResearchTriggerReadModel {
   };
   evidence_artifact_digest?: string;
   authority_status: "research_only";
+}
+
+export interface ResearchOperationsTriggerReadModel extends
+  ResearchTriggerReadModel {
+  goal_truncated: boolean;
 }
 
 export type ResearchEvidenceArtifactSourceKind =
@@ -14468,6 +15033,8 @@ export interface ResearchEvidenceArtifactReadModel {
   subject_ref: Ref;
   artifact_ref: Ref;
   artifact_digest: string;
+  summary: string;
+  truncated: boolean;
   captured_at: string;
   sanitization_status: "sanitized";
   qualification_evidence_hidden: true;
@@ -14477,7 +15044,9 @@ export interface ResearchEvidenceArtifactReadModel {
 export interface ResearchMethodologyReadModel {
   direction_kind: ResearchDirectionKind;
   hypothesis: string;
+  hypothesis_truncated: boolean;
   method: string;
+  method_truncated: boolean;
   source_candidate_id?: string;
   evidence_artifact_ids: string[];
   authority_status: "research_only";
@@ -14492,43 +15061,323 @@ export interface ResearchSessionBudgetReadModel {
   authority_status: "research_only";
 }
 
-export interface ResearchSessionSummaryReadModel {
+export type ResearchProjectionAvailability = "available" | "unavailable";
+
+export type ResearchSessionStatusBasisKind =
+  | "candidate_admission_decision"
+  | "research_worker_checkpoint"
+  | "candidate_arena_tick"
+  | "runtime_research_work_item"
+  | "active_tick_queue"
+  | "incomplete_persisted_graph";
+
+export interface ResearchSessionStatusBasisReadModel {
+  basis_kind: ResearchSessionStatusBasisKind;
+  source_ref?: Ref;
+  authority_status: "read_only";
+}
+
+export type ResearchSessionProjectionHealth = "complete" | "degraded";
+
+export type ResearchSessionDegradedReason =
+  | "trigger_unavailable"
+  | "methodology_unavailable"
+  | "provider_unavailable"
+  | "worker_unavailable"
+  | "evidence_artifact_unavailable"
+  | "selected_artifact_unavailable"
+  | "evaluation_graph_conflict"
+  | "admission_graph_conflict"
+  | "terminal_admission_unavailable"
+  | "inactive_incomplete_graph";
+
+interface ResearchSessionSummaryBaseReadModel {
+  identity_kind: "derived_projection";
   research_work_item_id: string;
   research_allocation_id: string;
+  tick_id: string;
+  direction_kind: ResearchDirectionKind;
   research_worker_id?: string;
-  research_worker_session_id?: string;
   commitment_id?: string;
-  status: ResearchSessionStatus;
-  trigger: ResearchTriggerReadModel;
-  methodology: ResearchMethodologyReadModel;
-  provider: AgentProfileProviderKind;
-  model?: string;
+  status: ResearchSessionProjectionStatus;
+  status_basis: ResearchSessionStatusBasisReadModel;
+  projection_health: ResearchSessionProjectionHealth;
+  degraded_reasons: ResearchSessionDegradedReason[];
   budget: ResearchSessionBudgetReadModel;
+  allocated_at?: string;
   started_at?: string;
   last_progress_at?: string;
   completed_at?: string;
   selected_submission_sequence?: number;
   admitted_candidate_id?: string;
   latest_progress_summary: string;
+  latest_progress_summary_truncated: boolean;
   authority_status: "research_only";
 }
 
-export interface ResearchDevelopmentSubmissionReadModel {
+type ResearchTriggerProjectionReadModel =
+  | {
+      trigger_availability: "available";
+      trigger: ResearchOperationsTriggerReadModel;
+    }
+  | {
+      trigger_availability: "unavailable";
+      trigger?: never;
+    };
+
+type ResearchMethodologyProjectionReadModel =
+  | {
+      methodology_availability: "available";
+      methodology: ResearchMethodologyReadModel;
+    }
+  | {
+      methodology_availability: "unavailable";
+      methodology?: never;
+    };
+
+type ResearchProviderProjectionReadModel =
+  | {
+      provider_availability: "available";
+      provider: ProviderKind;
+      model?: string;
+      model_truncated?: boolean;
+    }
+  | {
+      provider_availability: "unavailable";
+      provider?: never;
+      model?: never;
+      model_truncated?: never;
+    };
+
+export type ResearchSessionSummaryReadModel =
+  ResearchSessionSummaryBaseReadModel &
+  ResearchTriggerProjectionReadModel &
+  ResearchMethodologyProjectionReadModel &
+  ResearchProviderProjectionReadModel;
+
+export interface ResearchSessionSummaryUnavailableTriggerCompatibilityReadModel {
+  compatibility_kind: "research_summary_v1_unavailable";
+  trigger_kind: "unavailable";
+  trigger_id: "unavailable";
+  goal: "Research trigger unavailable.";
+  goal_truncated: false;
+  triggered_at: "";
+  authority_status: "research_only";
+}
+
+export interface ResearchSessionSummaryUnavailableMethodologyCompatibilityReadModel {
+  compatibility_kind: "research_summary_v1_unavailable";
+  direction_kind: ResearchDirectionKind;
+  hypothesis: "Research methodology unavailable.";
+  hypothesis_truncated: false;
+  method: "Research methodology unavailable.";
+  method_truncated: false;
+  evidence_artifact_ids: [];
+  authority_status: "research_only";
+}
+
+type ResearchTriggerSummaryWireReadModel =
+  | {
+      trigger_availability: "available";
+      trigger: ResearchOperationsTriggerReadModel;
+    }
+  | {
+      trigger_availability: "unavailable";
+      trigger: ResearchSessionSummaryUnavailableTriggerCompatibilityReadModel;
+    };
+
+type ResearchMethodologySummaryWireReadModel =
+  | {
+      methodology_availability: "available";
+      methodology: ResearchMethodologyReadModel;
+    }
+  | {
+      methodology_availability: "unavailable";
+      methodology:
+        ResearchSessionSummaryUnavailableMethodologyCompatibilityReadModel;
+    };
+
+type ResearchProviderSummaryWireReadModel =
+  | {
+      provider_availability: "available";
+      provider: ProviderKind;
+      model?: string;
+      model_truncated?: boolean;
+    }
+  | {
+      provider_availability: "unavailable";
+      provider: "unavailable";
+      model?: never;
+      model_truncated?: never;
+    };
+
+/**
+ * Operator summary wire shape. `availability` on the owning operations model is
+ * the v2 discriminator; these explicit unavailable placeholders keep the
+ * required v1 fields crash-safe while v2 consumers use the availability flags
+ * and never treat the placeholders as source evidence.
+ */
+export type ResearchSessionSummaryWireReadModel =
+  ResearchSessionSummaryBaseReadModel &
+  ResearchTriggerSummaryWireReadModel &
+  ResearchMethodologySummaryWireReadModel &
+  ResearchProviderSummaryWireReadModel;
+
+interface ResearchDevelopmentSubmissionBaseReadModel {
   submission_sequence: number;
-  system_code_ref: Ref & { record_kind: "system_code" };
-  system_code_digest: string;
-  submitted_at: string;
-  status: "evaluated" | "failed";
-  selected: boolean;
-  aggregate_feedback_summary?: string;
+  decision: ResearchWorkerCheckpointNotebookEntry["decision"];
+  agent_status: ResearchWorkerCheckpointNotebookEntry["agent_status"];
+  evaluation_status: ResearchWorkerCheckpointNotebookEntry["evaluation_status"];
+  risk_decision: ResearchWorkerCheckpointNotebookEntry["risk_decision"];
+  net_revenue_usdt: number;
+  summary: string;
+  summary_truncated: boolean;
   authority_status: "research_only";
 }
 
-export interface ResearchSessionDetailReadModel
-  extends ResearchSessionSummaryReadModel {
+export type ResearchDevelopmentSubmissionReadModel =
+  | (ResearchDevelopmentSubmissionBaseReadModel & {
+      selected: true;
+      artifact_availability: "selected_system_code_available";
+      selected_system_code_ref: Ref & { record_kind: "system_code" };
+      selected_system_code_artifact_digest: string;
+    })
+  | (ResearchDevelopmentSubmissionBaseReadModel & {
+      selected: false;
+      artifact_availability: "not_persisted";
+      selected_system_code_ref?: never;
+      selected_system_code_artifact_digest?: never;
+    });
+
+export interface ResearchLifecycleEventReadModel {
+  sequence: number;
+  occurred_at: string;
+  event_kind:
+    | "allocation"
+    | "commitment"
+    | "evaluation"
+    | "checkpoint"
+    | "tick"
+    | "admission"
+    | "handoff_conformance";
+  summary: string;
+  summary_truncated: boolean;
+  source_ref: Ref;
+  sanitized: true;
+  authority_status: "read_only";
+}
+
+export interface ResearchSelectedSealedEvaluationReadModel {
+  trading_evaluation_result_ref: Ref & {
+    record_kind: "trading_evaluation_result";
+  };
+  experiment_run_ref: Ref & { record_kind: "experiment_run" };
+  evaluation_phase: "sealed_admission";
+  result_status: TradingEvaluationResultStatus;
+  evidence_disposition: EvidenceDisposition;
+  completed_at: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchAdmissionDecisionReadModel {
+  candidate_admission_decision_ref: Ref & {
+    record_kind: "candidate_admission_decision";
+  };
+  status: CandidateAdmissionStatus;
+  reason: CandidateAdmissionReason;
+  decided_at: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchPaperHandoffConformanceReadModel {
+  paper_trading_handoff_conformance_ref: Ref & {
+    record_kind: "paper_trading_handoff_conformance";
+  };
+  status: PaperTradingHandoffConformanceStatus;
+  reason: PaperTradingHandoffConformanceReason;
+  completed_at: string;
+  evidence_digest: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchFindingReadModel {
+  research_finding_ref: Ref & { record_kind: "research_finding" };
+  finding_kind: ResearchFindingKind;
+  summary: string;
+  summary_truncated: boolean;
+  supporting_record_refs: Ref[];
+  created_at: string;
+  sanitized: true;
+  authority_status: "read_only";
+}
+
+export interface ResearchArtifactLineageReadModel {
+  artifact_lineage_ref: Ref & { record_kind: "artifact_lineage" };
+  child_system_code_ref: Ref & { record_kind: "system_code" };
+  parent_system_code_ref?: Ref & { record_kind: "system_code" };
+  source_finding_refs: Array<Ref & { record_kind: "research_finding" }>;
+  created_by_research_worker_ref?: Ref & { record_kind: "research_worker" };
+  created_at: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchAdmittedArenaHandoffReadModel {
+  candidate_arena_tick_ref: Ref & { record_kind: "candidate_arena_tick" };
+  candidate_ref: Ref & { record_kind: "trading_system_candidate" };
+  direction_kind: ResearchDirectionKind;
+  candidate_admission_decision_ref: Ref & {
+    record_kind: "candidate_admission_decision";
+  };
+  completed_at: string;
+  authority_status: "read_only";
+}
+
+export interface ResearchAdmittedSelectedSealedEvaluationReadModel extends
+  Omit<
+    ResearchSelectedSealedEvaluationReadModel,
+    "result_status" | "evidence_disposition"
+  > {
+  result_status: "accepted";
+  evidence_disposition: "not_counted";
+}
+
+export interface ResearchAdmittedAdmissionDecisionReadModel extends
+  Omit<ResearchAdmissionDecisionReadModel, "status" | "reason"> {
+  status: "admitted";
+  reason: "evaluation_accepted";
+}
+
+export interface ResearchPassedPaperHandoffConformanceReadModel extends
+  Omit<ResearchPaperHandoffConformanceReadModel, "status" | "reason"> {
+  status: "passed";
+  reason: "passed";
+}
+
+interface ResearchSessionTerminalGraphBaseReadModel {
+  finding?: ResearchFindingReadModel;
+  artifact_lineage?: ResearchArtifactLineageReadModel;
+  authority_status: "read_only";
+}
+
+export type ResearchSessionTerminalGraphReadModel =
+  | (ResearchSessionTerminalGraphBaseReadModel & {
+      selected_sealed_evaluation?: ResearchSelectedSealedEvaluationReadModel;
+      admission?: ResearchAdmissionDecisionReadModel;
+      paper_handoff_conformance?: ResearchPaperHandoffConformanceReadModel;
+      admitted_arena_handoff?: never;
+    })
+  | (ResearchSessionTerminalGraphBaseReadModel & {
+      selected_sealed_evaluation:
+        ResearchAdmittedSelectedSealedEvaluationReadModel;
+      admission: ResearchAdmittedAdmissionDecisionReadModel;
+      paper_handoff_conformance:
+        ResearchPassedPaperHandoffConformanceReadModel;
+      admitted_arena_handoff: ResearchAdmittedArenaHandoffReadModel;
+    });
+
+interface ResearchSessionDetailBaseReadModel {
   evidence_inputs: ResearchEvidenceArtifactReadModel[];
   development_submissions: ResearchDevelopmentSubmissionReadModel[];
-  selected_system_code_ref?: Ref & { record_kind: "system_code" };
   admission_decision_ref?: Ref & {
     record_kind: "candidate_admission_decision";
   };
@@ -14536,27 +15385,68 @@ export interface ResearchSessionDetailReadModel
     record_kind: "paper_trading_handoff_conformance";
   };
   notebook_summary: string[];
-  log_entries: Array<{
-    sequence: number;
-    occurred_at: string;
-    level: "debug" | "info" | "warn" | "error";
-    source: "research_worker" | "provider" | "evaluator" | "supervisor";
-    message: string;
-    sanitized: true;
-    authority_status: "read_only";
-  }>;
-  logs_truncated: boolean;
+  notebook_summary_truncated: boolean;
+  lifecycle_events: ResearchLifecycleEventReadModel[];
+  provider_logs_availability: "not_persisted";
+  terminal_graph: ResearchSessionTerminalGraphReadModel;
 }
+
+type ResearchSubmissionHistoryReadModel =
+  | {
+      submission_history_availability: "checkpoint_summary";
+      recorded_submission_count: number;
+      projected_submission_count: number;
+      omitted_submission_count: number;
+      submission_history_truncated: boolean;
+    }
+  | {
+      submission_history_availability: "unavailable_until_checkpoint";
+      recorded_submission_count?: never;
+      projected_submission_count?: never;
+      omitted_submission_count?: never;
+      submission_history_truncated?: never;
+    };
+
+type ResearchSelectedArtifactReadModel =
+  | {
+      selected_artifact_availability: "available";
+      selected_submission_sequence: number;
+      selected_system_code_ref: Ref & { record_kind: "system_code" };
+      selected_system_code_artifact_digest: string;
+    }
+  | {
+      selected_artifact_availability: "not_selected";
+      selected_submission_sequence?: never;
+      selected_system_code_ref?: never;
+      selected_system_code_artifact_digest?: never;
+    }
+  | {
+      selected_artifact_availability: "unavailable";
+      selected_submission_sequence?: number;
+      selected_system_code_ref?: never;
+      selected_system_code_artifact_digest?: never;
+    };
+
+export type ResearchSessionDetailReadModel =
+  ResearchSessionSummaryReadModel &
+  ResearchSessionDetailBaseReadModel &
+  ResearchSubmissionHistoryReadModel &
+  ResearchSelectedArtifactReadModel;
 
 export interface ResearchOperationsReadModel {
   projection_kind: "research_operations";
+  availability: ResearchProjectionAvailability;
   loop_status: ResearchOperationsLoopStatus;
   capacity: {
     max_concurrent_sessions: number;
     active_session_count: number;
     queued_session_count: number;
   };
-  sessions: ResearchSessionSummaryReadModel[];
+  sessions: ResearchSessionSummaryWireReadModel[];
+  recorded_session_count: number;
+  projected_session_count: number;
+  omitted_session_count: number;
+  sessions_truncated: boolean;
   latest_session_id?: string;
   authority_status: "research_only";
 }

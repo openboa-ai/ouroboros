@@ -785,7 +785,8 @@ async function storeSnapshotWithoutPromotions(
     for (const entry of entries.sort((left, right) =>
       left.name.localeCompare(right.name))) {
       const child = path.join(relativePath, entry.name);
-      if (child === "trading-promotions" ||
+      if (child === ".locks" || child.startsWith(`.locks${path.sep}`) ||
+        child === "trading-promotions" ||
         child.startsWith(`trading-promotions${path.sep}`)) {
         continue;
       }
