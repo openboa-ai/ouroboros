@@ -122,7 +122,7 @@ allows it.
 
 - Keep the section immediately after Quickstart.
 - Use the function-structure image first.
-- Follow with Agent, Experiment, Research, and Operations purpose images in that order.
+- Follow with Agentic, Evaluation, Research, and Operations purpose images in that order.
 - Remove the existing four standalone trigger images, four scope-cycle images, and short admission
   image from the final README sequence after the replacements pass review.
 - Preserve natural prose for AI-driven quantitative trading, agentic research, quantitative strategy
@@ -140,7 +140,8 @@ allows it.
 - Large concept labels remain readable at README width; smaller mappings identify an exact
   Ouroboros component and role without turning the figure into a component inventory.
 - The structure image shows no path that bypasses admission before Paper Arena.
-- The Operations image visibly selects or launches Agent, Experiment, or Research improvement from
-  market/Arena evidence.
+- The target Operations image visibly selects or launches Agentic, Evaluation, or Research
+  improvement from market/Arena evidence, while the current `RuntimeSupervisor` remains separately
+  labeled with its three fixed lanes.
 - README alt text and prose explain every image without requiring text extraction from the bitmap.
 - Local image links, Markdown checks, repository guards, and `git diff --check` pass.

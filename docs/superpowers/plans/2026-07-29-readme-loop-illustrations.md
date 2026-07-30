@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the current nine README diagrams with one Ouroboros function-structure image and four purpose-led loop images that pair Agent, Experiment, Research, and Operations with representative turn, goal, time, and proactive modes.
+**Goal:** Replace the current nine README diagrams with one Ouroboros function-structure image and four purpose-led loop images that pair Agentic, Evaluation, Research, and Operations scopes with representative turn, goal, time, and proactive modes.
 
 **Architecture:** Generate five project-bound PNGs through the built-in image generator, inspect every output, then crop each non-destructively to a consistent 1536x698 wide composition. Every loop uses a wide rounded-rectangle route rather than circles. Large labels use portable agent-system vocabulary; small labels bind each concept to exact Ouroboros components and roles. Keep the rejected v2 images until all replacements pass visual and text checks, then replace them atomically.
 
@@ -22,7 +22,9 @@
 - README prose and alt text remain authoritative when generated text is imperfect.
 - The loop-to-mode mapping is representative, not an exclusive runtime constraint.
 - Never show a path that bypasses admission before Paper Arena.
-- Operations may choose and start bounded Agent, Experiment, or Research improvement, but it gains no admission, paper-rank, private, or live authority.
+- Target Operations may choose and start bounded Agentic, Evaluation, or Research improvement, but
+  it gains no admission, paper-rank, private, or live authority; the current `RuntimeSupervisor`
+  remains limited to its separately documented fixed lanes.
 
 ---
 
@@ -106,12 +108,12 @@ Avoid: other scopes, comparison grid, legend, headline, hands, people, robot, ch
 
 Inspect it at original detail. Reject misspelled labels, extra nodes, broken arrow order, or a poster-like layout.
 
-- [x] **Step 2: Generate the Experiment / Goal-based image**
+- [x] **Step 2: Generate the Evaluation / Goal-based image**
 
 ```text
 Use case: infographic-diagram
 Asset type: Ouroboros README engineering-blog loop figure
-Primary request: Explain one Experiment Loop and why it repeats.
+Primary request: Explain one Evaluation Loop and why it repeats.
 Style reference: match the approved Ouroboros system-structure image exactly in background, line weight, typography, spacing, and orange use.
 Composition: one clockwise path around a wide soft rounded rectangle, never a circle. Large stages run left to right across the top and return along the bottom.
 Large text verbatim: "EVALUATION LOOP", "GOAL-BASED", "SUCCESS CRITERIA", "ITERATION", "EVALUATION", "SELECTION".
@@ -199,7 +201,7 @@ AI-driven quantitative trading introduction
 Ouroboros function structure image
 Representative mode-to-scope mapping note
 Agent Loop / Turn-based image and prose
-Experiment Loop / Goal-based image and prose
+Evaluation Loop / Goal-based image and prose
 Research Loop / Time-based image and prose
 Operations Loop / Proactive meta-loop image and prose
 Implementation-status boundary
