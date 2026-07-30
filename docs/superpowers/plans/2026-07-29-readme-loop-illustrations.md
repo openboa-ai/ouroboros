@@ -205,9 +205,11 @@ Operations Loop / Proactive meta-loop image and prose
 Implementation-status boundary
 ```
 
-State explicitly that Operations observes market and Arena evidence, chooses which bounded Agent,
-Experiment, or Research improvement to start, persists its result, and waits for the next signal.
-State explicitly that external admission and prospective paper evidence retain decision authority.
+State explicitly that target Operations observes market and Arena evidence, chooses which bounded
+Agent, Evaluation, or Research improvement to start, persists its result, and waits for the next
+signal; separately describe the current `RuntimeSupervisor` fixed lanes. State explicitly that
+`CandidateAdmissionDecision` retains admission-gate authority while `PaperTradingEvaluation`
+supplies prospective evidence to separate qualification, comparison, and promotion decisions.
 
 - [x] **Step 2: Verify local image references before deleting old project copies**
 
