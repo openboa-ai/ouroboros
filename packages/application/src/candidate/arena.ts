@@ -221,7 +221,6 @@ export interface RunCandidateArenaTickInput {
   >;
   researchMemoryMode?: ResearchWorkerMemoryMode;
   researchMemoryControlAssignment?: ResearchWorkerMemoryControlAssignment;
-  effectedAllocationRecoveryMode?: "record_failed_tick";
   researchPreflightEvaluationOpportunity?:
     ResearchPreflightEvaluationOpportunityHandle;
   tickId?: string;
@@ -307,7 +306,7 @@ export class CandidateArenaRunner {
   private activeTick?: Promise<CandidateArenaTickOutcome>;
   private readonly researchWorkRegistry = new CandidateArenaResearchWorkRegistry();
   private tickContinuation?: CandidateArenaTickContinuation;
-  private restoredCompletedTickIds = new Set<string>();
+  private restoredSkippedTickIds = new Set<string>();
 
   constructor(
     private input: Omit<RunCandidateArenaTickInput, "tickId">,
@@ -343,13 +342,13 @@ export class CandidateArenaRunner {
 
   restoreTickCount(
     tickCount: number,
-    completedTickIds: Iterable<string> = []
+    skippedTickIds: Iterable<string> = []
   ): void {
     const restoredTickCount = Math.max(0, Math.floor(tickCount));
     this.tickCount = this.running || this.activeTick
       ? Math.max(this.tickCount, restoredTickCount)
       : restoredTickCount;
-    this.restoredCompletedTickIds = new Set(completedTickIds);
+    this.restoredSkippedTickIds = new Set(skippedTickIds);
   }
 
   researchAgent(): TradingResearchRuntimeAgent {
@@ -402,7 +401,7 @@ export class CandidateArenaRunner {
     }
     this.tickCount = candidateArenaRunnerNextTickCount(
       this.tickCount,
-      this.restoredCompletedTickIds
+      this.restoredSkippedTickIds
     );
     const tickId = `tick-${this.tickCount}`;
     const researchWorkObserver = this.researchWorkRegistry.beginTick(tickId);
@@ -656,8 +655,26 @@ function researchPreflightMethodology(input: {
 
 export function candidateArenaRunnerTickCountFromTicks(
   ticks: Pick<CandidateArenaTickRecord, "tick_id">[],
-  allocations: Pick<CandidateArenaResearchAllocationRecord, "tick_id">[] = []
+  allocations: Pick<CandidateArenaResearchAllocationRecord, "tick_id">[],
+  effectedTickIds: ReadonlySet<string>
 ): number {
+  const completedTickIds = new Set(ticks.map((tick) => tick.tick_id));
+  const earliestIncompleteSequence = allocations.reduce<number | undefined>(
+    (earliest, allocation) => {
+      if (completedTickIds.has(allocation.tick_id) ||
+        !effectedTickIds.has(allocation.tick_id)) {
+        return earliest;
+      }
+      const match = /^tick-(\d+)$/.exec(allocation.tick_id);
+      if (!match) return earliest;
+      const sequence = Number(match[1] ?? 0);
+      return earliest === undefined ? sequence : Math.min(earliest, sequence);
+    },
+    undefined
+  );
+  if (earliestIncompleteSequence !== undefined) {
+    return Math.max(0, earliestIncompleteSequence - 1);
+  }
   const highestNumericTickId = [...ticks, ...allocations]
     .reduce((highest, tick) => {
     const match = /^tick-(\d+)$/.exec(tick.tick_id);
@@ -671,10 +688,10 @@ export function candidateArenaRunnerTickCountFromTicks(
 
 export function candidateArenaRunnerNextTickCount(
   currentTickCount: number,
-  completedTickIds: ReadonlySet<string>
+  skippedTickIds: ReadonlySet<string>
 ): number {
   let nextTickCount = Math.max(0, Math.floor(currentTickCount)) + 1;
-  while (completedTickIds.has(`tick-${nextTickCount}`)) {
+  while (skippedTickIds.has(`tick-${nextTickCount}`)) {
     nextTickCount += 1;
   }
   return nextTickCount;
@@ -702,16 +719,13 @@ export async function runCandidateArenaTick(
       `candidate-arena-research-allocation-${safeId(tickId)}`
     );
   if (existingAllocation) {
-    const recoveredTick = input.effectedAllocationRecoveryMode ===
-      "record_failed_tick"
-      ? await withArenaStoreMutation(input.store, () =>
-          recordRecoveredCandidateArenaTick({
-            store: input.store,
-            tickId,
-            allocation: existingAllocation
-          })
-        )
-      : undefined;
+    const recoveredTick = await withArenaStoreMutation(input.store, () =>
+      recordRecoveredCandidateArenaTick({
+        store: input.store,
+        tickId,
+        allocation: existingAllocation
+      })
+    );
     if (recoveredTick) {
       observeResearchWork(() => researchWorkObserver?.tickPersisted());
       const arena = await buildCandidateArenaReadModel(

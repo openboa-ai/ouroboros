@@ -510,7 +510,6 @@ export async function runResearchControlCampaign(
         sourceSystemId: campaign.source.candidate_ref.id,
         sourceCandidateVersionId: campaign.source.candidate_version_ref.id,
         researchAllocationMode: armRuntime.intent.allocation_mode,
-        effectedAllocationRecoveryMode: "record_failed_tick",
         tickId,
         ...(input.now ? { now: input.now } : {}),
         repoRoot,

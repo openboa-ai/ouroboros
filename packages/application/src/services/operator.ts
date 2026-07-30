@@ -877,16 +877,28 @@ export class OperatorService {
   }
 
   private async restoreCandidateArenaTickCount(): Promise<void> {
-    const [persistedTicks, persistedAllocations] = await Promise.all([
+    const [persistedTicks, persistedAllocations, persistedCommitments] =
+      await Promise.all([
       this.options.store.listCandidateArenaTicks(),
-      this.options.store.listCandidateArenaResearchAllocations()
+      this.options.store.listCandidateArenaResearchAllocations(),
+      this.options.store.listResearchPreflightCommitments()
     ]);
+    const effectedTickIds = new Set(persistedCommitments.map((commitment) =>
+      commitment.candidate_arena_tick_id
+    ));
+    const skippedTickIds = [
+      ...persistedTicks.map((tick) => tick.tick_id),
+      ...persistedAllocations
+        .filter((allocation) => !effectedTickIds.has(allocation.tick_id))
+        .map((allocation) => allocation.tick_id)
+    ];
     this.options.candidateArenaRunner.restoreTickCount(
       candidateArenaRunnerTickCountFromTicks(
         persistedTicks,
-        persistedAllocations
+        persistedAllocations,
+        effectedTickIds
       ),
-      persistedTicks.map((tick) => tick.tick_id)
+      skippedTickIds
     );
   }
 

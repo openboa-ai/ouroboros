@@ -970,7 +970,7 @@ describe("ResearchControlCampaign runtime", () => {
     ["persisted materialization", true],
     ["missing materialization", false]
   ])(
-    "fails closed after admission with %s and excludes orphan authority",
+    "recovers exact admissions with %s and excludes incomplete authority",
     async (_label, materializeBeforeCrash) => {
       const suffix = materializeBeforeCrash ? "materialized" : "unmaterialized";
       const sourceStore = new LocalStore(
@@ -1089,6 +1089,11 @@ describe("ResearchControlCampaign runtime", () => {
         candidateVersionsBeforeRestart.filter((version) =>
           admittedSystemCodeIds.has(version?.system_code_ref?.id ?? "")
         );
+      const materializedSystemCodeIds = new Set(
+        candidateVersionsBeforeRestart.flatMap((version) =>
+          version?.system_code_ref?.id ? [version.system_code_ref.id] : []
+        )
+      );
       const effectsBeforeRestart = providerEffectCount;
       expect(await staticStoreBeforeRestart.listCandidateArenaTicks())
         .toEqual([]);
@@ -1111,29 +1116,82 @@ describe("ResearchControlCampaign runtime", () => {
         reopenedStaticStore.listCandidateArenaTicks(),
         reopenedStaticStore.listResearchWorkerCheckpoints()
       ]);
+      const recoverableAdmissions = staticAdmissions.filter((admission) =>
+        admission.status !== "admitted" ||
+        materializedSystemCodeIds.has(admission.system_code_ref.id)
+      );
+      const expectedAdmittedCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "admitted"
+      ).length;
+      const expectedDuplicateCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "duplicate"
+      ).length;
+      const expectedQuarantinedCount = recoverableAdmissions.filter(
+        (admission) => admission.status === "quarantined"
+      ).length;
+      const expectedFailedCount =
+        staticAllocation.selected_directions.length -
+        recoverableAdmissions.length;
       expect(checkpoints).toHaveLength(staticCommitmentIds.size);
-      expect(checkpoints.every((checkpoint) =>
-        checkpoint.terminal_status === "failed_closed" &&
-        checkpoint.terminal_reason === "restart_recovery" &&
-        !Object.hasOwn(checkpoint, "candidate_admission_decision_ref") &&
-        !Object.hasOwn(checkpoint, "terminal_direction_result")
-      )).toBe(true);
+      for (const commitment of commitmentsBeforeRestart.filter((candidate) =>
+        staticCommitmentIds.has(candidate.research_preflight_commitment_id)
+      )) {
+        const admission = staticAdmissions.find((candidate) =>
+          candidate.research_preflight_commitment_ref?.id ===
+            commitment.research_preflight_commitment_id
+        );
+        const checkpoint = checkpoints.find((candidate) =>
+          candidate.research_preflight_commitment_ref.id ===
+            commitment.research_preflight_commitment_id
+        );
+        const recoverable = admission && recoverableAdmissions.some(
+          (candidate) => candidate.candidate_admission_decision_id ===
+            admission.candidate_admission_decision_id
+        );
+        expect(checkpoint).toMatchObject(recoverable
+          ? {
+              terminal_status: "completed",
+              terminal_reason: "admission_recorded",
+              candidate_admission_decision_ref: {
+                record_kind: "candidate_admission_decision",
+                id: admission.candidate_admission_decision_id
+              }
+            }
+          : {
+              terminal_status: "failed_closed",
+              terminal_reason: "restart_recovery"
+            });
+        expect(checkpoint).not.toHaveProperty("terminal_direction_result");
+        if (!recoverable) {
+          expect(checkpoint).not.toHaveProperty(
+            "candidate_admission_decision_ref"
+          );
+        }
+      }
+      const recoveredTick = ticks[0]!;
       expect(ticks).toEqual([expect.objectContaining({
         tick_id: staticCampaignArm.tick_ids[0],
-        status: "failed",
-        created_candidate_refs: [],
-        direction_results: staticAllocation.selected_directions.map(
-          (selection) => expect.objectContaining({
-            direction_kind: selection.direction_kind,
-            status: "failed",
-            error: "candidate_arena_restart_recovery"
-          })
-        )
+        status: expectedFailedCount === 0
+          ? "completed"
+          : expectedFailedCount === staticAllocation.selected_directions.length
+            ? "failed"
+            : "completed_with_errors"
       })]);
-      expect(ticks[0]!.direction_results.every((result) =>
-        result.candidate_id === undefined &&
-        result.admission_decision_id === undefined &&
-        result.paper_handoff_conformance === undefined &&
+      expect(recoveredTick.created_candidate_refs).toHaveLength(
+        expectedAdmittedCount
+      );
+      expect(new Set(recoveredTick.direction_results.flatMap((result) =>
+        result.admission_decision_id ? [result.admission_decision_id] : []
+      ))).toEqual(new Set(recoverableAdmissions.map((admission) =>
+        admission.candidate_admission_decision_id
+      )));
+      expect(recoveredTick.direction_results.filter((result) =>
+        result.status === "failed"
+      ).every((result) =>
+        result.error === "candidate_arena_restart_recovery" &&
+        result.admission_decision_id === undefined
+      )).toBe(true);
+      expect(recoveredTick.direction_results.every((result) =>
         result.research_efficiency === undefined
       )).toBe(true);
       expect(resumed.report.arms.find((arm) =>
@@ -1141,10 +1199,10 @@ describe("ResearchControlCampaign runtime", () => {
       )).toMatchObject({
         diagnostics: {
           attempt_count: staticAllocation.selected_directions.length,
-          admitted_candidate_count: 0,
-          duplicate_count: 0,
-          quarantined_count: 0,
-          failed_count: staticAllocation.selected_directions.length,
+          admitted_candidate_count: expectedAdmittedCount,
+          duplicate_count: expectedDuplicateCount,
+          quarantined_count: expectedQuarantinedCount,
+          failed_count: expectedFailedCount,
           provider_request_total: 0,
           runner_command_total: 0,
           scenario_count: 0,
@@ -1152,11 +1210,15 @@ describe("ResearchControlCampaign runtime", () => {
         },
         population_diversity: {
           observed_behaviors: {
-            admitted_submission_count: 0,
-            exact_behavior_duplicate_count: 0
+            admitted_submission_count: expectedAdmittedCount,
+            exact_behavior_duplicate_count: expectedDuplicateCount
           }
         },
-        paper_candidate_slots: [{ status: "no_admitted_candidate" }]
+        paper_candidate_slots: [{
+          status: expectedAdmittedCount === 1
+            ? "candidate_reserved"
+            : "no_admitted_candidate"
+        }]
       });
     }
   );
@@ -1469,7 +1531,7 @@ describe("ResearchControlCampaign runtime", () => {
     });
   });
 
-  it("fails closed legacy admission checkpoints without replay or authority", async () => {
+  it("reconstructs legacy admission checkpoints without replay or fabricated efficiency", async () => {
     const sourceStore = new LocalStore(
       path.join(tmpDir, "legacy-admission-source")
     );
@@ -1541,33 +1603,42 @@ describe("ResearchControlCampaign runtime", () => {
     expect(providerEffectCount).toBe(effectsBeforeRestart);
     expect(await staticStore.listResearchWorkerCheckpoints())
       .toEqual(legacyCheckpoints);
+    const admissions = await staticStore.listCandidateAdmissionDecisions();
+    const admissionsById = new Map(admissions.map((admission) => [
+      admission.candidate_admission_decision_id,
+      admission
+    ]));
     const [tick] = await staticStore.listCandidateArenaTicks();
-    expect(tick?.direction_results.every((result) =>
-      result.status === "failed" &&
-      result.error === "candidate_arena_recovery_evidence_unavailable" &&
-      result.candidate_id === undefined &&
-      result.admission_decision_id === undefined &&
-      result.paper_handoff_conformance === undefined &&
-      result.research_efficiency === undefined
-    )).toBe(true);
+    expect(tick?.created_candidate_refs).toHaveLength(1);
+    expect(tick?.direction_results).toHaveLength(3);
+    for (const result of tick!.direction_results) {
+      const admission = result.admission_decision_id
+        ? admissionsById.get(result.admission_decision_id)
+        : undefined;
+      expect(admission).toBeDefined();
+      expect(result.status).toBe(admission?.status === "admitted"
+        ? "created"
+        : admission?.status);
+      expect(result.research_efficiency).toBeUndefined();
+    }
     expect(resumed.report.arms.find((arm) =>
       arm.arm_kind === "static_control"
     )).toMatchObject({
       diagnostics: {
-        admitted_candidate_count: 0,
-        duplicate_count: 0,
+        admitted_candidate_count: 1,
+        duplicate_count: 2,
         quarantined_count: 0,
-        failed_count: 3,
+        failed_count: 0,
         no_submission_count: 0
       },
       population_diversity: {
         observed_behaviors: {
-          admitted_submission_count: 0,
-          exact_behavior_duplicate_count: 0
+          admitted_submission_count: 1,
+          exact_behavior_duplicate_count: 2
         }
       },
       paper_candidate_slots: [{
-        status: "no_admitted_candidate"
+        status: "candidate_reserved"
       }]
     });
   });

@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CandidateArenaRunner,
+  candidateArenaRunnerTickCountFromTicks,
   recoverIncompleteResearchWorkerCheckpoints,
   runCandidateArenaTick
 } from "@ouroboros/application/candidate/arena";
@@ -1621,7 +1623,7 @@ describe("CandidateArena paper evidence context", () => {
     await interrupted.initialize();
     await expect(runCandidateArenaTick({
       store: interrupted,
-      tickId: "worker-restart-admission",
+      tickId: "tick-1",
       now: () => "2026-07-12T10:00:00.000Z",
       directions: ["trend_following"],
       researchAgent: "codex",
@@ -1660,7 +1662,7 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(materializationCount).toBe(0);
     expect(recovered).toEqual([expect.objectContaining({
-      candidate_arena_tick_id: "worker-restart-admission",
+      candidate_arena_tick_id: "tick-1",
       terminal_status: "completed",
       terminal_reason: "admission_recorded",
       candidate_admission_decision_ref: {
@@ -1671,18 +1673,41 @@ describe("CandidateArena paper evidence context", () => {
     expect(recovered[0]).not.toHaveProperty("terminal_direction_result");
     await expect(restarted.listResearchWorkerCheckpoints()).resolves.toEqual(recovered);
 
-    const recoveredTick = await runCandidateArenaTick({
+    const runner = new CandidateArenaRunner({
       store: restarted,
-      tickId: "worker-restart-admission",
       now: () => "2026-07-12T12:00:00.000Z",
       researchAgent: "codex",
       agentFactory: () => {
         throw new Error("recovery must not start a new provider");
-      },
-      effectedAllocationRecoveryMode: "record_failed_tick"
+      }
+    });
+    const persistedTicks = await restarted.listCandidateArenaTicks();
+    const persistedAllocations = await restarted
+      .listCandidateArenaResearchAllocations();
+    const persistedCommitments = await restarted
+      .listResearchPreflightCommitments();
+    const effectedTickIds = new Set(persistedCommitments.map((commitment) =>
+      commitment.candidate_arena_tick_id
+    ));
+    runner.restoreTickCount(
+      candidateArenaRunnerTickCountFromTicks(
+        persistedTicks,
+        persistedAllocations,
+        effectedTickIds
+      ),
+      [
+        ...persistedTicks.map((tick) => tick.tick_id),
+        ...persistedAllocations
+          .filter((allocation) => !effectedTickIds.has(allocation.tick_id))
+          .map((allocation) => allocation.tick_id)
+      ]
+    );
+    const recoveredTick = await runner.tick({
+      trigger_kind: "recovery",
+      goal: "Recover the exact admitted allocation before new effects."
     });
     const recoveredDirection = recoveredTick.arena.latest_ticks.find((tick) =>
-      tick.tick_id === "worker-restart-admission"
+      tick.tick_id === "tick-1"
     )?.direction_results[0];
     expect(recoveredDirection).toMatchObject({
       direction_kind: "trend_following",

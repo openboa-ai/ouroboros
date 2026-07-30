@@ -587,39 +587,55 @@ describe("CandidateArenaRunner Research work observation", () => {
     const persistedTicks = await reopenedStore.listCandidateArenaTicks();
     const persistedAllocations = await reopenedStore
       .listCandidateArenaResearchAllocations();
+    const persistedCommitments = await reopenedStore
+      .listResearchPreflightCommitments();
+    const effectedTickIds = new Set(persistedCommitments.map((commitment) =>
+      commitment.candidate_arena_tick_id
+    ));
     restartedRunner.restoreTickCount(
       candidateArenaRunnerTickCountFromTicks(
         persistedTicks,
-        persistedAllocations
+        persistedAllocations,
+        effectedTickIds
       ),
-      persistedTicks.map((tick) => tick.tick_id)
+      [
+        ...persistedTicks.map((tick) => tick.tick_id),
+        ...persistedAllocations
+          .filter((allocation) => !effectedTickIds.has(allocation.tick_id))
+          .map((allocation) => allocation.tick_id)
+      ]
     );
 
     await expect(restartedRunner.tick({
       trigger_kind: "recovery",
-      goal: "Recover with one new bounded Research session."
-    })).resolves.toMatchObject({ tick_id: "tick-2" });
-
-    let forbiddenOldEffectCount = 0;
-    await expect(runCandidateArenaTick({
-      store: observedStore,
-      sourceArtifactDir: path.join(process.cwd(), "artifacts/trading-system"),
-      tickId: "tick-1",
-      directions: ["trend_following"],
-      researchAgent: "codex",
-      researchAgentDescriptor: {
-        id: "managed-agent-restart-regression",
-        provider: "codex",
-        model: "restart-regression",
-        permission_policy: "artifact_workspace_only"
+      goal: "Recover the interrupted Research session."
+    })).resolves.toMatchObject({
+      tick_id: "tick-1",
+      created_candidate_count: 0
+    });
+    expect(newProviderEffectCount).toBe(0);
+    expect(recoveryEvents).toEqual(["checkpoint:restart_recovery"]);
+    const recoveredOldTick = (await reopenedStore.listCandidateArenaTicks())
+      .find((tick) => tick.tick_id === "tick-1");
+    expect(recoveredOldTick).toMatchObject({
+      status: "failed",
+      created_candidate_refs: [],
+      research_allocation_ref: {
+        record_kind: "candidate_arena_research_allocation",
+        id: persistedAllocations[0]!.candidate_arena_research_allocation_id
       },
-      now: monotonicClock("2026-07-23T00:03:00.000Z"),
-      agentFactory: () => {
-        forbiddenOldEffectCount += 1;
-        throw new Error("old_allocation_must_not_run");
-      }
-    })).rejects.toThrow("candidate_arena_research_allocation_already_effected");
-    expect(forbiddenOldEffectCount).toBe(0);
+      research_allocation_digest: persistedAllocations[0]!.allocation_digest,
+      direction_results: [expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed",
+        error: "candidate_arena_restart_recovery"
+      })]
+    });
+
+    await expect(restartedRunner.tick({
+      trigger_kind: "recovery",
+      goal: "Continue with one new bounded Research session."
+    })).resolves.toMatchObject({ tick_id: "tick-2" });
 
     const allocations = await reopenedStore
       .listCandidateArenaResearchAllocations();

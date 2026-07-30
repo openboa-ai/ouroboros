@@ -27,32 +27,43 @@ describe("CandidateArenaRunner health", () => {
     expect(runner.ticks()).toBe(3);
   });
 
-  it("advances past allocations orphaned before tick closure", () => {
+  it("restores the earliest allocation orphaned before tick closure", () => {
     expect(candidateArenaRunnerTickCountFromTicks(
       [{ tick_id: "tick-1" }],
-      [{ tick_id: "tick-2" }]
+      [{ tick_id: "tick-2" }],
+      new Set(["tick-2"])
+    )).toBe(1);
+  });
+
+  it("advances past an allocation orphaned before commitment", () => {
+    expect(candidateArenaRunnerTickCountFromTicks(
+      [{ tick_id: "tick-1" }],
+      [{ tick_id: "tick-2" }],
+      new Set()
     )).toBe(2);
   });
 
   it("restores sequence past allocations with terminal ticks", () => {
     expect(candidateArenaRunnerTickCountFromTicks(
       [{ tick_id: "tick-1" }, { tick_id: "tick-2" }],
-      [{ tick_id: "tick-2" }]
+      [{ tick_id: "tick-2" }],
+      new Set(["tick-2"])
     )).toBe(2);
   });
 
-  it("uses a new sequence after mixed completed and orphaned allocations", () => {
+  it("revisits the earliest orphan before later completed ticks", () => {
     const completedTickIds = new Set(["tick-1", "tick-3"]);
     const restoredTickCount = candidateArenaRunnerTickCountFromTicks(
       [{ tick_id: "tick-1" }, { tick_id: "tick-3" }],
-      [{ tick_id: "tick-2" }, { tick_id: "tick-3" }]
+      [{ tick_id: "tick-2" }, { tick_id: "tick-3" }],
+      new Set(["tick-2", "tick-3"])
     );
 
-    expect(restoredTickCount).toBe(3);
+    expect(restoredTickCount).toBe(1);
     expect(candidateArenaRunnerNextTickCount(
       restoredTickCount,
       completedTickIds
-    )).toBe(4);
+    )).toBe(2);
     expect(candidateArenaRunnerNextTickCount(2, completedTickIds)).toBe(4);
   });
 
