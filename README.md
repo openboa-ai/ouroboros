@@ -8,3 +8,7 @@ system.
 
 No product runtime is currently shipped from this branch. Product direction will be established
 from first principles before new implementation begins.
+
+The [Core Doctrine](CORE_DOCTRINE.md) defines the immutable purpose and governing boundaries from
+which the new system will be derived. Architecture, product specifications, and implementation
+must remain subordinate to it.
