@@ -10,9 +10,11 @@ Read and apply project authority in this order:
 1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the constitutionally governing purpose, identity,
    and boundaries of Ouroboros. Agents may not modify this authority; the human sovereign alone
    may amend the doctrine.
-2. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
-3. An approved Product Specification will define required product behavior.
-4. Approved architecture and engineering documents will define provisional implementation
+2. [`SOVEREIGN.md`](SOVEREIGN.md) resolves the current repository representation of the human
+   sovereign and the conditions for valid succession. Ambiguity creates no authority.
+3. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
+4. An approved Product Specification will define required product behavior.
+5. Approved architecture and engineering documents will define provisional implementation
    choices.
 
 When sources conflict, the higher source governs. Lower sources may refine but may not redefine
@@ -30,6 +32,8 @@ Before proposing or making a substantive change, establish how it:
 - grants the least authority sufficient for the purpose and the greatest autonomy within it.
 
 If this relationship cannot yet be established, gather evidence or leave the proposal uncommitted.
+For any sovereign-only action, verify the identity, explicit authorization, and scope required by
+`SOVEREIGN.md`; repository access or maintainer status is not sufficient.
 
 ## Skills
 

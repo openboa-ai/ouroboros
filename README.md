@@ -12,6 +12,7 @@ Core Doctrine and Whitepaper; the next authority document is the Product Specifi
 The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
 It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines Ouroboros's
 constitutionally governing purpose and boundaries; agents may not modify that authority, and the
-human sovereign alone may amend the doctrine. The [Whitepaper](WHITEPAPER.md) explains the
-reasoning behind those principles and the design space they establish. Architecture, product
-specifications, and implementation must remain subordinate to both.
+human sovereign alone may amend the doctrine. The [Sovereign Designation](SOVEREIGN.md) resolves
+that identity for repository governance. The [Whitepaper](WHITEPAPER.md) explains the reasoning
+behind those principles and the design space they establish. Architecture, product specifications,
+and implementation must remain subordinate to them.

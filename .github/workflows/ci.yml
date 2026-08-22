@@ -32,6 +32,10 @@ jobs:
           test -s README.md
           test -s SECURITY.md
           test -s CODEOWNERS
+          test -s CORE_DOCTRINE.md
+          test -s WHITEPAPER.md
+          test -s AGENTS.md
+          test -s SOVEREIGN.md
 
       - name: Reject tracked local secrets and private keys
         shell: bash

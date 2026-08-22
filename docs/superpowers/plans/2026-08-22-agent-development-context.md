@@ -13,12 +13,15 @@
 ## Global Constraints
 
 - Save repository documentation in English only.
-- Do not modify `CORE_DOCTRINE.md` or `WHITEPAPER.md`.
+- Limit `CORE_DOCTRINE.md` changes to sovereign attribution and fail-closed identity; do not modify
+  `WHITEPAPER.md`.
 - Do not create `.agents/`, `.codex/`, skills, plugins, schemas, services, workflows, or runtime code.
 - Keep `AGENTS.md` concise and subordinate to the Core Doctrine and Whitepaper.
 - Treat skills and plugins as mutable capabilities, never as sources of product authority.
 - Explicitly exclude Linear because it is no longer part of the project workflow.
 - Preserve repository security and integrity maintenance as permitted work before the Product Specification exists.
+- Resolve sovereign identity through a durable designation that agents cannot infer or
+  self-authorize.
 
 ---
 
@@ -26,7 +29,11 @@
 
 **Files:**
 - Create: `AGENTS.md`
+- Create: `SOVEREIGN.md`
 - Modify: `README.md`
+- Modify: `CODEOWNERS`
+- Modify: `CORE_DOCTRINE.md`
+- Modify: `.github/workflows/ci.yml`
 - Reference: `CORE_DOCTRINE.md`
 - Reference: `WHITEPAPER.md`
 - Reference: `docs/superpowers/specs/2026-08-22-agent-development-context-design.md`
@@ -53,9 +60,11 @@ Read and apply project authority in this order:
 1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the constitutionally governing purpose, identity,
    and boundaries of Ouroboros. Agents may not modify this authority; the human sovereign alone
    may amend the doctrine.
-2. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
-3. An approved Product Specification will define required product behavior.
-4. Approved architecture and engineering documents will define provisional implementation
+2. [`SOVEREIGN.md`](SOVEREIGN.md) resolves the current repository representation of the human
+   sovereign and the conditions for valid succession. Ambiguity creates no authority.
+3. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
+4. An approved Product Specification will define required product behavior.
+5. Approved architecture and engineering documents will define provisional implementation
    choices.
 
 When sources conflict, the higher source governs. Lower sources may refine but may not redefine
@@ -73,6 +82,8 @@ Before proposing or making a substantive change, establish how it:
 - grants the least authority sufficient for the purpose and the greatest autonomy within it.
 
 If this relationship cannot yet be established, gather evidence or leave the proposal uncommitted.
+For any sovereign-only action, verify the identity, explicit authorization, and scope required by
+`SOVEREIGN.md`; repository access or maintainer status is not sufficient.
 
 ## Skills
 
@@ -122,9 +133,10 @@ Replace the final README paragraph with:
 The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
 It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines Ouroboros's
 constitutionally governing purpose and boundaries; agents may not modify that authority, and the
-human sovereign alone may amend the doctrine. The [Whitepaper](WHITEPAPER.md) explains the
-reasoning behind those principles and the design space they establish. Architecture, product
-specifications, and implementation must remain subordinate to both.
+human sovereign alone may amend the doctrine. The [Sovereign Designation](SOVEREIGN.md) resolves
+that identity for repository governance. The [Whitepaper](WHITEPAPER.md) explains the reasoning
+behind those principles and the design space they establish. Architecture, product specifications,
+and implementation must remain subordinate to them.
 ```
 
 - [ ] **Step 3: Verify document structure and scope**

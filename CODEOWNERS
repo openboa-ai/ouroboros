@@ -3,3 +3,6 @@
 /.github/** @openboa-ai/security-maintainers
 /CODEOWNERS @openboa-ai/security-maintainers
 /SECURITY.md @openboa-ai/security-maintainers
+/CORE_DOCTRINE.md @openboa @openboa-ai/security-maintainers
+/SOVEREIGN.md @openboa @openboa-ai/security-maintainers
+/AGENTS.md @openboa @openboa-ai/security-maintainers

@@ -120,6 +120,9 @@ decision. It requires that a clearly identified human sovereign retain final aut
 existence and scope of the system, together with access to evidence sufficient to exercise that
 authority.
 
+Sovereign identity and succession must remain durably attributable and outside autonomous
+determination. An absent, ambiguous, or unauthenticated designation creates no authority.
+
 The sovereign alone may establish or amend the terminal objective and this doctrine; determine the
 capital made available to Ouroboros and its upper bound; halt, revoke, or retire the system; and
 approve any net expansion of authority beyond the existing mandate.

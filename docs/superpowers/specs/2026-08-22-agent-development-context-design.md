@@ -15,9 +15,11 @@ Development agents will use the following order of authority:
 
 1. `CORE_DOCTRINE.md` defines the constitutionally governing purpose, identity, and boundaries.
    Agents may not modify this authority; the human sovereign alone may amend the doctrine.
-2. `WHITEPAPER.md` explains those principles and the design space they establish.
-3. A future Product Specification will define required product behavior.
-4. Future architecture and engineering documents will define provisional implementation choices.
+2. `SOVEREIGN.md` resolves the repository representation of the human sovereign and valid
+   succession without transferring sovereignty to an account or team.
+3. `WHITEPAPER.md` explains those principles and the design space they establish.
+4. A future Product Specification will define required product behavior.
+5. Future architecture and engineering documents will define provisional implementation choices.
 
 When documents conflict, the higher source governs. `AGENTS.md` routes agents to these sources; it
 does not replace or reinterpret them.
@@ -48,13 +50,20 @@ specifying an agent organization, naming a required framework, or creating a lar
 ## Repository Changes
 
 - Add the root `AGENTS.md`.
+- Add `SOVEREIGN.md` as the durable repository-level designation of the human sovereign.
 - Link it from `README.md` as the operational entry point for development agents.
-- Leave `CORE_DOCTRINE.md` and `WHITEPAPER.md` unchanged.
+- Add explicit ownership for the constitutional and designation documents.
+- Require the governing documents in the repository-integrity workflow.
+- Limit the Core Doctrine change to the attribution and fail-closed requirement; leave the
+  Whitepaper unchanged.
 - Do not create `.agents/`, `.codex/`, skill, plugin, schema, or runtime files.
 
 ## Verification
 
 - Confirm every source-hierarchy link resolves to a tracked file.
+- Confirm the repository-integrity workflow requires every governing document.
+- Confirm sovereign-only actions require explicit, attributable authorization and fail closed under
+  ambiguity.
 - Confirm `AGENTS.md` contains no Korean translation and does not duplicate the Doctrine.
 - Confirm it explicitly excludes Linear and distinguishes capability from authority.
 - Confirm it blocks premature product implementation without blocking repository security work.
