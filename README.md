@@ -9,7 +9,8 @@ system.
 No product runtime is currently shipped from this branch. Product direction will be established
 from first principles before new implementation begins.
 
-The [Core Doctrine](CORE_DOCTRINE.md) defines the immutable purpose and governing boundaries from
-which the new system will be derived. The [Whitepaper](WHITEPAPER.md) explains the reasoning behind
+The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
+It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines the immutable purpose
+and governing boundaries, and the [Whitepaper](WHITEPAPER.md), which explains the reasoning behind
 those principles and the design space they establish. Architecture, product specifications, and
 implementation must remain subordinate to both.
