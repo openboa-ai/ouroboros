@@ -7,8 +7,9 @@ project's governing sources; it does not replace, summarize, or reinterpret them
 
 Read and apply project authority in this order:
 
-1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the immutable purpose, identity, and
-   constitutional boundaries of Ouroboros.
+1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the constitutionally governing purpose, identity,
+   and boundaries of Ouroboros. Agents may not modify this authority; the human sovereign alone
+   may amend the doctrine.
 2. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
 3. An approved Product Specification will define required product behavior.
 4. Approved architecture and engineering documents will define provisional implementation

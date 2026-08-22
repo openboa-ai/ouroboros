@@ -50,8 +50,9 @@ project's governing sources; it does not replace, summarize, or reinterpret them
 
 Read and apply project authority in this order:
 
-1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the immutable purpose, identity, and
-   constitutional boundaries of Ouroboros.
+1. [`CORE_DOCTRINE.md`](CORE_DOCTRINE.md) defines the constitutionally governing purpose, identity,
+   and boundaries of Ouroboros. Agents may not modify this authority; the human sovereign alone
+   may amend the doctrine.
 2. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
 3. An approved Product Specification will define required product behavior.
 4. Approved architecture and engineering documents will define provisional implementation
@@ -119,10 +120,11 @@ Replace the final README paragraph with:
 
 ```markdown
 The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
-It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines the immutable purpose
-and governing boundaries, and the [Whitepaper](WHITEPAPER.md), which explains the reasoning behind
-those principles and the design space they establish. Architecture, product specifications, and
-implementation must remain subordinate to both.
+It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines Ouroboros's
+constitutionally governing purpose and boundaries; agents may not modify that authority, and the
+human sovereign alone may amend the doctrine. The [Whitepaper](WHITEPAPER.md) explains the
+reasoning behind those principles and the design space they establish. Architecture, product
+specifications, and implementation must remain subordinate to both.
 ```
 
 - [ ] **Step 3: Verify document structure and scope**

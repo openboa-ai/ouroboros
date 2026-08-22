@@ -13,7 +13,8 @@ and plugins. It will not define product behavior or implementation architecture.
 
 Development agents will use the following order of authority:
 
-1. `CORE_DOCTRINE.md` defines the immutable purpose, identity, and constitutional boundaries.
+1. `CORE_DOCTRINE.md` defines the constitutionally governing purpose, identity, and boundaries.
+   Agents may not modify this authority; the human sovereign alone may amend the doctrine.
 2. `WHITEPAPER.md` explains those principles and the design space they establish.
 3. A future Product Specification will define required product behavior.
 4. Future architecture and engineering documents will define provisional implementation choices.
