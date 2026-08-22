@@ -56,10 +56,18 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.event.after }}
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             git diff --check "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+              git diff-tree --check --no-commit-id --root -r "$PUSH_AFTER_SHA"
+            else
+              git diff --check "$PUSH_BEFORE_SHA" "$PUSH_AFTER_SHA"
+            fi
           else
             git diff-tree --check --no-commit-id --root -r HEAD
           fi
