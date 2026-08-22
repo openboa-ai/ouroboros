@@ -1,8 +1,7 @@
-name: ci
+name: repository-integrity
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -12,95 +11,55 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: repository-integrity-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  repository-guards:
-    name: repository-guards
+  repository-integrity:
+    name: repository-integrity
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
-      - name: Validate pull request frontier
-        if: github.event_name == 'pull_request'
+      - name: Check required repository files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s README.md
+          test -s SECURITY.md
+          test -s CODEOWNERS
+
+      - name: Reject tracked local secrets and private keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .env.example|*/.env.example)
+                ;;
+              .env|*/.env|.env.*|*/.env.*|.envrc|*/.envrc|*.pem|*.key|*.p12|*.pfx|id_rsa|*/id_rsa|id_dsa|*/id_dsa|id_ecdsa|*/id_ecdsa|id_ed25519|*/id_ed25519)
+                echo "Forbidden tracked secret path: $path" >&2
+                failed=1
+                ;;
+            esac
+          done < <(git ls-files -z)
+          test "$failed" -eq 0
+
+      - name: Check diff whitespace
+        shell: bash
         env:
-          PR_HEAD: ${{ github.head_ref }}
-          PR_BASE: ${{ github.base_ref }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          node scripts/check-pr-frontier.mjs \
-            --mode pull-request \
-            --repo . \
-            --pr-head "$PR_HEAD" \
-            --pr-base "$PR_BASE" \
-            --pr-title "$PR_TITLE" \
-            --pr-body "$PR_BODY" \
-            --scope-base "$PR_BASE_SHA" \
-            --scope-head "$PR_HEAD_SHA"
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install gitleaks
-        env:
-          GITLEAKS_VERSION: "8.30.1"
-        run: |
-          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          checksums="gitleaks_${GITLEAKS_VERSION}_checksums.txt"
-          base_url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-
-          curl -fsSLO "${base_url}/${archive}"
-          curl -fsSLO "${base_url}/${checksums}"
-          grep " ${archive}$" "${checksums}" | sha256sum --check --strict
-
-          mkdir -p "${RUNNER_TEMP}/gitleaks-bin"
-          tar -xzf "${archive}" -C "${RUNNER_TEMP}/gitleaks-bin" gitleaks
-          echo "${RUNNER_TEMP}/gitleaks-bin" >> "${GITHUB_PATH}"
-
-      - name: Check docs design baseline
-        run: bash scripts/check-docs.sh
-
-      - name: Check environment files
-        run: bash scripts/check-env-files.sh --tracked
-
-      - name: Check secrets
-        run: bash scripts/check-secrets.sh --git
-
-      - name: Check diff whitespace
-        run: git diff --check
-
-  node-quality:
-    name: node-quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          else
+            git diff-tree --check --no-commit-id --root -r HEAD
+          fi

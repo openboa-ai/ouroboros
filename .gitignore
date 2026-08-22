@@ -1,69 +1,16 @@
-# OS / editor
 .DS_Store
 Thumbs.db
-.vscode/
-.idea/
 
-# Environment / secrets
-# Commit templates only. Loaded profiles such as .env.test and .env.prod stay local.
+# Local environment and credential material must never be tracked.
 .env
 .env.*
-.envrc
+.env.local
+.env.prod
 !.env.example
-!.env.*.example
-*.pem
-*.p12
-*.pfx
-*.key
-
-# Logs / temp / caches
 *.log
-.cache/
-tmp/
-temp/
-var/
 
-# Python
-__pycache__/
-*.py[cod]
-.python-version
-.venv/
-venv/
-ENV/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-.coverage.*
-htmlcov/
-build/
-dist/
-.eggs/
-*.egg-info/
-
-# Node / web
 node_modules/
-.next/
-.nuxt/
-.svelte-kit/
-coverage/
-*.tsbuildinfo
 dist/
-src-tauri/target/
-src-tauri/gen/
-**/src-tauri/target/
-**/src-tauri/gen/
-**/src-tauri/icons/android/
-**/src-tauri/icons/ios/
-**/src-tauri/icons/StoreLogo.png
-**/src-tauri/icons/Square*Logo.png
-vite.svg
+coverage/
 
-# Tooling
-.cursorignore
-.cursorindexingignore
-.codex/config.toml
 .worktrees/
-
-# ouroboros local runtime output
-.ouroboros/

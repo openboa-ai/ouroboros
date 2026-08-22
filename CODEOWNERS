@@ -1,0 +1,5 @@
+* @openboa-ai/security-maintainers
+
+/.github/** @openboa-ai/security-maintainers
+/CODEOWNERS @openboa-ai/security-maintainers
+/SECURITY.md @openboa-ai/security-maintainers
