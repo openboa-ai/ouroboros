@@ -1,5 +1,0 @@
-#!/bin/sh
-set -eu
-
-sbx_bin="${OUROBOROS_SBX_BIN:-sbx}"
-exec "$sbx_bin" "$@"
