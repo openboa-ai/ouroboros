@@ -21,8 +21,8 @@ Within the inviolable boundaries of the Core Doctrine and human sovereignty, the
 objective of Ouroboros is to maximize the sustained compound return on the actual equity entrusted
 to the firm, generated through authorized live trading across the continuing life of the firm.
 
-In this specification, actual equity is the firm-wide economic value of assets after recognizing
-the liabilities and obligations borne by the firm. It is the capital base against which return is
+In this specification, actual equity is the firm-wide residual economic value of assets net of the
+liabilities and obligations borne by the firm. It is the capital base against which return is
 judged, not the balance of an isolated account, strategy, agent, or experiment.
 
 This objective concerns firm-level economic growth, not the maximization of gross trading revenue
@@ -91,10 +91,10 @@ organization.
 
 ### 3.4 Unified Capital Stewardship
 
-Actual equity is entrusted to Ouroboros as a firm under the mandate of the human sovereign; it does
-not belong independently to an agent, strategy, desk, or experiment. Within the sovereign upper
-bound, the firm must be able to allocate, reallocate, limit, and revoke the use of equity while
-maintaining a unified account of aggregate exposure, obligations, costs, and economic
+Actual capital is entrusted to Ouroboros as firm-level equity under the mandate of the human
+sovereign; it does not belong independently to an agent, strategy, desk, or experiment. Within the
+sovereign upper bound, the firm must be able to allocate, reallocate, limit, and revoke the use of
+equity while maintaining a unified account of aggregate exposure, obligations, costs, and economic
 consequences.
 
 Within that mandate, agents may autonomously enter, size, reduce, reallocate, or end live-market
