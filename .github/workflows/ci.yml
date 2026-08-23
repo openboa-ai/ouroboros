@@ -34,6 +34,7 @@ jobs:
           test -s CODEOWNERS
           test -s CORE_DOCTRINE.md
           test -s WHITEPAPER.md
+          test -s PRODUCT_SPECIFICATION.md
           test -s AGENTS.md
           test -s SOVEREIGN.md
 
