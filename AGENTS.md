@@ -13,7 +13,8 @@ Read and apply project authority in this order:
 2. [`SOVEREIGN.md`](SOVEREIGN.md) resolves the current repository representation of the human
    sovereign and the conditions for valid succession. Ambiguity creates no authority.
 3. [`WHITEPAPER.md`](WHITEPAPER.md) explains the doctrine and the design space it establishes.
-4. An approved Product Specification will define required product behavior.
+4. [`PRODUCT_SPECIFICATION.md`](PRODUCT_SPECIFICATION.md) defines the required product identity,
+   behavior, and proof.
 5. Approved architecture and engineering documents will define provisional implementation
    choices.
 
@@ -24,7 +25,9 @@ higher ones.
 
 Before proposing or making a substantive change, establish how it:
 
-- contributes to the sustained compound growth of actual capital through authorized live trading;
+- contributes to the sustained compound return on actual equity through authorized live trading;
+- accounts for firm-level costs, obligations, and external capital flows without mistaking them for
+  trading performance;
 - preserves live trading as the product's condition of existence;
 - enables valid iteration instead of merely increasing activity;
 - keeps claims of improvement accountable to independent evidence and market reality;
@@ -67,9 +70,9 @@ with the decision rationale so later iterations can reconstruct what was learned
 
 ## Current Repository Stage
 
-The Core Doctrine and Whitepaper are the current product truth. The next authority document is the
-Product Specification.
+The Core Doctrine, Whitepaper, and Product Specification are the current product truth. Architecture
+is the next provisional design layer.
 
-Until that specification is approved, do not implement product runtime, schemas, services,
-architecture, or compatibility surfaces. Work may continue on product direction and on repository
-security and integrity required to preserve a trustworthy foundation.
+Until architecture is approved, do not implement product runtime, schemas, services, or
+compatibility surfaces. Work may continue on architecture and on repository security and integrity
+required to preserve a trustworthy foundation.
