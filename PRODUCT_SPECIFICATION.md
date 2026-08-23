@@ -126,8 +126,9 @@ development team.
 Ouroboros must be capable of selecting, deploying, observing, limiting, and replacing its own
 changes while operating. Authority to create a candidate does not by itself confer authority to
 validate, deploy, or expand its consequences. These functions need not belong to permanently
-separate agents or organizational units, but no candidate may unilaterally control the complete
-chain by which it is judged and granted consequential authority.
+separate agents or organizational units, but no participant in an iteration may become the sole
+authority over its outcome or unilaterally control the complete chain by which a candidate is
+judged and granted consequential authority.
 
 A valid iteration may improve what Ouroboros knows without improving how it trades. Ouroboros may
 recognize a change as trading improvement only when attributable evidence distinguishes it from
