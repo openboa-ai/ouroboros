@@ -17,27 +17,29 @@ transform the firm's strategies, capabilities, organization, and operation throu
 derived from market consequences. Humans retain sovereignty over the firm but are not its routine
 operators.
 
-Within the inviolable boundaries of the Core Doctrine and human sovereignty, the sole terminal
-objective of Ouroboros is to maximize the sustained compound return on the actual equity entrusted
-to the firm, generated through authorized live trading across the continuing life of the firm.
+Within the inviolable boundaries of the Core Doctrine and human sovereignty, the terminal
+objective is to generate economically worthwhile shareholder returns through authorized live
+trading of actual capital, growing both distributions to the shareholder and retained shareholder
+capital. Continued use of that capital must remain justified relative to realistic alternative
+uses under the shareholder's mandate.
 
-In this specification, actual equity is the firm-wide residual economic value of assets net of the
-liabilities and obligations borne by the firm. It is the capital base against which return is
-judged, not the balance of an isolated account, strategy, agent, or experiment.
+Actual equity is the firm-wide residual economic value of assets net of liabilities and
+obligations. The shareholder's distributions and remaining economic interest must be considered
+together with contributed capital and its timing, without double-counting. Retained earnings
+remain shareholder capital. Joint growth neither guarantees increases every period nor fixes a
+payout rule.
 
-This objective concerns firm-level economic growth, not the maximization of gross trading revenue
-or absolute trading profit. Growth must be understood relative to the equity employed and after
-accounting for trading losses, execution and financing costs, operating costs, and the other
-economic obligations of the firm.
+Judge outcomes after trading losses, execution and financing costs, model, compute, data, operating
+costs, and other obligations, including costs paid by the shareholder on the firm's behalf. Do not
+count the same cost twice or conceal valuation uncertainty. Distinguish contributions, borrowing,
+returned capital, earned distributions, and trading performance; changing accounts, reporting
+boundaries, or capital denominators cannot manufacture economic gain.
 
-Firm-level compound return on actual equity is the enduring economic criterion of Ouroboros.
-Methods of measurement and evaluation may evolve, but they may not redefine equity, omit costs or
-obligations borne by the firm, represent external capital flows as return, or substitute proxy
-performance for actual economic consequence.
-
-External contributions and withdrawals alter the equity entrusted to Ouroboros; they do not
-constitute economic growth. Capital flows, accounting choices, and changes to the denominator may
-not be represented as trading performance.
+The mandate must resolve comparison conditions and horizon, risk and capital bounds, and relevant
+liquidity and distribution/reinvestment choices before they govern consequential allocation.
+Applicable obligations and economic recognition and valuation methods must be established before
+dependent reporting and operation. An unresolved choice is not permission for an agent to invent
+a favorable default. It need not prevent independent bounded research within existing authority.
 
 Live trading of actual capital is constitutive of the operating product. Research, development,
 evaluation, simulation, and paper trading may prepare and improve the firm, but they cannot
@@ -50,8 +52,8 @@ backtesting or simulation product, a trading dashboard, or a generator of isolat
 
 Research, development, evaluation, simulation, paper trading, software construction, and agent
 organization are internal means through which the firm develops its capacity to trade. Their
-product legitimacy derives only from their contribution to authorized live trading, the compound
-return on actual equity, or the constitutive conditions required to pursue them.
+product legitimacy derives only from their contribution to the shareholder objective through
+authorized live trading or the constitutive conditions required to pursue it.
 
 An activity belongs to Ouroboros only when it is conducted under the firm's delegated authority,
 attributable to the firm, and accountable to its terminal objective. Merely connecting an agent,
@@ -89,6 +91,11 @@ results, and discontinue work whose justification no longer holds. The human sov
 the mandate; the firm must not depend on humans to continuously supply its tasks, priorities, or
 organization.
 
+Purpose relevance, actual authority, and the case for resources must remain separately assessable.
+Indirect work and coherent multi-step inquiry need not produce immediate revenue. Useful learning
+is not automatic justification for more capital; continuation must use current evidence and
+alternatives, including cumulative firm-level commitments. Sunk expenditure alone is insufficient.
+
 ### 3.4 Unified Capital Stewardship
 
 Actual capital is entrusted to Ouroboros as firm-level equity under the mandate of the human
@@ -100,6 +107,10 @@ consequences.
 Within that mandate, agents may autonomously enter, size, reduce, reallocate, or end live-market
 exposure. Any net expansion beyond the existing mandate requires explicit sovereign authorization.
 Stronger evidence may justify greater exposure, but evidence never creates authority by itself.
+Existing conditional rules may authorize adjustment; agents may not unilaterally amend those rules.
+Retained profits, confidence, and performance pressure create no additional authority. Individual
+allowances must not conceal cumulative or correlated firm exposure, and modeled loss bounds must
+not be presented as guaranteed realized limits.
 
 Local performance may inform allocation, but no local actor, metric, or objective may supersede the
 terminal objective or represent changes in capital allocation as firm-level return.
@@ -113,6 +124,12 @@ necessary to reconstruct how that knowledge was formed. Agent replacement or org
 change may alter the firm's judgment, but may not erase its learning history or present inherited
 conclusions as newly established truth.
 
+Stored evidence, current interpretation, and observable use of experience must remain distinct.
+A lesson's relevance may change without erasing its basis. Compression must not turn a conditional
+claim into certainty. Retention must serve the purpose within applicable obligations, access
+limits, and costs; no particular memory or model-training mechanism is required. A successor's
+competence needs evidence and its recalled permissions cannot override the current mandate.
+
 ### 3.6 Internal Self-Development
 
 Ouroboros must be capable of developing itself as an internal function of the firm. Within
@@ -120,6 +137,11 @@ delegated authority, agents must be able to originate hypotheses, conduct resear
 implement changes, evaluate alternatives, and revise or replace strategies, models, tools, code,
 and organizational forms. Routine continuation of this process may not depend on an external
 development team.
+
+Technical capability, net firm results, and shareholder attractiveness are separate claims. An
+improvement must have a testable path from the bottleneck it changes to economic consequences after
+full costs at usable scale. Faster iteration, a new model, or more agents is not itself economic
+advantage. AI may choose ordinary software or retain a working method when justified.
 
 ### 3.7 Governed Selection and Deployment
 
@@ -137,6 +159,16 @@ favorable, null, negative, and contradictory outcomes remain part of the record.
 established without live exposure of actual capital remains provisional; trading improvement must
 ultimately withstand repeated live-market consequences.
 
+Preserve actual outcomes while distinguishing decision quality, conditional earning ability, and
+the next allocation case. Examine selection and alternative explanations; missing evidence is
+neither proven ability nor proven absence of ability. Favorable outcomes cannot excuse violations,
+and a sound-process claim cannot exempt persistent losses from evaluation.
+
+AI-to-AI checking is an optional candidate mechanism. Claims of effective scrutiny must be tested
+for relevant evidence access, consequential challenge, correlated errors, false blocks, bypass,
+delay, and cost. Agreement alone is neither verification nor permission. No agent count, voting
+rule, or unconditional veto is required.
+
 ### 3.8 Governed Autonomy
 
 Agents must be able to conduct trading and self-improvement without continuous human operation or
@@ -151,6 +183,13 @@ of the agents they constrain, and consequential actions must remain attributable
 agent, decision, and evidence from which they arose. The firm must be able to contain consequences,
 revoke authority, and recover control without relying on blanket prohibition or continuous human
 approval.
+
+The sovereign must be able to inspect decision-relevant outcomes, commitments, uncertainty, and
+supporting evidence in time to exercise control. Where human response is slower than potential
+consequences, operation must use already-authorized bounded responses; notification alone is not
+control. Absence creates no new permission and does not itself invalidate existing delegation.
+Revocation must affect relevant descendants and successors. Stopping new action must remain
+distinguishable from resolving outstanding exposure and obligations.
 
 ### 3.9 Integrated Firm Operation
 
@@ -176,7 +215,9 @@ within the sovereign mandate and without routine human operation:
 The economic consequence need not be favorable. A loss may complete the product proof when it
 remains bounded, truthfully accounted for, retained as evidence, and incorporated into what the
 firm does next. The proof establishes that the firm-level loop operates; it does not establish that
-Ouroboros has achieved enduring trading value.
+Ouroboros has achieved enduring trading value or that allocating further shareholder capital is
+attractive relative to alternatives. Operational, evidential, economic, and authority claims must
+remain separate.
 
 Simulation, paper trading, isolated agent demonstrations, disconnected research automation, and
 gross-profit results that omit firm-level costs may validate constituent capabilities, but they do
@@ -192,6 +233,12 @@ Claims of trading value must remain accountable to repeated firm-level net retur
 equity across changing market conditions, capital scales, and time. Favorable gross profit,
 internal evaluation, or improvement in a proxy may not supersede the economic consequences
 ultimately borne by the firm.
+
+The case for continued capital must also address the shareholder's realistic alternatives under
+the mandate. If the desired result is unsupported within permitted risk, expose the conflict and
+propose alternatives without changing the mandate. Distribution and retained-capital growth cannot
+be indefinitely replaced by learning claims. Reduction, capital return, or retirement remain
+available to the authorized decision-maker, accounting for existing obligations.
 
 Failure does not require the indiscriminate shutdown of Ouroboros. It requires that consequences
 remain bounded and that the firm remain recoverable without losing control, truth, or identity.
