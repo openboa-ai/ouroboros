@@ -1,5 +1,10 @@
 # Ouroboros
 
+Ouroboros is an agent-native quantitative firm pursuing economically worthwhile shareholder
+returns through authorized live trading, with growth in both distributions and retained capital.
+AI leads operation and improvement within the human mandate; the continued use of shareholder
+capital must remain justified relative to realistic alternatives.
+
 Ouroboros is undergoing a clean-slate reconstruction.
 
 The previous implementation, schemas, interfaces, architecture, and compatibility surface were

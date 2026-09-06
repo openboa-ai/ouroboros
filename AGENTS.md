@@ -25,13 +25,17 @@ higher ones.
 
 Before proposing or making a substantive change, establish how it:
 
-- contributes to the sustained compound return on actual equity through authorized live trading;
+- contributes to economically worthwhile shareholder returns through authorized live trading,
+  including growth in distributions and retained capital and a current case against alternatives;
 - accounts for firm-level costs, obligations, and external capital flows without mistaking them for
   trading performance;
 - preserves live trading as the product's condition of existence;
-- enables valid iteration instead of merely increasing activity;
-- keeps claims of improvement accountable to independent evidence and market reality;
-- preserves human sovereignty over the objective, capital, authority, and revocation; and
+- distinguishes valid learning from the justification for further capital and considers cumulative
+  firm-level costs rather than merely increasing activity;
+- distinguishes actual outcomes, conditional earning ability, and the next allocation case while
+  keeping improvement claims accountable to independent evidence and market reality;
+- preserves human sovereignty over the objective, accepted risk, capital, authority, and effective
+  revocation, including outstanding consequences across replacement; and
 - grants the least authority sufficient for the purpose and the greatest autonomy within it.
 
 If this relationship cannot yet be established, gather evidence or leave the proposal uncommitted.
