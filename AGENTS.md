@@ -25,20 +25,31 @@ higher ones.
 
 Before proposing or making a substantive change, establish how it:
 
-- contributes to economically worthwhile shareholder returns through authorized live trading,
-  including growth in distributions and retained capital and a current case against alternatives;
-- accounts for firm-level costs, obligations, and external capital flows without mistaking them for
-  trading performance;
-- preserves live trading as the product's condition of existence;
+- contributes to long-term growth in profits withdrawn by the owner and net capital remaining in
+  operation through authorized live trading, with a current case against realistic alternatives;
+- distinguishes owner-controlled initial and additional contributions, returns of principal,
+  realized and unrealized gains, and withdrawals without double-counting profit or mistaking
+  capital flows for trading performance;
+- accounts for whole-firm costs and outstanding obligations, including owner-paid and shared
+  costs, without hiding them through omission, reallocation, or uncertain valuation;
+- preserves live trading as the product's condition of existence without requiring a trade,
+  change, or withdrawal in every period;
 - distinguishes valid learning from the justification for further capital and considers cumulative
   firm-level costs rather than merely increasing activity;
-- distinguishes actual outcomes, conditional earning ability, and the next allocation case while
-  keeping improvement claims accountable to independent evidence and market reality;
+- distinguishes AI-led operation, actual owner outcomes, AI contribution, conditional earning
+  ability, and the next allocation case, with evidence appropriate to each judgment;
+- establishes purpose relevance, valid authority, and the current resource case separately,
+  including for indirect research, maintenance, and recovery;
 - preserves human sovereignty over the objective, accepted risk, capital, authority, and effective
-  revocation, including outstanding consequences across replacement; and
+  revocation, including economic history and outstanding consequences across replacement and
+  additional funding;
+- preserves independent evaluation for both internal changes and changes to external controls,
+  without treating multiple agents or agreement alone as verification; and
 - grants the least authority sufficient for the purpose and the greatest autonomy within it.
 
-If this relationship cannot yet be established, gather evidence or leave the proposal uncommitted.
+If this relationship cannot yet be established, gather evidence only within an authorized and
+justified resource commitment, or leave the proposal uncommitted. Maintaining a simpler method,
+waiting, reducing exposure, and stopping unnecessary work can serve the same objective.
 For any sovereign-only action, verify the identity, explicit authorization, and scope required by
 `SOVEREIGN.md`; repository access or maintainer status is not sufficient.
 
@@ -64,6 +75,10 @@ be introduced as a dependency or source of project state.
 
 ## Change Discipline
 
+Use pull requests as the durable record for proposed changes, decisions, validation, and delivery.
+Keep coordination and follow-up in the relevant pull request rather than creating or updating
+GitHub Issues for this repository's work.
+
 Use the minimum structure sufficient for the distinction the system must currently express. Do
 not create enums, schemas, roles, services, workflows, or abstractions before that distinction is
 required by an approved specification and supported by evidence.
@@ -76,6 +91,14 @@ with the decision rationale so later iterations can reconstruct what was learned
 
 The Core Doctrine, Whitepaper, and Product Specification are the current product truth. Architecture
 is the next provisional design layer.
+
+The current implementation direction separates public execution and enforcement from private
+agent-led operation while retaining company-wide feedback, obligations, and evidence. Evaluate
+external implementation, internal performance, and their connected actual effects separately;
+these are verification responsibilities, not a third execution layer. Public code does not prove
+the state of a live deployment, and private operation does not remove authorized access to evidence.
+Astra is the planned implementation agent; this does not select the firm's internal operating
+model. Follow the Whitepaper and Product Specification for the boundaries of this direction.
 
 Until architecture is approved, do not implement product runtime, schemas, services, or
 compatibility surfaces. Work may continue on architecture and on repository security and integrity
