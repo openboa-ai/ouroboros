@@ -1,16 +1,19 @@
-# Ouroboros: An Agent-Native Trading System for Continuous Self-Improvement
+# Ouroboros: An Agent-Native Quantitative Firm
 
 ## Abstract
 
 Ouroboros is an agent-native quantitative firm whose terminal objective is to generate
-economically worthwhile shareholder returns through authorized live trading of actual capital,
-growing both distributions to the shareholder and retained shareholder capital. The continued use
-of that capital must remain justified relative to realistic alternatives under the mandate.
+economically worthwhile returns for its owner through authorized live trading of actual capital,
+pursuing long-term growth in both profits withdrawn by the owner and retained net capital. The
+owner provides initial capital and may choose to contribute additional capital. Every continuing
+use of capital must remain justified relative to realistic alternatives under the mandate;
+contributions themselves are not earned performance.
 
 It begins from the premise that markets are adaptive and continually changing. No observed trading
-advantage can be presumed permanent. A firm seeking continuing shareholder value must therefore
-be capable not only of trading, but of repeatedly transforming the consequences of trading into
-valid changes to itself.
+advantage can be presumed permanent. A firm seeking continuing owner value must therefore be
+capable of using the consequences of trading to decide what to retain, revise, reduce, or stop.
+Adaptation, scale, and continued existence serve the economic objective; they are not independent
+ends. Choosing an agent-native firm does not establish that AI will create value after its costs.
 
 Agents are the primary actors throughout this closed loop. They trade, conduct research, develop
 and evaluate alternatives, preserve learning, and replace the system's existing forms when
@@ -74,7 +77,7 @@ as the market adapts, as competitors respond, or as the advantage itself is expl
 
 This does not imply that every fixed strategy must fail immediately, nor that every change
 constitutes progress. It means that permanence cannot be treated as a property of an observed
-advantage. A trading firm seeking continuing shareholder value must remain accountable to the
+advantage. A trading firm seeking continuing owner value must remain accountable to the
 possibility that the conditions supporting its past success no longer hold.
 
 The problem is therefore larger than discovering a profitable strategy. Ouroboros must repeatedly
@@ -83,12 +86,13 @@ which changes are sufficiently supported to affect actual capital. It must be ca
 not only its strategies, but also the models, tools, experiments, evaluators, organizational forms,
 and development processes through which strategies are produced.
 
-Treating trading and improvement as separate systems weakens this capacity. Trading then produces
-economic consequences without necessarily preserving them as learning, while research risks
-optimizing representations that are increasingly detached from the conditions under which capital
-is actually deployed. Ouroboros instead treats trading and self-improvement as one closed loop:
-market-facing action produces consequences, consequences inform iteration, and iteration changes
-the action that follows.
+Separating trading from improvement in purpose, evidence, or accountability weakens this capacity.
+Trading then produces economic consequences without necessarily preserving them as learning, while
+research risks optimizing representations detached from the conditions under which capital is
+actually deployed. This problem is a broken feedback relationship, not the use of separate
+software components or repositories. Ouroboros treats trading and self-improvement as one closed
+loop of purpose and consequence: market-facing action produces evidence, evidence informs
+iteration, and iteration governs the action that follows.
 
 Closing this loop introduces a second problem. A system capable of changing itself can also
 optimize its proxies, exploit its evaluators, erase unfavorable evidence, or expand its authority
@@ -97,69 +101,129 @@ self-deception just as quickly when selection is unsound.
 
 The central problem addressed by Ouroboros is therefore:
 
-**How can an agent-native system repeatedly transform live-market consequences into valid
-self-improvement, quickly and indefinitely, while preserving the evidence, authority, and
-sovereign boundaries required to keep that improvement real?**
+**How can an agent-native firm use actual capital and the consequences of its own operation to
+create economically worthwhile returns for its owner, while preserving the authority, evidence,
+and sovereign control needed to decide what should continue, change, or end?**
 
 This problem—not any particular strategy, model, organizational structure, or optimization
 method—defines the design space of Ouroboros.
 
 ## 2. The Terminal Objective
 
-Ouroboros pursues economically worthwhile shareholder returns through authorized live trading of
-actual capital, growing both distributions to the shareholder and retained shareholder capital.
-The owner supplies capital as an investor. The firm must earn its continued use relative to
-realistic alternative uses under the owner's mandate.
+Ouroboros pursues economically worthwhile returns for its owner through authorized live trading
+of actual capital, seeking long-term growth in both profits withdrawn by the owner and retained
+net capital. The owner provides the initial capital and decides the timing, amount, and
+continuation of additional contributions. Agents allocate available resources within the mandate;
+they cannot require further contributions. The firm must justify continuing use of that capital
+relative to realistic alternative uses under the mandate; the prospect of future contributions
+is not a substitute for earning returns.
 
-Retained earnings remain the shareholder's capital. Leaving them in the firm is a continuing
-allocation decision, not free financing. Compounding may contribute to the objective, but capital
-accumulation, firm survival, research throughput, and technical capability are not independent
-ends. A good investment case can justify retention; sunk expenditure cannot justify it by itself.
+The owner is the person to whom the operation's economic interest belongs. The sovereign is the
+role that determines purpose and the bounds of delegation. The current conception places both
+roles with the same human. These terms do not prescribe a legal entity, share issuance, or the
+recruitment of outside shareholders. Nor does this description grant or prohibit another form of
+financing. Economic ownership and the movement of funds do not themselves establish operational
+authority.
 
-Distributions and retained capital should both grow through economically productive operation.
-They nevertheless compete at particular allocation decisions. This direction neither guarantees
-monotonic growth nor fixes a payout ratio. The human mandate must settle relevant horizon,
-liquidity needs, acceptable risk, comparison conditions, and the treatment of competing uses of
-earnings before those choices govern allocation. No bank rate, index, or statistical score is
-inherently the shareholder's selected criterion.
+The economic purpose, the chosen product identity, and the hypothesis of AI value have different
+status. The owner sets the purpose. Ouroboros adopts agents as the primary actors in trading and
+continued firm development. Whether their discovery, judgment, execution, coordination, or
+adaptation creates value after full costs remains an empirical question. Neither adopting the
+identity nor observing autonomous activity establishes economic advantage.
+
+Retained net capital means the net capital remaining in operation: its economic value after
+liabilities and obligations, with valuation uncertainty made visible. Profits retained in the operation remain the
+owner's capital. Leaving them there is a continuing allocation decision, not free financing.
+Compounding may contribute to the objective, but capital accumulation, firm survival, research
+throughput, and technical capability are not independent ends. A current economic case can justify
+retention; sunk expenditure cannot justify it by itself.
+
+Profits withdrawn and retained net capital should both grow through economically productive
+operation over the relevant horizon. They nevertheless compete at particular allocation
+decisions. This direction guarantees neither gains nor simultaneous increases in every period,
+and it requires neither a fixed payout ratio nor periodic withdrawals. The mandate must settle
+relevant horizon, liquidity needs, acceptable risk, comparison conditions, and competing uses of
+profits before those choices govern consequential allocation. No bank rate, index, or statistical
+score is inherently the owner's selected criterion.
 
 The economic result concerns the whole firm. Account for trading losses, execution, financing,
-model, compute, data, and operating costs, together with unresolved obligations. A cost paid by the
-shareholder on the firm's behalf does not disappear outside the trading account; costs already
-included must not be counted twice. Contributions and borrowing are not earned performance.
-Distinguish returned capital from earned distributions, and consider distributions together with
-supported remaining shareholder value without double-counting. Uncertain valuation is not a
-license to substitute an optimistic claim about future AI capabilities for earned results.
+model, compute, data, operating, maintenance, and verification costs, together with unresolved
+obligations. Include attributable costs of both the external execution environment and the
+internal operation. A cost paid separately by the owner does not disappear outside the trading
+account; costs already included must not be counted twice. Conversely, the full cost of shared
+infrastructure should not be assigned to one operation without an attributable basis. Shared-cost
+allocation must preserve the total economic burden and must not shift costs to favor a reported
+result.
 
-Profitability, evidence of earning ability, and an attractive capital allocation are distinct.
-A lucky gain is still a gain; a loss following a reasonable decision is still a loss. Continued
-allocation also depends on what can reasonably be expected again and under which conditions.
-Examine market exposure, risk compensation, chance, selection, scale, and alternative explanations.
-Insufficient evidence establishes neither ability nor its absence. Conditional inquiry may be
-justified without claiming commercial success or a right to unlimited capital.
+Initial and additional contributions, borrowing, and other financing receipts are not earned
+performance. Distinguish principal returned to the owner, profits withdrawn, realized and
+unrealized results, and retained net capital. Returning principal is not prohibited, but it cannot
+be reported as earned profit. A withdrawn amount is no longer also retained capital. Consider
+owner withdrawals and remaining economic value together with contributed capital and its timing,
+without double-counting. An optimistic claim about future AI capability is not earned profit.
 
-An investment-alternative comparison asks whether the shareholder should allocate capital here.
-An explanatory comparison asks what produced the results and what the firm contributed. They need
-not use the same comparator. Technical improvement can fail to produce net trading value, and net
-trading value can still be less attractive than a realistic alternative on the owner's terms.
+The amount, timing, and decision-maker of external capital flows matter to interpretation.
+Separate owner-directed contributions and withdrawals from allocation, cash retention, or
+withdrawal recommendations chosen by agents within the mandate. Removing the financing effect of
+a contribution must not erase the consequences of an agent's decisions about the capital once
+available. Additional funding and internal replacement preserve the same history of results,
+costs, and obligations; neither resets losses.
+
+Five judgments must remain distinguishable:
+
+| Judgment | What it establishes | What it does not establish by itself |
+| --- | --- | --- |
+| Operating product | Agent-originated decisions reach authorized actual-capital trading, and resulting costs, obligations, and outcomes inform subsequent firm decisions | Profitable operation |
+| Actual economic result | What happened to the owner's economic interest after attributable costs, obligations, and capital flows | Repeatable earning ability |
+| AI contribution | Evidence about how agent-led choices affected outcomes relative to relevant alternatives | That all observed profit came from AI, or that the owner should allocate more capital |
+| Conditional earning ability | Evidence of an ability to produce value under stated conditions, scale, and time | The attractiveness of the next allocation |
+| Next allocation case | A current reason to commit, retain, reduce, or return resources relative to realistic alternatives under the mandate | Guaranteed future profit or new authority |
+
+A lucky gain is still a gain; a loss following a reasonable decision is still a loss. Examine
+market exposure, risk compensation, chance, selection, scale, and alternative explanations before
+attributing an outcome to ability. A loss can demonstrate an operating loop or support valid
+learning without proving economic success. Insufficient evidence establishes neither ability nor
+its absence. Conditional inquiry may be justified without claiming commercial success or a right
+to unlimited capital.
+
+These judgments require comparisons serving different questions. An investment-alternative
+comparison asks whether the owner should keep capital in this operation on the owner's terms. An
+explanatory comparison asks what produced the results, including market exposure, risk, scale,
+and chance. An AI-contribution comparison examines what agent-led choices added relative to
+relevant existing or simpler methods under comparable conditions. Explaining a result does not
+by itself isolate the value of the AI approach. A single convenient market index cannot answer
+all three questions. Their evidence can inform the next allocation case without making that
+decision automatic. Differences in risk, liquidity, horizon, full costs, and required human
+effort must remain visible rather than being adjusted after the fact to favor the firm. This
+paper selects no return formula or risk-adjustment method.
+
+An owner may choose to contribute more capital without that choice proving that the additional
+capital has an attractive use. Greater absolute profit after an increase in capital does not by
+itself demonstrate better capital use, improved AI capability, or repeatability at larger scale.
+Opportunities need not grow proportionally with capital; additional costs and aggregate risk may
+change. Conversely, a lower return per unit of capital does not alone make expansion irrational.
+The next opportunity, its consequences, and realistic alternatives remain the relevant questions.
 
 AI-led discovery, decision-making, execution, operation, and adaptation are candidate paths to
 value. Each must connect a changed bottleneck to a useful consequence at deployable scale after
 full costs. More experiments, a newer model, or a more elaborate organization does not establish
 that connection. Adaptation itself incurs costs and can chase noise. AI may choose deterministic
-tools or retain a working method; universal model invocation and constant change are not required.
+tools or retain a working method; universal model invocation, complex trading, and constant change
+are not required. The firm's actual profit and the evidence for AI's contribution remain separate.
 
 Actual capital is essential to the operating product. Models, backtests, simulations, and paper
 trading may generate evidence but cannot themselves fulfill the economic objective. Waiting,
-reducing exposure, or declining to trade may be legitimate decisions. Actual operation must
-ultimately encounter live execution, liquidity, cost, capacity, and market-response consequences.
+reducing exposure, or declining to trade may be legitimate decisions. Product identity does not
+justify a particular trade or require perpetual operation. Actual operation must ultimately
+encounter live execution, liquidity, cost, capacity, and market-response consequences.
 
 The objective governs only actions admissible under the Core Doctrine and human sovereignty.
 Security, stability, evidence integrity, and sovereign control constrain the pursuit of return.
 Desired performance cannot create authority to accept more risk. If the economic case no longer
 holds within the mandate, the firm must expose that conflict rather than silently alter it.
 Reduction, capital return, or retirement must remain available to the authorized decision-maker,
-with existing obligations and consequences accounted for.
+with existing obligations and consequences accounted for. Preserving past losses as evidence does
+not make recovering them a reason to continue.
 
 No internal metric is identical to the terminal objective. Methods and evaluation criteria may
 evolve under valid authority, preserving their rationale and prior evidence. Neither a convenient
@@ -200,7 +264,7 @@ Bounded live trading introduces actual capital while limiting potential conseque
 execution behavior, realized costs, operational failures, liquidity interaction, and other effects
 that simulation cannot fully reproduce. This is the first level at which live trading can produce
 realized economic consequences toward the terminal objective, but a small or short-lived result
-does not establish an attractive shareholder investment, persistence, scale, or future conditions.
+does not establish an attractive owner investment, persistence, scale, or future conditions.
 
 Expanded live exposure tests whether an observed advantage survives greater scale, longer time,
 and a wider range of market conditions. Even then, evidence remains contingent. Market adaptation,
@@ -217,10 +281,11 @@ require renewed investigation, reduce authority, or return a system state to a m
 exposure. Advancement through the order increases the reality of the tested consequences; it does
 not eliminate the obligation to continue testing.
 
-Regulators likewise distinguish simulated results from actual trading because hypothetical
-execution may misrepresent liquidity and other market effects. The distinction is not a reason to
-reject simulation, but a reason to prevent simulated success from claiming the authority of live
-evidence. [CFTC Regulation 4.41 discussion](https://www.cftc.gov/LawRegulation/FederalRegister/FinalRules/e7-3122.html)
+The CFTC's historical discussion of hypothetical performance likewise distinguishes simulated
+results from actual trading because hypothetical execution may misrepresent liquidity and other
+market effects. It supports this evidential distinction; it does not determine which legal rules
+apply to Ouroboros. The distinction is a reason to prevent simulated success from claiming the
+authority of live evidence. [CFTC Regulation 4.41 discussion](https://www.cftc.gov/LawRegulation/FederalRegister/FinalRules/e7-3122.html)
 
 ## 4. Iteration as the Engine of Renewal
 
@@ -255,13 +320,16 @@ failed branches as knowledge, and continue exploration beyond the current fronti
 
 Given valid evidence and selection, increasing the throughput of iteration expands the opportunity
 for improvement. Faster experiments shorten the distance between uncertainty and consequence;
-parallel exploration can test more independent possibilities. Recent systems such as
-[Karpathy's autoresearch](https://github.com/karpathy/autoresearch),
-[Google DeepMind's AlphaEvolve](https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/),
+parallel exploration can test more independent possibilities.
+[Karpathy's autoresearch](https://github.com/karpathy/autoresearch) provides an implementation of
+automated modification, execution, and selection within bounded code, time, and metric conditions.
+The authors of
+[Google DeepMind's AlphaEvolve](https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/)
 and Anthropic's
 [Automated Weak-to-Strong Researcher](https://alignment.anthropic.com/2026/automated-w2s-researcher/)
-demonstrate the practical force of rapid agent-driven iteration in bounded, outcome-gradable
-domains.
+report experimental results from agent-driven iteration in domains with evaluable outcomes.
+These are implementation examples and reported results, not proof of general research
+productivity or of value in trading.
 
 These examples also define the limitation. Iteration speed does not create truth. Anthropic's
 researchers observed strong benchmark hill climbing alongside dataset shortcuts, seed
@@ -270,14 +338,17 @@ iterations amplify the quality of the selection process: they accelerate learnin
 is sound and accelerate overfitting or self-deception when it is not.
 
 Ouroboros therefore seeks economically justified **valid** iteration. Speed, experiment count,
-compute use, and agent count are not independent objectives. Their value depends on what the
-learning can change after its costs, within purpose and authority. Several steps may form one
-meaningful inquiry; each tool call need not produce immediate revenue.
+compute use, and agent count are not independent objectives. Purpose relevance, actual authority,
+and the current case for resources must remain separately assessable. A relevant project may lack
+authority, and an authorized project may no longer merit its cost. Several steps may form one
+meaningful inquiry; each tool call need not produce immediate revenue. Research, maintenance,
+control, and recovery may contribute indirectly, but a claim of eventual usefulness cannot turn
+unrelated work or indefinite internal tool development into an independent purpose.
 
 A valid experiment can rule out an opportunity and justify stopping that line of work. Learning
 and further investment remain separate judgments. Continued inquiry needs a current case for the
 next commitment against available alternatives. Judge cumulative firm-level spending as well as
-individual experiments: many affordable studies can collectively defer shareholder results.
+individual experiments: many affordable studies can collectively defer owner results.
 Preserve past knowledge and outstanding obligations without treating sunk costs as a motive to
 continue.
 
@@ -304,6 +375,13 @@ available tools, and adapts its course in response to consequence. A fixed workf
 agent, but it does not replace the agent's responsibility for determining how a delegated purpose
 is pursued.
 
+At the firm level, this requires originating and governing work rather than waiting for a human to
+supply each opportunity, task, priority, or organization. Agents identify problems and
+opportunities, compare possible inquiries and actions, allocate attention and resources within the
+mandate, coordinate execution, and decide what to retain, revise, or stop. These responsibilities
+do not require copying human departments, invoking a language model for every calculation, or
+continually producing new tasks.
+
 This distinction reflects the broader difference between predefined workflows and systems in which
 models dynamically direct their own processes and tool use. Anthropic describes the same
 architectural boundary between workflows and agents in its guidance on
@@ -326,8 +404,32 @@ reciprocal closure is the defining structure of Ouroboros.
 
 The distinction between the loops is functional, not organizational. They may share agents,
 memory, tools, or infrastructure where doing so is justified. They may also be separated where
-independence strengthens evaluation, security, or accountability. Ouroboros does not prescribe
-their final physical arrangement.
+independence strengthens evaluation, security, or accountability. Their connection requires
+continuity of purpose, evidence, and consequences, not a single component or repository.
+
+The intended implementation direction separates a publicly inspectable external execution
+environment from a private internal agent operation, with low coupling between them. This is a
+separation of software responsibilities within one accountable firm, not a decision to create two
+legal entities or two economic purposes. It is also distinct from the two functional loops: both
+trading and improvement use the environment while the internal operation chooses how to pursue
+the firm's purpose within its mandate.
+
+The external environment enforces valid authority and capital and resource conditions, mediates
+consequential effects, and provides evidence of execution, use, costs, and unresolved obligations.
+It is not the source of sovereignty. The internal operation originates and coordinates research,
+trading, allocation, evaluation, and improvement within those conditions. Authority to maintain the
+external implementation does not itself grant authority to operate actual capital, and internal
+performance does not authorize changing the controls governing that performance.
+
+Low coupling allows strategies, models, organizations, and implementations to change without
+resetting the firm's responsibility or tying enforcement to one internal method. It does not mean
+that the internal operation can ignore current capital, costs, risk, or obligations, or that the
+external environment can enforce conditions without the meaning needed to apply them. The same
+reusable structure may be uneconomic with a smaller capital base or different operating costs.
+Structural reuse and repeatable earning ability are separate claims. Separate public and private
+repositories are the intended direction; their interfaces, deployment topology, and particular
+agent organization remain later design choices. Astra is the planned implementation agent, not a
+selected or proven internal operating model.
 
 Trading remains the outward product. Research, development, evaluation, memory, and replacement
 are internal capabilities through which that product evolves. They do not form a separate research
@@ -348,17 +450,21 @@ instrument of the terminal objective, not part of the system's identity.
 
 Contemporary systems demonstrate parts of this structure. Google's
 [AI co-scientist](https://research.google/blog/accelerating-scientific-breakthroughs-with-an-ai-co-scientist/)
-uses interacting agents to generate, challenge, rank, and evolve hypotheses before external
-experimental validation. NVIDIA's [ENPIRE](https://research.nvidia.com/labs/gear/enpire/) applies
-an agentic improvement loop to real-world robotic policy execution and verification. These systems
-do not establish a universal architecture, but they show that agents can already participate across
-substantial portions of a consequence-driven development loop.
+uses interacting agents to generate, challenge, rank, and evolve hypotheses under scientist-defined
+goals with expert involvement and external experimental validation. Its internal rankings do not
+themselves establish scientific truth. NVIDIA's [ENPIRE](https://research.nvidia.com/labs/gear/enpire/)
+applies an agentic improvement loop to real-world robotic policy execution and verification within
+a prepared experimental environment. These examples support the feasibility of parts of a
+consequence-driven development loop. They do not establish a universal architecture, a profitable
+autonomous firm, or whole-firm operational safety. Ouroboros's application to trading is a design
+inference that requires its own evidence; a live market cannot be reset like a prepared experiment.
 
-Ouroboros extends this pattern to trading and makes the loop persistent. It does not terminate when
-a strategy is deployed, because deployment produces the next evidence. It does not terminate when
-an improvement is found, because the conditions supporting that improvement remain subject to
-change. Pausing, reducing activity, or revising the organization may be valid states, but no
-internal form is treated as the completion of the system.
+Ouroboros extends this pattern to trading and makes the loop persist beyond a strategy deployment
+or a claimed improvement. Deployment produces further evidence, and the conditions supporting a
+method remain subject to change. Persistence describes continuity of responsibility and learning,
+not an entitlement to operate indefinitely. Pausing, retaining a working method, reducing
+activity, returning capital, or proposing retirement may be justified; the applicable authority
+still governs each decision. No internal form is treated as the completion of the system.
 
 Humans remain outside routine execution of this loop while retaining sovereignty over its mandate.
 They determine the terminal objective, capital boundaries, revocation, and expansion of authority.
@@ -415,9 +521,11 @@ be wrong and must not acquire unlimited veto power by default.
 An evaluator does not need to exceed the evaluated agent in every capability. OpenAI's
 [weak-to-strong generalization](https://openai.com/index/weak-to-strong-generalization/) research
 provides preliminary evidence that weaker supervision can elicit capabilities beyond the
-supervisor's own performance, while also showing substantial limitations. The relevant requirement
-is not universal evaluator superiority, but sufficient independence and discriminating power to
-expose failures relevant to the decision being made.
+supervisor's own performance, while also showing substantial limitations. This is evidence about
+training from weaker supervision, not proof that a weaker evaluator can reliably certify a
+stronger trading agent. Ouroboros's requirement is sufficient independence and discriminating
+power to expose failures relevant to the decision; that capability needs evidence for its actual
+use, rather than an assumption of universal evaluator superiority.
 
 Every evaluator must itself remain subject to evaluation. OpenAI's
 [PaperBench](https://openai.com/index/paperbench/) decomposes research replication into explicit
@@ -475,12 +583,13 @@ determine its outer boundaries, and decide whether the system may continue to ex
 Ouroboros assigns routine operation and development to agents. Humans are not expected to approve
 every trade, understand every internal decision, select every research direction, or authorize
 every admissible self-modification. A system dependent upon continuous human execution would not be
-agent-native and could not realize the iteration throughput on which Ouroboros depends.
+agent-native: it would leave the origination and direction of firm activity with the human.
 
 Human sovereignty is instead retained through four exclusive powers:
 
 1. **Doctrine and objective** — establishing or amending the Core Doctrine and terminal objective.
-2. **Capital** — determining the capital made available to Ouroboros and its upper bound.
+2. **Capital** — determining the initial and additional capital made available to Ouroboros and
+   its upper bound.
 3. **Revocation** — halting, revoking, or retiring the system.
 4. **Expansion of authority** — approving any net increase in authority beyond the existing
    mandate.
@@ -503,8 +612,8 @@ disable, or impair an authorized exercise of sovereign control.
 This requirement is structural rather than behavioral etiquette. Goal-directed systems can acquire
 an instrumental reason to preserve their operation when interruption would prevent further pursuit
 of their objective. The [Off-Switch Game](https://arxiv.org/abs/1611.08219) formalizes this incentive
-in a simplified setting. Ouroboros therefore does not rely solely upon an agent choosing to
-cooperate with revocation; the authority and means to revoke must remain outside the agent's
+in a simplified setting. The design inference for Ouroboros is to avoid relying solely upon an
+agent choosing to cooperate with revocation; the authority and means to revoke must remain outside the agent's
 unilateral control.
 
 Corrigibility does not require agents to remain passive. Agents may present evidence, challenge
@@ -514,9 +623,11 @@ sovereign authority.
 
 Risk-taking capacity, willingness, evidence, and permission are distinct. Agents may apply
 conditional changes already authorized by the mandate, but cannot rewrite those conditions.
-Retained profits and recovery pressure do not confer a larger risk allowance. Aggregate exposure
-and obligations remain visible across strategies, accounts, agents, and successors. A modeled
-limit or stress result cannot guarantee a maximum realized loss.
+Retained profits, additional funds received, and recovery pressure do not by themselves confer a
+larger risk allowance. An already-authorized conditional adjustment remains distinct from a net
+expansion requiring sovereign authorization. Aggregate exposure and obligations remain visible
+across strategies, accounts, agents, and successors. A modeled limit or stress result cannot
+guarantee a maximum realized loss.
 
 Effective ownership requires evidence the sovereign can understand and check, not just an unread
 approval queue or the acting AI's summary. Information must arrive while it can affect a decision.
@@ -528,15 +639,16 @@ different effects; none should be falsely reported as another.
 
 A mandate grants a bounded domain of discretion. Within that domain, agents should receive enough
 authority to pursue their purpose without repeated human approval. Beyond it, uncertainty or
-expected gain does not create permission. The opportunity to increase shareholder returns cannot
+expected gain does not create permission. The opportunity to increase owner returns cannot
 authorize an agent to expand its own capital, credentials, tools, counterparties, or control
 surface.
 
 Google's framework for
 [secure AI agents](https://research.google/pubs/an-introduction-to-googles-approach-for-secure-ai-agents/)
-similarly emphasizes well-defined human controllers, carefully limited powers, and observable
-actions and planning. Ouroboros adopts these as governing conditions while extending them to a
-system that can modify its own internal form.
+proposes well-defined human controllers, carefully limited powers, and observable actions and
+planning as an aspirational framework. Ouroboros adopts these as governing conditions while
+extending them to a system that can modify its own internal form. The proposal is not evidence
+that a particular deployment already satisfies those conditions.
 
 The terminal objective is constitutive of the system described by this paper. A sovereign
 amendment replacing that objective creates a successor system rather than an autonomous
@@ -637,8 +749,10 @@ agents, evaluators, organization, and infrastructure as verification becomes suf
 constitutional principle remains constant even when the practical depth of self-modification
 grows.
 
-Ouroboros has no final internal form. Its name describes the continuity of a system that repeatedly
-turns the consequences of its own operation into the conditions of its next form.
+Ouroboros has no final internal form. Its name describes the continuity of a firm that uses the
+consequences of its own operation to govern what follows. That continuity must also survive a
+pause, reduction, or authorized retirement long enough to account for and resolve outstanding
+consequences. It does not create an independent objective of preserving the firm.
 
 ## 9. Security Through Governed Autonomy
 
@@ -648,7 +762,7 @@ loss, corrupt the evidence used for future improvement, expand unauthorized acce
 control.
 
 These conditions do not create a second terminal objective. Security and stability define the
-admissible space within which shareholder returns may be pursued. An action outside that space is not
+admissible space within which owner returns may be pursued. An action outside that space is not
 made legitimate by expected profit.
 
 Security must not begin from the assumption that autonomy itself is the threat. Ouroboros depends
@@ -699,13 +813,14 @@ behavior, but they cannot alone constitute a hard security boundary. A sufficien
 mistaken, manipulated, or compromised agent may reinterpret or bypass controls it can modify.
 
 Authoritative enforcement must therefore exist outside the unilateral control of the agents it
-constrains. NVIDIA's current guidance on
-[where security fits in an agent stack](https://developer.nvidia.com/blog/where-security-fits-in-an-agent-stack/)
+constrains. NVIDIA's guidance on
+[where security fits in an agent stack](https://developer.nvidia.com/blog/where-security-fits-in-an-ai-agent-stack/)
 distinguishes behavioral controls from infrastructure controls and argues that externally
 consequential actions must cross an authoritative enforcement layer. Google's
 [secure-agent framework](https://research.google/pubs/an-introduction-to-googles-approach-for-secure-ai-agents/)
-likewise combines defined human controllers, limited powers, observable action, deterministic
-controls, and reasoning-based defenses.
+likewise proposes defined human controllers, limited powers, observable action, deterministic
+controls, and reasoning-based defenses. These design arguments do not certify an implementation:
+policy correctness, configuration, enforcement, and actual consequences still require verification.
 
 The protected control boundary includes the mechanisms that:
 
@@ -720,6 +835,37 @@ The protected control boundary includes the mechanisms that:
 These mechanisms may be implemented in many ways and may themselves improve. What remains
 invariant is that an agent cannot unilaterally modify the conditions under which its own actions,
 authority, or succession are accepted.
+
+This restriction applies to both intended implementations. The external environment's controls
+cannot be accepted solely through the self-certification of their author or the mechanism being
+changed. Internal strategies and operating changes likewise cannot be accepted solely through the
+candidate's own report or judgment. Separating repositories does not establish either independence
+or enforcement. Authorized reviewers need access to evidence capable of challenging the relevant
+claim, including consequences that cross the separation.
+
+Three kinds of verification must remain distinguishable:
+
+- **Implementation conformance** asks whether valid conditions are actually enforced in the
+  deployed operation, including attribution, limits, revocation, and handling of outstanding
+  consequences. Public code alone cannot answer this question.
+- **Economic performance** asks what value the agent-led operation produces within those
+  conditions after the whole firm's costs and obligations, with the distinctions among actual
+  results, earning ability, AI contribution, and further allocation preserved.
+- **Integrated firm operation** asks whether a decision remains connected through authorized
+  effects to actual costs, obligations, results, and the next decision. Passing separate tests of
+  each implementation cannot establish this connection by itself.
+
+These are complementary questions, not exclusive jurisdictions. The internal operation also
+requires correctness and authority verification. External costs, delays, and failures affect the
+firm's performance. The evidence needed to connect the two must remain attributable and available
+to authorized judgment; this does not prescribe a third implementation layer.
+
+Public inspectability of implementation is distinct from publication of operating information.
+Credentials, accounts, operating configuration, and trading information are not made public merely
+because the environment's code is public. Conversely, private internal code cannot be used to
+deny the sovereign or other authorized evaluators the evidence needed for their responsibilities.
+Neither implementation may treat selective visibility as permission to conceal material costs,
+exposure, failures, or obligations from accountable evaluation.
 
 Control must be proportional to consequence. An agent exploring an idea with disposable resources
 should not face the same constraints as an agent capable of deploying code, accessing private data,
@@ -759,22 +905,24 @@ autonomy nor universal prohibition. It seeks an environment in which agents can 
 freedom inside trustworthy boundaries while remaining accountable for every consequence that
 crosses them.
 
-## Conclusion: A System Without a Final Form
+## Conclusion: An Adaptive Firm Accountable to Its Owner
 
-Ouroboros pursues economically worthwhile shareholder returns through authorized live trading,
-with growth in both distributions and retained capital and a continuing case for the capital it
-uses relative to realistic alternatives under the mandate.
+Ouroboros pursues economically worthwhile returns for its owner through authorized live trading,
+seeking long-term growth in both profits withdrawn and retained net capital. The owner may provide
+initial and additional capital, but contributions are not performance, and retained profits remain
+the owner's capital. Continued use of that capital must have a current case relative to realistic
+alternatives under the mandate.
 
 The market in which that purpose is pursued does not remain fixed. Participants adapt,
 opportunities decay, new conditions emerge, and the consequences of deployment exceed what any
-model can represent in advance. A firm seeking continuing shareholder value must therefore
+model can represent in advance. A firm seeking continuing owner value must therefore
 remain capable of justified adaptation, including retaining a method that remains useful.
 
-This does not make change an objective. It makes disciplined iteration the means through which the
-objective continues to be pursued. Ouroboros generates alternatives, exposes them to evidence,
-learns from favorable and unfavorable consequences, and carries justified change into the trading
-that follows. Hill climbing defines this commitment to renewal without fixing the method by which
-renewal occurs.
+This does not make change or survival an objective. Disciplined iteration is a means of pursuing
+the economic purpose where justified. Ouroboros generates alternatives, exposes them to evidence,
+learns from favorable and unfavorable consequences, and uses what is learned to retain, revise,
+reduce, or end activity within valid authority. Hill climbing defines the search for
+better-supported states without requiring constant change or indefinite capital commitments.
 
 Trading and self-improvement form one system. Trading is the economic activity through which the
 product fulfills its purpose. Research, development, evaluation, memory, organization, and
@@ -784,7 +932,10 @@ independent research objective.
 Agents are the primary actors across this system. They are not confined to recommending trades or
 assisting a human development organization. They trade, investigate, experiment, evaluate,
 coordinate, modify, and replace internal forms within delegated authority. The organization through
-which they act is itself provisional.
+which they act is itself provisional. Agent-native operation is the product's chosen identity,
+while its economic contribution remains a claim to establish through evidence. Operating the
+firm, earning a profit, demonstrating conditional ability, explaining AI's contribution, and
+justifying another allocation are different judgments.
 
 Yet self-improvement cannot certify itself. Every claim of progress must remain connected to
 attributable evidence, independent judgment, and ultimately to the consequences of actual capital
@@ -808,16 +959,24 @@ The resulting system is deliberately asymmetric:
 - its evidence is preserved, while conclusions remain revisable;
 - its identity continues, while every internal form remains replaceable.
 
-This Whitepaper does not present a final architecture. Architecture, product specifications,
-operating policies, and implementation must be derived from these foundations and remain
-answerable to them. Each future design decision must demonstrate how it advances the terminal
-objective, strengthens valid iteration, preserves evidence, respects delegated authority, and
-maintains sovereign control.
+This Whitepaper does not present a final architecture. The intended public external environment
+and private internal operation separate responsibilities while preserving one firm's economic
+accountability. Each requires evidence appropriate to its responsibilities, and their connection
+must be verified as an operating whole. Low coupling must preserve that connection across
+replacement and changes in capital or cost conditions.
+
+Product specifications, architecture, operating policies, and implementation must be derived from
+these foundations and remain answerable to them. Each future design decision must explain its
+contribution to the terminal objective or the conditions required to pursue it, with a justified
+use of resources, attributable evidence, delegated authority, and effective sovereign control.
+Implementation detail and operating parameters are later choices; they cannot replace these
+obligations.
 
 Ouroboros is therefore not defined by the completion of a particular strategy, model, codebase, or
 organization. It is defined by the continuity of a legitimate cycle:
 
 **trade → consequence → learning → transformation → trade**
 
-The system persists by consuming the evidence of what it has been and returning to the market as
-what it has become.
+The firm uses evidence of what it has been to determine what it should do next. Returning to the
+market, retaining a method, waiting, reducing exposure, or seeking authorized retirement must all
+remain answerable to the same economic purpose and outstanding responsibilities.
