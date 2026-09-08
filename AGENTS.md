@@ -16,7 +16,8 @@ Read and apply project authority in this order:
 4. [`PRODUCT_SPECIFICATION.md`](PRODUCT_SPECIFICATION.md) defines the required product identity,
    behavior, and proof.
 5. Approved architecture and engineering documents will define provisional implementation
-   choices.
+   choices. [`ARCHITECTURE.md`](ARCHITECTURE.md) is currently a proposal for review, not an
+   approved implementation mandate.
 
 When sources conflict, the higher source governs. Lower sources may refine but may not redefine
 higher ones.
@@ -89,8 +90,11 @@ with the decision rationale so later iterations can reconstruct what was learned
 
 ## Current Repository Stage
 
-The Core Doctrine, Whitepaper, and Product Specification are the current product truth. Architecture
-is the next provisional design layer.
+The Core Doctrine, Whitepaper, and Product Specification are the current product truth.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) proposes the next provisional design layer, including
+independent firm operation, common execution mechanics, mandatory domain enforcement, capability
+connectors, dependency isolation, observation, and succession. Check its adoption status in the
+reviewing pull request before treating it as an approved implementation basis.
 
 The current implementation direction separates public execution and enforcement from private
 agent-led operation while retaining company-wide feedback, obligations, and evidence. Evaluate
