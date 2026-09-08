@@ -18,8 +18,9 @@ intentionally retired. Their history remains available in Git, but none of them 
 system.
 
 No product runtime is currently shipped from this branch. Product direction is established by the
-Core Doctrine, Whitepaper, and Product Specification. Architecture is the next provisional design
-layer.
+Core Doctrine, Whitepaper, and Product Specification. The [Architecture](ARCHITECTURE.md) is a
+provisional proposal for review; its presence does not establish adoption or authorize runtime
+implementation.
 
 The intended implementation separates a public execution environment that enforces valid
 delegation and provides evidence of actual effects from private AI operation that directs
@@ -27,6 +28,12 @@ research, trading, and resource allocation within it. Their methods should be lo
 the firm's accountability and feedback must remain connected. Separate repositories are an
 intended implementation direction, not an existing split. Astra is the planned implementation
 agent, not a selected internal operating model.
+
+The architecture proposal separates common execution mechanics, mandatory investment enforcement,
+and provider connectors inside the outer environment. It covers independently operated firms,
+persistent private operation, company-wide observation and control, dependency isolation, and
+continuity across replacement and exit. Reusable capabilities do not change the firm's purpose
+or grant permission to use them.
 
 The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
 It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines Ouroboros's

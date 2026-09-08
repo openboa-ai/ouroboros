@@ -90,6 +90,20 @@ ability or economic viability. Compatibility does not waive eligibility or chang
 the current mandate. Neither side must remain permanently unchanged, and changes may require
 coordinated revision when the meaning of their relationship changes.
 
+External capabilities and infrastructure dependencies must be replaceable without coupling the
+firm's operating logic to a particular provider. Preserve the domain meaning needed for
+enforcement: separating common execution mechanics, domain rules, and provider integration may
+not make investment controls optional. Capability compatibility does not establish provider
+fitness or identical results. Installation creates no authority, and general-purpose tools may
+not bypass domain controls. Contain dependency failures, scope credentials and data access,
+attribute costs, and preserve outstanding effects through replacement or removal. Local isolation
+must not conceal shared accounts, aggregate exposure, or firm-wide resource commitments.
+
+The current direction is independently operated firms reusing public code, with separate mandate,
+capital, state, and operation. It does not require a shared service hosting several owners' firms.
+Extensibility is a means of reducing dependency and supporting justified capabilities, not a change
+to Ouroboros's purpose or permission to undertake unrelated activity.
+
 Public source, execution authority, information access, and economic attribution are separate
 boundaries. Publishing the outer implementation does not publish credentials, accounts, actual
 settings, strategies, trades, or operating evidence by default, nor does it grant a reader
@@ -281,6 +295,20 @@ consequences, operation must use already-authorized bounded responses; notificat
 control. Absence creates no new permission and does not itself invalidate existing delegation.
 Revocation must affect relevant descendants and successors. Stopping new action must remain
 distinguishable from resolving outstanding exposure and obligations.
+
+That inspection must cover meaningful internal work, including research, development, evaluation,
+allocation, and descendant delegation before a trade occurs. Through the outer environment,
+authorized observers must be able to connect work origin, responsibility, mandate, resource use,
+execution, artifacts, outcomes, and subsequent judgment. Combine independently obtained execution
+evidence with inner explanations rather than relying solely on actor self-report. Preserve access
+to material evidence beyond the life of an inner session or connector. Expose observation gaps,
+staleness, dependency failures, and unresolved effects instead of displaying them as inactivity or
+success. Inspection and intervention remain distinct permissions; console or inner-operation
+failure may not make enforcement and legitimate sovereign control dependent on the failed actor.
+Observation and evidence export may not disclose usable credentials to actors lacking that
+credential authority; restricted evidence and redaction must preserve material accountability.
+Observation does not presume access to every hidden model computation or itself prove economic
+causation. Its costs remain part of firm economics.
 
 ### 3.9 Integrated Firm Operation
 
