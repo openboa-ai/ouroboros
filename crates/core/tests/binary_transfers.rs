@@ -209,7 +209,7 @@ impl Fixture {
             .unwrap();
     }
 
-    async fn change(&self, sql: &str) {
+    async fn change(&self, sql: &'static str) {
         sqlx::query(sql)
             .bind(self.core.firm)
             .execute(&self.pool)
