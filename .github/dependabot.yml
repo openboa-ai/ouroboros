@@ -3,10 +3,16 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
-    open-pull-requests-limit: 2
+      interval: weekly
+    open-pull-requests-limit: 3
     groups:
       routine-actions:
-        update-types:
-          - minor
-          - patch
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      routine-cargo:
+        update-types: [minor, patch]
