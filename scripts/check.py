@@ -208,6 +208,15 @@ def run(plan, lane, config, result_file):
                             with log_path.open('rb') as incoming:
                                 incoming.seek(max(0, log_path.stat().st_size - 262144))
                                 tail = incoming.read().decode('utf-8', errors='replace')
+                            from ci_report import safe_locations
+                            record['failure_locations'] = []
+                            for line in tail.splitlines():
+                                try:
+                                    diagnostic = json.loads(line)
+                                except json.JSONDecodeError:
+                                    continue
+                                if isinstance(diagnostic, dict) and diagnostic.get('scenario_id') == identifier:
+                                    record['failure_locations'] = safe_locations(diagnostic.get('failure_locations', []))
                             record['failed_tests'] = sorted(set(re.findall(
                                 r'(?m)^(?:FAIL|ERROR): (test_[A-Za-z0-9_]{1,120}) \(', tail)))[:32]
                             break

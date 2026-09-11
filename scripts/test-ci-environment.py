@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 import ci_environment as ci
-from ci_report import render
+from ci_report import render, traceback_locations
 
 kernel_spec = importlib.util.spec_from_file_location('kernel_builder', Path(__file__).with_name('prepare-kernel-contract.py'))
 kernel = importlib.util.module_from_spec(kernel_spec)
@@ -20,6 +20,15 @@ kernel_spec.loader.exec_module(kernel)
 
 
 class PublicDiagnostics(unittest.TestCase):
+    def test_traceback_exports_only_known_test_file_and_line(self):
+        raw = 'File "/private/canary/scripts/native_adapter_fixture.py", line 108\nsecret-canary\nFile "/private/scripts/secret-canary.py", line 9'
+        self.assertEqual(traceback_locations(raw), ['native_adapter_fixture.py:108'])
+        report, _ = render({}, [{'id': 'native.bounded-worker', 'status': 'FAIL',
+            'failure_locations': ['native_adapter_fixture.py:108', '/private/canary', 'secret-canary.py:9']}])
+        self.assertIn('native_adapter_fixture.py:108', report)
+        self.assertNotIn('canary', report)
+
+
     def test_untrusted_values_and_private_details_are_not_published(self):
         report, annotations = render({'head': 'bad\n::error::secret'}, [
             {'id': 'tooling.contracts', 'status': 'FAIL', 'duration_seconds': 1.25,

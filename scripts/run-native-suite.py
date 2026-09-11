@@ -450,7 +450,15 @@ class NativeRun:
                 write_json(self.root / 'commands.json', self.commands)
                 write_json(self.root / 'cleanup.json', cleanup)
         status = 'PASS' if error is None and not cleanup['errors'] else 'FAIL'
-        report = {'scenario_id': self.scenario_id, 'status': status, 'error_type': error,
+        from ci_report import traceback_locations
+        locations = []
+        if error and self.created:
+            for path in (self.root / 'program.log',):
+                if path.is_file() and not path.is_symlink():
+                    with path.open('rb') as stream:
+                        stream.seek(max(0, path.stat().st_size - 262144))
+                        locations.extend(traceback_locations(stream.read().decode('utf-8', errors='replace')))
+        report = {'failure_locations': locations, 'scenario_id': self.scenario_id, 'status': status, 'error_type': error,
                   'cleanup_complete': not cleanup['errors'], 'actual_account': False,
                   'subscription': 'NOT RUN', 'model_provider': 'synthetic-only'}
         if self.created:

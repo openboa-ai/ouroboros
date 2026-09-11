@@ -9,6 +9,23 @@ import re
 from check_catalog import catalog
 
 
+def safe_locations(values):
+    known = {p.name for p in Path(__file__).parent.glob('*.py')}
+    if not isinstance(values, list):
+        return []
+    result = []
+    for value in values[:16]:
+        match = re.fullmatch(r'([A-Za-z0-9_-]+\.py):([1-9][0-9]{0,5})', value) if isinstance(value, str) else None
+        if match and match[1] in known:
+            result.append(value)
+    return result
+
+
+def traceback_locations(text):
+    return safe_locations([name + ':' + line for name, line in
+        re.findall(r'File "[^"\n]*/scripts/([A-Za-z0-9_-]+\.py)", line ([1-9][0-9]{0,5})', text)[-16:]])
+
+
 def render(plan, records):
     known = catalog()
     lines = ['## Responsibility checks', '', '| Case | Result | Seconds | Failed test identifiers |',
@@ -25,6 +42,9 @@ def render(plan, records):
         tests = [t for t in tests[:32] if isinstance(t, str) and re.fullmatch(r'test_[A-Za-z0-9_]{1,120}', t)] if isinstance(tests, list) else []
         index = row.get('command_index')
         detail = ', '.join(tests) or ('command ' + str(index) if type(index) is int and 0 <= index < 128 else '-')
+        locations = safe_locations(row.get('failure_locations', []))
+        if locations:
+            detail += '; ' + ', '.join(locations)
         lines.append(f'| {name} | {status} | {seconds} | {detail} |')
         if status != 'PASS':
             annotations.append(f'::error title=Responsibility check::{name}: {status}; {detail}')
