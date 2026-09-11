@@ -15,6 +15,26 @@ import time
 import uuid
 
 
+def wait_worker_execution(worker, read_execution, *, timeout=25):
+    """Observe the admitted execution while its bounded worker completes."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        value = read_execution()
+        if value['terminated'] and value['compute_return'] is not None:
+            return value
+        exit_code = worker.poll()
+        if exit_code is not None:
+            assert exit_code == 0, f'bounded worker exited with code {exit_code}'
+            # The previous API snapshot can precede the worker's final commit.
+            # Successful process exit still requires a fresh terminal record.
+            value = read_execution()
+            assert value['terminated'] and value['compute_return'] is not None, \
+                'bounded worker exited without committed completion'
+            return value
+        time.sleep(.05)
+    raise AssertionError('bounded worker did not finish admitted execution')
+
+
 class NativeAdapterFixture:
     def __init__(self, c):
         self.c = c
@@ -96,13 +116,8 @@ printf 'approved-adapter-result\\n'
                 if self.preparation_worker is None:
                     with (root/'runtime/adapter-worker.log').open('xb') as log:
                         self.preparation_worker=subprocess.Popen([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--max-executions','2','--idle-timeout-seconds','10'],stdout=log,stderr=log,env=c['child_env'])
-                end=time.monotonic()+25
-                while time.monotonic()<end:
-                    value=cli('get','executions',admitted['resource_id'])
-                    if value['terminated'] and value['compute_return'] is not None:break
-                    assert self.preparation_worker.poll() is None
-                    time.sleep(.05)
-                else:raise AssertionError('bounded worker did not finish admitted execution')
+                value=wait_worker_execution(self.preparation_worker,
+                    lambda: cli('get','executions',admitted['resource_id']))
                 if label=='source':
                     assert self.preparation_worker.poll() is None
                     peer=subprocess.run([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--max-executions','1','--idle-timeout-seconds','1'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=c['child_env'],timeout=3)
