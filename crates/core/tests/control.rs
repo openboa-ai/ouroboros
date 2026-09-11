@@ -1446,35 +1446,39 @@ async fn late_execution_admission_failure_rolls_back_all_effects() {
     let (core, pool, caller, grant, _) = setup().await;
     let work_id = work(&core, &caller, grant).await;
     // A late storage failure must not leave capacity, intent or dispatch fragments.
+    // Audited DDL: generated UUID names/values; below, table names come from a literal set.
     let suffix = core.firm.simple().to_string();
     let function = format!("fail_outbox_{suffix}");
     let trigger = format!("fail_outbox_{suffix}");
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "CREATE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.firm_id='{}'::uuid THEN RAISE EXCEPTION 'fixture late admission failure'; END IF; RETURN NEW; END $$",
         core.firm
-    )).execute(&pool).await.unwrap();
-    sqlx::query(&format!(
+    ))).execute(&pool).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "CREATE TRIGGER {trigger} BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION {function}()"
-    )).execute(&pool).await.unwrap();
+    ))).execute(&pool).await.unwrap();
     let result = core
         .start(&caller, "late-admission", start(work_id, grant, 70))
         .await;
-    sqlx::query(&format!("DROP TRIGGER {trigger} ON outbox"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query(&format!("DROP FUNCTION {function}()"))
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP TRIGGER {trigger} ON outbox"
+    )))
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP FUNCTION {function}()")))
         .execute(&pool)
         .await
         .unwrap();
     assert!(matches!(result, Err(Error::Unavailable)));
     for table in ["executions", "reservations", "outbox"] {
-        let count: i64 =
-            sqlx::query_scalar(&format!("SELECT count(*) FROM {table} WHERE firm_id=$1"))
-                .bind(core.firm)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM {table} WHERE firm_id=$1"
+        )))
+        .bind(core.firm)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(count, 0, "partial {table} survived failed admission");
     }
     let committed: i64 =
