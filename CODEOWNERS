@@ -31,3 +31,6 @@
 /crates/cli/src/bin/ @SonSangjoon
 /deploy/ @SonSangjoon
 /scripts/ @SonSangjoon
+
+# Test oracles, fixture authority and required-check selection remain review protected.
+/tests/ @SonSangjoon

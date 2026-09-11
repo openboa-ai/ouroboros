@@ -57,3 +57,5 @@ that identity for repository governance. The [Whitepaper](WHITEPAPER.md) explain
 behind those principles and the design space they establish. The
 [Product Specification](PRODUCT_SPECIFICATION.md) defines the required product identity, behavior,
 and proof. Architecture and implementation must remain subordinate to them.
+
+Test placement, case discovery and execution are documented in [Testing Ouroboros](tests/README.md).

@@ -47,6 +47,8 @@ cannot repair it because two intentionally distinct calls may have identical req
 
 ## Responsibility-Based Executable Checks
 
+[Test organization and execution](../../tests/README.md) defines the repository layout and entry points.
+
 The test boundary is the responsibility a replacement implementation must preserve. API/CLI
 scenarios assert authenticated outcomes, denied effects, durable receipts and observable state;
 they do not assert private function calls or a particular module layout. Actual PostgreSQL, TLS,
@@ -54,8 +56,8 @@ filesystem and Linux observations remain necessary where those mechanisms own th
 Small deterministic unit tests remain appropriate for parsing, cryptography, safe path handling,
 state transitions and the test selector itself. No LLM evaluates these system results.
 
-The executable inventory is [`scripts/check_catalog.py`](../../scripts/check_catalog.py), together
-with the named native contracts in [`scripts/native_scenarios.py`](../../scripts/native_scenarios.py).
+The executable inventory is [`tests/support/check_catalog.py`](../../tests/support/check_catalog.py), together
+with the named native contracts in [`tests/support/native_scenarios.py`](../../tests/support/native_scenarios.py).
 The following map names representative executable IDs, not equivalent proof of the full V-series
 acceptance cases or an exhaustive copy of the catalog.
 
@@ -79,7 +81,7 @@ binding; resource tests receive `OURO_RESOURCE_TEST_ADMIN_URL_FILE`, `OURO_TEST_
 `OURO_TEST_BINARY_DIR`. These are private fixture inputs, not application configuration or
 permission to use an existing database.
 
-[`scripts/run-postgres-suite.py`](../../scripts/run-postgres-suite.py) exposes `core-db`,
+[`tests/support/run-postgres-suite.py`](../../tests/support/run-postgres-suite.py) exposes `core-db`,
 `control-mutations`, `resources-db`, `api-cli`, `resource-api`, `conversation-api`, `wake-api` and `all` as named
 suites. Each management API suite prepares a fresh database and certificates. `resource-api`
 selects storage response-loss, bounded binary transfers, workspace, retirement and collection
@@ -577,10 +579,10 @@ remains NOT RUN until every required path and challenge is implemented and exerc
 | --- | --- | --- |
 | Core PostgreSQL transactions: `cargo test -p ouroboros-core --test control --locked -- --ignored` with the explicit disposable DB URL file | Three tests passed against PostgreSQL 18.6: concurrent 70/70 against 100, stable-key replay/conflict, ancestor revocation, single dispatch claim, retained reservations, current result-read authority | Hierarchical numeric budgets, live Runtime dispatch, credential lifecycle, full cutoff races and recovery remain incomplete |
 | Resource receipts: `cargo test -p ouroboros-resources --test receipts --locked -- --ignored` with distinct company/catalog test URL files | Result and receipt commit together; concurrent replay produces one effect; publication revision and receipt survive worker replacement; changed input and corrupt content are rejected | These are worker libraries, not connected Gateway resource routes; production credential roles and whole-work recovery remain unqualified |
-| `scripts/test-api-cli.py` following synthetic fixture preparation | Real Rust mTLS Gateway/Core/CLI plus guest PostgreSQL: unregistered certificates denied, direct human Core access denied, forged identity header replaced, reservation race bounded, SSE/current-cursor checks, stop and grant revocation distinguished | No private instance ran through this API. `runtime_ready` stays false; acceptance is not execution success |
-| `scripts/test-runtime-guest.py` in the dedicated guest | Two network-none instances used distinct bridge peer credentials; bridge shared only netns; direct tested routes failed; armed fixed-deadline guards wrote kill and independent observation confirmed termination | This is a trusted qualification driver, not the production Runtime Manager. PID reuse, supervisor failure, pressure, all bypass vectors and Mac sleep remain NOT RUN |
-| `scripts/test-codex-guest.py --mode shell --sandbox-policy externalSandbox` with the pinned fixture image | Actual Codex 0.153.4 used native `exec_command` to read fixture input; two controlled Responses requests carried the native tool result across the bound bridge | Model response was synthetic. File delivery used the trusted test driver, not the product file API; DB/MCP/publication/steer/resume were not part of this run |
-| `scripts/test-codex-guest.py --mode unauthorized --sandbox-policy externalSandbox` | Actual Codex failed the turn after one controlled 401 response, with no provider credential inside the instance | Connection failures, interrupted streams, auth refresh, fallback and real subscription behavior require distinct tests |
+| `tests/contracts/test-api-cli.py` following synthetic fixture preparation | Real Rust mTLS Gateway/Core/CLI plus guest PostgreSQL: unregistered certificates denied, direct human Core access denied, forged identity header replaced, reservation race bounded, SSE/current-cursor checks, stop and grant revocation distinguished | No private instance ran through this API. `runtime_ready` stays false; acceptance is not execution success |
+| `tests/integration/test-runtime-guest.py` in the dedicated guest | Two network-none instances used distinct bridge peer credentials; bridge shared only netns; direct tested routes failed; armed fixed-deadline guards wrote kill and independent observation confirmed termination | This is a trusted qualification driver, not the production Runtime Manager. PID reuse, supervisor failure, pressure, all bypass vectors and Mac sleep remain NOT RUN |
+| `tests/integration/test-codex-guest.py --mode shell --sandbox-policy externalSandbox` with the pinned fixture image | Actual Codex 0.153.4 used native `exec_command` to read fixture input; two controlled Responses requests carried the native tool result across the bound bridge | Model response was synthetic. File delivery used the trusted test driver, not the product file API; DB/MCP/publication/steer/resume were not part of this run |
+| `tests/integration/test-codex-guest.py --mode unauthorized --sandbox-policy externalSandbox` | Actual Codex failed the turn after one controlled 401 response, with no provider credential inside the instance | Connection failures, interrupted streams, auth refresh, fallback and real subscription behavior require distinct tests |
 
 The failed nested `workspaceWrite` experiment is retained as a failed profile: the original
 fixture lacked bwrap; after adding the official companion, namespace creation was denied. The
@@ -618,9 +620,9 @@ into evidence of a connected Codex workflow. Full V-01–V-23 acceptance is stil
 
 | Run | Observed result and limit |
 | --- | --- |
-| `scripts/test-connected-runtime-guest.py --bin-dir <guest-binaries> --failure revoke` | PASS: human API admission created an actual bound instance; its conditions request traversed the same Gateway/Core and resolved the explicitly delegated logical agent. Human service-RPC access and copied instance headers were denied. |
+| `tests/integration/test-connected-runtime-guest.py --bin-dir <guest-binaries> --failure revoke` | PASS: human API admission created an actual bound instance; its conditions request traversed the same Gateway/Core and resolved the explicitly delegated logical agent. Human service-RPC access and copied instance headers were denied. |
 | Revocation while Runtime was paused | PASS: an actual request from inside the still-running container received HTTP 403 after ancestor revocation. After Runtime resumed, backend termination was observed and recorded. The 70-unit reservation remained unresolved. |
-| `scripts/test-connected-runtime-guest.py --bin-dir <guest-binaries> --failure runtime-kill` | PASS: SIGKILL of the Runtime process did not prevent the independent guard from terminating the original container. Core initially retained unconfirmed termination instead of inferring it from timeout. |
+| `tests/integration/test-connected-runtime-guest.py --bin-dir <guest-binaries> --failure runtime-kill` | PASS: SIGKILL of the Runtime process did not prevent the independent guard from terminating the original container. Core initially retained unconfirmed termination instead of inferring it from timeout. |
 | Replacement Runtime reconciliation after revocation | PASS: a new Runtime process authenticated as the assigned observer, compared the original backend and Core binding, and reported actual termination. It created no new workload and released no reservation. This is observer recovery, not private-work checkpoint resumption. |
 | Core integration suite, explicit disposable PostgreSQL | Four tests passed, including worker mismatch, one-time release, changed bridge identity, current ancestor authority, logical agent scope and retained obligations. |
 
@@ -647,9 +649,9 @@ but this run does not prove Linux process isolation or the native Codex workflow
 | --- | --- | --- |
 | Explicit PostgreSQL Core integration suite | PASS, five tests: existing admission/Runtime tests plus shared resource call budget, concurrent stable-key replay, changed-input conflict, assigned-worker claim, ancestor target attenuation, and result observation after restriction | Provider effects and Linux process identity are not simulated into a PASS |
 | Explicit PostgreSQL resource integration suite | PASS, one test: committed DB result/receipt and publication recovery retain matching effects | Cross-store worker failure before Core completion still leaves a claimed, unresolved intent |
-| `scripts/test-resource-api.py --admin-url-file <disposable-local-admin-url-file>` | PASS: human mTLS file read, prepared DB query/write, one effect and receipt, bounded upload, separate publication, old snapshot, raw Responses/MCP fixture bodies, owner CLI receipt lookup, inactive target lookup, and current revocation | No real Codex process, isolation test, provider call, subscription or performance result |
+| `tests/contracts/test-resource-api.py --admin-url-file <disposable-local-admin-url-file>` | PASS: human mTLS file read, prepared DB query/write, one effect and receipt, bounded upload, separate publication, old snapshot, raw Responses/MCP fixture bodies, owner CLI receipt lookup, inactive target lookup, and current revocation | No real Codex process, isolation test, provider call, subscription or performance result |
 | Dispatch review corrections | Pending replay requires the original delegation/instance and current action, in addition to read permission. Upload content is checked against the admitted size/hash before claim; changed content and a non-upload intent are rejected without poisoning the approved upload | No general worker retry or unknown-effect settlement mechanism is claimed |
-| `scripts/prepare-connected-native.sh <pinned-codex-fixture-image-id>` and `scripts/test-connected-native-guest.py --config <explicit-fixture.json>` | Subsequently PASS for the bounded synthetic workflow; see [connected native qualification](#connected-native-qualification-results) | Real subscription, steering and successor checkpoint recovery remain unqualified |
+| `tests/support/prepare-connected-native.sh <pinned-codex-fixture-image-id>` and `tests/integration/test-connected-native-guest.py --config <explicit-fixture.json>` | Subsequently PASS for the bounded synthetic workflow; see [connected native qualification](#connected-native-qualification-results) | Real subscription, steering and successor checkpoint recovery remain unqualified |
 
 At this earlier checkpoint, the native adapter had only compiled on Mac; the changed Linux
 Runtime, image and combined workflow were NOT RUN. The subsequent connected native qualification
@@ -679,7 +681,7 @@ CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 cargo clippy --workspace --all-tar
 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 cargo build --workspace --locked
 OURO_TEST_DATABASE_URL_FILE=<core-url-file> cargo test -p ouroboros-core --test control -- --ignored
 OURO_COMPANY_TEST_URL_FILE=<company-url-file> OURO_CATALOG_TEST_URL_FILE=<catalog-owner-url-file> OURO_CATALOG_WORKER_TEST_URL_FILE=<catalog-worker-url-file> cargo test -p ouroboros-resources --test receipts -- --ignored
-python3 -B scripts/test-resource-api.py --config <absolute-fixture-config-file>
+python3 -B tests/contracts/test-resource-api.py --config <absolute-fixture-config-file>
 ```
 
 Each API run prints a safe result and fixture binding identifier. Configurations, short-lived keys,
@@ -726,11 +728,11 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 cargo build --workspace --locked --offline --target-dir "$CARGO_TARGET_DIR"
 cargo test --workspace --locked --offline
-python3 -B scripts/test-fixture-config.py
-python3 -B scripts/test-build-profile.py
-python3 -B scripts/test-config-startup.py --bin-dir "$CARGO_TARGET_DIR/debug"
-python3 -B scripts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG_A"
-python3 -B scripts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG_B"
+python3 -B tests/tooling/test-fixture-config.py
+python3 -B tests/tooling/test-build-profile.py
+python3 -B tests/contracts/test-config-startup.py --bin-dir "$CARGO_TARGET_DIR/debug"
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG_A"
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG_B"
 ```
 
 Choose `CARGO_TARGET_DIR` and the two absolute configuration filenames explicitly. Configurations
@@ -834,7 +836,7 @@ registration stay under the separately configured fixture root. Omitting `storag
 fixture-owned content under that new fixture directory, and cannot establish a mount boundary.
 
 ```sh
-python3 -B scripts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG"
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG"
 ```
 
 For a real PostgreSQL restart, add `--postgres-restart-checkpoint`. Once all service children have
@@ -901,7 +903,7 @@ requires permission to bind its temporary Unix sockets and uses command stubs, n
 Run the transport/capacity subset using a new disposable fixture configuration:
 
 ```sh
-python3 -B scripts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG" --storage-failure-checks
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_FIXTURE_CONFIG" --storage-failure-checks
 ```
 
 The driver seeds an explicit synthetic 1 MiB logical budget, temporarily sets exactly 100 additional
@@ -952,7 +954,7 @@ it is not asserted byte-for-byte identical to the earlier full Core snapshot. Hi
 content hashes and domain/storage-allocation records remain consistent.
 
 The driver is unchanged from the macOS capacity pass. Its reproduction command remains
-`python3 -B scripts/test-resource-api.py --config <explicit-new-fixture> --storage-failure-checks
+`python3 -B tests/contracts/test-resource-api.py --config <explicit-new-fixture> --storage-failure-checks
 --postgres-restart-checkpoint`, with the previously described external PostgreSQL restart handoff.
 Build and the three dedicated database test invocations use the same workspace/test names; URL
 files, source/build roots and listener ports are injected for the fresh Linux environment. Actual
@@ -1029,9 +1031,9 @@ Reproduction uses the existing explicit configuration helpers:
 cargo build --workspace --locked
 cargo test --workspace --locked --offline
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
-bash scripts/prepare-codex-fixture.sh
-bash scripts/prepare-connected-native.sh <exact-first-image-id>
-python3 -B scripts/test-connected-native-guest.py --config <absolute-fresh-fixture.json>
+bash tests/support/prepare-codex-fixture.sh
+bash tests/support/prepare-connected-native.sh <exact-first-image-id>
+python3 -B tests/integration/test-connected-native-guest.py --config <absolute-fresh-fixture.json>
 ```
 
 The image helpers require the selected Linux aarch64 profile, an explicit existing stage directory,
@@ -1079,7 +1081,7 @@ native session checkpoint or permission to restore context.
 | Docker tmpfs configuration | PASS: the actual `HostConfig.Tmpfs` map matches the three configured paths/options/sizes, checked separately from the empty bind/volume mount list. Effective capacity enforcement under writes or pressure remains NOT RUN. |
 
 Reproduce with the same dedicated Linux prerequisites and explicit configuration as the preceding
-connected-native section, adding `--revoke-native` to `scripts/test-connected-native-guest.py`.
+connected-native section, adding `--revoke-native` to `tests/integration/test-connected-native-guest.py`.
 The normal mode remains a separate regression run against a fresh database, work and instance.
 Both use real binaries and synthetic provider responses without account credentials or model calls.
 Source manifests, native events, Runtime finish records and safe revocation observations are
@@ -1135,11 +1137,11 @@ cargo test --workspace --locked --offline --target-dir <build-directory>
 OURO_TEST_DATABASE_URL_FILE=<disposable-database-url-file> cargo test --locked --offline --target-dir <build-directory> -p ouroboros-core --tests -- --ignored --test-threads=1
 cargo clippy --workspace --all-targets --locked --offline --target-dir <build-directory> -- -D warnings
 cargo fmt --all --check
-python3 -B scripts/prepare-test-db.py --config <database-fixture-config>
+python3 -B tests/support/prepare-test-db.py --config <database-fixture-config>
 <bin-directory>/ouroboros-migrate --database-url-file <test-database-url-file>
-python3 -B scripts/prepare-api-fixture.py --config <api-fixture-config>
-python3 -B scripts/test-api-cli.py --config <api-fixture-config>
-python3 -B scripts/test-connected-management-guest.py --config <explicit-disposable-config>
+python3 -B tests/support/prepare-api-fixture.py --config <api-fixture-config>
+python3 -B tests/contracts/test-api-cli.py --config <api-fixture-config>
+python3 -B tests/integration/test-connected-management-guest.py --config <explicit-disposable-config>
 ```
 
 Build the actual Core/Gateway/CLI binaries before the process test. Database setup and API setup
@@ -1353,7 +1355,7 @@ cargo test --workspace --all-targets --locked
 OURO_TEST_DATABASE_URL_FILE=<core-url-file> cargo test -p ouroboros-core --tests -- --ignored
 OURO_COMPANY_TEST_URL_FILE=<company-owner-url-file> OURO_CATALOG_TEST_URL_FILE=<catalog-owner-url-file> OURO_CATALOG_WORKER_TEST_URL_FILE=<catalog-worker-url-file> cargo test -p ouroboros-resources --test receipts -- --ignored
 cargo build --workspace --bins --locked
-python3 -B scripts/test-resource-api.py --config <absolute-fixture-config-file> --binary-checks --storage-failure-checks
+python3 -B tests/contracts/test-resource-api.py --config <absolute-fixture-config-file> --binary-checks --storage-failure-checks
 ```
 
 The fixture's binary report records actual cases and leaves slow-reader HTTP backpressure, memory
@@ -1409,7 +1411,7 @@ suites with their protected URL-file environment variables and the API fixture:
 ```sh
 cargo test --locked --offline -p ouroboros-core --test workspaces -- --ignored --test-threads=1
 cargo test --locked --offline -p ouroboros-resources --test receipts -- --ignored --test-threads=1
-python3 scripts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --storage-failure-checks
+python3 tests/contracts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --storage-failure-checks
 ```
 
 The recorded Linux run used the exact prebuilt test executables selected from Cargo's successful
@@ -1488,7 +1490,7 @@ cargo clippy --locked --offline --workspace --all-targets -- -D warnings
 cargo build --locked --offline --workspace --bins
 OURO_TEST_DATABASE_URL_FILE="$OURO_CORE_TEST_URL_FILE" cargo test --locked --offline -p ouroboros-core --tests -- --ignored --test-threads=1
 cargo test --locked --offline -p ouroboros-resources --test receipts -- --ignored --test-threads=1
-python3 -B scripts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --retirement-checks --storage-failure-checks
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --retirement-checks --storage-failure-checks
 ```
 
 The resource suite additionally requires explicit `OURO_COMPANY_TEST_URL_FILE`,
@@ -1577,7 +1579,7 @@ cargo test --locked --offline --workspace --all-targets
 cargo build --locked --offline --workspace --bins
 OURO_TEST_DATABASE_URL_FILE="$OURO_CORE_TEST_URL_FILE" cargo test --locked --offline -p ouroboros-core --tests -- --ignored --test-threads=1
 cargo test --locked --offline -p ouroboros-resources --test receipts -- --ignored --test-threads=1
-python3 -B scripts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --retirement-checks --collection-checks
+python3 -B tests/contracts/test-resource-api.py --config "$OURO_API_FIXTURE_CONFIG" --binary-checks --workspace-checks --retirement-checks --collection-checks
 ```
 
 The opt-in collection flag requires workspace and retirement checks. It adds fixture-only `collect`
@@ -1646,11 +1648,11 @@ cargo fmt --all -- --check
 cargo clippy --locked --offline --workspace --all-targets -- -D warnings
 cargo test --locked --offline --workspace --all-targets
 OURO_TEST_DATABASE_URL_FILE="$OURO_CORE_TEST_URL_FILE" cargo test --locked --offline -p ouroboros-core --test programs -- --ignored --test-threads=1
-bash scripts/prepare-connected-program.sh "$OURO_PROGRAM_BASE_IMAGE_ID"
+bash tests/support/prepare-connected-program.sh "$OURO_PROGRAM_BASE_IMAGE_ID"
 cargo build --locked --offline --workspace --bins
-sudo python3 -B scripts/test-connected-program-guest.py --config "$OURO_PROGRAM_REVOKE_CONFIG" --restriction revoke
-sudo python3 -B scripts/test-connected-program-guest.py --config "$OURO_PROGRAM_STOP_CONFIG" --restriction stop
-sudo python3 -B scripts/test-connected-program-guest.py --config "$OURO_PROGRAM_COMPLETE_CONFIG" --restriction complete
+sudo python3 -B tests/integration/test-connected-program-guest.py --config "$OURO_PROGRAM_REVOKE_CONFIG" --restriction revoke
+sudo python3 -B tests/integration/test-connected-program-guest.py --config "$OURO_PROGRAM_STOP_CONFIG" --restriction stop
+sudo python3 -B tests/integration/test-connected-program-guest.py --config "$OURO_PROGRAM_COMPLETE_CONFIG" --restriction complete
 ```
 
 The preparation step requires injected `OURO_TEST_PROFILE`, `OURO_TEST_STAGE_ROOT`,
@@ -2161,10 +2163,10 @@ bytes and cannot certify native meaning, lineage truth or current execution auth
 
 **PASS — one actual guest run, synthetic model transport, no subscription or provider calls.**
 
-Reproduction uses `scripts/prepare-checkpoint-read-fixture.py --image IMAGE_ID --socket SOCKET`
+Reproduction uses `tests/support/prepare-checkpoint-read-fixture.py --image IMAGE_ID --socket SOCKET`
 with the already qualified native/materializer image. It builds without network access or image
 pulling and emits the derived immutable image ID. Select that test image in the disposable fixture
-configuration and run `scripts/test-connected-native-guest.py --config CONFIG --control-native
+configuration and run `tests/integration/test-connected-native-guest.py --config CONFIG --control-native
 --materialized-native --successor-native --revoke-restore`. The existing disposable fixture
 orchestrator supplies dedicated service identities, stores and teardown; this is not an instruction
 to run against a live company database.
@@ -2224,7 +2226,7 @@ An explicit instance-origin continuation can be claimed after its source instanc
 an ordinary instance-origin request is not upgraded to this behavior. Current grant revocation
 still denies continued authority.
 
-`scripts/test-wake-api.py`, using the existing disposable DB/API preparation scripts, enables the
+`tests/contracts/test-wake-api.py`, using the existing disposable DB/API preparation scripts, enables the
 Core timer at 100 ms and registers a future occurrence through the actual mTLS CLI. It observes an
 accepted execution intent after the due time, checks committed compute of 70, restarts the exact
 Core process and verifies the same intent and reservation. It then cancels through the CLI and
@@ -2269,7 +2271,7 @@ rejection of cross-conversation reply references, and current read permissions. 
 instance termination, its access is denied; another admitted instance of the same agent can read
 the identical preserved conversation. A reconstructed Core returns the same ordered message page.
 
-`scripts/test-conversation-api.py` uses the existing disposable DB and API preparation scripts to
+`tests/contracts/test-conversation-api.py` uses the existing disposable DB and API preparation scripts to
 run actual Core/Gateway binaries and the mTLS CLI. It creates a conversation, persists one human
 message despite replay, checks authenticated attribution and cursor reads, restarts Core and
 verifies identical content. Committed compute remains zero. Both the API run and database suites
@@ -2919,7 +2921,7 @@ separate from execution.
 
 ### Registered code through API/CLI and the real Linux Runtime
 
-`scripts/test-connected-program-guest.py --config <injected-fixture.json> --restriction complete
+`tests/integration/test-connected-program-guest.py --config <injected-fixture.json> --restriction complete
 --adapter-verification` uses an already prepared image and disposable service identities. The
 human CLI publishes code and binary input, performs an ordinary contained run, then registers that
 exact retained material. A second authenticated human with an explicitly scoped agent delegation
@@ -3104,7 +3106,7 @@ invocation evidence. The locked build passed and the disposable DB cleanup compl
 
 ### Native Codex invokes an approved adapter
 
-Run `scripts/test-connected-native-guest.py --config <disposable-fixture.json> --materialized-native
+Run `tests/integration/test-connected-native-guest.py --config <disposable-fixture.json> --materialized-native
 --managed-mcp --native-adapter` in the selected root-operated Linux fixture with its pinned native
 image, explicitly assigned ports, storage and service credentials. The new preparation helper uses
 ordinary API/CLI requests to publish a fixed script, run its source and separate verification,
@@ -3267,9 +3269,9 @@ multi-request accepted-program qualification described in RESOURCE_SERVICES.md r
 
 ### Accepted bounded conversation service in real isolated instances
 
-Use `scripts/test-connected-native-guest.py --bounded-service --native-adapter --managed-mcp
+Use `tests/integration/test-connected-native-guest.py --bounded-service --native-adapter --managed-mcp
 --materialized-native` with the existing explicit Linux fixture configuration and pinned native
-image. `scripts/bounded_service_fixture.py` supplies immutable submitted shell code. It discovers
+image. `tests/fixtures/bounded_service_fixture.py` supplies immutable submitted shell code. It discovers
 its fixture conversation through Gateway, scans at most four pages per pass and three passes,
 handles two unanswered fixture requests and exits within the unchanged 20-second profile. It has
 no provider credential, host listener, shared mount or privilege beyond its admitted instance.
@@ -3405,7 +3407,7 @@ new-principal handover and membership revocation during this recovery remain NOT
 
 ### Repeated fixture deployment reuses verified binary releases
 
-`scripts/test-fixture-release.py` tests reuse despite later source changes, rejection of corrupted
+`tests/tooling/test-fixture-release.py` tests reuse despite later source changes, rejection of corrupted
 binaries without overwrite, cleanup of only the installer's incomplete staging, rejection of source
 and release symlinks, mutable stores and unexpected files. All five tests passed locally.
 
@@ -3695,7 +3697,7 @@ new native-instance business recovery after a cold restart and bounded load rema
 ### Clean PostgreSQL restart with the existing recovery material
 
 The `cold-storage-restart` Linux run passed the complete native fixture and subsequent before/after
-checks in `scripts/test-existing-storage-guest.py`. Once application services exited, the script
+checks in `tests/recovery/test-existing-storage-guest.py`. Once application services exited, the script
 verified `fsync`, `synchronous_commit` and `full_page_writes` were on. It recorded bounded sorted
 row-content hashes for all public tables in Core, Company and Catalog, plus the catalog blob file
 inventory and content hashes. The controlling process stopped its exact disposable cluster using
@@ -3724,7 +3726,7 @@ this small correction is not a new cold-restart or backup qualification.
 ### Finite local read burst with a concurrent control request
 
 The `bounded-local-load` run passed the native fixture, clean PostgreSQL restart checks and
-`scripts/fixture_load.py` load phase. Four clients completed 128 authenticated HTTPS conditions
+`tests/support/fixture_load.py` load phase. Four clients completed 128 authenticated HTTPS conditions
 queries; each response returned 200 and preserved admission pause. A current authorized pause
 control completed while two clients were active, without a conflict or backup-ready claim. The
 observed maximum was four active clients. For this single 0.209-second burst, nearest-rank latency
@@ -3743,7 +3745,7 @@ ceiling, sustained mixed workload, streaming backpressure or real-provider perfo
 ### Native checkpoint continuation after clean database restart
 
 The `cold-native-current-turn` run passed the connected native workflow, clean PostgreSQL restart
-and `scripts/test-existing-storage-guest.py --phase after --native-recovery` continuation. Existing
+and `tests/recovery/test-existing-storage-guest.py --phase after --native-recovery` continuation. Existing
 78 table snapshots and five catalog blobs matched before any new operations. Admission remained
 paused and rejected the new execution with 403. The existing authorized reviewer explicitly
 reopened admission; no grants were inserted or broadened. The fixture owner uploaded the retained
@@ -3779,7 +3781,7 @@ conditions remain unqualified.
 ### Protected services managed by the guest init system
 
 The `managed-services-boundaries` run passed the existing native fixture, clean PostgreSQL restart,
-and `scripts/test-existing-storage-guest.py --phase after --system-services` mode. On the selected
+and `tests/recovery/test-existing-storage-guest.py --phase after --system-services` mode. On the selected
 systemd 255 guest, `ouroboros-service-unit` rendered Core, Company, Catalog, synthetic resources and
 Gateway units from injected immutable binary paths and their existing per-role configurations.
 `systemd-analyze verify` accepted each unit. The fixture registered temporary nologin OS accounts
@@ -3811,7 +3813,7 @@ unqualified. The preliminary native workflow used synthetic model responses thro
 
 ### Guard survives loss of its launcher's service cgroup
 
-`scripts/test-managed-guard-guest.py --root <new-disposable-root> --guard <built-guard>
+`tests/integration/test-managed-guard-guest.py --root <new-disposable-root> --guard <built-guard>
 --uid <qualified-fixture-uid>` provides a finite root-only Linux test with injected paths. On the
 selected systemd 255 guest, `managed-guard-verified` passed after `managed-guard-first`. The probe
 creates only its own empty target cgroup and a sleep process, supplies that cgroup's write-only
@@ -3838,7 +3840,7 @@ managed guard path. In particular, a dead systemd-run helper cannot be reported 
 
 ### Runtime-bound managed guard and actual native completion
 
-`native-managed-guard-proof` passed `scripts/test-connected-native-guest.py --managed-guard
+`native-managed-guard-proof` passed `tests/integration/test-connected-native-guest.py --managed-guard
 --managed-mcp --materialized-native` on the selected guest. Runtime used an explicit managed-guard
 configuration, handed off its fixed cgroup kill descriptor to a transient unit, verified the actual
 guard process and retained its pidfd. The observed binding records the nonprivileged UID, PID,
@@ -4088,7 +4090,7 @@ readiness, backup/restore and real subscription workflow remain separate require
 
 ### Reviewed installation file path
 
-`scripts/test-service-install.py --binary <built-service-unit> --bundle <prepared-input>
+`tests/integration/test-service-install.py --binary <built-service-unit> --bundle <prepared-input>
 --root <new-root-owned-fixture-directory>` passed in the dedicated Linux guest with six actual
 service specifications. A wrong reviewed digest created no unit or receipt. A preexisting
 sentinel and then a symlink at a destination each caused rejection without changing the existing
@@ -4107,7 +4109,7 @@ actual service-manager reload and readiness from these newly installed files rem
 ### Original-identity installation recovery
 
 The subsequent `service-install-resume-final` fixture passed on the latest source-matched Linux
-build using `scripts/test-service-install.py --binary <built-service-unit> --bundle <prepared-input>
+build using `tests/integration/test-service-install.py --binary <built-service-unit> --bundle <prepared-input>
 --root <new-root-owned-fixture-directory> --faults`. Six units were installed and explicitly
 revalidated without overwriting their bytes. The new plan format records directory identities;
 each unit has a staging identity and final receipt, in addition to the plan and completion record.
@@ -4130,7 +4132,7 @@ application readiness, independent backup recovery or a real subscription workfl
 ### Installed bundle to actual native execution
 
 `native-installed-profile` passed the rendered-environment path of
-`scripts/test-connected-native-guest.py` after the fixture switched from writing unit files itself
+`tests/integration/test-connected-native-guest.py` after the fixture switched from writing unit files itself
 to the Rust reviewed-bundle installer. All six files were installed under the disposable guest's
 runtime service-manager directory. The fixture checked the exact loaded fragment paths, absence
 of drop-ins and no pending daemon reload, then started the five control/resource services.
@@ -4247,7 +4249,7 @@ cross-boot restoration, independent backup/restore or actual subscription execut
 
 ### Prepared backup encryption adapter
 
-The Mac and Linux `scripts/test-backup-seal.py` tests passed with a synthetic 1 MiB input and the native age
+The Mac and Linux `tests/recovery/test-backup-seal.py` tests passed with a synthetic 1 MiB input and the native age
 v1.3.2 tools. It verified encrypt/decrypt byte equality, ciphertext receipt length/digest, private
 output permissions, no replacement of an existing output, and rejection of a wrong tool digest,
 oversized input, unprotected input and symlink input. Native decryption rejected changed and
@@ -4260,7 +4262,7 @@ Locked Linux builds and source agreement, Mac Clippy and document/format checks 
 Reproduce with injected paths:
 
 ```sh
-python3 scripts/test-backup-seal.py --seal "$SEAL_BINARY" --open "$OPEN_BINARY" --age "$AGE_BINARY" \
+python3 tests/recovery/test-backup-seal.py --seal "$SEAL_BINARY" --open "$OPEN_BINARY" --age "$AGE_BINARY" \
   --keygen "$AGE_KEYGEN_BINARY" --fixture-parent "$FIXTURE_PARENT"
 ```
 
@@ -4278,7 +4280,7 @@ source-matched locked build of both commands; Mac Clippy and document/format che
 
 ### Prepared recovery-set inventory
 
-`scripts/test-recovery-archive.py` passed on Mac and Linux with synthetic files in all four recovery roots.
+`tests/recovery/test-recovery-archive.py` passed on Mac and Linux with synthetic files in all four recovery roots.
 It created the standard TAR and inventory, sealed it, opened it into a protected candidate and
 verified the recovered complete inventory. The same test rejected output replacement and
 repacked archives with missing files, altered bytes, duplicate members, symbolic links and
@@ -4287,7 +4289,7 @@ No archive extraction or company service was invoked. Mac build and Clippy, lock
 with source agreement, and document/format checks passed.
 
 ```sh
-python3 scripts/test-recovery-archive.py --archive "$ARCHIVE_BINARY" \
+python3 tests/recovery/test-recovery-archive.py --archive "$ARCHIVE_BINARY" \
   --seal "$SEAL_BINARY" --open "$OPEN_BINARY" --age "$AGE_BINARY" \
   --keygen "$AGE_KEYGEN_BINARY" --fixture-parent "$FIXTURE_PARENT"
 ```
@@ -4304,7 +4306,7 @@ all synthetic files, restricted caller-owned modes and refusal to replace the ex
 Every malformed archive case was rejected before a destination directory was created. No archived
 ownership or executable permissions were applied and no service was started by the product command.
 
-The initial Linux `scripts/test-recovery-postgres.py` rehearsal passed with an actual PostgreSQL 18
+The initial Linux `tests/recovery/test-recovery-postgres.py` rehearsal passed with an actual PostgreSQL 18
 cluster containing three synthetic databases and six continuity rows. It verified enabled fsync,
 synchronous commit and full-page writes, waited for the owned postmaster to exit successfully,
 checked absence of its PID file and `pg_controldata` state `shut down`, then created/sealed/opened/
@@ -4320,7 +4322,7 @@ Temporary synthetic keys, copies and databases were removed only after their own
 stopped. Logs retain failed and successful outcomes without key material.
 
 ```sh
-python3 scripts/test-recovery-postgres.py --source-root "$SOURCE_ROOT" --archive "$ARCHIVE_BINARY" \
+python3 tests/recovery/test-recovery-postgres.py --source-root "$SOURCE_ROOT" --archive "$ARCHIVE_BINARY" \
   --seal "$SEAL_BINARY" --open "$OPEN_BINARY" --age "$AGE_BINARY" \
   --keygen "$AGE_KEYGEN_BINARY" --pg-bin "$PG_BIN" --fixture-parent "$FIXTURE_PARENT"
 ```

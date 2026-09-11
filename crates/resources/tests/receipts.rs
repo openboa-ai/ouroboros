@@ -2534,8 +2534,8 @@ async fn provider_https_checks(
         .mode(0o700)
         .create(&root)
         .unwrap();
-    let script =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/test-provider-https-fixture.py");
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/integration/test-provider-https-fixture.py");
     let child = Child(
         std::process::Command::new("python3")
             .arg(script)
@@ -2768,8 +2768,8 @@ async fn provider_https_checks(
     );
     assert!(binary.is_absolute() && binary.is_dir());
     std::fs::write(root.join("process-input.json"),json!({"binary":binary,"admin_url_file":owner_url_file,"firm":active.owner,"credential":active.credential}).to_string()).unwrap();
-    let script =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/test-provider-process.py");
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/integration/test-provider-process.py");
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(90),
         tokio::process::Command::new("python3")

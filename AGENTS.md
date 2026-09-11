@@ -129,3 +129,10 @@ it does not record a published architecture adoption, authorize a PR/commit/merg
 sovereign designation, financial authority, or production acceptance. Actual subscription calls
 still require the confirmed connection candidate and the owner's finite usage limit. Preserve the
 original design worktree and report incomplete implementation and NOT RUN cases explicitly.
+
+## Test Organization
+
+Follow [Testing Ouroboros](tests/README.md) for test placement and execution. System tests, fixture
+code and verifier implementations belong under `tests/`; Cargo integration tests remain with their
+crate and small module invariants may remain under `#[cfg(test)]`. Preserve scenario IDs, current
+authority, negative cases and required CI selection when reorganizing tests.

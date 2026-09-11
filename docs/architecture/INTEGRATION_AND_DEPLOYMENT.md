@@ -63,7 +63,7 @@ them into the source set would change the identity being checked.
 | `native_environment` | Separate explicit disposable Linux ARM64 host binding: source/binary roots, protected run/deployment/IPC/release roots, database identities, fixed Docker socket and immutable native images. The selected kernel case additionally requires its source/hash-bound `kernel_test_manifest`. |
 | `age`, `keygen` | Explicit native encryption tools for synthetic recovery tests; an actual recovery key or independent backup destination is not supplied by this fixture environment. |
 
-The nonroot [`run-postgres-suite.py`](../../scripts/run-postgres-suite.py) starts its own foreground
+The nonroot [`run-postgres-suite.py`](../../tests/support/run-postgres-suite.py) starts its own foreground
 PostgreSQL child, requires private scratch space, uses randomly generated SCRAM credentials and
 listens only on loopback. Credentials are private files, never command-line arguments. It rejects
 ambient database/proxy selection and never accepts an existing database endpoint. Child
@@ -1003,7 +1003,7 @@ were settled. Install/service-manager and backup/restore qualification remain se
 
 ### Immutable binaries for repeated local fixtures
 
-`scripts/fixture_release.py` installs an explicitly supplied binary manifest into an injected release
+`tests/support/fixture_release.py` installs an explicitly supplied binary manifest into an injected release
 store. The release identity is the SHA-256 of its canonical filename/digest manifest. Binaries are
 copied from open non-symlink files, checked against the manifest and stored with mode 0555 under an
 owned non-writable release directory; the manifest is mode 0444. A bounded exclusive store lock

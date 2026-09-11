@@ -1,0 +1,104 @@
+# Testing Ouroboros
+
+Tests establish whether an implementation preserves its responsibility: current authority,
+isolation, durable effects, continuity and accurate observation. Passing a synthetic test does
+not authorize operation or prove actual subscription compatibility, profitability or production
+readiness. Test location follows the scope of the behavior, not the language of the driver.
+
+## Where tests belong
+
+| Location | Responsibility |
+| --- | --- |
+| `contracts/` | API, CLI, resource, conversation and control behavior exercised through supported boundaries. These cases can require real PostgreSQL and processes. |
+| `integration/` | Connected harness, Linux containment, provider-process and installed-service checks requiring their actual execution mechanisms. |
+| `recovery/` | Backup, restoration, interrupted effects, checkpoint recovery and existing-storage checks. |
+| `tooling/` | Deterministic tests of the selector, test drivers, build identity, fixture preparation and final CI gate. |
+| `fixtures/` | Synthetic external services, private workload programs and network probes used only for validation. |
+| `support/` | Shared fixture preparation/cleanup, scenario catalog, runners, source binding and CI report generation. |
+| [`../crates/core/tests/`](../crates/core/tests/) and other crate `tests/` directories | Rust integration tests owned and discovered by their Cargo package. |
+| A crate's `src/` under `#[cfg(test)]` | Small meaningful module invariants, such as ciphertext rejection or safe path handling. |
+| [`../scripts/`](../scripts/) | Stable, thin user/CI entry points. Do not place new scenario implementations or fixture libraries here. |
+
+Do not duplicate a case across these directories. Choose the directory for its primary purpose;
+its catalog entry records all affected responsibilities and required environments. Recovery is
+an explicit connected behavior even though it also uses integration mechanisms. Cargo package
+tests stay with their package rather than requiring workspace-wide custom test-target wiring.
+
+The mixed layout follows [Cargo's package layout](https://doc.rust-lang.org/cargo/guide/project-layout.html)
+and [Rust's test organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html).
+The root system-test directories are an Ouroboros convention, not a Cargo discovery rule.
+
+## Find a case and its requirements
+
+Start with [`support/check_catalog.py`](support/check_catalog.py): it owns stable scenario IDs,
+purpose, responsibilities, required execution lanes and change-impact selection. Native cases are
+defined once in [`support/native_scenarios.py`](support/native_scenarios.py). The broader requirements
+and acceptance cases remain in [architecture validation](../docs/architecture/VALIDATION.md).
+
+A directory name is not a promise that a test is fast or dependency-free. For example,
+`contracts/test-api-cli.py` requires an explicitly prepared mTLS/PostgreSQL fixture. Use the common
+runner so source identity, required prerequisites, deadlines, cleanup and evidence remain enforced.
+Do not run all files by indiscriminate discovery: some are fixture servers or Linux-only drivers.
+
+## Run the checks
+
+From the repository root, the public commands remain unchanged:
+
+```sh
+python3 scripts/check.py --help
+python3 scripts/check.py plan --full --output "$CHECK_PLAN"
+python3 scripts/check.py build --environment "$TEST_ENVIRONMENT" --output "$BUILD_MANIFEST"
+python3 scripts/check.py run --plan "$CHECK_PLAN" --lane "$SELECTED_LANE" \
+  --environment "$TEST_ENVIRONMENT" --output "$LANE_RESULTS"
+python3 scripts/check.py report --plan "$CHECK_PLAN" --results "$LANE_RESULTS" \
+  --output "$CHECK_SUMMARY"
+```
+
+Supply explicit paths for each variable. The environment must reference the current build manifest;
+run every selected lane and pass all its result files to `report`. A result file must be new;
+never overwrite failed evidence or present one lane's result as completion of the full plan.
+[Integration and deployment](../docs/architecture/INTEGRATION_AND_DEPLOYMENT.md) documents environment
+inputs and complete build/run/package examples. `plan --base "$BASE_REVISION" --head HEAD` selects
+by change impact; `--full` requests the entire automated inventory.
+
+For an individual dependency-free tooling check:
+
+```sh
+python3 tests/tooling/test-check-catalog.py
+```
+
+Standalone drivers retain their explicit argument contracts. Their small bootstrap locates this
+checkout's Python package from the file location; it does not infer deployment paths, credentials,
+DB connections, Docker endpoints or host identity. Imports use `tests.support` / `tests.fixtures`,
+not ambient `PYTHONPATH` or a developer-specific installation. Test-only helper implementations live
+under `tests/`; only the three public entry commands remain under `scripts/`.
+
+## Add or move a test
+
+1. State the behavior and failure it detects; assert observable effects and authorized records.
+   Keep real SQL/kernel/filesystem observations when the guarantee belongs to those mechanisms.
+2. Reuse support fixtures with explicit inputs and owned cleanup. Never adopt account credentials,
+   existing company state or a developer's VM as a default fixture.
+3. Connect the case to its catalog scenario and change-impact rule. New standalone tooling checks
+   must be included in `tooling.contracts`; its inventory completeness is tested.
+4. For a move, update all callers, imports, documentation, source-hash inventories and CODEOWNERS.
+   Preserve scenario IDs, assertion meaning, timeouts, negative cases and fail-closed cleanup.
+5. Run affected local checks and the selected hosted lanes. Keep failures and required `NOT RUN`
+   visible; no path change, cache hit or mocked result can substitute for actual execution.
+
+All test oracles and required-check selection remain code-owner protected. Deleted and renamed
+paths participate in selection; unknown/shared changes expand verification instead of skipping it.
+The final gate rejects missing, failed, cancelled and required `NOT RUN` cases. The test framework
+is the existing Python/Rust tooling; no LLM judges system correctness.
+
+## Evidence and migration
+
+Reports bind the source digest, selected scenario IDs and outcomes. Private fixture logs,
+credentials, generated data and build outputs belong in explicit ignored storage such as `.local/`,
+never beside versioned tests. Public summaries allow known test locations and bounded identifiers,
+not raw tracebacks, assertion values or secrets.
+
+System test files previously under `scripts/` now live here. Update direct file-path callers to the
+locations above; there is no second copy or compatibility alias for old scenario paths. The public
+`check.py`, `ci_environment.py` and `ci_report.py` commands remain in `scripts/`. No product API,
+storage migration, authority semantics or Rust package-test ownership changes with this move.
