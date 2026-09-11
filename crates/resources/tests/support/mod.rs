@@ -59,17 +59,20 @@ impl Fixture {
         let admin = PgPool::connect(url.as_str())
             .await
             .expect("connect disposable test administrator");
+        // Audited DDL: identifiers and the password contain only fixed prefixes and UUID hex.
         let database = format!("ouro_contract_{}", Uuid::new_v4().simple());
         let role = format!("ouro_worker_{}", Uuid::new_v4().simple());
         let password = Uuid::new_v4().simple().to_string();
-        sqlx::query(&format!("CREATE DATABASE {database}"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
             .execute(&admin)
             .await
             .unwrap();
-        sqlx::query(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'"))
-            .execute(&admin)
-            .await
-            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE ROLE {role} LOGIN PASSWORD '{password}'"
+        )))
+        .execute(&admin)
+        .await
+        .unwrap();
         url.set_path(&format!("/{database}"));
         let owner_url_file = root.join("owner.url");
         use std::io::Write;
@@ -84,12 +87,12 @@ impl Fixture {
         let owner = PgPool::connect(url.as_str()).await.unwrap();
         if catalog {
             CatalogWorker::migrate(&owner).await.unwrap();
-            sqlx::raw_sql(&format!("GRANT CONNECT ON DATABASE {database} TO {role};
+            sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT CONNECT ON DATABASE {database} TO {role};
                 GRANT USAGE ON SCHEMA public TO {role};
                 GRANT SELECT,INSERT,UPDATE ON workspaces,workspace_snapshots,uploads,publication_receipts,upload_staging,blob_objects,upload_object_holds,revision_object_holds,catalog_collections TO {role};
                 GRANT SELECT,INSERT ON workspace_create_receipts,catalog_retirements TO {role};
                 GRANT SELECT ON storage_binding TO {role};
-                GRANT EXECUTE ON FUNCTION check_storage_binding(uuid,uuid,uuid) TO {role};"))
+                GRANT EXECUTE ON FUNCTION check_storage_binding(uuid,uuid,uuid) TO {role};")))
                 .execute(&owner).await.unwrap();
         }
         url.set_username(&role).unwrap();
@@ -147,15 +150,22 @@ impl Fixture {
         let result = tokio::spawn(body).await;
         self.worker.close().await;
         self.owner.close().await;
-        sqlx::query(&format!("DROP DATABASE {} WITH (FORCE)", self.database))
-            .execute(&self.admin)
-            .await
-            .unwrap();
-        sqlx::query(&format!("DROP ROLE IF EXISTS {}_consumer", self.role))
-            .execute(&self.admin)
-            .await
-            .unwrap();
-        sqlx::query(&format!("DROP ROLE {}", self.role))
+        // The stored identifiers were generated above, never supplied by the test endpoint.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE {} WITH (FORCE)",
+            self.database
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP ROLE IF EXISTS {}_consumer",
+            self.role
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {}", self.role)))
             .execute(&self.admin)
             .await
             .unwrap();
