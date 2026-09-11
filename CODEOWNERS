@@ -1,9 +1,33 @@
-* @openboa-ai/security-maintainers
-
-/.github/** @openboa-ai/security-maintainers
-/CODEOWNERS @openboa-ai/security-maintainers
-/SECURITY.md @openboa-ai/security-maintainers
-/CORE_DOCTRINE.md @openboa @openboa-ai/security-maintainers
-/SOVEREIGN.md @openboa @openboa-ai/security-maintainers
-/PRODUCT_SPECIFICATION.md @openboa @openboa-ai/security-maintainers
-/AGENTS.md @openboa @openboa-ai/security-maintainers
+# Technical review only; SOVEREIGN.md separately governs sovereign authorization.
+# No catch-all: ordinary documentation and CLI presentation remain CI-gated.
+# GitHub evaluates this file from the PR base branch. Moving protected code also
+# changes its old path and requires review. Protect higher-priority owner files.
+/.github/ @SonSangjoon
+/CODEOWNERS @SonSangjoon
+/AGENTS.md @SonSangjoon
+/SECURITY.md @SonSangjoon
+/CORE_DOCTRINE.md @SonSangjoon
+/SOVEREIGN.md @SonSangjoon
+/WHITEPAPER.md @SonSangjoon
+/PRODUCT_SPECIFICATION.md @SonSangjoon
+/ARCHITECTURE.md @SonSangjoon
+/docs/architecture/ @SonSangjoon
+/.gitleaks.toml @SonSangjoon
+/.gitignore @SonSangjoon
+/Cargo.toml @SonSangjoon
+/Cargo.lock @SonSangjoon
+/rust-toolchain.toml @SonSangjoon
+/crates/contracts/ @SonSangjoon
+/crates/transport/ @SonSangjoon
+/crates/core/ @SonSangjoon
+/crates/gateway/ @SonSangjoon
+/crates/runtime/ @SonSangjoon
+/crates/resources/ @SonSangjoon
+/crates/cli/src/credential.rs @SonSangjoon
+/crates/cli/src/backup* @SonSangjoon
+/crates/cli/src/recovery* @SonSangjoon
+/crates/cli/src/service* @SonSangjoon
+/crates/cli/src/storage* @SonSangjoon
+/crates/cli/src/bin/ @SonSangjoon
+/deploy/ @SonSangjoon
+/scripts/ @SonSangjoon

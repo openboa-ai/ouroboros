@@ -40,3 +40,8 @@ Distinguish merge, installation, deployment, and company operation. -->
 - [ ] The scope, authority changes, and remaining limitations are stated accurately.
 - [ ] Relevant checks and their actual results are recorded; required failures are not hidden.
 - [ ] No credentials, personal environment bindings, private logs, or research-only files are included.
+
+<!-- GitHub requires current-base checks and squash merge. Sensitive paths require the
+technical CODEOWNER's actual review; general changes are CI-gated after the transition.
+Native auto-merge is a per-PR reservation, never an approval or operating authorization.
+For delivery changes, include the settings readback and hosted run/artifact links. -->
