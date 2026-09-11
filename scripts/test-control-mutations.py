@@ -70,7 +70,8 @@ def arguments():
     args.cargo = shutil.which(args.cargo)
     if not args.cargo:
         parser.error("explicit Cargo executable was not found")
-    args.cargo = str(Path(args.cargo).resolve(strict=True))
+    # Preserve argv[0]: rustup dispatches its cargo symlink by executable name.
+    args.cargo = os.path.abspath(args.cargo)
     return args
 
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic contract checks for the disposable database test driver itself."""
 import json
+import importlib.util
 import errno
 import os
 from pathlib import Path
@@ -26,6 +27,28 @@ class DatabaseDriverContract(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_mutation_driver_preserves_cargo_proxy_dispatch_name(self):
+        spec = importlib.util.spec_from_file_location("control_mutations", Path(__file__).with_name("test-control-mutations.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source = Path(__file__).resolve().parents[1]
+        target = self.root / "target"
+        scratch = self.root / "scratch"
+        target.mkdir(mode=0o700)
+        scratch.mkdir(mode=0o700)
+        url = self.root / "database.url"
+        private_write(url, "postgresql://fixture@127.0.0.1:5432/fixture")
+        proxy = self.root / "rustup"
+        proxy.write_text('#!/bin/sh\n[ "${0##*/}" = cargo ]\n')
+        proxy.chmod(0o700)
+        cargo = self.root / "cargo"
+        cargo.symlink_to(proxy)
+        argv = ["mutation", "--source-root", str(source), "--target-dir", str(target),
+                "--scratch-root", str(scratch), "--database-url-file", str(url), "--cargo", str(cargo)]
+        with patch.object(sys, "argv", argv):
+            args = module.arguments()
+        self.assertEqual(subprocess.run([args.cargo], check=False).returncode, 0)
 
     def test_success_requires_executed_unfiltered_database_tests(self):
         valid = b"test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"
