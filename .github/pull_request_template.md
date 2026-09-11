@@ -1,24 +1,42 @@
-## Context
+<!-- Keep this PR as the decision and delivery record; an Issue is not required.
+Scale detail to the change. Use "Not applicable" with a reason where needed.
+Never include credentials, private logs, personal paths, or local research links. -->
 
-Why is this change needed?
+## Purpose and outcome
 
-## Decision
+<!-- What problem does this solve, and what changes for the caller or operator?
+State the decision this PR owns and the human owner when approval is required. -->
 
-What exact decision or outcome does this pull request own?
+## Scope and responsibility
 
-## Scope
+<!-- Name the affected components and the behavior they must preserve.
+Separate implemented behavior from proposals and explicitly deferred work. -->
 
-What is included, and what is explicitly excluded?
+## Authority, security, and compatibility
 
-## Security
+<!-- Describe changes to identity, delegation, credentials, isolation, data, or financial authority.
+Identify any human-gate decision. A successful test does not grant operating authority.
+For API/configuration/storage changes, explain caller migration, preserved records and obligations,
+and safe recovery or rollback. Do not rewrite applied migrations or reset state implicitly. -->
 
-- What trust, credential, data, execution, trading, or capital boundary changes?
-- Which permissions are added, removed, or unchanged?
+## Validation and evidence
 
-## Validation
+| Responsibility or behavior | Command / scenario | Environment and tested revision | Result / evidence |
+| --- | --- | --- | --- |
+| | | | |
 
-List the exact commands and evidence used to validate the current head.
+<!-- Distinguish local checks, hosted CI, synthetic providers, and actual provider runs.
+If the tested source differs from this head, identify the difference and its validation.
+Record FAIL and NOT RUN explicitly; a missing environment is not a pass.
+Link shareable evidence or report sanitized results without linking private local files. -->
 
-## Follow-up
+## Delivery and follow-up
 
-What remains intentionally deferred?
+<!-- State what this PR delivers, what remains unverified, and the next decision or test.
+Distinguish merge, installation, deployment, and company operation. -->
+
+## Publication checks
+
+- [ ] The scope, authority changes, and remaining limitations are stated accurately.
+- [ ] Relevant checks and their actual results are recorded; required failures are not hidden.
+- [ ] No credentials, personal environment bindings, private logs, or research-only files are included.
