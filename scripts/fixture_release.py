@@ -101,7 +101,17 @@ def install(source, store, manifest, owner):
             sync=os.open(stage,os.O_RDONLY|os.O_DIRECTORY)
             try:os.fsync(sync)
             finally:os.close(sync)
+            # Some Darwin filesystems require write permission on the directory
+            # being renamed. Keep it owner-only during publication, then seal it
+            # before returning a usable release. A crash leaves an ineligible
+            # private directory; reuse must reject it rather than repair/adopt it.
+            stage.chmod(0o700)
             os.rename(stage,target)
+            target.chmod(0o555)
+            verify(target,manifest,owner)
+            sync=os.open(target,os.O_RDONLY|os.O_DIRECTORY)
+            try:os.fsync(sync)
+            finally:os.close(sync)
             sync=os.open(store,os.O_RDONLY|os.O_DIRECTORY)
             try:os.fsync(sync)
             finally:os.close(sync)

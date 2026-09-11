@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 from fixture_release import install
 
 
@@ -38,6 +39,22 @@ class Releases(unittest.TestCase):
         path.chmod(0o755);path.write_bytes(b'bad');path.chmod(0o555)
         with self.assertRaises(ValueError):self.put()
         self.assertEqual(path.read_bytes(),b'bad')
+
+    def test_interrupted_publication_stays_private_and_cannot_be_reused(self):
+        rename = os.rename
+        published = []
+        def interrupted(source, target):
+            self.assertEqual(source.stat().st_mode & 0o777, 0o700)
+            rename(source, target)
+            published.append(target)
+            raise OSError('synthetic interruption before sealing')
+        with patch('fixture_release.os.rename', side_effect=interrupted):
+            with self.assertRaises(OSError):self.put()
+        target = published[0]
+        self.assertEqual(target.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((target/self.binary.name).read_bytes(), b'one')
+        with self.assertRaises(ValueError):self.put()
+        self.assertEqual(target.stat().st_mode & 0o777, 0o700)
 
     def test_mismatch_cleans_only_its_staging(self):
         self.binary.write_bytes(b'wrong')
