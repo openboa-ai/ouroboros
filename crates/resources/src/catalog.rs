@@ -1087,7 +1087,7 @@ impl CatalogWorker {
             "upload exceeds admitted bound"
         );
         ensure!(
-            format!("{:x}", Sha256::digest(bytes)) == expected_digest,
+            hex::encode(Sha256::digest(bytes)) == expected_digest,
             "content mismatch"
         );
         let prepared = self

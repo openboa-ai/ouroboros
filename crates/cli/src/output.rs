@@ -143,7 +143,7 @@ where
     }
     anyhow::ensure!(received == expected_size, "binary response truncated");
     anyhow::ensure!(
-        format!("{:x}", hash.finalize()) == expected_digest,
+        hex::encode(hash.finalize()) == expected_digest,
         "binary response content mismatch"
     );
     if let Some(output) = pending {

@@ -109,7 +109,7 @@ async fn read_private_file(docker: &Docker, cid: &str, path: &str) -> Result<Vec
 
 fn verify_restore(thread: &str, size: u64, digest: &str, bytes: &[u8]) -> Result<()> {
     ensure!(
-        bytes.len() as u64 == size && format!("{:x}", Sha256::digest(bytes)) == digest,
+        bytes.len() as u64 == size && hex::encode(Sha256::digest(bytes)) == digest,
         "checkpoint no longer matches admitted bytes"
     );
     validate(thread, bytes)
@@ -211,7 +211,7 @@ pub(crate) async fn capture(
     selected_path(id, path)?;
     let bytes = read_private_file(docker, cid, path).await?;
     validate(id, &bytes)?;
-    let manifest = json!({"execution_id":execution,"thread_id":id,"session_id":thread.get("sessionId"),"source_path":path,"observed_terminal":terminal,"sha256":format!("{:x}",Sha256::digest(&bytes)),"bytes":bytes.len(),"source":"private_native_state","resume_qualified":false});
+    let manifest = json!({"execution_id":execution,"thread_id":id,"session_id":thread.get("sessionId"),"source_path":path,"observed_terminal":terminal,"sha256":hex::encode(Sha256::digest(&bytes)),"bytes":bytes.len(),"source":"private_native_state","resume_qualified":false});
     for (name, data) in [
         ("native-checkpoint.jsonl", bytes),
         ("native-checkpoint.json", serde_json::to_vec(&manifest)?),
@@ -239,7 +239,7 @@ mod tests {
             json!({"type":"event_msg","payload":{}})
         )
         .into_bytes();
-        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let digest = hex::encode(Sha256::digest(&bytes));
         assert!(verify_restore(&thread, bytes.len() as u64, &digest, &bytes).is_ok());
         assert!(verify_restore(&thread, bytes.len() as u64 + 1, &digest, &bytes).is_err());
         assert!(verify_restore(&thread, bytes.len() as u64, &"0".repeat(64), &bytes).is_err());

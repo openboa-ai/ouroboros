@@ -196,7 +196,7 @@ async fn retained_objects_and_workspaces(
     remove_commit_failure(catalog, "workspace_create_receipts", &trigger).await;
 
     let bytes = b"equal content has independent owned physical lifetimes";
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest = hex::encode(Sha256::digest(bytes));
     let upload_a = Uuid::new_v4();
     let upload_b = Uuid::new_v4();
     for upload in [upload_a, upload_b] {
@@ -518,8 +518,8 @@ async fn reference_retirement(
     let upload_b = Uuid::new_v4();
     let bytes_a = b"retirement preserves the original effect";
     let bytes_b = b"closure retains historical readers";
-    let digest_a = format!("{:x}", Sha256::digest(bytes_a));
-    let digest_b = format!("{:x}", Sha256::digest(bytes_b));
+    let digest_a = hex::encode(Sha256::digest(bytes_a));
+    let digest_b = hex::encode(Sha256::digest(bytes_b));
     file.upload(firm, upload_a, &digest_a, bytes_a, 1024)
         .await
         .unwrap();
@@ -1076,7 +1076,7 @@ async fn reference_collection(
         policy_revision: policy.revision,
     };
     let bytes = b"the same digest does not identify a physical lifetime";
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest = hex::encode(Sha256::digest(bytes));
     let upload_a = Uuid::new_v4();
     let upload_b = Uuid::new_v4();
     file.upload(firm, upload_a, &digest, bytes, 1024)
@@ -1511,7 +1511,7 @@ async fn upload_and_publication_recover_only_committed_receipts() {
     .unwrap();
     let failed_preparation = Uuid::new_v4();
     let preparation_bytes = b"must not write before staging commit";
-    let preparation_digest = format!("{:x}", Sha256::digest(preparation_bytes));
+    let preparation_digest = hex::encode(Sha256::digest(preparation_bytes));
     let trigger = reject_insert_at_commit(&catalog, "upload_staging", failed_preparation).await;
     assert!(
         file.upload(
@@ -1561,7 +1561,7 @@ async fn upload_and_publication_recover_only_committed_receipts() {
 
     let failed_receipt = Uuid::new_v4();
     let retained_bytes = b"installed content with failed catalog commit";
-    let retained_digest = format!("{:x}", Sha256::digest(retained_bytes));
+    let retained_digest = hex::encode(Sha256::digest(retained_bytes));
     let trigger = reject_insert_at_commit(&catalog, "uploads", failed_receipt).await;
     assert!(
         file.upload(firm, failed_receipt, &retained_digest, retained_bytes, 1024)
@@ -1668,7 +1668,7 @@ async fn upload_and_publication_recover_only_committed_receipts() {
         .is_err()
     );
     let bytes = b"verified fixture result";
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest = hex::encode(Sha256::digest(bytes));
     let upload = Uuid::new_v4();
     file.upload(firm, upload, &digest, bytes, 1024)
         .await

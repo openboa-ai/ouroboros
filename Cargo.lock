@@ -1202,6 +1202,7 @@ dependencies = [
  "bytes",
  "clap",
  "futures-util",
+ "hex",
  "libc",
  "ouroboros-contracts",
  "ouroboros-transport",
@@ -1221,6 +1222,7 @@ name = "ouroboros-contracts"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "hex",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1255,6 +1257,7 @@ dependencies = [
  "bytes",
  "clap",
  "futures-util",
+ "hex",
  "ouroboros-contracts",
  "ouroboros-transport",
  "reqwest",
@@ -1274,6 +1277,7 @@ dependencies = [
  "axum",
  "clap",
  "futures-util",
+ "hex",
  "libc",
  "ouroboros-contracts",
  "ouroboros-transport",
@@ -1296,6 +1300,7 @@ dependencies = [
  "bollard",
  "clap",
  "futures-util",
+ "hex",
  "libc",
  "ouroboros-contracts",
  "ouroboros-transport",
@@ -1313,6 +1318,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "hex",
  "hyper",
  "hyper-util",
  "libc",
