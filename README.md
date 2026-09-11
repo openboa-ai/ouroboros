@@ -22,6 +22,20 @@ Core Doctrine, Whitepaper, and Product Specification. The [Architecture](ARCHITE
 provisional proposal for review; its presence does not establish adoption or authorize runtime
 implementation.
 
+Start with the [architecture reading map](ARCHITECTURE.md#3-detail-map-and-reading-order) for the
+component designs, shared contracts, reference integration, and validation plan.
+The worktree now contains a locally implemented Rust external environment and CLI under separate
+bounded owner authorization. The [local implementation status](ARCHITECTURE.md#local-implementation-boundary)
+separates tested behavior from remaining storage, recovery-authority and real-subscription gaps.
+It is not a released or production-qualified runtime; architecture adoption remains separate.
+
+Development checks use the same `scripts/check.py plan`, `run`, and `report` entry points locally
+and in CI. The [executable validation map](docs/architecture/VALIDATION.md) connects responsibilities
+to deterministic scenarios; the [integration guide](docs/architecture/INTEGRATION_AND_DEPLOYMENT.md)
+describes explicit test-environment inputs and source-bound build/package commands. Default Cargo
+tests cover fast invariants; required PostgreSQL and Linux scenarios must be selected and completed
+separately. A missing environment or result cannot qualify a required check.
+
 The intended implementation separates a public execution environment that enforces valid
 delegation and provides evidence of actual effects from private AI operation that directs
 research, trading, and resource allocation within it. Their methods should be loosely coupled;

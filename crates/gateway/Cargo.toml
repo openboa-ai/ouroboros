@@ -1,0 +1,22 @@
+[package]
+name = "ouroboros-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-stream.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+tokio.workspace = true
+ouroboros-transport = { path = "../transport" }
+serde_json.workspace = true
+ouroboros-contracts = { path = "../contracts" }
+uuid.workspace = true
+
+sha2.workspace = true

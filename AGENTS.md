@@ -22,6 +22,17 @@ Read and apply project authority in this order:
 When sources conflict, the higher source governs. Lower sources may refine but may not redefine
 higher ones.
 
+For detailed design, enter through the [architecture reading map](ARCHITECTURE.md#3-detail-map-and-reading-order)
+and read the [shared contracts and state](docs/architecture/CONTRACTS_AND_STATE.md) before a component
+document. Component documents own their enforcement mechanisms; they do not create separate
+definitions of authority or shared state. Planned runtime validation remains distinct from
+implementation results. The detailed designs retain architecture proposal status.
+
+Keep research notes and source-audit working reports in the Git-ignored `research/` directory.
+Do not force-add them or make versioned design documents depend on those local files. Retain design
+decisions, constraints, and validation requirements in the architecture documents; this does not
+weaken the runtime's requirements to preserve operational evidence.
+
 ## Operating Test
 
 Before proposing or making a substantive change, establish how it:
@@ -107,3 +118,14 @@ model. Follow the Whitepaper and Product Specification for the boundaries of thi
 Until architecture is approved, do not implement product runtime, schemas, services, or
 compatibility surfaces. Work may continue on architecture and on repository security and integrity
 required to preserve a trustworthy foundation.
+
+## Authorized Local First-Connection Work
+
+The owner explicitly instructed this task to continue locally without posting a PR after the
+architecture-adoption prerequisite was presented. For this bounded first-connection task, local
+Rust implementation and fixture/reference-backend testing may proceed against the detailed design.
+This scoped instruction supersedes the pre-adoption implementation restriction above for this task;
+it does not record a published architecture adoption, authorize a PR/commit/merge, or alter doctrine,
+sovereign designation, financial authority, or production acceptance. Actual subscription calls
+still require the confirmed connection candidate and the owner's finite usage limit. Preserve the
+original design worktree and report incomplete implementation and NOT RUN cases explicitly.

@@ -1,0 +1,245 @@
+"""Portable catalogue/selection/lifecycle checks; no native, Docker or database calls."""
+import contextlib
+import importlib.util
+import hashlib
+import io
+import json
+import os
+import subprocess
+import sys
+import shutil
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from native_scenarios import SCENARIOS, catalogue
+from native_image_identity import source_digest
+from native_kernel_contract import TEST_NAME, verify_manifest
+from native_build_input import hash_build_binary
+from native_suite_environment import child_environment, load_environment
+
+spec = importlib.util.spec_from_file_location('native_suite_runner', Path(__file__).with_name('run-native-suite.py'))
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+
+class NativeSuiteContract(unittest.TestCase):
+    def test_catalogue_has_unique_purposes_and_inherited_requirements(self):
+        rows = catalogue()
+        self.assertEqual(len(rows), len({row['id'] for row in rows}))
+        self.assertTrue(all(row['purpose'] and row['responsibilities'] and row['provider'] == 'synthetic-only' for row in rows))
+        self.assertTrue(set(SCENARIOS['native.adapter'].responsibilities) <= set(SCENARIOS['native.adapter-provider'].responsibilities))
+        self.assertTrue(SCENARIOS['native.environment'].options('native.environment').rendered_environment)
+
+    def test_every_named_scenario_is_a_valid_existing_oracle_combination(self):
+        for name, scenario in SCENARIOS.items():
+            with self.subTest(scenario=name):
+                a = scenario.options(name)
+                self.assertTrue(not a.shutdown_services or a.admission_pause_running)
+                self.assertTrue(not a.admission_pause_running or (a.bounded_service_stop and not a.admission_pause))
+                self.assertTrue(not a.admission_pause or a.bounded_service_fault)
+                self.assertTrue(not a.bounded_service_fault or (a.bounded_service and not a.bounded_service_db and not a.bounded_service_stop))
+                self.assertTrue(not a.bounded_service_db or (a.bounded_service and not a.bounded_service_stop))
+                self.assertTrue(not a.bounded_service_stop or a.bounded_service)
+                self.assertTrue(not a.bounded_service or (a.native_adapter and not any([a.bounded_worker, a.encrypted_provider, a.native_adapter_stop, a.native_adapter_running_stop])))
+                self.assertTrue(not a.bounded_worker or (a.native_adapter and not a.native_adapter_stop and not a.native_adapter_running_stop))
+                self.assertTrue(not a.native_adapter_running_stop or (a.native_adapter and not a.native_adapter_stop))
+                self.assertTrue(not a.native_adapter_stop or a.native_adapter)
+                self.assertTrue(not a.native_adapter or a.managed_mcp)
+                self.assertTrue(not a.managed_mcp or a.materialized_native)
+                self.assertTrue(not a.rendered_environment or (a.rendered_runtime and not any([a.encrypted_provider, a.shutdown_services, a.native_adapter])))
+                self.assertTrue(not a.rendered_runtime or a.runtime_unit_loss)
+                self.assertTrue(not a.runtime_unit_loss or (a.managed_guard and a.materialized_native and not any([a.control_native, a.revoke_native, a.native_adapter, a.encrypted_provider])))
+                self.assertTrue(not a.encrypted_provider or not any([a.control_native, a.revoke_native, a.native_adapter_stop, a.native_adapter_running_stop]))
+                self.assertTrue(not (a.encrypted_provider and a.materialized_native) or a.native_adapter)
+                self.assertEqual(scenario.image_kind == 'checkpoint-read-barrier', a.revoke_restore)
+                self.assertTrue(not scenario.restart or a.shutdown_services)
+
+    def test_listing_needs_no_host_and_does_not_run_preflight(self):
+        output = io.StringIO()
+        with patch('sys.argv', ['run-native-suite.py', '--list']), patch.object(runner, 'preflight', side_effect=AssertionError('must not inspect host')), contextlib.redirect_stdout(output):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual({row['id'] for row in json.loads(output.getvalue())}, set(SCENARIOS))
+
+    def test_connected_fixture_refuses_disabled_assertions_before_setup(self):
+        result = subprocess.run([sys.executable, '-O', '-B',
+                                 str(Path(__file__).with_name('test-connected-native-guest.py')), '--help'],
+                                capture_output=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'optimized Python disables behavioral assertions', result.stderr)
+
+    def test_child_environment_never_inherits_account_or_proxy_configuration(self):
+        with patch.dict(os.environ, {'OPENAI_API_KEY': 'not-a-real-key', 'CODEX_HOME': '/some/account', 'HTTPS_PROXY': 'https://invalid', 'PATH': '/untrusted'}):
+            env = child_environment({'pg_bin': Path('/tools/pg')}, Path('/test/home'))
+        self.assertEqual(set(env), {'PATH', 'LANG', 'LC_ALL', 'PYTHONDONTWRITEBYTECODE', 'HOME', 'TMPDIR'})
+        self.assertEqual(env['PATH'], '/tools/pg:/usr/local/bin:/usr/bin:/bin')
+
+    def test_prepare_collision_never_writes_existing_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            old = root / 'runs' / 'old'
+            old.mkdir(parents=True)
+            retained = old / 'evidence.json'
+            retained.write_text('existing test evidence')
+            environment = {'run_root': root / 'runs', 'deployment_root': root / 'deployments',
+                           'ipc_root': root / 'ipc', 'pg_bin': root / 'pg',
+                           'postgres_uid': 123, 'postgres_gid': 123}
+            observed = runner.NativeRun(environment, 'native.workflow', 'old').run()
+            self.assertEqual(observed['status'], 'FAIL')
+            self.assertEqual(list(old.iterdir()), [retained])
+            self.assertEqual(retained.read_text(), 'existing test evidence')
+
+    def test_failed_cleanup_cannot_be_reported_as_pass(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            environment = {'run_root': root, 'deployment_root': root / 'deployments',
+                           'ipc_root': root / 'ipc', 'pg_bin': root / 'pg',
+                           'postgres_uid': 123, 'postgres_gid': 123}
+            case = runner.NativeRun(environment, 'native.workflow', 'new')
+            def prepare():
+                case.root.mkdir()
+                case.created = True
+            with patch.object(case, 'prepare', side_effect=prepare), patch.object(case, 'execute'), patch.object(runner, 'evidence_export', side_effect=ValueError('missing evidence')):
+                observed = case.run()
+            self.assertEqual(observed['status'], 'FAIL')
+            self.assertFalse(observed['cleanup_complete'])
+            self.assertEqual(json.loads((case.root / 'report.json').read_text()), observed)
+
+    def test_image_identity_changes_with_build_inputs_but_not_research_or_docs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            names = ['Cargo.toml', 'Cargo.lock', 'scripts/prepare-codex-fixture.sh',
+                     'scripts/prepare-connected-native.sh', 'scripts/prepare-connected-program.sh',
+                     'scripts/test-profile.sh', 'scripts/native_image_identity.py', 'scripts/prepare-checkpoint-read-fixture.py',
+                     'crates/example/Cargo.toml', 'crates/example/src/lib.rs', 'scripts/fixtures/probe.rs']
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name)
+            before = source_digest(root)
+            (root / 'README.md').write_text('unrelated prose')
+            (root / 'research').mkdir()
+            (root / 'research/local.json').write_text('local-only data')
+            self.assertEqual(source_digest(root), before)
+            (root / 'crates/example/src/lib.rs').write_text('changed compiled behavior')
+            self.assertNotEqual(source_digest(root), before)
+            (root / 'Cargo.lock').unlink()
+            with self.assertRaises(FileNotFoundError):
+                source_digest(root)
+
+    def test_successful_parent_with_live_descendant_is_failed_and_cleaned(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            environment = {'run_root': root, 'deployment_root': root / 'deployments',
+                           'ipc_root': root / 'ipc', 'pg_bin': root / 'pg', 'source_root': root,
+                           'postgres_uid': 123, 'postgres_gid': 123}
+            case = runner.NativeRun(environment, 'native.workflow', 'children')
+            case.root.mkdir()
+            class Parent:
+                pid = 777
+                returncode = 0
+                def wait(self, timeout):
+                    return 0
+            with patch.object(runner.subprocess, 'Popen', return_value=Parent()), patch.object(runner, 'group_members', return_value=[778]), patch.object(runner, 'terminate_group') as cleanup:
+                with self.assertRaisesRegex(RuntimeError, 'descendants remained'):
+                    case.command(['never-executed'], 'leaked-child')
+                cleanup.assert_called_once()
+            self.assertEqual(case.commands[-1]['status'], 'FAIL')
+            self.assertEqual(case.commands[-1]['exit'], 0)
+
+    def test_kernel_manifest_rejects_old_source_wrong_test_and_changed_binary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            binary = root / 'test-harness'
+            binary.write_bytes(b'not an executable fixture; never launched')
+            binary.chmod(0o700)
+            manifest = {'version': 1, 'source_sha256': 'a' * 64, 'binary': str(binary),
+                        'sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'test_name': TEST_NAME}
+            path = root / 'kernel.json'
+            with patch('native_kernel_contract.source_digest', return_value='a' * 64):
+                path.write_text(json.dumps(manifest))
+                self.assertEqual(verify_manifest(path, root), manifest)
+                for change in ({'source_sha256': 'b' * 64}, {'test_name': 'unrelated_test'}, {'sha256': '0' * 64}, {'version': True}):
+                    path.write_text(json.dumps({**manifest, **change}))
+                    with self.subTest(change=list(change)), self.assertRaises(ValueError):
+                        verify_manifest(path, root)
+
+    def test_cargo_hardlink_is_copied_into_single_link_immutable_release(self):
+        # Same protected-parent policy as fixture_release's own portable tests.
+        root = Path(tempfile.mkdtemp(prefix='.native-cargo-test-', dir=Path.cwd())).resolve()
+        try:
+            source = root / 'debug'
+            dependencies = source / 'deps'
+            dependencies.mkdir(parents=True)
+            original = dependencies / 'ouroboros-example-build'
+            original.write_bytes(b'reproducible example build bytes')
+            original.chmod(0o755)
+            candidate = source / 'ouroboros-example'
+            os.link(original, candidate)
+            self.assertEqual(candidate.stat().st_nlink, 2)
+            digest = hash_build_binary(candidate)
+            manifest = {candidate.name: digest}
+            released = runner.install(source, root / 'releases', manifest, os.geteuid())
+            copied = Path(released['bin_dir']) / candidate.name
+            self.assertEqual(copied.stat().st_nlink, 1)
+            self.assertEqual(copied.stat().st_mode & 0o777, 0o555)
+            self.assertNotEqual(copied.stat().st_ino, candidate.stat().st_ino)
+            self.assertEqual(runner.hash_file(copied), digest)
+            # Mutating Cargo's shared input cannot mutate the accepted release copy.
+            original.write_bytes(b'new local build')
+            self.assertEqual(candidate.read_bytes(), b'new local build')
+            self.assertEqual(runner.hash_file(copied), digest)
+            # The release invariant remains strict even though incoming Cargo aliases are valid.
+            copied.parent.chmod(0o755)
+            os.link(copied, copied.parent / 'unauthorized-link')
+            with self.assertRaises(ValueError):
+                runner.hash_file(copied)
+        finally:
+            for directory, _, _ in os.walk(root):
+                os.chmod(directory, 0o700)
+            shutil.rmtree(root)
+
+    def test_build_input_rejects_symlink_mutability_and_changed_path_binding(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            path = root / 'binary'
+            path.write_bytes(b'executable build')
+            path.chmod(0o777)
+            with self.assertRaises(ValueError):
+                hash_build_binary(path)
+            path.chmod(0o755)
+            alias = root / 'alias'
+            alias.symlink_to(path)
+            with self.assertRaises(OSError):
+                hash_build_binary(alias)
+            other = root / 'other'
+            other.write_bytes(path.read_bytes())
+            other.chmod(0o755)
+            with patch.object(Path, 'lstat', return_value=other.lstat()):
+                with self.assertRaisesRegex(ValueError, 'changed while'):
+                    hash_build_binary(path)
+
+    def test_environment_rejects_identity_collision_unknown_fields_and_unpinned_image(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            (root / 'source/scripts').mkdir(parents=True)
+            (root / 'source/scripts/test-connected-native-guest.py').touch()
+            env = {'version': 1, 'disposable_host': True, 'source_root': str(root / 'source'),
+                   'bin_dir': str(root / 'bin'), 'run_root': str(root / 'runs'),
+                   'deployment_root': str(root / 'deployments'), 'ipc_root': str(root / 'ipc'),
+                   'release_root': str(root / 'releases'), 'pg_bin': str(root / 'pg'),
+                   'postgres_uid': 123, 'postgres_gid': 123, 'bridge_uid': 100101, 'guard_uid': 100102,
+                   'docker_socket': str(root / 'docker.sock'), 'native_image': 'sha256:' + '1' * 64,
+                   'codex_version': '0.153.4'}
+            path = root / 'environment.json'
+            path.write_text(json.dumps(env))
+            self.assertEqual(load_environment(path)['postgres_uid'], 123)
+            for change in ({'bridge_uid': 1}, {'bridge_uid': 123}, {'native_image': 'latest'}, {'extra': True}, {'disposable_host': False}):
+                path.write_text(json.dumps({**env, **change}))
+                with self.subTest(change=list(change)), self.assertRaises(ValueError):
+                    load_environment(path)
+
+
+if __name__ == '__main__':
+    unittest.main()
