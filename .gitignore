@@ -14,3 +14,12 @@ dist/
 coverage/
 
 .worktrees/
+
+# Local research notes and source-audit working material.
+/research/
+
+# Local build, test credentials, and execution evidence.
+/target/
+/.local/
+
+__pycache__/

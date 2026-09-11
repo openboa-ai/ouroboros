@@ -1,0 +1,23 @@
+# Dedicated local test infrastructure; no private payload starts at VM boot.
+# Mac VZ / aarch64 reference profile only, not a product-wide host or architecture default.
+# The caller supplies LIMA_HOME and the instance name to limactl; this file contains neither.
+# Linux guest scripts require OURO_TEST_PROFILE=linux-aarch64-reference and explicit
+# staging, build-output, installation-prefix, and Docker socket settings as applicable.
+minimumLimaVersion: 2.2.0
+vmType: vz
+arch: aarch64
+plain: true
+cpus: 4
+memory: 4GiB
+disk: 24GiB
+images:
+- location: https://cloud-images.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img
+  arch: aarch64
+  digest: sha256:7df0201546f75b8bcc1044594c806c35749421ad3c9bc1be2a3ab806cfae39cc
+mounts: []
+ssh:
+  forwardAgent: false
+containerd:
+  system: false
+  user: false
+portForwards: []

@@ -1,0 +1,32 @@
+[package]
+name = "ouroboros-resources"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+libc.workspace = true
+clap.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+ouroboros-contracts = { path = "../contracts" }
+ouroboros-transport = { path = "../transport" }
+async-stream.workspace = true
+futures-util.workspace = true
+ring = "=0.17.14"
+zeroize = "=1.9.0"
+
+[features]
+# Integration tests require an explicitly provisioned disposable PostgreSQL environment.
+postgres-tests = []
+
+[[test]]
+name = "receipts"
+path = "tests/receipts.rs"
+required-features = ["postgres-tests"]

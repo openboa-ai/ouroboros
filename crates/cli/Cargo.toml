@@ -1,0 +1,24 @@
+[package]
+name = "ouroboros-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+async-stream.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+clap.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+ouroboros-contracts = { path = "../contracts" }
+ouroboros-transport = { path = "../transport" }
+url = "2"
+zeroize = "=1.9.0"
+tar = { version = "=0.4.46", default-features = false }

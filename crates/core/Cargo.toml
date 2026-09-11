@@ -1,0 +1,53 @@
+[package]
+name = "ouroboros-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
+axum.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+ouroboros-contracts = { path = "../contracts" }
+ouroboros-transport = { path = "../transport" }
+url = "2"
+
+[features]
+# Integration tests require an explicitly provisioned disposable PostgreSQL environment.
+postgres-tests = []
+
+[[test]]
+name = "binary_transfers"
+path = "tests/binary_transfers.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
+name = "common_management"
+path = "tests/common_management.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
+name = "control"
+path = "tests/control.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
+name = "programs"
+path = "tests/programs.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
+name = "receipt_recovery"
+path = "tests/receipt_recovery.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
+name = "workspaces"
+path = "tests/workspaces.rs"
+required-features = ["postgres-tests"]
