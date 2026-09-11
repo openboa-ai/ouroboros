@@ -26,19 +26,38 @@ async fn reject_insert_at_commit(pool: &sqlx::PgPool, table: &str, intent: Uuid)
         ]
         .contains(&table)
     );
+    // Audited DDL: generated UUID identifier, typed UUID value, and allowlisted table.
     let name = format!("fixture_failure_{}", Uuid::new_v4().simple());
-    sqlx::query(&format!("CREATE FUNCTION {name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected disposable commit failure'; END $$"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE FUNCTION {name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected disposable commit failure'; END $$")))
         .execute(pool).await.unwrap();
-    sqlx::query(&format!("CREATE CONSTRAINT TRIGGER {name} AFTER INSERT ON {table} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.intent_id='{intent}'::uuid) EXECUTE FUNCTION {name}()"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE CONSTRAINT TRIGGER {name} AFTER INSERT ON {table} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.intent_id='{intent}'::uuid) EXECUTE FUNCTION {name}()")))
         .execute(pool).await.unwrap();
     name
 }
 async fn remove_commit_failure(pool: &sqlx::PgPool, table: &str, name: &str) {
-    sqlx::query(&format!("DROP TRIGGER {name} ON {table}"))
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query(&format!("DROP FUNCTION {name}()"))
+    // Cleanup accepts only the same finite table set and generated identifier spelling.
+    assert!(
+        [
+            "upload_staging",
+            "uploads",
+            "publication_receipts",
+            "workspace_create_receipts",
+            "catalog_retirements",
+            "catalog_collections"
+        ]
+        .contains(&table)
+    );
+    let suffix = name
+        .strip_prefix("fixture_failure_")
+        .expect("fixture trigger prefix");
+    assert!(suffix.len() == 32 && suffix.bytes().all(|b| b.is_ascii_hexdigit()));
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP TRIGGER {name} ON {table}"
+    )))
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP FUNCTION {name}()")))
         .execute(pool)
         .await
         .unwrap();
@@ -1004,10 +1023,11 @@ async fn reference_retirement(
 }
 
 async fn reject_collection_completion_at_commit(pool: &sqlx::PgPool, intent: Uuid) -> String {
+    // Audited DDL: UUID-only identifier and typed intent; the target table is literal.
     let name = format!("fixture_failure_{}", Uuid::new_v4().simple());
-    sqlx::query(&format!("CREATE FUNCTION {name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected disposable collection commit failure'; END $$"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE FUNCTION {name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected disposable collection commit failure'; END $$")))
         .execute(pool).await.unwrap();
-    sqlx::query(&format!("CREATE CONSTRAINT TRIGGER {name} AFTER UPDATE ON catalog_collections DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.intent_id='{intent}'::uuid AND NEW.state='deleted') EXECUTE FUNCTION {name}()"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE CONSTRAINT TRIGGER {name} AFTER UPDATE ON catalog_collections DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.intent_id='{intent}'::uuid AND NEW.state='deleted') EXECUTE FUNCTION {name}()")))
         .execute(pool).await.unwrap();
     name
 }
@@ -1954,6 +1974,11 @@ async fn credential_custody(
         credential_store::CredentialStore,
     };
     use zeroize::Zeroizing;
+    // Audited role DDL: the fixture's generated identifier is the only interpolation.
+    let suffix = role
+        .strip_prefix("ouro_worker_")
+        .expect("fixture role prefix");
+    assert!(suffix.len() == 32 && suffix.bytes().all(|b| b.is_ascii_hexdigit()));
     // Disposable owner-only fixture: custody tables are isolated from company tables in product.
     sqlx::raw_sql(include_str!("../migrations/custody/0001_custody.sql"))
         .execute(pool)
@@ -1997,7 +2022,7 @@ async fn credential_custody(
     .execute(pool)
     .await
     .unwrap();
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA public TO {role}; GRANT SELECT,INSERT ON credential_enrollments,credential_disables TO {role}; GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {role}; GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {role}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {role}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {role}; GRANT INSERT(owner_id,credential_id,version,envelope), UPDATE(disabled,disabled_at) ON credential_versions TO {role};"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA public TO {role}; GRANT SELECT,INSERT ON credential_enrollments,credential_disables TO {role}; GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {role}; GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {role}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {role}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {role}; GRANT INSERT(owner_id,credential_id,version,envelope), UPDATE(disabled,disabled_at) ON credential_versions TO {role};")))
         .execute(pool).await.unwrap();
     let worker = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
@@ -2174,9 +2199,10 @@ async fn credential_custody(
         .await
         .is_err()
     );
+    // The validated parent role plus a fixed suffix and a typed UUID password are SQL-safe.
     let consumer_role = format!("{role}_consumer");
     let consumer_password = Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {consumer_role} LOGIN PASSWORD '{consumer_password}'; GRANT USAGE ON SCHEMA public TO {consumer_role}; GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {consumer_role}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {consumer_role}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {consumer_role};")).execute(pool).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {consumer_role} LOGIN PASSWORD '{consumer_password}'; GRANT USAGE ON SCHEMA public TO {consumer_role}; GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {consumer_role}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {consumer_role}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {consumer_role};"))).execute(pool).await.unwrap();
     let consumer_pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -2196,7 +2222,7 @@ async fn credential_custody(
         .await
         .is_err()
     );
-    sqlx::query(&format!("GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {consumer_role}")).execute(pool).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {consumer_role}"))).execute(pool).await.unwrap();
     let consumer = CredentialStore::open_consumer(
         consumer_pool.clone(),
         EnvelopeKey::new(Zeroizing::new([9; 32])).unwrap(),
