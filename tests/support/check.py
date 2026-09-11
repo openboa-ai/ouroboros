@@ -87,7 +87,7 @@ def commands(identifier, config):
         names = ['test-layout.py', 'test-build-profile.py', 'test-fixture-config.py', 'test-fixture-release.py',
                  'test-check-catalog.py', 'test-check-runner.py', 'test-check-build.py',
                  'test-ci-environment.py', 'test-postgres-suite.py', 'test-native-suite-contract.py',
-                 'test-worker-observation.py']
+                 'test-worker-observation.py', 'test-runtime-pause-barrier.py']
         return [([python, str(ROOT / 'tests/tooling' / name)], 180) for name in names]
     if identifier == 'config.startup':
         require_build(config)

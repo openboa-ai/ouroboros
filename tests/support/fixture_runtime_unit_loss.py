@@ -1,7 +1,35 @@
 """Actual native work under a finite Runtime unit; independent guard and stop-only recovery."""
 
-import errno,hashlib,json,os,subprocess,time
+import errno,hashlib,json,os,signal,subprocess,time
+from contextlib import contextmanager
 from pathlib import Path
+
+@contextmanager
+def frozen_process(pid):
+    """Hold this exact fixture process until a negative shutdown assertion completes."""
+    assert pid > 0
+    fd = os.pidfd_open(pid)
+    stopped = False
+    try:
+        signal.pidfd_send_signal(fd, signal.SIGSTOP)
+        stopped = True
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            state = next(line for line in Path('/proc', str(pid), 'status').read_text().splitlines()
+                         if line.startswith('State:')).split()[1]
+            if state == 'T':
+                break
+            time.sleep(.01)
+        else:
+            raise AssertionError('fixture Runtime did not reach the stopped-process barrier')
+        yield
+    finally:
+        try:
+            if stopped:
+                signal.pidfd_send_signal(fd, signal.SIGCONT)
+        finally:
+            os.close(fd)
+
 
 def start(binary,config,unit,log,env,rendered=False):
     if rendered:return start_rendered(binary,config,unit,env)
@@ -60,8 +88,14 @@ def verify(context,unit,graceful=False):
                 current=cli('request','GET','/environment/status/'+c['control'])
                 pause=root/'cli/host-maintenance-pause.json'
                 c['write'](pause,json.dumps({'delegation_id':c['control'],'expected_revision':current['revision'],'paused':True,'reason':'Bounded fixture host shutdown'}),70003)
-                cli('request','POST','/environment/admission','--input',str(pause),'--key','host-maintenance-pause')
-                stop_phase(c['binary'],root,'control',c['control'],reject='unresolved execution/effect records')
+                # Admission pause also interrupts work. Hold only the supervisor so completion
+                # cannot clear the unresolved record before the negative control-stop request.
+                # The independent guard keeps running; the pidfd prevents signaling a successor.
+                with frozen_process(main_pid(unit)):
+                    cli('request','POST','/environment/admission','--input',str(pause),'--key','host-maintenance-pause')
+                    pending=cli('request','GET','/environment/status/'+c['control'])
+                    assert pending['instances_without_termination']>0
+                    stop_phase(c['binary'],root,'control',c['control'],reject='unresolved execution/effect records')
                 result=stop_phase(c['binary'],root,'runtime',c['control'])
                 assert result['status']=='phase_stopped' and not result['obligations_settled']
             elif getattr(runtime,'rendered',False):runtime.terminate()
