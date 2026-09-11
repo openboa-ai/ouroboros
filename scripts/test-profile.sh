@@ -97,10 +97,11 @@ ouro_docker() {
 # The tag is local-only and checked against the caller's immutable ID before use.
 ouro_local_build_base() {
   local image=${1:?exact image ID required}
-  [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || ouro_fail 'Invalid fixture base identity.'
+  [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || { ouro_fail 'Invalid fixture base identity.'; return 1; }
   local reference="localhost/ouroboros-fixture-base:${image#sha256:}"
-  ouro_docker image tag "$image" "$reference"
-  [[ $(ouro_docker image inspect --format '{{.Id}}' "$reference") == "$image" ]] || \
-    ouro_fail 'Local fixture base does not match its immutable identity.'
+  ouro_docker image tag "$image" "$reference" || return
+  local observed
+  observed=$(ouro_docker image inspect --format '{{.Id}}' "$reference") || return
+  [[ "$observed" == "$image" ]] || { ouro_fail 'Local fixture base does not match its immutable identity.'; return 1; }
   printf '%s\n' "$reference"
 }
