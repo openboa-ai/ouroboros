@@ -92,3 +92,15 @@ ouro_docker() {
   if [[ $(id -u) != 0 ]]; then command=(sudo "${command[@]}"); fi
   "${command[@]}" docker --host "unix://$OURO_DOCKER_SOCKET" "$@"
 }
+
+# BuildKit's FROM expects a named image reference, not a Docker config image ID.
+# The tag is local-only and checked against the caller's immutable ID before use.
+ouro_local_build_base() {
+  local image=${1:?exact image ID required}
+  [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || ouro_fail 'Invalid fixture base identity.'
+  local reference="localhost/ouroboros-fixture-base:${image#sha256:}"
+  ouro_docker image tag "$image" "$reference"
+  [[ $(ouro_docker image inspect --format '{{.Id}}' "$reference") == "$image" ]] || \
+    ouro_fail 'Local fixture base does not match its immutable identity.'
+  printf '%s\n' "$reference"
+}

@@ -202,6 +202,9 @@ jobs:
           key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-
+      - name: Qualify synthetic release-store filesystem before compilation
+        shell: bash
+        run: env -i "PATH=$PATH" "HOME=$HOME" PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-fixture-release.py
       - name: Build and run supplemental Mac contracts
         shell: bash
         run: |

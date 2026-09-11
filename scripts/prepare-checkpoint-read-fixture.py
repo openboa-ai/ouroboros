@@ -12,6 +12,12 @@ parser.add_argument('--socket', required=True)
 args = parser.parse_args()
 assert re.fullmatch(r'sha256:[a-f0-9]{64}', args.image)
 assert Path(args.socket).is_absolute()
+docker = ['docker', '--host', 'unix://' + args.socket]
+reference = 'localhost/ouroboros-fixture-base:' + args.image.removeprefix('sha256:')
+subprocess.run([*docker, 'image', 'tag', args.image, reference], check=True, timeout=30)
+observed = subprocess.check_output([*docker, 'image', 'inspect', '--format', '{{.Id}}', reference], text=True, timeout=30).strip()
+if observed != args.image:
+    raise ValueError('local fixture base differs from the immutable input')
 with tempfile.TemporaryDirectory(prefix='ouroboros-read-fixture-') as directory:
     root = Path(directory)
     (root/'head').write_text('''#!/bin/sh
@@ -25,7 +31,7 @@ fi
 exec /bin/busybox head "$@"
 ''')
     (root/'head').chmod(0o755)
-    (root/'Dockerfile').write_text(f'''FROM {args.image}
+    (root/'Dockerfile').write_text(f'''FROM {reference}
 USER 0:0
 RUN rm /bin/head
 COPY head /bin/head

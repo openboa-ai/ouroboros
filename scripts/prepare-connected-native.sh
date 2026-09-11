@@ -42,7 +42,8 @@ COPY ouroboros-cli /usr/local/bin/ouroboros-cli
 COPY ouroboros-fixture-net-probe /usr/local/bin/ouroboros-fixture-net-probe
 USER 65532:65532
 DOCKER
-ouro_docker build --network=none --build-arg "CODEX_IMAGE=$source_image" \
+build_base=$(ouro_local_build_base "$source_image")
+ouro_docker build --pull=false --network=none --build-arg "CODEX_IMAGE=$build_base" \
   --iidfile "$stage/image.id" "$stage"
 cat "$stage/image.id"
 # Runtime will replace writable workspace/home with bounded tmpfs after admission.

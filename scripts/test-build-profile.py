@@ -37,6 +37,8 @@ elif name == "readelf" and os.environ.get("OURO_STUB_READELF_FAIL"):
     raise SystemExit(1)
 elif name == "rustc":
     pathlib.Path(args[args.index("-o") + 1]).write_text("fixture TCP probe")
+elif name == "docker" and "inspect" in args and "--format" in args:
+    print(os.environ.get("OURO_STUB_IMAGE_ID", "sha256:" + "a" * 64))
 elif name == "docker" and "--iidfile" in args:
     pathlib.Path(args[args.index("--iidfile") + 1]).write_text("sha256:" + "b" * 64 + "\n")
 elif name == "sudo":
@@ -161,13 +163,22 @@ class BuildProfileTest(unittest.TestCase):
                 self.assertEqual(rustc["args"][rustc["args"].index("--target") + 1], "aarch64-unknown-linux-gnu")
                 self.assertEqual(len([call for call in calls if call["name"] == "readelf"]), 2)
                 docker = [call for call in calls if call["name"] == "docker"]
-                self.assertEqual(len(docker), 2)
+                build = next(call for call in docker if "build" in call["args"])
+                self.assertIn("CODEX_IMAGE=localhost/ouroboros-fixture-base:" + "a" * 64, build["args"])
+                self.assertIn("--network=none", build["args"])
+                self.assertIn("--pull=false", build["args"])
                 for call in docker:
                     self.assertEqual(call["args"][:2], ["--host", "unix://" + str(endpoint)])
                     self.assertEqual(call["ambient_docker"], {})
                 for call in calls:
                     self.assertEqual(call["ambient_proxy_keys"], [])
                 self.assertEqual(list(stage.iterdir()), [], "only the invocation's staging directory is removed")
+
+    def test_wrong_local_base_identity_blocks_image_build(self):
+        env, _, _ = self.configured_layout("wrong-base")
+        result = self.run_build(env | {"OURO_STUB_IMAGE_ID": "sha256:" + "c" * 64})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(call["name"] == "docker" and "build" in call["args"] for call in self.calls()))
 
     def test_failed_binary_inspection_does_not_build_an_image(self):
         env, _, _ = self.configured_layout("invalid-binary")

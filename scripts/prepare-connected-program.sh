@@ -59,7 +59,8 @@ DOCKER
 cli_digest=$(sha256sum "$stage/ouroboros-cli" | cut -d' ' -f1)
 materializer_digest=$(sha256sum "$stage/ouroboros-materialize" | cut -d' ' -f1)
 probe_digest=$(sha256sum "$stage/ouroboros-fixture-net-probe" | cut -d' ' -f1)
-ouro_docker build --pull=false --network=none --build-arg "PROGRAM_IMAGE=$source_image" \
+build_base=$(ouro_local_build_base "$source_image")
+ouro_docker build --pull=false --network=none --build-arg "PROGRAM_IMAGE=$build_base" \
   --build-arg "SOURCE_SHA256=$source_digest" --build-arg "CLI_SHA256=$cli_digest" \
   --build-arg "MATERIALIZER_SHA256=$materializer_digest" --build-arg "PROBE_SHA256=$probe_digest" \
   --iidfile "$stage/image.id" "$stage"
