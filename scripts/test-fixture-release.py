@@ -72,7 +72,9 @@ class Releases(unittest.TestCase):
         path.chmod(0o755);(path/'unexpected').write_bytes(b'x');path.chmod(0o555)
         with self.assertRaises(ValueError):self.put()
         path.chmod(0o755);(path/'unexpected').unlink();path.chmod(0o555)
-        moved=path.with_name('preserved');path.rename(moved);path.symlink_to(moved,target_is_directory=True)
+        moved=path.with_name('preserved')
+        path.chmod(0o700);path.rename(moved);moved.chmod(0o555)
+        path.symlink_to(moved,target_is_directory=True)
         with self.assertRaises(ValueError):self.put()
         path.unlink()
 
