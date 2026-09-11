@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import secrets
 import subprocess
@@ -188,7 +189,7 @@ def run(plan, lane, config, result_file):
                         raise ValueError('native binaries must match the verified build')
                 with log_path.open('xb') as log:
                     os.fchmod(log.fileno(), 0o600)
-                    for command, timeout in commands(identifier, config):
+                    for command_index, (command, timeout) in enumerate(commands(identifier, config)):
                         if source_digest() != current:
                             source_changed = True
                             record['failure_kind'] = 'source_changed'
@@ -200,6 +201,15 @@ def run(plan, lane, config, result_file):
                             break
                         if result:
                             record['exit_code'] = result
+                            record['command_index'] = command_index
+                            # Export identifiers, never assertion values, argv, tracebacks,
+                            # provider responses, paths or the private log itself.
+                            log.flush()
+                            with log_path.open('rb') as incoming:
+                                incoming.seek(max(0, log_path.stat().st_size - 262144))
+                                tail = incoming.read().decode('utf-8', errors='replace')
+                            record['failed_tests'] = sorted(set(re.findall(
+                                r'(?m)^(?:FAIL|ERROR): (test_[A-Za-z0-9_]{1,120}) \(', tail)))[:32]
                             break
                     else:
                         record['status'] = 'PASS'

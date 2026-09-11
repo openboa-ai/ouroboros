@@ -18,7 +18,6 @@ concurrency:
 env:
   PYTHONDONTWRITEBYTECODE: '1'
   RUSTUP_TOOLCHAIN: '1.94.1'
-  CARGO_HOME: ${{ github.workspace }}/.local/cargo
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
@@ -61,13 +60,13 @@ jobs:
               output.write('build_required=' + str(bool(lanes - {'integrity'})).lower() + '\n')
               output.write('mac_required=' + str('fast' in lanes).lower() + '\n')
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: behavior-plan
           path: .local/plan.json
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   build:
     needs: plan
@@ -79,11 +78,12 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: build-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            .local/cargo/registry
-            .local/cargo/git
+            ~/.cargo/registry
+            ~/.cargo/git
             .local/target
           key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
@@ -95,7 +95,7 @@ jobs:
           python3 scripts/ci_environment.py prepare --lane build --output .local/environment.json
           python3 scripts/check.py build --environment .local/environment.json --output .local/build.json
           python3 scripts/ci_environment.py bundle --archive .local/build-bundle.tar.gz
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: behavior-linux-build
           path: .local/build-bundle.tar.gz
@@ -108,6 +108,7 @@ jobs:
     if: ${{ always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.plan.outputs.build_required == 'false') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 150
+    name: checks-${{ matrix.lane }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -116,21 +117,21 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: behavior-plan
           path: .local
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: matrix.lane != 'integrity'
         with:
           path: |
-            .local/cargo/registry
-            .local/cargo/git
+            ~/.cargo/registry
+            ~/.cargo/git
             .local/target
           key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: matrix.lane != 'integrity'
         with:
           name: behavior-linux-build
@@ -162,15 +163,20 @@ jobs:
             python3 scripts/check.py run --plan .local/plan.json --lane "$LANE" \
               --environment .local/environment.json --output ".local/results/$LANE.json"
           fi
+      - name: Summarize case results
+        if: always()
+        env:
+          LANE: ${{ matrix.lane }}
+        run: python3 scripts/ci_report.py --results ".local/results/$LANE.json"
       - name: Export only structured case results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: behavior-results-${{ matrix.lane }}
           path: .local/results/${{ matrix.lane }}.json
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   mac-compatibility:
     needs: plan
@@ -182,15 +188,16 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: behavior-plan
           path: .local
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: build-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            .local/cargo/registry
-            .local/cargo/git
+            ~/.cargo/registry
+            ~/.cargo/git
             .local/target
           key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
@@ -203,14 +210,19 @@ jobs:
           python3 scripts/check.py build --environment .local/environment.json --output .local/build.json
           python3 scripts/check.py run --plan .local/plan.json --lane fast \
             --environment .local/environment.json --output .local/mac-result.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Summarize Mac results
+        if: always()
+        env:
+          CACHE_HIT: ${{ steps.build-cache.outputs.cache-hit }}
+        run: python3 scripts/ci_report.py --results .local/mac-result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: behavior-mac-compatibility
           path: .local/mac-result.json
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   behavior-gate:
     name: behavior-gate
@@ -223,17 +235,20 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: always()
         with:
           name: behavior-plan
           path: .local
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: always()
         with:
           pattern: behavior-results-*
           path: .local/results
           merge-multiple: true
+      - name: Summarize selected plan and results
+        if: always()
+        run: python3 scripts/ci_report.py --plan .local/plan.json --results .local/results/*.json
       - name: Account for every selected case and dependency
         if: always()
         shell: bash
@@ -251,15 +266,15 @@ jobs:
             --results .local/results/*.json --output .local/case-summary.json || report_status=$?
           python3 scripts/ci_environment.py finalize --case-summary .local/case-summary.json \
             --report-exit "$report_status" --output .local/summary.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: behavior-summary
           path: .local/summary.json
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 14
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+          retention-days: 30
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: success() && needs.plan.outputs.build_required == 'true'
         with:
           name: behavior-linux-build
@@ -273,11 +288,30 @@ jobs:
           python3 scripts/ci_environment.py prepare --lane package --output .local/environment.json
           python3 scripts/check.py package --plan .local/plan.json --summary .local/summary.json \
             --build-manifest .local/build.json --environment .local/environment.json --output .local/installation-candidate.tar.gz
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: success() && needs.plan.outputs.build_required == 'true'
         with:
           name: behavior-installation-candidate
           path: .local/installation-candidate.tar.gz
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+  attest:
+    name: attest-installation-candidate
+    needs: [plan, behavior-gate]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.behavior-gate.result == 'success' && needs.plan.outputs.build_required == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: behavior-installation-candidate
+          path: candidate
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: candidate/installation-candidate.tar.gz

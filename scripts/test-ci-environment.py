@@ -12,10 +12,25 @@ import unittest
 from unittest.mock import patch
 
 import ci_environment as ci
+from ci_report import render
 
 kernel_spec = importlib.util.spec_from_file_location('kernel_builder', Path(__file__).with_name('prepare-kernel-contract.py'))
 kernel = importlib.util.module_from_spec(kernel_spec)
 kernel_spec.loader.exec_module(kernel)
+
+
+class PublicDiagnostics(unittest.TestCase):
+    def test_untrusted_values_and_private_details_are_not_published(self):
+        report, annotations = render({'head': 'bad\n::error::secret'}, [
+            {'id': 'tooling.contracts', 'status': 'FAIL', 'duration_seconds': 1.25,
+             'failed_tests': ['test_current_permission', 'credential-canary\n::error::leak'],
+             'stderr': 'secret-canary', 'token': 'credential-canary'},
+            {'id': 'unknown-secret-canary', 'status': 'FAIL'}])
+        public = report + str(annotations)
+        self.assertIn('test_current_permission', public)
+        self.assertNotIn('canary', public)
+        self.assertNotIn('::error::', public)
+        self.assertEqual(len(annotations), 1)
 
 
 class EnvironmentContracts(unittest.TestCase):
