@@ -202,27 +202,34 @@ impl ProviderSender {
             version: selected.credential_version,
         };
         let result=self.custody.consume_async(binding,ticket.attempt_id,Duration::from_millis(self.binding.timeout_ms),|secret|async move {
-            let request=self.binding.request(&self.client,&secret,body)?;
-            tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|CustodyError)??;
+            let request=self.binding.request(&self.client,&secret,body).map_err(|_|{eprintln!("provider request construction failed");CustodyError})?;
+            tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|{eprintln!("provider dispatch authorization timed out");CustodyError})?.map_err(|_|{eprintln!("provider dispatch authorization denied");CustodyError})?;
             let transfer=async {
-            let mut response=self.client.execute(request).await.map_err(|_|CustodyError)?;
-            if !response.status().is_success() {return Err(CustodyError)}
+            let mut response=self.client.execute(request).await.map_err(|error|{
+                eprintln!("provider transport failed: connect={} timeout={}",error.is_connect(),error.is_timeout());
+                CustodyError
+            })?;
+            if !response.status().is_success() {
+                // Never read or log an error body: it may reflect credentials or workload data.
+                eprintln!("provider response rejected: status={}",response.status().as_u16());
+                return Err(CustodyError)
+            }
             let status=response.status().as_u16();
-            let content_type=response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v|v.to_str().ok()).and_then(|v|v.split(';').next()).ok_or(CustodyError)?.to_owned();
-            if !matches!(content_type.as_str(),"application/json"|"text/event-stream") {return Err(CustodyError)}
+            let content_type=response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v|v.to_str().ok()).and_then(|v|v.split(';').next()).ok_or_else(||failure("missing response media type"))?.to_owned();
+            if !matches!(content_type.as_str(),"application/json"|"text/event-stream") {return Err(failure("unsupported response media type"))}
             // Only the validated media type is forwarded; arbitrary upstream header parameters
             // cannot become a credential reflection path.
-            emit(ProviderFrame::Head {status,content_type:content_type.clone()}).await?;
+            emit(ProviderFrame::Head {status,content_type:content_type.clone()}).await.map_err(|_|failure("response header delivery"))?;
             let mut bytes=Vec::new();
             let mut guard=crate::provider_stream::SafeChunks::new(&secret,self.binding.max_response_bytes)?;
-            while let Some(chunk)=response.chunk().await.map_err(|_|CustodyError)? {
-                let safe=guard.push(&chunk)?;
+            while let Some(chunk)=response.chunk().await.map_err(|_|failure("response body transport"))? {
+                let safe=guard.push(&chunk).map_err(|_|failure("response safety bound"))?;
                 bytes.extend_from_slice(&chunk);
-                if !safe.is_empty() { emit(ProviderFrame::Data(safe)).await?; }
+                if !safe.is_empty() { emit(ProviderFrame::Data(safe)).await.map_err(|_|failure("response chunk delivery"))?; }
             }
             let tail=guard.finish();
-            if !tail.is_empty() { emit(ProviderFrame::Data(tail)).await?; }
-            let body=String::from_utf8(bytes).map_err(|_|CustodyError)?;
+            if !tail.is_empty() { emit(ProviderFrame::Data(tail)).await.map_err(|_|failure("response tail delivery"))?; }
+            let body=String::from_utf8(bytes).map_err(|_|failure("response encoding"))?;
             let observation=crate::provider_observation::observe(&content_type,&body);
             Ok(ResourceReply {status,content_type,body,receipt:json!({"source":"provider_worker","attempt_id":ticket.attempt_id,"credential_id":binding.credential,"credential_version":binding.version,"requested_model":ticket.input.get("model"),"requested_effort":ticket.input.pointer("/reasoning/effort"),"provider_observation":observation})})
             };
@@ -234,19 +241,25 @@ impl ProviderSender {
                 tokio::select! {
                     biased;
                     _=checks.tick()=> {
-                        tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|CustodyError)??;
+                        tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|failure("authority recheck timeout"))?.map_err(|_|failure("authority recheck denied"))?;
                     }
                     result=&mut transfer=> {
                         let result=result?;
-                        tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|CustodyError)??;
+                        tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|failure("authority recheck timeout"))?.map_err(|_|failure("authority recheck denied"))?;
                         return Ok(result);
                     }
                 }
             }
-        }).await.map_err(|_|CustodyError)?;
-        self.custody.save_provider_reply(ticket, &result).await?;
+        }).await.map_err(|error|{eprintln!("provider custody use failed: {error:?}");CustodyError})?;
+        self.custody.save_provider_reply(ticket, &result).await.map_err(|_|failure("receipt persistence"))?;
         Ok(result)
     }
+}
+
+// Diagnostics are fixed local stages. Do not pass upstream error text, bodies, URLs or headers.
+fn failure(stage: &'static str) -> CustodyError {
+    eprintln!("provider failed: {stage}");
+    CustodyError
 }
 
 #[cfg(test)]
