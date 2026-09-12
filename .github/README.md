@@ -22,6 +22,11 @@ account credentials, company state, or a developer's VM. Actual provider calls r
 
 ## Review and merge
 
+PR delivery is the Deploy stage of the [development lifecycle](../docs/DEVELOPMENT.md), not the
+whole lifecycle. Intent and design precede dependent implementation; verified delivery and
+authorized observation feed subsequent work. A small change may keep its decisions and evidence
+in the PR rather than creating three separate planning documents.
+
 The main ruleset requires current-base checks, resolved conversations, and code-owner approval for
 paths listed in the root CODEOWNERS file. General approval count is zero after the transition.
 `@SonSangjoon` is the technical reviewer, not a replacement for the sovereign designated by
@@ -80,6 +85,11 @@ High/Critical vulnerable dependencies without inventing a license allowlist. Sec
 push protection and private vulnerability reporting remain enabled.
 
 ## Artifacts and diagnostics
+
+After delivery, preserve actionable regressions and repeated findings in the relevant PR with
+the affected revision, observed result and next intended outcome. Update a narrow test or guidance
+source when evidence justifies it. Monitoring and rollback require their own existing scope and
+authority; a successful pipeline does not install a watcher or authorize production action.
 
 Intermediate build transport expires after seven days; reports, installation candidates and
 workflow logs after thirty days. Cache entries contain only dependencies/compiled outputs and

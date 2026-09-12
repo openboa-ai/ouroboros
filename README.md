@@ -50,6 +50,8 @@ continuity across replacement and exit. Reusable capabilities do not change the 
 or grant permission to use them.
 
 The [Agent Development Context](AGENTS.md) is the operational entry point for development agents.
+The [development guide](docs/DEVELOPMENT.md) connects intent, design, implementation, verification,
+delivery and observation; read the section relevant to the current task.
 It routes work through the [Core Doctrine](CORE_DOCTRINE.md), which defines Ouroboros's
 constitutionally governing purpose and boundaries; agents may not modify that authority, and the
 human sovereign alone may amend the doctrine. The [Sovereign Designation](SOVEREIGN.md) resolves
