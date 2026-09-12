@@ -99,6 +99,10 @@ is the existing Python/Rust tooling; no LLM judges system correctness.
 
 ## Evidence and migration
 
+For an explicitly authorized real-model functional demonstration, see the
+[basic flow procedure](integration/BASIC_FLOW_DEMO.md). Its model-free preparation and
+bounded live run are separate from the synthetic CI scenarios.
+
 Reports bind the source digest, selected scenario IDs and outcomes. Private fixture logs,
 credentials, generated data and build outputs belong in explicit ignored storage such as `.local/`,
 never beside versioned tests. Public summaries allow known test locations and bounded identifiers,
