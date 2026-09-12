@@ -42,6 +42,12 @@ Do not run all files by indiscriminate discovery: some are fixture servers or Li
 
 ## Run the checks
 
+Use change-impact selection for ordinary development and the full plan when the selector or
+release/regression task requires it. Run the selected checks, repair failures caused by the
+requested change, and rerun affected checks without asking again for already-authorized fixture
+work. Broaden verification when new evidence warrants it, not after every text edit. This does
+not relax required CI, environment prerequisites, or code-owner review of test changes.
+
 From the repository root, the public commands remain unchanged:
 
 ```sh
