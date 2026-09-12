@@ -240,7 +240,7 @@ async fn upload_content_inner(
     }
     ensure!(actual_size == size, "incomplete upload");
     ensure!(
-        format!("{:x}", actual_digest.finalize()) == digest,
+        hex::encode(actual_digest.finalize()) == digest,
         "upload digest mismatch"
     );
     transfer.run(file_live(&a, &worker, &ticket)).await?;

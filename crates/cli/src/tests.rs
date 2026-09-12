@@ -442,7 +442,7 @@ fn binary_headers(expected: &[u8]) -> reqwest::header::HeaderMap {
     );
     headers.insert(
         "x-ouro-content-sha256",
-        format!("{:x}", Sha256::digest(expected)).parse().unwrap(),
+        hex::encode(Sha256::digest(expected)).parse().unwrap(),
     );
     headers.insert(
         "x-ouro-intent-id",

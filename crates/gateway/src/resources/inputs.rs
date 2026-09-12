@@ -336,7 +336,7 @@ mod program_input_tests {
                     object_id: Uuid::new_v4(),
                     store_id: Uuid::new_v4(),
                     generation: Uuid::new_v4(),
-                    sha256: format!("{:x}", Sha256::digest(&bytes)),
+                    sha256: hex::encode(Sha256::digest(&bytes)),
                     size: bytes.len() as u64,
                 },
                 bytes,

@@ -35,7 +35,7 @@ fn provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 pub fn fingerprint(der: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(der))
+    hex::encode(Sha256::digest(der))
 }
 pub fn client(files: &TlsFiles) -> Result<reqwest::Client> {
     provider();

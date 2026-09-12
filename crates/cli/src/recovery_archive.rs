@@ -78,8 +78,16 @@ fn open(path: &Path) -> Result<File> {
 }
 fn hash(mut reader: impl Read) -> Result<String> {
     let mut h = Sha256::new();
-    std::io::copy(&mut reader, &mut h)?;
-    Ok(format!("{:x}", h.finalize()))
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => h.update(&buffer[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(hex::encode(h.finalize()))
 }
 fn identity(m: &Metadata) -> (u64, u64, u64, i64, i64, i64, i64) {
     (

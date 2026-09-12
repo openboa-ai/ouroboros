@@ -67,7 +67,7 @@ impl TransferCheck {
         if self.received != self.size {
             return Err(StatusCode::BAD_REQUEST);
         }
-        if format!("{:x}", self.hash.finalize()) != self.digest {
+        if hex::encode(self.hash.finalize()) != self.digest {
             return Err(StatusCode::CONFLICT);
         }
         Ok(())
@@ -401,11 +401,9 @@ mod binary_tests {
             .map(|chunk| Ok::<_, io::Error>(bytes::Bytes::copy_from_slice(chunk)))
             .collect();
         let body = Body::from_stream(futures_util::stream::iter(chunks));
-        let check = TransferCheck::new(
-            expected.len() as u64,
-            format!("{:x}", Sha256::digest(expected)),
-        )
-        .unwrap();
+        let check =
+            TransferCheck::new(expected.len() as u64, hex::encode(Sha256::digest(expected)))
+                .unwrap();
         let progress = Arc::new(UploadProgress::default());
         let stream = upload_stream(
             body,
@@ -459,7 +457,7 @@ mod binary_tests {
         let stream = upload_stream(
             Body::from_stream(never),
             human(),
-            TransferCheck::new(0, format!("{:x}", Sha256::digest([]))).unwrap(),
+            TransferCheck::new(0, hex::encode(Sha256::digest([]))).unwrap(),
             tokio::time::Instant::now() + Duration::from_millis(20),
             progress.clone(),
             None,
@@ -478,7 +476,7 @@ mod binary_tests {
         let stream = upload_stream(
             Body::empty(),
             human(),
-            TransferCheck::new(0, format!("{:x}", Sha256::digest([]))).unwrap(),
+            TransferCheck::new(0, hex::encode(Sha256::digest([]))).unwrap(),
             tokio::time::Instant::now() + Duration::from_secs(2),
             progress.clone(),
             Some(monitor.clone()),
@@ -500,7 +498,7 @@ mod binary_tests {
                 Result<bytes::Bytes, io::Error>,
             >()),
             human(),
-            TransferCheck::new(0, format!("{:x}", Sha256::digest([]))).unwrap(),
+            TransferCheck::new(0, hex::encode(Sha256::digest([]))).unwrap(),
             tokio::time::Instant::now() + Duration::from_secs(2),
             progress.clone(),
             Some(monitor),

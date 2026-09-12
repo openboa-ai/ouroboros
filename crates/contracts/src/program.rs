@@ -240,10 +240,9 @@ pub fn program_manifest_digest(
     inputs: &[ResolvedProgramInput],
 ) -> Result<String> {
     use sha2::{Digest, Sha256};
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&(profile, inputs))?)
-    ))
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(&(
+        profile, inputs,
+    ))?)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

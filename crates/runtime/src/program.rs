@@ -315,8 +315,8 @@ where
         exit_code: code,
         stdout_bytes,
         stderr_bytes,
-        stdout_sha256: format!("{:x}", stdout_hash.finalize()),
-        stderr_sha256: format!("{:x}", stderr_hash.finalize()),
+        stdout_sha256: hex::encode(stdout_hash.finalize()),
+        stderr_sha256: hex::encode(stderr_hash.finalize()),
     };
     record(root, "program-observation.json", json!(observation)).await?;
     record(root, "program-result.json", json!({

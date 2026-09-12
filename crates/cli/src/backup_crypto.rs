@@ -73,9 +73,17 @@ pub async fn run(open: bool) -> Result<()> {
         "tool exceeds bounded profile"
     );
     let mut hasher = Sha256::new();
-    std::io::copy(&mut binary, &mut hasher)?;
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        match binary.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => hasher.update(&buffer[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
     ensure!(
-        format!("{:x}", hasher.finalize()) == args.age_sha256,
+        hex::encode(hasher.finalize()) == args.age_sha256,
         "encryption tool digest mismatch"
     );
     let native_args = if open {
@@ -239,7 +247,7 @@ pub async fn run(open: bool) -> Result<()> {
                 hash.update(&buffer[..n]);
                 output.write_all(&buffer[..n]).await?;
             }
-            let digest = format!("{:x}", hash.finalize());
+            let digest = hex::encode(hash.finalize());
             if open {
                 ensure!(
                     Some(count) == args.plaintext_bytes

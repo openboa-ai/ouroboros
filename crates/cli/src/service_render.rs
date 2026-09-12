@@ -252,11 +252,11 @@ pub(crate) fn render_bundle(mut bundle: Bundle) -> Result<serde_json::Value> {
     stop.reverse();
     let units=bundle.services.iter().map(|entry| {
         let content=render(&entry.service)?;
-        Ok(serde_json::json!({"name":entry.name,"sha256":format!("{:x}",Sha256::digest(content.as_bytes())),"content":content}))
+        Ok(serde_json::json!({"name":entry.name,"sha256":hex::encode(Sha256::digest(content.as_bytes())),"content":content}))
     }).collect::<Result<Vec<_>>>()?;
     let mut report = serde_json::json!({"status":"rendered_only","start_order":start,"stop_order":stop,"units":units,
         "authority_granted":false,"installed":false,"storage_verified":false,"readiness_verified":false});
-    let hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&report)?));
+    let hash = hex::encode(Sha256::digest(serde_json::to_vec(&report)?));
     report["bundle_sha256"] = serde_json::json!(hash);
     Ok(report)
 }

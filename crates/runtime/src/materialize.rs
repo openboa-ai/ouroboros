@@ -280,7 +280,7 @@ impl<'a> InputVerifier<'a> {
             "input body incomplete"
         );
         ensure!(
-            format!("{:x}", self.hash.finalize()) == self.input.sha256,
+            hex::encode(self.hash.finalize()) == self.input.sha256,
             "input content digest mismatch"
         );
         Ok(())
@@ -550,7 +550,7 @@ mod tests {
             object_id: Uuid::new_v4(),
             store_id: Uuid::new_v4(),
             generation: Uuid::new_v4(),
-            sha256: format!("{:x}", Sha256::digest(b"a\0b\xff")),
+            sha256: hex::encode(Sha256::digest(b"a\0b\xff")),
             size: 4,
         }];
         MaterializationDescriptor {
@@ -710,7 +710,7 @@ mod tests {
     fn zero_byte_inputs_succeed_but_a_failed_writer_cannot_emit_success() {
         let mut descriptor = descriptor();
         descriptor.program.inputs[0].size = 0;
-        descriptor.program.inputs[0].sha256 = format!("{:x}", Sha256::digest([]));
+        descriptor.program.inputs[0].sha256 = hex::encode(Sha256::digest([]));
         rehash(&mut descriptor);
         validate_descriptor(&descriptor).unwrap();
         InputVerifier::new(&descriptor.program.inputs[0])

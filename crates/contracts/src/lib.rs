@@ -478,7 +478,7 @@ impl ResourceTicket {
             firm_id: self.firm_id,
             intent_id: self.intent_id,
             original_attempt_id: self.attempt_id,
-            ticket_sha256: format!("{:x}", Sha256::digest(serde_json::to_vec(self)?)),
+            ticket_sha256: hex::encode(Sha256::digest(serde_json::to_vec(self)?)),
         })
     }
 }

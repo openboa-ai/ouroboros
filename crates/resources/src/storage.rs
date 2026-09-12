@@ -1027,7 +1027,7 @@ mod native {
             );
             if staged.transfer {
                 ensure!(
-                    format!("{:x}", staged.hasher.clone().finalize()) == staged.digest,
+                    hex::encode(staged.hasher.clone().finalize()) == staged.digest,
                     "upload content digest mismatch"
                 );
             }
@@ -1193,7 +1193,7 @@ mod native {
             hasher.update(&bytes[..count]);
         }
         ensure!(
-            read == size && format!("{:x}", hasher.finalize()) == digest,
+            read == size && hex::encode(hasher.finalize()) == digest,
             "durable content missing or corrupt"
         );
         ensure!(
@@ -1520,7 +1520,7 @@ mod native {
         Ok(())
     }
     fn hash(bytes: &[u8]) -> String {
-        format!("{:x}", Sha256::digest(bytes))
+        hex::encode(Sha256::digest(bytes))
     }
     fn unlink(directory: RawFd, name: &CStr) -> Result<()> {
         ensure!(
