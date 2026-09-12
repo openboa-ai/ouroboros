@@ -39,6 +39,34 @@ schedule every PR. The existing Dependabot Actions minor/patch helper only reque
 feature; all reviews and checks still apply. Cargo updates require an explicit merge reservation.
 GitHub deletes merged head branches; main is never a cleanup target.
 
+### Approval-ready checkpoint
+
+The delivery agent continues the authorized repair loop through review findings, local checks,
+push, and hosted verification. Do not hand work back merely because a workflow was dispatched,
+an analysis job succeeded, or one blocker requires human approval. Finish independent repairable
+work first, then request the actual human review on the final head.
+
+Before reporting that only approval remains, read back current GitHub state and verify:
+
+- The final head incorporates the current base, has no conflicts, and every required check from
+  the active ruleset has completed successfully on the current revision. Missing, pending,
+  cancelled, stale, or failed evidence is not a pass.
+- Code-scanning findings meet the active ruleset and every review conversation is resolved.
+  Inspect bot comments as well as human comments: a warning can leave a conversation unresolved
+  even when the CodeQL job and security threshold pass. Resolve a finding's thread only after
+  verifying the fix; outdated placement alone does not establish resolution. Do not bulk-dismiss
+  alerts, suppress checks, or resolve an objection whose acceptance requires its reviewer.
+- Auto-merge is reserved for the intended PR when delivery has been authorized, and the only
+  remaining rule is the actual required human approval. The repository-level setting and a
+  skipped Dependabot helper do not establish a per-PR reservation.
+
+If the head or base changes, reconcile the new revision, rerun affected validation and repeat
+this checkpoint before requesting approval. New commits can dismiss earlier approvals. Record
+the exact head, current-base CI evidence, unresolved-thread count and auto-merge state in the PR
+handoff. Stop at a real authority boundary or a demonstrated external blocker, describe it
+precisely, and finish any independent work that remains possible. Human review is never supplied
+by the delivery agent, and this loop does not grant Actions permission to edit or approve PRs.
+
 ## Permissions and dependency updates
 
 Actions are limited to GitHub-owned actions and `dependabot/fetch-metadata`; complete SHA pinning
