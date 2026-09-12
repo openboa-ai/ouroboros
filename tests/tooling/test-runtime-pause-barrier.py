@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from pathlib import Path
 import signal
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tests.support.fixture_runtime_unit_loss import frozen_process
@@ -33,9 +33,11 @@ class BarrierTests(unittest.TestCase):
     def test_failed_assertion_still_resumes(self):
         with ExitStack() as stack:
             actions = self.fixture(stack)
+            body = Mock(side_effect=AssertionError('negative check failed'))
             with self.assertRaisesRegex(AssertionError, 'negative check failed'):
                 with frozen_process(42):
-                    raise AssertionError('negative check failed')
+                    body()
+            body.assert_called_once_with()
             self.assertEqual(actions[-2:], [('signal', 17, signal.SIGCONT), ('close', 17)])
 
     def test_unobserved_stop_cannot_run_body(self):

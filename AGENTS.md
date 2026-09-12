@@ -87,6 +87,11 @@ be introduced as a dependency or source of project state.
 
 ## Change Discipline
 
+For pull-request delivery, follow the [GitHub delivery contract](.github/README.md), including
+its approval-ready checkpoint. Continue authorized review fixes and CI recovery until the final
+head has all required evidence and no remaining non-human blocker. A green Actions run alone
+is not that checkpoint; do not ask for approval while repairable review or CI work remains.
+
 Use pull requests as the durable record for proposed changes, decisions, validation, and delivery.
 Keep coordination and follow-up in the relevant pull request rather than creating or updating
 GitHub Issues for this repository's work.
