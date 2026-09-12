@@ -14,10 +14,56 @@ use uuid::Uuid;
 pub struct ProviderBinding {
     pub target: String,
     pub endpoint: String,
+    /// Explicit deployment-owned subscription routing; never supplied by the workload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chatgpt_account_id: Option<String>,
     pub credential_id: Uuid,
     pub credential_version: u64,
     pub timeout_ms: u64,
     pub max_response_bytes: usize,
+}
+impl ProviderBinding {
+    fn account_header(&self) -> Result<Option<reqwest::header::HeaderValue>, CustodyError> {
+        let Some(account_id) = &self.chatgpt_account_id else {
+            return Ok(None);
+        };
+        // An account binding cannot turn a custom Responses origin into a subscription endpoint.
+        if self.endpoint != "https://chatgpt.com/backend-api/codex/responses"
+            || !(1..=128).contains(&account_id.len())
+            || !account_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        {
+            return Err(CustodyError);
+        }
+        let mut header =
+            reqwest::header::HeaderValue::from_str(account_id).map_err(|_| CustodyError)?;
+        header.set_sensitive(true);
+        Ok(Some(header))
+    }
+
+    fn request(
+        &self,
+        client: &reqwest::Client,
+        secret: &[u8],
+        body: Vec<u8>,
+    ) -> Result<reqwest::Request, CustodyError> {
+        let token = std::str::from_utf8(secret).map_err(|_| CustodyError)?;
+        if token.is_empty() || !token.bytes().all(|b| b.is_ascii_graphic()) {
+            return Err(CustodyError);
+        }
+        let mut auth = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|_| CustodyError)?;
+        auth.set_sensitive(true);
+        let mut request = client
+            .post(&self.endpoint)
+            .header(reqwest::header::AUTHORIZATION, auth)
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(account) = self.account_header()? {
+            request = request.header("ChatGPT-Account-ID", account);
+        }
+        request.body(body).build().map_err(|_| CustodyError)
+    }
 }
 /// Trusted worker transport output. Bytes are provisional, not a completion receipt.
 pub enum ProviderFrame {
@@ -56,6 +102,7 @@ impl ProviderSender {
         {
             return Err(CustodyError);
         }
+        binding.account_header()?;
         let mut client = reqwest::Client::builder()
             .https_only(true)
             .no_proxy()
@@ -155,11 +202,7 @@ impl ProviderSender {
             version: selected.credential_version,
         };
         let result=self.custody.consume_async(binding,ticket.attempt_id,Duration::from_millis(self.binding.timeout_ms),|secret|async move {
-            let token=std::str::from_utf8(&secret).map_err(|_|CustodyError)?;
-            if token.is_empty() || !token.bytes().all(|b|b.is_ascii_graphic()) {return Err(CustodyError)}
-            let mut auth=reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_|CustodyError)?;
-            auth.set_sensitive(true);
-            let request=self.client.post(&self.binding.endpoint).header(reqwest::header::AUTHORIZATION,auth).header(reqwest::header::CONTENT_TYPE,"application/json").body(body).build().map_err(|_|CustodyError)?;
+            let request=self.binding.request(&self.client,&secret,body)?;
             tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|CustodyError)??;
             let transfer=async {
             let mut response=self.client.execute(request).await.map_err(|_|CustodyError)?;
@@ -203,5 +246,109 @@ impl ProviderSender {
         }).await.map_err(|_|CustodyError)?;
         self.custody.save_provider_reply(ticket, &result).await?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding() -> ProviderBinding {
+        ProviderBinding {
+            target: "model-fixture".into(),
+            endpoint: "https://chatgpt.com/backend-api/codex/responses".into(),
+            chatgpt_account_id: None,
+            credential_id: Uuid::from_u128(1),
+            credential_version: 1,
+            timeout_ms: 1000,
+            max_response_bytes: 4096,
+        }
+    }
+
+    #[test]
+    fn explicit_subscription_account_is_sent_as_sensitive_header() {
+        let mut binding = binding();
+        binding.chatgpt_account_id = Some("account-fixture_123".into());
+        let body = br#"{"model":"fixture-model"}"#.to_vec();
+        let request = binding
+            .request(&reqwest::Client::new(), b"fixture-token", body.clone())
+            .unwrap();
+        assert_eq!(request.url().as_str(), binding.endpoint);
+        assert_eq!(request.method(), reqwest::Method::POST);
+        assert_eq!(request.body().unwrap().as_bytes().unwrap(), body);
+        let headers = request.headers();
+        assert_eq!(headers.len(), 3);
+        assert_eq!(headers["ChatGPT-Account-ID"], "account-fixture_123");
+        assert!(headers["ChatGPT-Account-ID"].is_sensitive());
+        assert_eq!(
+            headers[reqwest::header::AUTHORIZATION],
+            "Bearer fixture-token"
+        );
+        assert!(headers[reqwest::header::AUTHORIZATION].is_sensitive());
+        assert_eq!(headers[reqwest::header::CONTENT_TYPE], "application/json");
+    }
+
+    #[test]
+    fn subscription_account_requires_exact_endpoint() {
+        let mut binding = binding();
+        binding.chatgpt_account_id = Some("account-fixture".into());
+        for endpoint in [
+            "https://api.openai.com/v1/responses",
+            "https://localhost/responses",
+            "http://chatgpt.com/backend-api/codex/responses",
+            "https://chatgpt.com.example/backend-api/codex/responses",
+            "https://chatgpt.com:8443/backend-api/codex/responses",
+            "https://chatgpt.com/backend-api/codex/responses?account=fixture",
+            "https://chatgpt.com/backend-api/codex/responses#fixture",
+            "https://chatgpt.com/backend-api/codex/other/responses",
+            "https://chatgpt.com/backend-api/codex/responses/../responses",
+        ] {
+            binding.endpoint = endpoint.into();
+            assert!(binding.account_header().is_err(), "accepted {endpoint}");
+            assert!(
+                binding
+                    .request(&reqwest::Client::new(), b"fixture-token", vec![])
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn subscription_account_rejects_empty_unsafe_or_unbounded_identifiers() {
+        let mut binding = binding();
+        for account in ["", "has space", "a\r\nx-extra: value", "a\t", "a/b", "é"] {
+            binding.chatgpt_account_id = Some(account.into());
+            assert!(binding.account_header().is_err());
+        }
+        binding.chatgpt_account_id = Some("a".repeat(129));
+        assert!(binding.account_header().is_err());
+        binding.chatgpt_account_id = Some("a".repeat(128));
+        assert!(binding.account_header().is_ok());
+    }
+
+    #[test]
+    fn omitted_account_preserves_existing_binding_and_request() {
+        let mut binding = binding();
+        binding.endpoint = "https://fixture.invalid/responses".into();
+        let value = serde_json::to_value(&binding).unwrap();
+        assert!(value.get("chatgpt_account_id").is_none());
+        let restored: ProviderBinding = serde_json::from_value(value.clone()).unwrap();
+        assert!(restored == binding);
+        let mut explicit_null = value.clone();
+        explicit_null["chatgpt_account_id"] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<ProviderBinding>(explicit_null).unwrap() == binding);
+        let request = restored
+            .request(&reqwest::Client::new(), b"fixture-token", vec![])
+            .unwrap();
+        assert_eq!(request.url().as_str(), binding.endpoint);
+        assert_eq!(request.headers().len(), 2);
+        assert!(!request.headers().contains_key("ChatGPT-Account-ID"));
+        assert_eq!(
+            request.headers()[reqwest::header::AUTHORIZATION],
+            "Bearer fixture-token"
+        );
+        let mut unknown_headers = value;
+        unknown_headers["headers"] = json!({"ChatGPT-Account-ID":"account-fixture"});
+        assert!(serde_json::from_value::<ProviderBinding>(unknown_headers).is_err());
     }
 }
