@@ -77,6 +77,7 @@ impl Fixture {
         };
         let profile = ProgramProfile {
             native_codex: false,
+            native_model: None,
             image: format!("sha256:{}", "1".repeat(64)),
             memory_bytes: 67_108_864,
             nano_cpus: 100_000_000,

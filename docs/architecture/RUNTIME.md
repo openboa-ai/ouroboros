@@ -726,9 +726,16 @@ receipt check and Core release as ordinary input-bearing execution, then runs th
 App Server driver instead of private argv. The independent supervisor remains responsible for
 current permission, bridge/guard lifetime and containment. The driver rechecks current Core
 execution state before thread start/resume and before starting a new turn. It uses the admitted
-prompt, the fixed native model/Gateway settings and the existing deny-unexpected-approval behavior.
-This first candidate still uses the controlled fixture provider; it introduces no subscription
-or arbitrary model route.
+prompt, the activated profile's model, the fixed Gateway settings and the existing
+deny-unexpected-approval behavior.
+
+The activated `ProgramProfile` may set `native_model` only with `native_codex: true`. The identifier
+is 1–128 ASCII letters, digits, dots, underscores, colons or hyphens and is included in the retained
+profile and materialization digest. Omission preserves `fixture-model` and its legacy fixture MCP
+registration. An explicit model omits that fixture registration while retaining the work-scoped
+managed MCP path. Both native startup and thread start/resume use the admitted model; the provider,
+loopback Gateway endpoint, disabled automatic retries and credential-free instance remain fixed.
+This selection supplies neither a provider connection nor subscription compatibility evidence.
 
 For resume, Runtime selects the exact admitted workspace input, checks its size/digest and native
 session identity, and installs those bytes into a fresh private native home before starting the

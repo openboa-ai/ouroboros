@@ -522,6 +522,7 @@ mod tests {
     fn descriptor() -> MaterializationDescriptor {
         let profile = ProgramProfile {
             native_codex: false,
+            native_model: None,
             image: format!("sha256:{}", "a".repeat(64)),
             memory_bytes: 1_048_576,
             nano_cpus: 1_000_000_000,
