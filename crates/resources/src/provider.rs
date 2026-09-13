@@ -17,15 +17,25 @@ pub struct ProviderBinding {
     /// Explicit deployment-owned subscription routing; never supplied by the workload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chatgpt_account_id: Option<String>,
+    /// Pinned Codex wire dialect; no workload-controlled header forwarding.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub codex_responses_lite: bool,
     pub credential_id: Uuid,
     pub credential_version: u64,
     pub timeout_ms: u64,
     pub max_response_bytes: usize,
 }
+fn is_false(value: &bool) -> bool {
+    !value
+}
 impl ProviderBinding {
     fn account_header(&self) -> Result<Option<reqwest::header::HeaderValue>, CustodyError> {
         let Some(account_id) = &self.chatgpt_account_id else {
-            return Ok(None);
+            return if self.codex_responses_lite {
+                Err(CustodyError)
+            } else {
+                Ok(None)
+            };
         };
         // An account binding cannot turn a custom Responses origin into a subscription endpoint.
         if self.endpoint != "https://chatgpt.com/backend-api/codex/responses"
@@ -61,6 +71,9 @@ impl ProviderBinding {
             .header(reqwest::header::CONTENT_TYPE, "application/json");
         if let Some(account) = self.account_header()? {
             request = request.header("ChatGPT-Account-ID", account);
+        }
+        if self.codex_responses_lite {
+            request = request.header("x-openai-internal-codex-responses-lite", "true");
         }
         request.body(body).build().map_err(|_| CustodyError)
     }
@@ -251,7 +264,10 @@ impl ProviderSender {
                 }
             }
         }).await.map_err(|error|{eprintln!("provider custody use failed: {error:?}");CustodyError})?;
-        self.custody.save_provider_reply(ticket, &result).await.map_err(|_|failure("receipt persistence"))?;
+        self.custody
+            .save_provider_reply(ticket, &result)
+            .await
+            .map_err(|_| failure("receipt persistence"))?;
         Ok(result)
     }
 }
@@ -271,6 +287,7 @@ mod tests {
             target: "model-fixture".into(),
             endpoint: "https://chatgpt.com/backend-api/codex/responses".into(),
             chatgpt_account_id: None,
+            codex_responses_lite: false,
             credential_id: Uuid::from_u128(1),
             credential_version: 1,
             timeout_ms: 1000,
@@ -299,6 +316,50 @@ mod tests {
         );
         assert!(headers[reqwest::header::AUTHORIZATION].is_sensitive());
         assert_eq!(headers[reqwest::header::CONTENT_TYPE], "application/json");
+    }
+
+    #[test]
+    fn codex_lite_marker_and_native_body_travel_together() {
+        let mut binding = binding();
+        binding.chatgpt_account_id = Some("account-fixture".into());
+        binding.codex_responses_lite = true;
+        // Lite carries instructions/tools inside input rather than in top-level fields.
+        let body = br#"{"model":"gpt-5.6-sol","input":[],"stream":true,"reasoning":{"effort":"low","context":"all_turns"}}"#.to_vec();
+        let request = binding
+            .request(&reqwest::Client::new(), b"synthetic-token", body.clone())
+            .unwrap();
+        assert_eq!(
+            request.headers()["x-openai-internal-codex-responses-lite"],
+            "true"
+        );
+        assert_eq!(request.body().unwrap().as_bytes().unwrap(), body);
+        binding.codex_responses_lite = false;
+        let request = binding
+            .request(&reqwest::Client::new(), b"synthetic-token", body)
+            .unwrap();
+        assert!(
+            !request
+                .headers()
+                .contains_key("x-openai-internal-codex-responses-lite")
+        );
+    }
+
+    #[test]
+    fn codex_lite_requires_a_pinned_subscription_connection() {
+        let mut binding = binding();
+        binding.codex_responses_lite = true;
+        assert!(
+            binding
+                .request(&reqwest::Client::new(), b"synthetic-token", vec![])
+                .is_err()
+        );
+        binding.chatgpt_account_id = Some("account-fixture".into());
+        binding.endpoint = "https://fixture.invalid/responses".into();
+        assert!(
+            binding
+                .request(&reqwest::Client::new(), b"synthetic-token", vec![])
+                .is_err()
+        );
     }
 
     #[test]
@@ -345,6 +406,7 @@ mod tests {
         binding.endpoint = "https://fixture.invalid/responses".into();
         let value = serde_json::to_value(&binding).unwrap();
         assert!(value.get("chatgpt_account_id").is_none());
+        assert!(value.get("codex_responses_lite").is_none());
         let restored: ProviderBinding = serde_json::from_value(value.clone()).unwrap();
         assert!(restored == binding);
         let mut explicit_null = value.clone();

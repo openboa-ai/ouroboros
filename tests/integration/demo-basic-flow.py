@@ -188,7 +188,8 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         self.config('core', core, 70001)
         provider = {'target': 'managed-model', 'endpoint': 'https://chatgpt.com/backend-api/codex/responses',
             'credential_id': i['credential'], 'credential_version': 1, 'timeout_ms': 30000,
-            'max_response_bytes': 2097152, 'chatgpt_account_id': self.args.account_id}
+            'max_response_bytes': 2097152, 'chatgpt_account_id': self.args.account_id,
+            'codex_responses_lite': self.args.responses_lite}
         key, nonce = secrets.token_bytes(32), secrets.token_bytes(12)
         header = b'ouroboros-credential-aes256gcm-1'
         aad = header + uuid.UUID(i['firm']).bytes + uuid.UUID(i['credential']).bytes + (1).to_bytes(8, 'big')
@@ -466,6 +467,7 @@ def main():
     parser.add_argument('--run-name', type=identifier, required=True)
     parser.add_argument('--model', type=model_identifier, required=True)
     parser.add_argument('--account-id', type=identifier)
+    parser.add_argument('--responses-lite', action='store_true', help='pin the Codex Responses Lite dialect for a model that emits it')
     parser.add_argument('--max-calls', type=int, default=20, help='total governed resource calls, including model requests')
     parser.add_argument('--max-seconds', type=int, default=600)
     parser.add_argument('--preflight', action='store_true')

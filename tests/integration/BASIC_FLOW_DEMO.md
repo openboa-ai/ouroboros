@@ -44,7 +44,7 @@ The driver does not discover credentials, log in, refresh tokens or retry calls.
 # Nonterminal stdin must contain the explicitly authorized token.
 python3 tests/integration/demo-basic-flow.py \
   --environment "$NATIVE_ENVIRONMENT" --run-name live-01 \
-  --model gpt-5.6-sol --account-id "$CONFIRMED_ACCOUNT_ID" \
+  --model gpt-5.6-sol --responses-lite --account-id "$CONFIRMED_ACCOUNT_ID" \
   --max-calls 20 --max-seconds 600 --credential-stdin
 ```
 
@@ -53,6 +53,16 @@ The provider's optional `chatgpt_account_id` pins subscription account routing t
 `https://chatgpt.com/backend-api/codex/responses`. The existing encrypted credential,
 fixed Gateway bridge, current-authority checks and zero transport retries remain.
 No API-key billing fallback or new subscription is selected.
+
+Codex 0.153.4 uses Responses Lite for `gpt-5.6-sol`: instructions and tools are
+carried in the native input, and its HTTP marker must accompany that body. The
+explicit `--responses-lite` flag pins `codex_responses_lite` in the provider
+configuration and sends only the fixed `x-openai-internal-codex-responses-lite: true`
+header. It requires the exact Codex subscription endpoint and an account binding.
+The request body is unchanged. Omit this flag for models that use standard Responses;
+there is no automatic dialect detection or retry in another dialect.
+
+This follows the [pinned Codex client implementation](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/client.rs).
 
 `--max-calls` bounds **all governed resource calls**, including model requests and
 file operations; therefore model requests cannot exceed that number. The same limit

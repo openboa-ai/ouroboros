@@ -26,11 +26,23 @@ fn provider_configuration(value: &Value, target: &str) -> Result<(Uuid, u64)> {
         "timeout_ms",
         "max_response_bytes",
     ];
-    if fields.len() != keys.len() + usize::from(fields.contains_key("chatgpt_account_id"))
+    let optional = ["chatgpt_account_id", "codex_responses_lite"];
+    if fields.len()
+        != keys.len()
+            + optional
+                .iter()
+                .filter(|key| fields.contains_key(**key))
+                .count()
         || !keys.iter().all(|k| fields.contains_key(*k))
         || value["target"] != target
     {
         return Err(Error::Invalid);
+    }
+    if let Some(lite) = value.get("codex_responses_lite") {
+        let lite = lite.as_bool().ok_or(Error::Invalid)?;
+        if lite && value["chatgpt_account_id"].is_null() {
+            return Err(Error::Invalid);
+        }
     }
     if let Some(account) = value.get("chatgpt_account_id").filter(|v| !v.is_null()) {
         let account = account.as_str().ok_or(Error::Invalid)?;
@@ -399,5 +411,22 @@ mod tests {
         assert!(provider_configuration(&value, "model-fixture").is_ok());
         value["headers"] = json!({"x-extra":"rejected"});
         assert!(provider_configuration(&value, "model-fixture").is_err());
+    }
+
+    #[test]
+    fn codex_lite_configuration_is_boolean_and_subscription_bound() {
+        let mut value = configuration();
+        value["codex_responses_lite"] = json!(false);
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        value["codex_responses_lite"] = json!(true);
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+        value["chatgpt_account_id"] = json!("account-fixture");
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+        value["endpoint"] = json!("https://chatgpt.com/backend-api/codex/responses");
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        for invalid in [Value::Null, json!("true"), json!(1)] {
+            value["codex_responses_lite"] = invalid;
+            assert!(provider_configuration(&value, "model-fixture").is_err());
+        }
     }
 }
