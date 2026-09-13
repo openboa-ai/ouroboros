@@ -381,6 +381,9 @@ After the command succeeds, finish your turn. Do not wait for another message.
         while time.monotonic() < deadline:
             state = self.cli('get', 'executions', execution)
             if state.get('terminated') and self.runtime.poll() is not None:
+                # Runtime reports compute return after termination; the first read
+                # can predate that report even when poll() observes its later exit.
+                state = self.cli('get', 'executions', execution)
                 break
             time.sleep(.3)
         else:
