@@ -75,6 +75,8 @@ terminal Responses event can establish completion. Explicit incompatible media t
 empty streams and malformed responses remain failures. Instance sockets allow the
 bounded response to last 60 seconds while retaining a separate five-second header
 limit and continuous Gateway authority checks.
+Internal HTTPS responses also close their connection after each request, so a
+later response cannot inherit an earlier request's 60-second connection deadline.
 
 This follows the [pinned Codex client implementation](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/client.rs).
 
@@ -129,6 +131,9 @@ The run root retains `resource-evidence.json`, `resource-summary.json`, the down
 only after successful verification and cleanup. The five-minute/30-resource-call
 limit covers one run, not a renewable retry allowance. Preparation/builds happen
 before starting the approved live window; detailed failure evidence stays private.
+This scenario defaults to 300 seconds and 30 calls and rejects larger values.
+After preparing the input and task, it starts the clock and the temporary grants'
+expiry together. Preparation calls still count toward the same 30-call budget.
 
 ### Two-turn conversation demo
 

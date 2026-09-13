@@ -335,6 +335,56 @@ class ResourceSmokeEvidence(unittest.TestCase):
         self.assertEqual(self.demo.Demo.sample, self.demo.SAMPLE)
         self.assertEqual(self.demo.Demo.extra_services, ())
 
+    def test_resource_bounds_reject_an_expanded_allowance_before_environment_access(self):
+        for bound in (['--max-calls', '31'], ['--max-seconds', '301']):
+            argv = ['demo', '--environment', '/unused', '--run-name', 'unused',
+                    '--model', 'gpt-5.6-sol', '--scenario', 'resource-smoke', *bound]
+            with self.subTest(bound=bound), patch('sys.argv', argv), contextlib.redirect_stderr(io.StringIO()), \
+                    patch.object(self.demo, 'load_environment', side_effect=AssertionError('must not inspect environment')):
+                with self.assertRaises(SystemExit) as error:
+                    self.demo.main()
+                self.assertEqual(error.exception.code, 2)
+
+    def test_live_clock_starts_after_preparation_without_replenishing_calls(self):
+        from types import SimpleNamespace
+        env = {'pg_bin': Path('/pg'), 'run_root': Path('/run'), 'deployment_root': Path('/deployment'), 'ipc_root': Path('/ipc')}
+        demo = self.demo.ResourceSmokeDemo(env, SimpleNamespace(run_name='unused', max_seconds=300))
+        demo.work, demo.workspace, demo.ids = 'work', 'workspace', {'child': 'child'}
+        order = []
+        with patch.object(demo, 'prepare_flow', side_effect=lambda: order.append('prepare')), \
+                patch.object(demo, 'message', side_effect=lambda *args: order.append('message')), \
+                patch.object(demo, 'sql', side_effect=lambda sql: order.append(sql)), \
+                patch.object(self.demo.signal, 'alarm', side_effect=lambda seconds: order.append(seconds)), \
+                patch.object(demo, 'turn', side_effect=RuntimeError('stop before execution')):
+            with self.assertRaisesRegex(RuntimeError, 'stop before execution'):
+                demo.run_flow()
+        self.assertEqual(order[:2], ['prepare', 'message'])
+        self.assertIn('UPDATE credentials SET expires_at=', order[2])
+        self.assertNotIn('limits', order[2])
+        self.assertEqual(order[3:], [300])
+
+    def test_failed_turn_preserves_committed_evidence_and_does_not_start_again(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env = {'pg_bin': root, 'run_root': root, 'deployment_root': root, 'ipc_root': root}
+            demo = self.demo.ResourceSmokeDemo(env, SimpleNamespace(run_name='unused', max_seconds=300))
+            demo.root = demo.test = root
+            demo.work, demo.workspace, demo.ids = 'work', 'workspace', {'child': 'child'}
+            demo.executions = ['execution']
+            proof = {'rows': [{'id': 'committed-result'}], 'publications': []}
+            with patch.object(demo, 'prepare_flow'), patch.object(demo, 'message'), patch.object(demo, 'sql'), \
+                    patch.object(self.demo.signal, 'alarm'), \
+                    patch.object(demo, 'cli', return_value={'instance_id': 'instance'}), \
+                    patch.object(demo, 'collect_evidence', return_value=proof), \
+                    patch.object(self.demo.os, 'chown'), \
+                    patch.object(demo, 'turn', side_effect=RuntimeError('native failed')) as turn:
+                with self.assertRaisesRegex(RuntimeError, 'native failed'):
+                    demo.run_flow()
+            turn.assert_called_once()
+            self.assertEqual(json.loads((root / 'resource-evidence.json').read_text()), proof)
+            self.assertFalse((root / 'resource-summary.json').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

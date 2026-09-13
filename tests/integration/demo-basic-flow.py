@@ -616,20 +616,28 @@ Use available sh, cat, printf, wc -c and sha256sum; no installation or Python de
 After successful publication, write a brief Korean report to /workspace/answer.txt containing the exact path /workspaces/{self.workspace}/snapshots/2/files/result.json.
 """
         message = self.message(question, 'resource-question')
+        # Start this run's single live window only after fixture/input preparation.
+        # This never resets the resource-call counter or retries an execution.
+        expiry = f"clock_timestamp()+interval '{self.args.max_seconds} seconds'"
+        self.sql(f"UPDATE credentials SET expires_at={expiry}; UPDATE delegations SET expires_at={expiry}")
+        signal.alarm(self.args.max_seconds)
         self.step = 'resource-agent'
-        execution, native_root, terminal = self.turn(question, message, 'resource')
+        try:
+            execution, native_root, terminal = self.turn(question, message, 'resource')
+        except BaseException:
+            # Collect committed effects before cleanup closes the private databases.
+            try:
+                if self.executions:
+                    execution = self.executions[-1]
+                    state = self.cli('get', 'executions', execution)
+                    native_root = self.test / 'runtime' / state['instance_id']
+                    proof = self.collect_evidence(execution, native_root)
+                    private(self.root / 'resource-evidence.json', json.dumps(proof, ensure_ascii=False, indent=2))
+            except Exception as evidence_error:
+                private(self.root / 'resource-evidence-error.json', json.dumps({'type': type(evidence_error).__name__}))
+            raise
         self.step = 'resource-evidence'
-        instance = native_root.name
-        proof = {
-            'expected': {'file_marker': self.file_marker, 'db_marker': self.db_marker, 'execution_id': execution},
-            'instance_id': instance,
-            'events': [json.loads(line) for line in (native_root / 'native.jsonl').read_text().splitlines()],
-            'calls': json.loads(self.sql(f"SELECT COALESCE(json_agg(json_build_object('operation',operation,'instance_id',instance_id,'intent_id',intent_id,'reply',reply)),'[]'::json) FROM resource_calls WHERE firm_id='{self.ids['firm']}' AND work_id='{self.work}' AND operation IN ('db.read','db.write','file.publish')")),
-            'rows': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM results r', self.company_db)),
-            'db_receipts': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM effect_receipts r', self.company_db)),
-            'publications': json.loads(self.sql(f"SELECT COALESCE(json_agg(r),'[]'::json) FROM publication_receipts r WHERE workspace_id='{self.workspace}' AND revision>1", self.catalog_db)),
-            'revision': int(self.sql(f"SELECT revision FROM workspaces WHERE id='{self.workspace}'", self.catalog_db)),
-        }
+        proof = self.collect_evidence(execution, native_root)
         # Preserve evidence even when publication is missing or read-back fails.
         private(self.root / 'resource-evidence.json', json.dumps(proof, ensure_ascii=False, indent=2))
         location = f'/workspaces/{self.workspace}/snapshots/2/files/result.json'
@@ -650,6 +658,20 @@ After successful publication, write a brief Korean report to /workspace/answer.t
                    'published_path': location, 'result_file': str(self.root / 'result.json')}
         private(self.root / 'resource-summary.json', json.dumps(summary, ensure_ascii=False, indent=2))
         self.note('resources.verified', **summary)
+
+    def collect_evidence(self, execution, native_root):
+        instance = native_root.name
+        proof = {
+            'expected': {'file_marker': self.file_marker, 'db_marker': self.db_marker, 'execution_id': execution},
+            'instance_id': instance,
+            'events': [json.loads(line) for line in (native_root / 'native.jsonl').read_text().splitlines()],
+            'calls': json.loads(self.sql(f"SELECT COALESCE(json_agg(json_build_object('operation',operation,'instance_id',instance_id,'intent_id',intent_id,'reply',reply)),'[]'::json) FROM resource_calls WHERE firm_id='{self.ids['firm']}' AND work_id='{self.work}' AND operation IN ('db.read','db.write','file.publish')")),
+            'rows': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM results r', self.company_db)),
+            'db_receipts': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM effect_receipts r', self.company_db)),
+            'publications': json.loads(self.sql(f"SELECT COALESCE(json_agg(r),'[]'::json) FROM publication_receipts r WHERE workspace_id='{self.workspace}' AND revision>1", self.catalog_db)),
+            'revision': int(self.sql(f"SELECT revision FROM workspaces WHERE id='{self.workspace}'", self.catalog_db)),
+        }
+        return proof
 
     def cleanup(self):
         super().cleanup()
@@ -673,14 +695,21 @@ def main():
     parser.add_argument('--scenario', choices=('basic-flow', 'resource-smoke'), default='basic-flow')
     parser.add_argument('--account-id', type=identifier)
     parser.add_argument('--responses-lite', action='store_true', help='pin the Codex Responses Lite dialect for a model that emits it')
-    parser.add_argument('--max-calls', type=int, default=20, help='total governed resource calls, including model requests')
-    parser.add_argument('--max-seconds', type=int, default=600)
+    parser.add_argument('--max-calls', type=int, help='total governed resource calls, including model requests')
+    parser.add_argument('--max-seconds', type=int)
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--prepare-only', action='store_true', help='exercise setup, file publication and conversation creation without a model call or real credential')
     parser.add_argument('--credential-stdin', action='store_true')
     args = parser.parse_args()
+    resource_smoke = args.scenario == 'resource-smoke'
+    if args.max_calls is None:
+        args.max_calls = 30 if resource_smoke else 20
+    if args.max_seconds is None:
+        args.max_seconds = 300 if resource_smoke else 600
     if not 1 <= args.max_calls <= 40 or not 60 <= args.max_seconds <= 900:
         parser.error('finite demo bounds required: 1..40 calls and 60..900 seconds')
+    if resource_smoke and (args.max_calls > 30 or args.max_seconds > 300):
+        parser.error('resource-smoke is limited to 30 calls and 300 seconds')
     env = load_environment(args.environment)
     preflight(env)
     codex_tools_preflight(env)
@@ -713,7 +742,8 @@ def main():
             demo.note('prepared', actual_model_calls=0, native_execution='NOT RUN')
         else:
             signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError('demo deadline')))
-            signal.alarm(args.max_seconds)
+            if not resource_smoke:
+                signal.alarm(args.max_seconds)
             demo.run_flow()
     except BaseException as error:
         if demo.root.exists():
