@@ -248,5 +248,93 @@ class NativeSuiteContract(unittest.TestCase):
                     load_environment(path)
 
 
+class ResourceSmokeEvidence(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        entry = Path(__file__).resolve().parents[1] / 'integration/demo-basic-flow.py'
+        spec = importlib.util.spec_from_file_location('resource_smoke_demo', entry)
+        cls.demo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.demo)
+
+    def evidence(self):
+        expected = {'file_marker': 'from-file', 'db_marker': 'from-db', 'execution_id': 'execution'}
+        reply = lambda body, receipt: {'status': 200, 'body': json.dumps(body), 'receipt': receipt}
+        return {'expected': expected, 'instance_id': 'instance',
+                'events': [{'method': 'item/completed', 'params': {'item': {
+                    'type': 'mcpToolCall', 'server': 'managed', 'tool': 'execution_self',
+                    'status': 'completed', 'error': None,
+                    'result': {'isError': False, 'structuredContent': {'id': 'execution', 'instance_id': 'instance'}}}}}],
+                'calls': [
+                    {'operation': 'db.read', 'instance_id': 'instance', 'intent_id': 'read',
+                     'reply': reply({'db_marker': 'from-db'}, {})},
+                    {'operation': 'db.write', 'instance_id': 'instance', 'intent_id': 'write',
+                     'reply': reply({}, {'result_id': 'result'})},
+                    {'operation': 'file.publish', 'instance_id': 'instance', 'intent_id': 'publish',
+                     'reply': reply({}, {})}],
+                'rows': [{'id': 'result', 'content': dict(expected)}],
+                'db_receipts': [{'intent_id': 'write', 'result_id': 'result', 'input': dict(expected)}],
+                'revision': 2,
+                'publications': [{'intent_id': 'publish', 'revision': 2, 'input': {'files': {'result.json': 'upload'}}}],
+                'published': dict(expected)}
+
+    def test_complete_bound_evidence_passes(self):
+        checks = self.demo.verify_resource_smoke(self.evidence())
+        self.assertEqual(set(checks), {'mcp', 'db.read', 'db.write', 'file.publish', 'file.readback'})
+        self.assertEqual(set(checks.values()), {'PASS'})
+
+    def test_missing_or_wrong_mcp_is_not_proved_by_other_successes(self):
+        for kind in ('missing', 'wrong-instance', 'failed'):
+            proof = self.evidence()
+            if kind == 'missing':
+                proof['events'] = []
+            elif kind == 'wrong-instance':
+                proof['events'][0]['params']['item']['result']['structuredContent']['instance_id'] = 'other'
+            else:
+                proof['events'][0]['params']['item']['result']['isError'] = True
+            with self.subTest(kind=kind), self.assertRaisesRegex(RuntimeError, 'mcp'):
+                self.demo.verify_resource_smoke(proof)
+
+    def test_database_needs_bound_read_matching_content_and_commit_receipt(self):
+        for kind in ('wrong-read', 'wrong-row', 'missing-receipt', 'wrong-writer', 'duplicate-row'):
+            proof = self.evidence()
+            if kind == 'wrong-read':
+                proof['calls'][0]['reply']['body'] = '{}'
+            elif kind == 'wrong-row':
+                proof['rows'][0]['content']['db_marker'] = 'invented'
+            elif kind == 'missing-receipt':
+                proof['db_receipts'] = []
+            elif kind == 'wrong-writer':
+                proof['calls'][1]['instance_id'] = 'other'
+            else:
+                proof['rows'].append(proof['rows'][0])
+            with self.subTest(kind=kind), self.assertRaisesRegex(RuntimeError, 'db\\.'):
+                self.demo.verify_resource_smoke(proof)
+
+    def test_upload_only_wrong_publisher_and_wrong_readback_fail(self):
+        for kind in ('no-publication', 'old-revision', 'wrong-publisher', 'wrong-bytes'):
+            proof = self.evidence()
+            if kind == 'no-publication':
+                proof['publications'] = []
+            elif kind == 'old-revision':
+                proof['revision'] = 1
+            elif kind == 'wrong-publisher':
+                proof['calls'][2]['intent_id'] = 'different'
+            else:
+                proof['published']['file_marker'] = 'invented'
+            with self.subTest(kind=kind), self.assertRaisesRegex(RuntimeError, 'file\\.'):
+                self.demo.verify_resource_smoke(proof)
+
+    def test_markers_are_fresh_and_basic_flow_defaults_remain(self):
+        from types import SimpleNamespace
+        env = {'pg_bin': Path('/pg'), 'run_root': Path('/run'), 'deployment_root': Path('/deployment'), 'ipc_root': Path('/ipc')}
+        args = SimpleNamespace(run_name='unused')
+        a, b = [self.demo.ResourceSmokeDemo(env, args) for _ in range(2)]
+        self.assertNotEqual(a.file_marker, b.file_marker)
+        self.assertNotEqual(a.db_marker, b.db_marker)
+        self.assertNotIn(a.db_marker, a.sample)
+        self.assertEqual(self.demo.Demo.sample, self.demo.SAMPLE)
+        self.assertEqual(self.demo.Demo.extra_services, ())
+
+
 if __name__ == '__main__':
     unittest.main()

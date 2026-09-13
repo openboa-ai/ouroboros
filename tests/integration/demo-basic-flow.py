@@ -107,6 +107,11 @@ def codex_tools_preflight(env):
 
 
 class Demo:
+    extra_services = ()
+    sample = SAMPLE
+    purpose = FIRST
+    tool_instruction = 'Use only local file and shell tools; no network or extra agents.'
+
     def __init__(self, env, args):
         self.env, self.args = env, args
         self.child_env = child_environment(env)
@@ -151,7 +156,7 @@ class Demo:
                       '--auth-local=scram-sha-256', '--auth-host=scram-sha-256',
                       '--pwfile', pg / 'password', '--no-locale'], self.env['postgres_uid'])
         (pg / 'password').unlink()
-        chosen = ports(['database', 'core', 'gateway', 'catalog', 'fixture'])
+        chosen = ports(['database', 'core', 'gateway', 'catalog', 'fixture', *[name for name, _ in self.extra_services]])
         self.pg_port = chosen.pop('database')
         with (pg / 'postgres.log').open('xb') as log:
             os.chmod(pg / 'postgres.log', 0o600)
@@ -184,7 +189,7 @@ class Demo:
         (ipc / 'gateway').chmod(0o711)
         os.chown(ipc / 'gateway', 70002, 70002)
         self.ids = {key: str(uuid.uuid4()) for key in ('firm', 'human', 'agent', 'grant', 'child', 'control', 'store', 'generation', 'namespace', 'credential')}
-        for name, uid in [('ca', 0), ('core', 70001), ('gateway', 70002), ('cli', 70003), ('catalog', 70005), ('provider', 70007), ('runtime', 0)]:
+        for name, uid in [('ca', 0), ('core', 70001), ('gateway', 70002), ('cli', 70003), ('catalog', 70005), ('provider', 70007), ('runtime', 0), *self.extra_services]:
             (self.test / name).mkdir(mode=0o700)
             os.chown(self.test / name, uid, uid)
         self.certificates()
@@ -238,10 +243,11 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         for name, fingerprint, config in [('files', self.fps['catalog'], target), ('managed-model', self.fps['provider'], provider)]:
             self.sql(f"INSERT INTO resource_targets VALUES('{i['firm']}','{name}','{fingerprint}',true,'{json.dumps(config)}',2097152)")
         self.sql(f"INSERT INTO workspace_namespaces VALUES('{i['firm']}','{i['namespace']}','files','{i['store']}','{i['generation']}',2,0)")
+        extra_workers = self.prepare_extra_resources()
         gw_tls = self.tls('gateway', 'gateway-service', 70002)
         self.config('gateway', {'listen': self.fixture.endpoint('gateway'), 'tls': self.tls('gateway', 'gateway', 70002),
             'core_url': self.fixture.url('core'), 'core_client': gw_tls,
-            'workers': {'files': self.fixture.url('catalog'), 'managed-model': self.fixture.url('fixture')},
+            'workers': {'files': self.fixture.url('catalog'), 'managed-model': self.fixture.url('fixture'), **extra_workers},
             'native_routes': {'model': 'managed-model'}, 'instance_socket': str(ipc / 'gateway/instance.sock')}, 70002)
         self.config('cli', {'gateway_url': self.fixture.url('gateway'), 'tls': self.tls('cli', 'human', 70003)}, 70003)
         self.config('runtime', {'core_url': self.fixture.url('core'), 'tls': self.tls('runtime', 'runtime', 0),
@@ -249,7 +255,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
             'program': self.profile, 'ipc_root': str(ipc), 'gateway_socket': str(ipc / 'gateway/instance.sock'),
             'gateway_uid': 70002, 'binary_dir': str(self.binary), 'evidence_dir': str(self.test / 'runtime'),
             'bridge_uid': self.env['bridge_uid'], 'guard_uid': self.env['guard_uid']}, 0)
-        for name, uid in [('core', 70001), ('catalog', 70005), ('provider', 70007), ('gateway', 70002)]:
+        for name, uid in [('core', 70001), ('catalog', 70005), ('provider', 70007), *self.extra_services, ('gateway', 70002)]:
             self.services.append(self.launch(name, uid))
         for _ in range(100):
             try:
@@ -265,11 +271,17 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
     def sql(self, statement, database=None):
         return self.fixture.sql(statement, database or self.db)
 
+    def prepare_extra_resources(self):
+        return {}
+
+    def check_prepared(self):
+        pass
+
     def database(self, role):
         name, password = 'demo_' + role + '_' + secrets.token_hex(4), secrets.token_hex(24)
         self.fixture.sql(f"CREATE ROLE {name} LOGIN PASSWORD '{password}'; CREATE DATABASE {name} OWNER {name};")
         owner = 'provider' if role == 'custody' else role
-        uid = {'core': 70001, 'catalog': 70005, 'provider': 70007}[owner]
+        uid = {'core': 70001, 'catalog': 70005, 'provider': 70007, 'company': 70004}[owner]
         migration_url = self.test / 'runtime' / (role + '-migration.url')
         private(migration_url, f'postgresql://{name}:{password}@127.0.0.1:{self.pg_port}/{name}?sslmode=disable\n')
         executable = 'ouroboros-migrate' if role == 'core' else 'ouroboros-resource-migrate'
@@ -284,6 +296,8 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         elif role == 'catalog':
             tables = 'workspaces,workspace_snapshots,uploads,publication_receipts,upload_staging,blob_objects,upload_object_holds,revision_object_holds,workspace_create_receipts,catalog_retirements,catalog_collections'
             grants += f"GRANT SELECT,INSERT,UPDATE ON {tables} TO {service}; GRANT SELECT ON storage_binding TO {service}; GRANT EXECUTE ON FUNCTION check_storage_binding(uuid,uuid,uuid) TO {service};"
+        elif role == 'company':
+            grants += f"GRANT SELECT,INSERT,UPDATE ON inputs,results,effect_receipts TO {service};"
         else:
             grants += f"GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {service}; GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {service}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {service}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {service};"
         self.fixture.sql(grants, name)
@@ -297,7 +311,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
             '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-out', ca / 'ca.pem'])
         private(ca / 'cert.ext', self.fixture.cert_extensions())
         self.fps = {}
-        for name in ('core', 'gateway', 'gateway-service', 'runtime', 'human', 'catalog', 'provider'):
+        for name in ('core', 'gateway', 'gateway-service', 'runtime', 'human', 'catalog', 'provider', *[name for name, _ in self.extra_services]):
             self.command(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', ca / (name + '.key')])
             self.command(['openssl', 'req', '-new', '-key', ca / (name + '.key'), '-subj', '/CN=' + name, '-out', ca / (name + '.csr')])
             self.command(['openssl', 'x509', '-req', '-in', ca / (name + '.csr'), '-CA', ca / 'ca.pem', '-CAkey', ca / 'ca.key',
@@ -320,7 +334,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
             'gateway_fingerprint': self.fps['gateway-service'], 'role': role, 'database_url_file': str(self.test / role / 'db.url'), **extra}, uid)
 
     def launch(self, name, uid):
-        binary = 'ouroboros-resources' if name in ('catalog', 'provider') else 'ouroboros-' + name
+        binary = 'ouroboros-resources' if name in ('catalog', 'provider', 'company') else 'ouroboros-' + name
         log = self.test / name / ('process-' + secrets.token_hex(3) + '.log')
         with log.open('xb') as output:
             log.chmod(0o600)
@@ -357,7 +371,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         i = self.ids
         prompt = f"""{question}
 Ouroboros 기본 흐름을 확인하는 짧은 데모입니다. 답변은 한국어로 작성하세요.
-Read /workspace/task/input.txt using the shell. Use only local file and shell tools; no network or extra agents.
+Read /workspace/task/input.txt using the shell. {self.tool_instruction}
 Write your own answer to /workspace/answer.txt, then persist that exact answer with this command:
 /usr/local/bin/ouroboros-cli --instance conversations send {self.conversation} --delegation {i['child']} --text-file /workspace/answer.txt --reply-to {message} --key {key}-answer
 After the command succeeds, finish your turn. Do not wait for another message.
@@ -407,15 +421,15 @@ After the command succeeds, finish your turn. Do not wait for another message.
 
     def prepare_flow(self):
         self.step = 'work'
-        self.work = self.post('/work', {'purpose': FIRST, 'delegation_id': self.ids['grant']}, 'demo-work')['resource_id']
+        self.work = self.post('/work', {'purpose': self.purpose, 'delegation_id': self.ids['grant']}, 'demo-work')['resource_id']
         i = self.ids
         for delegation, ops in [(i['grant'], ['inspect', 'workspace.create', 'file.read', 'file.upload', 'file.publish']), (i['child'], ['inspect', 'file.read'])]:
             self.sql(f"INSERT INTO resource_scopes(firm_id,work_id,delegation_id,target_id,operations,namespace_id) VALUES('{i['firm']}','{self.work}','{delegation}','files',ARRAY[{','.join(repr(x) for x in ops)}],'{i['namespace']}')")
             self.sql(f"INSERT INTO resource_scopes(firm_id,work_id,delegation_id,target_id,operations) VALUES('{i['firm']}','{self.work}','{delegation}','managed-model',ARRAY['inspect','model.responses'])")
         self.workspace = self.post('/workspaces', {'label': 'Basic flow demo'}, 'demo-workspace', *self.scope())['workspace_id']
-        self.publish({'input.txt': SAMPLE.encode()}, 0, 'demo-input')
+        self.publish({'input.txt': self.sample.encode()}, 0, 'demo-input')
         self.conversation = self.post('/conversations', {'work_id': self.work, 'delegation_id': i['grant'], 'responsible_agent_id': i['agent']}, 'demo-conversation')['resource_id']
-        self.note('input', text=SAMPLE, work_id=self.work, conversation_id=self.conversation)
+        self.note('input', text=self.sample, work_id=self.work, conversation_id=self.conversation)
 
     def run_flow(self):
         self.prepare_flow()
@@ -491,11 +505,172 @@ After the command succeeds, finish your turn. Do not wait for another message.
             raise RuntimeError('demo cleanup incomplete; owned evidence retained')
 
 
+def verify_resource_smoke(proof):
+    """Check collected native/Core/worker/read-back evidence, not the agent's report."""
+    def require(condition, stage):
+        if not condition:
+            raise RuntimeError('resource-smoke evidence failed: ' + stage)
+
+    expected = proof['expected']
+    instance = proof['instance_id']
+    calls = proof['calls']
+    mcp = [e.get('params', {}).get('item', {}) for e in proof['events']
+           if e.get('method') == 'item/completed']
+    require(any(item.get('type') == 'mcpToolCall' and item.get('server') == 'managed'
+                and item.get('tool') == 'execution_self' and item.get('status') == 'completed'
+                and item.get('error') is None and isinstance(item.get('result'), dict)
+                and not item['result'].get('isError', False)
+                and (item['result'].get('structuredContent') or {}).get('id') == expected['execution_id']
+                and (item['result'].get('structuredContent') or {}).get('instance_id') == instance
+                for item in mcp), 'mcp')
+
+    def successful(operation):
+        return [c for c in calls if c['operation'] == operation and c['instance_id'] == instance
+                and isinstance(c.get('reply'), dict) and 200 <= c['reply']['status'] < 300]
+
+    require(any(json.loads(c['reply']['body']) == {'db_marker': expected['db_marker']}
+                for c in successful('db.read')), 'db.read')
+    rows, receipts = proof['rows'], proof['db_receipts']
+    require(len(rows) == len(receipts) == 1 and rows[0]['content'] == expected
+            and receipts[0]['input'] == expected and receipts[0]['result_id'] == rows[0]['id']
+            and any(c['intent_id'] == receipts[0]['intent_id']
+                    and c['reply']['receipt'].get('result_id') == rows[0]['id']
+                    for c in successful('db.write')), 'db.write')
+    publications = proof['publications']
+    require(proof['revision'] == 2 and len(publications) == 1
+            and publications[0]['revision'] == 2
+            and 'result.json' in publications[0]['input'].get('files', {})
+            and any(c['intent_id'] == publications[0]['intent_id'] for c in successful('file.publish')),
+            'file.publish')
+    require(proof['published'] == expected, 'file.readback')
+    return dict.fromkeys(('mcp', 'db.read', 'db.write', 'file.publish', 'file.readback'), 'PASS')
+
+
+class ResourceSmokeDemo(Demo):
+    extra_services = (('company', 70004),)
+    purpose = 'MCP 호출, DB 조회와 저장, 결과 파일 게시를 한 작업에서 확인해줘.'
+    tool_instruction = ('Use the native managed MCP execution_self tool and local shell/files with the '
+                        'Ouroboros CLI. No arbitrary network access or extra agents.')
+
+    def __init__(self, env, args):
+        super().__init__(env, args)
+        self.file_marker = secrets.token_hex(12)
+        self.db_marker = secrets.token_hex(12)
+        self.input_id = str(uuid.uuid4())
+        self.sample = json.dumps({'file_marker': self.file_marker}) + '\n'
+
+    def prepare_extra_resources(self):
+        i = self.ids
+        self.company_db = self.database('company')
+        self.sql(f"INSERT INTO inputs VALUES('{i['firm']}','{self.input_id}',"
+                 f"'{json.dumps({'db_marker': self.db_marker})}')", self.company_db)
+        self.resource('company', 70004, {})
+        self.sql(f"INSERT INTO resource_targets VALUES('{i['firm']}','company','{self.fps['company']}',true,"
+                 f"'{json.dumps({'input_id': self.input_id})}',2097152)")
+        self.sql(f"UPDATE delegations SET actions=actions||ARRAY['db.read','db.write'] WHERE firm_id='{i['firm']}' "
+                 f"AND id IN ('{i['grant']}','{i['child']}'); "
+                 f"UPDATE delegations SET actions=actions||ARRAY['file.upload','file.publish'] "
+                 f"WHERE firm_id='{i['firm']}' AND id='{i['child']}'")
+        return {'company': self.fixture.url('company')}
+
+    def prepare_flow(self):
+        super().prepare_flow()
+        i = self.ids
+        self.sql(f"UPDATE resource_scopes SET operations=operations||ARRAY['file.upload','file.publish'] "
+                 f"WHERE firm_id='{i['firm']}' AND work_id='{self.work}' AND delegation_id='{i['child']}' AND target_id='files'")
+        for grant in (i['grant'], i['child']):
+            self.sql(f"INSERT INTO resource_scopes(firm_id,work_id,delegation_id,target_id,operations) "
+                     f"VALUES('{i['firm']}','{self.work}','{grant}','company',ARRAY['inspect','db.read','db.write'])")
+
+    def check_prepared(self):
+        observed = self.post('/db/queries', {'operation': 'read_input', 'parameters': {'input_id': self.input_id}},
+                             'prepare-db-read', '--work', self.work, '--delegation', self.ids['grant'], '--target', 'company')
+        if observed != {'db_marker': self.db_marker} or int(self.sql('SELECT count(*) FROM results', self.company_db)):
+            raise RuntimeError('resource-smoke DB preparation mismatch')
+        output = self.test / 'cli/prepared-input.json'
+        self.download(f'/workspaces/{self.workspace}/snapshots/1/files/input.txt', output)
+        if json.loads(output.read_bytes()) != {'file_marker': self.file_marker}:
+            raise RuntimeError('resource-smoke file preparation mismatch')
+        self.note('resources.prepared', db_read='PASS', file_read='PASS', db_rows=0, actual_model_calls=0)
+
+    def download(self, location, output):
+        # Binary --output succeeds with empty stdout; it is not a JSON CLI response.
+        self.command([self.binary / 'ouroboros-cli', '--config', self.test / 'cli/config.json',
+                      'request', 'GET', location, '--output', str(output), *self.scope()], 70003)
+
+    def run_flow(self):
+        self.prepare_flow()
+        question = f"""{self.purpose}
+Perform this small task once. Use the native managed MCP tool execution_self with {{}} (not a hand-written HTTP substitute).
+Read file_marker from /workspace/task/input.txt. Read db_marker with the prepared read_input operation below.
+Write /workspace/result.json with exactly file_marker, db_marker, execution_id; execution_id is the id returned by execution_self.
+Store that same JSON object through record_result, then upload and publish result.json. Do not put the expected values in commands until you have read them.
+The existing CLI is /usr/local/bin/ouroboros-cli. Use --instance request for resource requests.
+All resource requests need --work {self.work} --delegation {self.ids['child']} and --target company (DB) or --target files (files).
+Use --input PATH for JSON bodies and --key for POST operations. --select /upload_id extracts an upload identifier from POST /uploads.
+DB read: POST /db/queries, key smoke-read, body {{"operation":"read_input","parameters":{{"input_id":"{self.input_id}"}}}}.
+DB write: POST /db/transactions, key smoke-write, body {{"operation":"record_result","parameters":<the result.json object>}}.
+Upload: POST /uploads, key smoke-upload, body {{"size":<exact byte count>,"sha256":"<sha256 of result.json>"}}; then PUT /uploads/<upload_id>/content with --input /workspace/result.json.
+Publish: POST /publications, key smoke-publish, body {{"workspace_id":"{self.workspace}","expected_revision":1,"files":{{"result.json":"<upload_id>"}}}}.
+Use available sh, cat, printf, wc -c and sha256sum; no installation or Python dependency is needed.
+After successful publication, write a brief Korean report to /workspace/answer.txt containing the exact path /workspaces/{self.workspace}/snapshots/2/files/result.json.
+"""
+        message = self.message(question, 'resource-question')
+        self.step = 'resource-agent'
+        execution, native_root, terminal = self.turn(question, message, 'resource')
+        self.step = 'resource-evidence'
+        instance = native_root.name
+        proof = {
+            'expected': {'file_marker': self.file_marker, 'db_marker': self.db_marker, 'execution_id': execution},
+            'instance_id': instance,
+            'events': [json.loads(line) for line in (native_root / 'native.jsonl').read_text().splitlines()],
+            'calls': json.loads(self.sql(f"SELECT COALESCE(json_agg(json_build_object('operation',operation,'instance_id',instance_id,'intent_id',intent_id,'reply',reply)),'[]'::json) FROM resource_calls WHERE firm_id='{self.ids['firm']}' AND work_id='{self.work}' AND operation IN ('db.read','db.write','file.publish')")),
+            'rows': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM results r', self.company_db)),
+            'db_receipts': json.loads(self.sql('SELECT COALESCE(json_agg(r),\'[]\'::json) FROM effect_receipts r', self.company_db)),
+            'publications': json.loads(self.sql(f"SELECT COALESCE(json_agg(r),'[]'::json) FROM publication_receipts r WHERE workspace_id='{self.workspace}' AND revision>1", self.catalog_db)),
+            'revision': int(self.sql(f"SELECT revision FROM workspaces WHERE id='{self.workspace}'", self.catalog_db)),
+        }
+        # Preserve evidence even when publication is missing or read-back fails.
+        private(self.root / 'resource-evidence.json', json.dumps(proof, ensure_ascii=False, indent=2))
+        location = f'/workspaces/{self.workspace}/snapshots/2/files/result.json'
+        output = self.test / 'cli/published-result.json'
+        self.download(location, output)
+        published_bytes = output.read_bytes()
+        proof['published'] = json.loads(published_bytes)
+        checks = verify_resource_smoke(proof)
+        report = next(v for v in self.transcript if v['step'] == 'resource.answer')
+        if location not in report['text']:
+            raise RuntimeError('published file location missing from conversation answer')
+        private(self.root / 'result.json', published_bytes)
+        checks.update({'execution.terminated': 'PASS', 'compute.return': 'PASS'})
+        summary = {'scenario': 'resource-smoke', 'result': 'PENDING_CLEANUP', 'checks': checks, 'actual_model': True,
+                   'model_calls': int(self.sql("SELECT count(*) FROM resource_calls WHERE operation='model.responses'")),
+                   'resource_calls': int(self.sql('SELECT count(*) FROM resource_calls')),
+                   'execution_id': execution, 'native_context': terminal,
+                   'published_path': location, 'result_file': str(self.root / 'result.json')}
+        private(self.root / 'resource-summary.json', json.dumps(summary, ensure_ascii=False, indent=2))
+        self.note('resources.verified', **summary)
+
+    def cleanup(self):
+        super().cleanup()
+        summary_path = self.root / 'resource-summary.json'
+        if summary_path.exists():
+            if ((self.test / 'provider/custody.key').exists()
+                    or (self.root / 'pg/data/postmaster.pid').exists()):
+                raise RuntimeError('resource-smoke private key or database cleanup incomplete')
+            summary = json.loads(summary_path.read_text())
+            summary['checks']['cleanup'] = 'PASS'
+            summary['result'] = 'PASS'
+            summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+            self.note('complete', **summary)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment', type=Path, required=True)
     parser.add_argument('--run-name', type=identifier, required=True)
     parser.add_argument('--model', type=model_identifier, required=True)
+    parser.add_argument('--scenario', choices=('basic-flow', 'resource-smoke'), default='basic-flow')
     parser.add_argument('--account-id', type=identifier)
     parser.add_argument('--responses-lite', action='store_true', help='pin the Codex Responses Lite dialect for a model that emits it')
     parser.add_argument('--max-calls', type=int, default=20, help='total governed resource calls, including model requests')
@@ -525,13 +700,14 @@ def main():
     if not token or len(token) > 16384 or any(b < 33 or b > 126 for b in token):
         parser.error('invalid credential input')
     os.umask(0o077)
-    demo = Demo(env, args)
+    demo = (ResourceSmokeDemo if args.scenario == 'resource-smoke' else Demo)(env, args)
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         demo.setup(token)
         del token
         if args.prepare_only:
             demo.prepare_flow()
+            demo.check_prepared()
             if int(demo.sql("SELECT count(*) FROM resource_calls WHERE operation='model.responses'")) != 0 or int(demo.sql('SELECT count(*) FROM credential_use_claims', demo.custody_db)) != 0:
                 raise RuntimeError('prepare-only made an unexpected model or credential claim')
             demo.note('prepared', actual_model_calls=0, native_execution='NOT RUN')

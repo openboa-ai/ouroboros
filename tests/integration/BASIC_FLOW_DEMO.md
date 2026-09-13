@@ -86,6 +86,52 @@ part of the authorized allowance; do not start another run with a fresh full all
 
 ## What to inspect
 
+### One-turn resource smoke check
+
+Select `--scenario resource-smoke` to exercise the existing managed MCP, Company DB
+and Catalog in one actual native turn. The default `basic-flow` scenario above retains
+its two-turn conversation behavior. No new server, product API or schema is required.
+
+```sh
+python3 tests/integration/demo-basic-flow.py \
+  --environment "$NATIVE_ENVIRONMENT" --run-name resources-prepare-01 \
+  --scenario resource-smoke --model gpt-5.6-sol \
+  --max-calls 30 --max-seconds 300 --prepare-only
+
+# After preparation, with a fresh approved allowance and token on nonterminal stdin:
+python3 tests/integration/demo-basic-flow.py \
+  --environment "$NATIVE_ENVIRONMENT" --run-name resources-live-01 \
+  --scenario resource-smoke --model gpt-5.6-sol --responses-lite \
+  --account-id "$CONFIRMED_ACCOUNT_ID" \
+  --max-calls 30 --max-seconds 300 --credential-stdin
+```
+
+The agent reads a fresh file marker, calls the already registered managed MCP
+`execution_self({})`, queries a separate fresh DB marker with `read_input`, and saves
+both markers plus its execution ID through `record_result`. It writes the same object
+to `result.json`, uploads it and explicitly publishes revision 2, then saves the
+published path in the conversation. Expected marker values are absent from its prompt.
+
+The verifier checks the actual native MCP completion and bound execution/instance,
+Core's instance-attributed DB calls, the single Company result and commit receipt,
+and the agent-attributed Catalog publication receipt. It downloads the immutable
+published file through Gateway and compares the JSON with the expected data and DB
+result. Upload-only completion cannot pass. Managed MCP uses the Core management
+path; a resource-call count for the separate fixture MCP is not its evidence.
+
+`--prepare-only` checks DB and file reads with a synthetic credential and verifies
+zero model requests/custody claims. The evidence verifier's portable positive and
+negative cases run in `tests/tooling/test-native-suite-contract.py`, including missing
+MCP, wrong DB data/receipt/actor, and missing publication or incorrect read-back.
+
+The run root retains `resource-evidence.json`, `resource-summary.json`, the downloaded
+`result.json`, conversation transcript and cleanup result. The summary becomes PASS
+only after successful verification and cleanup. The five-minute/30-resource-call
+limit covers one run, not a renewable retry allowance. Preparation/builds happen
+before starting the approved live window; detailed failure evidence stays private.
+
+### Two-turn conversation demo
+
 The transcript prints the sample file, first execution and answer, follow-up execution
 and answer, and observed termination with compute return. Each answer is saved by the
 native instance through `conversations send`, with message and native execution
