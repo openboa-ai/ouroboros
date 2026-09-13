@@ -79,6 +79,33 @@ def postgres_identity(env):
     return drop
 
 
+def codex_tools_preflight(env):
+    """Inspect the pinned tool package before accepting any actual account credential."""
+    docker = ['docker', '--host', 'unix://' + str(env['docker_socket'])]
+    child_env = child_environment(env)
+    owner = 'ouroboros-basic-flow-preflight-' + uuid.uuid4().hex
+    label = 'ouroboros.demo-preflight=' + owner
+    try:
+        subprocess.run([*docker, 'create', '--name', owner, '--label', label,
+            '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+            '--security-opt', 'no-new-privileges', '--memory', '128m',
+            '--pids-limit', '32', '--user', '65532:65532', '--entrypoint', '/bin/sh',
+            env['native_image'], '-c', 'test -x /usr/local/bin/codex-code-mode-host && /usr/local/bin/codex --version'],
+            check=True, capture_output=True, timeout=10, env=child_env)
+        result = subprocess.run([*docker, 'start', '--attach', owner],
+            check=True, capture_output=True, timeout=10, env=child_env)
+        if result.stdout.decode().strip() != 'codex-cli ' + env['codex_version']:
+            raise RuntimeError('Codex tool package or version mismatch')
+    finally:
+        owned = subprocess.run([*docker, 'ps', '-a', '--no-trunc', '--filter', 'label=' + label,
+            '--format', '{{.ID}}'], check=True, capture_output=True, timeout=10, env=child_env)
+        for container in owned.stdout.decode().splitlines():
+            if len(container) != 64 or any(c not in '0123456789abcdef' for c in container):
+                raise RuntimeError('invalid preflight container identity')
+            subprocess.run([*docker, 'rm', '--force', container], check=True,
+                capture_output=True, timeout=10, env=child_env)
+
+
 class Demo:
     def __init__(self, env, args):
         self.env, self.args = env, args
@@ -478,6 +505,7 @@ def main():
         parser.error('finite demo bounds required: 1..40 calls and 60..900 seconds')
     env = load_environment(args.environment)
     preflight(env)
+    codex_tools_preflight(env)
     if args.preflight:
         print(json.dumps({'ready': True, 'actual_model_calls': 0, 'model': args.model,
             'max_resource_calls': args.max_calls, 'max_seconds': args.max_seconds}))

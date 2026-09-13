@@ -18,6 +18,13 @@ Build the current source and its native image before running. All native environ
 paths, image identities, PostgreSQL tools and service UIDs must pass existing preflight.
 Each attempt requires a fresh run name; previous evidence is preserved.
 
+The pinned Codex package includes `codex-code-mode-host`, which `gpt-5.6-sol`
+needs to run local tools. The image preparation script verifies the official
+helper archive's checksum before installation. Demo preflight checks that the
+helper is executable and the Codex version matches, in a disposable container
+with no network or credentials. It removes that container before continuing;
+a missing helper fails before the driver reads a supplied credential.
+
 ```sh
 python3 tests/integration/demo-basic-flow.py \
   --environment "$NATIVE_ENVIRONMENT" --run-name prepare-01 \
