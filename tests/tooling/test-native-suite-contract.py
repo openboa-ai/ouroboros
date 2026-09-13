@@ -348,20 +348,21 @@ class ResourceSmokeEvidence(unittest.TestCase):
     def test_live_clock_starts_after_preparation_without_replenishing_calls(self):
         from types import SimpleNamespace
         env = {'pg_bin': Path('/pg'), 'run_root': Path('/run'), 'deployment_root': Path('/deployment'), 'ipc_root': Path('/ipc')}
-        demo = self.demo.ResourceSmokeDemo(env, SimpleNamespace(run_name='unused', max_seconds=300))
-        demo.work, demo.workspace, demo.ids = 'work', 'workspace', {'child': 'child'}
-        order = []
-        with patch.object(demo, 'prepare_flow', side_effect=lambda: order.append('prepare')), \
-                patch.object(demo, 'message', side_effect=lambda *args: order.append('message')), \
-                patch.object(demo, 'sql', side_effect=lambda sql: order.append(sql)), \
-                patch.object(self.demo.signal, 'alarm', side_effect=lambda seconds: order.append(seconds)), \
-                patch.object(demo, 'turn', side_effect=RuntimeError('stop before execution')):
-            with self.assertRaisesRegex(RuntimeError, 'stop before execution'):
-                demo.run_flow()
-        self.assertEqual(order[:2], ['prepare', 'message'])
-        self.assertIn('UPDATE credentials SET expires_at=', order[2])
-        self.assertNotIn('limits', order[2])
-        self.assertEqual(order[3:], [300])
+        for no_deadline in (False, True):
+            demo = self.demo.ResourceSmokeDemo(env, SimpleNamespace(run_name='unused', max_seconds=300, no_deadline=no_deadline))
+            demo.work, demo.workspace, demo.ids = 'work', 'workspace', {'child': 'child'}
+            order = []
+            with patch.object(demo, 'prepare_flow', side_effect=lambda: order.append('prepare')), \
+                    patch.object(demo, 'message', side_effect=lambda *args: order.append('message')), \
+                    patch.object(demo, 'sql', side_effect=lambda sql: order.append(sql)), \
+                    patch.object(self.demo.signal, 'alarm', side_effect=lambda seconds: order.append(seconds)), \
+                    patch.object(demo, 'turn', side_effect=RuntimeError('stop before execution')):
+                with self.assertRaisesRegex(RuntimeError, 'stop before execution'):
+                    demo.run_flow()
+            self.assertEqual(order[:2], ['prepare', 'message'])
+            self.assertIn('UPDATE credentials SET expires_at=', order[2])
+            self.assertNotIn('limits', order[2])
+            self.assertEqual(order[3:], [] if no_deadline else [300])
 
     def test_failed_turn_preserves_committed_evidence_and_does_not_start_again(self):
         from types import SimpleNamespace

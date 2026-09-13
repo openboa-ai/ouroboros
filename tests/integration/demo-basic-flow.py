@@ -620,7 +620,8 @@ After successful publication, write a brief Korean report to /workspace/answer.t
         # This never resets the resource-call counter or retries an execution.
         expiry = f"clock_timestamp()+interval '{self.args.max_seconds} seconds'"
         self.sql(f"UPDATE credentials SET expires_at={expiry}; UPDATE delegations SET expires_at={expiry}")
-        signal.alarm(self.args.max_seconds)
+        if not getattr(self.args, 'no_deadline', False):
+            signal.alarm(self.args.max_seconds)
         self.step = 'resource-agent'
         try:
             execution, native_root, terminal = self.turn(question, message, 'resource')
@@ -697,6 +698,8 @@ def main():
     parser.add_argument('--responses-lite', action='store_true', help='pin the Codex Responses Lite dialect for a model that emits it')
     parser.add_argument('--max-calls', type=int, help='total governed resource calls, including model requests')
     parser.add_argument('--max-seconds', type=int)
+    parser.add_argument('--no-deadline', action='store_true',
+                        help='remove the demo-wide wall-clock alarm; finite native leases and request timeouts remain')
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--prepare-only', action='store_true', help='exercise setup, file publication and conversation creation without a model call or real credential')
     parser.add_argument('--credential-stdin', action='store_true')
@@ -705,10 +708,10 @@ def main():
     if args.max_calls is None:
         args.max_calls = 30 if resource_smoke else 20
     if args.max_seconds is None:
-        args.max_seconds = 300 if resource_smoke else 600
+        args.max_seconds = 900 if args.no_deadline else (300 if resource_smoke else 600)
     if not 1 <= args.max_calls <= 40 or not 60 <= args.max_seconds <= 900:
         parser.error('finite demo bounds required: 1..40 calls and 60..900 seconds')
-    if resource_smoke and (args.max_calls > 30 or args.max_seconds > 300):
+    if resource_smoke and (args.max_calls > 30 or (args.max_seconds > 300 and not args.no_deadline)):
         parser.error('resource-smoke is limited to 30 calls and 300 seconds')
     env = load_environment(args.environment)
     preflight(env)
@@ -742,7 +745,7 @@ def main():
             demo.note('prepared', actual_model_calls=0, native_execution='NOT RUN')
         else:
             signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError('demo deadline')))
-            if not resource_smoke:
+            if not resource_smoke and not args.no_deadline:
                 signal.alarm(args.max_seconds)
             demo.run_flow()
     except BaseException as error:

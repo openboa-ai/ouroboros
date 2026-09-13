@@ -132,6 +132,10 @@ only after successful verification and cleanup. The five-minute/30-resource-call
 limit covers one run, not a renewable retry allowance. Preparation/builds happen
 before starting the approved live window; detailed failure evidence stays private.
 This scenario defaults to 300 seconds and 30 calls and rejects larger values.
+When the operator explicitly removes the overall wall-clock limit, use
+`--no-deadline`. This disables the demo-wide alarm and uses a finite 900-second
+fixture grant; native execution leases and individual request timeouts remain.
+The 30-call ceiling and no-retry behavior are unchanged.
 After preparing the input and task, it starts the clock and the temporary grants'
 expiry together. Preparation calls still count toward the same 30-call budget.
 
