@@ -62,6 +62,13 @@ header. It requires the exact Codex subscription endpoint and an account binding
 The request body is unchanged. Omit this flag for models that use standard Responses;
 there is no automatic dialect detection or retry in another dialect.
 
+The Lite connection requests `Accept: text/event-stream`. A missing response media
+header is accepted only on a pinned Codex subscription stream, and only a valid
+terminal Responses event can establish completion. Explicit incompatible media types,
+empty streams and malformed responses remain failures. Instance sockets allow the
+bounded response to last 60 seconds while retaining a separate five-second header
+limit and continuous Gateway authority checks.
+
 This follows the [pinned Codex client implementation](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/client.rs).
 
 `--max-calls` bounds **all governed resource calls**, including model requests and

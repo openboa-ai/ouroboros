@@ -73,7 +73,9 @@ impl ProviderBinding {
             request = request.header("ChatGPT-Account-ID", account);
         }
         if self.codex_responses_lite {
-            request = request.header("x-openai-internal-codex-responses-lite", "true");
+            request = request
+                .header("x-openai-internal-codex-responses-lite", "true")
+                .header(reqwest::header::ACCEPT, "text/event-stream");
         }
         request.body(body).build().map_err(|_| CustodyError)
     }
@@ -206,6 +208,12 @@ impl ProviderSender {
             return Err(CustodyError);
         }
         let body = serde_json::to_vec(&ticket.input).map_err(|_| CustodyError)?;
+        let codex_stream = self.binding.chatgpt_account_id.is_some()
+            && ticket
+                .input
+                .get("stream")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true);
         if body.len() > 1048576 {
             return Err(CustodyError);
         }
@@ -228,8 +236,7 @@ impl ProviderSender {
                 return Err(CustodyError)
             }
             let status=response.status().as_u16();
-            let content_type=response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v|v.to_str().ok()).and_then(|v|v.split(';').next()).ok_or_else(||failure("missing response media type"))?.to_owned();
-            if !matches!(content_type.as_str(),"application/json"|"text/event-stream") {return Err(failure("unsupported response media type"))}
+            let (content_type,inferred_stream)=response_media_type(response.headers(),codex_stream)?;
             // Only the validated media type is forwarded; arbitrary upstream header parameters
             // cannot become a credential reflection path.
             emit(ProviderFrame::Head {status,content_type:content_type.clone()}).await.map_err(|_|failure("response header delivery"))?;
@@ -244,6 +251,7 @@ impl ProviderSender {
             if !tail.is_empty() { emit(ProviderFrame::Data(tail)).await.map_err(|_|failure("response tail delivery"))?; }
             let body=String::from_utf8(bytes).map_err(|_|failure("response encoding"))?;
             let observation=crate::provider_observation::observe(&content_type,&body);
+            if inferred_stream && !verified_stream(&observation) {return Err(failure("unverified Codex response stream"))}
             Ok(ResourceReply {status,content_type,body,receipt:json!({"source":"provider_worker","attempt_id":ticket.attempt_id,"credential_id":binding.credential,"credential_version":binding.version,"requested_model":ticket.input.get("model"),"requested_effort":ticket.input.pointer("/reasoning/effort"),"provider_observation":observation})})
             };
             tokio::pin!(transfer);
@@ -270,6 +278,27 @@ impl ProviderSender {
             .map_err(|_| failure("receipt persistence"))?;
         Ok(result)
     }
+}
+
+// Codex's SSE client does not require a Content-Type header. For its fixed subscription
+// route only, negotiate SSE and verify terminal framing before persisting completion.
+fn response_media_type(
+    headers: &reqwest::header::HeaderMap,
+    codex_stream: bool,
+) -> Result<(String, bool), CustodyError> {
+    match headers.get(reqwest::header::CONTENT_TYPE) {
+        None if codex_stream => Ok(("text/event-stream".into(), true)),
+        None => Err(failure("missing response media type")),
+        Some(value) => match value.to_str().ok().and_then(|v| v.split(';').next()) {
+            Some(kind @ ("application/json" | "text/event-stream")) => Ok((kind.into(), false)),
+            _ => Err(failure("unsupported response media type")),
+        },
+    }
+}
+fn verified_stream(observation: &serde_json::Value) -> bool {
+    // For SSE, observe only reports "observed" after one valid terminal event.
+    // Codex requires the response id, but does not require a nested status field.
+    observation["state"] == "observed" && observation["response_id"].is_string()
 }
 
 // Diagnostics are fixed local stages. Do not pass upstream error text, bodies, URLs or headers.
@@ -332,6 +361,10 @@ mod tests {
             request.headers()["x-openai-internal-codex-responses-lite"],
             "true"
         );
+        assert_eq!(
+            request.headers()[reqwest::header::ACCEPT],
+            "text/event-stream"
+        );
         assert_eq!(request.body().unwrap().as_bytes().unwrap(), body);
         binding.codex_responses_lite = false;
         let request = binding
@@ -360,6 +393,41 @@ mod tests {
                 .request(&reqwest::Client::new(), b"synthetic-token", vec![])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn absent_codex_media_type_requires_an_actual_terminal_stream() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert!(response_media_type(&headers, false).is_err());
+        assert_eq!(
+            response_media_type(&headers, true).unwrap(),
+            ("text/event-stream".into(), true)
+        );
+        headers.insert(reqwest::header::CONTENT_TYPE, "text/html".parse().unwrap());
+        assert!(response_media_type(&headers, true).is_err());
+        for body in [
+            "",
+            "{\"error\":\"failure\"}",
+            "data: {\"type\":\"response.created\"}\n\n",
+        ] {
+            assert!(!verified_stream(&crate::provider_observation::observe(
+                "text/event-stream",
+                body
+            )));
+        }
+        let body = "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"fixture\",\"status\":\"completed\"}}\n\n";
+        assert!(verified_stream(&crate::provider_observation::observe(
+            "text/event-stream",
+            body
+        )));
+        assert!(!verified_stream(&crate::provider_observation::observe(
+            "text/event-stream",
+            &format!("{body}{body}")
+        )));
+        assert!(verified_stream(&crate::provider_observation::observe(
+            "text/event-stream",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"fixture\"}}\n\n"
+        )));
     }
 
     #[test]

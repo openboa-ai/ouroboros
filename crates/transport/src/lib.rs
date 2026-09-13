@@ -237,9 +237,13 @@ pub async fn serve_instance_socket(path: PathBuf, app: Router) -> Result<()> {
             let service = TowerToHyperService::new(app.layer(Extension(peer)));
             let connection = hyper::server::conn::http1::Builder::new()
                 .keep_alive(false)
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(Duration::from_secs(5))
                 .serve_connection(TokioIo::new(socket), service);
             tokio::pin!(connection);
-            let _ = tokio::time::timeout(Duration::from_secs(5), async {
+            // Model streams can outlive a short RPC. Bound header admission separately;
+            // Gateway keeps checking current authority while the one response is delivered.
+            let _ = tokio::time::timeout(Duration::from_secs(60), async {
                 tokio::select! {
                     result = &mut connection => { let _ = result; },
                     _ = stopping.changed() => {

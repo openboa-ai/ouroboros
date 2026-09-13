@@ -301,7 +301,7 @@ if a.encrypted_provider:
     upstream_port,provider_port=free_port(),free_port()
     upstream_tls=tls('upstream','upstream',70008)
     write(root/'upstream/server.py',(Path(__file__).resolve().parents[2] / 'tests/fixtures/native-provider-fixture.py').read_text(),70008)
-    write(root/'upstream/server.json',json.dumps({'port':upstream_port,'command':json.loads((root/'fixture/config.json').read_text())['fixture_command'],'adapter':a.native_adapter,'max_calls':8 if a.native_adapter else 3}),70008)
+    write(root/'upstream/server.json',json.dumps({'port':upstream_port,'command':json.loads((root/'fixture/config.json').read_text())['fixture_command'],'adapter':a.native_adapter,'max_calls':8 if a.native_adapter else 3,'first_response_delay_seconds':0 if a.native_adapter else 6}),70008)
     provider_binding={'target':'managed-model','endpoint':f'https://127.0.0.1:{upstream_port}/responses','credential_id':str(credential),'credential_version':1,'timeout_ms':10000,'max_response_bytes':65536}
     provider_tls=tls('provider','provider',70007)
     write(root/'provider/config.json',json.dumps({'listen':f'127.0.0.1:{provider_port}','tls':provider_tls,'core_url':fixture.url('core'),'core_client':provider_tls,'gateway_fingerprint':fps['gateway-service'],'role':'provider','database_url_file':str(root/'provider/db.url'),'key_file':str(key_path),'provider_ca_file':str(root/'provider/ca.pem'),'provider':provider_binding}),70007)
@@ -965,6 +965,8 @@ try:
     if a.encrypted_provider:
         expected_calls=8 if a.native_adapter else 3
         observed=json.loads((root/'upstream/observed.json').read_text());assert observed['count']==expected_calls and observed['authorized']
+        if not a.native_adapter:
+            assert observed['first_response_delay_elapsed'] >= 6, 'provider response must outlive the former five-second socket cap'
         assert query('SELECT count(*) FROM credential_use_claims',custody)==str(expected_calls)
         assert query('SELECT count(*) FROM provider_receipts',custody)==str(expected_calls)
         replies=json.loads(query("SELECT json_agg(reply) FROM resource_calls WHERE operation='model.responses'",db))
