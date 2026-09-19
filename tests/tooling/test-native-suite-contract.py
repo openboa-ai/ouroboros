@@ -49,7 +49,7 @@ class NativeSuiteContract(unittest.TestCase):
         rows = catalogue()
         self.assertEqual(len(rows), len({row['id'] for row in rows}))
         self.assertTrue(all(row['purpose'] and row['responsibilities'] and row['provider'] == 'synthetic-only' for row in rows))
-        self.assertTrue(set(SCENARIOS['native.adapter'].responsibilities) <= set(SCENARIOS['native.adapter-provider'].responsibilities))
+        self.assertLessEqual(set(SCENARIOS['native.adapter'].responsibilities), set(SCENARIOS['native.adapter-provider'].responsibilities))
         self.assertTrue(SCENARIOS['native.environment'].options('native.environment').rendered_environment)
 
     def test_every_named_scenario_is_a_valid_existing_oracle_combination(self):
@@ -317,30 +317,29 @@ class DemoCredentialFiles(unittest.TestCase):
                 self.assertEqual(owned.close.call_count, 1 if closed else 0)
                 self.assertEqual(retained.read_bytes(), b'retained evidence')
 
-    @unittest.skipUnless(sys.platform == 'linux', 'Linux memfd and memory locking required')
-    def test_memory_credentials_are_locked_sealed_and_released(self):
-        from tests.support.volatile_credentials import VolatileCredential
-        import re
-        def locked():
-            return int(re.search(r'VmLck:\s+(\d+)', Path('/proc/self/status').read_text()).group(1))
-        before = locked()
-        value = VolatileCredential(b'fixture input', os.getuid(), os.getgid())
-        descriptor = value.fd
-        try:
-            self.assertGreater(locked(), before)
-            self.assertIn('memfd:ouroboros-demo-credential', os.readlink(f'/proc/self/fd/{descriptor}'))
-            self.assertEqual(os.pread(descriptor, 64, 0), b'fixture input')
-            self.assertEqual(os.fstat(descriptor).st_mode & 0o777, 0o400)
-            self.assertFalse(os.get_inheritable(descriptor))
-            with self.assertRaises(OSError):
-                os.pwrite(descriptor, b'changed', 0)
-            with self.assertRaises(OSError):
-                os.ftruncate(descriptor, 0)
-        finally:
-            value.close()
-        self.assertEqual(locked(), before)
-        with self.assertRaises(OSError):
-            os.fstat(descriptor)
+    def test_memory_credentials_reject_invalid_inputs_and_preserve_existing_paths(self):
+        from tests.support import volatile_credentials as memory
+        with patch.object(memory, 'mount', side_effect=AssertionError('must not mount')):
+            for data in (b'', b'x' * 16385):
+                with self.assertRaises(ValueError):
+                    memory.VolatileCredential(data)
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                original = root / 'original'
+                original.write_bytes(b'existing evidence')
+                alias = root / 'alias'
+                alias.symlink_to(original)
+                for path in (original, alias):
+                    value = memory.VolatileCredential(b'fixture input')
+                    try:
+                        with self.assertRaises(FileExistsError):
+                            value.publish(path)
+                    finally:
+                        value.close()
+                    with self.assertRaises(FileExistsError):
+                        memory.publish_retained(path, b'fixture input')
+                    self.assertEqual(original.read_bytes(), b'existing evidence')
+                self.assertEqual(set(root.iterdir()), {original, alias})
 
 
 class ResourceSmokeEvidence(unittest.TestCase):

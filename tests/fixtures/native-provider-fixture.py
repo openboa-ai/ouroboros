@@ -76,6 +76,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200);self.send_header('content-type','text/event-stream');self.send_header('content-length',str(len(body)));self.end_headers();self.wfile.write(body)
 server=http.server.HTTPServer(('127.0.0.1',config['port']),Handler)
 context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.minimum_version=ssl.TLSVersion.TLSv1_2
 context.load_cert_chain(root/'upstream.pem',root/'upstream.key')
 server.socket=context.wrap_socket(server.socket,server_side=True)
 (root/'ready').write_text('ready')

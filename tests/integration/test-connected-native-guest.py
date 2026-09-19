@@ -36,6 +36,7 @@ signal.signal(signal.SIGTERM, interrupted)
 
 from tests.support.native_scenarios import SCENARIOS, select_scenario
 from tests.support.fixture_config import clean_environment, load_config, local_url
+from tests.support.volatile_credentials import publish_retained as credential_file
 p = argparse.ArgumentParser(description=__doc__)
 if not __debug__:
     p.error("optimized Python disables behavioral assertions and is not a test profile")
@@ -116,7 +117,7 @@ db='ouro_connected_'+secrets.token_hex(4)
 password=secrets.token_hex(24)
 sql(f"CREATE ROLE {db} LOGIN PASSWORD '{password}'; CREATE DATABASE {db} OWNER {db};")
 url=database_url(db,password,db)
-write(root/'runtime/migrate.url',url)
+credential_file(root/'runtime/migrate.url',url)
 run([str(binary/'ouroboros-migrate'),'--database-url-file',str(root/'runtime/migrate.url')])
 firm,human,agent,grant,child,control=[str(uuid.uuid4()) for _ in range(6)]
 role='ouro_service_'+secrets.token_hex(4)
@@ -142,7 +143,7 @@ recovery,recovery_child=[str(uuid.uuid4()) for _ in range(2)]
 sql(f"""INSERT INTO delegations(firm_id,id,principal_id,parent_id,actions,expires_at) VALUES
 ('{firm}','{recovery}','{human}',NULL,ARRAY['inspect','execution.start'],clock_timestamp()+interval '1 hour'),
 ('{firm}','{recovery_child}','{agent}','{recovery}',ARRAY['inspect','execution.start'],clock_timestamp()+interval '1 hour');""",db)
-write(root/'core/db.url',database_url(role,pw,db),70001)
+credential_file(root/'core/db.url',database_url(role,pw,db),70001)
 gw_socket=ipc/'gateway/instance.sock'
 write(root/'core/config.json',json.dumps({'listen':fixture.endpoint('core'),'tls':tls('core','core',70001),'database_url_file':str(root/'core/db.url'),'firm_id':firm,'gateway_fingerprint':fps['gateway-service'],'runtime_fingerprint':fps['runtime'],**({'wake_poll_interval_ms':100} if a.wake_successor else {})}),70001)
 write(root/'gateway/config.json',json.dumps({'listen':fixture.endpoint('gateway'),'tls':tls('gateway','gateway',70002),'core_url':fixture.url('core'),'core_client':tls('gateway','gateway-service',70002),'instance_socket':str(gw_socket)}),70002)
@@ -196,12 +197,12 @@ for name,uid in [('company',70004),('catalog',70005),('fixture',70006)]:
         rp=secrets.token_hex(24)
         sql(f"CREATE ROLE {rd} LOGIN PASSWORD '{rp}'; CREATE DATABASE {rd} OWNER {rd};")
         migrate=root/'runtime'/f'{name}.url'
-        write(migrate,database_url(rd,rp,rd))
+        credential_file(migrate,database_url(rd,rp,rd))
         run([str(binary/'ouroboros-resource-migrate'),'--role',name,'--database-url-file',str(migrate)])
         service='ouro_rw_'+secrets.token_hex(4);sp=secrets.token_hex(24)
         tables='inputs,results,effect_receipts' if name=='company' else 'workspaces,workspace_snapshots,uploads,publication_receipts,upload_staging,blob_objects,upload_object_holds,revision_object_holds,workspace_create_receipts,catalog_retirements,catalog_collections'
         sql(f"CREATE ROLE {service} LOGIN PASSWORD '{sp}'; GRANT CONNECT ON DATABASE {rd} TO {service}; GRANT USAGE ON SCHEMA public TO {service}; GRANT SELECT,INSERT,UPDATE ON {tables} TO {service};",rd)
-        write(root/name/'db.url',database_url(service,sp,rd),uid)
+        credential_file(root/name/'db.url',database_url(service,sp,rd),uid)
         config['database_url_file']=str(root/name/'db.url')
         resource_dbs[name]=rd
         if name=='catalog':
@@ -284,7 +285,7 @@ if a.encrypted_provider:
     custody='native_custody_'+secrets.token_hex(4)
     cp=secrets.token_hex(24)
     sql(f"CREATE ROLE {custody} LOGIN PASSWORD '{cp}'; CREATE DATABASE {custody} OWNER {custody};")
-    migrate=root/'runtime/custody.url';write(migrate,database_url(custody,cp,custody))
+    migrate=root/'runtime/custody.url';credential_file(migrate,database_url(custody,cp,custody))
     run([str(binary/'ouroboros-resource-migrate'),'--role','custody','--database-url-file',str(migrate)])
     service='native_custody_worker_'+secrets.token_hex(4);sp=secrets.token_hex(24)
     sql(f"CREATE ROLE {service} LOGIN PASSWORD '{sp}'; GRANT USAGE ON SCHEMA public TO {service}; GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {service}; GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {service}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {service}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {service};",custody)
@@ -295,11 +296,11 @@ if a.encrypted_provider:
     sql(f"INSERT INTO credential_versions(owner_id,credential_id,version,envelope) VALUES('{firm}','{credential}',1,decode('{envelope.hex()}','hex'));",custody)
     key_path=root/'provider/custody.key';key_path.write_bytes(encryption_key);key_path.chmod(0o600);os.chown(key_path,70007,70007)
     del encryption_key
-    write(root/'provider/db.url',database_url(service,sp,custody),70007)
+    credential_file(root/'provider/db.url',database_url(service,sp,custody),70007)
     def free_port():
         with socket.socket() as sock: sock.bind(('127.0.0.1',0));return sock.getsockname()[1]
     upstream_port,provider_port=free_port(),free_port()
-    upstream_tls=tls('upstream','upstream',70008)
+    tls('upstream','upstream',70008)
     write(root/'upstream/server.py',(Path(__file__).resolve().parents[2] / 'tests/fixtures/native-provider-fixture.py').read_text(),70008)
     write(root/'upstream/server.json',json.dumps({'port':upstream_port,'command':json.loads((root/'fixture/config.json').read_text())['fixture_command'],'adapter':a.native_adapter,'max_calls':8 if a.native_adapter else 3,'first_response_delay_seconds':0 if a.native_adapter else 6}),70008)
     provider_binding={'target':'managed-model','endpoint':f'https://127.0.0.1:{upstream_port}/responses','credential_id':str(credential),'credential_version':1,'timeout_ms':10000,'max_response_bytes':65536}
@@ -828,7 +829,7 @@ try:
     for _ in range(50):
         try:
             if api('/conditions')[0]==200:break
-        except OSError:pass
+        except OSError:pass  # The bounded readiness loop permits listeners to start.
         time.sleep(.1)
     else:raise RuntimeError('control services not ready')
     assert api('/conditions',port='core')[0]==403,'human certificate bypassed Gateway into Core'
@@ -1010,7 +1011,7 @@ try:
             host,port=fixture.endpoint(service).rsplit(':',1)
             try:
                 with socket.create_connection((host,int(port)),timeout=.5):pass
-            except OSError:pass
+            except OSError:pass  # An unreachable listener confirms the preceding stop.
             else:raise AssertionError('terminated service listener still reachable')
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as unix:
             unix.settimeout(.5)
@@ -1028,7 +1029,7 @@ try:
                 with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as unix:
                     unix.settimeout(.5)
                     try:unix.connect(str(gw_socket));break
-                    except ConnectionRefusedError:pass
+                    except ConnectionRefusedError:pass  # Socket creation can precede listen().
             time.sleep(.01)
         else:raise AssertionError('Gateway did not rebind after graceful shutdown')
         original_socket=gw_socket.lstat()

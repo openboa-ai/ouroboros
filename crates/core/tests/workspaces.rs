@@ -966,7 +966,7 @@ async fn creation_receipt_recovers_original_binding_after_revocation_without_new
             );
             assert_eq!(label, "preserved original label");
         }
-        other => panic!("wrong recovery selector: {other:?}"),
+        _ => panic!("wrong recovery selector"),
     }
     assert_eq!(f.effect_snapshot().await, before);
     f.core
@@ -2078,7 +2078,7 @@ async fn workspace_close_receipt_releases_one_slot_after_revocation_and_retains_
             assert_eq!(json!(fixed), request.input);
             assert_eq!(fixed_policy, policy);
         }
-        other => panic!("wrong retirement receipt selector: {other:?}"),
+        _ => panic!("wrong retirement receipt selector"),
     }
     assert_eq!(
         f.effect_snapshot().await,
@@ -2679,7 +2679,7 @@ async fn collection_exact_late_receipt_releases_bytes_once_and_preserves_provena
             assert_eq!(fixed, binding);
             assert_eq!(fixed_policy, policy);
         }
-        other => panic!("wrong collection observation selector: {other:?}"),
+        _ => panic!("wrong collection observation selector"),
     }
     assert_eq!(
         f.effect_snapshot().await,

@@ -32,13 +32,13 @@ class ProgramServiceContinuation:
         c['databases'].append(database)
         self.database = database
         migration = root / 'runtime/company-migrate.url'
-        write(migration, c['database_url'](database, password, database))
+        c['credential_file'](migration, c['database_url'](database, password, database))
         c['run']([str(c['binary'] / 'ouroboros-resource-migrate'), '--role', 'company', '--database-url-file', str(migration)])
         role, password = 'ouro_continuation_worker_' + secrets.token_hex(6), secrets.token_hex(24)
         sql(f"CREATE ROLE {role} LOGIN PASSWORD '{password}';")
         c['roles'].append(role)
         sql(f'GRANT CONNECT ON DATABASE {database} TO {role}; GRANT USAGE ON SCHEMA public TO {role}; GRANT SELECT,INSERT,UPDATE ON inputs,results,effect_receipts TO {role};', database)
-        write(folder / 'db.url', c['database_url'](role, password, database), 70006)
+        c['credential_file'](folder / 'db.url', c['database_url'](role, password, database), 70006)
         config = {'listen': c['fixture'].endpoint('company'), 'tls': c['tls']('company', 'company', 70006),
                   'core_url': c['fixture'].url('core'), 'core_client': c['tls']('company', 'company', 70006),
                   'database_url_file': str(folder / 'db.url'), 'gateway_fingerprint': c['fingerprints']['gateway-service'], 'role': 'company'}

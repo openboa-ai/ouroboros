@@ -32,6 +32,7 @@ import time
 import uuid
 
 from tests.support.fixture_config import clean_environment, load_config, local_url
+from tests.support.volatile_credentials import publish_retained as credential_file
 
 def interrupted(signum, frame):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -271,7 +272,7 @@ try:
         databases.append(database)
         dbs[name] = database
         migration = root / 'runtime' / (name + '-migrate.url')
-        write(migration, database_url(database, owner_password, database))
+        credential_file(migration, database_url(database, owner_password, database))
         argv = [str(binary / ('ouroboros-migrate' if name == 'core' else 'ouroboros-resource-migrate')),
                 '--database-url-file', str(migration)]
         if name == 'catalog':
@@ -281,7 +282,7 @@ try:
         sql(f"CREATE ROLE {role} LOGIN PASSWORD '{password}';")
         roles.append(role)
         sql(f'GRANT CONNECT ON DATABASE {database} TO {role}; GRANT USAGE ON SCHEMA public TO {role}; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA public TO {role};', database)
-        write(root / name / 'db.url', database_url(role, password, database), uid)
+        credential_file(root / name / 'db.url', database_url(role, password, database), uid)
         if name == 'catalog':
             catalog_role = role
     firm, human, agent, grant, child, namespace, store, generation, policy_id = [str(uuid.uuid4()) for _ in range(9)]

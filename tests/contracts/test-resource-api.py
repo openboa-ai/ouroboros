@@ -206,7 +206,7 @@ def start_services(label,ready_status=200):
         assert all(proc.poll() is None for proc in processes.values()),'service exited during startup'
         try:
             if all(listening(name) for name in service_names) and call('GET','/conditions')[0]==ready_status:break
-        except OSError:pass
+        except OSError:pass  # A listener may start during this bounded readiness loop.
         time.sleep(.1)
     else:raise RuntimeError('services not ready: '+label)
     service_runs.append({'phase':label,'pids':{name:proc.pid for name,proc in processes.items()}})
@@ -1508,7 +1508,7 @@ except BaseException:
         # or credentials. Do not replace the original failure if observation also fails.
         states=sql(f"SELECT coalesce(jsonb_agg(v),'[]'::jsonb) FROM (SELECT id,operation,state,(SELECT count(*) FROM attempts a WHERE a.firm_id=i.firm_id AND a.intent_id=i.id) AS attempts FROM intents i WHERE firm_id='{firm}' ORDER BY id LIMIT 200) v",urls['core'])
         write('failure-states.json',states)
-    except Exception:pass
+    except Exception:pass  # Keep the original failure if diagnostic observation also fails.
     print(json.dumps({'result':'FAIL','fixture_id':fixture.identity}));raise
 finally:
     try:stop_services()
