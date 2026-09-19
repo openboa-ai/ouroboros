@@ -219,6 +219,7 @@ impl Fixture {
         input: Value,
     ) -> ResourceRequest {
         ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: target.into(),
             operation: operation.into(),

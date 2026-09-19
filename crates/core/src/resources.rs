@@ -112,25 +112,39 @@ impl Core {
         let effect = self
             .prepare_service_effect(&mut tx, &ctx, &mut request)
             .await?;
+        let hosting = request.service_request_id.is_some();
         let admitted = self
             .resource_admit_locked(&mut tx, &actor, &ctx, request)
             .await?;
         if let Some((root, slot, fingerprint)) = effect {
             // Core's firm fence serializes slot binding with the existing single reservation.
-            let changed = sqlx::query(
-                "INSERT INTO service_effects VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-            )
-            .bind(self.firm)
-            .bind(root)
-            .bind(&slot)
-            .bind(admitted.intent_id)
-            .bind(&fingerprint)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
-            let same: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3 AND child_intent_id=$4 AND input_fingerprint=$5)")
-                .bind(self.firm).bind(root).bind(&slot).bind(admitted.intent_id).bind(&fingerprint)
-                .fetch_one(&mut *tx).await?;
+            let insert = if hosting {
+                "INSERT INTO service_host_effects VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            } else {
+                "INSERT INTO service_effects VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            };
+            let changed = sqlx::query(insert)
+                .bind(self.firm)
+                .bind(root)
+                .bind(&slot)
+                .bind(admitted.intent_id)
+                .bind(&fingerprint)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            let lookup = if hosting {
+                "SELECT EXISTS(SELECT 1 FROM service_host_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3 AND child_intent_id=$4 AND input_fingerprint=$5)"
+            } else {
+                "SELECT EXISTS(SELECT 1 FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3 AND child_intent_id=$4 AND input_fingerprint=$5)"
+            };
+            let same: bool = sqlx::query_scalar(lookup)
+                .bind(self.firm)
+                .bind(root)
+                .bind(&slot)
+                .bind(admitted.intent_id)
+                .bind(&fingerprint)
+                .fetch_one(&mut *tx)
+                .await?;
             if !same {
                 return Err(Error::Conflict);
             }

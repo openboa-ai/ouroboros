@@ -231,12 +231,30 @@ impl Core {
             None => None,
         };
         let Some(root) = root else {
-            if request.effect_slot.is_some() || request.request_key.starts_with("service:") {
+            if request.service_request_id.is_some()
+                || request.effect_slot.is_some()
+                || request.request_key.starts_with("service:")
+            {
                 return Err(Error::Denied);
             }
             return Ok(None);
         };
         let bound = ctx.bound.as_ref().ok_or(Error::Denied)?;
+        let hosting = super::service_hosts::host_policy(&root)?.is_some();
+        let root = if hosting {
+            self.claimed_host_request(
+                tx,
+                ctx,
+                request.service_request_id.ok_or(Error::Denied)?,
+                true,
+            )
+            .await?
+        } else {
+            if request.service_request_id.is_some() {
+                return Err(Error::Denied);
+            }
+            root
+        };
         if request.work_id.is_some_and(|work| work != bound.work)
             || request
                 .delegation_id
@@ -267,14 +285,31 @@ impl Core {
         {
             return Err(Error::Denied);
         }
-        self.service_caller_permission(tx, &root, &request.target, &request.operation)
-            .await?;
+        if hosting {
+            self.host_caller_permission(tx, &root, &request.target, &request.operation)
+                .await?;
+        } else {
+            self.service_caller_permission(tx, &root, &request.target, &request.operation)
+                .await?;
+        }
         let root_id: Uuid = root.get("root_intent_id");
         let material = json!({"work_id":bound.work,"target":request.target,"operation":request.operation,"input":request.input});
         let digest = fingerprint(&material)?;
-        if let Some(previous) = sqlx::query_scalar::<_,String>("SELECT input_fingerprint FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3")
-            .bind(self.firm).bind(root_id).bind(slot).fetch_optional(&mut **tx).await?
-            && previous != digest { return Err(Error::Conflict); }
+        let lookup = if hosting {
+            "SELECT input_fingerprint FROM service_host_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3"
+        } else {
+            "SELECT input_fingerprint FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3"
+        };
+        if let Some(previous) = sqlx::query_scalar::<_, String>(lookup)
+            .bind(self.firm)
+            .bind(root_id)
+            .bind(slot)
+            .fetch_optional(&mut **tx)
+            .await?
+            && previous != digest
+        {
+            return Err(Error::Conflict);
+        }
         request.request_key = format!("service:{}:{slot}", root_id.simple());
         Ok(Some((root_id, slot.clone(), digest)))
     }
@@ -354,6 +389,12 @@ impl Core {
         let Some(root) = self.service_root(tx, bound.execution).await? else {
             return Ok(());
         };
+        if let Some(row) = sqlx::query("SELECT q.intent_id,r.target_id FROM service_host_requests q JOIN service_host_effects e ON (e.firm_id,e.root_intent_id)=(q.firm_id,q.intent_id) JOIN service_host_claims c ON (c.firm_id,c.request_intent_id)=(q.firm_id,q.intent_id) JOIN resource_calls r ON (r.firm_id,r.intent_id)=(e.firm_id,e.child_intent_id) WHERE q.firm_id=$1 AND q.execution_id=$2 AND e.child_intent_id=$3 AND c.instance_id=$4 AND c.generation=$5")
+            .bind(self.firm).bind(bound.execution).bind(intent).bind(bound.instance).bind(bound.generation).fetch_optional(&mut **tx).await? {
+            let request = self.host_request_root(tx, row.get("intent_id")).await?;
+            self.host_caller_permission(tx, &request, &row.get::<String,_>("target_id"), "inspect").await?;
+            return Ok(());
+        }
         let linked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND child_intent_id=$3) OR EXISTS(SELECT 1 FROM execution_inputs WHERE firm_id=$1 AND execution_id=$4 AND read_intent_id=$3 AND read_instance_id=$5 AND read_generation=$6 AND retained)")
             .bind(self.firm).bind(root.get::<Uuid,_>("root_intent_id")).bind(intent).bind(bound.execution).bind(bound.instance).bind(bound.generation)
             .fetch_one(&mut **tx).await?;
@@ -372,6 +413,16 @@ impl Core {
         tx: &mut Transaction<'_, Postgres>,
         intent: Uuid,
     ) -> Result<()> {
+        if let Some(child) = sqlx::query("SELECT q.intent_id,q.execution_id,r.target_id,r.operation,r.reply IS NOT NULL AS receipt_available,EXISTS(SELECT 1 FROM service_host_replies p WHERE p.firm_id=q.firm_id AND p.request_intent_id=q.intent_id) AS finalized FROM service_host_effects e JOIN service_host_requests q ON (q.firm_id,q.intent_id)=(e.firm_id,e.root_intent_id) JOIN resource_calls r ON (r.firm_id,r.intent_id)=(e.firm_id,e.child_intent_id) WHERE e.firm_id=$1 AND e.child_intent_id=$2")
+            .bind(self.firm).bind(intent).fetch_optional(&mut **tx).await? {
+            if child.get::<bool,_>("finalized") && !child.get::<bool,_>("receipt_available") { return Err(Error::Denied); }
+            self.check_adapter_invocation(tx, child.get("execution_id")).await?;
+            let request = self.host_request_root(tx, child.get("intent_id")).await?;
+            let binding: Value = request.get("binding");
+            self.host_caller_permission(tx, &request, binding["service_slot"].as_str().ok_or(Error::Unavailable)?, "adapter.invoke").await?;
+            self.host_caller_permission(tx, &request, &child.get::<String,_>("target_id"), &child.get::<String,_>("operation")).await?;
+            return Ok(());
+        }
         let child = sqlx::query("SELECT ri.execution_id,r.target_id,r.operation FROM service_effects e JOIN resource_calls r ON (r.firm_id,r.intent_id)=(e.firm_id,e.child_intent_id) JOIN runtime_instances ri ON (ri.firm_id,ri.instance_id)=(r.firm_id,r.instance_id) WHERE e.firm_id=$1 AND e.child_intent_id=$2")
             .bind(self.firm).bind(intent).fetch_optional(&mut **tx).await?;
         if let Some(child) = child {
@@ -414,6 +465,15 @@ impl Core {
             .as_object_mut()
             .ok_or(Error::Unavailable)?
             .remove("selection");
+        if let Some(policy) = super::service_hosts::host_policy(&root)? {
+            let requests = self.host_request_observations(tx, execution).await?;
+            let effects = self.host_effect_observations(tx, execution, None).await?;
+            out["effects"]
+                .as_array_mut()
+                .ok_or(Error::Unavailable)?
+                .extend(effects);
+            out["host"] = json!({"policy":policy,"requests":requests,"automatic_restarts":false});
+        }
         if include_input {
             let binding: Value = root.get("binding");
             self.service_caller_permission(

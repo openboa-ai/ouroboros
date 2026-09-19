@@ -275,6 +275,7 @@ impl Fixture {
     }
     fn resource(&self, operation: &str, key: &str, input: Value) -> ResourceRequest {
         ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: FILES.into(),
             operation: operation.into(),
@@ -725,6 +726,7 @@ async fn materializing_peer_has_only_its_exact_input_and_replays_one_read() {
         ),
     ] {
         let request = ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: target.into(),
             operation: operation.into(),

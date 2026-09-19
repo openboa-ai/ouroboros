@@ -52,6 +52,7 @@ mod retirement;
 mod runtime;
 mod service_calls;
 mod service_continuations;
+mod service_hosts;
 mod upload_completion;
 mod wakes;
 mod workspaces;

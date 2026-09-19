@@ -963,6 +963,7 @@ async fn resource_dispatch_preserves_scope_receipts_and_call_budget() {
         .await
         .unwrap();
     let request = ResourceRequest {
+        service_request_id: None,
         effect_slot: None,
         target: "company".into(),
         operation: "db.write".into(),
@@ -1145,6 +1146,7 @@ async fn file_resource_claim_checks_storage_before_consuming_the_attempt() {
         .resource_admit(
             ResourceActor::Human(caller),
             ResourceRequest {
+                service_request_id: None,
                 effect_slot: None,
                 target: "files".into(),
                 operation: "file.read".into(),
@@ -1274,6 +1276,7 @@ impl UploadFixture {
     }
     fn request(&self, target: &str, key: &str, bytes: u64) -> ouroboros_contracts::ResourceRequest {
         ouroboros_contracts::ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: target.into(),
             operation: "file.upload".into(),
@@ -1808,6 +1811,7 @@ async fn credential_enrollment_admits_only_scoped_metadata() {
         .unwrap();
     let actor = ResourceActor::Human(caller);
     let request = ResourceRequest {
+        service_request_id: None,
         effect_slot: None,
         target: "custody".into(),
         operation: "credential.enroll".into(),

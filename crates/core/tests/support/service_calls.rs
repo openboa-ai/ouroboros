@@ -2,12 +2,15 @@
 use super::*;
 #[path = "service_continuations.rs"]
 mod continuations;
+#[path = "service_hosts.rs"]
+mod hosts;
 use ouroboros_contracts::{
     AdapterInvocationRequest, ServiceEffectSlot, ServiceInvocation, ServiceOperationPlan,
 };
 
 fn read_plan() -> ServiceOperationPlan {
     ServiceOperationPlan {
+        host: None,
         name: "read_snapshot".into(),
         effects: vec![ServiceEffectSlot {
             slot: "snapshot".into(),
@@ -202,6 +205,7 @@ impl Fixture {
 
 fn child_request() -> ResourceRequest {
     ResourceRequest {
+        service_request_id: None,
         effect_slot: Some("snapshot".into()),
         target: "company".into(),
         operation: "db.read".into(),

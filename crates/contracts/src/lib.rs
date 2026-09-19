@@ -146,6 +146,8 @@ pub struct RuntimeTicket {
 #[serde(deny_unknown_fields)]
 pub struct ResourceRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_request_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_slot: Option<String>,
     pub target: String,
     pub operation: String,

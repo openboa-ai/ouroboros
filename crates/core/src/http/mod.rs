@@ -4,6 +4,7 @@ mod context;
 mod management;
 mod resources;
 mod runtime;
+mod service_hosts;
 mod services;
 mod startup;
 
@@ -24,6 +25,13 @@ struct App {
 
 fn router(app: App) -> Router {
     Router::new()
+        .route("/service-hosts/{id}/requests", post(service_hosts::admit))
+        .route("/service-hosts/self/claim", post(service_hosts::claim))
+        .route(
+            "/service-hosts/self/requests/{id}/reply",
+            post(service_hosts::reply),
+        )
+        .route("/service-requests/{id}", get(service_hosts::read))
         .route("/service-continuations", post(services::register))
         .route("/service-continuations/{id}", get(services::read))
         .route("/work/{id}/service-continuations", get(services::list))

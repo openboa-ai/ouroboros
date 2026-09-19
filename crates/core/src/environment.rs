@@ -26,6 +26,7 @@ impl Core {
                 'runtime_records_without_termination', (SELECT count(*) FROM runtime_instances WHERE firm_id=f.id AND phase <> 'terminated'),
                 'unclaimed_dispatch_records', (SELECT count(*) FROM outbox WHERE firm_id=f.id AND NOT claimed),
                 'resource_calls_without_reply', (SELECT count(*) FROM resource_calls WHERE firm_id=f.id AND reply IS NULL),
+                'service_requests_without_reply', (SELECT count(*) FROM service_host_requests q WHERE q.firm_id=f.id AND NOT EXISTS(SELECT 1 FROM service_host_replies r WHERE r.firm_id=q.firm_id AND r.request_intent_id=q.intent_id)),
                 'dispatched_resources_without_reply', (SELECT count(*) FROM resource_calls r WHERE r.firm_id=f.id AND r.reply IS NULL AND EXISTS (SELECT 1 FROM attempts a WHERE a.firm_id=r.firm_id AND a.intent_id=r.intent_id)),
                 'unsettled_reservation_records', (SELECT count(*) FROM reservations WHERE firm_id=f.id AND NOT settled)
             ) FROM firms f WHERE f.id=$1
