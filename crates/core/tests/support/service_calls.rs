@@ -404,7 +404,10 @@ async fn qualified_write_slot_and_managed_service_invocation_use_the_same_root_c
         "object"
     );
     let invoked=f.core.managed_mcp(f.actor(),f.work,f.human_grant,json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":tool_name,"arguments":{"request_key":"managed-service-root","agent_delegation_id":f.agent_grant,"service_input":{"reference":"via-mcp"}}}})).await.unwrap().unwrap();
-    assert_eq!(invoked["result"]["isError"], false, "{invoked}");
+    assert!(
+        invoked["result"]["isError"] == false,
+        "managed MCP invocation failed"
+    );
     let execution: Uuid = serde_json::from_value(
         invoked["result"]["structuredContent"]["admission"]["resource_id"].clone(),
     )

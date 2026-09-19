@@ -1,7 +1,7 @@
 use ouroboros_contracts::{ExecutionRequest, WorkRequest};
 use ouroboros_core::{Caller, Core, Error};
 use serde_json::Value;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 async fn setup() -> (Core, PgPool, Caller, Uuid, Uuid) {

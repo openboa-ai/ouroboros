@@ -10,7 +10,6 @@ import re
 import secrets
 import signal
 import subprocess
-import uuid
 
 
 class ProgramServiceContinuation:

@@ -31,7 +31,7 @@ try:
  for name in ['core','gateway']:
   log=(p/(name+'.log')).open('wb')
   processes.append(subprocess.Popen([str(fixture.binary/f'ouroboros-{name}'),'--config',str(p/(name+'.json'))],stdout=log,stderr=log,env=clean_environment()));log.close()
- for attempt in range(30):
+ for _ in range(30):
   try:
    ready=call('/conditions')
    if ready[0]==200:break
@@ -203,7 +203,9 @@ try:
  for attempt in range(30):
   try:
    if call('/conditions')[0]==200:break
-  except OSError:pass
+  except OSError:
+   # The listeners are still starting; the bounded loop must observe readiness.
+   pass
   time.sleep(.1)
  else:raise AssertionError('services did not restart for notification read persistence')
  reconnected=call('/conditions')[1]

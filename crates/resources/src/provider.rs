@@ -58,6 +58,11 @@ impl ProviderBinding {
         secret: &[u8],
         body: Vec<u8>,
     ) -> Result<reqwest::Request, CustodyError> {
+        let endpoint = reqwest::Url::parse(&self.endpoint).map_err(|_| CustodyError)?;
+        if endpoint.scheme() != "https" {
+            return Err(CustodyError);
+        }
+        let account = self.account_header()?;
         let token = std::str::from_utf8(secret).map_err(|_| CustodyError)?;
         if token.is_empty() || !token.bytes().all(|b| b.is_ascii_graphic()) {
             return Err(CustodyError);
@@ -66,10 +71,10 @@ impl ProviderBinding {
             .map_err(|_| CustodyError)?;
         auth.set_sensitive(true);
         let mut request = client
-            .post(&self.endpoint)
+            .post(endpoint)
             .header(reqwest::header::AUTHORIZATION, auth)
             .header(reqwest::header::CONTENT_TYPE, "application/json");
-        if let Some(account) = self.account_header()? {
+        if let Some(account) = account {
             request = request.header("ChatGPT-Account-ID", account);
         }
         if self.codex_responses_lite {
@@ -236,7 +241,7 @@ impl ProviderSender {
                 return Err(CustodyError)
             }
             let status=response.status().as_u16();
-            let (content_type,inferred_stream)=response_media_type(response.headers(),codex_stream)?;
+            let (content_type,verify_terminal)=response_media_type(response.headers(),codex_stream)?;
             // Only the validated media type is forwarded; arbitrary upstream header parameters
             // cannot become a credential reflection path.
             emit(ProviderFrame::Head {status,content_type:content_type.clone()}).await.map_err(|_|failure("response header delivery"))?;
@@ -251,7 +256,7 @@ impl ProviderSender {
             if !tail.is_empty() { emit(ProviderFrame::Data(tail)).await.map_err(|_|failure("response tail delivery"))?; }
             let body=String::from_utf8(bytes).map_err(|_|failure("response encoding"))?;
             let observation=crate::provider_observation::observe(&content_type,&body);
-            if inferred_stream && !verified_stream(&observation) {return Err(failure("unverified Codex response stream"))}
+            if verify_terminal && !verified_stream(&observation) {return Err(failure("unverified Codex response stream"))}
             Ok(ResourceReply {status,content_type,body,receipt:json!({"source":"provider_worker","attempt_id":ticket.attempt_id,"credential_id":binding.credential,"credential_version":binding.version,"requested_model":ticket.input.get("model"),"requested_effort":ticket.input.pointer("/reasoning/effort"),"provider_observation":observation})})
             };
             tokio::pin!(transfer);
@@ -290,7 +295,9 @@ fn response_media_type(
         None if codex_stream => Ok(("text/event-stream".into(), true)),
         None => Err(failure("missing response media type")),
         Some(value) => match value.to_str().ok().and_then(|v| v.split(';').next()) {
-            Some(kind @ ("application/json" | "text/event-stream")) => Ok((kind.into(), false)),
+            Some(kind @ ("application/json" | "text/event-stream")) => {
+                Ok((kind.into(), codex_stream && kind == "text/event-stream"))
+            }
             _ => Err(failure("unsupported response media type")),
         },
     }
@@ -396,13 +403,24 @@ mod tests {
     }
 
     #[test]
-    fn absent_codex_media_type_requires_an_actual_terminal_stream() {
+    fn codex_stream_requires_terminal_verification_with_or_without_a_media_type() {
         let mut headers = reqwest::header::HeaderMap::new();
         assert!(response_media_type(&headers, false).is_err());
         assert_eq!(
             response_media_type(&headers, true).unwrap(),
             ("text/event-stream".into(), true)
         );
+        for media_type in ["text/event-stream", "text/event-stream; charset=utf-8"] {
+            headers.insert(reqwest::header::CONTENT_TYPE, media_type.parse().unwrap());
+            assert_eq!(
+                response_media_type(&headers, true).unwrap(),
+                ("text/event-stream".into(), true)
+            );
+            assert_eq!(
+                response_media_type(&headers, false).unwrap(),
+                ("text/event-stream".into(), false)
+            );
+        }
         headers.insert(reqwest::header::CONTENT_TYPE, "text/html".parse().unwrap());
         assert!(response_media_type(&headers, true).is_err());
         for body in [

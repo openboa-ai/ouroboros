@@ -64,10 +64,11 @@ def ports(names):
 
 def private(path, content, uid=0, mode=0o600):
     data = content.encode() if isinstance(content, str) else content
-    with path.open('xb') as output:
+    # Create with restrictive permissions before any bytes exist, regardless of umask.
+    with open(path, 'xb', opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
+        os.fchmod(output.fileno(), mode)
+        os.fchown(output.fileno(), uid, uid)
         output.write(data)
-    path.chmod(mode)
-    os.chown(path, uid, uid)
 
 
 def postgres_identity(env):
@@ -124,7 +125,13 @@ class Demo:
         self.postgres = None
         self.executions = []
         self.transcript = []
+        self.credential_paths = []
         self.step = 'prepare'
+
+    def credential_file(self, path, content, uid=0):
+        """Track only this run's newly created, private fixture inputs for retirement."""
+        private(path, content, uid)
+        self.credential_paths.append(path)
 
     def command(self, argv, uid=None, timeout=30, input=None):
         return subprocess.run([str(x) for x in argv], input=input, capture_output=True,
@@ -152,7 +159,7 @@ class Demo:
         pg.mkdir(mode=0o700)
         os.chown(pg, self.env['postgres_uid'], self.env['postgres_gid'])
         password = secrets.token_hex(24)
-        private(pg / 'password', password, self.env['postgres_uid'])
+        self.credential_file(pg / 'password', password, self.env['postgres_uid'])
         self.command([self.env['pg_bin'] / 'initdb', '-D', pg / 'data', '--username=demo_owner',
                       '--auth-local=scram-sha-256', '--auth-host=scram-sha-256',
                       '--pwfile', pg / 'password', '--no-locale'], self.env['postgres_uid'])
@@ -174,7 +181,7 @@ class Demo:
             time.sleep(.05)
         else:
             raise TimeoutError('demo PostgreSQL readiness')
-        private(self.root / 'admin.url', f'postgresql://demo_owner:{password}@127.0.0.1:{self.pg_port}/postgres?sslmode=disable\n')
+        self.credential_file(self.root / 'admin.url', f'postgresql://demo_owner:{password}@127.0.0.1:{self.pg_port}/postgres?sslmode=disable\n')
         chosen['bridge'] = 18080
         private(self.root / 'fixture.json', json.dumps({'root': str(self.deployment / 'test'), 'bin_dir': str(self.binary),
             'bind_host': '127.0.0.1', 'ports': chosen, 'admin_url_file': str(self.root / 'admin.url'),
@@ -228,7 +235,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         aad = header + uuid.UUID(i['firm']).bytes + uuid.UUID(i['credential']).bytes + (1).to_bytes(8, 'big')
         envelope = header + nonce + AESGCM(key).encrypt(nonce, token, aad)
         self.sql(f"INSERT INTO credential_versions(owner_id,credential_id,version,envelope) VALUES('{i['firm']}','{i['credential']}',1,decode('{envelope.hex()}','hex'))", custody)
-        private(self.test / 'provider/custody.key', key, 70007)
+        self.credential_file(self.test / 'provider/custody.key', key, 70007)
         del key, envelope, token
         self.resource('provider', 70007, {'key_file': str(self.test / 'provider/custody.key'), 'provider': provider})
         blobs = self.test / 'catalog/blobs'
@@ -284,7 +291,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         owner = 'provider' if role == 'custody' else role
         uid = {'core': 70001, 'catalog': 70005, 'provider': 70007, 'company': 70004}[owner]
         migration_url = self.test / 'runtime' / (role + '-migration.url')
-        private(migration_url, f'postgresql://{name}:{password}@127.0.0.1:{self.pg_port}/{name}?sslmode=disable\n')
+        self.credential_file(migration_url, f'postgresql://{name}:{password}@127.0.0.1:{self.pg_port}/{name}?sslmode=disable\n')
         executable = 'ouroboros-migrate' if role == 'core' else 'ouroboros-resource-migrate'
         argv = [self.binary / executable, '--database-url-file', migration_url]
         if role != 'core':
@@ -302,7 +309,7 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         else:
             grants += f"GRANT SELECT ON credential_versions,credential_use_claims,provider_receipts TO {service}; GRANT EXECUTE ON FUNCTION public.lock_credential_version(uuid,uuid,bigint) TO {service}; GRANT INSERT(owner_id,attempt_id,credential_id,version) ON credential_use_claims TO {service}; GRANT INSERT(owner_id,attempt_id,ticket_sha256,reply) ON provider_receipts TO {service};"
         self.fixture.sql(grants, name)
-        private(self.test / owner / 'db.url', f'postgresql://{service}:{secret}@127.0.0.1:{self.pg_port}/{name}?sslmode=disable\n', uid)
+        self.credential_file(self.test / owner / 'db.url', f'postgresql://{service}:{secret}@127.0.0.1:{self.pg_port}/{name}?sslmode=disable\n', uid)
         return name
 
     def certificates(self):
@@ -499,6 +506,9 @@ After the command succeeds, finish your turn. Do not wait for another message.
                     failures.append('database closure')
             except subprocess.TimeoutExpired:
                 failures.append('database closure')
+        if all(proc.poll() is not None for proc in processes) and (self.postgres is None or self.postgres.poll() is not None):
+            for path in self.credential_paths:
+                path.unlink(missing_ok=True)
         if self.root.exists():
             private(self.root / 'transcript.json', json.dumps(self.transcript, ensure_ascii=False, indent=2))
             private(self.root / 'cleanup.json', json.dumps({'errors': failures}))
@@ -872,9 +882,9 @@ def main():
             parser.error('prepare-only accepts no real credential or account')
         args.account_id = 'demo-setup-only'
         token = b'synthetic-preparation-no-model-call'
-    elif not args.credential_stdin or sys.stdin.isatty() or not args.account_id:
-        parser.error('explicit account and credential via nonterminal stdin required after bounded allowance')
     else:
+        if not args.credential_stdin or sys.stdin.isatty() or not args.account_id:
+            parser.error('explicit account and credential via nonterminal stdin required after bounded allowance')
         token = sys.stdin.buffer.read(16385).strip()
     if not token or len(token) > 16384 or any(b < 33 or b > 126 for b in token):
         parser.error('invalid credential input')

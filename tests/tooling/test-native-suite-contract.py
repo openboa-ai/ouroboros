@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from tests.support.native_scenarios import SCENARIOS, catalogue
 from tests.support.native_image_identity import source_digest
@@ -262,6 +262,62 @@ class NativeSuiteContract(unittest.TestCase):
                     load_environment(path)
 
 
+class DemoCredentialFiles(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        entry = Path(__file__).resolve().parents[1] / 'integration/demo-basic-flow.py'
+        spec = importlib.util.spec_from_file_location('demo_credential_files', entry)
+        cls.demo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.demo)
+
+    def test_private_permissions_precede_content_even_with_permissive_umask(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'input'
+            def before_write(fd, uid, gid):
+                self.assertEqual(os.fstat(fd).st_mode & 0o777, 0o600)
+                self.assertEqual(os.fstat(fd).st_size, 0)
+                self.assertEqual((uid, gid), (70007, 70007))
+            previous = os.umask(0)
+            try:
+                with patch.object(self.demo.os, 'fchown', side_effect=before_write) as owner:
+                    self.demo.private(path, b'fixture input', 70007)
+                owner.assert_called_once()
+            finally:
+                os.umask(previous)
+            self.assertEqual(path.read_bytes(), b'fixture input')
+            with self.assertRaises(FileExistsError):
+                self.demo.private(path, b'replacement')
+            alias = Path(temporary) / 'alias'
+            alias.symlink_to(path)
+            with self.assertRaises(FileExistsError):
+                self.demo.private(alias, b'replacement')
+            self.assertEqual(path.read_bytes(), b'fixture input')
+
+    def test_cleanup_retires_only_owned_credentials_after_process_closure(self):
+        from types import SimpleNamespace
+        for closed in (True, False):
+            with self.subTest(closed=closed), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                env = {'pg_bin': root, 'run_root': root, 'deployment_root': root, 'ipc_root': root}
+                demo = self.demo.Demo(env, SimpleNamespace(run_name='fixture'))
+                demo.root.mkdir()
+                owned = demo.root / 'binding'
+                retained = demo.root / 'evidence'
+                retained.write_bytes(b'retained evidence')
+                with patch.object(self.demo.os, 'fchown'):
+                    demo.credential_file(owned, b'fixture input')
+                    if closed:
+                        demo.cleanup()
+                    else:
+                        demo.postgres = Mock()
+                        demo.postgres.poll.return_value = None
+                        demo.postgres.wait.side_effect = subprocess.TimeoutExpired('postgres', 30)
+                        with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
+                            demo.cleanup()
+                self.assertEqual(owned.exists(), not closed)
+                self.assertEqual(retained.read_bytes(), b'retained evidence')
+
+
 class ResourceSmokeEvidence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -392,7 +448,7 @@ class ResourceSmokeEvidence(unittest.TestCase):
                     patch.object(self.demo.signal, 'alarm'), \
                     patch.object(demo, 'cli', return_value={'instance_id': 'instance'}), \
                     patch.object(demo, 'collect_evidence', return_value=proof), \
-                    patch.object(self.demo.os, 'chown'), \
+                    patch.object(self.demo.os, 'fchown'), \
                     patch.object(demo, 'turn', side_effect=RuntimeError('native failed')) as turn:
                 with self.assertRaisesRegex(RuntimeError, 'native failed'):
                     demo.run_flow()

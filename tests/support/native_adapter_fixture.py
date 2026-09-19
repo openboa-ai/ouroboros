@@ -477,7 +477,9 @@ printf 'approved-adapter-result\\n'
         assert self.worker.returncode!=0
         finish=json.loads((evidence/'finish.json').read_text())
         assert finish['terminated_observed'] and not finish['runtime_success'] and not finish['effects_settled']
-        assert b'403 Forbidden' in (c['root']/'runtime/adapter-invoke.log').read_bytes()
+        # The authenticated permission observer now emits a typed restriction error.
+        # The separate probe above still proves the Gateway's actual 403 response.
+        assert b'current execution permission ended' in (c['root']/'runtime/adapter-invoke.log').read_bytes()
         self.terminated_at=time.clock_gettime_ns(time.CLOCK_BOOTTIME)
         deadline=json.loads((evidence/'binding.json').read_text())['deadline_boottime_ns']
         assert self.terminated_at < deadline
