@@ -133,7 +133,7 @@ class Demo:
         """Expose a locked memory file through the existing regular-file contract."""
         value = VolatileCredential(content, uid)
         self.credentials.append(value)
-        value.publish(path, self.child_env)
+        value.publish(path)
         return value
 
     def command(self, argv, uid=None, timeout=30, input=None):

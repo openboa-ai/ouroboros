@@ -18,7 +18,6 @@ class VolatileCredential:
         if not 1 <= len(data) <= 16384:
             raise ValueError('bounded nonempty credential required')
         self.path = self.placeholder = self.mapping = None
-        self.environment = None
         self.fd = os.memfd_create('ouroboros-demo-credential', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
         try:
             os.ftruncate(self.fd, len(data))
@@ -44,7 +43,7 @@ class VolatileCredential:
     def identity(info):
         return info.st_dev, info.st_ino
 
-    def publish(self, path, environment):
+    def publish(self, path):
         if self.path is not None or self.fd is None:
             raise ValueError('credential may only be published once')
         path = Path(path)
@@ -55,9 +54,13 @@ class VolatileCredential:
             self.placeholder = self.identity(os.fstat(placeholder))
         finally:
             os.close(placeholder)
-        self.path, self.environment = path, environment
-        subprocess.run(['mount', '--no-canonicalize', '--bind', f'/proc/self/fd/{self.fd}', str(path)],
-                       pass_fds=(self.fd,), env=environment, check=True, capture_output=True, timeout=10)
+        self.path = path
+        # Resolve /proc/self in this process, which owns the descriptor; do not
+        # depend on an external mount utility preserving inherited descriptors.
+        mount = ctypes.CDLL(None, use_errno=True).mount
+        mount.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_void_p)
+        if mount(os.fsencode(f'/proc/self/fd/{self.fd}'), os.fsencode(path), None, 4096, None) != 0:  # MS_BIND
+            raise OSError(ctypes.get_errno(), 'credential memory bind failed')
         if self.identity(path.stat()) != self.identity(os.fstat(self.fd)):
             raise RuntimeError('credential memory binding was not observed')
 
@@ -67,8 +70,10 @@ class VolatileCredential:
         if self.path is not None:
             current = self.identity(self.path.lstat())
             if current == self.identity(os.fstat(self.fd)):
-                subprocess.run(['umount', str(self.path)], env=self.environment,
-                               check=True, capture_output=True, timeout=10)
+                unmount = ctypes.CDLL(None, use_errno=True).umount2
+                unmount.argtypes = (ctypes.c_char_p, ctypes.c_int)
+                if unmount(os.fsencode(self.path), 0) != 0:
+                    raise OSError(ctypes.get_errno(), 'credential memory unmount failed')
             elif current != self.placeholder:
                 raise RuntimeError('credential locator changed; preserve for inspection')
             if self.identity(self.path.lstat()) != self.placeholder or self.path.stat().st_size != 0:
@@ -88,7 +93,7 @@ def verify_binding(root, environment):
     path = root / 'volatile-credential-check'
     value = VolatileCredential(b'disposable fixture input', 70007)
     try:
-        value.publish(path, environment)
+        value.publish(path)
         assert path.read_bytes() == b'disposable fixture input'
         assert path.stat().st_mode & 0o777 == 0o400
         for uid, permitted in ((70007, True), (70003, False)):
@@ -107,3 +112,9 @@ def verify_binding(root, environment):
     finally:
         value.close()
     assert not path.exists()
+
+
+if __name__ == '__main__':
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    verify_binding(Path(sys.argv[1]), dict(os.environ))

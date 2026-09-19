@@ -20,8 +20,8 @@ Each attempt requires a fresh run name; previous evidence is preserved.
 
 Disposable DB passwords and connection URLs use locked, sealed Linux memory files,
 bound at the existing regular-file locators. They require memfd seals, memory locking
-and bind-mount permission; there is no disk-backed fallback. The native environment
-scenario verifies the actual binding, worker UID isolation, write rejection and cleanup.
+and bind-mount permission; there is no disk-backed fallback. Native preparation verifies
+the actual binding, worker UID isolation, write rejection and cleanup before fixture launch.
 
 The pinned Codex package includes `codex-code-mode-host`, which `gpt-5.6-sol`
 needs to run local tools. The image preparation script verifies the official
