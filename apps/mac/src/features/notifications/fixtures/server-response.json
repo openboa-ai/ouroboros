@@ -1,0 +1,153 @@
+{
+  "first_page": {
+    "authority_revision": 0,
+    "cursor": null,
+    "firm_id": "00000000-0000-4000-8000-000000000001",
+    "has_more": false,
+    "items": [
+      {
+        "category": "execution",
+        "id": "event:6",
+        "kind": "native_turn_completed",
+        "read_at": null,
+        "received_at": "2025-01-01T09:56:22.176679+00:00",
+        "sequence": 6,
+        "source": {
+          "execution_id": "00000000-0000-4000-8000-000000000002",
+          "thread_id": "fixture-native-thread",
+          "turn_id": "fixture-native-turn",
+          "work_id": "00000000-0000-4000-8000-000000000003"
+        },
+        "status": "completed"
+      }
+    ],
+    "next_cursor": null,
+    "observed_at": "2025-01-01T09:56:22.231307+00:00",
+    "principal_id": "00000000-0000-4000-8000-000000000004",
+    "snapshot_sequence": 107,
+    "source": "core_notifications",
+    "unread": {
+      "by_category": {
+        "control": 0,
+        "execution": 1,
+        "message": 0,
+        "publication": 0
+      },
+      "total": 1
+    }
+  },
+  "read_response": {
+    "authority_revision": 0,
+    "firm_id": "00000000-0000-4000-8000-000000000001",
+    "ids": [
+      "event:6"
+    ],
+    "items": [
+      {
+        "id": "event:6",
+        "read_at": "2025-01-01T09:56:22.297779+00:00"
+      }
+    ],
+    "principal_id": "00000000-0000-4000-8000-000000000004",
+    "read_at": "2025-01-01T09:56:22.297779+00:00",
+    "snapshot_sequence": 107,
+    "source": "core_notifications",
+    "unread": {
+      "by_category": {
+        "control": 0,
+        "execution": 0,
+        "message": 0,
+        "publication": 0
+      },
+      "total": 0
+    }
+  },
+  "after_restart": {
+    "authority_revision": 0,
+    "cursor": null,
+    "firm_id": "00000000-0000-4000-8000-000000000001",
+    "has_more": false,
+    "items": [
+      {
+        "category": "execution",
+        "id": "event:6",
+        "kind": "native_turn_completed",
+        "read_at": "2025-01-01T09:56:22.297779+00:00",
+        "received_at": "2025-01-01T09:56:22.176679+00:00",
+        "sequence": 6,
+        "source": {
+          "execution_id": "00000000-0000-4000-8000-000000000002",
+          "thread_id": "fixture-native-thread",
+          "turn_id": "fixture-native-turn",
+          "work_id": "00000000-0000-4000-8000-000000000003"
+        },
+        "status": "completed"
+      }
+    ],
+    "next_cursor": null,
+    "observed_at": "2025-01-01T09:56:22.450188+00:00",
+    "principal_id": "00000000-0000-4000-8000-000000000004",
+    "snapshot_sequence": 107,
+    "source": "core_notifications",
+    "unread": {
+      "by_category": {
+        "control": 0,
+        "execution": 0,
+        "message": 0,
+        "publication": 0
+      },
+      "total": 0
+    }
+  },
+  "after_stop": {
+    "authority_revision": 1,
+    "cursor": null,
+    "firm_id": "00000000-0000-4000-8000-000000000001",
+    "has_more": false,
+    "items": [
+      {
+        "category": "control",
+        "id": "event:108",
+        "kind": "execution.stop_accepted",
+        "read_at": null,
+        "received_at": "2025-01-01T09:56:22.528076+00:00",
+        "sequence": 108,
+        "source": {
+          "execution_id": "00000000-0000-4000-8000-000000000002",
+          "intent_id": "00000000-0000-4000-8000-000000000005",
+          "work_id": "00000000-0000-4000-8000-000000000003"
+        },
+        "status": "accepted"
+      },
+      {
+        "category": "execution",
+        "id": "event:6",
+        "kind": "native_turn_completed",
+        "read_at": "2025-01-01T09:56:22.297779+00:00",
+        "received_at": "2025-01-01T09:56:22.176679+00:00",
+        "sequence": 6,
+        "source": {
+          "execution_id": "00000000-0000-4000-8000-000000000002",
+          "thread_id": "fixture-native-thread",
+          "turn_id": "fixture-native-turn",
+          "work_id": "00000000-0000-4000-8000-000000000003"
+        },
+        "status": "completed"
+      }
+    ],
+    "next_cursor": null,
+    "observed_at": "2025-01-01T09:56:22.590034+00:00",
+    "principal_id": "00000000-0000-4000-8000-000000000004",
+    "snapshot_sequence": 109,
+    "source": "core_notifications",
+    "unread": {
+      "by_category": {
+        "control": 1,
+        "execution": 0,
+        "message": 0,
+        "publication": 0
+      },
+      "total": 1
+    }
+  }
+}

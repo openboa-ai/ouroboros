@@ -390,6 +390,8 @@ class NativeRun:
                   'program': 'test-connected-program-guest.py'}.get(self.scenario.driver, 'test-connected-native-guest.py')
         options = {'management': [], 'program': ['--restriction', 'complete']}.get(
             self.scenario.driver, ['--scenario', self.scenario_id])
+        if self.scenario_id == 'native.program-continuation':
+            options += ['--adapter-verification', '--service-continuation']
         self.command([sys.executable, '-B', self.environment['source_root'] / 'tests/integration' / driver,
                       '--config', self.config_file, *options], 'program', timeout=300)
         result_file = self.deployment / 'test/result.json'
@@ -402,6 +404,12 @@ class NativeRun:
             if (result.get('cleanup') != 'complete' or result.get('program_natural_exit') != 'PASS'
                     or result.get('compute_settlement') != 'PASS' or result.get('successful_successor') != 'PASS'):
                 raise RuntimeError('generic program completion, compute replay or current-authority successor proof missing')
+            if self.scenario_id == 'native.program-continuation':
+                continuation = result.get('service_continuation', {})
+                final = continuation.get('final', {})
+                if (continuation.get('result') != 'PASS' or final.get('state') != 'stopped'
+                        or final.get('restarts_used') != 1 or final.get('compute_returned') is not True):
+                    raise RuntimeError('actual Company recovery and owner stop proof missing')
         if self.scenario.driver == 'installation':
             release = json.loads((self.root / 'release.json').read_text())
             install_root = self.deployment / 'test/installation-faults'

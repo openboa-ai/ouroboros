@@ -1,0 +1,67 @@
+.native-app {
+  min-height: 100vh;
+  --workspace-topbar-height: 0px;
+}
+.native-app .product-shell {
+  height: 100vh;
+}
+.product-shell {
+  --sidebar-width: 208px;
+}
+.connection-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--ob-space-32);
+}
+.connection-content {
+  width: min(100%, 480px);
+  display: grid;
+  gap: var(--ob-space-24);
+}
+.connection-actions {
+  display: grid;
+  gap: var(--ob-space-12);
+}
+.connection-content h1 {
+  margin-top: var(--ob-space-16);
+}
+.connection-content p {
+  max-width: 44ch;
+}
+.session-actions {
+  display: flex;
+  gap: var(--ob-space-8);
+  padding-inline: var(--ob-space-12);
+}
+.gateway-screen {
+  display: grid;
+  gap: var(--ob-space-24);
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ob-space-24);
+}
+.metric-tile {
+  display: grid;
+  gap: var(--ob-space-8);
+  text-align: left;
+  padding: var(--ob-space-16);
+  background: var(--background);
+  border-radius: var(--ob-radius-md);
+}
+.record-stack {
+  display: grid;
+  gap: var(--ob-space-12);
+}
+.gateway-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-12);
+  justify-content: space-between;
+}
+
+.connection-overview { display:flex; flex-wrap:wrap; gap:var(--ob-space-16); }
+.connection-overview span { display:grid; gap:var(--ob-space-8); flex:1; padding:var(--ob-space-16); background:var(--muted); border-radius:var(--ob-radius-md); }
+.connection-back { justify-self:start; }

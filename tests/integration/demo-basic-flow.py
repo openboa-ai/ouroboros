@@ -15,6 +15,7 @@ import ctypes
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -547,6 +548,8 @@ def verify_resource_smoke(proof):
 
 
 class ResourceSmokeDemo(Demo):
+    scenario_name = 'resource-smoke'
+    additional_outputs = ()
     extra_services = (('company', 70004),)
     purpose = 'MCP 호출, DB 조회와 저장, 결과 파일 게시를 한 작업에서 확인해줘.'
     tool_instruction = ('Use the native managed MCP execution_self tool and local shell/files with the '
@@ -598,8 +601,17 @@ class ResourceSmokeDemo(Demo):
         self.command([self.binary / 'ouroboros-cli', '--config', self.test / 'cli/config.json',
                       'request', 'GET', location, '--output', str(output), *self.scope()], 70003)
 
+    def additional_task(self):
+        return ''
+
+    def check_additional_artifacts(self, proof):
+        return {}
+
     def run_flow(self):
         self.prepare_flow()
+        publication_files = {'result.json': '<upload_id>'}
+        publication_files.update({name: '<' + name + ' upload_id>' for name in self.additional_outputs})
+        publication_body = json.dumps({'workspace_id': self.workspace, 'expected_revision': 1, 'files': publication_files})
         question = f"""{self.purpose}
 Perform this small task once. Use the native managed MCP tool execution_self with {{}} (not a hand-written HTTP substitute).
 Read file_marker from /workspace/task/input.txt. Read db_marker with the prepared read_input operation below.
@@ -611,7 +623,8 @@ Use --input PATH for JSON bodies and --key for POST operations. --select /upload
 DB read: POST /db/queries, key smoke-read, body {{"operation":"read_input","parameters":{{"input_id":"{self.input_id}"}}}}.
 DB write: POST /db/transactions, key smoke-write, body {{"operation":"record_result","parameters":<the result.json object>}}.
 Upload: POST /uploads, key smoke-upload, body {{"size":<exact byte count>,"sha256":"<sha256 of result.json>"}}; then PUT /uploads/<upload_id>/content with --input /workspace/result.json.
-Publish: POST /publications, key smoke-publish, body {{"workspace_id":"{self.workspace}","expected_revision":1,"files":{{"result.json":"<upload_id>"}}}}.
+Publish: POST /publications, key smoke-publish, body {publication_body}.
+{self.additional_task()}
 Use available sh, cat, printf, wc -c and sha256sum; no installation or Python dependency is needed.
 After successful publication, write a brief Korean report to /workspace/answer.txt containing the exact path /workspaces/{self.workspace}/snapshots/2/files/result.json.
 """
@@ -647,12 +660,13 @@ After successful publication, write a brief Korean report to /workspace/answer.t
         published_bytes = output.read_bytes()
         proof['published'] = json.loads(published_bytes)
         checks = verify_resource_smoke(proof)
+        checks.update(self.check_additional_artifacts(proof))
         report = next(v for v in self.transcript if v['step'] == 'resource.answer')
         if location not in report['text']:
             raise RuntimeError('published file location missing from conversation answer')
         private(self.root / 'result.json', published_bytes)
         checks.update({'execution.terminated': 'PASS', 'compute.return': 'PASS'})
-        summary = {'scenario': 'resource-smoke', 'result': 'PENDING_CLEANUP', 'checks': checks, 'actual_model': True,
+        summary = {'scenario': self.scenario_name, 'result': 'PENDING_CLEANUP', 'checks': checks, 'actual_model': True,
                    'model_calls': int(self.sql("SELECT count(*) FROM resource_calls WHERE operation='model.responses'")),
                    'resource_calls': int(self.sql('SELECT count(*) FROM resource_calls')),
                    'execution_id': execution, 'native_context': terminal,
@@ -688,12 +702,145 @@ After successful publication, write a brief Korean report to /workspace/answer.t
             self.note('complete', **summary)
 
 
+COMPANY_UI_FILES = ('CompanyPulse.tsx', 'company-ui.json')
+
+
+def verify_company_ui_artifacts(proof, files):
+    """Verify transport provenance and a bounded SDK candidate; not a JS sandbox or build check."""
+    def require(condition, stage):
+        if not condition:
+            raise RuntimeError('company-ui evidence failed: ' + stage)
+
+    require(set(files) == set(COMPANY_UI_FILES), 'files')
+    publications = proof['publications']
+    require(len(publications) == 1 and publications[0]['revision'] == 2, 'publication')
+    publication = publications[0]
+    require(any(c.get('operation') == 'file.publish' and c.get('instance_id') == proof['instance_id']
+                and c.get('intent_id') == publication['intent_id']
+                and isinstance(c.get('reply'), dict) and 200 <= c['reply'].get('status', 0) < 300
+                for c in proof['calls']), 'publisher')
+    metadata = {}
+    for name, content in files.items():
+        require(isinstance(content, bytes) and 0 < len(content) <= 65536, 'size')
+        digest = hashlib.sha256(content).hexdigest()
+        upload_id = publication['input'].get('files', {}).get(name)
+        uploads = [u for u in proof.get('ui_uploads', []) if u.get('intent_id') == upload_id]
+        require(upload_id and len(uploads) == 1, 'publication.' + name)
+        upload = uploads[0]
+        reply = upload.get('reply') or {}
+        receipt = reply.get('receipt') or {}
+        require(upload.get('instance_id') == proof['instance_id']
+                and 200 <= reply.get('status', 0) < 300
+                and upload.get('input') == {'size': len(content), 'sha256': digest}
+                and receipt.get('source') == 'catalog'
+                and receipt.get('upload_receipt') == upload_id
+                and receipt.get('sha256') == digest and receipt.get('size') == len(content),
+                'readback.' + name)
+        metadata[name] = {'sha256': digest, 'bytes': len(content), 'upload_intent': upload_id,
+                          'publication_intent': publication['intent_id'], 'revision': 2}
+
+    def object_without_duplicates(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise RuntimeError('company-ui evidence failed: duplicate JSON field')
+            obj[key] = value
+        return obj
+
+    try:
+        source = files['CompanyPulse.tsx'].decode('utf-8')
+        composition = json.loads(files['company-ui.json'].decode('utf-8'), object_pairs_hook=object_without_duplicates)
+    except (ValueError, UnicodeError) as error:
+        raise RuntimeError('company-ui evidence failed: encoding') from error
+    execution = proof['expected']['execution_id']
+    expected_composition = {
+        'schemaVersion': 1, 'companyId': proof['company_id'], 'revision': 1, 'author': execution,
+        'pages': [{'id': 'pulse', 'title': 'Company pulse', 'module': 'agent-pulse',
+                   'widgets': [{'id': 'pulse-proof', 'widget': 'agent-pulse.summary', 'size': 'medium'}]}],
+        'publication': {'workspace': proof['workspace_id'], 'revision': 2, 'path': 'company-ui.json', 'executionId': execution},
+    }
+    require(composition == expected_composition, 'composition')
+    require(re.search(r'import\s*\{\s*defineCompanyModule\s*\}\s*from\s*[\'"]@/contracts/company-sdk[\'"]', source)
+            and re.search(r'export\s+default\s+defineCompanyModule\s*\(', source), 'sdk')
+    # The TypeScript compiler and app registry validate executable structure afterward.
+    # These candidate checks only bind observed values and expected identity to the downloaded source.
+    for value in ('agent-pulse', 'Company pulse', '1.0.0', 'agent-pulse.summary', *proof['expected'].values()):
+        require(value in source, 'source-content')
+    require('Verification snapshot' in source, 'historical-label')
+    return {'checks': {'ui.publication': 'PASS', 'ui.readback': 'PASS', 'ui.composition': 'PASS', 'ui.source_candidate': 'PASS'},
+            'files': metadata, 'compiled': 'NOT RUN', 'displayed': 'NOT RUN'}
+
+
+class CompanyUiDemo(ResourceSmokeDemo):
+    """One real native turn authors a bounded UI module; the owner app compiles it separately."""
+    scenario_name = 'company-ui'
+    additional_outputs = COMPANY_UI_FILES
+    purpose = '기존 리소스 검증을 수행하고, 그 관측을 보여주는 작은 Company 화면과 위젯을 구현해 게시해줘.'
+
+    def additional_task(self):
+        composition = {
+            'schemaVersion': 1, 'companyId': self.ids['firm'], 'revision': 1, 'author': '<execution_id from execution_self>',
+            'pages': [{'id': 'pulse', 'title': 'Company pulse', 'module': 'agent-pulse',
+                       'widgets': [{'id': 'pulse-proof', 'widget': 'agent-pulse.summary', 'size': 'medium'}]}],
+            'publication': {'workspace': self.workspace, 'revision': 2, 'path': 'company-ui.json',
+                            'executionId': '<execution_id from execution_self>'},
+        }
+        return f"""Before the single publication, also implement /workspace/CompanyPulse.tsx and /workspace/company-ui.json.
+Use the values you actually observed from execution_self, input.txt, and read_input; do not invent live system health.
+CompanyPulse.tsx must import {{ defineCompanyModule }} from \"@/contracts/company-sdk\" and default-export defineCompanyModule with:
+id \"agent-pulse\", name \"Company pulse\", version \"1.0.0\", pages [{{id:\"pulse\",title:\"Company pulse\"}}],
+widgets [{{id:\"agent-pulse.summary\",title:\"Company pulse\",description:\"Evidence from a completed resource verification\",provider:\"Company\",sizes:[\"small\",\"medium\"],Component: function CompanyPulse() {{ return <your JSX>; }}}}].
+Implement the JSX yourself: a compact English component labeled \"Verification snapshot\", with clearly labeled observed execution ID, file marker, and DB marker.
+Use semantic HTML and the classes type-data, type-meta, type-section; rely on the host theme. Use no fetch, URLs, scripts, storage, imports other than this SDK, or dependencies.
+The host uses the automatic React JSX runtime, so do not import React. The component represents this completed verification, not a live monitoring feed.
+Write company-ui.json matching this exact composition shape, replacing only the two execution placeholders with the observed execution ID:
+{json.dumps(composition)}
+Each of the two extra files must be at most 65536 bytes. Upload each separately using the same POST/PUT path above, unique keys ui-source-upload and ui-composition-upload, and its own exact byte count and sha256sum.
+Use all THREE upload IDs (result.json, CompanyPulse.tsx, company-ui.json) in ONE POST /publications with expected_revision 1. Do not publish partial revisions.
+Include all three exact /workspaces/{self.workspace}/snapshots/2/files/<filename> paths in your persisted answer.
+No local build or dependency installation is needed in the native container; the host will compile the downloaded source separately.
+"""
+
+    def collect_evidence(self, execution, native_root):
+        proof = super().collect_evidence(execution, native_root)
+        proof.update({'company_id': self.ids['firm'], 'workspace_id': self.workspace})
+        proof['ui_uploads'] = json.loads(self.sql(
+            "SELECT COALESCE(json_agg(json_build_object('intent_id',r.intent_id,'instance_id',r.instance_id,"
+            "'input',i.input->'input','reply',r.reply)),'[]'::json) FROM resource_calls r "
+            "JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id) "
+            f"WHERE r.firm_id='{self.ids['firm']}' AND r.work_id='{self.work}' AND r.operation='file.upload'"))
+        return proof
+
+    def check_additional_artifacts(self, proof):
+        self.step = 'company-ui-artifacts'
+        files = {}
+        for name in COMPANY_UI_FILES:
+            location = f'/workspaces/{self.workspace}/snapshots/2/files/{name}'
+            output = self.test / 'cli' / ('published-' + name)
+            self.command([self.binary / 'ouroboros-cli', '--config', self.test / 'cli/config.json',
+                          'request', 'GET', location, '--output', str(output), '--max-bytes', '65536',
+                          *self.scope()], 70003)
+            content = output.read_bytes()
+            # Preserve downloaded bytes even if the candidate's content check fails.
+            private(self.root / name, content)
+            files[name] = content
+        report = verify_company_ui_artifacts(proof, files)
+        report['publication'] = {'workspace': self.workspace, 'revision': 2, 'path': 'company-ui.json',
+                                 'executionId': proof['expected']['execution_id']}
+        private(self.root / 'company-ui-evidence.json', json.dumps(report, indent=2))
+        answer = next(v for v in self.transcript if v['step'] == 'resource.answer')['text']
+        if any(f'/workspaces/{self.workspace}/snapshots/2/files/{name}' not in answer for name in COMPANY_UI_FILES):
+            raise RuntimeError('company-ui published paths missing from persisted answer')
+        self.note('company-ui.verified', **report)
+        return report['checks']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment', type=Path, required=True)
     parser.add_argument('--run-name', type=identifier, required=True)
     parser.add_argument('--model', type=model_identifier, required=True)
-    parser.add_argument('--scenario', choices=('basic-flow', 'resource-smoke'), default='basic-flow')
+    parser.add_argument('--scenario', choices=('basic-flow', 'resource-smoke', 'company-ui'), default='basic-flow')
     parser.add_argument('--account-id', type=identifier)
     parser.add_argument('--responses-lite', action='store_true', help='pin the Codex Responses Lite dialect for a model that emits it')
     parser.add_argument('--max-calls', type=int, help='total governed resource calls, including model requests')
@@ -704,7 +851,7 @@ def main():
     parser.add_argument('--prepare-only', action='store_true', help='exercise setup, file publication and conversation creation without a model call or real credential')
     parser.add_argument('--credential-stdin', action='store_true')
     args = parser.parse_args()
-    resource_smoke = args.scenario == 'resource-smoke'
+    resource_smoke = args.scenario in ('resource-smoke', 'company-ui')
     if args.max_calls is None:
         args.max_calls = 30 if resource_smoke else 20
     if args.max_seconds is None:
@@ -732,7 +879,7 @@ def main():
     if not token or len(token) > 16384 or any(b < 33 or b > 126 for b in token):
         parser.error('invalid credential input')
     os.umask(0o077)
-    demo = (ResourceSmokeDemo if args.scenario == 'resource-smoke' else Demo)(env, args)
+    demo = {'basic-flow': Demo, 'resource-smoke': ResourceSmokeDemo, 'company-ui': CompanyUiDemo}[args.scenario](env, args)
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         demo.setup(token)

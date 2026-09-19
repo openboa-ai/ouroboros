@@ -1,0 +1,130 @@
+{
+  "amount": {
+    "sourceToken": "sys.type.product.heading-01",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 28,
+    "lineHeight": 1.28571429,
+    "lineHeightPx": 36.0,
+    "weight": 550,
+    "letterSpacing": -0.224,
+    "letterSpacingUnit": "px",
+    "trackingEm": -0.008,
+    "wdth": 98
+  },
+  "amount-secondary": {
+    "sourceToken": "sys.type.product.heading-02",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 24,
+    "lineHeight": 1.33333333,
+    "lineHeightPx": 32.0,
+    "weight": 550,
+    "letterSpacing": -0.192,
+    "letterSpacingUnit": "px",
+    "trackingEm": -0.008,
+    "wdth": 98
+  },
+  "title": {
+    "sourceToken": "sys.type.product.heading-03",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 20,
+    "lineHeight": 1.4,
+    "lineHeightPx": 28.0,
+    "weight": 550,
+    "letterSpacing": -0.16,
+    "letterSpacingUnit": "px",
+    "trackingEm": -0.008,
+    "wdth": 98
+  },
+  "body": {
+    "sourceToken": "sys.type.product.body-02",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 14,
+    "lineHeight": 1.42857143,
+    "lineHeightPx": 20.0,
+    "weight": 450,
+    "letterSpacing": 0.0,
+    "letterSpacingUnit": "px",
+    "trackingEm": 0.0,
+    "wdth": 100
+  },
+  "data": {
+    "sourceToken": "sys.type.product.body-03",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 13,
+    "lineHeight": 1.38461538,
+    "lineHeightPx": 18.0,
+    "weight": 450,
+    "letterSpacing": 0.0,
+    "letterSpacingUnit": "px",
+    "trackingEm": 0.0,
+    "wdth": 100
+  },
+  "control": {
+    "sourceToken": "sys.type.support.label-02",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 13,
+    "lineHeight": 1.23076923,
+    "lineHeightPx": 16.0,
+    "weight": 550,
+    "letterSpacing": 0.104,
+    "letterSpacingUnit": "px",
+    "trackingEm": 0.008,
+    "wdth": 100
+  },
+  "section": {
+    "sourceToken": "sys.type.support.label-01",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 14,
+    "lineHeight": 1.42857143,
+    "lineHeightPx": 20.0,
+    "weight": 550,
+    "letterSpacing": 0.112,
+    "letterSpacingUnit": "px",
+    "trackingEm": 0.008,
+    "wdth": 100
+  },
+  "meta": {
+    "sourceToken": "sys.type.support.caption-01",
+    "fontFamily": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "cssFontFamily": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "size": 12,
+    "lineHeight": 1.33333333,
+    "lineHeightPx": 16.0,
+    "weight": 450,
+    "letterSpacing": 0.0,
+    "letterSpacingUnit": "px",
+    "trackingEm": 0.0,
+    "wdth": 100
+  }
+}

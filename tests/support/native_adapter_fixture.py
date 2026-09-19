@@ -115,7 +115,8 @@ printf 'approved-adapter-result\\n'
             if c['a'].bounded_worker:
                 if self.preparation_worker is None:
                     with (root/'runtime/adapter-worker.log').open('xb') as log:
-                        self.preparation_worker=subprocess.Popen([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--max-executions','2','--idle-timeout-seconds','10'],stdout=log,stderr=log,env=c['child_env'])
+                        options=['--service','--poll-interval-seconds','1'] if c['a'].persistent_worker else ['--max-executions','2','--idle-timeout-seconds','10']
+                        self.preparation_worker=subprocess.Popen([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),*options],stdout=log,stderr=log,env=c['child_env'])
                 value=wait_worker_execution(self.preparation_worker,
                     lambda: cli('get','executions',admitted['resource_id']))
                 if label=='source':
@@ -123,15 +124,34 @@ printf 'approved-adapter-result\\n'
                     peer=subprocess.run([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--max-executions','1','--idle-timeout-seconds','1'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=c['child_env'],timeout=3)
                     assert peer.returncode!=0 and b'another Runtime owns' in peer.stderr
                 else:
+                    if c['a'].persistent_worker:
+                        before=sql('SELECT count(*) FROM runtime_instances',db)
+                        time.sleep(2.2)
+                        assert self.preparation_worker.poll() is None,'service stopped at the fixture execution count or empty queue'
+                        assert sql('SELECT count(*) FROM runtime_instances',db)==before,'idle service invented an execution'
+                        assert not (self.evidence/'pending-claim.json').exists()
+                        assert len(list(self.evidence.glob('claim-resolved-*.json')))==2
+                        self.preparation_worker.terminate()
                     self.preparation_worker.wait(timeout=5)
                     assert self.preparation_worker.returncode==0
                     records=[json.loads(line) for line in (root/'runtime/adapter-worker.log').read_text().splitlines()]
-                    assert records[-1]=={'worker':'execution_limit_reached','completed_executions':2}
+                    assert records[-1]=={'worker':'stop_requested' if c['a'].persistent_worker else 'execution_limit_reached','completed_executions':2}
                     before=sql('SELECT count(*) FROM runtime_instances',db)
                     empty=run([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--max-executions','1','--idle-timeout-seconds','1'],timeout=5)
                     assert json.loads(empty)=={'worker':'idle_limit_reached','completed_executions':0}
                     assert sql('SELECT count(*) FROM runtime_instances',db)==before
                     self.worker_checks={'completed_executions':2,'same_process':True,'duplicate_slot_denied':True,'idle_created_instances':0}
+                    if c['a'].persistent_worker:
+                        # Reopening the same service must inspect historical return records, stay
+                        # alive on the empty queue, and stop without a replacement execution.
+                        with (root/'runtime/adapter-service-restart.log').open('xb') as log:
+                            self.preparation_worker=subprocess.Popen([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config),'--service','--poll-interval-seconds','1'],stdout=log,stderr=log,env=c['child_env'])
+                        time.sleep(2.2)
+                        assert self.preparation_worker.poll() is None
+                        self.preparation_worker.terminate();self.preparation_worker.wait(timeout=5)
+                        assert self.preparation_worker.returncode==0
+                        assert sql('SELECT count(*) FROM runtime_instances',db)==before
+                        self.worker_checks.update(service_mode=True,explicit_stop=True,restart_created_instances=0,original_claims_resolved=2)
             else:
                 with (root/'runtime'/('adapter-'+label+'.log')).open('xb') as log:
                     result=subprocess.run([str(c['binary']/'ouroboros-runtime'),'--config',str(self.config)],stdout=log,stderr=log,env=c['child_env'],timeout=30)

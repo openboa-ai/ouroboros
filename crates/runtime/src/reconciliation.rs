@@ -1,7 +1,7 @@
 //! Stop-only recovery of a recorded instance. This path cannot claim or release a successor.
 use super::{
     docker_backend::{connect_docker, docker_binding},
-    manager::{Config, supervisor_lock},
+    manager::{Config, recover_pending_claim, supervisor_lock},
     reporting::{change, journal, record_return_ack, send_program_observation},
 };
 use anyhow::{Result, ensure};
@@ -152,6 +152,12 @@ pub async fn reconcile(cfg: Config, instance: uuid::Uuid) -> Result<()> {
         super::native_receipts::load(&root, ticket.execution_id, instance, ticket.generation)?
     {
         super::native_receipts::report(&client, base, intent, &ack).await?;
+    }
+    // A successful stop report alone is insufficient: this clears only a returned original claim.
+    if super::claim_journal::pending(&cfg.evidence_dir)?
+        .is_some_and(|pending| pending.context.intent_id == ticket.intent_id)
+    {
+        recover_pending_claim(&cfg).await?;
     }
     println!(
         "{}",

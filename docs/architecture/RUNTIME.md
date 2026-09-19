@@ -5,7 +5,134 @@ to its governing sources. [Contracts and State](CONTRACTS_AND_STATE.md) owns the
 This document specifies an initial implementation candidate, not a deployed sandbox, operational
 grant, or claim that native harness compatibility and containment have been demonstrated.
 
+## Company Service Host
+
+The operating counterpart of the app's Company UI Host is **Company Service Host**. It is a
+generic use of existing Runtime execution, Gateway service binding and resource/custody contracts,
+not another executor. Ordinary Company packages own business APIs, investment rules/enforcement
+and provider adapters without holding provider secrets. Runtime launches exact selected releases
+under isolated profiles and observes/fences their actual instances; it has no built-in investment
+implementation.
+
+Service, strategy-agent and UI lifetimes are independent. A required enforcement service does not
+share the strategy's mutable checkout, credential or writable state. Package/config replacement
+requires its protected selected-use transition. Stale or failed required services block new
+dependent effects while preserving separately authorized observation/reconciliation and pending
+obligations. Source ownership does not weaken [the shared service contract](CONTRACTS_AND_STATE.md#company-hosts-and-business-services).
+
+### Protected AuthModule profiles
+
+A separately qualified AuthModule is a credential consumer of the protected Resources host, not
+an ordinary Company program or a privilege gained by serving an API. Source prepared or maintained
+by Company agents may enter that host only as an exact independently accepted module under its
+dedicated trust profile. Package ownership, an ordinary execution grant, a tool name or a requested
+profile cannot promote private code into a secret-bearing instance.
+
+Resources owns module installation, compatible host-ABI selection, credential binding and scoped
+authentication operations. Existing Runtime/backend isolation may realize that selected profile;
+it does not introduce another engine, expose launch options or merge it with ordinary execution.
+Keep its service identity, memory/mounts, credential/key-service access, egress and result filtering
+separate from ordinary callers. All ordinary agents/programs remain use-only Gateway clients.
+Plaintext provider credentials and reusable authenticated requests never pass back through their
+runtime bridge.
+
+An accepted module within the qualified host ABI can be installed/replaced independently of the
+product binary. A required common host/ABI/isolation capability outside that contract remains a
+product change. Modules implement provider authentication; they do not replace the product's
+encryption envelope or create another secret store. Exact package/configuration, host ABI,
+credential schema/version and consumer generation participate in readiness and replacement.
+See [installation and connection lifetimes](INTEGRATION_AND_DEPLOYMENT.md#independent-authmodule-installation).
+The present ordinary worker/enrollment fixtures do not qualify this protected module profile.
+
+## Implemented finite Company call continuation
+
+An original caller can register `ServiceContinuationRequest` after Runtime has assigned its scoped,
+non-native Company execution. The registration requires current `service.manage` on that service
+target in addition to the original execution/invocation/read authority. The worker identity comes
+from the existing authenticated Runtime assignment. Company code cannot supply a worker identity,
+change its origin, or enable its own continuation through a scoped service instance.
+
+The durable policy permits at most 32 restarts, a restart admission window of at most one day and
+an explicit backoff of 1–3600 seconds. The backoff must fit within that window. These are contract
+ceilings, not automatically granted defaults. The registration is immutable and unique per original
+root. A second key, Core restart or supervisor restart cannot replace the policy or reset the count.
+No existing installation receives a `service.manage` grant from this implementation.
+
+The persistent worker uses `POST /runtime/service-continuations/reconcile` with its configured
+profile, before its existing read-only pending-work query. Core considers up to 16 registrations per
+poll, ordered by last check for fairness. Only registrations assigned to that actual worker/profile
+are eligible. The bounded fixture worker never drives this controller.
+
+A successor requires all of the following under the same firm fence as stop, claim and admission:
+
+- The previous execution is actually terminated and its original compute reservation has an accepted
+  return with matching units. A stop request or container-exit report alone is insufficient.
+- Prior root effects and current-instance resource calls have terminal records and stored replies.
+  An accepted/claimed/unknown call remains blocked even after compute has been returned.
+- The program did not report a successful exit. A successful program exit ends this continuation;
+  it still does not assert business success or financial settlement.
+- The restart admission window and ordinal allowance remain available, backoff has elapsed, and
+  current grants, work scope, selected qualified material and target configuration permit use.
+- Ordinary fresh execution admission, frozen input verification, profile limits, current compute
+  capacity and the selected adapter acceptance's aggregate invocation bound all pass.
+
+A server-owned `(root, ordinal)` key and immutable execution link are committed with that admission.
+Concurrent polls and lost responses recover the same successor. `execution_self` derives the same
+original root/caller/input from every replacement instance. Existing successful child receipts replay
+under their original slot; changed input conflicts. New executions cannot obtain fresh effect slots,
+read another call, use a retired instance, nest services or escape into general management.
+
+`file.read` response bytes remain tied to the original instance. A call that used such a slot is
+reported as `transfer_recovery_required` instead of automatically restarting with broadened delivery
+rights. Program-input materialization retains its separately qualified, per-execution input path.
+Native Codex calls, cross-instance binary redelivery and a continually serving request queue are not
+implemented by this continuation contract.
+
+Owner stop targets the displayed current execution ID. A newer successor makes an old stop request
+conflict. An accepted stop prevents further admission and fences the current instance; unclaimed
+work is cancelled through the existing never-dispatched proof and compute-return accounting. Claimed
+work stays `stopping` until actual termination and compute return are observed. Remaining external
+effects are always displayed separately. Existing execution-stop controls also prevent automatic
+replacement of the execution they restricted.
+
+Management routes: `POST /service-continuations`, `GET /service-continuations/{root_intent_id}`,
+`POST /service-continuations/{root_intent_id}/stop`. The read returns desired intent, the current state,
+policy/window, used restart count, actual execution/instance history and a timestamped Core observation.
+`health: not_observed` and `work_success_confirmed: false` keep those limits explicit. Owner inspection
+survives loss of the service's grant; it never constitutes permission to run that service.
+
+The Linux target compile check has passed; native Docker execution remains a separate acceptance
+step. A supervisor error still retains the claim journal and exits. Reconciliation does not auto-retry
+an ambiguous claim, repair unknown process state, create new credentials or change Company policy.
+
 ## Responsibility and Desired Execution
+
+Company services may be continuing responsibilities, but no individual instance is unbounded.
+The existing Runtime controller must reconcile effective service selection, required health,
+bounded restart authority and remaining capacity into separately admitted fresh instances. An
+instance exit or systemd restart policy cannot create a new allowance. Reserve qualified execution
+slots/compute and evidence capacity for required Company dependency/recovery services so a waiting
+strategy cannot occupy the only slot needed by its dependency. Dependency preparation and admission
+must reject a cycle or unavailable required capacity instead of marking the service ready.
+
+Required protected authentication consumers and their bounded refresh/event-ingestion work also
+need qualified reserved capacity; they cannot wait for an ordinary caller holding their only slot.
+Starting or replacing a protected consumer requires the current activation/installation or
+maintenance/recovery authority for that transition, not a caller's ordinary execution allowance.
+An open session, refreshed token or restarted process cannot renew an execution's expired allowance.
+Resources retains session/subscription and refresh identities outside caller scratch; each business
+message still needs its own current authorization. Verified persisted inbound events enter the
+existing authorized wake path and cannot choose a new agenda or grant their recipient more rights.
+
+The explicit persistent supervisor mode below waits for separately admitted work without a fixture
+execution-count or idle limit. It now drives **finite continuation of an already admitted Company
+call** through an explicit Runtime-authenticated Core reconciliation request. A continuation keeps
+one root and its effect slots while admitting separately bounded replacement executions. It does
+not create a new business operation when a process exits. Desired service availability, qualified
+health, dependency capacity and recovery-only grants remain target work; `Restart=no` remains in
+place so supervisor failure cannot renew an allowance or repeat an uncertain claim.
+Recovery-only and end-operation ordering follow the [deployment lifecycle](INTEGRATION_AND_DEPLOYMENT.md#company-recovery-and-operating-end-barriers);
+ordinary pause remains enforced until those narrower profiles are implemented and verified.
 
 [Core](CONTROL_CORE.md) admits desired execution under current authority and aggregate limits.
 Runtime Manager is the single executor of that decision against the workload backend. It creates,
@@ -17,7 +144,7 @@ They never receive backend administration, raw Docker options, or an alternative
 The first supervisor is a Rust service with a Bollard Docker adapter. Only this Runtime backend
 owner holds general Engine access. Resolve one explicit, activated local Engine endpoint; never
 discover it from caller environment, Docker contexts, `DOCKER_HOST`, or private configuration.
-The Rust CLI uses Gateway's HTTP API. A later TypeScript UI is a separate API client;
+The Rust CLI and Mac application's trusted native client use Gateway's HTTP API;
 neither client receives direct Core/Runtime access, and backend operation does not depend on the UI.
 
 | Record | Required distinction |
@@ -435,6 +562,10 @@ After supervisor restart, recover current Core state before launching or renewin
 backend executions and correlate them with protected launch records. Fence stale channels and
 quarantine unknown/orphaned executions under preauthorized containment. Do not adopt an execution
 solely from its label or relaunch a desired job while an earlier create remains unresolved.
+For protected AuthModule consumers, observe old worker/lease, egress and key-service fencing before
+enabling a conflicting replacement. A local termination record does not revoke an already copied
+secret or close a provider session; Resources separately observes those external outcomes. Retain
+the original refresh/ingestion/effect identities, compatible schema evidence and unresolved duties.
 Separately reconcile provider effects through Resource Services before any dependent retry.
 
 A continuation is `POST /executions` with the same work and a predecessor reference under the
@@ -860,8 +991,60 @@ After the selected number of successful contained executions, the worker emits
 creating an instance. Any claim, authority, containment or backend error ends the worker rather than
 retrying an ambiguous request or generating replacement work. `completed_executions` counts completed
 Runtime paths, not successful company outcomes. Queued and unresolved records remain in Core for
-current-authority inspection and explicit recovery. This mode provides a persistent external worker;
+current-authority inspection and explicit recovery. This mode reuses a slot for a finite run;
 a managed private service's request/data continuity still requires its own connected contract.
+
+### Persistent supervisor and original claim recovery
+
+`ouroboros-runtime --config <runtime.json> --service --poll-interval-seconds <1..60>` holds one
+exclusive configured slot until stopped or an error occurs. Polling defaults to two seconds.
+The service does not exit because its queue is empty or a fixture execution count is reached.
+It requires an independently managed guard; the direct-child fixture guard is refused. Service,
+bounded-worker and explicit recovery/inspection options cannot be combined.
+
+Each instance still has a separate Core admission, current grants, fixed program/profile,
+finite resource reservation and original deadline. Normal completion requires actual containment,
+termination and accepted compute return before this slot can take another execution. The process
+does not create successor work or retry a failed claim. Its completion counter is an observation
+of this supervisor lifetime, never a resource allowance. Company scheduling and business outcomes
+remain separate from an available outer worker.
+
+Before sending a claim, Runtime reads `GET /runtime/claims/{intent_id}` through its configured
+service identity. Core returns an environment/firm/serving-generation/worker/intent/execution/profile
+precondition and the existing assignment, if any. A claimed record is visible only to its assigned
+worker, including after grant revocation. The response contains no private program input or secret.
+This endpoint is read-only and does not claim, reserve, replay or authorize another execution.
+
+Runtime fsyncs `pending-claim.json` in its protected slot before posting the claim with
+`x-ouro-runtime-claim`. Core compares the precondition within the admission transaction before
+claiming. Worker identity still comes from the authenticated Runtime peer. The additive header is
+optional for older direct Core callers; the updated supervisor always supplies it. Ordinary Core
+restart changes the claim precondition while preserving the original durable record identity.
+
+The pending record survives response loss, crash, stop and configuration mismatch. Reopening the
+slot first reads that original intent. Only matching identity, a terminated assignment and Core's
+accepted compute-return record allow it to archive the resolution and remove the barrier, with
+directory sync at each step. No claim or external-effect request is resubmitted during this lookup.
+Missing, unclaimed, changed, partially written or unresolved evidence blocks further execution.
+Legacy instance journals are also checked before starting service mode; absence of a pending marker
+in an older release is not cleanup evidence. Read bounds distinguish small claim records from
+larger admitted program journals.
+
+`--inspect-claim <intent_id>` exposes the original read-only observation for diagnosis. The existing
+`--reconcile <instance_id>` remains a stop-only path for an instance with retained binding evidence;
+it clears a matching pending barrier only after qualified compute return. Pre-binding failures
+without that evidence remain unresolved and require explicit recovery; starting a different slot
+or inventing a new request key is not recovery. Compute return never settles external obligations.
+
+The host stop listener remains active while waiting, and stops further claims. An already sent
+claim is awaited with a bounded transport timeout and retained on uncertainty, rather than dropping
+its future and continuing. In-flight private work uses the existing containment cleanup sequence.
+Systemd service mode retains `Restart=no`, memory/task limits and managed-guard enforcement.
+
+The named `native.persistent-worker` scenario covers two separately admitted contained executions,
+idle survival, exclusive slot ownership, explicit stop and reopening with original return records.
+Its registration and cross-compilation are not Linux execution evidence; qualification status is
+recorded in the [app/runtime work record](../implementation/MAC_APP.md).
 
 ### Guard service independence: current boundary
 
@@ -928,8 +1111,8 @@ receipt cannot gain proof merely because the container stopped.
 
 The combined Runtime-unit failure fixture checks guard survival and this stop-only recovery;
 its current qualification is recorded in VALIDATION.md. Early retirement of a still-live orphan,
-legacy recovery without an independent closure receipt, a persistent privileged Runtime
-installation profile, host shutdown/suspension, syscall restriction and pressure
+legacy recovery without an independent closure receipt, actual persistent privileged Runtime
+installation qualification, host shutdown/suspension, syscall restriction and pressure
 behavior remain unqualified. The separate launch-unit probe does not substitute for those cases.
 
 ### Host-requested Runtime stop
@@ -951,3 +1134,34 @@ Gateway authority, stop the Runtime main process, observe termination/evidence a
 unresolved outcomes. Sending SIGTERM to every process in its cgroup also terminates the bridge
 and does not qualify this graceful main-process path. Force-stop timeout or Runtime loss still
 uses the independently armed guard and explicit recovery; it never extends an execution deadline.
+
+
+### Owner observations for finite call continuation
+
+The fixed control plane projects registered continuations through work-scoped listing and exact-root
+inspection. Metadata includes frozen target selection comparison, current original-caller resource
+permission, retained-input counts, current/replacement executions, child intent receipt availability
+and permitted firm compute totals. No invocation payload, target configuration, receipt body or
+secret is included. Reads do not poll the controller, admit executions, emit events or consume a new
+restart allowance. A separate issuer-specific stop-request lookup reconciles response loss without
+resubmission. Existing stop/termination/return fences continue to own application state.
+
+This projection does not implement permanent request-serving services, qualified health/liveness,
+reserved dependency capacity, cross-instance binary delivery or native agent continuation. Actual
+Linux Company process restart and native app control must be accepted against real worker/process
+records separately from SQL fixtures and UI presentation tests.
+
+## September 19 acceptance correction: restricted operation versus supervisor failure
+
+The actual Linux Company-continuation acceptance reproduced a cleanly stopped operation returning
+its reservation but also terminating the persistent Runtime with an HTTP 403 error. The program
+permission observer now marks only the authenticated current-execution 403 as an execution
+restriction. After the original kernel closure, exact termination/compute-return acknowledgement,
+and claim resolution succeed, service mode may retain its slot and await separately admitted work.
+Bounded workers and all other errors keep their existing failure behavior. A matching error string,
+transport failure, absent return or changed assignment is insufficient. The operation's failure
+journal, stopped state and unresolved business outcome remain recorded; this is not a success
+classification for Company work.
+
+`native.program-continuation` exercises the actual mechanism and owner CLI control. Native Mac
+control remains a separate screen/IPC acceptance item.

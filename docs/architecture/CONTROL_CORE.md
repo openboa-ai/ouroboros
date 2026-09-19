@@ -24,6 +24,42 @@ their assigned dispatch claims and report scoped observations, without independe
 authority edits. The shared HTTP contract is translated here without exposing Core's
 database types to the CLI or the independent TypeScript client.
 
+## Connection and Protected-Module Authority
+
+[Extensible connections](CONTRACTS_AND_STATE.md#extensible-connections-and-protected-authentication)
+use the same current identity, delegation, selection, intent/attempt and receipt owners. A separately
+qualified Auth Module is a protected Resources execution profile, not a new policy engine and not
+code loaded into Core. Core holds secret-free package/verification/binding/lifecycle references;
+Resources custody holds secret values and protected external key access.
+
+Connection adoption can be autonomous inside current provider/account/operation/data/cost scope and
+applicable acceptance authority. Connection registration, personal authentication, provider scope,
+credential capture, technical qualification, selected use and actual operation are separate records.
+A new connection does not by itself require another human approval or create broader rights.
+Ordinary Company package acceptance does not include protected-module acceptance. Independent
+verification and the exact currently authorized acceptance profile are required; source ownership,
+authorship, signature and tool metadata are not authority. Absent a protected-code grant, do not
+infer it from a CEO/member title or general connection-use delegation.
+
+Current binding-set validation includes adapter/Auth Module/Host ABI, credential/config schema and
+data schema revisions. Authentication attempts (including refresh and provisioning) preserve their
+own stable identities, children and shared limits; they do not hide inside a business retry or renew
+its allowance. Credential version transitions conditionally check the same disable/selection state.
+Credential-material epochs are distinct from structural selection and restriction epochs;
+routine qualified refresh does not replace the entire UI/service binding set. Proven-unsent
+continuation and overlapping eligibility follow the shared renewal contract, with claim fencing
+and a new exact validated attempt rather than substituting a new token into an old send.
+An acknowledged capture can establish custody metadata without enabling use; late observations
+cannot resurrect a disabled connection. Original attempts remain readable under current evidence
+rights even after module or credential replacement, without reissuing a dispatch permit.
+
+Provider-authenticated ingress records evidence only. Its follow-up internal work and wake require
+current scope; foreign messages cannot nominate an authoritative principal or create a trading
+instruction. Session admission likewise does not grant future effectful frames unrestricted use.
+Restriction and recovery apply the same incarnation/fencing model to credential use, sessions,
+egress and KMS calls while preserving unresolved obligations and separately scoped reconciliation.
+No external module RPC, refresh or provider call occurs while the admission lock is held.
+
 ## Protected State and Writers
 
 | Record family | Core-owned content and permitted source |
@@ -166,6 +202,15 @@ without promising a globally current snapshot across providers, file metadata, a
 Resolve canonical resource identity before locking commitments. Two connector aliases for the same
 account or quota must meet the same constraint records. Investment enforcement contributes its
 domain-specific exposure requirements; generic Core mechanics do not infer financial semantics.
+
+For Company services, root invocation admission covers service processing only. An effect-free,
+qualified Company preparation supplies each downstream effect's canonical constraint vector,
+units/deltas, registered observation/policy versions and stable root effect slot. Core checks those
+versions and current selection while atomically binding the child intent and all shared reservations.
+It cannot accept a Company DB version that has no protected ingested precondition, nor hold its
+fence while awaiting service RPC. A stale preparation is retried within the original slot and
+bounds; it is not an additional effect or allowance. See
+[Company preparation and exact external dispatch](CONTRACTS_AND_STATE.md#company-preparation-and-exact-external-dispatch).
 
 Within one transaction:
 
@@ -409,6 +454,20 @@ Core stores private-selected timer/event/dependency conditions with work identit
 principal, execution profile, validity, resource bounds, and allowed technical retries. Timers and
 authenticated external events create deduplicated occurrences. The same occurrence produces the
 same accountable continuation request after restart or duplicate callback delivery.
+
+Healthy waiting requires an observed durable continuation, not just a decision file saying wait.
+Private operation links its cycle/decision revision to the exact wake registration and acceptance
+before reporting that state. Decision publication and wake registration cross stores and retain
+their original intents. If only one succeeds, the cycle exposes an incomplete continuation;
+reconciliation looks up those intents rather than inventing a replacement condition. An earlier
+valid condition remains until its replacement is durably accepted and explicitly cancelled or
+superseded. Completion, expiry, cancellation and occurrence-to-execution delivery stay distinct.
+Replacement of a continuation set compares its standing work's condition revision under the
+authority fence. Once superseded, old unclaimed occurrences cannot start another coordinator;
+already claimed occurrences retain their original effects and reconciliation duties. The current
+one-shot wake API does not yet implement that coordinated replacement or private-cycle linkage.
+A crash with no eligible continuation is activity unobserved/blocked, not normal waiting. Current
+authorized recovery may report or reconcile it but cannot invent a business agenda or renew limits.
 
 Before creating an instance, current permission and resources are checked again. Runtime binds the
 actual instance before allowing business access. A restarted scheduler wakes authorized private

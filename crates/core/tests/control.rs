@@ -318,10 +318,85 @@ async fn runtime_binding_is_current_scoped_and_never_settles_effects() {
     req.profile_id = "codex-fixture".into();
     req.agent_delegation_id = Some(child);
     let accepted = c.start(&human, "runtime-start", req).await.unwrap();
-    let ticket = c
-        .runtime_claim(accepted.intent_id, "worker-A")
+    let unclaimed = c
+        .runtime_claim_observation(accepted.intent_id, "worker-A")
         .await
         .unwrap();
+    assert!(unclaimed.claim.is_none() && !unclaimed.slot_released());
+    assert!(!unclaimed.never_dispatched);
+    assert_eq!(unclaimed.context.execution_id, accepted.resource_id);
+    assert_eq!(unclaimed.context.firm_id, c.firm);
+    assert_eq!(unclaimed.context.profile_id, "codex-fixture");
+    let before_claim: i64 = sqlx::query_scalar("SELECT count(*) FROM attempts WHERE firm_id=$1")
+        .bind(c.firm)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    for field in 0..7 {
+        let mut changed = unclaimed.context.clone();
+        match field {
+            0 => changed.environment_id = Uuid::new_v4(),
+            1 => changed.firm_id = Uuid::new_v4(),
+            2 => changed.serving_generation = Uuid::new_v4(),
+            3 => changed.worker_id = "worker-B".into(),
+            4 => changed.intent_id = Uuid::new_v4(),
+            5 => changed.execution_id = Uuid::new_v4(),
+            _ => changed.profile_id = "another-profile".into(),
+        }
+        assert!(matches!(
+            c.runtime_claim_with_context(accepted.intent_id, "worker-A", Some(&changed))
+                .await,
+            Err(Error::Conflict)
+        ));
+    }
+    let restarted = Core::new(db.clone(), c.firm);
+    assert!(matches!(
+        restarted
+            .runtime_claim_with_context(accepted.intent_id, "worker-A", Some(&unclaimed.context))
+            .await,
+        Err(Error::Conflict)
+    ));
+    let current = restarted
+        .runtime_claim_observation(accepted.intent_id, "worker-A")
+        .await
+        .unwrap();
+    assert!(current.context.same_record(&unclaimed.context));
+    assert_ne!(
+        current.context.serving_generation,
+        unclaimed.context.serving_generation
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM attempts WHERE firm_id=$1")
+            .bind(c.firm)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        before_claim
+    );
+    let ticket = c
+        .runtime_claim_with_context(accepted.intent_id, "worker-A", Some(&unclaimed.context))
+        .await
+        .unwrap();
+    let claimed = c
+        .runtime_claim_observation(accepted.intent_id, "worker-A")
+        .await
+        .unwrap();
+    let assignment = claimed.claim.as_ref().unwrap();
+    assert_eq!(assignment.instance_id, ticket.instance_id);
+    assert_eq!(assignment.generation, ticket.generation);
+    assert_eq!(assignment.attempt_id, ticket.attempt_id);
+    assert!(!claimed.slot_released());
+    assert!(!claimed.never_dispatched);
+    assert!(matches!(
+        c.runtime_claim_observation(accepted.intent_id, "worker-B")
+            .await,
+        Err(Error::Denied)
+    ));
+    assert!(matches!(
+        c.runtime_claim_observation(Uuid::new_v4(), "worker-A")
+            .await,
+        Err(Error::Denied)
+    ));
     assert!(
         c.runtime_claim(accepted.intent_id, "worker-A")
             .await
@@ -657,6 +732,16 @@ async fn runtime_binding_is_current_scoped_and_never_settles_effects() {
         .await
         .unwrap();
     assert_eq!(state["terminated"], true);
+    let stopped_claim = c
+        .runtime_claim_observation(ticket.intent_id, "worker-A")
+        .await
+        .unwrap();
+    assert!(stopped_claim.claim.as_ref().unwrap().terminated);
+    assert!(!stopped_claim.never_dispatched);
+    assert!(
+        !stopped_claim.slot_released(),
+        "termination without compute return cannot unblock the worker"
+    );
     assert_eq!(
         c.conditions(&human).await.unwrap()["limits"][0]["committed"],
         70
@@ -718,6 +803,25 @@ async fn runtime_binding_is_current_scoped_and_never_settles_effects() {
     .await
     .unwrap();
     assert_eq!(returns, 1);
+    let returned = c
+        .runtime_claim_observation(ticket.intent_id, "worker-A")
+        .await
+        .unwrap();
+    assert!(returned.slot_released());
+    assert!(!returned.never_dispatched);
+    assert!(returned.context.same_record(&unclaimed.context));
+    assert_eq!(
+        returned.claim.as_ref().unwrap().instance_id,
+        ticket.instance_id
+    );
+    let again = c
+        .runtime_claim_observation(ticket.intent_id, "worker-A")
+        .await
+        .unwrap();
+    assert_eq!(
+        again, returned,
+        "read-only claim recovery must preserve the original assignment"
+    );
     let outstanding: bool=sqlx::query_scalar("SELECT NOT settled FROM reservations WHERE firm_id=$1 AND intent_id=$2 AND limit_id='external'").bind(c.firm).bind(ticket.intent_id).fetch_one(&db).await.unwrap();
     assert!(outstanding);
     assert_eq!(
@@ -859,6 +963,7 @@ async fn resource_dispatch_preserves_scope_receipts_and_call_budget() {
         .await
         .unwrap();
     let request = ResourceRequest {
+        effect_slot: None,
         target: "company".into(),
         operation: "db.write".into(),
         request_key: "resource-one".into(),
@@ -1040,6 +1145,7 @@ async fn file_resource_claim_checks_storage_before_consuming_the_attempt() {
         .resource_admit(
             ResourceActor::Human(caller),
             ResourceRequest {
+                effect_slot: None,
                 target: "files".into(),
                 operation: "file.read".into(),
                 request_key: "storage-bound-read".into(),
@@ -1168,6 +1274,7 @@ impl UploadFixture {
     }
     fn request(&self, target: &str, key: &str, bytes: u64) -> ouroboros_contracts::ResourceRequest {
         ouroboros_contracts::ResourceRequest {
+            effect_slot: None,
             target: target.into(),
             operation: "file.upload".into(),
             request_key: key.into(),
@@ -1701,6 +1808,7 @@ async fn credential_enrollment_admits_only_scoped_metadata() {
         .unwrap();
     let actor = ResourceActor::Human(caller);
     let request = ResourceRequest {
+        effect_slot: None,
         target: "custody".into(),
         operation: "credential.enroll".into(),
         request_key: "enroll-metadata".into(),
@@ -1943,6 +2051,104 @@ async fn unstarted_cancellation_is_atomic_current_and_does_not_settle_claimed_wo
         c.cancel_unstarted(&p, first.resource_id, "cancel", 0).await,
         Err(Error::Denied)
     ));
+}
+
+#[tokio::test]
+async fn runtime_claim_non_dispatch_requires_original_settled_cancellation() {
+    let (c, db, p, grant, _) = setup().await;
+    let w = work(&c, &p, grant).await;
+    let first = c
+        .start(&p, "cancel-race", start(w, grant, 30))
+        .await
+        .unwrap();
+    let before = c
+        .runtime_claim_observation(first.intent_id, "runtime")
+        .await
+        .unwrap();
+    assert!(before.claim.is_none() && !before.never_dispatched);
+    c.cancel_unstarted(&p, first.resource_id, "cancel", 0)
+        .await
+        .unwrap();
+    assert!(matches!(
+        c.runtime_claim_with_context(first.intent_id, "runtime", Some(&before.context))
+            .await,
+        Err(Error::Denied)
+    ));
+    let canceled = c
+        .runtime_claim_observation(first.intent_id, "runtime")
+        .await
+        .unwrap();
+    assert!(before.context.same_record(&canceled.context));
+    assert_eq!(canceled.intent_state, "restricted");
+    assert!(canceled.claim.is_none() && canceled.never_dispatched);
+    assert!(!canceled.slot_released());
+
+    // Withhold or contradict one piece of original settlement evidence in this disposable DB.
+    for (mutation, restore) in [
+        (
+            "UPDATE reservations SET settled=false WHERE firm_id=$1 AND intent_id=$2 AND limit_id='compute'",
+            "UPDATE reservations SET settled=true WHERE firm_id=$1 AND intent_id=$2 AND limit_id='compute'",
+        ),
+        (
+            "UPDATE reservations SET units=31 WHERE firm_id=$1 AND intent_id=$2 AND limit_id='compute'",
+            "UPDATE reservations SET units=30 WHERE firm_id=$1 AND intent_id=$2 AND limit_id='compute'",
+        ),
+        (
+            "UPDATE outbox SET claimed=true WHERE firm_id=$1 AND intent_id=$2",
+            "UPDATE outbox SET claimed=false WHERE firm_id=$1 AND intent_id=$2",
+        ),
+        (
+            "INSERT INTO attempts(firm_id,id,intent_id,worker_id,state) VALUES($1,gen_random_uuid(),$2,'runtime','claimed')",
+            "DELETE FROM attempts WHERE firm_id=$1 AND intent_id=$2",
+        ),
+    ] {
+        sqlx::query(mutation)
+            .bind(c.firm)
+            .bind(first.intent_id)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(
+            !c.runtime_claim_observation(first.intent_id, "runtime")
+                .await
+                .unwrap()
+                .never_dispatched,
+            "incomplete dispatch or settlement evidence cannot resolve a claim"
+        );
+        sqlx::query(restore)
+            .bind(c.firm)
+            .bind(first.intent_id)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        c.runtime_claim_observation(first.intent_id, "runtime")
+            .await
+            .unwrap(),
+        canceled
+    );
+
+    // Another execution's cancellation cannot prove non-dispatch for this stopped record.
+    let other = c.start(&p, "other", start(w, grant, 30)).await.unwrap();
+    for mutation in [
+        "UPDATE executions SET stopped=true WHERE firm_id=$1 AND intent_id=$2",
+        "UPDATE intents SET state='restricted' WHERE firm_id=$1 AND id=$2",
+        "UPDATE reservations SET settled=true WHERE firm_id=$1 AND intent_id=$2 AND limit_id='compute'",
+    ] {
+        sqlx::query(mutation)
+            .bind(c.firm)
+            .bind(other.intent_id)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+    let incomplete = c
+        .runtime_claim_observation(other.intent_id, "runtime")
+        .await
+        .unwrap();
+    assert_eq!(incomplete.intent_state, "restricted");
+    assert!(incomplete.claim.is_none() && !incomplete.never_dispatched);
 }
 
 /// Independent contract model: accepted requests retain their input, identity and capacity;

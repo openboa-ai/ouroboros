@@ -15,10 +15,15 @@ type, schema, service, credential, repository split, or live financial authority
 choices remain replaceable under the governing sources. Astra is the intended implementation
 agent, not a selected internal operating model.
 
-The first implementation target is a Rust outer environment and Rust CLI, validated through
-their API/CLI flow. The user interface is a separate TypeScript client of the same HTTP and event
-contracts. This design pass specifies that first connection; it does not create those programs
-or require a completed graphical console before the connection can be evaluated.
+The Rust outer environment and CLI remain the shared execution and inspection foundation. The
+Mac application is a Tauri/React/TypeScript client of the same authorized contracts, with a fixed
+product control plane and independently delivered private Company views. API/CLI acceptance and
+graphical/native acceptance remain separate evidence scopes.
+
+The [Integrated System Design](docs/architecture/SYSTEM_DESIGN.md) connects the owner experience,
+autonomous firm, product/private source, main-only trunk, isolated environments, immutable packages,
+verification/selected use, company data, artifacts and recovery. It consolidates the 2026-09-14
+design decisions and maps current implementation gaps; it does not declare the whole system built.
 
 ## 1. One Continuing Firm, Two Responsibilities
 
@@ -60,16 +65,26 @@ The outer environment has four logical components: **Control Core, Shared Gatewa
 Manager, and Resource Services**. Identity, registry, policy, scheduling, and evidence are
 responsibilities inside this structure rather than additional platforms to build. The diagram
 shows responsibility and runtime interaction, not compulsory process counts or physical locations.
+The product supplies a generic Company UI Host and Company Service Host. The latter integrates
+existing Gateway/Runtime/resource contracts rather than adding an execution engine. Company owns
+its UI, business services, financial semantics/enforcement and exchange adapters as separate
+verified packages. Common services contain no built-in investment domain or Binance implementation.
+Resources also hosts separately qualified Auth Modules through a fixed protected contract. Within
+that Host ABI, authentication modules can be independently installed and selected. Ordinary Company
+code remains secretless; current delegation can authorize new connections without another human
+gate, while new credentials, personal authentication or protected-code authority remain explicit.
+Source ownership does not confer protected execution trust; see the
+[connection extension design](docs/architecture/SYSTEM_DESIGN.md#connection-adapters-and-protected-auth-modules).
 
 ```mermaid
 flowchart TB
     USER["User / owner and human sovereign"]
-    CLIENT["Rust CLI and API clients<br/>Separate TypeScript UI follows"]
+    CLIENT["Mac app with fixed controls and isolated Company UI<br/>Rust CLI and authorized API clients"]
     subgraph OUTER["Public outer execution environment"]
         GATEWAY["Shared Gateway<br/>Authentication, admission path, enforced data access"]
         CORE["Control Core<br/>Authority, activation, commitments, durable execution records"]
         RUNTIME["Runtime Manager<br/>Isolated execution, instance identity, lifecycle, limits"]
-        RESOURCE["Resource Services<br/>Capability handlers, mandatory domain controls, scoped adapters"]
+        RESOURCE["Resource Services / Company Service Host<br/>Common resources, selected service dispatch, protected sender"]
         GATEWAY <--> CORE
         GATEWAY <--> RESOURCE
         RESOURCE -->|Compute request translation| CORE
@@ -79,6 +94,7 @@ flowchart TB
     subgraph INNER["Private inner operation"]
         WORK["Initial CEO operating role<br/>Replaceable native harness execution<br/>Situation, work selection, allocation, evaluation"]
         JOBS["Optional scoped workers and programs<br/>Created as justified by work<br/>Research, development, trading, maintenance"]
+        SERVICES["Company service packages<br/>Business APIs, financial enforcement, exchange adapters<br/>Separately selected and isolated"]
     end
     subgraph EXTERNAL["Connected services and business resource backends"]
         DATA["Company records, workspace, artifacts,<br/>operational DB and code repositories"]
@@ -92,6 +108,9 @@ flowchart TB
     JOBS <-->|Same Gateway and current delegation| GATEWAY
     RUNTIME -->|Enforced execution and observation| WORK
     RUNTIME -->|Enforced execution and observation| JOBS
+    RUNTIME -->|Selected service execution| SERVICES
+    RESOURCE <-->|Exact admitted calls and validated provider operations| SERVICES
+    SERVICES -->|Downstream data and provider host calls through Gateway| GATEWAY
     RESOURCE <--> DATA
     RESOURCE <--> MODELS
     RESOURCE <--> MARKETS
@@ -113,7 +132,7 @@ Gateway. Those interfaces are not an alternate entrance for users or private cod
 | Control Core | Current verified identity/delegation, restrictions, activation, aggregate commitments, admitted intent, desired execution, and protected records. Enforces allocation conditions without selecting economic allocations. |
 | Shared Gateway | Authenticate callers, preserve delegation context, resolve meaningful operations, invoke current admission, and enforce actual resource/stream access. Neither a viewing link nor an agent-supplied name grants authority. |
 | Runtime Manager | Execute admitted desired work, bind actual instances, enforce launch/resource/network conditions, observe and stop/fence execution. It alone manages the configured execution backend; it does not implement the agent's planning loop. |
-| Resource Services | Implement capability-specific access, required domain enforcement, scoped provider credentials, effect observation, cost attribution, and reconciliation. Compute handlers translate into the Core-to-Runtime path, not a second provisioner. |
+| Resource Services | Common resource access, Company service dispatch, protected credential/sender contracts, evidence and cost attribution. Selected Company services supply business semantics and mandatory domain checks; the product enforces required routing, exact operation binding and current authority. Compute/service hosts use Core-to-Runtime, not a second provisioner. |
 | Console and other clients | Present authorized views and submit commands through Gateway. They own neither policy nor a shared administrator identity that replaces the caller. |
 
 ## 3. Detail Map and Reading Order
@@ -124,12 +143,15 @@ A repeated example is explanatory, not a second definition of authority or state
 
 | Document | Design it owns |
 | --- | --- |
+| [Integrated System Design](docs/architecture/SYSTEM_DESIGN.md) | Whole product/app/runtime lifecycle, product and private company ownership, main-only source, package/verification/deployment, data/artifact custody, migration and cross-system acceptance. |
+| [Company flow review](docs/implementation/COMPANY_FLOW_REVIEW.md) | Counterexamples and evidence across twelve connecting boundaries; corrected contract references and remaining source/runtime gaps, not a new authority layer. |
 | [Contracts and State](docs/architecture/CONTRACTS_AND_STATE.md) | Principal, work, desired execution, actual instance, session, intent, attempt, effect; first routes, result/error classes, SSE cursors, and state-transition meaning. |
 | [Control Core](docs/architecture/CONTROL_CORE.md) | Authority and credential changes, relational constraints and writers, atomic admission/reservation, dispatch/revocation ordering, approved wake conditions, and protected recovery state. |
 | [Gateway](docs/architecture/GATEWAY.md) | Shared authenticated entry, control/resource routes, enforced data paths, streams, service delegation, and management capacity. |
 | [Runtime](docs/architecture/RUNTIME.md) | Launch profiles, actual instance binding, native harness execution, isolation, lifecycle, resource deadlines, and fencing. |
-| [Resource Services](docs/architecture/RESOURCE_SERVICES.md) | Workspace, DB, model/MCP, compute and investment semantics, provider effects, scoped credentials, and reconciliation. |
+| [Resource Services](docs/architecture/RESOURCE_SERVICES.md) | Workspace, DB, model/MCP and compute; Company service integration, mandatory dispatch binding, provider effects, custody and reconciliation. |
 | [Observability and Console](docs/architecture/OBSERVABILITY_AND_CONSOLE.md) | Evidence collection, provenance, retention/redaction, authorized projections, control status, and observation health. |
+| [Application Shell and Views](docs/architecture/APPLICATION_SHELL_AND_VIEWS.md) | Mac client: fixed control plane, independently delivered Company UI/service contributions, traces/artifacts/conversation, navigation, brand and failure boundaries. |
 | [Integration and Deployment](docs/architecture/INTEGRATION_AND_DEPLOYMENT.md) | Rust modules/processes, native integration, actual privilege and credential holders, Mac/Linux placement, dependency qualification, startup, backup and restore. |
 | [Validation](docs/architecture/VALIDATION.md) | Requirement coverage, positive workloads, fault injection, expected records and denials, and future implementation acceptance. |
 
@@ -260,6 +282,28 @@ independently authorized management of existing obligations.
 
 ### Initial Private Operation: One CEO Role
 
+Company agents are identifiable, continuing participants in private operation, represented by logical
+principals and attributable company profile records. Names, responsibilities, work, knowledge references
+and contribution history remain inspectable across individual executions and model changes. A role,
+agent, execution and native session are distinct: a CEO assignment can change without rewriting prior
+authorship or transferring obsolete authority. The [company agent identity contract](docs/architecture/CONTRACTS_AND_STATE.md#company-agent-identity-and-membership)
+defines the boundary. This does not prescribe departments, headcount or a fixed agent hierarchy.
+
+Membership follows actual work and expected net benefit, not a checklist of company titles.
+Private operation can perform work directly, reuse a member, use an ordinary tool, admit a temporary
+worker or establish a continuing specialist. It chooses the useful arrangement within existing authority
+and aggregate resources, accounting for coordination and duplicated work as well as model cost.
+These are allocation choices recorded with the work, not a new hiring committee or mandatory owner
+approval for routine staffing. Observe the results and adjust, combine or cease unnecessary activity.
+An HR or Finance title alone does not justify another agent; required records and controls remain
+available independently of whether a specialist is assigned.
+
+Private operation uses [shared conversations](docs/architecture/CONTRACTS_AND_STATE.md#unified-rooms-and-proactive-messages)
+for personal, group and agent-to-agent communication, including proactive summaries, reports and
+proposals. The fixed app separately shows current agent activity, sourced progress summaries and
+direct controls. Neither a human prompt nor reading a message is required for routine work to continue.
+There is no additional report submission workflow; decisions and actual effects retain their owners.
+
 Start private operation with one company-wide operating responsibility, called the **CEO role**.
 It is an initial organizational choice, not a legal office, a sovereign principal, an extra outer
 component, or a permanently running process. The owner supplies the purpose and valid mandate;
@@ -283,7 +327,9 @@ The initial operating cycle is:
    bounded work with expected evidence and conditions for review, continuation or cessation.
    Preserve the option to keep a method, wait, reduce activity or stop unnecessary work.
 3. **Act:** use available company resources, work directly or request scoped workers through
-   Gateway. Additional workers share applicable limits and are created for a demonstrated need;
+   Gateway. Additional workers share applicable limits and address a concrete work need with an
+   explicit expected benefit; uncertain benefits may be assessed through bounded work rather than
+   requiring advance proof of efficiency. Within current authority,
    the owner need not dispatch each task or approve each already delegated operation.
 4. **Assess and retain:** connect results and costs to observed effects, preserve contrary
    evidence, update company knowledge and record the next allocation decision. Successful
@@ -586,9 +632,14 @@ No local build/test result publishes a release, adopts the architecture or grant
 
 ## Sequential Outer Implementation
 
+This section retains the bounded outer-environment milestone and its implementation history.
+Its exclusions do not shrink the complete product/app/company design or the current migration
+plan in [Integrated System Design](docs/architecture/SYSTEM_DESIGN.md#11-current-implementation-and-migration-order).
+It grants no additional authority; unimplemented full-product dependencies remain explicit.
+
 ### Outcome and Stable Structure
 
-The immediate product is a usable outer environment in which an authorized human, agent or generated
+This milestone delivers a usable outer environment in which an authorized human, agent or generated
 program can request work, obtain company resources, run and replace isolated execution, use managed
 services without receiving credentials, and inspect and restrict the resulting activity. Company
 records and unresolved effects must continue across those changes. Private operation remains
@@ -677,11 +728,12 @@ later increments in advance. Unimplemented details in the current proposal are w
 revise them explicitly when implementation evidence supports a simpler approach. Preserve the
 governing purpose, authorization, isolation, credential and continuity boundaries throughout.
 
-The target is the first supported local profile with a native Codex harness, Rust API/CLI, durable
-company resources and a bounded managed connection/service path. A graphical Console, autonomous
+The historical scope of this milestone is the first supported local profile with a native Codex
+harness, Rust API/CLI, durable company resources and a bounded managed connection/service path.
+Within that bounded milestone a graphical Console, autonomous
 CEO organization, trading strategy, live financial actions, arbitrary provider compatibility,
-multi-host scheduling and a universal encryption-provider framework are outside this implementation
-goal. They are not prerequisites for making the outer environment usable.
+multi-host scheduling and a universal encryption-provider framework are separate from its acceptance. They remain required where applicable in the complete product
+design and are not prerequisites for that earlier outer-environment proof.
 
 Use injected runtime, storage, build/cache and test locations, with bounded capacity and cleanup;
 do not add personal paths or duplicate existing environments unnecessarily. Preserve the current

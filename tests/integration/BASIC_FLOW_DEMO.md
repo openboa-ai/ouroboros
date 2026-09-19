@@ -157,3 +157,41 @@ verified stopped containers, stops its own services and PostgreSQL, and removes 
 provider decryption key after service shutdown. Failure or unconfirmed cleanup stays
 visible. No independent backup, GUI, market access, trading or production acceptance
 is included. This live demonstration is not added to the synthetic CI catalog.
+
+### Agent-authored Company UI candidate
+
+`--scenario company-ui` extends the one-turn resource check. The real native Codex
+agent independently implements `CompanyPulse.tsx` and a `company-ui.json` composition,
+using the existing public Company SDK contract. Its component displays the actual
+execution ID and fresh file/DB markers as a **Verification snapshot**, not live health.
+The prompt contains no expected marker values. The three outputs are uploaded and
+published together at revision 2. The original resource-smoke oracle remains required.
+
+The verifier downloads both UI artifacts from that exact revision through Gateway,
+binds bytes and sizes to instance-attributed upload inputs/receipts, checks composition
+company/execution/publication identity, and retains the files before cleanup. It does
+not execute submitted JavaScript. TypeScript compilation, import-boundary validation,
+registration and visible Mac-app operation remain separate acceptance steps.
+
+```sh
+python3 tests/integration/demo-basic-flow.py \
+  --environment "$NATIVE_ENVIRONMENT" --run-name company-ui-prepare01 \
+  --scenario company-ui --model gpt-5.6-sol \
+  --max-calls 30 --no-deadline --prepare-only
+
+# Token arrives only on nonterminal stdin from the authorized owner-side source.
+python3 tests/integration/demo-basic-flow.py \
+  --environment "$NATIVE_ENVIRONMENT" --run-name company-ui-live01 \
+  --scenario company-ui --model gpt-5.6-sol --responses-lite \
+  --account-id "$CONFIRMED_ACCOUNT_ID" \
+  --max-calls 30 --no-deadline --credential-stdin
+
+python3 tests/tooling/verify-company-ui-artifacts.py --run-root "$RUN_ROOT"
+```
+
+The scenario inherits the 30-call ceiling, finite grants, individual timeouts,
+native execution lease, no automatic retry and the same cleanup checks. There is
+no overall wall-clock alarm with `--no-deadline`; the native lease remains bounded.
+`--prepare-only` makes no model calls and does not create UI output on the agent's
+behalf. `company-ui-evidence.json` explicitly leaves `compiled` and `displayed` as
+`NOT RUN`; the subsequent app build and actual UI capture establish those results.

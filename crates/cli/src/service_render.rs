@@ -19,11 +19,28 @@ pub(crate) struct Service {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum Worker {
+    Bounded(BoundedWorker),
+    Service(ServiceWorker),
+}
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Worker {
+struct BoundedWorker {
     max_executions: u16,
     idle_timeout_seconds: u16,
     lifetime_seconds: u32,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ServiceWorker {
+    mode: ServiceMode,
+    poll_interval_seconds: u16,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ServiceMode {
+    Service,
 }
 
 #[derive(Deserialize, PartialEq)]
@@ -72,21 +89,33 @@ pub(crate) fn render(service: &Service) -> Result<String> {
     );
     ensure!(
         runtime == service.worker.is_some(),
-        "only Runtime requires bounded worker settings"
+        "only Runtime requires explicit worker settings"
     );
-    let worker_args = if let Some(worker) = &service.worker {
-        ensure!(
-            (1..=100).contains(&worker.max_executions)
-                && (1..=300).contains(&worker.idle_timeout_seconds)
-                && (1..=86400).contains(&worker.lifetime_seconds),
-            "invalid Runtime worker bounds"
-        );
-        format!(
-            " --require-managed-guard --max-executions {} --idle-timeout-seconds {}",
-            worker.max_executions, worker.idle_timeout_seconds
-        )
-    } else {
-        String::new()
+    let worker_args = match &service.worker {
+        Some(Worker::Bounded(worker)) => {
+            ensure!(
+                (1..=100).contains(&worker.max_executions)
+                    && (1..=300).contains(&worker.idle_timeout_seconds)
+                    && (1..=86400).contains(&worker.lifetime_seconds),
+                "invalid Runtime worker bounds"
+            );
+            format!(
+                " --require-managed-guard --max-executions {} --idle-timeout-seconds {}",
+                worker.max_executions, worker.idle_timeout_seconds
+            )
+        }
+        Some(Worker::Service(worker)) => {
+            let ServiceMode::Service = worker.mode;
+            ensure!(
+                (1..=60).contains(&worker.poll_interval_seconds),
+                "invalid Runtime polling interval"
+            );
+            format!(
+                " --require-managed-guard --service --poll-interval-seconds {}",
+                worker.poll_interval_seconds
+            )
+        }
+        None => String::new(),
     };
     ensure!(
         service.memory_max_bytes > 0 && service.tasks_max > 0,
@@ -133,11 +162,10 @@ pub(crate) fn render(service: &Service) -> Result<String> {
     let ambient = if runtime { "CAP_SETUID" } else { "" };
     let kill_mode = if runtime { "mixed" } else { "control-group" };
     let protect_cgroups = if runtime { "no" } else { "yes" };
-    let lifetime = service
-        .worker
-        .as_ref()
-        .map(|w| format!("RuntimeMaxSec={}s\n", w.lifetime_seconds))
-        .unwrap_or_default();
+    let lifetime = match &service.worker {
+        Some(Worker::Bounded(worker)) => format!("RuntimeMaxSec={}s\n", worker.lifetime_seconds),
+        _ => String::new(),
+    };
     Ok(format!(
         "[Unit]\nDescription=Ouroboros protected outer service\n\n[Service]\nType=exec\nUser={}\nGroup={}\nSupplementaryGroups=\nExecStart=/usr/bin/env -i PATH=/usr/bin:/bin {} --config {}{worker_args}\nRestart=no\nKillMode={kill_mode}\nKillSignal=SIGTERM\nSendSIGKILL=yes\nTimeoutStopSec={}s\nUMask=0077\nNoNewPrivileges=yes\nCapabilityBoundingSet={capabilities}\nAmbientCapabilities={ambient}\nProtectSystem=strict\nProtectHome=read-only\nPrivateTmp=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups={protect_cgroups}\nRestrictSUIDSGID=yes\nRestrictRealtime=yes\nLockPersonality=yes\nMemoryMax={}\nTasksMax={}\nStandardOutput=journal\nStandardError=journal\n{lifetime}{}",
         service.uid,
@@ -283,11 +311,11 @@ mod tests {
             service.config = format!("/etc/outer/{name}.json").into();
             service.writable_directories = vec![format!("/run/outer/{name}").into()];
             if uid == 0 {
-                service.worker = Some(Worker {
+                service.worker = Some(Worker::Bounded(BoundedWorker {
                     max_executions: 2,
                     idle_timeout_seconds: 30,
                     lifetime_seconds: 300,
-                });
+                }));
             }
             services.push(Entry {
                 name: format!("ouroboros-{name}.service"),
@@ -375,15 +403,41 @@ mod tests {
         value.uid = 0;
         value.gid = 0;
         assert!(render(&value).is_err());
-        value.worker = Some(Worker {
+        value.worker = Some(Worker::Bounded(BoundedWorker {
             max_executions: 2,
             idle_timeout_seconds: 30,
             lifetime_seconds: 300,
-        });
+        }));
         let unit = render(&value).unwrap();
         assert!(unit.contains("KillMode=mixed\n") && unit.contains("--require-managed-guard"));
         assert!(unit.contains("RuntimeMaxSec=300s\n") && unit.contains("Restart=no\n"));
         value.role = Role::Gateway;
+        assert!(render(&value).is_err());
+    }
+    #[test]
+    fn explicit_service_mode_retains_guard_and_resource_limits_without_automatic_restart() {
+        let mut value = bundle().services.remove(0).service;
+        value.worker = Some(Worker::Service(ServiceWorker {
+            mode: ServiceMode::Service,
+            poll_interval_seconds: 2,
+        }));
+        let unit = render(&value).unwrap();
+        assert!(unit.contains("--require-managed-guard --service --poll-interval-seconds 2\n"));
+        assert!(unit.contains("Restart=no\n") && unit.contains("KillMode=mixed\n"));
+        assert!(unit.contains("MemoryMax=134217728\n") && unit.contains("TasksMax=32\n"));
+        assert!(!unit.contains("RuntimeMaxSec=") && !unit.contains("--max-executions"));
+        for worker in [
+            serde_json::json!({"mode":"service","poll_interval_seconds":2,"max_executions":2}),
+            serde_json::json!({"mode":"service","poll_interval_seconds":2,"lifetime_seconds":20}),
+            serde_json::json!({"mode":"service"}),
+            serde_json::json!({"mode":"automatic","poll_interval_seconds":2}),
+        ] {
+            assert!(serde_json::from_value::<Worker>(worker).is_err());
+        }
+        value.worker = Some(Worker::Service(ServiceWorker {
+            mode: ServiceMode::Service,
+            poll_interval_seconds: 0,
+        }));
         assert!(render(&value).is_err());
     }
 }

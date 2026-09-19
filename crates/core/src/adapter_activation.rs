@@ -216,6 +216,7 @@ impl Core {
         ouroboros_contracts::request_key(key).map_err(|_| Error::Invalid)?;
         let mut execution = r.execution;
         if key.starts_with("wake:")
+            || key.starts_with("service-restart:")
             || execution.program.is_some()
             || execution.predecessor_execution_id.is_some()
         {
@@ -272,6 +273,9 @@ impl Core {
                 return Err(Error::Capacity);
             }
         }
+        let service_selection = self
+            .prepare_service_invocation(&mut tx, &s, r.service.as_ref(), previous)
+            .await?;
         execution.program =
             Some(serde_json::from_value(s.get("program")).map_err(|_| Error::Unavailable)?);
         let accepted = self.start_locked(&mut tx, &ctx, key, execution).await?;
@@ -289,6 +293,17 @@ impl Core {
                 .bind(accepted.resource_id)
                 .execute(&mut *tx)
                 .await?;
+            if let Some(selection) = service_selection {
+                self.save_service_call(
+                    &mut tx,
+                    &accepted,
+                    r.activation_id,
+                    &s,
+                    selection,
+                    r.service.as_ref().ok_or(Error::Invalid)?,
+                )
+                .await?;
+            }
             self.event(
                 &mut tx,
                 ctx.principal,
@@ -319,7 +334,9 @@ impl Core {
             &s.get::<String, _>("target_id"),
             "adapter.invoke",
         )
-        .await
+        .await?;
+        self.service_continuation_fence(tx, execution).await?;
+        self.check_service_binding(tx, execution).await
     }
     pub async fn stop_adapter(
         &self,

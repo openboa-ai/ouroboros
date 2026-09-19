@@ -24,6 +24,7 @@ impl From<sqlx::Error> for Error {
 pub struct Core {
     pool: PgPool,
     pub firm: Uuid,
+    serving_generation: Uuid,
 }
 #[derive(Clone)]
 pub struct Caller {
@@ -41,11 +42,16 @@ mod managed_mcp;
 mod management;
 mod native_control;
 mod native_dispatch;
+mod notifications;
+mod owner_observations;
+mod owner_services;
 mod program;
 mod receipt_recovery;
 mod resources;
 mod retirement;
 mod runtime;
+mod service_calls;
+mod service_continuations;
 mod upload_completion;
 mod wakes;
 mod workspaces;
@@ -54,7 +60,11 @@ use actors::ActorContext;
 pub type ResourceActor = Actor;
 impl Core {
     pub fn new(pool: PgPool, firm: Uuid) -> Self {
-        Self { pool, firm }
+        Self {
+            pool,
+            firm,
+            serving_generation: Uuid::new_v4(),
+        }
     }
     pub async fn migrate(pool: &PgPool) -> anyhow::Result<()> {
         sqlx::migrate!("./migrations").run(pool).await?;
@@ -124,6 +134,7 @@ impl Core {
         } else if kind == "intent.accepted"
             || kind == "dispatch.claimed"
             || kind.starts_with("resource.")
+            || kind == "service.effect_bound"
         {
             sqlx::query_scalar("SELECT work_id FROM intents WHERE firm_id=$1 AND id=$2")
                 .bind(self.firm)
@@ -294,7 +305,7 @@ impl Core {
         key: &str,
         r: ExecutionRequest,
     ) -> Result<Accepted> {
-        if key.starts_with("wake:") {
+        if key.starts_with("wake:") || key.starts_with("service-restart:") {
             return Err(Error::Invalid);
         }
         let mut tx = self.fence().await?;
@@ -401,6 +412,8 @@ impl Core {
     /// Only a separately authenticated dispatcher may invoke this interface; not a client route.
     pub async fn claim(&self, intent: Uuid, worker: &str) -> Result<Uuid> {
         let mut tx = self.fence().await?;
+        self.service_continuation_claim_allowed(&mut tx, intent, worker)
+            .await?;
         let id = self.claim_locked(&mut tx, intent, worker).await?;
         tx.commit().await?;
         Ok(id)

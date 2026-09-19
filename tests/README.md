@@ -108,7 +108,28 @@ credentials, generated data and build outputs belong in explicit ignored storage
 never beside versioned tests. Public summaries allow known test locations and bounded identifiers,
 not raw tracebacks, assertion values or secrets.
 
+The registered `native.program-continuation` case reuses the contained-program driver and its
+independent adapter qualification. It observes a real abnormal exit, one finite recovery, unchanged
+Company DB effect/receipt identity, exact owner stop, kernel/compute closure, and the still-available
+Runtime service. Its ordinary automated stop is made by the fixture owner CLI; it does not prove a
+native Mac button click. The explicit `--native-owner-stop` mode on
+`integration/test-connected-program-guest.py` waits for the real app control instead. It requires
+`--restriction complete --adapter-verification --service-continuation` and the same disposable
+configuration. The operator connects the app before creating the fixture's `owner-ready` marker,
+then captures its actual stopped state before creating `owner-observed`; these markers coordinate
+observation only and neither submits a stop nor supplies a success receipt. No model account is used.
+
 System test files previously under `scripts/` now live here. Update direct file-path callers to the
 locations above; there is no second copy or compatibility alias for old scenario paths. The public
 `check.py`, `ci_environment.py` and `ci_report.py` commands remain in `scripts/`. No product API,
 storage migration, authority semantics or Rust package-test ownership changes with this move.
+
+## Integrated company lifecycle acceptance
+
+[Integrated System Design](../docs/architecture/SYSTEM_DESIGN.md#10-acceptance-across-the-full-lifecycle)
+connects existing responsibility tests to main-only source, independent Company packages, protected
+selected use, artifact history/retention, native UI isolation, autonomous operation and financial
+results. The listed outcomes are design acceptance requirements, not registered runnable case IDs.
+Implement cases in their existing owning lane/catalog; do not claim a passed document check or one
+resource-smoke run satisfies them. Test exact package/config/profile/evaluator identities, retain
+negative/NOT RUN evidence, and keep actual company secrets/content out of product CI artifacts.

@@ -311,3 +311,94 @@ pub(super) async fn set_admission(
             .await?,
     ))
 }
+
+pub(super) async fn work_executions(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<WorkListQuery>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .work_executions(caller(&a, p, &h)?, id, q.cursor.as_deref())
+            .await?,
+    ))
+}
+
+pub(super) async fn work_activity(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<WorkListQuery>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .work_activity(caller(&a, p, &h)?, id, q.cursor.as_deref())
+            .await?,
+    ))
+}
+
+pub(super) async fn execution_stop_request(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Path((id, key)): Path<(Uuid, String)>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .execution_stop_request(caller(&a, p, &h)?, id, &key)
+            .await?,
+    ))
+}
+
+pub(super) async fn notifications(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Query(q): Query<WorkListQuery>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .notifications(caller(&a, p, &h)?, q.cursor.as_deref())
+            .await?,
+    ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct NotificationReadRequest {
+    ids: Vec<String>,
+}
+pub(super) async fn read_notifications(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    h: HeaderMap,
+    Json(r): Json<NotificationReadRequest>,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .read_notifications(caller(&a, p, &h)?, &r.ids)
+            .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct OriginalRequestQuery {
+    operation: String,
+    request_key: String,
+}
+
+pub(super) async fn intent_by_request_key(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Query(q): Query<OriginalRequestQuery>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .intent_by_request_key(caller(&a, p, &h)?, &q.operation, &q.request_key)
+            .await?,
+    ))
+}

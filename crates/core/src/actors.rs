@@ -1,11 +1,20 @@
 use super::*;
-use ouroboros_contracts::BridgeIdentity;
+use ouroboros_contracts::{BridgeIdentity, OwnerBinding};
 
 /// Authentication material supplied only by the authenticated Gateway boundary.
 #[derive(Clone)]
 pub enum Actor {
     Human(Caller),
+    BoundHuman(Caller, OwnerBinding),
     Instance(BridgeIdentity),
+}
+impl Actor {
+    pub(super) fn human_fingerprint(&self) -> Option<&str> {
+        match self {
+            Self::Human(c) | Self::BoundHuman(c, _) => Some(c.fingerprint.as_str()),
+            Self::Instance(_) => None,
+        }
+    }
 }
 impl From<&Caller> for Actor {
     fn from(value: &Caller) -> Self {
@@ -44,11 +53,43 @@ impl Core {
         tx: &mut Transaction<'_, Postgres>,
         actor: &Actor,
     ) -> Result<ActorContext> {
+        let ctx = self.authenticated_actor_context(tx, actor).await?;
+        if let Some(bound) = &ctx.bound
+            && self.is_service_execution(tx, bound.execution).await?
+        {
+            // Scoped service processing cannot escape into management/background work.
+            return Err(Error::Denied);
+        }
+        Ok(ctx)
+    }
+
+    pub(super) async fn authenticated_actor_context(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: &Actor,
+    ) -> Result<ActorContext> {
         match actor {
-            Actor::Human(c) => Ok(ActorContext {
-                principal: self.authenticate(tx, c).await?,
-                bound: None,
-            }),
+            Actor::Human(c) | Actor::BoundHuman(c, _) => {
+                let principal = self.authenticate(tx, c).await?;
+                if let Actor::BoundHuman(_, expected) = actor {
+                    let environment: Uuid =
+                        sqlx::query_scalar("SELECT environment_id FROM firms WHERE id=$1")
+                            .bind(self.firm)
+                            .fetch_one(&mut **tx)
+                            .await?;
+                    if expected.environment_id != environment
+                        || expected.firm_id != self.firm
+                        || expected.principal_id != principal
+                        || expected.serving_generation != self.serving_generation
+                    {
+                        return Err(Error::Conflict);
+                    }
+                }
+                Ok(ActorContext {
+                    principal,
+                    bound: None,
+                })
+            }
             Actor::Instance(peer) => {
                 let r=sqlx::query("SELECT execution_id,instance_id,generation,worker_id FROM runtime_instances WHERE firm_id=$1 AND binding->'peer'=$2 AND phase='released'")
                     .bind(self.firm).bind(json!(peer)).fetch_optional(&mut **tx).await?.ok_or(Error::Denied)?;
@@ -266,7 +307,9 @@ impl Core {
         tx: &mut Transaction<'_, Postgres>,
         intent: Uuid,
     ) -> Result<()> {
-        if self.wake_execution_allowed(tx, intent).await? {
+        if self.service_continuation_origin_allowed(tx, intent).await?
+            || self.wake_execution_allowed(tx, intent).await?
+        {
             return Ok(());
         }
         self.management_origin_allowed(tx, intent, "execution.start")

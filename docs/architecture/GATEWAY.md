@@ -71,7 +71,7 @@ not define another DTO or a generic execute payload. JSON commands use the commo
 `Idempotency-Key`; retain the key and material input before first submission, including bounded DB
 queries. An exact replay inspects the existing record under current read rights and never
 redispatches it; changed material input under the same key conflicts. Resume cannot evade a revoked delegation or unresolved predecessor provisioning. Investment
-remains unavailable until an explicit domain handler and account enforcement are activated;
+remains unavailable until the selected Company handler and account enforcement are activated;
 model/MCP/DB route names cannot substitute for that boundary. A CLI connection profile chooses the
 fixed Gateway identity, client credential reference, and server trust configuration; it cannot
 grant a role or disable verification.
@@ -244,7 +244,7 @@ new economic action by reclassifying it as cleanup.
    recovers a lost first response when the caller does not know the intent ID and its target was
    later deactivated. Changed material input under the same key conflicts; neither that response
    nor lookup may disclose a key/record's presence outside the caller's current read scope.
-3. Only a new admission resolves the activated capability, canonical target, mandatory domain
+3. Only a new admission resolves the activated capability, canonical target, mandatory Company
    enforcement, and configuration identity. Unknown/inactive targets are unavailable for new work;
    caller-selected labels cannot downgrade enforcement. Core atomically checks current authority
    and shared limits and records the intent, necessary reservation, and dispatch state. Send Core
@@ -261,6 +261,15 @@ new economic action by reclassifying it as cleanup.
 
 Each attempt has one assigned claiming worker. A downstream protocol stage cannot mint another
 claim or start a new attempt by reusing the original dispatch context.
+
+For Company calls this sequence applies separately to the root service-processing invocation and
+each actual downstream operation. The root does not authorize an uncomputed business effect.
+The [bound-call contract](CONTRACTS_AND_STATE.md#bound-company-calls-and-owner-actions) fixes both
+caller and service authority, named-operation scope and deterministic root/child effect slots.
+Company preparation runs outside Core locks; the resulting canonical requirements and current
+revisions must pass child-effect admission and aggregate reservation before the protected sender
+can claim. The original service claim is never forwarded to that sender. Read-only key lookup
+precedes current Company schema decoding so replacement cannot hide an older admitted request.
 
 Use `Requested`, `Admitted`, `DispatchClaimed`, `Observed`, `Unresolved`, and the other shared states
 with their existing meanings. A revocation preceding the claim blocks it. A preceding claim is
@@ -299,6 +308,59 @@ and ordinary evidence exports. Scrub sensitive headers and credential-bearing pr
 the boundary; private traces are untrusted input to the same observation protections. Necessary
 restricted source material follows [observation access](OBSERVABILITY_AND_CONSOLE.md), not a
 generic debug endpoint. Redaction must preserve material effects and identify incomplete evidence.
+
+## Extensible Connections and Protected Enrollment
+
+The [connection/Auth Module contract](CONTRACTS_AND_STATE.md#extensible-connections-and-protected-authentication)
+reuses Gateway entry, current Core authority and Resources custody. Discovery returns only connection
+types and named operations visible under current access. Invocation rechecks the exact connection,
+provider/account/environment, selected adapter/Auth Module/schema revisions and originating caller.
+A connection reference is not a credential or a bearer capability. No public generic secret-get,
+decrypt, sign, authenticated HTTP, raw SQL/session or plugin-install-as-owner escape route is added.
+
+Ordinary Company adapters remain isolated and secretless. Independently qualified Auth Modules are
+selected by the protected Resources Host; Gateway cannot import their code, decrypt their material
+or trust their self-declared approval. An agent may prepare a module or adopt a connection within its
+current technical-acceptance and business/data/cost scope. A new name does not require a new human
+decision, but broader authority, personal login/secret input or new protected-code trust requires its
+actual authorized actor. Core authorizes these changes; a tool registry or chat message does not.
+
+Provider credential enrollment is separate from human Gateway identity registration. The protected
+native form sends material through a dedicated confidential input path to assigned custody, never a
+Company WebView callback, general intent JSON, event or request-body log. Safe metadata identifies
+firm/environment/connection, selected module, enrollment challenge and expiry. A credential response
+reaches only the same challenge and intended account; expired, switched or cancelled enrollment
+cannot activate a connection. Native OAuth uses the official external browser and supported PKCE,
+with exact issuer/callback/session checks. Company-supplied labels and URLs cannot choose recipients.
+The host receives only declared enrollment-step data and owns secret-input UI and authenticated
+submission. Safe metadata and a custody receipt, not a token, return to the ordinary client.
+
+Outgoing data scope is checked separately from authentication scope. A credential-free endpoint,
+model request, repository operation or uploaded artifact can still disclose data or incur cost.
+Selected operation mappings fix permissible recipients and effects; alternate redirects, protocol
+upgrades and auxiliary authentication requests do not broaden them. Provider responses, headers,
+cookies, redirects, errors and streams pass through qualified protected capture/filtering before any
+ordinary adapter/result/projection. Filtering must not replace an uncertain provider effect with an
+invented no-effect result. Auth lifecycle and business-effect original-key lookups remain separate.
+
+Inbound callbacks and long-lived connections have explicit bindings rather than a general inbound
+MCP identity. A fixed registered ingress verifies provider connection/subscription generation and
+bounded original envelope, commits permitted content/deduplication before acknowledgement, and
+exposes replay/conflict/gap state. OAuth callbacks use the enrollment challenge rather than business
+event admission. Incoming provider identity grants only the authorized intake operation, never
+owner/service identity or business action authority. Follow-up wake/work uses current internal
+scope. Local installation does not create a public endpoint; any relay/ingress provisioning needs
+an explicitly admitted network binding and bounded costs.
+
+A live session keeps account, module/credential version, generation, cursor, scope and shared usage
+bounds. Effects in messages are individually admitted; streams continue current read checks.
+Reconnection can resume allowed observation/authentication, not replay an unknown business effect.
+Credential/module restriction fences new protected use, egress/KMS operations and affected sessions;
+existing provider effects and response reconciliation retain their original identities.
+
+These are target interfaces, not implemented HTTP paths or qualification of the fixed Responses
+worker. The [extension checkpoint](../implementation/CONNECTION_EXTENSION_DESIGN.md) separates this
+document change from code, native containment and provider verification.
 
 ## Data Workers, Streams, and Management Capacity
 
@@ -358,8 +420,14 @@ cannot reach protected control data or database administration. Activated target
 mandatory enforcement using actual resource identity. Publishing a private wrapper or a new tool
 name cannot remove it. Protected outer storage and supervision channels are narrow internal paths,
 not exceptions that private callers can invoke recursively or use as arbitrary command execution.
-Gateway loads only activated trusted outer enforcement code; private packages cannot replace it.
-Changing that code remains subject to separately accountable evaluation and Core authorization.
+Gateway retains fixed product admission/routing enforcement and never imports private packages
+into its process. Company Service Host resolves the selected isolated Company service for named
+business operations, including financial enforcement. The Company release is separately qualified
+and selected by protected records; callers cannot replace it or its configuration by publishing
+code. The protected sender requires validation bound to that service's current release/instance,
+connection, intent and final bytes. Domain semantics belong to Company; required routing, current
+authority, custody and exact dispatch remain enforced by the product. See
+[Company hosts and business services](CONTRACTS_AND_STATE.md#company-hosts-and-business-services).
 
 | Failure | Required handling |
 | --- | --- |

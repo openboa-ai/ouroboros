@@ -61,7 +61,11 @@ pub(crate) async fn instance_forward(
     .await
 }
 
-async fn dispatch(a: App, caller: ManagementCaller, request: Request<Body>) -> Response {
+async fn dispatch(a: App, mut caller: ManagementCaller, request: Request<Body>) -> Response {
+    caller.actor = match caller.actor.with_owner_binding(request.headers()) {
+        Ok(actor) => actor,
+        Err(status) => return status.into_response(),
+    };
     if resources::is_resource(request.uri().path()) {
         resources::handle(a, caller, request).await
     } else {

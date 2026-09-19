@@ -15,6 +15,8 @@ fn content(value: Value, failed: bool) -> Value {
 struct InvokeArgs {
     request_key: String,
     agent_delegation_id: Uuid,
+    #[serde(default)]
+    service_input: Option<Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,7 +27,7 @@ struct ReadArgs {
 impl Core {
     pub async fn managed_mcp_scope(&self, actor: &Actor, work: Uuid, grant: Uuid) -> Result<()> {
         let mut tx = self.fence().await?;
-        self.resource_actor(&mut tx, actor, Some(work), Some(grant))
+        self.observation_actor(&mut tx, actor, Some(work), Some(grant))
             .await?;
         tx.commit().await?;
         Ok(())
@@ -38,11 +40,21 @@ impl Core {
         cursor: Option<Uuid>,
     ) -> Result<Value> {
         let mut tx = self.fence().await?;
-        let (p, _, _, instance) = self
-            .resource_actor(&mut tx, actor, Some(work), Some(grant))
+        let (ctx, _, _) = self
+            .observation_actor(&mut tx, actor, Some(work), Some(grant))
             .await?;
-        let rows=sqlx::query("SELECT a.id,a.submission_id FROM active_adapters t JOIN adapter_activations a ON(a.firm_id,a.id)=(t.firm_id,t.activation_id) JOIN adapter_submissions s ON(s.firm_id,s.id)=(a.firm_id,a.submission_id) WHERE t.firm_id=$1 AND s.work_id=$2 AND ($3::uuid IS NULL OR a.id>$3) ORDER BY a.id LIMIT 65")
-            .bind(self.firm).bind(work).bind(cursor).fetch_all(&mut *tx).await?;
+        let p = ctx.principal;
+        let instance = ctx.bound.as_ref().map(|b| b.instance);
+        let scoped = match &ctx.bound {
+            Some(bound) => self.is_service_execution(&mut tx, bound.execution).await?,
+            None => false,
+        };
+        let rows = if scoped {
+            Vec::new()
+        } else {
+            sqlx::query("SELECT a.id,a.submission_id FROM active_adapters t JOIN adapter_activations a ON(a.firm_id,a.id)=(t.firm_id,t.activation_id) JOIN adapter_submissions s ON(s.firm_id,s.id)=(a.firm_id,a.submission_id) WHERE t.firm_id=$1 AND s.work_id=$2 AND ($3::uuid IS NULL OR a.id>$3) ORDER BY a.id LIMIT 65")
+            .bind(self.firm).bind(work).bind(cursor).fetch_all(&mut *tx).await?
+        };
         let mut tools = Vec::new();
         if cursor.is_none() {
             tools.push(json!({"name":"execution_get","description":"Inspect an execution in this work. Process exit and admission do not establish work success.","inputSchema":{"type":"object","properties":{"execution_id":{"type":"string","format":"uuid"}},"required":["execution_id"],"additionalProperties":false}}));
@@ -84,9 +96,25 @@ impl Core {
                 Err(Error::Denied) => continue,
                 Err(e) => return Err(e),
             }
-            tools.push(json!({"name":format!("invoke_{}",activation.simple()),
+            let mut tool = json!({"name":format!("invoke_{}",activation.simple()),
                 "description":"Submit the exact approved code and inputs as a new bounded isolated execution. Returns admission only, not completed output. Use execution_get for observations. Reuse request_key only to reconcile the same invocation; provide an authorized child agent delegation. Current permissions and limits are rechecked on use.",
-                "inputSchema":{"type":"object","properties":{"request_key":{"type":"string","minLength":1,"maxLength":128},"agent_delegation_id":{"type":"string","format":"uuid"}},"required":["request_key","agent_delegation_id"],"additionalProperties":false}}));
+                "inputSchema":{"type":"object","properties":{"request_key":{"type":"string","minLength":1,"maxLength":128},"agent_delegation_id":{"type":"string","format":"uuid"}},"required":["request_key","agent_delegation_id"],"additionalProperties":false}});
+            let request: Value = sqlx::query_scalar("SELECT s.request FROM adapter_submissions s JOIN adapter_activations a ON (a.firm_id,a.submission_id)=(s.firm_id,s.id) WHERE a.firm_id=$1 AND a.id=$2")
+                .bind(self.firm).bind(activation).fetch_one(&mut *tx).await?;
+            if let Some(service) = request.get("service") {
+                tool["description"] = json!(format!(
+                    "Invoke qualified Company operation {}. The runtime may use only its declared resource effect slots. Admission is not effect completion.",
+                    service["operation"]["name"]
+                        .as_str()
+                        .ok_or(Error::Unavailable)?
+                ));
+                tool["inputSchema"]["properties"]["service_input"] = json!({"type":"object"});
+                tool["inputSchema"]["required"]
+                    .as_array_mut()
+                    .ok_or(Error::Unavailable)?
+                    .push(json!("service_input"));
+            }
+            tools.push(tool);
         }
         let mut out = json!({"tools":tools});
         if rows.len() > 64 {
@@ -108,12 +136,19 @@ impl Core {
                 return Err(Error::Invalid);
             }
             let mut tx = self.fence().await?;
-            let ctx = self.actor_context(&mut tx, &actor).await?;
+            let ctx = self.authenticated_actor_context(&mut tx, &actor).await?;
             let execution = ctx.bound.as_ref().ok_or(Error::Denied)?.execution;
+            self.actor_permission(&mut tx, &ctx, grant, work, "inspect")
+                .await?;
+            let service = self.service_observation(&mut tx, execution, true).await?;
             tx.commit().await?;
-            return self
+            let mut result = self
                 .read_scoped(actor, "executions", execution, Some((work, grant)))
-                .await;
+                .await?;
+            if let Some(service) = service {
+                result["service_call"] = service;
+            }
+            return Ok(result);
         }
         if name == "execution_get" {
             let r: ReadArgs = serde_json::from_value(args).map_err(|_| Error::Invalid)?;
@@ -144,6 +179,18 @@ impl Core {
         let (s, _) = self.active_adapter(&mut tx, submission, activation).await?;
         let ticket: ProgramTicket =
             serde_json::from_value(s.get("ticket")).map_err(|_| Error::Unavailable)?;
+        let selected: Value = s.get("request");
+        let service = match (selected.get("service"), args.service_input) {
+            (None, None) => None,
+            (Some(plan), Some(input)) => Some(ouroboros_contracts::ServiceInvocation {
+                operation: plan["operation"]["name"]
+                    .as_str()
+                    .ok_or(Error::Unavailable)?
+                    .into(),
+                input,
+            }),
+            _ => return Err(Error::Invalid),
+        };
         let execution = ExecutionRequest {
             work_id: work,
             delegation_id: grant,
@@ -162,6 +209,7 @@ impl Core {
                 submission,
                 &args.request_key,
                 AdapterInvocationRequest {
+                    service,
                     activation_id: activation,
                     execution,
                 },

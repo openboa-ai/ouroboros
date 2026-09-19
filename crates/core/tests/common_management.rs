@@ -240,6 +240,7 @@ async fn child_work_is_visible_to_parent_but_does_not_inherit_resource_access() 
             .bind(f.core.firm).bind(f.root_a).bind(grant).execute(&f.db).await.unwrap();
     }
     let resource = |key: &str| ResourceRequest {
+        effect_slot: None,
         target: "management-input".into(),
         operation: "file.read".into(),
         request_key: key.into(),
@@ -633,6 +634,7 @@ async fn prepare_human_db_target(f: &Fixture) {
 
 fn human_db_request(f: &Fixture, key: &str, marker: &str) -> ResourceRequest {
     ResourceRequest {
+        effect_slot: None,
         target: "management-db".into(),
         operation: "db.read".into(),
         request_key: key.into(),
@@ -2064,5 +2066,104 @@ async fn environment_inventory_requires_unrestricted_current_authority_and_prese
     assert!(matches!(
         f.core.environment_status(&f.human, f.human_grant).await,
         Err(Error::Denied)
+    ));
+}
+
+#[tokio::test]
+async fn owner_binding_is_checked_before_effect_or_replay_and_survives_as_a_stable_environment() {
+    let f = setup().await;
+    let conditions = f.core.conditions(&f.human).await.unwrap();
+    assert!(
+        f.core
+            .conditions(&f.actor_a)
+            .await
+            .unwrap()
+            .get("owner_binding")
+            .is_none()
+    );
+    let binding: ouroboros_contracts::OwnerBinding =
+        serde_json::from_value(conditions["owner_binding"].clone()).unwrap();
+    assert_eq!(binding.firm_id, f.core.firm);
+    assert_eq!(binding.principal_id, f.human_id);
+    let actor = Actor::BoundHuman(f.human.clone(), binding.clone());
+    let admitted = f
+        .core
+        .create_work(
+            &actor,
+            "owner-bound-work",
+            work_request(f.human_grant, "Bound owner request"),
+        )
+        .await
+        .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM intents WHERE firm_id=$1")
+        .bind(f.core.firm)
+        .fetch_one(&f.db)
+        .await
+        .unwrap();
+    for field in [
+        "environment_id",
+        "firm_id",
+        "principal_id",
+        "serving_generation",
+    ] {
+        let mut changed = serde_json::to_value(&binding).unwrap();
+        changed[field] = json!(Uuid::new_v4());
+        let stale = Actor::BoundHuman(f.human.clone(), serde_json::from_value(changed).unwrap());
+        // Both a new effect and a replay of an existing key must first check the caller's binding.
+        for key in ["must-not-be-created", "owner-bound-work"] {
+            assert!(matches!(
+                f.core
+                    .create_work(
+                        &stale,
+                        key,
+                        work_request(f.human_grant, "Bound owner request")
+                    )
+                    .await,
+                Err(Error::Conflict)
+            ));
+        }
+    }
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM intents WHERE firm_id=$1")
+        .bind(f.core.firm)
+        .fetch_one(&f.db)
+        .await
+        .unwrap();
+    assert_eq!(count, after);
+    let restarted = Core::new(f.db.clone(), f.core.firm);
+    let current = restarted.conditions(&f.human).await.unwrap();
+    assert_eq!(conditions["environment_id"], current["environment_id"]);
+    assert_ne!(
+        conditions["owner_binding"]["serving_generation"],
+        current["owner_binding"]["serving_generation"]
+    );
+    assert!(matches!(
+        restarted
+            .intent_by_request_key(&actor, "work.create", "owner-bound-work")
+            .await,
+        Err(Error::Conflict)
+    ));
+    let reconnected = Actor::BoundHuman(
+        f.human.clone(),
+        serde_json::from_value(current["owner_binding"].clone()).unwrap(),
+    );
+    let original = restarted
+        .intent_by_request_key(&reconnected, "work.create", "owner-bound-work")
+        .await
+        .unwrap();
+    assert_eq!(
+        original["intent"]["intent_id"],
+        admitted.intent_id.to_string()
+    );
+    assert_eq!(original["resubmitted"], false);
+    // Data incarnation changes are also observed under the same Core transaction lock.
+    sqlx::query("UPDATE firms SET environment_id=$2 WHERE id=$1")
+        .bind(f.core.firm)
+        .bind(Uuid::new_v4())
+        .execute(&f.db)
+        .await
+        .unwrap();
+    assert!(matches!(
+        restarted.conditions(&reconnected).await,
+        Err(Error::Conflict)
     ));
 }

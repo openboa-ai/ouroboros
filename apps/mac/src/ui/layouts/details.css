@@ -1,0 +1,30 @@
+.detail-section { display:grid; gap:var(--ob-space-16); }
+.detail-section + .detail-section { margin-top:var(--ob-space-8); }
+.activity-timeline { display:grid; gap:var(--ob-space-24); list-style:none; padding:0; margin:0; }
+.activity-timeline li { display:grid; grid-template-columns:24px minmax(0,1fr); gap:var(--ob-space-12); }
+.timeline-symbol { color:var(--muted-foreground); padding-top:2px; }
+.timeline-heading { display:flex; justify-content:space-between; flex-wrap:wrap; gap:var(--ob-space-8); }
+.activity-timeline p { margin-top:var(--ob-space-4); }
+.detail-toolbar { display:flex; flex-wrap:wrap; gap:var(--ob-space-8); align-items:center; justify-content:space-between; }
+.detail-records { display:grid; gap:var(--ob-space-12); }
+.detail-record { background:var(--muted); padding:var(--ob-space-16); border-radius:var(--ob-radius-md); display:grid; gap:var(--ob-space-8); }
+.detail-caption { display:flex; justify-content:space-between; gap:var(--ob-space-12); align-items:center; }
+.detail-choice { display:grid; gap:var(--ob-space-8); }
+.detail-note { padding:var(--ob-space-16); background:var(--muted); border-radius:var(--ob-radius-md); }
+.settings-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--ob-space-8); }
+.settings-options button { width:100%; }
+.conversation-find { display:flex; align-items:center; gap:var(--ob-space-8); padding:var(--ob-space-12) var(--ob-space-24); }
+.conversation-find input { min-width:0; }
+
+.section-heading + .activity-timeline { margin-top:var(--ob-space-16); }
+
+/* Collection rows are one click target; nested card/button chrome obscures hierarchy. */
+.record-link--row { background:transparent; padding:var(--ob-space-12) var(--ob-space-8); }
+.record-link--row:hover { background:var(--muted); }
+.record-link--row .record-copy { flex:1; }
+.timeline-title { display:inline-flex; gap:var(--ob-space-8); align-items:baseline; text-align:left; background:none; border:0; padding:0; }
+.timeline-title span { color:var(--muted-foreground); }
+.timeline-title:hover { color:var(--primary); }
+.control-groups { display:grid; gap:var(--ob-space-24); }
+.control-group { display:grid; gap:var(--ob-space-4); }
+.control-group h3 { padding:var(--ob-space-8); }

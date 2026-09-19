@@ -27,6 +27,21 @@ component. Components own mechanisms, not competing authority or state definitio
 
 ## Build and test
 
+### Source trunk and operating versions
+
+The selected target is one maintained source trunk, `main`, for each product/private company
+repository. Isolated working copies and disposable tests remain required; a dev, release or
+feature branch is not a prerequisite of the company development contract. Current-main admission,
+immutable package verification and operational selection are separate outcomes as defined in
+[Integrated System Design](architecture/SYSTEM_DESIGN.md#5-main-only-source-package-verification-and-use).
+
+The product's currently enforced rulesets, CODEOWNERS and PR delivery transport still apply.
+Reconciling host tooling and admission transport with main-only development must preserve those
+controls; this design does not authorize direct-push bypasses, branch rewrites or policy weakening.
+Actual company data, applied settings, build outputs and evidence remain outside source Git.
+
+### Working and verification boundaries
+
 Implement only the accepted scope in an isolated worktree. Independent work needs separate
 ownership and mutable runtime resources; concurrent edits to shared files need coordination.
 The applicable host decides whether delegation is available and authorized. No fixed worker graph

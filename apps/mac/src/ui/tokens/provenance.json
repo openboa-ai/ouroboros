@@ -1,0 +1,68 @@
+{
+  "sourceRepository": "https://github.com/openboa-ai/openboa-brand-system",
+  "sourceCommit": "e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b",
+  "sourceRelease": "2026.08.23",
+  "sourceTokens": "06-design-tokens/openboa.tokens.json",
+  "sourceTokensSha256": "63d0e9b046cedbd4ee062baac3f4972e2617c69ebdbd2c623c4bf9a4a8faa4b1",
+  "fontSha256": "f81807163c34ff754e6d915b0b59f76cca88332b67c45cfc7453ace5751ae912",
+  "fontAxes": {
+    "wght": {
+      "min": 100.0,
+      "default": 400.0,
+      "max": 1000.0
+    },
+    "wdth": {
+      "min": 75.0,
+      "default": 100.0,
+      "max": 200.0
+    }
+  },
+  "fontFallback": {
+    "original": [
+      "Martian Grotesk",
+      "sans-serif"
+    ],
+    "css": "\"Martian Grotesk\", \"Apple SD Gothic Neo\", system-ui, sans-serif",
+    "note": "Apple SD Gothic Neo and system-ui are downstream Korean/system fallbacks, not new brand tokens. No fallback font is bundled. Typography metrics and width remain the original OpenBoa roles; actual fallback glyph width can differ."
+  },
+  "lineHeightNote": "CSS preserves the original unitless token. lineHeightPx is size * lineHeight rounded to 6 decimal places for DOM comparison.",
+  "numericOption": ".type-tabular adds lining-nums tabular-nums independently of role; it does not imply monospaced text.",
+  "semanticMapping": {
+    "background": "sys.color.{theme}.background.canvas",
+    "foreground": "sys.color.{theme}.text.primary",
+    "card": "sys.color.{theme}.background.surface",
+    "card-foreground": "sys.color.{theme}.text.primary",
+    "popover": "sys.color.{theme}.background.surface-elevated",
+    "popover-foreground": "sys.color.{theme}.text.primary",
+    "primary": "sys.color.{theme}.action.primary.default",
+    "primary-foreground": "sys.color.{theme}.action.primary.content",
+    "secondary": "sys.color.{theme}.action.secondary.default",
+    "secondary-foreground": "sys.color.{theme}.action.secondary.content",
+    "muted": "sys.color.{theme}.background.surface-subtle",
+    "muted-foreground": "sys.color.{theme}.text.muted",
+    "accent": "sys.color.{theme}.selection.fill",
+    "accent-foreground": "sys.color.{theme}.selection.content",
+    "destructive": "sys.color.{theme}.action.danger.default",
+    "destructive-foreground": "sys.color.{theme}.action.danger.content",
+    "border": "sys.color.{theme}.border.default",
+    "input": "sys.color.{theme}.border.control",
+    "ring": "sys.color.{theme}.focus.ring"
+  },
+  "sidebarMapping": {
+    "sidebar": "comp.{theme}.sidebar.fill.default",
+    "sidebar-foreground": "comp.{theme}.sidebar.text.default",
+    "sidebar-primary": "comp.{theme}.sidebar.fill.primary",
+    "sidebar-primary-foreground": "comp.{theme}.sidebar.text.inverse",
+    "sidebar-accent": "comp.{theme}.sidebar.fill.selected",
+    "sidebar-accent-foreground": "comp.{theme}.sidebar.text.default",
+    "sidebar-border": "comp.{theme}.sidebar.border.subtle",
+    "sidebar-ring": "comp.{theme}.sidebar.focus.ring"
+  },
+  "chartMapping": {
+    "chart-1": "sys.data.categorical.01",
+    "chart-2": "sys.data.categorical.02",
+    "chart-3": "sys.data.categorical.03",
+    "chart-4": "sys.data.categorical.04",
+    "chart-5": "sys.data.categorical.05"
+  }
+}

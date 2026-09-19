@@ -1,8 +1,16 @@
+mod service_call;
+mod service_continuation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+pub use service_call::*;
+pub use service_continuation::*;
 use uuid::Uuid;
 mod program;
 pub use program::*;
+mod owner_binding;
+pub use owner_binding::*;
+mod runtime_claim;
+pub use runtime_claim::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -137,6 +145,8 @@ pub struct RuntimeTicket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_slot: Option<String>,
     pub target: String,
     pub operation: String,
     pub request_key: String,
@@ -368,6 +378,8 @@ pub struct ConnectionStopRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterSubmissionRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_operation: Option<ServiceOperationPlan>,
     pub work_id: Option<Uuid>,
     pub delegation_id: Option<Uuid>,
     pub target: String,
@@ -412,6 +424,8 @@ pub struct AdapterActivationRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterInvocationRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<ServiceInvocation>,
     pub activation_id: Uuid,
     pub execution: ExecutionRequest,
 }

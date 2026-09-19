@@ -1,0 +1,7 @@
+.notifications-screen { max-width:1120px; }
+.notification-row { display:flex; align-items:center; gap:var(--ob-space-16); padding:var(--ob-space-16); border-radius:var(--ob-radius-md); }
+.notification-row[data-unread="true"] { background:var(--background); }
+.notification-icon { display:flex; align-items:center; justify-content:center; width:36px; height:36px; flex-shrink:0; position:relative; color:var(--muted-foreground); background:var(--muted); border-radius:var(--ob-radius-md); }
+.notification-dot { position:absolute; width:6px; height:6px; border-radius:50%; background:var(--primary); top:0; right:0; }
+.notification-row .detail-toolbar { flex-wrap:nowrap; }
+@media(max-width:1100px) { .notification-row { gap:var(--ob-space-12); } .notification-row .detail-toolbar { gap:var(--ob-space-4); } }

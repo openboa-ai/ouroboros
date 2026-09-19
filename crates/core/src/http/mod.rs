@@ -4,6 +4,7 @@ mod context;
 mod management;
 mod resources;
 mod runtime;
+mod services;
 mod startup;
 
 use axum::{
@@ -23,8 +24,24 @@ struct App {
 
 fn router(app: App) -> Router {
     Router::new()
+        .route("/service-continuations", post(services::register))
+        .route("/service-continuations/{id}", get(services::read))
+        .route("/work/{id}/service-continuations", get(services::list))
+        .route(
+            "/service-continuations/{id}/stop-requests/{key}",
+            get(services::stop_request),
+        )
+        .route("/service-continuations/{id}/stop", post(services::stop))
+        .route(
+            "/runtime/service-continuations/reconcile",
+            post(runtime::service_reconcile),
+        )
         .route("/resource/workspaces/list", post(resources::workspace_list))
         .route("/resource/workspaces/{id}", post(resources::workspace_read))
+        .route(
+            "/resource/workspaces/{id}/publications/{publication}",
+            post(resources::workspace_publication),
+        )
         .route("/resource/admissions", post(resources::resource_admit))
         .route(
             "/mcp/work/{work}/delegation/{grant}",
@@ -34,6 +51,8 @@ fn router(app: App) -> Router {
             "/resource/company-recovery/{id}",
             post(resources::company_receipt_recovery),
         )
+        .route("/notifications", get(management::notifications))
+        .route("/notifications/read", post(management::read_notifications))
         .route("/environment/admission", post(management::set_admission))
         .route(
             "/environment/status/{delegation}",
@@ -161,7 +180,10 @@ fn router(app: App) -> Router {
             post(resources::program_input_admit),
         )
         .route("/runtime/history/{id}", get(runtime::runtime_history))
-        .route("/runtime/claims/{id}", post(runtime::runtime_claim))
+        .route(
+            "/runtime/claims/{id}",
+            post(runtime::runtime_claim).get(runtime::runtime_claim_observation),
+        )
         .route("/runtime/executions/{id}", get(runtime::runtime_permitted))
         .route(
             "/runtime/executions/{id}/{action}",
@@ -196,7 +218,17 @@ fn router(app: App) -> Router {
         .route("/wakes/{id}", get(management::read_wake))
         .route("/wakes/{id}/cancel", post(management::cancel_wake))
         .route("/conditions", get(management::conditions))
+        .route(
+            "/intents/by-request-key",
+            get(management::intent_by_request_key),
+        )
+        .route(
+            "/executions/{id}/stop-requests/{key}",
+            get(management::execution_stop_request),
+        )
         .route("/work", get(management::list_work).post(management::work))
+        .route("/work/{id}/executions", get(management::work_executions))
+        .route("/work/{id}/activity", get(management::work_activity))
         .route("/executions", post(management::start))
         .route("/events", get(management::events))
         .route("/{kind}/{id}", get(management::read))

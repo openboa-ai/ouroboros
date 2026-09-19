@@ -27,7 +27,28 @@ mod files;
 mod inputs;
 pub(crate) mod native;
 
+fn service_effect_slot(headers: &HeaderMap) -> Result<Option<String>, StatusCode> {
+    let name = ouroboros_contracts::SERVICE_EFFECT_SLOT_HEADER;
+    if headers.get_all(name).iter().count() > 1 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    headers
+        .get(name)
+        .map(|value| {
+            let slot = value.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
+            if !ouroboros_contracts::service_slot_name(slot) {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+            Ok(slot.to_owned())
+        })
+        .transpose()
+}
+
 fn selected_target(headers: &HeaderMap) -> Result<&str, StatusCode> {
+    selected_target_or(headers, "catalog")
+}
+
+fn selected_target_or<'a>(headers: &'a HeaderMap, default: &'a str) -> Result<&'a str, StatusCode> {
     if headers.get_all("x-ouro-resource-target").iter().count() > 1 {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -35,7 +56,7 @@ fn selected_target(headers: &HeaderMap) -> Result<&str, StatusCode> {
         .get("x-ouro-resource-target")
         .map(|value| value.to_str().map_err(|_| StatusCode::BAD_REQUEST))
         .transpose()?
-        .unwrap_or("catalog");
+        .unwrap_or(default);
     if target.is_empty()
         || target.len() > 128
         || !target.as_bytes()[0].is_ascii_alphanumeric()
@@ -164,7 +185,10 @@ async fn inner(
     let work = scope.work_id;
     let grant = scope.delegation_id;
     if parts.method == Method::GET
-        && matches!(segments.as_slice(), ["workspaces"] | ["workspaces", _])
+        && matches!(
+            segments.as_slice(),
+            ["workspaces"] | ["workspaces", _] | ["workspaces", _, "publications", _]
+        )
     {
         if !data.is_empty() {
             return Err(StatusCode::BAD_REQUEST);
@@ -172,6 +196,15 @@ async fn inner(
         let target = selected_target(&parts.headers)?;
         let endpoint = match segments.as_slice() {
             ["workspaces"] => format!("{}/resource/workspaces/list", a.core),
+            ["workspaces", id, "publications", publication] => {
+                let id = Uuid::parse_str(id).map_err(|_| StatusCode::BAD_REQUEST)?;
+                let publication =
+                    Uuid::parse_str(publication).map_err(|_| StatusCode::BAD_REQUEST)?;
+                format!(
+                    "{}/resource/workspaces/{id}/publications/{publication}",
+                    a.core
+                )
+            }
             ["workspaces", id] => {
                 let id = Uuid::parse_str(id).map_err(|_| StatusCode::BAD_REQUEST)?;
                 format!("{}/resource/workspaces/{id}", a.core)
@@ -257,12 +290,12 @@ async fn inner(
             ),
             ("GET", ["mcp"]) => return Err(StatusCode::METHOD_NOT_ALLOWED),
             ("POST", ["db", "queries"]) => (
-                "company",
+                selected_target_or(&parts.headers, "company")?,
                 "db.read",
                 serde_json::from_slice(&data).map_err(|_| StatusCode::BAD_REQUEST)?,
             ),
             ("POST", ["db", "transactions"]) => (
-                "company",
+                selected_target_or(&parts.headers, "company")?,
                 "db.write",
                 serde_json::from_slice(&data).map_err(|_| StatusCode::BAD_REQUEST)?,
             ),
@@ -349,6 +382,7 @@ async fn inner(
             file_input = Some(input.clone());
         }
         let request = ResourceRequest {
+            effect_slot: service_effect_slot(&parts.headers)?,
             target: target.into(),
             operation: operation.into(),
             request_key: key,
@@ -534,6 +568,56 @@ mod workspace_tests {
     use axum::{Router, extract::State};
     use std::sync::{Arc, Mutex};
 
+    #[test]
+    fn effect_slot_is_one_bounded_name_and_never_a_caller_context() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(service_effect_slot(&headers).unwrap(), None);
+        let header = ouroboros_contracts::SERVICE_EFFECT_SLOT_HEADER;
+        for invalid in ["", "*", "root:child", "a/b", "snapshot,write"] {
+            headers.insert(header, invalid.parse().unwrap());
+            assert_eq!(service_effect_slot(&headers), Err(StatusCode::BAD_REQUEST));
+        }
+        headers.insert(header, "snapshot".parse().unwrap());
+        assert_eq!(
+            service_effect_slot(&headers).unwrap(),
+            Some("snapshot".into())
+        );
+        headers.append(header, "write".parse().unwrap());
+        assert_eq!(service_effect_slot(&headers), Err(StatusCode::BAD_REQUEST));
+    }
+
+    #[tokio::test]
+    async fn gateway_forwards_only_slot_and_its_authenticated_identity() {
+        let (app, f, _server) = fixture_with_operation("db.read").await;
+        let mut request = f.request(
+            "POST",
+            "/db/queries",
+            "company-db",
+            Body::from("{\"query\":\"read_input\"}"),
+        );
+        request.headers_mut().insert(
+            ouroboros_contracts::SERVICE_EFFECT_SLOT_HEADER,
+            "snapshot".parse().unwrap(),
+        );
+        request
+            .headers_mut()
+            .insert("x-ouro-effective-caller", "forged-owner".parse().unwrap());
+        request.headers_mut().insert(
+            "x-ouro-root-intent",
+            Uuid::new_v4().to_string().parse().unwrap(),
+        );
+        inner(&app, caller(), request).await.unwrap();
+        let calls = f.calls.lock().unwrap();
+        let (path, headers, body) = &calls[0];
+        assert_eq!(path, "/resource/admissions");
+        assert_eq!(body["effect_slot"], "snapshot");
+        assert_eq!(body["target"], "company-db");
+        assert_eq!(headers["x-ouro-client-fingerprint"], "registered-human");
+        assert!(!headers.contains_key("x-ouro-effective-caller"));
+        assert!(!headers.contains_key("x-ouro-root-intent"));
+        assert!(body.get("root_intent_id").is_none());
+    }
+
     #[derive(Clone)]
     struct Fixture {
         operation: &'static str,
@@ -628,7 +712,13 @@ mod workspace_tests {
                 serde_json::to_value(f.reply()).unwrap()
             } else if path == "/resource/workspaces/list" {
                 json!({"items":[f.summary()],"next_cursor":"next-opaque","authority_revision":7,"event_sequence":11})
-            } else if path == format!("/resource/workspaces/{}", f.workspace) {
+            } else if path == format!("/resource/workspaces/{}", f.workspace)
+                || path
+                    == format!(
+                        "/resource/workspaces/{}/publications/{}",
+                        f.workspace, f.intent
+                    )
+            {
                 f.summary()
             } else {
                 return StatusCode::NOT_FOUND.into_response();
@@ -850,6 +940,34 @@ mod workspace_tests {
         assert!(f.calls.lock().unwrap().is_empty());
         assert!(is_resource("/retirements"));
         assert!(!is_resource("/retirements/delete"));
+    }
+
+    #[tokio::test]
+    async fn historical_publication_forwards_exact_reference_and_current_scope() {
+        let (app, f, _server) = fixture().await;
+        let path = format!("/workspaces/{}/publications/{}", f.workspace, f.intent);
+        let response = inner(
+            &app,
+            caller(),
+            f.request("GET", &path, "company-files", Body::empty()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let calls = f.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].0,
+            format!(
+                "/resource/workspaces/{}/publications/{}",
+                f.workspace, f.intent
+            )
+        );
+        assert_eq!(calls[0].1["x-ouro-client-fingerprint"], "registered-human");
+        assert_eq!(
+            calls[0].2,
+            json!({"work_id":f.work,"delegation_id":f.grant,"target_id":"company-files","cursor":null})
+        );
     }
 
     #[tokio::test]

@@ -6,6 +6,7 @@ if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import ast
 import contextlib
 import importlib.util
 import hashlib
@@ -32,6 +33,18 @@ spec.loader.exec_module(runner)
 
 
 class NativeSuiteContract(unittest.TestCase):
+    def test_embedded_managed_mcp_transport_probe_compiles(self):
+        # Parsing the fixture alone does not compile Python passed to `python -c`.
+        path = Path(__file__).resolve().parents[1] / 'integration/test-connected-program-guest.py'
+        tree = ast.parse(path.read_text())
+        probes = [node.value.value for node in ast.walk(tree)
+                  if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == 'transport_probe'
+                          for target in node.targets)
+                  and isinstance(node.value, ast.Constant)]
+        self.assertEqual(len(probes), 1)
+        compile(probes[0], str(path) + ':transport_probe', 'exec')
+
     def test_catalogue_has_unique_purposes_and_inherited_requirements(self):
         rows = catalogue()
         self.assertEqual(len(rows), len({row['id'] for row in rows}))
@@ -51,6 +64,7 @@ class NativeSuiteContract(unittest.TestCase):
                 self.assertTrue(not a.bounded_service_stop or a.bounded_service)
                 self.assertTrue(not a.bounded_service or (a.native_adapter and not any([a.bounded_worker, a.encrypted_provider, a.native_adapter_stop, a.native_adapter_running_stop])))
                 self.assertTrue(not a.bounded_worker or (a.native_adapter and not a.native_adapter_stop and not a.native_adapter_running_stop))
+                self.assertTrue(not a.persistent_worker or (a.bounded_worker and a.managed_guard))
                 self.assertTrue(not a.native_adapter_running_stop or (a.native_adapter and not a.native_adapter_stop))
                 self.assertTrue(not a.native_adapter_stop or a.native_adapter)
                 self.assertTrue(not a.native_adapter or a.managed_mcp)
@@ -385,6 +399,107 @@ class ResourceSmokeEvidence(unittest.TestCase):
             turn.assert_called_once()
             self.assertEqual(json.loads((root / 'resource-evidence.json').read_text()), proof)
             self.assertFalse((root / 'resource-summary.json').exists())
+
+
+class CompanyUiEvidence(ResourceSmokeEvidence):
+    """The UI candidate cannot pass from an agent report or upload-only response."""
+    def candidate(self):
+        proof = self.evidence()
+        proof.update({'company_id': 'firm', 'workspace_id': 'workspace', 'ui_uploads': []})
+        composition = {
+            'schemaVersion': 1, 'companyId': 'firm', 'revision': 1, 'author': 'execution',
+            'pages': [{'id': 'pulse', 'title': 'Company pulse', 'module': 'agent-pulse',
+                       'widgets': [{'id': 'pulse-proof', 'widget': 'agent-pulse.summary', 'size': 'medium'}]}],
+            'publication': {'workspace': 'workspace', 'revision': 2, 'path': 'company-ui.json', 'executionId': 'execution'},
+        }
+        source = '''import { defineCompanyModule } from "@/contracts/company-sdk";
+export default defineCompanyModule({id:"agent-pulse",name:"Company pulse",version:"1.0.0",
+pages:[{id:"pulse",title:"Company pulse"}],widgets:[{id:"agent-pulse.summary",title:"Company pulse",
+description:"Evidence",provider:"Company",sizes:["small","medium"],Component:function CompanyPulse(){
+return <section><h3 className="type-section">Verification snapshot</h3><p className="type-data">execution</p>
+<p className="type-data">from-file</p><p className="type-data">from-db</p></section>;}}]});'''
+        files = {'CompanyPulse.tsx': source.encode(), 'company-ui.json': json.dumps(composition).encode()}
+        self.bind_uploads(proof, files)
+        return proof, files
+
+    def bind_uploads(self, proof, files):
+        proof['ui_uploads'] = []
+        for index, (name, content) in enumerate(files.items()):
+            intent = 'ui-upload-' + str(index)
+            proof['publications'][0]['input']['files'][name] = intent
+            digest = hashlib.sha256(content).hexdigest()
+            proof['ui_uploads'].append({'intent_id': intent, 'instance_id': 'instance',
+                'input': {'sha256': digest, 'size': len(content)},
+                'reply': {'status': 200, 'receipt': {'source': 'catalog', 'upload_receipt': intent,
+                                                    'sha256': digest, 'size': len(content)}}})
+
+    def test_ui_requires_resource_proof_and_exact_published_bytes(self):
+        proof, files = self.candidate()
+        self.demo.verify_resource_smoke(proof)
+        report = self.demo.verify_company_ui_artifacts(proof, files)
+        self.assertEqual(set(report['checks'].values()), {'PASS'})
+        self.assertEqual(report['compiled'], 'NOT RUN')
+        self.assertEqual(report['displayed'], 'NOT RUN')
+        self.assertEqual(report['files']['CompanyPulse.tsx']['sha256'], hashlib.sha256(files['CompanyPulse.tsx']).hexdigest())
+
+    def test_ui_missing_publication_wrong_writer_changed_readback_fail(self):
+        for kind in ('unpublished', 'writer', 'digest', 'receipt', 'empty', 'oversize'):
+            proof, files = self.candidate()
+            if kind == 'unpublished':
+                del proof['publications'][0]['input']['files']['CompanyPulse.tsx']
+            elif kind == 'writer':
+                proof['ui_uploads'][0]['instance_id'] = 'someone-else'
+            elif kind == 'digest':
+                files['CompanyPulse.tsx'] += b' changed'
+            elif kind == 'receipt':
+                proof['ui_uploads'][0]['reply']['receipt'] = {}
+            elif kind == 'empty':
+                files['CompanyPulse.tsx'] = b''
+            else:
+                files['CompanyPulse.tsx'] = b'x' * 65537
+            with self.subTest(kind=kind), self.assertRaisesRegex(RuntimeError, 'company-ui evidence failed'):
+                self.demo.verify_company_ui_artifacts(proof, files)
+
+    def test_ui_rejects_wrong_company_execution_widget_and_revision(self):
+        for kind in ('company', 'author', 'widget', 'revision', 'extra-page'):
+            proof, files = self.candidate()
+            composition = json.loads(files['company-ui.json'])
+            if kind == 'company':
+                composition['companyId'] = 'other'
+            elif kind == 'author':
+                composition['author'] = 'other'
+            elif kind == 'widget':
+                composition['pages'][0]['widgets'][0]['widget'] = 'system.stop'
+            elif kind == 'revision':
+                composition['publication']['revision'] = 3
+            else:
+                composition['pages'].append(dict(composition['pages'][0]))
+            files['company-ui.json'] = json.dumps(composition).encode()
+            self.bind_uploads(proof, files)
+            with self.subTest(kind=kind), self.assertRaisesRegex(RuntimeError, 'composition'):
+                self.demo.verify_company_ui_artifacts(proof, files)
+
+    def test_ui_source_must_use_sdk_observed_values_and_snapshot_label(self):
+        for original, replacement in ((b'@/contracts/company-sdk', b'@/app/internal'),
+                                      (b'from-db', b'invented'),
+                                      (b'Verification snapshot', b'Live health')):
+            proof, files = self.candidate()
+            files['CompanyPulse.tsx'] = files['CompanyPulse.tsx'].replace(original, replacement)
+            self.bind_uploads(proof, files)
+            with self.subTest(original=original), self.assertRaisesRegex(RuntimeError, 'company-ui evidence failed'):
+                self.demo.verify_company_ui_artifacts(proof, files)
+
+    def test_ui_scenario_prompt_does_not_leak_fresh_markers(self):
+        from types import SimpleNamespace
+        env = {'pg_bin': Path('/pg'), 'run_root': Path('/run'), 'deployment_root': Path('/deployment'), 'ipc_root': Path('/ipc')}
+        demo = self.demo.CompanyUiDemo(env, SimpleNamespace(run_name='unused'))
+        demo.workspace, demo.ids = 'workspace', {'firm': 'firm'}
+        prompt = demo.additional_task()
+        self.assertNotIn(demo.file_marker, prompt)
+        self.assertNotIn(demo.db_marker, prompt)
+        self.assertIn('ONE POST /publications', prompt)
+        self.assertEqual(demo.additional_outputs, ('CompanyPulse.tsx', 'company-ui.json'))
+        self.assertEqual(self.demo.ResourceSmokeDemo.additional_outputs, ())
 
 
 if __name__ == '__main__':

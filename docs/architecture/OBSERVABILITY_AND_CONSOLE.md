@@ -10,6 +10,11 @@ backend. Both use the shared Gateway; a TypeScript console is a later, independe
 client. The five views below preserve its intended information design without making screens
 a prerequisite for validating execution, evidence access, or effective control.
 
+[Application Shell and Views](APPLICATION_SHELL_AND_VIEWS.md) specifies the Mac client's screen
+composition and interaction boundaries: fixed control, required domain baselines, and configurable
+company views. The views below define evidence needs, not an exhaustive or immutable menu. Screen
+composition inherits these observation contracts and does not create another source of company truth.
+
 ## Evidence Sources and Ownership
 
 The Core owns protected execution and control records. Runtime Manager, Gateway, and Resource
@@ -98,6 +103,17 @@ neither a search index nor a tracing backend becomes the source of current autho
 projection lags, controls still use current Core state and clients see the lag instead of a false
 claim that the displayed state was used to authorize an action.
 
+Company business projections use [the result/outbox and primary-reference contract](CONTRACTS_AND_STATE.md#company-results-projections-and-primary-references).
+Business-record commit and a replayable receipt/outbox share their local transaction; protected
+ingestion authenticates and deduplicates the original producer/intent/schema before acknowledging.
+The projection watermark covers accepted ingestion, not the producer's claimed latest state.
+Multi-store snapshots expose coverage rather than pretend atomicity. Incompatible service/schema
+changes reset that projection's cursor; historical records retain their original bindings.
+Notifications resolve a primary typed source independently of related execution IDs or currently
+loaded lists. Company interpretation, provider receipt and Core control outcome remain attributable
+to their different producers; no Company event may rewrite protected authority or claim execution
+termination. Receipt-only recovery can observe an old attempt without reviving its dispatch rights.
+
 Freshness is specific to the fact and dependency: a collector heartbeat does not refresh an old
 broker balance. Show last observation, receipt, known gaps, affected work, and unavailable sources.
 Missing, stale, restricted, unresolved, and measured zero are distinct. Aggregates with incomplete
@@ -147,12 +163,13 @@ with its authorized range/reason or explicit unknown extent, end that continuati
 fresh snapshot. A denied disclosure must not leak protected gap details. Do not synthesize missed
 records, emit a fake complete event, or infer that no work ran during the gap.
 
-Prevent usable credentials from entering ordinary logs, trace attributes, URLs, or event payloads.
+Prevent usable credentials from entering logs, trace attributes, URLs, events or evidence payloads.
 Apply source-side minimization and protected ingestion handling, then permission-aware redaction
-at query/export time. A raw provider error is not exempt. Where material originals must be kept,
-use separately restricted content access; ordinary inspection does not grant secret access.
-Preserve verifiability and material consequences while marking authorized views as redacted or
-incomplete. Treat rendered model text and artifact content as untrusted, never executable controls.
+at query/export time. A raw provider error is not exempt. Retain necessary non-secret original
+material through separately restricted content access; a retention or audit requirement does not
+create a credential-read route. Preserve verifiability, safe correlation and material consequences
+while marking authorized views as redacted or incomplete. Treat rendered model text and artifact
+content as untrusted, never executable controls.
 
 Export is a separately scoped operation for an identified recipient/destination and bounded data
 selection. Recheck authorization while preparing and releasing it; record requester, scope,
@@ -188,6 +205,12 @@ It includes observed results and required retained evidence, not just a command 
 
 ## Operating Responsibility and Owner Oversight
 
+The company roster presents continuing logical agent identities, their distinct current responsibilities,
+actual executions, original contributions and observed collaboration. It inherits
+[Company Agent Identity and Membership](CONTRACTS_AND_STATE.md#company-agent-identity-and-membership).
+A team-like presentation must be backed by those records; a familiar avatar or name is not evidence
+of activity, appointment or authority. Direct inspection remains available without an agent reply.
+
 The [initial CEO profile](../../ARCHITECTURE.md#initial-private-operation-one-ceo-role) adds an
 operating view over existing authorized work, artifact and event records. The first proof remains
 API/CLI inspection; it does not require a graphical console or a second management backend.
@@ -220,6 +243,15 @@ and the successor's revised judgment with their respective authorship and eviden
 These view contracts and their underlying operating assignment remain **NOT RUN** until the
 [operating validation](VALIDATION.md#ceo-operating-profile-validation) is implemented.
 
+### Observation Summaries and Shared Conversations
+
+The [unified conversation contract](CONTRACTS_AND_STATE.md#unified-rooms-and-proactive-messages)
+carries progress updates, report explanations, proposals and ordinary personal/group discussion.
+Observation views separately show current work/execution state and readable summaries with source/time
+and original message, work or artifact references. Preserve differences between agent explanations and
+receipts. A summary is a view over retained evidence/content, not a submitted report lifecycle. Direct
+inspection/control works while a room is quiet or its participants are unavailable.
+
 ### Generated Artifacts and Space Visibility
 
 An authorized owner or worker can follow an artifact from creating work/instance to retained
@@ -237,6 +269,27 @@ show new scratch and retained company data separately, including unpublished out
 restricted recovery collection. Lookup and controls use the same Gateway without a CEO-mediated
 inspection gate. The [artifact and space tests](VALIDATION.md#generated-artifact-and-space-validation)
 remain NOT RUN; this view does not establish implementation of general allocation or binary storage.
+
+### Artifact discovery, versions and selected-use evidence
+
+The artifact projection specified in [Integrated System Design](SYSTEM_DESIGN.md#7-artifact-management-and-lifecycle)
+uses current-scope historical Catalog lookup with opaque cursor and coverage. Latest manifest files
+are a partial discovery source, not complete company history; absence from a list is not deletion.
+Preserve creator/creating execution, publisher/receipt, exact environment/workspace/revision/path/
+digest, explicit lineage, evaluator, current consumers, owner/reason holds and disposal observations.
+A current display name does not rewrite the original principal's attribution.
+
+Library list, preview, authorized save, copy-reference, Discuss and notification source resolution
+carry the same exact reference. Follow current access even for old room links; missing/denied/retired
+content is visible and never replaced by latest. Report/code preview treats content as data; a
+published executable is loaded only through its qualified Company/job/service use contract.
+
+Source main commit, built package, verification and selected/observed deployment are separately
+queryable from existing Settings/Library/work details. Private report statements cannot fabricate
+technical acceptance or financial outcomes. Retention/retirement/deletion and actual recovered bytes
+are independently observed. The present Mac Library projection only covers latest observed
+publications and lacks this complete provenance/use/retention/history path; its checkpoint must
+retain that limitation rather than claim historical completeness.
 
 ### List, Detail, Decision and Observed Outcome
 
@@ -391,12 +444,106 @@ their success, a green trace, or an agent span cannot establish authorization or
 | API/CLI accepts execution before an instance exists | Show the durable desired identifier and queued/claimed stage; add the actual instance only on Runtime observation. | Common payload, Gateway command mapping |
 | Certificate revoked after TLS setup, followed by SSE reconnect | Apply current certificate/principal/read scope to the live stream and reconnect; never use an old cursor to recover revoked content. | Human credential binding, current authorization |
 | Provider slows down while ordinary Gateway traffic saturates | Separate provider and outer latency; report latency distributions, throughput, memory/backpressure, and reserved control progress without fabricated targets. | Boundary timing, bounded queues, workload conditions |
+| New connection inside current delegation, then a missing-login case | Retain automatic admission without an owner approval step for the first case; link the exact missing personal login/secret/authority/trust action for the second. | Connection admission, protected enrollment, current bounds |
+| Independently installed authentication module returns secret-bearing error data | Installation is distinct from qualification/selection; all observable outputs and retained artifacts exclude usable secrets and bearer/signing material. | Protected module qualification, custody, source minimization |
+| Credential rotation while provider acknowledgment is lost | Keep the original intent/attempt and credential/module revision, unresolved outcome and later reconciliation; no automatic replacement dispatch. | Immutable attempt binding, provider reconciliation |
+| Local use disabled while provider revocation cannot be confirmed | Show applied local restriction separately from unknown remote revocation and remaining effects; app logout does not claim company termination. | Credential lifecycle, provider evidence, fixed controls |
+| Enrollment callback repeats after company/account/module or schema change | Bind the original session and change; reject incompatible or stale continuation without adopting a new target or repeating the effect. | Native enrollment generation, exact revisions, current authorization |
 
 These are requirements for subsequent implementation validation, not results obtained by writing
 this document. [Core](CONTROL_CORE.md) owns records and commitments, [Gateway](GATEWAY.md) owns
 client mediation, [Runtime](RUNTIME.md) owns lifecycle observations, and
 [Resource Services](RESOURCE_SERVICES.md) own provider evidence. Their integrated cases belong in
 [Validation](VALIDATION.md); deployment binds collection, storage, access, and recovery capacity.
+
+## External connection and protected authentication observations
+
+This is the target evidence contract for extensible connections and independently installed,
+qualified and selected protected authentication modules. It extends common request, receipt and
+projection semantics; it does not establish an implementation by adding fields to a screen.
+The [connection journeys](APPLICATION_SHELL_AND_VIEWS.md#connection-user-journeys-and-acceptance)
+put the corresponding actions in Settings → Connections (Overview / Access / Activity), Settings
+→ Modules, System and existing conversations and notifications. No additional primary screen or
+separate approval inbox is required. Exact serialization, authority and lifecycle contracts belong
+in [Contracts and State](CONTRACTS_AND_STATE.md), [Gateway](GATEWAY.md) and
+[Resource Services](RESOURCE_SERVICES.md).
+
+Record a connection addition whether initiated by the owner or private work. A new connection may
+be added and used automatically when current delegation, cost/resource bounds, qualified modules
+and required verification permit it. Being new is not itself a request for owner approval.
+Admission evidence identifies those conditions and the responsible work. Only missing personal
+login, a new secret, new authority or trust not already covered for a protected module calls for
+the corresponding user action. A conversational suggestion or an agent's statement that a module
+is trusted cannot supply that authority.
+
+| Evidence group | Required interpretation |
+| --- | --- |
+| Identity and scope | Preserve the authenticated firm/environment, caller, responsible work and applicable execution or native-session generation. Bind the canonical provider account/tenant/environment and connection configuration revision; a display name, alias or Company-supplied identity is not proof of the account. |
+| Effective implementation | Identify the actual qualified connector or Company service, protected authentication module, exact package/content identity, selected configuration revision and operation/schema version used. Installed, qualified, selected and actually applied are distinct observations. |
+| Credential use | Keep only an opaque credential reference and version, permitted operation, requesting service, current authorization outcome and observation time. Provider permission evidence and company delegation are separate; successful login cannot authorize new company operations. |
+| Request and effect | Retain the original admitted intent, attempt, non-secret input identity, effective bounds and dispatch stage, followed by provider observation, cost or unresolved outcome. Never replace an uncertain original effect with an apparent success from a later retry. |
+| Enrollment and change | Retain the safe enrollment/change reference, bound connection and native-session generation, purpose, expiry, requested change, selected module revision and terminal or unresolved result. Raw challenge/state values, authorization codes, tokens, signed bearer material and authentication URLs do not belong in these records. |
+| State and coverage | Keep connection identity/configuration, authentication, observed provider permissions, current company delegation, module qualification/selection, runtime readiness and actual use/effect as independent axes with their own producer, observation time and gaps. A heartbeat, installed module or authenticated account cannot refresh all of them. |
+
+Credential-bearing types share the same use-only boundary, including API keys, passwords, private
+keys and certificates, access/refresh/session tokens, cookies and one-time inputs. Enrollment uses
+the fixed native path or system browser with a protected, bound callback. Company WebViews,
+conversations, files and ordinary services cannot collect or return those values. The protected
+module may use the credential for the authorized operation; its output to Company code and
+inspection surfaces excludes reusable signing/authentication material and arbitrary raw provider
+responses. A credential-access or audit-read permission never permits credential extraction.
+Observability must not turn a failed authentication module into a secret-export path.
+
+Record module installation, qualification, selection, activation and observed use separately.
+A package's self-description is not its qualification evidence; installing it neither selects it
+nor grants access to a credential. An already authorized policy can cover a compatible installation
+and selection. Where a new protected trust boundary is not covered, retain the exact decision and
+applied revision before permitting dependent use. Settings → Modules links these records to
+Connections → Access; the trace retains the actual selected revision even after replacement.
+Qualification applies to the complete protected use path, not only to the module's returned JSON.
+
+Renewal, rotation and recovery preserve old attempt identity. If a response is lost while a new
+credential or module is selected, reconcile the old attempt with its original binding and retained
+evidence; do not dispatch the same business effect using the replacement as a presumed retry.
+An enrollment callback is accepted only for its bound, current session and intended change.
+Company/account/source changes, expired sessions, incompatible schema changes or a revoked grant
+invalidate dependent admission. Late or repeated callbacks remain attributable without silently
+retargeting the enrollment, reusing consent or recreating an effect. Credential/module version
+changes and duplicate account aliases cannot renew a used budget or multiply exposure limits.
+Provider quota, company budget, reservation, measured cost, invoice and unknown remaining cost
+remain separately observable under their existing accounting and identity contracts.
+
+Local use restriction, external provider revocation, credential disposal, app logout and provider
+session logout have different outcomes. Show each supported request, acceptance, actual observation
+and remaining obligations. An unreachable provider leaves remote revocation unconfirmed; disabling
+local use does not erase an already-dispatched effect or close an external session. App logout is
+not an instruction to stop the company. Recovery reconciles current bindings, grants and unresolved
+attempts before dependent new use; a restored cache or old session is not current authorization.
+Permitted monitoring, reconciliation and duty cleanup retain their own scope when new effects are
+restricted, rather than being hidden behind a single disconnected flag.
+
+Notifications and conversation links use a primary typed connection, enrollment or change reference
+with its firm/environment and exact relevant revision. Related work, execution, module and safe
+credential metadata references remain relationships, not competing destinations. Following a
+notification opens its original record even when a newer credential, module, account selection or
+Company package is now active. If the source is inaccessible or retired, retain the authorized
+unavailable state rather than redirect to a different live record.
+
+Source occurrence identity deduplicates receipt ingestion and repeated events. Snapshot and SSE
+cursor semantics preserve the authorized observation boundary, including a new snapshot when the
+source, schema or access scope changes. Unread state, action still required and outcome unresolved
+remain separate. A renewal success appends evidence instead of erasing an earlier failure; repeated
+reports of one outstanding problem do not create a notification storm. Badges and counts for
+Settings/Connections, System and Notifications come from the same authorized server aggregates
+and primary-source mapping when implemented, not from the currently loaded list. Ordinary in-scope
+connection addition is activity, not a mandatory owner review; prompt for the missing action only
+when the corresponding prerequisite actually needs the owner.
+
+Existing model-specific traces, partial Gateway projections and prototype connection fixtures do
+not prove this generic connection/authentication-module path. Protected enrollment, independent
+module installation/selection, use-only enforcement, rotation/revocation, projection mapping and
+native/provider integration require scoped execution evidence. They remain NOT RUN where the
+corresponding implementation and actual provider observation are absent.
 
 ## Model invocation audit and secret exclusion
 
@@ -430,16 +577,20 @@ Prompt/output retention is a separate authorized data policy, not implied by inv
 Credential access audit records contain only opaque secret reference, version, requesting service,
 action, authorization outcome and time. An audit-read permission never grants secret-read access.
 
-Qualification must inject synthetic secret canaries into headers, refresh failures, malformed SSE,
-provider error text and native stderr, then inspect all persisted/exported surfaces for leakage.
+Qualification must inject synthetic secret canaries into headers, enrollment callbacks, cookie and
+signing outputs, refresh/rotation failures, malformed SSE, provider error text and native stderr,
+then inspect all persisted/exported surfaces for leakage. Apply this to independently installed
+protected authentication modules as well as the complete caller-to-provider path, including native,
+Company-facing, conversation, artifact and notification surfaces.
 Missing audit storage blocks new billable dispatch; already-dispatched uncertain outcomes remain
 recorded as unresolved rather than retried silently. These cases are NOT RUN until the real
 provider connector and protected credential service are implemented and tested.
 
 ## Direct User Conversation
 
-Provide a primary conversation entry point for assigning work, asking follow-up questions and
-changing direction with the responsible agent. Do not make users translate every interaction into
+Provide a primary conversation entry point for asking questions, explaining artifacts and
+intervening with the responsible agent. Optional explicit work requests use the same path, while
+normal company operation continues without the owner supplying new tasks. Do not make users translate every interaction into
 execution IDs and management commands. The conversation belongs to continuing work, with the
 current responsible agent and execution state visible, and follows the
 [direct conversation contract](CONTRACTS_AND_STATE.md#direct-conversation-and-work-continuity).
@@ -452,9 +603,16 @@ completion message or relabel a transport acknowledgement as a conversational re
 The first delivery is an API/CLI conversation path; a dedicated chat client can use the same
 Gateway endpoints and event cursor without a privileged backend. This is a required interaction
 capability, not a new execution layer or an additional model hidden inside the public environment.
-Persistent conversation storage and native reply delivery are not yet implemented.
+Persistent conversation records and native message/reply paths are described in the implemented
+client-path sections below. They do not establish complete autonomous routing, continuous CEO
+operation or every native/UI acceptance scenario; current coverage belongs in the implementation
+checkpoint, not a blanket claim that storage/delivery is absent or fully complete.
 
 ### First conversation client path
+
+This subsection preserves the initial API/CLI milestone. Current Mac Conversations and native
+message paths build on it; complete automatic routing, idle-recipient wake and native/UI acceptance
+remain separate work. Historical fixture evidence below is not evidence of those later outcomes.
 
 The persistent record API is now available through the same CLI transport as other management
 requests. A human uses a registered mTLS client; an admitted agent uses the existing `--instance`
@@ -468,10 +626,10 @@ ouroboros-cli --config CONFIG request GET '/conversations/ID/messages?cursor=0' 
 
 Retain the returned cursor and use it for later reads; paginate while `has_more` is true. The
 explicit client response bound accommodates the bounded message page, including JSON escaping.
-This is currently a durable record interface, not an interactive chat window. Messages and
-agent-authored replies survive process and instance replacement. Automatic routing to native
-start/steer and collection of the actual native answer remain the next integration work; the
-client must not display an undelivered stored message as answered.
+The initial milestone established durable records. Messages and attributed replies survive
+process and instance replacement. The current Mac client also provides Conversations and native
+send/delivery paths; complete autonomous recipient routing and idle-recipient wake require further
+integration. A stored or delivered message must never be displayed as an actual answer without one.
 
 ### Group conversation interaction
 
@@ -484,16 +642,17 @@ implicitly a sovereign or an execution approver.
 
 The backend now stores participants, membership revisions, immutable per-message recipients and
 recipient-specific native delivery bindings. The current CLI can call the participant and delivery
-endpoints described in the common contract. A chat window and automatic native reply collection
-are still pending; group-capable record storage is not yet a complete autonomous group chat.
+endpoints described in the common contract. The Mac conversation view and native paths do not
+by themselves establish complete group-participant UI, autonomous routing, idle-recipient wake
+or recipient-specific native/UI acceptance.
 
 ### Addressed reply evidence
 
 An actual isolated native-harness fixture has now read a user's stored message and posted an
 explicitly addressed reply through the instance Gateway path. The user CLI can retrieve both
-messages with author and execution correlation. Its text is synthetic test content; a general
-interactive conversational agent and chat window are still unfinished. Present `native_context`
-as execution correlation, not as independent proof of model authorship or a correct answer.
+messages with author and execution correlation. Its text is synthetic test content from that
+fixture milestone, not proof of the complete later conversational product. Present `native_context`
+as execution correlation, not independent proof of model authorship or a correct answer.
 
 ### Conversation CLI access
 

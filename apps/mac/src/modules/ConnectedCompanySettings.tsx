@@ -1,0 +1,20 @@
+import type { ViewProps } from "@/app/contracts";
+import type { CompanyConfigurationController } from "@/data/company-configuration";
+import { Button } from "@/ui/primitives/button";
+import { EmptyState, Facts, Status } from "@/ui/components/patterns";
+import { ModuleSettings } from "./ModuleSettings";
+
+/** Source selection is a display preference; activation publishes shared configuration through Gateway. */
+export function ConnectedCompanySettings({ configuration, ...view }: ViewProps & { configuration: CompanyConfigurationController }) {
+  const { observed, pending } = configuration;
+  return <div className="home-screen settings-page">
+    <section aria-labelledby="published-company-configuration">
+      <div className="home-toolbar"><div><h2 id="published-company-configuration" className="type-section">Published company configuration</h2><p className="type-meta muted">Choose an observed company-ui.json. The company file supplies pages; your personal Home layout stays separate.</p></div><Button variant="secondary" disabled={configuration.busy} onClick={() => void configuration.refresh()}>Refresh</Button></div>
+      {configuration.candidates.length ? configuration.candidates.map(candidate => <div className="record-link record-link--row" key={candidate.workspace}><span className="record-copy"><span className="type-control">{candidate.label}</span><span className="type-meta muted">company-ui.json · Published revision {candidate.revision}</span></span>{candidate.workspace === configuration.selectedWorkspace ? <Status>{observed ? "Selected · read verified" : "Selected · not observed"}</Status> : <Button variant="secondary" disabled={configuration.busy || !!pending} onClick={() => void configuration.select(candidate.workspace)}>Use configuration</Button>}</div>) : <EmptyState title="No company configuration observed" detail="Publish company-ui.json in an accessible workspace to make it available here. This list follows the current connection's observation scope." />}
+      {observed && <Facts rows={[["Observed file",`${observed.label} / ${observed.file.path}`],["Recorded publisher",String(observed.file.publication.author_principal_id??"Not observed")],["Catalog revision",String(observed.file.revision)],["Company revision",String(observed.composition.revision)],["Publication state",observed.pendingPublication ? "Another publication remains unresolved" : "Confirmed publication read"]]} />}
+    </section>
+    {pending && <section className="home-widget" aria-labelledby="configuration-request"><h2 id="configuration-request" className="type-section">Configuration request in progress</h2><Facts rows={[["Request",pending.requestKey],["Stage",pending.stage === "upload-complete" ? "Upload confirmed · first publication not submitted" : pending.stage === "publication" ? "Publication outcome unresolved" : pending.stage === "observation" ? "Publication submitted · checking actual effect" : "Upload outcome unresolved"],["Target company revision",String(JSON.parse(pending.content).revision)]]} /><p className="type-meta muted">The original content and request keys are retained. Checking an existing receipt does not submit another upload or publication.</p><div className="detail-toolbar"><Button variant="secondary" disabled={configuration.busy} onClick={() => void configuration.checkPending()}>Check original request</Button>{pending.stage === "upload-complete" && <Button disabled={configuration.busy} onClick={() => void configuration.continuePublication()}>Continue first publication</Button>}</div></section>}
+    {configuration.error && <p role="alert" className="type-data">{configuration.error}</p>}
+    <ModuleSettings {...view} key={configuration.identity ? `${configuration.identity.environment}:${configuration.identity.company}:${configuration.identity.owner}:${configuration.selectedWorkspace}` : "unconnected"} modules={configuration.modules} scope={configuration.identity?.company ?? ""} current={configuration.current} onActivate={configuration.canActivate ? configuration.activate : undefined} />
+  </div>;
+}

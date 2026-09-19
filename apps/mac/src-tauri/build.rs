@@ -1,0 +1,38 @@
+fn main() {
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "connect_profile",
+            "connect_saved_profile",
+            "catalog_publication",
+            "prepare_company_package",
+            "mount_company_view",
+            "position_company_view",
+            "release_company_package",
+            "close_company_view",
+            "company_view_request",
+            "company_snapshot",
+            "inspect_service_continuation",
+            "stop_service_continuation",
+            "service_continuation_stop_request",
+            "company_command",
+            "command_receipt",
+            "ceo_message",
+            "ceo_messages",
+            "save_artifact",
+            "save_copy",
+            "inspect_record",
+            "deliver_message",
+            "catalog_workspaces",
+            "catalog_workspace",
+            "prepare_catalog_upload",
+            "catalog_upload",
+            "catalog_upload_content",
+            "catalog_publish",
+            "catalog_resource_receipt",
+            "read_artifact",
+            "notifications",
+            "read_notifications",
+        ]),
+    ))
+    .expect("build Mac app");
+}

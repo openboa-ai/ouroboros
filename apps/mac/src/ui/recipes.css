@@ -1,0 +1,130 @@
+/* Component type bindings only. Mira variant/size/state/keyboard implementations stay intact. */
+
+[data-slot="button"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="input"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="select-trigger"],
+[data-slot="select-item"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="tabs-trigger"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="sidebar-menu-button"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="table-head"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-control-size);
+  font-weight: var(--ob-type-control-weight);
+  line-height: var(--ob-type-control-line-height);
+  letter-spacing: var(--ob-type-control-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-control-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="table-cell"],
+[data-slot="tabs-content"],
+[data-slot="sheet-content"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-data-size);
+  font-weight: var(--ob-type-data-weight);
+  line-height: var(--ob-type-data-line-height);
+  letter-spacing: var(--ob-type-data-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-data-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="badge"],
+[data-slot="tooltip-content"],
+[data-slot="avatar-fallback"],
+[data-slot="chart"],
+[data-slot="chart"] text,
+[data-slot="progress-label"],
+[data-slot="progress-value"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-meta-size);
+  font-weight: var(--ob-type-meta-weight);
+  line-height: var(--ob-type-meta-line-height);
+  letter-spacing: var(--ob-type-meta-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-meta-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="sheet-title"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-title-size);
+  font-weight: var(--ob-type-title-weight);
+  line-height: var(--ob-type-title-line-height);
+  letter-spacing: var(--ob-type-title-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-title-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="sheet-description"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-body-size);
+  font-weight: var(--ob-type-body-weight);
+  line-height: var(--ob-type-body-line-height);
+  letter-spacing: var(--ob-type-body-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-body-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="card-title"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-section-size);
+  font-weight: var(--ob-type-section-weight);
+  line-height: var(--ob-type-section-line-height);
+  letter-spacing: var(--ob-type-section-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-section-wdth);
+  font-synthesis: none;
+}
+
+[data-slot="card-description"] {
+  font-family: var(--ob-font-sans);
+  font-size: var(--ob-type-meta-size);
+  font-weight: var(--ob-type-meta-weight);
+  line-height: var(--ob-type-meta-line-height);
+  letter-spacing: var(--ob-type-meta-letter-spacing);
+  font-variation-settings: "wdth" var(--ob-type-meta-wdth);
+  font-synthesis: none;
+}

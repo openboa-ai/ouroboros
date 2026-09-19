@@ -12,7 +12,7 @@ from types import MappingProxyType, SimpleNamespace
 _BOOLEAN_OPTIONS = (
     'shutdown_services', 'admission_pause_running', 'admission_pause',
     'bounded_service_fault', 'bounded_service_db', 'bounded_service_stop',
-    'bounded_service', 'bounded_worker', 'native_adapter_running_stop',
+    'bounded_service', 'bounded_worker', 'persistent_worker', 'native_adapter_running_stop',
     'native_adapter_stop', 'native_adapter', 'managed_mcp', 'managed_guard',
     'rendered_environment', 'rendered_runtime', 'runtime_unit_loss',
     'encrypted_provider', 'conversation_reply', 'conversation_control',
@@ -92,6 +92,8 @@ _add('native.adapter-provider', 'Secretless submitted code uses a managed provid
      ('adapters', 'credentials', 'resources'), extends='native.adapter', flags=('encrypted_provider',))
 _add('native.bounded-worker', 'One bounded worker handles source and independent adapter verification.',
      ('adapters', 'runtime'), extends='native.adapter', flags=('bounded_worker',))
+_add('native.persistent-worker', 'One managed Runtime remains idle between separately admitted executions and stops without new work.',
+     ('deployment', 'runtime'), extends='native.bounded-worker', flags=('persistent_worker', 'managed_guard'))
 _add('native.service', 'An approved bounded service handles retained conversations across instances.',
      ('adapters', 'conversations', 'runtime'), extends='native.adapter', flags=('bounded_service',))
 _add('native.service-stop', 'Stopped service activation cannot process a further request.',
@@ -133,6 +135,9 @@ _add('native.install-faults', 'Installation rejects wrong review and overwrite, 
 
 _add('native.program-completion', 'Before materialization release no private authority or effects appear; natural program completion and compute-receipt replay preserve work and successor history.',
      ('runtime', 'resources', 'gateway', 'core', 'cli'), driver='program')
+
+_add('native.program-continuation', 'An independently qualified Company program recovers one abnormal exit under its original finite policy, reuses one DB effect receipt, and returns capacity after an exact owner stop.',
+     ('runtime', 'resources', 'gateway', 'core', 'cli', 'adapters'), driver='program')
 
 _add('native.kernel-contracts', 'SCM_RIGHTS preserves distinct close-on-exec handles and rejects missing descriptors and non-cgroup capabilities.',
      ('runtime',), driver='kernel')

@@ -89,6 +89,7 @@ _SCRIPT_RESPONSIBILITIES = {
     "tests/integration/test-connected-runtime-guest.py": ("runtime", "core", "gateway"),
     "tests/integration/test-connected-management-guest.py": ("core", "gateway", "runtime"),
     "tests/integration/test-connected-program-guest.py": ("runtime", "resources", "adapters"),
+    "tests/support/program_service_continuation.py": ("runtime", "resources", "adapters", "core", "gateway"),
     "tests/integration/test-managed-guard-guest.py": ("runtime", "deployment"),
     "tests/integration/test-service-install.py": ("deployment",),
     "tests/recovery/test-existing-storage-guest.py": ("deployment", "recovery", "resources"),

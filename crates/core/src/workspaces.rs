@@ -243,6 +243,18 @@ impl Core {
         id: Uuid,
         query: WorkspaceQuery,
     ) -> Result<Value> {
+        self.read_workspace_publication(actor, id, query, None)
+            .await
+    }
+
+    /// Historical lookup uses the current workspace permission and physical storage binding.
+    pub async fn read_workspace_publication(
+        &self,
+        actor: ResourceActor,
+        id: Uuid,
+        query: WorkspaceQuery,
+        publication: Option<Uuid>,
+    ) -> Result<Value> {
         if query.cursor.is_some() {
             return Err(Error::Invalid);
         }
@@ -261,6 +273,155 @@ impl Core {
             Some(row.get("namespace_id")),
         )
         .await?;
-        Ok(summary(&row))
+        let mut value = summary(&row);
+        // Metadata discovery retains the exact existing work/target/namespace inspection boundary.
+        value["publication_observation"] = self
+            .workspace_publication_observation(&mut tx, &row, publication)
+            .await?;
+        Ok(value)
+    }
+
+    async fn workspace_publication_observation(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        workspace: &PgRow,
+        publication: Option<Uuid>,
+    ) -> Result<Value> {
+        let id: Uuid = workspace.get("id");
+        let work: Uuid = workspace.get("work_id");
+        let namespace: Uuid = workspace.get("namespace_id");
+        let target: String = workspace.get("target_id");
+        let store: Uuid = workspace.get("store_id");
+        let generation: Uuid = workspace.get("storage_generation");
+        let firm = sqlx::query(
+            "SELECT revision,statement_timestamp()::text AS observed_at FROM firms WHERE id=$1",
+        )
+        .bind(self.firm)
+        .fetch_one(&mut **tx)
+        .await?;
+        // This is the most recent Core-confirmed publication, not a direct Catalog head read.
+        // Match the admitted physical storage generation as well as logical workspace ownership.
+        let confirmed = sqlx::query(
+            r#"
+            SELECT r.intent_id,r.reply,r.completed_at::text AS confirmed_at,i.input,
+                i.principal_id,i.origin_instance_id
+            FROM resource_calls r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id)
+            WHERE r.firm_id=$1 AND r.work_id=$2 AND r.target_id=$3 AND r.operation='file.publish'
+                AND i.state='succeeded' AND r.reply IS NOT NULL
+                AND i.input->'input'->'workspace_id'=to_jsonb($4::uuid)
+                AND r.configuration->'namespace_id'=to_jsonb($5::uuid)
+                AND r.configuration->'store_id'=to_jsonb($6::uuid)
+                AND r.configuration->'storage_generation'=to_jsonb($7::uuid)
+            AND ($8::uuid IS NULL OR r.intent_id=$8)
+            ORDER BY (r.reply->'receipt'->>'revision')::bigint DESC,r.intent_id DESC LIMIT 1
+        "#,
+        )
+        .bind(self.firm)
+        .bind(work)
+        .bind(&target)
+        .bind(id)
+        .bind(namespace)
+        .bind(store)
+        .bind(generation)
+        .bind(publication)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let latest = if let Some(record) = confirmed {
+            let intent: Uuid = record.get("intent_id");
+            let input: Value = record.get("input");
+            let revision = input["input"]["expected_revision"]
+                .as_i64()
+                .filter(|v| *v >= 0)
+                .and_then(|v| v.checked_add(1))
+                .ok_or(Error::Unavailable)?;
+            // Validate historical evidence too; a succeeded label alone is not a publication proof.
+            let reply: ouroboros_contracts::ResourceReply =
+                serde_json::from_value(record.get("reply")).map_err(|_| Error::Unavailable)?;
+            if !(200..300).contains(&reply.status)
+                || reply.content_type != "application/json"
+                || serde_json::from_str::<Value>(&reply.body).map_err(|_| Error::Unavailable)?
+                    != json!({"intent_id":intent,"revision":revision})
+                || reply.receipt
+                    != json!({"source":"catalog","publication_receipt":intent,"revision":revision})
+            {
+                return Err(Error::Unavailable);
+            }
+            let manifest = input["input"]["files"]
+                .as_object()
+                .ok_or(Error::Unavailable)?;
+            let mut files = Vec::new();
+            for (path, upload) in manifest.iter().take(128) {
+                let upload = upload
+                    .as_str()
+                    .and_then(|value| Uuid::parse_str(value).ok())
+                    .ok_or(Error::Unavailable)?;
+                if path.is_empty()
+                    || path.len() > 1024
+                    || path.contains(['\\', '\0'])
+                    || path
+                        .split('/')
+                        .any(|part| part.is_empty() || part == "." || part == "..")
+                {
+                    return Err(Error::Unavailable);
+                }
+                files.push(
+                    json!({"workspace_id":id,"revision":revision,"path":path,"upload_id":upload,
+                    "work_id":work,"target_id":target}),
+                );
+            }
+            let retirement: Value = sqlx::query_scalar(r#"
+                SELECT jsonb_build_object('confirmed',COALESCE(bool_or(i.state='succeeded'),false),
+                    'pending',COALESCE(bool_or(i.state<>'succeeded'),false))
+                FROM resource_retirements r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id)
+                WHERE r.firm_id=$1 AND r.work_id=$2 AND r.target_id=$3 AND r.namespace_id=$4
+                    AND r.kind='revision' AND r.material_id=$5 AND r.material_revision=$6 AND r.source_intent_id=$7
+            "#).bind(self.firm).bind(work).bind(&target).bind(namespace).bind(id).bind(revision).bind(intent)
+                .fetch_one(&mut **tx).await?;
+            let retirement_state = if retirement["confirmed"] == true {
+                "confirmed"
+            } else if retirement["pending"] == true {
+                "pending"
+            } else {
+                "none_recorded"
+            };
+            json!({"intent_id":intent,"revision":revision,"confirmed_at":record.get::<Option<String>,_>("confirmed_at"),
+                "author_principal_id":record.get::<Uuid,_>("principal_id"),"origin_instance_id":record.get::<Option<Uuid>,_>("origin_instance_id"),
+                "files":files,"file_count":manifest.len(),"files_complete":manifest.len()<=128,"retirement_state":retirement_state})
+        } else {
+            Value::Null
+        };
+        let mut pending: Vec<Value> = sqlx::query_scalar(
+            r#"
+            SELECT jsonb_build_object('intent_id',r.intent_id,'state',i.state,
+                'expected_revision',i.input->'input'->'expected_revision','created_at',i.created_at)
+            FROM resource_calls r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id)
+            WHERE r.firm_id=$1 AND r.work_id=$2 AND r.target_id=$3 AND r.operation='file.publish'
+                AND i.state<>'succeeded' AND i.input->'input'->'workspace_id'=to_jsonb($4::uuid)
+                AND r.configuration->'namespace_id'=to_jsonb($5::uuid)
+                AND r.configuration->'store_id'=to_jsonb($6::uuid)
+                AND r.configuration->'storage_generation'=to_jsonb($7::uuid)
+            ORDER BY i.created_at,r.intent_id LIMIT 21
+        "#,
+        )
+        .bind(self.firm)
+        .bind(work)
+        .bind(&target)
+        .bind(id)
+        .bind(namespace)
+        .bind(store)
+        .bind(generation)
+        .fetch_all(&mut **tx)
+        .await?;
+        let has_pending = !pending.is_empty();
+        let more = pending.len() > 20;
+        pending.truncate(20);
+        Ok(
+            json!({"source":"core_publication_records","observed_at":firm.get::<String,_>("observed_at"),
+            "authority_revision":firm.get::<i64,_>("revision"),
+            "initial_revision":if workspace.get::<String,_>("state")=="reserved" {None} else {Some(0)},
+            "latest_confirmed_publication":if publication.is_none() {latest.clone()} else {Value::Null},
+            "confirmed_publication":latest,"requested_publication":publication,"has_pending_publication":has_pending,
+            "pending_publications":pending,"pending_has_more":more}),
+        )
     }
 }
