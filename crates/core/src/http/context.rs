@@ -43,6 +43,7 @@ pub(super) fn caller(app: &App, peer: Peer, h: &HeaderMap) -> Result<Actor, Fail
     if h.contains_key("x-ouro-bridge-peer") {
         if h.contains_key("x-ouro-client-fingerprint")
             || h.get_all("x-ouro-bridge-peer").iter().count() != 1
+            || h.contains_key(ouroboros_contracts::OWNER_BINDING_HEADER)
         {
             return Err(Failure(Error::Denied));
         }
@@ -61,9 +62,23 @@ pub(super) fn caller(app: &App, peer: Peer, h: &HeaderMap) -> Result<Actor, Fail
     if f.len() != 64 || !f.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(Failure(Error::Denied));
     }
-    Ok(Actor::Human(Caller {
+    let caller = Caller {
         fingerprint: f.into(),
-    }))
+    };
+    let name = ouroboros_contracts::OWNER_BINDING_HEADER;
+    if h.get_all(name).iter().count() > 1 {
+        return Err(Failure(Error::Invalid));
+    }
+    if let Some(value) = h.get(name) {
+        if value.as_bytes().len() > 1024 {
+            return Err(Failure(Error::Invalid));
+        }
+        let binding =
+            serde_json::from_slice(value.as_bytes()).map_err(|_| Failure(Error::Invalid))?;
+        Ok(Actor::BoundHuman(caller, binding))
+    } else {
+        Ok(Actor::Human(caller))
+    }
 }
 pub(super) fn key(h: &HeaderMap) -> Result<&str, Failure> {
     h.get("idempotency-key")

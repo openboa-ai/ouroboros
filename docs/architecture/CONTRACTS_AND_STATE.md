@@ -39,6 +39,487 @@ explicit predecessor reference. It does not overwrite the predecessor's attempts
 Uncertain provisioning must be reconciled before another start could duplicate that resource;
 requesting a successor is not a workaround for a create response whose outcome is unknown.
 
+## Company Hosts and Business Services
+
+The Company boundary covers both presentation and runtime behavior. The product supplies generic
+**Company UI Host** and **Company Service Host** responsibilities over existing native client,
+Gateway, Core, Runtime and resource contracts. These names introduce no additional authority
+service or execution engine. Company source owns its business UI, services, domain semantics and
+enforcement, and provider adapters; the product owns admission, isolation, current authority,
+custody, exact dispatch binding, observation and revocation.
+
+Each service interface declares versioned named operations, input/result schemas, typed record
+references and required connection/capability bindings. UI, service and adapter packages are
+qualified and selected under their existing use contracts with independent lifetimes. Ordinary
+Company UI, service and adapter packages never receive raw secrets and cannot be loaded as privileged
+Core/Gateway code or into a secret-bearing process. A separately qualified AuthModule may originate
+in private company source, but its protected adoption is a distinct trust promotion, not authority
+inherited from Company authorship, package publication or ordinary adapter acceptance.
+
+For financial connections, protected selection fixes the required Company enforcement service
+and configuration. Its qualification covers semantic limits, account aliasing, concurrent effects,
+post-transformation request checks, bypass attempts and recovery. The protected sender accepts
+only an authenticated validation bound to the exact selected release, active instance, connection/
+account/config revision, intent/attempt and final material request bytes under current authority.
+Changing the bytes requires revalidation. A worker report or package-authored approval field does
+not create this binding. No generic call, raw HTTP/signing path or alternative tool may bypass it.
+
+Company ownership does not allow a strategy agent to mutate the running enforcement release,
+settings or acceptance. Required enforcement failure blocks new dependent effects; monitoring,
+reconciliation, retained evidence and residual duties remain separately scoped. Financial
+functions are unavailable if the selected Company service is absent; the product cannot replace
+them with hard-coded investment logic. Fixed owner observation and execution controls remain.
+
+### Bound Company calls and owner actions
+
+The full service/root-effect binding below remains a target contract. The common owner transport
+now implements `OwnerBinding` with `environment_id`, `firm_id`, `principal_id` and
+`serving_generation`. `/conditions` exposes this authenticated observation. The native client pins
+it once per explicitly selected connection, supplies `x-ouro-owner-binding` on subsequent requests,
+and rejects a changed response rather than adopting it during refresh. Gateway rebuilds human
+identity from mTLS and forwards only the parsed precondition. Core compares it to the authenticated
+principal and firm data inside the same serialized transaction as authorization and admission;
+matching fields grant no authority. Mismatched context returns a conflict before replay or effect.
+Legacy CLI requests may omit this additive precondition; the Mac client requires it. Instance
+calls retain their existing verified Runtime bridge identity and cannot claim an owner binding.
+
+Migration `0033` assigns a durable random environment ID to each firm's data. Core constructs a fresh
+serving generation at startup, preserved by its clones. Reconnecting after restart preserves the
+environment and original request keys, but old UI submissions conflict until explicit reconnection.
+Restoration remains an offline managed lifecycle; cloning/restoring a database behind a still-running
+Core is not a supported restore path. This owner connection contract does not replace physical
+Catalog storage generations, service/package selection, or downstream root-effect restrictions.
+The persisted local request namespace changes from the earlier URL hash to the authenticated ID;
+old local references are retained, never automatically reinterpreted as authority for another store.
+
+The Runtime supervisor also has an additive `RuntimeClaimContext` precondition, read from the
+original execution intent and checked within Core's claim transaction. It pins environment, firm,
+serving generation, authenticated worker, intent, execution and profile. The separate read-only
+claim observation exposes the original assignment and accepted compute return for slot recovery;
+it does not replay an attempt or grant a new allowance. This is execution claim continuity, not the
+Company root/child operation contract below. The initial direct-call implementation now adds the
+operation restrictions described here; complete schema binding and nested service calls remain pending.
+
+### Implemented direct Company operation calls
+
+An adapter submission may carry `service_operation`: one named operation with at most 32 unique
+effect slots. Each slot fixes the resource target, operation, input-byte bound and optional exact
+top-level input values. The target/worker/configuration snapshots are captured with the immutable
+submission, so the existing independent evaluation, bounded acceptance and activation select both
+program material and its operation plan. A declaration does not grant any of those permissions.
+
+`AdapterInvocationRequest.service` supplies the exact operation name and a bounded input object;
+managed MCP exposes the same invocation through `service_input`. Omitting this field cannot run a
+scoped submission as an unrestricted adapter. Core binds the original execution intent to environment,
+firm, activation, submitted program/operation digests and target configuration snapshots. It retains
+the actual caller/work/grant/origin and resolves the executing service principal, instance, generation
+and worker from its admitted execution and Runtime assignment. No caller-context JSON/header is trusted.
+
+A running service sends only `X-Ouro-Effect-Slot` with an ordinary Gateway resource request. Core
+derives the root from the authenticated Runtime instance and admits one immutable child per
+`(root_intent_id, effect_slot)`. Its canonical request key belongs to that root/slot, so changing a
+transport key cannot create another effect. Changed material input conflicts; undeclared slots,
+targets, operations and work/grant substitutions are denied. A child uses the existing one-time
+resource reservation and sole claiming worker/attempt. Current caller and service grants, work
+scope, target configuration and selected adapter are checked again before dispatch and delivery.
+Ordinary caller process exit preserves provenance; authority withdrawal still blocks child use.
+
+Scoped instances may inspect execution metadata, use their declared resource slots and obtain their
+own operation input/plan through `execution_self`. They cannot use ordinary management endpoints to
+start background work, register adapters or invoke another service. Their receipt access is restricted
+to their own children and their exact registered program-input reads. Materialization keeps its
+existing retained-input contract, without granting extra operation slots. The initial slot operations
+are `db.read`, `db.write`, `file.read`, `file.upload`, `file.publish` and `model.responses`.
+Gateway DB routes also accept a registered resource-target selector, retaining the existing default.
+
+Execution observations expose root/binding/actual caller/assignment and child intent/attempt/receipt
+availability metadata. Protected target configurations and root input are excluded from general
+observations. Existing request-key lookup resolves the original execution, including after selection
+is stopped; inspection never re-admits it. A root response or process termination does not settle
+its children. These records are company runtime data in Core, not product source or private Company code.
+
+Direct calls use the existing caller-descended agent delegation. An explicitly registered finite
+continuation can now replace a contained execution while preserving its original root, caller,
+operation and effect slots. `service_continuations` holds immutable authority; `service_restarts`
+holds immutable admission ordinals; `service_execution_roots` maps actual instances back to one root.
+`service_continuation_stops` records exact-current-execution owner stops. Poll timestamps are separate
+mutable observations and cannot reset authority. See the [implemented Runtime continuation contract](RUNTIME.md#implemented-finite-company-call-continuation)
+for endpoints, bounds, termination/return barriers and replay behavior.
+
+Independent service grant trees, nested root/parent plans, desired service availability and qualified
+health, reserved dependency capacity, typed request/result schema qualification and protected
+authentication-module effects remain unimplemented. Binary child response redelivery across instances
+is also withheld; a needed file-read recovery blocks instead of broadening delivery authority.
+Unsupported paths fail closed. The continuation never creates a fresh business root or allowance.
+The following remains the full target contract for those extensions.
+
+### Complete service binding target
+
+The complete `ServiceBindingRef` and Mac Company command DTO remain pending. A `ServiceBindingRef` fixes the actual environment/deployment identity,
+firm, service slot, effective selection revision, package and interface/schema digests, config and
+data-binding revisions. A URL, service name or Company label is not this identity. An `OperationRef`
+adds the declared operation and canonical target record/reference with expected revision.
+The exact binding and original result schema follow admission, attempts, receipts and history.
+
+Native issues an opaque connection handle/generation bound to the authenticated environment, firm,
+principal and authority context. Owner action preparation and submission both require this same
+context and service binding. A changed connection/selection/schema invalidates the draft; neither
+late callbacks nor receipt lookup adopt the new global connection. Private UI can suggest only an
+allowlisted operation reference. The fixed host resolves its schema, canonical inputs and target,
+records the stable request key and draft fingerprint, and accepts submission only from its actual
+owner interaction. Private JavaScript cannot supply confirmation or impersonate owner origin.
+
+Core binds an admitted Company call to its root intent, original effective caller/work/delegation,
+executing service principal/instance/generation, selected binding and operation-specific downstream
+scope. This is server-established context, never an on-behalf-of header from the caller. A downstream
+request must satisfy both current authority chains **and** the effects allowed for that root
+operation. Two broadly privileged actors cannot turn a read operation into a write. Distinct
+background service work needs its own explicitly admitted grant/work, not laundering of the origin.
+
+The root admission permits bounded service processing, not every possible resulting effect.
+Each downstream operation has an attributable child intent. Core atomically binds a unique
+`(root_intent_id, effect_slot)` to that child and its immutable material-input fingerprint when
+admitting it; a nested call also retains its parent. Slots are deterministic within the selected
+operation plan and bounded by that plan's scope/count limits. Restart resolves the original slot;
+different input conflicts, and creating another slot is not a retry. Each child has its own single
+assigned claiming worker and attempt. A service-processing claim cannot be handed to the sender.
+Shared ancestry constrains all child costs; count each actual resource/effect reservation once,
+not again when rolling up the root. Root response availability does not settle its child effects.
+
+### Company preparation and exact external dispatch
+
+Company semantic preparation precedes admission of the actual business effect. It may perform
+separately admitted reads/computation, but cannot write business state, reserve financial exposure
+privately as a substitute for common admission, sign or send. The qualified validator proposes
+canonical target/constraint identities, units and bounded deltas, policy/observation/ledger revisions,
+freshness bounds and the root effect slot. Price-dependent quantities include a qualified
+conservative bound and pending uncertain effects; a snapshot estimate is not a guaranteed ceiling.
+
+Core serializes child binding and all common constraint reservations using the current registered
+versions and constraint rows. Only observations accepted into this enforceable revision boundary
+can serve as preconditions; a Company's unregistered DB revision cannot be atomically checked by
+Core. Company RPC, provider reads and payload transfer never occur while its transaction locks are
+held. A stale proposal conflicts or is recomputed under the same root/slot, not admitted against
+old capacity. Company owns the formulas; Core checks identities, versions and generic constraint
+arithmetic without embedding business semantics. Sender admission cannot precede this step.
+
+Protected selection specifies which exact validator operation may issue a validation for which
+connection and operation family. Ingestion authenticates its actual instance and invocation,
+binds the validation to the admitted child/reservation and stores it immutably. Ordinary service
+JSON, a Company event or an `approved` field cannot be promoted into this record.
+
+The validated request envelope covers method, canonical origin/path/query, material headers/body,
+target/account, config/credential/authentication-profile versions and exact admitted effect.
+Non-secret timestamps/nonces are fixed before final validation with bounded freshness; changing
+them requires revalidation. Only the selected authentication primitive's specified secret/header/
+signature insertion may follow validation. It cannot change the target or material operation.
+Core's final current-authority/selection/reservation check and single-use sender permit consume
+form the dispatch ordering point; they do not make the network send atomic. A later fence stops
+a provably unsent attempt; an ambiguous send/fence race remains in flight and requires reconciliation.
+Exact-envelope binding, application-specific deduplication and effect observation remain distinct.
+
+The proposed read-only `GET /intents/by-request-key` lookup accepts an operation family, original
+request key and, when needed, an origin-context locator. Scope and disclosure rights come from
+authentication and current work access. It never creates an intent or invokes Company code. It
+returns the original intent/input fingerprint, binding/schema and current attributable outcome
+even if that service was replaced or disabled. An absent record is `not observed`, not proof that
+a delayed original request cannot arrive. Any authorized resubmission preserves the same key and
+material input. The ordinary request-key lookup is implemented and its execution reference resolves the direct-call
+metadata above. Complete schema-bound Company action integration remains pending.
+
+## Extensible Connections and Protected Authentication
+
+This is the selected target extension contract. It reuses Core admission/acceptance/activation,
+Gateway mediation, Runtime isolation and Resources custody/transport. It introduces no additional
+authority service, secret registry or execution engine. The fixed Resources credential host accepts
+independently delivered AuthModule packages through a versioned, bounded host ABI. A compatible
+qualified module can be selected without a full product update. Changing the host ABI, isolation,
+custody, authority checks or permitted host operations remains a governed product change.
+
+All ordinary agents and Company programs use named connection operations. This includes Company
+UI, services, adapters, scripts and generated code, regardless of author. They never obtain raw
+credentials, cookies, reusable signed requests/URLs, session tokens or a generic signing/decryption
+capability. Opaque connection/session references are selectors under current authority, not bearer
+grants. AuthModule workers belong to the protected execution profile described below, not this
+ordinary Company execution class.
+
+| Contract | Required identity and contents | Boundary |
+| --- | --- | --- |
+| ConnectionType | Immutable type/revision, named operation and result schemas, canonical resource/account resolution, supported provider capabilities and protocols, compatible Company adapter/validator and AuthModule interfaces, credential/input schemas, destination classes, lifecycle/recovery and session/ingress contracts | Reusable definition; no actual account, secret, activation or caller rights |
+| ConnectionBinding | Firm/environment, canonical provider/account/resource, exact ConnectionType/adapter/validator/AuthModule selections and config revisions, fixed endpoint/recipient bindings, credential references/versions, verified provider capability observations, company operation scope, budgets and current delegation | Applied state selected under Core; a credential or broad provider permission does not enlarge this scope |
+| AuthModule package | Immutable package/digest and host ABI, credential schemas, declared enrollment/authentication/refresh/inbound-verification/capture operations, allowed authentication slots and protected host calls, runtime bounds, result classification, exact verification and provenance | Separately qualified protected code; private source location and authorship confer no trust |
+| Authentication flow | Original root/parent/effect-slot and intent/attempt, flow kind, exact binding/module/credential lineage, initiator or admitted maintenance authority, expected revisions, expiry, state and retained receipt references | Authentication maintenance is distinct from a business effect; neither flow completion nor login retries that effect |
+| Secret-use lease | Exact worker instance/generation, AuthModule digest/selection, connection/account, assigned credential version or external key reference, invocation/attempt, permitted use, deadline and stopping bounds | Internal, non-transferable use authority; no caller-selected key, store enumeration or new grant |
+
+The package's input schema distinguishes secret fields from non-secret metadata. Its independently
+qualified schema and selected flow determine trusted input handling; a live module cannot relabel
+a secret as public. Actual values, refresh state containing secrets and private key material reside
+only in custody or its selected external key backend. Core stores lifecycle metadata, selected
+versions, producer/authority identities and receipt references, never secret values or their hashes.
+Opaque external key references still require the same current, exact-operation use checks.
+
+### Qualification, provider scope and automatic adoption
+
+An agent or person may prepare a ConnectionType, Company adapter or AuthModule in private source.
+Selection of an AuthModule is explicit admission into the secret-bearing trusted computing base.
+Its qualification is separate from ordinary Company execution, even if the bytes share a source
+commit. Required evidence binds module/ABI/runtime/config, credential and operation classes, secret
+input/output handling, permitted recipients, limits, failure/restore behavior and independent
+verifier/acceptor authority. An author cannot be its sole verifier and acceptor. Sandbox isolation
+and recipient allowlists constrain exposure; they do not prove arbitrary secret-handling code
+cannot misuse a value. Unsupported assumptions keep that use unavailable.
+
+Within already valid connection-adoption authority, cost/data bounds and verification conditions,
+private operation can prepare, verify and activate a new connection without a new owner decision.
+This does not exempt it from the applicable independent acceptance or current-state checks. An
+AuthModule may likewise be adopted under a separately valid protected-module delegation and policy;
+ordinary Company execution or connection-adoption authority does not imply that delegation.
+Missing new authority or a required interactive credential/MFA step is surfaced at that boundary,
+not replaced by a synthetic agent approval. Installation and enrollment alone activate nothing.
+
+Provider capabilities and company grants remain distinct. Credentials may permit more than the
+company delegates; effective use is the intersection of observed provider capability, selected
+connection/operation, caller and service authority, required Company validation and common limits.
+Unverified account identity/capability cannot be inferred from credential presence or a successful
+login. Aliases share canonical limits. Revocation or reduction of any applicable scope prevents
+new dependent effects; broader provider access never supplies a fallback.
+
+### Enrollment and independent lifecycle
+
+Credential input uses the fixed trusted host/CLI or a selected authentication flow. Ordinary
+Company forms/scripts never receive it. Interactive enrollment binds flow/nonce, initiating identity,
+connection and expected account, module/schema/config, exact callback/recipient and expiry. A late
+callback cannot select another connection or revive a cancelled flow. A flow records pending input,
+provider exchange, custody committed, binding selected and use observed as separate attributable
+facts; receipt-only recovery never repeats enrollment or business dispatch.
+
+Refresh, rotation and provider-created credential capture retain original flow/attempt identity.
+Serialize refresh by canonical account and credential lineage, not by adapter alias. Apply a new
+version with conditional checks against the expected predecessor, disable/selection epoch and
+confirmed account/scopes. A disabled or replaced flow cannot reactivate a version through a late
+success. Custody receipt and Core selection commit independently: uncertainty preserves the receipt
+and pending state until original-intent reconciliation. A provider may rotate a refresh token even
+when its reply is lost; missing evidence requires recovery or reauthentication, never blind retry
+or a business request resend. A scheduled refresh uses explicit maintenance authority and bounds.
+
+Connection selection, AuthModule selection, credential version, actual worker readiness and active
+sessions have separate revisions/lifetimes. Replacing one checks the required dependency closure;
+it does not silently rebind an in-flight attempt. Restriction closes new leases and permitted host
+uses, then observes worker/session containment and unresolved effects. Already disclosed plaintext
+cannot be recalled by a metadata update. Recovery may read original receipts under scoped current
+authority without renewing the original dispatch lease. Provider-side revocation is a separately
+observed operation, not implied by local disable or worker termination.
+
+### Credential renewal and structural selection epochs
+
+Separate three version axes: structural selection (account/issuer/scope, operation/config/schema,
+adapter/AuthModule/ABI and dependency meanings), credential-material epoch (versions inside one
+qualified lineage), and restriction epoch (current grant, disable/revocation and permitted use).
+A routine token refresh within the same verified structure/scope advances only the credential epoch
+by predecessor CAS and current restriction checks. It does not reselect/reload Company UI/services,
+invalidate an otherwise unchanged owner draft or repeat independent package qualification.
+A changed account, scope, module, schema or authentication behavior is a structural change.
+
+Every admitted authentication/dispatch attempt pins its actual credential epoch and immutable
+envelope. Dispatched or uncertain attempts keep the original version and recovery identity; a new
+token must never be substituted into that attempt. Only a durably proven unsent/cancelled-before-send
+attempt, established by the owning serialized claim/transport state rather than a module report or
+absence of a receipt, may continue the same business intent/child slot through separately recorded
+authentication preparation and final validation for a fresh attempt. Existing cost/authority bounds
+still apply, and the predecessor cannot later dispatch. This is not replay of a possibly sent effect.
+
+Overlapping token validity and continuation of established sessions require the selected provider/
+profile's explicit, bounded qualification and current credential eligibility. Never infer overlap
+from local expiry metadata alone. Without that evidence, dependent unsent use waits for renewal or
+re-authentication; effects already sent stay under observation. Restriction/compromise/structural
+replacement fences the affected leases/channels immediately through the existing applied-fence
+contract. Ordinary refresh performs its qualified per-lease cleanup; it does not inherently kill
+all workers/sessions or require full binding-set replacement. Material credential-schema or
+permission changes still follow the joint selection/recovery barrier.
+
+### Authentication slots, leases and continuing traffic
+
+The admitted final envelope also fixes the AuthModule/ABI and authentication profile revision.
+Secret-bearing authentication slots are defined by the selected profile: exact field locations,
+encoding/size and recipient, derivation/verification conditions, and response handling. A slot
+cannot change the canonical target, method or business parameters, add another request, redirect a
+recipient or return credentials to ordinary code. Non-secret material values are fixed before
+validation. Private code cannot request arbitrary signatures; the fixed host retains and sends the
+authenticated request under the original single-use child permit. A protocol needing additional
+handshake/token messages declares those bounded authentication effects separately.
+
+Only the custody/key owner issues an exact-version lease to the selected protected worker. The
+worker receives neither custody master/unlocking keys nor general store/database access or a list
+of secrets. Where plaintext is unavoidable, only that trusted worker receives the leased value for
+bounded use; for an external KMS/key store the fixed host mediates only the selected key operation.
+No module-controlled socket, unrestricted key operation, detached secret user or general shell
+bypasses host egress and receipt handling. Lease expiry/selection change denies further use;
+completion records lease closure and actual worker cleanup separately from external settlement.
+
+A session/subscription binds connection/account, module/credential selections, caller/service or
+explicit standing-service authority, generation, lifetime, scope and aggregate bounds. Its opening
+handshake is not permission for later arbitrary frames. Each new business effect keeps its own
+root/child identity, validation and one-use send; admitted observation traffic retains delivery
+checks, quotas, sequence/cursor and gap handling. Reconnect, reauthentication and transport fallback
+never resubmit an uncertain effect. Continuing a session after its initiating work ends requires
+explicitly admitted continuing authority, not a silent switch to the service's broader rights.
+
+Inbound authentication proves a registered provider/connection origin, not a company caller grant.
+Fixed ingress chooses the admitted verifier and bounded raw-message representation; public input
+cannot choose a credential or validator. Verified events enter a scoped durable inbox with provider/
+account event identity, payload fingerprint and replay/freshness checks before acknowledgement.
+ConnectionType defines the provider event identifier's actual uniqueness namespace. Connection
+aliases and transport/subscription generations are delivery provenance, not new event identities.
+The same canonical event delivered through old/new subscriptions produces one event and separately
+attributable deliveries. If IDs are only subscription-local, the qualified contract must map a
+stable logical event/stream or retain the limitation and reconcile before a repeated downstream
+effect; no universal deduplication is asserted. Duplicates reuse the original event and conflicting
+payloads/gaps remain visible. Any resulting wake or action
+uses its own current internal authority and bound effect slots. Generated credentials are captured
+inside the protected host/custody path before any ordinary result or event is released. Detailed
+execution and recovery requirements belong to
+[Resources](RESOURCE_SERVICES.md#protected-authentication-modules).
+
+## Company Source, Package, Verification and Selected Use
+
+[Integrated System Design](SYSTEM_DESIGN.md) owns the connected development/app/operation picture.
+This section defines the shared meanings for its target external contracts; fields below are
+required information, not implemented endpoint or schema declarations. Existing Core/Runtime/
+resource records remain the owners of admission, acceptance and actual effects.
+
+Product and private company source target one maintained trunk, `main`. A source commit identifies
+code, not current operating state. Isolated working copies, current-base verification and conditional
+main admission prevent concurrent overwrite without requiring a company dev/feature branch. Existing
+product repository enforcement remains in force; the design does not authorize its bypass.
+
+| Concept | Required identity / owner |
+| --- | --- |
+| Package | Immutable kind/ID, source commit/tree digest, dependency lock/build/runtime/SDK identity, entrypoints/assets, configuration/data schemas, requested capabilities and build provenance; company artifact custody |
+| Verification | Exact package and tested profile/platform/config scope, evaluator/policy/oracle revision, fixture/input and retained result references, verifier identity, independence basis and all outcomes including NOT RUN; applicable evaluation contract |
+| Deployment / selected use | Exact package + target company/environment/slot + config/data-binding revisions + applicable verification/acceptance + current delegation/profile + expected prior selection + stable request/previous release + actual application observations; owning protected admission/activation contract |
+
+Package content omits actual company/account/environment/credential bindings. Private namespace,
+current grants and custody still control disclosure and reuse. Target bindings are independently
+validated; declarations of requested capabilities never create rights. Package compatibility or a
+test on synthetic bindings does not qualify different material settings, a new real account or
+another runtime. Evidence is exact-content-and-use specific. A candidate's own report/tests are not
+its independent acceptance, and changing the candidate cannot edit the protected test oracle.
+
+Keep source admission, content publication, applicable acceptance, selected use and actual readiness
+separate. Company UI requires a protected selection in addition to valid content; editable profile/
+composition JSON alone cannot establish that selection. Bounded jobs use execution admission;
+continuing services/adapters use their existing candidate/evaluation/acceptance/activation contract.
+Local experiments under existing execution conditions need no per-file release approval. Do not
+create a universal artifact-approval service or a mandatory human gate for routine authorized work.
+
+### Compatible selection and schema transitions
+
+Independent package lifetimes do not permit arbitrary version combinations. A selected binding set
+records exact UI/service/adapter/AuthModule digests, interface/config/data-schema requirements, applicable
+joint verification and expected revisions of every affected dependency. A selection change compares
+that dependency closure, not just its own slot. Required atomic combinations use one protected
+binding-set revision; permitted rolling changes require evidence for each intermediate combination.
+This is a constraint on existing selection records, not an additional deployment service.
+
+Candidate preparation, observed readiness, effective/callable selection and retirement are distinct.
+Preparation has bounded test/readiness authority and no production business effects. Readiness is
+bound to actual instance generation, release, config/schema and required handover evidence. After
+checking all current preconditions, Core commits the effective selection. Physical startup and UI
+mounting remain separate observations. Required UI packages must all be ready before switching
+handles; optional contributions may fail independently only if the selected composition declares
+them optional. A failed candidate preserves the still-authorized prior selection. A revoked old
+selection closes. Old holds survive until in-flight duties and recovery requirements are resolved.
+
+A data/schema migration uses a protected barrier associated with affected binding sets and the
+original migration intent. Drain/fence incompatible writers before the DB-side change. The DB
+schema identity/epoch and migration receipt commit together; lost acknowledgement leaves the
+barrier unresolved. New effective selection and rollback require the observed completed schema
+epoch and matching barrier/selection revision. Core and DB are not one transaction. Writers and
+new claims remain restricted until that cross-store outcome is reconciled; startup cannot infer
+compatibility from a schema check made before migration or from the latest package name.
+
+A selected use preserves its full input fingerprint and prior expected selection; concurrent changes
+conflict rather than silently replace the winner. Reconcile a lost result by original intent before
+any retry. Establish acknowledged retention holds before committing cross-store dependencies on
+packages/evidence/recovery inputs. Preserve a valid old selection after candidate rejection, but
+fence it when its actual authority expires or is revoked. A restored old package is a new selection
+under current permission/schema conditions, not reversal of database state or external effects.
+
+## Exact Artifact References and Projections
+
+A durable client reference identifies current environment/company scope, workspace, exact revision,
+path and content digest verified through the Catalog. Storage binding and blob generation remain
+file-service identities for retention/deletion. A reference is not a bearer grant; Gateway-mediated reads, exports/saves, previews and
+conversation/notification link resolution recheck current authorized access. Already delivered
+local bytes can be read under their admitted local conditions without another network call;
+revocation does not prove an exported copy was remotely recalled or deleted.
+Do not discard these fields when passing through application detail/navigation or a room message.
+
+Creating principal/work/execution, publishing principal/receipt and evaluating principal are distinct
+provenance. A logical document or multi-file package records explicit version lineage and exact
+manifest entries; basename equality or rename does not infer lineage. References used in judgments,
+tests and conversations never resolve through a future latest manifest. Historical discovery needs
+current-scope cursor/coverage, denied/missing/retired distinctions and explicit partial observations.
+
+Artifact metadata describes content and relations; it does not replace the protected decisions it
+references. Display storage/publication, evaluation, use and retention/disposal as independent axes.
+A report has no mandatory activation stage. Uploaded bytes are not a published report, published
+code is not an accepted release, and an active release is not proof of observed economic benefit.
+Deleting a latest-manifest entry or hiding a UI row neither retires every reference nor proves bytes
+were removed. The artifact-use and storage-lifetime contracts below own the actual transitions.
+
+### Cross-store retained dependencies
+
+A discoverable link and a promised durable dependency are different. DB result evidence,
+retained conversation attachments, admitted execution inputs, selected packages and recovery
+records declare which exact artifacts must remain available. Before committing such a dependency,
+its owner obtains a Catalog acknowledgement bound to owner kind/ID/revision, artifact and physical
+object generation, retention reason, stable request key and hold ID. The owner's transaction
+stores that acknowledgement with the reference; the hold grants no additional read permission.
+
+Retain/release/cancel requests have durable, idempotent outcomes. An uncertain retain is looked up
+before owner commit or abandonment. Cancelling an uncommitted owner intent must leave a fence
+against a late retain; any acknowledged orphan is reconciled to that same owner intent. Absence
+of a callback or process exit cannot release a committed hold. Releasing execution input holds
+requires reconciled end-of-use plus continuing evidence/recovery duties, not simply termination.
+These owner-specific holds extend the existing Catalog protocol; current upload/revision holds
+and execution-input fences do not yet implement the general cross-store dependency contract.
+
+Owner commit and cancellation compare the same owner-intent revision in its authoritative store.
+If cancellation wins, a delayed commit cannot reuse a previously received hold acknowledgement.
+Catalog release requires the durable cancelled/ended owner outcome; if commit wins, abandonment
+cannot release its hold. The stores remain separate, with conservative retention on uncertainty.
+
+### Company results, projections and primary references
+
+Protected sender observations retain transport/provider evidence before dependent completion.
+Company interpretation of that evidence and its business records commit with a replayable local
+receipt/outbox entry. A result commits before transmission; a crash before acknowledgement is
+recovered by replay under the original producer/event and intent identities. Interpretation is
+attributed to Company and cannot upgrade an HTTP receipt into a confirmed business outcome.
+
+The observation owner validates the registered producer or scoped reconciler, original service
+binding, root/child/attempt and result schema. Accepted event identity is deduplicated with its
+source stream/generation; acknowledgement follows durable ingestion, not message arrival. Replaced
+services can have outstanding receipts ingested through original-identity reconciliation without
+regaining dispatch authority. Protected control state cannot be authored through this Company feed.
+
+Projection change and committed watermark share the owning projection transaction. A view over
+multiple stores reports each source's coverage/freshness and gaps; it does not assert a global
+transaction. Cursor scope includes filter/access context and interface/projection generation.
+An incompatible selection/schema change requires a gap/reset and fresh authorized snapshot;
+retained old results keep their original decoder/schema. No UI response fabricates a server event.
+
+Messages, Company records and notifications carry a typed **primary reference**, with related
+execution/work/intent references separately listed. A primary reference fixes namespace, record
+kind/ID/version and service/schema binding where applicable. Files use their exact artifact
+reference. The current text-only message body is not that structured-reference API. Notification
+categories support filtering/counts, never override the primary destination. Resolvers query the
+original record with current access instead of searching only the loaded/latest list. Redacted
+notification metadata may expose an opaque publication intent while file names/content are
+resolved only after their separate namespace access check. A declared creator is labelled as a
+claim unless attributable creation evidence exists; the authenticated publisher remains separate.
+
 ## Artifact Use and Allocated Space
 
 An artifact is attributable content: code, data, a report, a prompt/skill, a build output or a
@@ -432,6 +913,91 @@ the departed actor's token and cannot originate new trading or resource creation
 recovery privilege. Already authorized containment and investigation remain distinct from new
 economic decisions, which belong to private operation within its mandate.
 
+## Company Agent Identity and Membership
+
+A company agent is a continuing logical agent principal, not a display name attached to each
+model invocation. Core owns the verified principal and current bindings/delegation. Private operation
+maintains a versioned company profile for that principal: readable name, stable visual identity,
+purpose/specialty description, and references to attributable work and knowledge. These descriptive
+records neither register their own authenticated identity nor grant permissions. The profile remains
+company data accessed through Gateway; it is not a new protected agent service or an app-local registry.
+The connection resolves the authorized company/member profile independently of Company UI package
+or composition selection. Missing/broken UI configuration cannot block basic identity, observation
+or control. A profile rename preserves principals, assignments and historical attribution.
+
+| Distinction | Required meaning |
+| --- | --- |
+| Company member | One continuing logical agent principal with its own attributable profile and history. Separately assigned members require distinct verified agent identities; native helper names alone are not additional members. |
+| Responsibility/role | The work or role currently assigned to a member, including assignment revision and applicable delegation. A title such as CEO is neither the member's identity nor authority by itself. |
+| Execution/instance/session | A bounded admitted attempt, actual Runtime instance and replaceable provider context. A model or session replacement does not create a new member or discard past duties. |
+| Contribution and knowledge | Work, decisions, artifacts, messages, receipts and retained knowledge references keep original principal, assignment and execution attribution. Company custody and current access remain separate from authorship. |
+| Collaboration | Actual parent/child work, assignments, addressed messages and result references establish who asked whom to do what. No inferred organization edges or shared ambient account authority are created from a group label. |
+
+The default company roster groups by stable principal, with current assignment, actual execution,
+last observation and pending obligations linked from their owners. Profile name/avatar revisions
+cannot merge two principals or rewrite historical authorship. Old records retain their recorded
+profile reference when available; missing historical labels are explicit, not reconstructed from
+today's profile as if unchanged. Registered but idle members remain distinguishable from running,
+unassigned, restricted, handing-over, retired and unobserved states. These are composed observations,
+not another global lifecycle enum. Activity requires evidence from the relevant execution records.
+
+Private operation may reuse members, propose specialists and delegate work under current authority;
+the initial company need not contain a fictional complete staff. Registration, assignment, activation,
+delegation and execution retain their existing owning control contracts and allowed callers. An
+independently admitted member is not created merely by a harness spawning a helper. No new headcount,
+capital allowance or privilege follows from calling something an employee or teammate.
+The initial CEO responsibility coordinates company operation; it is not a mandatory execution gateway
+for every member. Independently admitted specialists can work in parallel within their own scopes.
+The coordinator's single-writer constraint for official operating decisions does not prohibit other
+members from publishing their authorized research, reports or work results.
+
+Routine execution replacement preserves the member and work identity while establishing fresh actual
+bindings under current authority. Transferring work to a different member records outgoing/incoming
+principal, assignment revision, open obligations, retained evidence and accepted handover. Retirement
+keeps the former member's contributions inspectable within retention/access rules; it does not erase
+work or settle effects. A restored memory, copied prompt or company membership cannot inherit another
+member's access or credentials. Shared knowledge is read through explicit resource scopes.
+
+This is required company behavior and an authorized projection design, not a claim that a roster API,
+profile mutation endpoint, or the complete handover implementation already exists. Implement missing
+queries within the existing Core/company-resource/Gateway boundaries. Do not introduce a second
+company identity database in the Mac app or a new scheduling service for a more lifelike screen.
+
+### Staffing by Work Need
+
+Private operation determines staffing from useful work, not from a department template. HR, Finance,
+Researcher or any other title describes an actual assignment; the existence of that category is not
+a reason to instantiate a member. A member may cover multiple responsibilities. Existing members,
+direct work, deterministic tools, temporary workers and continuing specialists are alternatives,
+not a mandatory sequence of evaluations before every delegation.
+
+Separate work when specialization, retained context, useful parallelism or independent checking has
+a credible benefit relative to model/resource use, coordination, duplicated effort and waiting.
+Independence must come from the actual assignment and evidence path, not a second agent name alone.
+A continuing member is useful when the work benefits from a continuing identity and accountability;
+a one-off task can use a bounded execution without creating permanent staff.
+Temporary work still requires an admitted principal, delegation, execution attribution and resource
+limits; omitting a continuing member profile never permits anonymous or ungoverned execution.
+
+Record the concrete need, expected benefit and material allocation in the existing work/decision
+record at a level proportionate to the work. Reuse the existing review condition where useful.
+Do not add a separate hiring proposal, HR review, benchmarking ceremony or owner decision to routine
+delegation already permitted by current authority. A bounded assignment can establish whether a
+promising separation helps; proven improvement is not required before the first attempt. New authority
+or resources beyond the current mandate still follow their existing control contracts.
+
+Assess the arrangement through attributable results, quality, elapsed time, costs and unresolved work;
+retain uncertainty instead of inventing a universal efficiency score. Reuse successful specialization
+where useful, combine overlapping responsibilities, stop unnecessary execution, and leave members idle
+or retire them with their history and obligations preserved. Do not generate work merely to keep a
+member busy or treat growing headcount and activity as success. These are ordinary allocation choices,
+not a new staffing scheduler, periodic review job or protected Core planning algorithm.
+
+Company identity, permissions and audit records do not depend on an HR agent. Mandatory financial
+records, balances, reconciliation and business controls belong to their selected Company services and
+do not depend on a Finance agent. Specialists may inspect, explain and act within authorized scopes;
+they do not become the sole source or enforcement mechanism for those facts.
+
 ## Operating Responsibility and Handover
 
 The [initial CEO role](../../ARCHITECTURE.md#initial-private-operation-one-ceo-role) is represented
@@ -823,13 +1389,15 @@ permission to deliver its content. No corresponding model, MCP or arbitrary DB r
 ## External Service Adoption References
 
 These meanings reuse work, artifacts, candidates, activations and delegations. They do not
-require a separate procurement service or one new database table per row.
+require a separate procurement service or one new database table per row. ConnectionType,
+ConnectionBinding and separately qualified AuthModule selections follow the
+[extensible connection contract](#extensible-connections-and-protected-authentication).
 
 | Reference | Meaning and owner | Does not establish |
 | --- | --- | --- |
 | Adoption proposal | Private work/artifact explaining the missing capability, alternatives, expected value, cost, data disclosure, required authority and conditions for retaining or stopping the service. | Technical qualification, permission to spend, authority expansion or provider account access. |
 | Adapter release | Immutable code/dependencies and tool/operation definitions, proposed request mappings, execution requirements and linked verification evidence. Authored internally or elsewhere; accepted and deployed under outer control. | Access to credentials, an active account connection or permission for every caller. |
-| Service connection | Canonical provider/account/environment/resource binding, selected release accepted for the current execution profile, approved operations/configuration and protected credential reference/version when required. | Permission merely from successful login, credential enrollment or service health. |
+| Service connection | ConnectionBinding: canonical provider/account/environment/resource, exact ConnectionType/adapter/validator/AuthModule selections, accepted profiles, approved operations/configuration and protected credential references/versions. | Permission merely from successful login, credential enrollment, module installation or service health. |
 | Usage delegation | Existing principal/work/action/resource authority and shared limits, applied to the connection and its consumers. | Access outside ancestor scope or separate budgets for aliases of the same external account. |
 
 A proposal can reuse an existing connection or release; a release can serve several separately
@@ -1295,11 +1863,12 @@ retirement of obsolete unsent controls remain follow-up work.
 
 ## Direct Conversation and Work Continuity
 
-A direct owner-to-agent conversation is a required interaction contract, beyond management commands
-or telemetry. Its identity belongs to continuing company work and an explicitly assigned logical
-agent; a native session, turn or running instance is only a delivery binding. Messages remain
-available after native session replacement and must not silently route to a different responsible
-agent. This contract does not prescribe a CEO organization or choose an operating model.
+One shared conversation contract supports human-to-agent personal rooms, groups with humans and
+agents, and agent-to-agent rooms. Rooms differ by participants and context, not by messaging engines.
+Conversation identity belongs to continuing company work and logical participants; a native session,
+turn or running instance is only a delivery binding. Messages survive native session replacement and
+must not silently route to a different responsible agent. A coordinating role does not make the CEO
+the required intermediary for every message.
 
 Persist a message identity, authenticated author, conversation/work identity, causal reply reference
 when present, content references, receipt sequence and actual delivery binding. Distinguish stored,
@@ -1320,6 +1889,30 @@ Sending a message alone must not grant execution capacity. The initial implement
 persistent messages, cursor-based reading, delivery acknowledgement and bound native replies to
 API/CLI. A chat window uses that same contract. This section defines required work; the current
 native-control API is not yet this persistent conversation service.
+
+### Unified Rooms and Proactive Messages
+
+Reports, proposals, progress summaries and ordinary discussion are messages in these same rooms.
+Agents may speak first within current participation/work scope; no preceding human prompt, report
+submission record, inbox workflow or mandatory message category is required. Longer material uses
+ordinary artifacts referenced by exact workspace/revision/path. Replies retain original authors and
+message references. A linked protected decision remains owned by the existing control contract.
+
+The observation view separately combines actual work/execution state with readable summaries. A
+summary is a projection or an attributed explanation linked to source messages, work or artifacts,
+with its source time and missing evidence visible. It is not another authoritative company record.
+Follow its references to the original conversation, execution or artifact. Opening the view reads
+retained data without requiring a new model call or generating a new chat message.
+
+Room membership does not grant resource access or execution capacity. Preserve addressed recipients,
+reply relationships and existing bounded delivery/wake contracts; a group message does not wake all
+members or require every member to respond. Use existing request keys and delivery observations on
+reconnect. Unread messages and informational updates do not block otherwise authorized work.
+Actual status, receipts, decisions and stop remain available independently of conversation activity.
+
+The current record/participant APIs below are foundations. A complete room list and Mac UI,
+structured artifact references, read-position display, idle-recipient wake and autonomous group routing
+still require integration. This contract adds no separate report/proposal service or app-owned ledger.
 
 ### Implemented conversation record API
 

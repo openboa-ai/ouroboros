@@ -1,0 +1,15 @@
+{
+  "lucide-static": {
+    "license": "ISC",
+    "version": "1.30.0"
+  },
+  "martian-grotesk": {
+    "license": "OFL-1.1",
+    "sha256": "f81807163c34ff754e6d915b0b59f76cca88332b67c45cfc7453ace5751ae912"
+  },
+  "mona-sans": {
+    "license": "OFL-1.1",
+    "sha256": "46d24188a737c26849f9e4b212a4fcb87391dcc59f4c1a898295b6fa6c10c9c3",
+    "version": "v4"
+  }
+}

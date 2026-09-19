@@ -38,6 +38,7 @@ from tests.support.native_image_identity import CLI_LABEL, MATERIALIZER_LABEL, P
 from tests.support.native_kernel_contract import TEST_NAME, verify_manifest as verify_kernel_manifest
 from tests.support.native_scenarios import SCENARIOS, catalogue, select_scenario
 from tests.support.native_suite_environment import CODEX_VERSION, child_environment, docker, load_environment, preflight
+from tests.support.volatile_credentials import publish_retained, release_retained
 
 # Export only known result and boundary receipts, not configuration, keys, HTTP
 # request logs or arbitrary files that a fixture workload might create.
@@ -284,6 +285,11 @@ class NativeRun:
         self.created = True
         self.container_baseline = self.containers()
         self.root.chmod(0o755)  # only the explicitly dropped PostgreSQL uid traverses this parent
+        # Qualify the memory-file ABI before launching dependent native fixtures.
+        # A separate command retains protected diagnostics and source locations on failure.
+        self.command([sys.executable, self.environment['source_root'] / 'tests/support/volatile_credentials.py',
+                      self.root], 'volatile-credentials', timeout=15)
+        write_json(self.root / 'volatile-credentials.json', {'binding': 'PASS', 'cleanup': 'PASS'})
         self.deployment.mkdir(mode=0o755)
         self.deployment.chmod(0o755)
         self.pg_home.mkdir(mode=0o700)
@@ -343,13 +349,10 @@ class NativeRun:
             raise ValueError('native image binaries do not match their recorded build identities')
         password = secrets.token_hex(24)
         password_file = self.pg_home / 'initial-password'
-        password_file.write_text(password)
-        password_file.chmod(0o400)
-        os.chown(password_file, self.environment['postgres_uid'], self.environment['postgres_gid'])
+        publish_retained(password_file, password, self.environment['postgres_uid'], self.environment['postgres_gid'])
         self.command([self.environment['pg_bin'] / 'initdb', '-D', self.data, '--username=fixture_owner',
                       '--auth-local=scram-sha-256', '--auth-host=scram-sha-256',
                       '--pwfile', password_file, '--no-locale'], 'initdb', postgres=True)
-        password_file.unlink()
         self.pg_port = free_ports(['database'])['database']
         pg_socket = self.pg_home / 'socket'
         pg_socket.mkdir(mode=0o700)
@@ -361,8 +364,7 @@ class NativeRun:
                          "shared_buffers='32MB'\nmax_connections=40\nfsync=on\nsynchronous_commit=on\nfull_page_writes=on\n")
         self.start_database()
         admin = self.root / 'admin.url'
-        admin.write_text(f'postgresql://fixture_owner:{password}@127.0.0.1:{self.pg_port}/postgres?sslmode=disable\n')
-        admin.chmod(0o600)
+        publish_retained(admin, f'postgresql://fixture_owner:{password}@127.0.0.1:{self.pg_port}/postgres?sslmode=disable\n')
         ports = free_ports(['core', 'gateway', 'company', 'catalog', 'fixture'])
         ports['bridge'] = 18080
         write_json(self.config_file, {
@@ -390,6 +392,8 @@ class NativeRun:
                   'program': 'test-connected-program-guest.py'}.get(self.scenario.driver, 'test-connected-native-guest.py')
         options = {'management': [], 'program': ['--restriction', 'complete']}.get(
             self.scenario.driver, ['--scenario', self.scenario_id])
+        if self.scenario_id == 'native.program-continuation':
+            options += ['--adapter-verification', '--service-continuation']
         self.command([sys.executable, '-B', self.environment['source_root'] / 'tests/integration' / driver,
                       '--config', self.config_file, *options], 'program', timeout=300)
         result_file = self.deployment / 'test/result.json'
@@ -402,6 +406,12 @@ class NativeRun:
             if (result.get('cleanup') != 'complete' or result.get('program_natural_exit') != 'PASS'
                     or result.get('compute_settlement') != 'PASS' or result.get('successful_successor') != 'PASS'):
                 raise RuntimeError('generic program completion, compute replay or current-authority successor proof missing')
+            if self.scenario_id == 'native.program-continuation':
+                continuation = result.get('service_continuation', {})
+                final = continuation.get('final', {})
+                if (continuation.get('result') != 'PASS' or final.get('state') != 'stopped'
+                        or final.get('restarts_used') != 1 or final.get('compute_returned') is not True):
+                    raise RuntimeError('actual Company recovery and owner stop proof missing')
         if self.scenario.driver == 'installation':
             release = json.loads((self.root / 'release.json').read_text())
             install_root = self.deployment / 'test/installation-faults'
@@ -454,13 +464,20 @@ class NativeRun:
                     cleanup['database'] = self.stop_database()
                 except Exception as caught:
                     cleanup['errors'].append({'step': 'postgres_stop', 'type': type(caught).__name__})
+                if isinstance(cleanup['runtime'], dict) and isinstance(cleanup['database'], dict):
+                    try:
+                        cleanup['credentials_released'] = release_retained(self.deployment / 'test') + release_retained(self.root)
+                    except Exception as caught:
+                        cleanup['errors'].append({'step': 'credential_cleanup', 'type': type(caught).__name__})
                 write_json(self.root / 'commands.json', self.commands)
                 write_json(self.root / 'cleanup.json', cleanup)
         status = 'PASS' if error is None and not cleanup['errors'] else 'FAIL'
         from tests.support.ci_report import traceback_locations
         locations = []
         if error and self.created:
-            for path in (self.root / 'program.log',):
+            # Export source locations from preparation failures as well as the fixture;
+            # never include exception messages, command arguments or raw log content.
+            for path in (self.root / 'program.log', self.root / 'volatile-credentials.log'):
                 if path.is_file() and not path.is_symlink():
                     with path.open('rb') as stream:
                         stream.seek(max(0, path.stat().st_size - 262144))

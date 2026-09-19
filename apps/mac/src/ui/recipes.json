@@ -1,0 +1,89 @@
+{
+  "button": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"button\"]"
+    ],
+    "sizes": "Mira default 28 / lg 32; xs not used"
+  },
+  "input": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"input\"]"
+    ],
+    "sizes": "Mira default 28"
+  },
+  "select": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"select-trigger\"]",
+      "[data-slot=\"select-item\"]"
+    ],
+    "sizes": "Mira default 28"
+  },
+  "tabs": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"tabs-trigger\"]"
+    ],
+    "sizes": "Mira list 32"
+  },
+  "navigation": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"sidebar-menu-button\"]"
+    ],
+    "sizes": "Mira original"
+  },
+  "table-header": {
+    "role": "control",
+    "selectors": [
+      "[data-slot=\"table-head\"]"
+    ],
+    "sizes": "Mira original"
+  },
+  "table-value": {
+    "role": "data",
+    "selectors": [
+      "[data-slot=\"table-cell\"]",
+      "[data-slot=\"tabs-content\"]",
+      "[data-slot=\"sheet-content\"]"
+    ]
+  },
+  "metadata": {
+    "role": "meta",
+    "selectors": [
+      "[data-slot=\"badge\"]",
+      "[data-slot=\"tooltip-content\"]",
+      "[data-slot=\"avatar-fallback\"]",
+      "[data-slot=\"chart\"]",
+      "[data-slot=\"chart\"] text",
+      "[data-slot=\"progress-label\"]",
+      "[data-slot=\"progress-value\"]"
+    ]
+  },
+  "panel-title": {
+    "role": "title",
+    "selectors": [
+      "[data-slot=\"sheet-title\"]"
+    ]
+  },
+  "panel-copy": {
+    "role": "body",
+    "selectors": [
+      "[data-slot=\"sheet-description\"]"
+    ]
+  },
+  "card-title": {
+    "role": "section",
+    "selectors": [
+      "[data-slot=\"card-title\"]"
+    ]
+  },
+  "card-copy": {
+    "role": "meta",
+    "selectors": [
+      "[data-slot=\"card-description\"]"
+    ]
+  }
+}

@@ -2,15 +2,23 @@
 use super::docker_backend::{connect_docker, docker_binding};
 pub use super::reconciliation::reconcile;
 use super::reporting::{change, journal, record_return_ack, send_program_observation};
+use super::{
+    claim_journal,
+    worker::{self, Step, WaitPolicy, WorkerPolicy},
+};
 use anyhow::{Context, Result, ensure};
 use bollard::{
     Docker, exec::StartExecResults, models::ExecConfig, query_parameters::CreateContainerOptions,
 };
 use futures_util::StreamExt;
-use ouroboros_contracts::{AllocationClosure, ComputeReturnReceipt, RuntimeBinding, RuntimeTicket};
+use ouroboros_contracts::{
+    AllocationClosure, ComputeReturnReceipt, RUNTIME_CLAIM_HEADER, RuntimeBinding,
+    RuntimeClaimObservation, RuntimeTicket,
+};
 use ouroboros_transport::TlsFiles;
 use serde::Deserialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::Write,
@@ -122,8 +130,19 @@ async fn ready(child: &mut tokio::process::Child, expected: &str) -> Result<()> 
 pub async fn run(cfg: Config) -> Result<()> {
     let stop = super::shutdown::Stop::listen()?;
     let _slot = supervisor_lock(&cfg.evidence_dir)?;
+    recover_pending_claim(&cfg).await?;
     ensure!(
-        run_one(&cfg, Duration::from_secs(30), &stop).await? || stop.requested(),
+        run_one(
+            &cfg,
+            WaitPolicy {
+                idle_timeout: Some(Duration::from_secs(30)),
+                poll_interval: Duration::from_millis(100)
+            },
+            &stop
+        )
+        .await?
+            == Step::Completed
+            || stop.requested(),
         "no admitted execution in bounded wait"
     );
     Ok(())
@@ -132,31 +151,140 @@ pub async fn run(cfg: Config) -> Result<()> {
 /// Own one execution slot across a finite series of independently admitted executions.
 /// An error ends the worker; it never retries an ambiguous claim or invents work.
 pub async fn serve(cfg: Config, max_executions: u16, idle_seconds: u16) -> Result<()> {
+    worker_loop(
+        cfg,
+        WorkerPolicy::Bounded {
+            max_executions,
+            idle_seconds,
+        },
+    )
+    .await
+}
+
+/// The supervisor remains available; every workload still needs a separate current Core admission.
+pub async fn service(cfg: Config, poll_seconds: u16) -> Result<()> {
     ensure!(
-        (1..=100).contains(&max_executions) && (1..=300).contains(&idle_seconds),
-        "invalid worker bounds"
+        cfg.managed_guard.is_some(),
+        "service mode requires an independent managed guard"
     );
-    let _slot = supervisor_lock(&cfg.evidence_dir)?;
+    worker_loop(cfg, WorkerPolicy::Service { poll_seconds }).await
+}
+async fn worker_loop(cfg: Config, policy: WorkerPolicy) -> Result<()> {
     let stop = super::shutdown::Stop::listen()?;
-    let mut completed = 0;
-    while completed < max_executions {
-        if !run_one(&cfg, Duration::from_secs(u64::from(idle_seconds)), &stop).await? {
-            println!(
-                "{}",
-                json!({"worker":if stop.requested() {"stop_requested"} else {"idle_limit_reached"},"completed_executions":completed})
-            );
-            return Ok(());
-        }
-        completed += 1;
+    let _slot = supervisor_lock(&cfg.evidence_dir)?;
+    recover_pending_claim(&cfg).await?;
+    if matches!(policy, WorkerPolicy::Service { .. }) {
+        check_previous_instances(&cfg).await?;
     }
-    println!(
-        "{}",
-        json!({"worker":"execution_limit_reached","completed_executions":completed})
-    );
+    let result = worker::drive(policy, |wait| run_one(&cfg, wait, &stop)).await?;
+    println!("{}", serde_json::to_string(&result)?);
     Ok(())
 }
 
-async fn run_one(cfg: &Config, idle: Duration, stop: &super::shutdown::Stop) -> Result<bool> {
+fn launch_digest(cfg: &Config) -> Result<String> {
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(&json!({
+        "core_url": cfg.core_url, "profile_id": cfg.profile_id,
+        "profile": cfg.profile, "program": cfg.program,
+    }))?)))
+}
+async fn observe_claim(
+    client: &reqwest::Client,
+    base: &str,
+    intent: uuid::Uuid,
+) -> Result<RuntimeClaimObservation> {
+    Ok(client
+        .get(format!("{base}/runtime/claims/{intent}"))
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+pub async fn inspect_claim(cfg: Config, intent: uuid::Uuid) -> Result<()> {
+    let client = ouroboros_transport::client(&cfg.tls)?;
+    let observed = observe_claim(&client, cfg.core_url.trim_end_matches('/'), intent).await?;
+    println!("{}", serde_json::to_string(&observed)?);
+    Ok(())
+}
+pub(super) async fn recover_pending_claim(cfg: &Config) -> Result<()> {
+    let Some(pending) = claim_journal::pending(&cfg.evidence_dir)? else {
+        return Ok(());
+    };
+    ensure!(
+        pending.launch_digest == launch_digest(cfg)?,
+        "pending Runtime claim belongs to a different launch configuration"
+    );
+    let client = ouroboros_transport::client(&cfg.tls)?;
+    let observed = observe_claim(
+        &client,
+        cfg.core_url.trim_end_matches('/'),
+        pending.context.intent_id,
+    )
+    .await?;
+    claim_journal::resolve(&cfg.evidence_dir, &pending, &observed).with_context(|| {
+        format!(
+            "inspect original claim {} before restarting this slot; no replacement was submitted",
+            pending.context.intent_id
+        )
+    })
+}
+/// Qualify pre-service journals too: a missing marker in an older release is not proof of cleanup.
+async fn check_previous_instances(cfg: &Config) -> Result<()> {
+    let client = ouroboros_transport::client(&cfg.tls)?;
+    for entry in std::fs::read_dir(&cfg.evidence_dir)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let Ok(instance) = uuid::Uuid::parse_str(&name) else {
+            continue;
+        };
+        ensure!(
+            entry.file_type()?.is_dir(),
+            "unexpected Runtime instance evidence entry"
+        );
+        let record: serde_json::Value =
+            claim_journal::read_instance(&entry.path().join("intent.json"))?
+                .context("incomplete Runtime instance journal; recovery required")?;
+        let ticket: RuntimeTicket = serde_json::from_value(record["ticket"].clone())?;
+        ensure!(
+            ticket.instance_id == instance
+                && ticket.input.profile_id == cfg.profile_id
+                && record["profile"] == json!(cfg.profile)
+                && record
+                    .get("program_profile")
+                    .unwrap_or(&serde_json::Value::Null)
+                    == &json!(cfg.program),
+            "Runtime instance journal belongs to a different launch configuration"
+        );
+        let observed = observe_claim(
+            &client,
+            cfg.core_url.trim_end_matches('/'),
+            ticket.intent_id,
+        )
+        .await?;
+        ensure!(
+            observed.context.intent_id == ticket.intent_id
+                && observed.context.execution_id == ticket.execution_id
+                && observed.context.profile_id == cfg.profile_id
+                && observed
+                    .claim
+                    .as_ref()
+                    .is_some_and(|claim| claim.instance_id == instance
+                        && claim.generation == ticket.generation
+                        && claim.attempt_id == ticket.attempt_id)
+                && observed.slot_released(),
+            "previous Runtime instance requires reconciliation: {instance}"
+        );
+    }
+    Ok(())
+}
+
+async fn run_one(cfg: &Config, wait: WaitPolicy, stop: &super::shutdown::Stop) -> Result<Step> {
+    if stop.requested() {
+        return Ok(Step::Stopped);
+    }
     ensure!(
         unsafe { libc::geteuid() } == 0,
         "Runtime requires the dedicated trusted Linux supervisor"
@@ -214,13 +342,26 @@ async fn run_one(cfg: &Config, idle: Duration, stop: &super::shutdown::Stop) -> 
     let docker = connect_docker(&backend)?;
     // No image pull, endpoint discovery, backend fallback or image-build capability.
     docker.inspect_image(&cfg.profile.image).await?;
-    let end = tokio::time::Instant::now() + idle;
+    let end = wait
+        .idle_timeout
+        .map(|idle| tokio::time::Instant::now() + idle);
     let intent = loop {
         if stop.requested() {
-            return Ok(false);
+            return Ok(Step::Stopped);
         }
         backend.ready()?;
         gateway.ready()?;
+        if wait.reconciles_services() {
+            // An effectful, explicit reconciliation of existing finite registrations. Response
+            // loss ends this supervisor; the next start reads the same durable root/ordinal.
+            client
+                .post(format!("{base}/runtime/service-continuations/reconcile"))
+                .json(&json!({"profile_id":cfg.profile_id}))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await?
+                .error_for_status()?;
+        }
         let ids: Vec<uuid::Uuid> = client
             .get(format!("{base}/runtime/pending"))
             .query(&[("profile", &cfg.profile_id)])
@@ -233,19 +374,40 @@ async fn run_one(cfg: &Config, idle: Duration, stop: &super::shutdown::Stop) -> 
         if let Some(id) = ids.first() {
             break *id;
         }
-        if tokio::time::Instant::now() >= end {
-            return Ok(false);
+        if end.is_some_and(|end| tokio::time::Instant::now() >= end) {
+            return Ok(Step::Idle);
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::select! {
+            _ = stop.wait() => return Ok(Step::Stopped),
+            _ = tokio::time::sleep(wait.poll_interval) => {},
+        }
     };
     backend.probe().await?;
     gateway.probe().await?;
     if stop.requested() {
-        return Ok(false);
+        return Ok(Step::Stopped);
     }
+    let observed = observe_claim(&client, base, intent).await?;
+    ensure!(
+        observed.context.intent_id == intent
+            && observed.context.profile_id == cfg.profile_id
+            && observed.claim.is_none()
+            && observed.intent_state == "accepted",
+        "pending Runtime claim changed"
+    );
+    if stop.requested() {
+        return Ok(Step::Stopped);
+    }
+    // Persist the exact server context before the first effectful send. No new key after uncertainty.
+    let pending = claim_journal::prepare(&cfg.evidence_dir, observed.context, launch_digest(cfg)?)?;
     // Do not cancel an in-flight claim: a lost response may already own a reservation.
     let ticket: RuntimeTicket = client
         .post(format!("{base}/runtime/claims/{intent}"))
+        .header(
+            RUNTIME_CLAIM_HEADER,
+            serde_json::to_string(&pending.context)?,
+        )
+        .timeout(Duration::from_secs(2))
         .send()
         .await?
         .error_for_status()?
@@ -254,7 +416,9 @@ async fn run_one(cfg: &Config, idle: Duration, stop: &super::shutdown::Stop) -> 
     backend.ready()?;
     gateway.ready()?;
     ensure!(
-        ticket.input.profile_id == cfg.profile_id
+        ticket.intent_id == intent
+            && ticket.execution_id == pending.context.execution_id
+            && ticket.input.profile_id == cfg.profile_id
             && ticket.input.lifetime_seconds > 0
             && ticket.input.lifetime_seconds as u64 <= cfg.profile.lifetime_seconds,
         "admitted profile mismatch"
@@ -339,12 +503,37 @@ async fn run_one(cfg: &Config, idle: Duration, stop: &super::shutdown::Stop) -> 
         }
     }
     ensure!(terminated, "actual termination remains unresolved");
-    outcome?;
+    let observed = observe_claim(&client, base, intent).await?;
+    ensure!(
+        observed
+            .claim
+            .as_ref()
+            .is_some_and(|claim| claim.instance_id == ticket.instance_id
+                && claim.generation == ticket.generation
+                && claim.attempt_id == ticket.attempt_id),
+        "Core claim assignment changed"
+    );
+    claim_journal::resolve(&cfg.evidence_dir, &pending, &observed)?;
+    if worker::reconciled_restriction(&outcome, wait, observed.slot_released()) {
+        // The stopped workload has already lost authority, terminated, and returned its
+        // exact reservation. Keep the service available for separately admitted work.
+        // Other failures remain fatal and retain their original claim/effect evidence.
+        journal(
+            &root,
+            "worker-disposition.json",
+            &json!({
+                "reason":"execution_restricted", "slot_released":true,
+                "work_success_confirmed":false, "effects_settled":false
+            }),
+        )?;
+    } else {
+        outcome?;
+    }
     println!(
         "{}",
         json!({"execution_id":ticket.execution_id,"instance_id":ticket.instance_id,"terminated":true,"effects_settled":false})
     );
-    Ok(true)
+    Ok(Step::Completed)
 }
 async fn execute(
     runtime: (&Config, &super::shutdown::Stop),
@@ -640,12 +829,15 @@ async fn supervise_program(
     loop {
         bindings.0.ready()?;
         bindings.1.ready()?;
-        client
+        let permission = client
             .get(format!("{base}/runtime/executions/{execution}"))
             .timeout(Duration::from_secs(1))
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+        if permission.status() == reqwest::StatusCode::FORBIDDEN {
+            return Err(worker::ExecutionRestricted.into());
+        }
+        permission.error_for_status()?;
         ensure!(
             clock()? < deadline && bridge.try_wait()?.is_none() && guard.is_alive()?,
             "program execution lost its containment lifetime"

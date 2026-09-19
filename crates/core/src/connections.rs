@@ -26,11 +26,34 @@ fn provider_configuration(value: &Value, target: &str) -> Result<(Uuid, u64)> {
         "timeout_ms",
         "max_response_bytes",
     ];
-    if fields.len() != keys.len()
+    let optional = ["chatgpt_account_id", "codex_responses_lite"];
+    if fields.len()
+        != keys.len()
+            + optional
+                .iter()
+                .filter(|key| fields.contains_key(**key))
+                .count()
         || !keys.iter().all(|k| fields.contains_key(*k))
         || value["target"] != target
     {
         return Err(Error::Invalid);
+    }
+    if let Some(lite) = value.get("codex_responses_lite") {
+        let lite = lite.as_bool().ok_or(Error::Invalid)?;
+        if lite && value["chatgpt_account_id"].is_null() {
+            return Err(Error::Invalid);
+        }
+    }
+    if let Some(account) = value.get("chatgpt_account_id").filter(|v| !v.is_null()) {
+        let account = account.as_str().ok_or(Error::Invalid)?;
+        if value["endpoint"] != "https://chatgpt.com/backend-api/codex/responses"
+            || !(1..=128).contains(&account.len())
+            || !account
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        {
+            return Err(Error::Invalid);
+        }
     }
     let endpoint = url::Url::parse(value["endpoint"].as_str().ok_or(Error::Invalid)?)
         .map_err(|_| Error::Invalid)?;
@@ -332,5 +355,78 @@ impl Core {
         let result = candidate(&row);
         tx.commit().await?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn configuration() -> Value {
+        json!({
+            "target":"model-fixture",
+            "endpoint":"https://fixture.invalid/responses",
+            "credential_id":Uuid::from_u128(1),
+            "credential_version":1,
+            "timeout_ms":1000,
+            "max_response_bytes":4096
+        })
+    }
+
+    #[test]
+    fn legacy_provider_configuration_keeps_its_existing_shape() {
+        let mut value = configuration();
+        assert_eq!(
+            provider_configuration(&value, "model-fixture").unwrap(),
+            (Uuid::from_u128(1), 1)
+        );
+        value["chatgpt_account_id"] = Value::Null;
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        value["headers"] = json!({"x-extra":"rejected"});
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+    }
+
+    #[test]
+    fn subscription_configuration_requires_fixed_origin_and_safe_account() {
+        let mut value = configuration();
+        value["chatgpt_account_id"] = json!("account-fixture_123");
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+        value["endpoint"] = json!("https://chatgpt.com/backend-api/codex/responses");
+        assert_eq!(
+            provider_configuration(&value, "model-fixture").unwrap(),
+            (Uuid::from_u128(1), 1)
+        );
+        for account in [
+            json!(""),
+            json!("a\r\nx-extra: value"),
+            json!("a/b"),
+            json!("é"),
+            json!("a".repeat(129)),
+            json!(123),
+        ] {
+            value["chatgpt_account_id"] = account;
+            assert!(provider_configuration(&value, "model-fixture").is_err());
+        }
+        value["chatgpt_account_id"] = json!("a".repeat(128));
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        value["headers"] = json!({"x-extra":"rejected"});
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+    }
+
+    #[test]
+    fn codex_lite_configuration_is_boolean_and_subscription_bound() {
+        let mut value = configuration();
+        value["codex_responses_lite"] = json!(false);
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        value["codex_responses_lite"] = json!(true);
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+        value["chatgpt_account_id"] = json!("account-fixture");
+        assert!(provider_configuration(&value, "model-fixture").is_err());
+        value["endpoint"] = json!("https://chatgpt.com/backend-api/codex/responses");
+        assert!(provider_configuration(&value, "model-fixture").is_ok());
+        for invalid in [Value::Null, json!("true"), json!(1)] {
+            value["codex_responses_lite"] = invalid;
+            assert!(provider_configuration(&value, "model-fixture").is_err());
+        }
     }
 }

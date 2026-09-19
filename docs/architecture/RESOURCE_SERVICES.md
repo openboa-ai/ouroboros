@@ -10,8 +10,10 @@ the resource-specific input, persistence, and recovery behavior behind those pat
 
 ## Ownership and Execution Boundary
 
-Resource Services contain capability handlers and scoped provider adapters. They resolve resource
-meaning, validate capability-specific conditions, execute a Core-issued dispatch claim, and submit
+Resource Services provide common capability handlers, generic Company Service Host integration
+and scoped transport/custody. Business semantics, financial enforcement and exchange adapters are
+selected isolated Company packages, not built-in product domains. Together these paths resolve
+resource meaning, validate required conditions, execute a Core-issued dispatch claim, and submit
 observations. They cannot grant authority, enlarge a reservation, activate their own replacement,
 or decide that a research result justifies more capital. [Control Core](CONTROL_CORE.md) owns those
 protected execution conditions; economic allocation remains private.
@@ -179,10 +181,61 @@ load generated code into a trusted service. No separate artifact-approval platfo
    service data. Request retirement of eligible material through the existing catalog procedure;
    only confirmed disposal changes physical occupancy accounting.
 
+### Company source and release artifacts
+
+The [integrated lifecycle](SYSTEM_DESIGN.md#5-main-only-source-package-verification-and-use) uses
+these existing resource responsibilities. Product and private company main are source records;
+actual repository access, if supplied, needs a scoped repository/credential binding through the
+admitted resource path. No product host checkout or production secret is implicitly mounted into
+private development. A bounded builder consumes exact source/dependency/toolchain inputs inside
+ordinary compute; resource handlers do not execute private build scripts in privileged processes.
+
+Build outputs, reports, datasets, source candidates and verification evidence share Catalog content
+and publication mechanisms. Their proposed uses have different permission/acceptance requirements.
+Code packages are environment-neutral; actual target/config/data bindings belong to the owning
+selected-use record. A package's requested capability names do not authorize dispatch. A source
+push or package publication never silently restarts an admitted execution or activates a service.
+
+Catalog projections retain creator versus publisher, creating work/instance, source/build inputs,
+exact digest/revision and publication receipt, later evaluation/use and retention relationships.
+Historical lookup uses the authorized retained revisions, not just latest-confirmed-publication.
+Logical document lineage is explicit. Deleting a current manifest entry does not remove older
+retained revisions. The file service enforces exact generations, owner/reason holds and collection;
+company code cannot write authoritative receipt/retention metadata as ordinary business data.
+
 An administrator may provide initial spaces and artifacts through the same resource contracts;
 private operation can create further scoped material within actual delegation. Provenance remains
 distinct from permission. Only the CEO's designated official decision scope uses the operating
 assignment writer constraint; worker reports, code and experiments retain their own scoped writers.
+
+### Publication continuity and definite rejection
+
+The target full-manifest contract supports two explicit entry sources: a verified staged upload,
+or an exact retained entry of the expected current workspace revision. Carry-forward verifies
+current source access, path/digest/object generation and an eligible source revision hold, locks
+those identities with the destination CAS, and acquires the new revision's hold before commit.
+It does not revive a retired upload, require uploading identical bytes again, or grant access to
+another workspace. Concurrent retirement/collection cannot slip between source validation and
+the new hold. The current API requires active uploads and does not yet implement carry-forward;
+clients must not label current rejection of a retired upload as a missing/corrupt published file.
+
+A definite Catalog refusal, such as a checked manifest CAS mismatch with no publication, records
+an immutable non-effect receipt bound to the original intent/input and observed condition. Core
+may reconcile that authenticated receipt and settle only its confirmed no-publication obligation,
+allowing a separately keyed corrected publication. A bare error, absent receipt, timeout or
+unknown DB commit is still unresolved and cannot release the barrier. The current implementation
+does not provide this refusal settlement; retain that limitation until its negative cases pass.
+
+Success and definite refusal for one publication intent share the same Catalog serialization
+boundary and unique terminal-outcome identity. Lookup of that outcome precedes re-execution;
+a refused-intent replay cannot later publish, and a completed publication cannot acquire a
+contradictory non-effect receipt. A Catalog-dispatched rejection is not `never_dispatched` and
+does not refund incurred resource-call cost merely because no new revision was created.
+
+DB/conversation/package owners retain dependencies through the acknowledged owner-specific hold
+contract in [cross-store retained dependencies](CONTRACTS_AND_STATE.md#cross-store-retained-dependencies).
+Discovery links alone promise no retention. Retired owner records and execution completion do
+not silently drop evidence/recovery holds or authorize physical collection.
 
 ### Space Allocation and Growth
 
@@ -690,15 +743,17 @@ Pure protocol transformations may share a process. Adapters needing independentl
 or authority require separate credential workers or a demonstrated provider-enforced boundary.
 Workers accept only assigned dispatch claims, possess only scoped target credentials, and submit
 bounded observations. Package separation is not protection against another adapter reading memory.
-Private plugins are never loaded into these workers or given their credential environment.
+Ordinary Company plugins are never loaded into these workers or given their credential environment.
+A separately qualified AuthModule uses its own protected Runtime profile and exact secret-use lease;
+it is not an ordinary Company plugin granted a credential environment.
 
 Observe and redact errors, native payloads, configuration, and exports under the same credential
 rules as successful calls. Necessary restricted originals retain scoped access and provenance;
 ordinary logs and artifacts cannot become an alternate source of usable provider credentials.
 Worker replacement preserves its pending attempts and effects without transferring obsolete grants.
 
-Actions affecting investment authority, capital, exposure, or obligations require the mandatory
-investment enforcement bound at Gateway before provider dispatch. That enforcement resolves actual
+Actions affecting investment authority, capital, exposure, or obligations require the selected
+Company investment enforcement service bound at Gateway before provider dispatch. It resolves actual
 account/resource overlap and applies the current domain conditions; it is not optional connector
 advice. Neither a generic tool nor SQL, shell, HTTP, or another agent can bypass it. Private operation
 still selects the investment work and interprets its economic result within the mandate.
@@ -763,14 +818,22 @@ External services are exposed through outer-managed adapters. Internal agents ca
 need, author the code and propose its adoption; outer management means control of acceptance,
 activation and execution, not exclusive authorship. An adapter translates registered operations
 and interprets permitted responses. Agent-authored logic remains isolated and secretless after
-acceptance. A common trusted execution worker validates the final operation, applies mandatory
-domain controls, adds authentication or signs, and sends to the fixed provider itself. These operations are published as MCP tools
+acceptance. The selected Company service validates the final operation and applies mandatory
+business/domain controls. A common trusted sender verifies its authenticated binding to the
+current release, connection, intent and exact bytes, then adds authentication or signs and sends
+to the fixed provider. The sender contains no investment calculations or Binance-specific
+business translation. These operations are published as MCP tools
 through the shared Gateway. Both a native agent harness and code written by an agent can act as
 MCP clients from the same isolated instance; generated code receives no direct provider credentials
 or alternate network route. Originating delegation and instance identity survive that client change.
 
-The managed path is client -> Gateway MCP surface -> existing Core admission/claim -> isolated
-adapter logic -> common trusted execution worker -> external service. Results return through the same controlled boundary. Gateway
+The managed path is client -> Gateway -> root service-processing admission -> isolated Company
+preparation -> child-effect admission and aggregate reservation -> exact final-envelope validation
+-> single assigned sender claim -> external service. Root/child slots, dual caller/service scope,
+validation issuer and allowed authentication additions follow
+[Company preparation and exact external dispatch](CONTRACTS_AND_STATE.md#company-preparation-and-exact-external-dispatch).
+Company preparation may use separately admitted reads; no business effect occurs under the root
+service claim. Results return through the same controlled boundary. Gateway
 is the client entry and enforcement path; MCP publication does not establish authority. Tool
 discovery is scoped to current access, while every invocation is independently authorized. The
 registered tool/connection binding resolves to a meaningful operation, account, active configuration
@@ -795,7 +858,7 @@ registration, discovery filtering or authenticated provider integration; those r
 
 ## Agent-Led Discovery, Adoption and Operation
 
-The [four adoption references](CONTRACTS_AND_STATE.md#external-service-adoption-references) separate
+The [adoption references](CONTRACTS_AND_STATE.md#external-service-adoption-references) separate
 need, code, connection and authority. The outer system supplies a development contract, controlled
 submission, verification/execution environment, secret custody and managed access. Internal agents
 supply and maintain service-specific logic; the owner is not required to discover APIs or implement
@@ -814,8 +877,9 @@ each integration. These are responsibilities within the existing components, not
    and authorization of its business use remain separate facts even if the UI collects both.
 4. A trusted platform-owned enrollment flow receives an API key or completes official OAuth when
    needed. Values go directly to encrypted custody. The agent receives only bound status/reference
-   metadata. OAuth state/callback and confirmed account must match the intended enrollment; a form,
-   script or MCP tool written by the proposing agent never receives the actual credential.
+   metadata. OAuth state/callback and confirmed account must match the intended enrollment. The
+   fixed host may use a separately qualified AuthModule; ordinary Company UI, scripts and MCP tools
+   never receive the actual credential. AuthModule source authorship cannot supply its qualification.
 5. Independent verification and current authority select the accepted release/configuration. Runtime
    executes that immutable release with its scoped identity; actual readiness precedes publication
    of the managed MCP tools. Technical verification requiring a real account uses only an explicitly
@@ -826,6 +890,12 @@ each integration. These are responsibilities within the existing components, not
    delegation and connection/adapter scope. Private operation evaluates actual value and proposes
    retention, replacement or cessation. Outer services supply usage, cost and outcome evidence and
    apply authorized restrictions; they do not make the economic decision.
+
+Within existing adoption delegation, cost/data bounds and applicable independent verification,
+this flow may add and activate a connection automatically. The owner is needed only for the exact
+missing authority or required interactive input; routine connection preparation is not a new
+approval gate. Protected AuthModule adoption requires its separately scoped qualification and
+selection policy, never authority inferred from an ordinary adapter or CEO role.
 
 Company-provided defaults and internally proposed adapters enter one managed catalog and the
 same submission/acceptance/activation/update/restriction path. The owner can prepare or supply
@@ -858,18 +928,30 @@ response delivery failed, retain the resource and unresolved obligation; do not 
 again. Capturing a newly created secret never independently activates the resulting connection.
 
 Agent-authored adapters use a restricted host-call contract, not direct sockets, a generic
-`send(url, body, secret_ref)` method or arbitrary signing. The trusted sender checks the actual
-post-transformation account/action/material arguments against the admitted operation, then signs
-and sends those exact bytes. A read-only tool label cannot authorize a write or withdrawal on the
+`send(url, body, secret_ref)` method or arbitrary signing. The independently qualified Company
+validation checks post-transformation account/action/material meaning against the admitted operation.
+The trusted sender checks the resulting validation's protected service/connection/intent binding,
+exact bytes and current authority before signing/sending. Mutation after validation is rejected.
+A read-only tool label cannot authorize a write or withdrawal on the
 same host. Provider responses and errors are filtered before returning to extension code, and
 redirects or callback flows cannot move authentication to an unapproved recipient.
 
-Standard request/response mapping can be declarative; custom transformation code runs under
-Runtime isolation. Both satisfy the same accepted contract. New authentication primitives or
-protocols that the trusted sender cannot enforce require a separate platform change and its
-verification. Internal agents may prepare that change too, but ordinary adapter approval cannot
-grant their code entry into the secret-bearing process. No self-authored evaluator or tool
-description is a substitute for externally enforced constraints.
+The Binance draft, archived outside the product checkout during the final cleanup, combined business/protocol transformation with
+`execute(op, secret, timestamp)`, credential parsing, HMAC and direct HTTP. It cannot be moved whole
+into Company. Move Company meanings/parameters/validation; separate credential handling, allowed
+generic authentication primitives and actual networking into the protected sender. Timestamp and
+query changes participate in the final envelope, not merely a body digest. This is a required
+migration split and remains unimplemented, not qualification of the draft financial connector.
+
+Standard request/response mapping can be declarative; ordinary Company transformation code remains
+secretless under Runtime isolation. Authentication mechanisms may be added as independently delivered,
+separately qualified AuthModule packages within the fixed credential host ABI, without a full product
+update. The author may be a person or agent, including private company source, but ordinary adapter
+approval cannot promote that code into protected execution. A new host capability, ABI behavior,
+custody/transport boundary or unenforceable protocol still requires a governed product change.
+No self-authored evaluator or tool description substitutes for the required qualification and
+externally enforced conditions. The precise boundary follows
+[Protected Authentication Modules](#protected-authentication-modules).
 
 The initial proof uses one agent-authored read-only fixture: proposal and submission; refusal
 before acceptance; independently accepted activation; successful authorized calls; wrong-target,
@@ -877,10 +959,180 @@ secret-read, altered-package and broader-operation rejection; and observed restr
 revocation. It proves the adoption mechanism, not profitability or unrestricted provider support.
 General submission, acceptance and secretless extension execution remain NOT RUN.
 
+## Protected Authentication Modules
+
+This target extends existing Resources credential/transport workers, Core selection and Runtime
+profiles. It creates neither another secret manager nor a policy service. Shared record identities
+belong to [Extensible Connections and Protected Authentication](CONTRACTS_AND_STATE.md#extensible-connections-and-protected-authentication).
+The fixed credential host owns protected input, invocation binding, custody mediation, allowed
+egress, result release and receipt retention. It loads no module into Core/Gateway or the custody
+master-key process. Runtime starts each selected AuthModule in its qualified isolated worker.
+Company services and AuthModules may share private source provenance, never an ambient runtime
+identity, memory, credential mount or inherited acceptance.
+
+### Package selection and use-only interface
+
+The host ABI exposes only declared operations for enrollment/challenge completion, request
+authentication, bounded refresh, inbound verification and secret capture. A module cannot turn
+one operation into a general HTTP, shell, key lookup, signing or credential-export endpoint.
+Its immutable manifest fixes supported ConnectionType/credential schemas, entrypoints, permitted
+host operations/authentication slots, receiver classes, runtime bounds and result classification.
+Runtime/ABI, platform and materially different account/config uses require applicable independent
+qualification. Compatible package selection checks dependency and credential-schema revisions,
+actual worker readiness and the expected previous selection. Missing capability leaves the
+connection unavailable; it does not enable fallback plaintext/env injection.
+
+A fixed trusted form/CLI or isolated provider authorization flow collects credentials and required
+interactive challenges. AuthModule supplies qualified schemas and flow results, not arbitrary
+Company JavaScript for reading a secret field. Flow state binds initiating principal, intended
+connection/account, module/schema version, challenge/callback, expiry and cancellation generation.
+Actual secret/challenge material stays inside custody/protected input handling; Core stores only
+flow status and references. Successful provider login does not establish account ownership,
+operation eligibility, Company authority or connection activation without their required checks.
+
+A selected ConnectionBinding records provider capability observations separately from Company
+operation grants. Every use meets both sets of conditions plus root/child caller-service authority,
+required financial validation and common bounds. An API key with withdrawal rights cannot enlarge
+a connection that only permits observations/orders. Unknown provider scope is reported as unknown
+and prevents operations requiring that capability evidence. AuthModule output cannot change these
+classifications, select another account or replace a restricted validator.
+
+### Exact authentication and secret-use closure
+
+For an outbound business operation, use the existing sequence: root service processing, effect-free
+Company preparation, atomic child/effect-slot reservation, final-envelope validation, one assigned
+sender permit and original receipt. The validation covers the selected AuthModule/ABI/authentication
+profile as well as method/origin/path/query/material headers/body and account/credential versions.
+The host compares the supplied operation with this immutable envelope. Only the profile's exact
+authentication slots may change afterwards; the host checks field locations, encoding/size, receiver
+and permitted derivation. Non-secret timestamp/nonce and business fields are fixed beforehand.
+Retries, redirects, login exchanges and extra protocol messages are not authentication-slot edits:
+they require their own explicitly admitted flow/effect identity and bounded host operations.
+
+Custody issues an internal exact-version lease for the selected worker instance/generation,
+AuthModule digest, connection/account and invocation/attempt. It may disclose only that assigned
+value where the qualified mechanism requires plaintext, or mediate the bound external KMS/key
+operation. Neither worker receives the custody database/master key, global decryption authority or
+a list of credentials. KMS references are not bearer signing grants and cannot select another key,
+algorithm/operation scope or recipient. Ordinary Company code cannot call this lease interface.
+
+The worker has no direct provider socket or detached secret-using child. The fixed host performs
+allowed egress and retains authentication outputs internally until the authorized send. A module
+cannot return a reusable token, signature, signed request or session credential to ordinary code.
+Credential/module/connection restriction prevents new leases and subsequent permitted host uses.
+An in-flight send follows the existing fence-race contract; secret disclosure is not reversible.
+Lease expiry or restrictive/structural replacement requires observable cleanup and closure of
+applicable sessions/key access, while receipts and unresolved effects remain retained. Ordinary
+credential renewal follows the separately qualified overlap/cleanup rules in
+[credential renewal epochs](CONTRACTS_AND_STATE.md#credential-renewal-and-structural-selection-epochs);
+it does not automatically replace every dependent UI/service/worker. Failure to observe closure blocks
+conflicting new use; metadata status alone is not proof of memory erasure or external revocation.
+
+Qualification of an AuthModule is a secret-bearing TCB decision. Process isolation, an egress
+allowlist and output schemas are necessary constraints, not a proof that arbitrary code receiving
+a secret cannot leak it through permitted outputs, authentication slots or timing. The accepted
+profile must identify that trust assumption and evaluate actual secret handling, dependencies,
+receivers, errors and protocol behavior. Unknown or incompatible mechanisms remain unsupported
+until the required host/module qualification is available. The extension contract does not
+promise safe support for every credential or arbitrary vendor SDK.
+
+### Refresh, capture and ambiguous authentication effects
+
+Authentication maintenance has its own root/child intent identities, operation scope, budgets and
+original-key recovery. A refresh child is not another attempt of the business operation that
+encountered an authentication error. Serialize refresh by canonical account and credential lineage,
+including aliases, and retain expected predecessor version, disable epoch and connection/module
+selection revisions. New version application is conditional on those current values and confirmed
+provider subject/scopes. A late callback/result after disable or selection change cannot reactivate
+a credential. Scheduled maintenance uses explicit standing authority; a caller failure cannot
+silently promote itself to that authority.
+
+For a rotating refresh token, the provider may have invalidated the old token before a lost reply.
+Keep that outcome unresolved. Retry only when the specific provider contract and current authority
+establish safe original-effect recovery; otherwise require reauthentication. Never automatically
+retry a dispatched or uncertain related model request, order or other business effect. A proven
+unsent attempt may be superseded only under the shared renewal/claim contract, preserving its
+business intent/slot and budget and revalidating the new credential-bound attempt. Interactive MFA remains a bound
+pending input, not a reason to send challenges through Company conversation or copy credentials.
+
+Provider-generated tokens/keys/cookies remain inside the protected response path. The qualified
+capture schema identifies secret fields before logs, streams, errors or ordinary adapter output.
+Custody atomically stores captured versions and the original capture receipt with provider/account,
+type/schema, flow/attempt and expiry metadata. Core receives only permitted references and lifecycle
+status. Secret-free provider facts and actual custody completion are separate receipts; completing
+one does not invent the other or automatically activate a connection.
+
+Custody and Core are separate transactions. A lost selection acknowledgement is reconciled using
+the original capture/enrollment intent, without repeating credential creation or the business
+operation. If the provider effect occurred but capture failed, preserve the resource/obligation and
+attempt identity; bounded provider lookup, disable or reauthentication follows its declared recovery
+contract. Never expose the raw response to Company code as a recovery shortcut. Receipts, attempts
+and capture ownership survive module replacement; a new module cannot claim the old dispatch lease.
+
+### Sessions, streams and inbound authentication
+
+The host owns authenticated connections/sessions. Opening one admits its handshake and bounded
+lifetime, account, module/credential generation, subscriptions, caller/service or explicitly selected
+standing authority, resource obligations and receiver. Ordinary callers receive only a checked host
+reference, never socket access, cookies or session keys. Each subsequent externally effective frame
+uses its own child/effect-slot, current validation and send permit; the original handshake permit
+cannot authorize an arbitrary command stream. Observation streams may use one admitted subscription
+with explicit byte/event/rate/concurrency/time bounds and current delivery checks. Backpressure,
+missing heartbeats, duplicate/gapped sequences and reconnection are visible states, not permission
+for unbounded buffering or a new scope. Reauthentication and fallback never replay uncertain frames.
+Termination closes the applicable session and records actual closure; it does not erase remote
+subscriptions, orders or obligations whose reconciliation still needs current authority.
+
+A public webhook arrives without an internal caller grant. A fixed registered ingress binding selects
+connection/account, allowed AuthModule verifier, raw method/path/query/headers/body representation,
+freshness/replay rules and a bounded observation authority. It enforces request/queue/CPU/byte limits
+before untrusted decoding and never accepts sender-supplied validator/credential/target selectors.
+The protected module returns an authenticated verdict for that exact message and connection, not a
+Company instruction. Signature/certificate validity establishes only the registered external origin.
+
+Commit verified messages to the scoped durable inbox before acknowledgement. Deduplicate by
+the ConnectionType-defined provider/account/event uniqueness namespace and payload fingerprint;
+connection aliases or reconnect/subscription generations are delivery provenance and do not reset
+canonical event identity. Subscription-local ID limitations require the declared reconciliation
+strategy before a repeated downstream effect. Changed payload conflicts, late/out-of-order
+events and gaps retain their original evidence. If a provider has no event identity, its qualified
+contract must supply a bounded replay strategy or leave stronger deduplication claims unavailable.
+Inbox/outbox delivery and accepted observation follow the existing original-identity replay contract.
+A callback cannot restore a revoked grant or directly invoke an order/control operation. Subsequent
+wake or business work is admitted under its internal current authority and linked to the event.
+Webhook credentials and provider session tokens remain in protected custody/transport. Registration,
+disable and provider-side subscription removal are separate operations with separately observed
+results; authenticating one incoming message does not grant a permanent receiver.
+
+Delayed messages signed with a previous key follow a separately qualified verification-only policy:
+explicit key lineage, permitted source/event scope, replay/freshness window, retention expiry and
+current reconciliation authority. Old-key verification cannot issue outbound authentication or
+restore disabled use. Required key material stays under custody retention, never an ordinary
+artifact/evidence hold. A compromised/revoked key's signature alone cannot qualify a current trusted
+event; fresh permitted provider reconciliation is required. When that proof or eligible key is
+unavailable, preserve the gap/unverified delivery without granting a business action.
+
+### Current implementation scope
+
+These AuthModule/ConnectionType/lease/session/ingress contracts are target design, not current
+endpoints or passing integration tests. Existing source provides the following bounded foundation:
+
+| Existing source | Implemented scope | Not established by it |
+| --- | --- | --- |
+| Credential envelope/store and custody worker | AES-GCM owner/credential/version binding, credential payloads bounded to 1–16384 bytes, enrollment and disable records, original-attempt use claims and receipt recovery | Independent AuthModule loading, complete credential-type schemas, external KMS use, OAuth/MFA lifecycle or general lease/worker containment |
+| Fixed Responses provider worker | Deployment-pinned HTTPS/Bearer authentication, exact configured credential version, current Core checks, bounded response handling and original receipt recovery | Arbitrary methods/protocols, a generic signing host, sessions, webhooks or Company financial operation support |
+| Connection/adapter acceptance and activation | Exact candidate/configuration and bounded verification controls; current profiles cap calls/lifetime and report operating_qualification false | General operating qualification or automatic availability of a new AuthModule/provider |
+
+The historical implementation checkpoints below retain their own scope. No synthetic fixture,
+successful secret registration or existing model sender qualifies a different authentication
+mechanism, grants production account access or proves this target flow.
+
 ## Stored secrets and operation-only use
 
 Ouroboros owns a small secret-store interface for provider API keys, API signing secrets, OAuth
-credentials and service passwords. The client contract is an authorized operation on a registered
+credentials and service passwords, including assigned external key references where qualified.
+Its encrypted storage format remains separate from the independently extensible authentication
+mechanisms above. The client contract is an authorized operation on a registered
 connection, not secret retrieval. A registered connection binds the target account, permitted
 operations, assigned worker and current credential reference/version. A private caller cannot
 choose a secret-store locator, insert an upstream credential, select an arbitrary destination or
@@ -892,7 +1144,7 @@ Gateway routes operations; neither Core nor the general routing layer needs prov
 The scoped worker resolves its assigned credential internally, adds authentication or signs the
 exact approved request, sends it itself and returns only the permitted result. A usable token,
 credential, signed URL or reusable signed request is not a result. Credentials are never handed
-to the private harness, plugins, environment, workspace or subagents.
+to an ordinary agent harness, Company plugin/program, environment, workspace or subagent.
 
 | Interface boundary | Allowed operations and responsibility |
 | --- | --- |
@@ -911,7 +1163,8 @@ generic Core intent body. Core instead records the secret-free enrollment outcom
 
 Encryption at rest remains required. The initial store uses an established authenticated-encryption
 implementation and binds ciphertext to its owner, identifier and version. It does not implement
-a new cryptographic algorithm or require a generic multi-algorithm/plugin registry. Keep the
+a new cryptographic algorithm or require a generic multi-algorithm/plugin registry for storage
+encryption. This does not exclude the separately qualified authentication modules above. Keep the
 unlocking material outside the ciphertext store and outside private-readable paths, under the
 separate service/infrastructure identity. Explicit deployment-owned protected input supplies the
 bootstrap access needed before Core and its DB are available; business delegation cannot be its
@@ -925,11 +1178,14 @@ secret lifetime, no raw dumps and sanitized error handling remain necessary. A n
 that can sign without exporting its key may keep that implementation inside the store/worker
 boundary; compatibility with any named vault or key service is not an initial completion criterion.
 
-Rotation validates a pending credential, publishes a new version, and changes the active binding
-under Core control. OAuth refresh is serialized per account and cannot retry model or trading
-requests automatically. A failed refresh disables dependent new use; it cannot select an unrelated
-credential or restore a revoked version. Restore must reconcile current disable/activation state
-before business dispatch. Audits identify versions without recording secret-derived values.
+Rotation validates a pending credential, publishes a new version, and conditionally changes the
+active binding under Core using the expected predecessor and current disable/selection epochs.
+OAuth refresh is serialized per canonical account/credential lineage and cannot retry model or trading
+requests automatically. A failed refresh restricts dependent new use; it cannot select an unrelated
+credential or restore a revoked version. Original-flow receipt recovery and late-result checks follow
+[Refresh, capture and ambiguous authentication effects](#refresh-capture-and-ambiguous-authentication-effects).
+Restore reconciles current disable/activation state before business dispatch. Audits identify
+versions without recording secret-derived values.
 
 The mandatory connector path makes opaque environment-token substitution unnecessary for the
 first implementation. Likewise, a separate all-data encryption platform is not introduced by
@@ -941,13 +1197,15 @@ plaintext/env paths, provider compatibility switches and personal-assistant trus
 do not establish Ouroboros isolation. Source research stays outside Git; this contract does not
 depend on it.
 
-Implementation status: the current product worker still serves model/MCP fixtures, and the
-browser-subscription qualification uses a separate permission-restricted plaintext auth file.
-The previous unintegrated generic protection draft is outside the Cargo workspace. This section
-is a design correction, not a claim of encrypted custody or live operation-only integration.
-Those cases remain NOT RUN. Before live integration, prove with synthetic credentials that
-allowed operations succeed while reveal attempts, wrong accounts/targets, stale versions,
-redirects, response echoes, refresh errors and log/transcript/artifact leakage are blocked.
+Historical checkpoint before the fixed provider/custody wiring below: the product worker served
+model/MCP fixtures, and browser-subscription qualification used a separate permission-restricted
+plaintext auth file. The current bounded scope is summarized above; this earlier checkpoint is not
+a claim that the independently extensible AuthModule host has been implemented.
+The then-unintegrated generic protection draft was outside the Cargo workspace; its NOT RUN
+labels belong to that checkpoint. Later envelope, custody and fixed-provider additions below qualify
+only their stated scope. Independent AuthModule integration still requires evidence that permitted
+operations succeed while reveal attempts, wrong accounts/targets, stale versions, redirects,
+response echoes, refresh errors and log/transcript/artifact leakage are blocked.
 
 ### Credential envelope implementation boundary
 

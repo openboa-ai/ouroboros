@@ -15,11 +15,12 @@ impl Core {
             )
             .await?;
         }
-        let f =
-            sqlx::query("SELECT revision,event_sequence,admission_paused FROM firms WHERE id=$1")
-                .bind(self.firm)
-                .fetch_one(&mut *tx)
-                .await?;
+        let f = sqlx::query(
+            "SELECT revision,event_sequence,admission_paused,environment_id FROM firms WHERE id=$1",
+        )
+        .bind(self.firm)
+        .fetch_one(&mut *tx)
+        .await?;
         let candidates: Vec<Uuid> = if let Some(b) = &ctx.bound {
             vec![b.grant]
         } else {
@@ -60,7 +61,16 @@ impl Core {
                 .bind(self.firm)
                 .fetch_all(&mut *tx)
                 .await?;
-        let mut out = json!({"firm_id":self.firm,"principal_id":ctx.principal,"revision":f.get::<i64,_>("revision"),"cursor":format!("{}:{}:{}",ctx.realm(),f.get::<i64,_>("revision"),f.get::<i64,_>("event_sequence")),"delegations":grants,"profiles":profiles,"limits":limits.iter().map(|r|json!({"id":r.get::<String,_>("id"),"capacity":r.get::<i64,_>("capacity"),"committed":r.get::<i64,_>("committed")})).collect::<Vec<_>>(),"admission_paused":f.get::<bool,_>("admission_paused"),"runtime_ready":false,"unverified":["full_lifecycle","integrated_subscription"]});
+        let binding = ouroboros_contracts::OwnerBinding {
+            environment_id: f.get("environment_id"),
+            firm_id: self.firm,
+            principal_id: ctx.principal,
+            serving_generation: self.serving_generation,
+        };
+        let mut out = json!({"environment_id":binding.environment_id,"firm_id":self.firm,"principal_id":ctx.principal,"revision":f.get::<i64,_>("revision"),"cursor":format!("{}:{}:{}",ctx.realm(),f.get::<i64,_>("revision"),f.get::<i64,_>("event_sequence")),"delegations":grants,"profiles":profiles,"limits":limits.iter().map(|r|json!({"id":r.get::<String,_>("id"),"capacity":r.get::<i64,_>("capacity"),"committed":r.get::<i64,_>("committed")})).collect::<Vec<_>>(),"admission_paused":f.get::<bool,_>("admission_paused"),"runtime_ready":false,"unverified":["full_lifecycle","integrated_subscription"]});
+        if ctx.bound.is_none() {
+            out["owner_binding"] = json!(binding);
+        }
         if let Some(b) = ctx.bound {
             out["work_id"] = json!(b.work);
             out["execution_id"] = json!(b.execution);
@@ -118,7 +128,7 @@ impl Core {
         scope: Option<(Uuid, Uuid)>,
     ) -> Result<Value> {
         let mut tx = self.fence().await?;
-        let ctx = self.actor_context(&mut tx, &caller).await?;
+        let ctx = self.authenticated_actor_context(&mut tx, &caller).await?;
         self.action_grants(&mut tx, &ctx, "inspect").await?;
         if let Some((work, grant)) = scope {
             self.actor_permission(&mut tx, &ctx, grant, work, "inspect")
@@ -150,7 +160,13 @@ impl Core {
         {
             return Err(Error::NotFound);
         }
-        Ok(row.get("data"))
+        let mut data: Value = row.get("data");
+        if kind == "executions"
+            && let Some(service) = self.service_observation(&mut tx, id, false).await?
+        {
+            data["service_call"] = service;
+        }
+        Ok(data)
     }
 
     pub async fn restrict(

@@ -1,0 +1,27 @@
+{
+  "name": "@ouroboros/company-ui-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./ui": "./dist/ui.js",
+    "./styles.css": "./dist/styles.css",
+    "./brand/*": "./dist/brand/*"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "dist"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}

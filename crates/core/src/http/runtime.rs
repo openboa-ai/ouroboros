@@ -6,11 +6,34 @@ use super::{
 use axum::{
     Extension, Json,
     extract::{Path, Query, State},
+    http::HeaderMap,
 };
 use ouroboros_core::Error;
 use ouroboros_transport::Peer;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ServiceReconcile {
+    profile_id: String,
+}
+
+pub(super) async fn service_reconcile(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Json(r): Json<ServiceReconcile>,
+) -> Result<Json<serde_json::Value>, Failure> {
+    let worker = runtime_caller(&a, p)?;
+    if r.profile_id.is_empty() || r.profile_id.len() > 128 {
+        return Err(Failure(Error::Invalid));
+    }
+    Ok(Json(
+        a.core
+            .poll_service_continuations(&worker, &r.profile_id)
+            .await?,
+    ))
+}
 
 pub(super) async fn runtime_pending(
     State(a): State<App>,
@@ -27,9 +50,39 @@ pub(super) async fn runtime_claim(
     State(a): State<App>,
     Extension(p): Extension<Peer>,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
 ) -> Result<Json<ouroboros_contracts::RuntimeTicket>, Failure> {
     let worker = runtime_caller(&a, p)?;
-    Ok(Json(a.core.runtime_claim(id, &worker).await?))
+    let context = claim_context(&headers)?;
+    Ok(Json(
+        a.core
+            .runtime_claim_with_context(id, &worker, context.as_ref())
+            .await?,
+    ))
+}
+fn claim_context(
+    headers: &HeaderMap,
+) -> Result<Option<ouroboros_contracts::RuntimeClaimContext>, Failure> {
+    let mut values = headers
+        .get_all(ouroboros_contracts::RUNTIME_CLAIM_HEADER)
+        .iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() || value.as_bytes().len() > 2048 {
+        return Err(Failure(Error::Invalid));
+    }
+    serde_json::from_slice(value.as_bytes())
+        .map(Some)
+        .map_err(|_| Failure(Error::Invalid))
+}
+pub(super) async fn runtime_claim_observation(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ouroboros_contracts::RuntimeClaimObservation>, Failure> {
+    let worker = runtime_caller(&a, p)?;
+    Ok(Json(a.core.runtime_claim_observation(id, &worker).await?))
 }
 pub(super) async fn runtime_permitted(
     State(a): State<App>,

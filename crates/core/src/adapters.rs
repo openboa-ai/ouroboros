@@ -10,7 +10,7 @@ fn submission(row: &PgRow) -> Value {
         "origin_instance_id":row.get::<Option<Uuid>,_>("origin_instance_id"),
         "origin_generation":row.get::<Option<Uuid>,_>("origin_generation"),
         "profile_id":row.get::<String,_>("profile_id"),"program":row.get::<Value,_>("program"),
-        "ticket":row.get::<Value,_>("ticket"),"state":"submitted","tool_exposed":false})
+        "ticket":row.get::<Value,_>("ticket"),"service_operation":row.get::<Value,_>("request")["service"]["operation"],"state":"submitted","tool_exposed":false})
 }
 impl Core {
     pub(super) async fn adapter_read_authority(
@@ -56,8 +56,14 @@ impl Core {
             .await?;
         self.resource_permission(&mut tx, p, w, d, &r.target, "adapter.submit")
             .await?;
-        let fixed =
+        let mut fixed =
             json!({"work_id":w,"target":r.target,"source_execution_id":r.source_execution_id});
+        if let Some(plan) = &r.service_operation {
+            let ctx = self.actor_context(&mut tx, &actor).await?;
+            fixed["service"] = self
+                .capture_service_plan(&mut tx, &ctx, w, d, &r.target, plan)
+                .await?;
+        }
         if let Some(old)=sqlx::query("SELECT * FROM adapter_submissions WHERE firm_id=$1 AND registrant_id=$2 AND request_key=$3")
             .bind(self.firm).bind(p).bind(key).fetch_optional(&mut *tx).await? {
             if old.get::<Value,_>("request")!=fixed {return Err(Error::Conflict);}
@@ -363,7 +369,11 @@ impl Core {
         mut r: ExecutionRequest,
     ) -> Result<Accepted> {
         ouroboros_contracts::request_key(key).map_err(|_| Error::Invalid)?;
-        if key.starts_with("wake:") || r.program.is_some() || r.predecessor_execution_id.is_some() {
+        if key.starts_with("wake:")
+            || key.starts_with("service-restart:")
+            || r.program.is_some()
+            || r.predecessor_execution_id.is_some()
+        {
             return Err(Error::Invalid);
         }
         let mut tx = self.fence().await?;

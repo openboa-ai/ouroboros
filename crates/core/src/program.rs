@@ -477,8 +477,11 @@ impl Core {
         actor: &ResourceActor,
         intent: Uuid,
     ) -> Result<ActorContext> {
-        match self.actor_context(tx, actor).await {
-            Ok(ctx) => Ok(ctx),
+        match self.authenticated_actor_context(tx, actor).await {
+            Ok(ctx) => {
+                self.service_intent_scope(tx, &ctx, intent).await?;
+                Ok(ctx)
+            }
             Err(Error::Denied) => {
                 let Actor::Instance(peer) = actor else {
                     return Err(Error::Denied);
@@ -535,6 +538,7 @@ impl Core {
             .ok_or(Error::Denied)?
             .clone();
         let request = ResourceRequest {
+            effect_slot: None,
             target: input.reference.target.clone(),
             operation: "file.read".into(),
             request_key: format!(

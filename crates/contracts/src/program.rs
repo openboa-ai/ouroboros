@@ -49,6 +49,10 @@ pub struct NativeResume {
 pub struct ProgramProfile {
     #[serde(default, skip_serializing_if = "is_false")]
     pub native_codex: bool,
+    /// A model selected by the activated profile, never a caller-controlled provider route.
+    /// Omission preserves the legacy controlled fixture model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<String>,
     pub image: String,
     pub memory_bytes: i64,
     pub nano_cpus: i64,
@@ -76,6 +80,17 @@ pub fn program_path(path: &str) -> bool {
 
 impl ProgramProfile {
     pub fn validate(&self) -> Result<()> {
+        if let Some(model) = &self.native_model {
+            ensure!(
+                self.native_codex
+                    && !model.is_empty()
+                    && model.len() <= 128
+                    && model.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-')
+                    }),
+                "invalid activated native model"
+            );
+        }
         let digest = self
             .image
             .strip_prefix("sha256:")
@@ -265,6 +280,52 @@ pub struct MaterializationReceipt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_model_requires_a_native_profile_and_bounded_identifier() {
+        let mut profile = profile();
+        profile.native_model = Some("demo-model:v1".into());
+        assert!(profile.validate().is_err());
+        profile.native_codex = true;
+        assert!(profile.validate().is_ok());
+        for model in [
+            String::new(),
+            "x".repeat(129),
+            "model name".into(),
+            "model\nsetting=true".into(),
+            "model\"".into(),
+            "model/path".into(),
+            "모델".into(),
+        ] {
+            profile.native_model = Some(model);
+            assert!(profile.validate().is_err());
+        }
+        profile.native_model = Some("x".repeat(128));
+        assert!(profile.validate().is_ok());
+    }
+
+    #[test]
+    fn omitted_native_model_preserves_serialization_and_explicit_model_binds_manifest() {
+        let mut profile = profile();
+        profile.native_codex = true;
+        let legacy = serde_json::to_value(&profile).unwrap();
+        assert!(legacy.get("native_model").is_none());
+        assert_eq!(
+            serde_json::from_value::<ProgramProfile>(legacy.clone()).unwrap(),
+            profile
+        );
+        let digest = program_manifest_digest(&profile, &[]).unwrap();
+        profile.native_model = Some("demo-model:v1".into());
+        assert_ne!(program_manifest_digest(&profile, &[]).unwrap(), digest);
+        assert_eq!(
+            serde_json::to_value(&profile).unwrap()["native_model"],
+            "demo-model:v1"
+        );
+        profile.native_model = None;
+        assert_eq!(serde_json::to_value(&profile).unwrap(), legacy);
+        assert_eq!(program_manifest_digest(&profile, &[]).unwrap(), digest);
+    }
+
     #[test]
     fn native_mode_is_explicit_and_checkpoint_is_an_exact_input() {
         let mut profile = profile();
@@ -316,6 +377,7 @@ mod tests {
     fn profile() -> ProgramProfile {
         ProgramProfile {
             native_codex: false,
+            native_model: None,
             image: format!("sha256:{}", "a".repeat(64)),
             memory_bytes: 64 * 1024 * 1024,
             nano_cpus: 1_000_000_000,

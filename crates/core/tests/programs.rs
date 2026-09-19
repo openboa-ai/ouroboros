@@ -77,6 +77,7 @@ impl Fixture {
         };
         let profile = ProgramProfile {
             native_codex: false,
+            native_model: None,
             image: format!("sha256:{}", "1".repeat(64)),
             memory_bytes: 67_108_864,
             nano_cpus: 100_000_000,
@@ -274,6 +275,7 @@ impl Fixture {
     }
     fn resource(&self, operation: &str, key: &str, input: Value) -> ResourceRequest {
         ResourceRequest {
+            effect_slot: None,
             target: FILES.into(),
             operation: operation.into(),
             request_key: key.into(),
@@ -723,6 +725,7 @@ async fn materializing_peer_has_only_its_exact_input_and_replays_one_read() {
         ),
     ] {
         let request = ResourceRequest {
+            effect_slot: None,
             target: target.into(),
             operation: operation.into(),
             request_key: format!("materializing-{target}"),
@@ -1328,6 +1331,7 @@ async fn adapter_submission_freezes_material_and_verification_uses_current_runti
         .await
         .unwrap();
     let request = ouroboros_contracts::AdapterSubmissionRequest {
+        service_operation: None,
         work_id: Some(f.work),
         delegation_id: Some(f.human_grant),
         target: "model".into(),
@@ -1723,6 +1727,7 @@ async fn adapter_submission_freezes_material_and_verification_uses_current_runti
     );
     assert_eq!(f.core.managed_mcp(Actor::Human(caller.clone()),f.work,grant,json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"unknown","arguments":{}}})).await.unwrap().unwrap()["error"]["code"],-32602);
     let invocation = ouroboros_contracts::AdapterInvocationRequest {
+        service: None,
         activation_id: aid,
         execution: verification.clone(),
     };
@@ -1940,6 +1945,7 @@ async fn adapter_submission_freezes_material_and_verification_uses_current_runti
         Err(Error::Conflict)
     ));
     let next = ouroboros_contracts::AdapterInvocationRequest {
+        service: None,
         activation_id: next_aid,
         execution: verification.clone(),
     };
@@ -2193,3 +2199,6 @@ async fn backend_observation_is_original_worker_bound_and_not_work_success() {
             .is_err()
     );
 }
+
+#[path = "support/service_calls.rs"]
+mod service_calls;

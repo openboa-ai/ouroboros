@@ -105,13 +105,40 @@ impl Core {
     pub async fn resource_admit(
         &self,
         actor: ResourceActor,
-        request: ResourceRequest,
+        mut request: ResourceRequest,
     ) -> Result<ResourceAdmission> {
         let mut tx = self.fence().await?;
-        let ctx = self.actor_context(&mut tx, &actor).await?;
+        let ctx = self.authenticated_actor_context(&mut tx, &actor).await?;
+        let effect = self
+            .prepare_service_effect(&mut tx, &ctx, &mut request)
+            .await?;
         let admitted = self
             .resource_admit_locked(&mut tx, &actor, &ctx, request)
             .await?;
+        if let Some((root, slot, fingerprint)) = effect {
+            // Core's firm fence serializes slot binding with the existing single reservation.
+            let changed = sqlx::query(
+                "INSERT INTO service_effects VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+            )
+            .bind(self.firm)
+            .bind(root)
+            .bind(&slot)
+            .bind(admitted.intent_id)
+            .bind(&fingerprint)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            let same: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM service_effects WHERE firm_id=$1 AND root_intent_id=$2 AND effect_slot=$3 AND child_intent_id=$4 AND input_fingerprint=$5)")
+                .bind(self.firm).bind(root).bind(&slot).bind(admitted.intent_id).bind(&fingerprint)
+                .fetch_one(&mut *tx).await?;
+            if !same {
+                return Err(Error::Conflict);
+            }
+            if changed == 1 {
+                self.event(&mut tx, ctx.principal, "service.effect_bound", admitted.intent_id,
+                    json!({"work_id":ctx.bound.as_ref().map(|b| b.work),"root_intent_id":root,"effect_slot":slot,"input_fingerprint":fingerprint})).await?;
+            }
+        }
         tx.commit().await?;
         Ok(admitted)
     }
@@ -452,10 +479,7 @@ impl Core {
             .await?
         };
         if let Some((_, seconds)) = transfer {
-            let origin_fingerprint = match actor {
-                Actor::Human(caller) => Some(caller.fingerprint.as_str()),
-                Actor::Instance(_) => None,
-            };
+            let origin_fingerprint = actor.human_fingerprint();
             sqlx::query("INSERT INTO resource_transfers(firm_id,intent_id,expires_at,origin_fingerprint) VALUES($1,$2,clock_timestamp()+make_interval(secs=>$3),$4)")
                 .bind(self.firm).bind(intent).bind(seconds as f64).bind(origin_fingerprint).execute(&mut **tx).await?;
         }
@@ -464,20 +488,14 @@ impl Core {
                 .as_u64()
                 .filter(|v| (1..=30000).contains(v))
                 .ok_or(Error::Invalid)?;
-            let origin = match actor {
-                Actor::Human(caller) => Some(caller.fingerprint.as_str()),
-                Actor::Instance(_) => None,
-            };
+            let origin = actor.human_fingerprint();
             // Fixed delivery window includes bounded receipt/completion overhead, never a
             // renewable lease. No current stream may outlive this original admission window.
             sqlx::query("INSERT INTO resource_transfers(firm_id,intent_id,expires_at,origin_fingerprint) VALUES($1,$2,clock_timestamp()+make_interval(secs=>$3),$4)")
                 .bind(self.firm).bind(intent).bind(ms as f64/1000.0+5.0).bind(origin).execute(&mut **tx).await?;
         }
         if request.operation == "credential.enroll" {
-            let origin = match actor {
-                Actor::Human(c) => Some(c.fingerprint.as_str()),
-                Actor::Instance(_) => None,
-            };
+            let origin = actor.human_fingerprint();
             sqlx::query("INSERT INTO resource_transfers(firm_id,intent_id,expires_at,origin_fingerprint) VALUES($1,$2,clock_timestamp()+interval '5 minutes',$3)")
                 .bind(self.firm).bind(intent).bind(origin).execute(&mut **tx).await?;
         }
@@ -617,10 +635,7 @@ impl Core {
     ) -> Result<()> {
         let origin: Option<String> = sqlx::query_scalar("SELECT origin_fingerprint FROM resource_transfers WHERE firm_id=$1 AND intent_id=$2 AND expires_at>clock_timestamp()")
             .bind(self.firm).bind(intent).fetch_optional(&mut **tx).await?.ok_or(Error::Denied)?;
-        let actual = match actor {
-            Actor::Human(caller) => Some(caller.fingerprint.as_str()),
-            Actor::Instance(_) => None,
-        };
+        let actual = actor.human_fingerprint();
         if origin.as_deref() != actual {
             return Err(Error::Denied);
         }
@@ -859,6 +874,7 @@ impl Core {
             return Err(Error::Denied);
         }
         self.actor_permission(tx, &ctx, grant, work, &op).await?;
+        self.check_service_child(tx, intent).await?;
         if op == "file.publish" {
             self.publication_order(tx, Some(intent), &cfg, &r.get::<Value, _>("input")["input"])
                 .await?;

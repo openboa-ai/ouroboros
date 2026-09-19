@@ -1,4 +1,4 @@
-//! Qualified fixture entry point for the real, unmodified native harness.
+//! Controlled entry point for the real, unmodified native harness.
 //! No provider credentials, user-supplied executable, or model routing fallback.
 use anyhow::{Context, Result, ensure};
 use bollard::{Docker, container::LogOutput, exec::StartExecResults, models::ExecConfig};
@@ -49,6 +49,37 @@ async fn answer<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         events.push(f);
     }
 }
+
+fn native_settings(model: Option<&str>) -> Vec<String> {
+    let mut settings = vec![format!("model={}", json!(model.unwrap_or("fixture-model")))];
+    settings.extend(
+        [
+            "model_provider=\"ouroboros\"",
+            "model_providers.ouroboros.name=\"Ouroboros managed model\"",
+            "model_providers.ouroboros.base_url=\"http://127.0.0.1:18080/v1\"",
+            "model_providers.ouroboros.wire_api=\"responses\"",
+            "model_providers.ouroboros.requires_openai_auth=false",
+            "model_providers.ouroboros.request_max_retries=0",
+            "model_providers.ouroboros.stream_max_retries=0",
+            "model_providers.ouroboros.supports_websockets=false",
+        ]
+        .into_iter()
+        .map(str::to_owned),
+    );
+    if model.is_none() {
+        settings.extend(
+            [
+                "mcp_servers.fixture.url=\"http://127.0.0.1:18080/mcp\"",
+                "mcp_servers.fixture.startup_timeout_sec=10",
+                "mcp_servers.fixture.tool_timeout_sec=10",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+    }
+    settings
+}
+
 pub async fn run(
     docker: &Docker,
     cid: &str,
@@ -71,23 +102,10 @@ pub async fn run(
         )
         .await??;
     }
-    let mut settings: Vec<String> = [
-        "model=\"fixture-model\"",
-        "model_provider=\"ouroboros\"",
-        "model_providers.ouroboros.name=\"Ouroboros controlled fixture\"",
-        "model_providers.ouroboros.base_url=\"http://127.0.0.1:18080/v1\"",
-        "model_providers.ouroboros.wire_api=\"responses\"",
-        "model_providers.ouroboros.requires_openai_auth=false",
-        "model_providers.ouroboros.request_max_retries=0",
-        "model_providers.ouroboros.stream_max_retries=0",
-        "model_providers.ouroboros.supports_websockets=false",
-        "mcp_servers.fixture.url=\"http://127.0.0.1:18080/mcp\"",
-        "mcp_servers.fixture.startup_timeout_sec=10",
-        "mcp_servers.fixture.tool_timeout_sec=10",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect();
+    let model = ticket
+        .and_then(|t| t.program.as_ref())
+        .and_then(|p| p.profile.native_model.as_deref());
+    let mut settings = native_settings(model);
     if let Some(ticket) = ticket {
         let grant = ticket
             .input
@@ -174,7 +192,7 @@ pub async fn run(
         let id = channel.request("initialize",json!({"clientInfo":{"name":"ouroboros_fixture","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
         answer(&mut channel,&mut log,&mut bytes,id).await?;
         channel.initialized().await?;
-        let mut parameters=json!({"cwd":"/workspace","model":"fixture-model","modelProvider":"ouroboros","approvalPolicy":"never","sandbox":"workspace-write"});
+        let mut parameters=json!({"cwd":"/workspace","model":model.unwrap_or("fixture-model"),"modelProvider":"ouroboros","approvalPolicy":"never","sandbox":"workspace-write"});
         observer.0.get(format!("{}/runtime/executions/{}",observer.1,observer.2)).timeout(std::time::Duration::from_secs(1)).send().await?.error_for_status()?;
         let method=if let Some(resume)=invocation.and_then(|i|i.resume.as_ref()) {parameters["threadId"]=json!(resume.thread_id);"thread/resume"}else{"thread/start"};
         let id = channel.request(method,parameters).await?;
@@ -255,6 +273,28 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_model_keeps_the_gateway_and_omits_fixture_tools() {
+        let legacy = native_settings(None);
+        let configured = native_settings(Some("demo-model:v1"));
+        assert!(legacy.contains(&"model=\"fixture-model\"".into()));
+        assert!(legacy.iter().any(|s| s.starts_with("mcp_servers.fixture.")));
+        assert!(configured.contains(&"model=\"demo-model:v1\"".into()));
+        assert!(configured.iter().all(|s| !s.starts_with("mcp_servers.")));
+        for required in [
+            "model_provider=\"ouroboros\"",
+            "model_providers.ouroboros.base_url=\"http://127.0.0.1:18080/v1\"",
+            "model_providers.ouroboros.requires_openai_auth=false",
+            "model_providers.ouroboros.request_max_retries=0",
+            "model_providers.ouroboros.stream_max_retries=0",
+            "model_providers.ouroboros.supports_websockets=false",
+        ] {
+            assert!(legacy.iter().any(|s| s == required));
+            assert!(configured.iter().any(|s| s == required));
+        }
+    }
+
     #[tokio::test]
     async fn completion_before_start_reply_is_preserved() {
         let (client, mut server) = tokio::io::duplex(4096);

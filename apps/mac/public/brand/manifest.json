@@ -1,0 +1,100 @@
+{
+  "sourceRepository": "https://github.com/openboa-ai/openboa-brand-system",
+  "sourceCommit": "e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b",
+  "sourceRelease": "2026.08.23",
+  "files": {
+    "public/brand/openboa.tokens.json": {
+      "sourcePath": "06-design-tokens/openboa.tokens.json",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/06-design-tokens/openboa.tokens.json",
+      "sha256": "63d0e9b046cedbd4ee062baac3f4972e2617c69ebdbd2c623c4bf9a4a8faa4b1",
+      "bytes": 902693,
+      "copiedWithoutModification": true
+    },
+    "public/brand/MartianGrotesk-wdth-wght.ttf": {
+      "sourcePath": "08-fonts-licenses/MartianGrotesk-wdth-wght.ttf",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/08-fonts-licenses/MartianGrotesk-wdth-wght.ttf",
+      "sha256": "f81807163c34ff754e6d915b0b59f76cca88332b67c45cfc7453ace5751ae912",
+      "bytes": 365480,
+      "copiedWithoutModification": true
+    },
+    "public/brand/LICENSE-MartianGrotesk-OFL.txt": {
+      "sourcePath": "08-fonts-licenses/LICENSE-MartianGrotesk-OFL.txt",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/08-fonts-licenses/LICENSE-MartianGrotesk-OFL.txt",
+      "sha256": "80d22b39259573226571b8e97c5437b6ad8edfc1da6d0a10c76b5e4e277d51db",
+      "bytes": 4395,
+      "copiedWithoutModification": false,
+      "sourceSha256": "92b0fe50842b9348a71a1ddeb5115ed4e86e89ce4938f706c95e1441e4e7020b",
+      "normalization": "Trailing horizontal whitespace removed; license wording unchanged."
+    },
+    "public/brand/FONT-PROVENANCE.md": {
+      "sourcePath": "08-fonts-licenses/FONT-PROVENANCE.md",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/08-fonts-licenses/FONT-PROVENANCE.md",
+      "sha256": "971bd8407b77c466f312916a05db3012784fa588743daac60b8b716965a323e6",
+      "bytes": 582,
+      "copiedWithoutModification": true
+    },
+    "public/brand/vendor-versions.json": {
+      "sourcePath": "08-fonts-licenses/vendor-versions.json",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/08-fonts-licenses/vendor-versions.json",
+      "sha256": "ee885c513afee76d4ab06eb752a455e8a84d9f11f8e2c1cf13d8234c6cf8d192",
+      "bytes": 360,
+      "copiedWithoutModification": true
+    },
+    "public/brand/openboa-symbol-primary.svg": {
+      "sourcePath": "01-source-masters/openboa-symbol-primary.svg",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/01-source-masters/openboa-symbol-primary.svg",
+      "sha256": "c4d84001f64e095441dc50882d415cc4ef07f087583b75e7e6d62fcedd851203",
+      "bytes": 288017,
+      "copiedWithoutModification": true
+    },
+    "public/brand/openboa-symbol-reverse.svg": {
+      "sourcePath": "01-source-masters/openboa-symbol-reverse.svg",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/01-source-masters/openboa-symbol-reverse.svg",
+      "sha256": "e3dcca354b4ddecf910352b3d81ed1dbbccf87e0ad8ca483b733c5fb98b8eb27",
+      "bytes": 288017,
+      "copiedWithoutModification": true
+    },
+    "public/brand/openboa-symbol-carbon.svg": {
+      "sourcePath": "01-source-masters/openboa-symbol-carbon.svg",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/01-source-masters/openboa-symbol-carbon.svg",
+      "sha256": "420e2209ffaea7f32ac78b7e421a394cf1dc4c975b0562dd922d9f190f7335f9",
+      "bytes": 288017,
+      "copiedWithoutModification": true
+    },
+    "public/brand/LICENSING.md": {
+      "sourcePath": "LICENSING.md",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/LICENSING.md",
+      "sha256": "6f322848fd86464fd931abf90b7768c27098db4c187c2b95654867195d4d9838",
+      "bytes": 478,
+      "copiedWithoutModification": true
+    },
+    "public/brand/LICENSE": {
+      "sourcePath": "LICENSE",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/LICENSE",
+      "sha256": "52a0b53eec6ea7de4803c6ec1d9561d41fc276bb023df8addb634693552b66ea",
+      "bytes": 814,
+      "copiedWithoutModification": true
+    },
+    "public/brand/USAGE.md": {
+      "sourcePath": "USAGE.md",
+      "sourceUrl": "https://github.com/openboa-ai/openboa-brand-system/blob/e93f55cbfd90b668ef9d77875f71d8e53f7ceb4b/USAGE.md",
+      "sha256": "29bfbb8f3cf9717903cf78c9241554d7142b13db337d386dae5e72ca340ab97a",
+      "bytes": 760,
+      "copiedWithoutModification": true
+    }
+  },
+  "generated": {
+    "src/ui/tokens/openboa.css": {
+      "sha256": "7f8b6c1fc28d4e7ada376b9a43175c63cd6fd46e504b89e0c57a8dacd8d166b0",
+      "bytes": 29801
+    },
+    "src/ui/tokens/typography.json": {
+      "sha256": "c899748a0b81816344fe18cc45068e80d8da4f5b870e352c1a4b7eb9c0835cc3",
+      "bytes": 3365
+    },
+    "src/ui/tokens/provenance.json": {
+      "sha256": "11d6972f66da8b006f2035f567014ab71bdab6fe416f27d8825be7a2d63ae8d1",
+      "bytes": 3181
+    }
+  }
+}

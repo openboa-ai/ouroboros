@@ -296,10 +296,7 @@ impl Core {
             return Err(Error::Unavailable);
         }
         let step = Uuid::new_v4();
-        let fingerprint = match &actor {
-            Actor::Human(c) => Some(c.fingerprint.as_str()),
-            Actor::Instance(_) => None,
-        };
+        let fingerprint = actor.human_fingerprint();
         sqlx::query("INSERT INTO collection_steps(firm_id,id,collection_intent_id,sequence,principal_id,realm,delegation_id,instance_id,generation,fingerprint,request_key,input,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,clock_timestamp()+make_interval(secs=>$13))")
             .bind(self.firm).bind(step).bind(intent).bind(sequence).bind(ctx.principal).bind(&realm).bind(grant)
             .bind(ctx.bound.as_ref().map(|b| b.instance)).bind(ctx.bound.as_ref().map(|b| b.generation))

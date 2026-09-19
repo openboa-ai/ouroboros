@@ -1,0 +1,95 @@
+import type { ControlOption } from "@/features/controls/model";
+export const controlOptions: ControlOption[] = [
+  {
+    id: "new-exposure",
+    title: "Limit new investment",
+    domain: "Investment",
+    scope: "Prevent new exposure within the selected financial scope.",
+    target: "Treasury · BTCUSDT",
+    revision: "Not configured",
+    authority: "Financial limit authority",
+    before: "Sample position and order observed",
+    after: "Investment service confirms the selected restriction",
+    remains:
+      "Monitoring, reconciliation, existing orders and exposure remain active.",
+  },
+  {
+    id: "cancel",
+    title: "Cancel an open order",
+    domain: "Investment",
+    scope: "Cancel only the remaining quantity of a selected order.",
+    target: "sample-buy-order",
+    revision: "Sample revision 4",
+    authority: "Order cancellation authority",
+    before: "0.05 / 0.10 BTC filled",
+    after: "Exchange confirms the final cancellation state",
+    remains:
+      "Filled quantity remains in the position. A timeout leaves the outcome unresolved.",
+  },
+  {
+    id: "reduce",
+    title: "Reduce a position",
+    domain: "Investment",
+    scope: "Review a separate investment action for the selected position.",
+    target: "sample-position",
+    revision: "Sample revision 7",
+    authority: "Position reduction authority",
+    before: "Long · 0.20 BTC",
+    after: "New fills and position observation confirm the change",
+    remains:
+      "Order, slippage, funding and fees require reconciliation. No size or price is pre-authorized.",
+  },
+  {
+    id: "stop-atlas",
+    title: "Stop Atlas execution",
+    domain: "Control plane",
+    scope: "End this execution while retaining the member and company records.",
+    target: "run-atlas",
+    revision: "Sample revision 6",
+    authority: "Execution stop authority",
+    before: "Waiting for an order observation",
+    after: "Terminal event and resource return observed",
+    remains:
+      "Open exchange orders, positions and financial obligations remain.",
+  },
+  {
+    id: "stop-nova",
+    title: "Stop Nova execution",
+    domain: "Control plane",
+    scope: "End the selected research execution without replacing it.",
+    target: "run-nova",
+    revision: "Sample revision 3",
+    authority: "Execution stop authority",
+    before: "Validating funding sources",
+    after: "Terminal event and resource return observed",
+    remains:
+      "Published reports and incurred usage remain. The continuing member is not retired.",
+  },
+  {
+    id: "revoke",
+    title: "Withdraw delegation",
+    domain: "Control plane",
+    scope:
+      "Review affected work and downstream access before withdrawing authority.",
+    target: "Atlas assignment",
+    revision: "Sample version 3",
+    authority: "Owner delegation authority",
+    before: "No live authority connected",
+    after: "Revocation applied and affected descendants accounted for",
+    remains:
+      "Retained records, incurred costs and unresolved external effects still require an owner.",
+  },
+  {
+    id: "shutdown",
+    title: "End company operation",
+    domain: "Control plane",
+    scope: "Restrict new work, reconcile obligations, then end services.",
+    target: "Example company",
+    revision: "Not connected",
+    authority: "Owner operating authority",
+    before: "Sample company",
+    after: "Restrictions, reconciliation and service stop separately confirmed",
+    remains:
+      "Company data is preserved. Unsettled account obligations must remain visible.",
+  },
+];

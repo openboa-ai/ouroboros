@@ -1,0 +1,189 @@
+/* UX: ../../../../../docs/design/COMPANY_EXPERIENCE.md#o-03 — Low-chrome work rows, then supporting evidence. */
+.company-screen {
+  container: company / inline-size;
+  display: grid;
+  gap: var(--ob-space-40);
+  min-width: 0;
+}
+.company-screen .company-priority,
+.company-screen .company-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.46fr);
+  gap: var(--ob-space-32);
+  align-items: start;
+}
+.company-screen .company-priority-copy,
+.company-screen .company-changes,
+.company-screen .company-members,
+.company-screen .company-members section {
+  display: grid;
+  gap: var(--ob-space-16);
+  min-width: 0;
+}
+.company-screen .company-priority-copy > .type-body {
+  max-width: 60ch;
+}
+.company-screen .company-members {
+  gap: var(--ob-space-32);
+}
+.company-screen .company-inline,
+.company-screen .company-activity-toolbar,
+.company-screen .company-view-heading,
+.company-screen .company-execution-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ob-space-8);
+}
+.company-screen .company-activity-toolbar,
+.company-screen .company-view-heading {
+  justify-content: space-between;
+  gap: var(--ob-space-16);
+}
+.company-screen .company-activity {
+  gap: var(--ob-space-24);
+  min-width: 0;
+}
+.company-screen .company-tab-content {
+  min-width: 0;
+}
+.company-screen .company-view-heading {
+  margin-bottom: var(--ob-space-12);
+}
+.company-screen .company-work-row,
+.company-screen .company-execution-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--ob-space-16);
+  padding-block: var(--ob-space-16);
+}
+.company-screen .company-work-main {
+  min-width: 0;
+}
+.company-screen .company-work-main .record-link {
+  padding-block: 0;
+}
+.company-screen .company-next {
+  margin-top: var(--ob-space-8);
+}
+.company-screen .company-work-owner {
+  display: grid;
+  justify-items: start;
+  gap: var(--ob-space-8);
+}
+.company-screen .company-member-button {
+  height: auto;
+  justify-content: flex-start;
+  padding: var(--ob-space-4);
+}
+.company-screen .company-member-button .person-copy {
+  text-align: left;
+}
+.company-screen .company-roster-row {
+  display: grid;
+  gap: var(--ob-space-8);
+}
+.company-screen .company-roster-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ob-space-8);
+}
+.company-screen .company-footnote {
+  margin-top: var(--ob-space-12);
+}
+.company-screen .company-access-note {
+  display: flex;
+  align-items: start;
+  gap: var(--ob-space-8);
+  padding-block: var(--ob-space-16);
+}
+.company-screen .company-access-note svg {
+  flex-shrink: 0;
+}
+.company-screen .company-trace-list {
+  display: grid;
+  gap: var(--ob-space-24);
+  margin-top: var(--ob-space-24);
+}
+.company-screen .company-trace-event {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--ob-space-16);
+}
+.company-screen .company-trace-time {
+  padding-top: var(--ob-space-4);
+  font-variant-numeric: tabular-nums;
+}
+.company-screen .company-trace-body {
+  min-width: 0;
+}
+.company-screen .company-trace-trigger {
+  width: 100%;
+  height: auto;
+  justify-content: space-between;
+  padding: var(--ob-space-4);
+  white-space: normal;
+  text-align: left;
+}
+.company-screen .company-trace-copy {
+  display: grid;
+  gap: var(--ob-space-4);
+}
+.company-screen .company-trace-result {
+  margin-top: var(--ob-space-6);
+  padding-inline: var(--ob-space-4);
+}
+.company-screen .company-trace-detail {
+  display: grid;
+  justify-items: start;
+  gap: var(--ob-space-12);
+  margin-top: var(--ob-space-12);
+  padding: var(--ob-space-16);
+  background: var(--muted);
+  border-radius: var(--ob-radius-md);
+}
+.company-screen .company-trace-detail pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.company-screen .company-expanded {
+  transform: rotate(180deg);
+}
+
+@container company (max-width: 700px) {
+  .company-screen .company-priority,
+  .company-screen .company-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ob-space-32);
+  }
+  .company-screen .company-members {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ob-space-32);
+  }
+  .company-screen .company-members > section:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@container company (max-width: 520px) {
+  .company-screen .company-work-row,
+  .company-screen .company-execution-row,
+  .company-screen .company-members {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .company-screen .company-work-owner {
+    display: flex;
+    align-items: center;
+    gap: var(--ob-space-16);
+  }
+  .company-screen .company-trace-event {
+    gap: var(--ob-space-8);
+  }
+}
+
+/* A narrow evidence rail keeps its heading intact and puts freshness beneath it. */
+.company-screen .company-changes > .section-heading { align-items:flex-start; flex-direction:column; gap:var(--ob-space-4); }
+.company-screen .company-changes { gap:var(--ob-space-8); }
+.company-screen .company-changes .record-link--row { padding-block:var(--ob-space-8); }

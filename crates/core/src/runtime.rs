@@ -1,6 +1,9 @@
 //! Runtime authority stays in Core. Service authentication is enforced by the HTTP boundary.
 use super::*;
-use ouroboros_contracts::{BridgeIdentity, RuntimeBinding, RuntimeTicket};
+use ouroboros_contracts::{
+    BridgeIdentity, RuntimeBinding, RuntimeClaimAssignment, RuntimeClaimContext,
+    RuntimeClaimObservation, RuntimeTicket,
+};
 impl Core {
     pub(super) async fn agent_grant(
         &self,
@@ -27,7 +30,26 @@ impl Core {
     }
     /// A claimed start cannot be reclaimed after response loss; reconcile the original record.
     pub async fn runtime_claim(&self, intent: Uuid, worker: &str) -> Result<RuntimeTicket> {
+        self.runtime_claim_with_context(intent, worker, None).await
+    }
+    /// The optional precondition preserves existing callers; the Runtime supervisor always pins it.
+    pub async fn runtime_claim_with_context(
+        &self,
+        intent: Uuid,
+        worker: &str,
+        expected: Option<&RuntimeClaimContext>,
+    ) -> Result<RuntimeTicket> {
         let mut tx = self.fence().await?;
+        if let Some(expected) = expected {
+            let observed = self
+                .runtime_claim_observation_locked(&mut tx, intent, worker)
+                .await?;
+            if expected != &observed.context {
+                return Err(Error::Conflict);
+            }
+        }
+        self.service_continuation_claim_allowed(&mut tx, intent, worker)
+            .await?;
         let attempt = self.claim_locked(&mut tx, intent, worker).await?;
         let row = sqlx::query(
             "SELECT input,resource_id,principal_id FROM intents WHERE firm_id=$1 AND id=$2",
@@ -67,6 +89,86 @@ impl Core {
         tx.commit().await?;
         Ok(ticket)
     }
+    /// A lost claim response is resolved by its original intent, without claim or resubmission.
+    /// Only the assigned authenticated worker can inspect an existing assignment, even after stop.
+    pub async fn runtime_claim_observation(
+        &self,
+        intent: Uuid,
+        worker: &str,
+    ) -> Result<RuntimeClaimObservation> {
+        let mut tx = self.fence().await?;
+        self.runtime_claim_observation_locked(&mut tx, intent, worker)
+            .await
+    }
+    async fn runtime_claim_observation_locked(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        intent: Uuid,
+        worker: &str,
+    ) -> Result<RuntimeClaimObservation> {
+        let row = sqlx::query(
+            "SELECT f.environment_id,i.state,i.input->>'profile_id' AS profile_id,
+                e.id AS execution_id,e.terminated,r.worker_id,r.attempt_id,
+                r.instance_id,r.generation,r.phase,
+                EXISTS(SELECT 1 FROM compute_returns c
+                    WHERE (c.firm_id,c.execution_id)=(e.firm_id,e.id)) AS capacity_returned,
+                (i.state='restricted' AND e.stopped AND NOT e.terminated
+                    AND r.instance_id IS NULL
+                    AND EXISTS(SELECT 1 FROM outbox o
+                        WHERE (o.firm_id,o.intent_id)=(i.firm_id,i.id) AND NOT o.claimed)
+                    AND NOT EXISTS(SELECT 1 FROM attempts a
+                        WHERE (a.firm_id,a.intent_id)=(i.firm_id,i.id))
+                    AND EXISTS(SELECT 1 FROM unstarted_cancellations u
+                        JOIN reservations c ON (c.firm_id,c.intent_id)=(i.firm_id,i.id)
+                            AND c.limit_id='compute' AND c.settled
+                        WHERE (u.firm_id,u.execution_id)=(e.firm_id,e.id)
+                            AND u.receipt->>'source'='core_dispatch_record'
+                            AND u.receipt->>'execution_id'=e.id::text
+                            AND u.receipt->>'intent_id'=i.id::text
+                            AND u.receipt->'never_dispatched'='true'::jsonb
+                            AND u.receipt->'released_compute_units'=to_jsonb(c.units)))
+                    AS never_dispatched
+            FROM intents i JOIN firms f ON f.id=i.firm_id
+            JOIN executions e ON (e.firm_id,e.intent_id)=(i.firm_id,i.id)
+            LEFT JOIN runtime_instances r ON (r.firm_id,r.execution_id)=(e.firm_id,e.id)
+            WHERE i.firm_id=$1 AND i.id=$2 AND i.operation='execution.start'",
+        )
+        .bind(self.firm)
+        .bind(intent)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(Error::Denied)?;
+        if row
+            .get::<Option<String>, _>("worker_id")
+            .as_deref()
+            .is_some_and(|assigned| assigned != worker)
+        {
+            return Err(Error::Denied);
+        }
+        Ok(RuntimeClaimObservation {
+            context: RuntimeClaimContext {
+                environment_id: row.get("environment_id"),
+                firm_id: self.firm,
+                serving_generation: self.serving_generation,
+                worker_id: worker.into(),
+                intent_id: intent,
+                execution_id: row.get("execution_id"),
+                profile_id: row.get("profile_id"),
+            },
+            intent_state: row.get("state"),
+            never_dispatched: row.get("never_dispatched"),
+            claim: row
+                .get::<Option<Uuid>, _>("instance_id")
+                .map(|instance_id| RuntimeClaimAssignment {
+                    attempt_id: row.get("attempt_id"),
+                    instance_id,
+                    generation: row.get("generation"),
+                    phase: row.get("phase"),
+                    terminated: row.get("terminated"),
+                    capacity_returned: row.get("capacity_returned"),
+                }),
+        })
+    }
     pub(super) async fn runtime_allowed(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -75,6 +177,8 @@ impl Core {
     ) -> Result<(Uuid, ExecutionRequest)> {
         let row=sqlx::query("SELECT i.id AS intent_id,i.principal_id,i.input FROM runtime_instances r JOIN executions e ON (e.firm_id,e.id)=(r.firm_id,r.execution_id) JOIN intents i ON (i.firm_id,i.id)=(e.firm_id,e.intent_id) JOIN principals p ON (p.firm_id,p.id)=(i.firm_id,i.principal_id) JOIN profiles f ON f.firm_id=i.firm_id AND f.id=i.input->>'profile_id' WHERE r.firm_id=$1 AND r.execution_id=$2 AND r.worker_id=$3 AND r.deadline_at>clock_timestamp() AND r.phase!='terminated' AND NOT e.stopped AND NOT e.terminated AND p.enabled AND f.active")
             .bind(self.firm).bind(execution).bind(worker).fetch_optional(&mut **tx).await?.ok_or(Error::Denied)?;
+        self.service_continuation_execution_allowed(tx, execution, worker)
+            .await?;
         self.wake_execution_allowed(tx, row.get("intent_id"))
             .await?;
         let owner: Uuid = row.get("principal_id");

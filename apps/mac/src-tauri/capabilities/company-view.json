@@ -1,0 +1,16 @@
+{
+  "identifier": "company-view",
+  "description": "Isolated firm UI: only the bound read/reference bridge. No owner commands.",
+  "webviews": [
+    "company-view-*"
+  ],
+  "local": false,
+  "remote": {
+    "urls": [
+      "company-ui://*"
+    ]
+  },
+  "permissions": [
+    "allow-company-view-request"
+  ]
+}

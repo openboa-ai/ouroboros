@@ -32,6 +32,7 @@ import time
 import uuid
 
 from tests.support.fixture_config import clean_environment, load_config, local_url
+from tests.support.volatile_credentials import publish_retained as credential_file
 
 def interrupted(signum, frame):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -43,7 +44,13 @@ if not __debug__:
     parser.error('optimized Python disables behavioral assertions and is not a test profile')
 parser.add_argument('--restriction', choices=['stop', 'revoke', 'complete'], default='revoke')
 parser.add_argument('--adapter-verification', action='store_true')
+parser.add_argument('--service-continuation', action='store_true')
+parser.add_argument('--native-owner-stop', action='store_true', help='Wait for the native Mac owner stop; the fixture never submits that control.')
 args, fixture = load_config(parser)
+if args.service_continuation and not args.adapter_verification:
+    parser.error('service continuation requires independent adapter verification')
+if args.native_owner_stop and not args.service_continuation:
+    parser.error('native owner stop requires the service continuation scenario')
 if args.adapter_verification and args.restriction != 'complete':
     parser.error('adapter verification requires natural completion')
 if os.geteuid() != 0 or not Path('/proc/self/status').is_file():
@@ -231,6 +238,12 @@ def snapshot():
                    for table in tables} for name, tables in groups.items()}
 
 
+continuation = None
+if args.service_continuation:
+    from tests.support.program_service_continuation import ProgramServiceContinuation
+    fixture.require_ports('company')
+    continuation = ProgramServiceContinuation(globals())
+
 try:
     owners = [('reviewer', 70004), ('core', 70001), ('gateway', 70002), ('cli', 70003), ('catalog', 70005), ('runtime', 0), ('ca', 0)]
     for name, uid in owners:
@@ -242,7 +255,7 @@ try:
          'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-out', str(root / 'ca/ca.pem')])
     write(root / 'ca/cert.ext', fixture.cert_extensions())
     fingerprints = {}
-    for name in ['core', 'gateway', 'gateway-service', 'catalog', 'runtime', 'human', 'reviewer']:
+    for name in ['core', 'gateway', 'gateway-service', 'catalog', 'runtime', 'human', 'reviewer'] + (['company'] if continuation else []):
         key, csr, cert = [root / 'ca' / (name + '.' + suffix) for suffix in ['key', 'csr', 'pem']]
         run(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', str(key)])
         run(['openssl', 'req', '-new', '-key', str(key), '-subj', '/CN=' + name, '-out', str(csr)])
@@ -259,7 +272,7 @@ try:
         databases.append(database)
         dbs[name] = database
         migration = root / 'runtime' / (name + '-migrate.url')
-        write(migration, database_url(database, owner_password, database))
+        credential_file(migration, database_url(database, owner_password, database))
         argv = [str(binary / ('ouroboros-migrate' if name == 'core' else 'ouroboros-resource-migrate')),
                 '--database-url-file', str(migration)]
         if name == 'catalog':
@@ -269,13 +282,16 @@ try:
         sql(f"CREATE ROLE {role} LOGIN PASSWORD '{password}';")
         roles.append(role)
         sql(f'GRANT CONNECT ON DATABASE {database} TO {role}; GRANT USAGE ON SCHEMA public TO {role}; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA public TO {role};', database)
-        write(root / name / 'db.url', database_url(role, password, database), uid)
+        credential_file(root / name / 'db.url', database_url(role, password, database), uid)
         if name == 'catalog':
             catalog_role = role
     firm, human, agent, grant, child, namespace, store, generation, policy_id = [str(uuid.uuid4()) for _ in range(9)]
     actions = ['inspect', 'work.create', 'execution.start', 'execution.stop', 'delegation.revoke',
                'workspace.create', 'file.read', 'file.upload', 'file.publish', 'file.retire']
     agent_actions = ['inspect', 'execution.start', 'file.read', 'file.upload', 'file.publish']
+    if continuation:
+        actions += ['db.write', 'service.manage']
+        agent_actions += ['db.write']
     if args.adapter_verification:
         actions += ['adapter.submit','adapter.verify','adapter.evaluate','adapter.accept','adapter.activate','adapter.invoke','adapter.stop']
         agent_actions += ['workspace.create']
@@ -326,6 +342,8 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
           'profile_id': profile_id, 'profile': runtime_profile, 'program': profile, 'gateway_socket': str(gateway_socket),
           'binary_dir': str(binary), 'evidence_dir': str(root / 'runtime'), 'bridge_uid': values['bridge_uid'],
           'guard_uid': values['guard_uid'], 'gateway_uid': 70002, 'ipc_root': str(ipc)}))
+    if continuation:
+        continuation.prepare_company()
     service_identities = []
     for name, uid in [('core', 70001), ('catalog', 70005), ('gateway', 70002)]:
         with (root / name / 'process.log').open('xb') as stream:
@@ -372,6 +390,8 @@ print('denied')
     for delegation, permitted in [(grant, ['inspect', 'workspace.create', 'file.read', 'file.upload', 'file.publish', 'file.retire']),
                                  (child, ['inspect', 'file.read', 'file.upload', 'file.publish'] + (['workspace.create'] if args.adapter_verification else []))]:
         sql(f"INSERT INTO resource_scopes(firm_id,work_id,delegation_id,target_id,operations,namespace_id) VALUES('{firm}','{work}','{delegation}','{target}',ARRAY[{','.join(repr(value) for value in permitted)}],'{namespace}');", dbs['core'])
+    if continuation:
+        continuation.scope()
     input_workspace = scoped('POST', '/workspaces', body={'label': 'Program inputs'}, key='program-input-workspace')['workspace_id']
     output_workspace = scoped('POST', '/workspaces', body={'label': 'Program outputs'}, key='program-output-workspace')['workspace_id']
     data = bytes(range(256)) * 768 + b'\x00\xffprogram-input'
@@ -414,6 +434,8 @@ exit 0
 '''
         assert script.count(b'/bin/sleep 90\n') == 1
         script = script.replace(b'/bin/sleep 90\n', completion_tail)
+    if continuation:
+        script = continuation.program(script)
     uploads = []
     for index, (filename, content) in enumerate([('program.sh', script), ('data.bin', data)]):
         path = root / 'cli' / filename
@@ -635,8 +657,9 @@ exit 0
     if args.restriction == 'complete':
         if args.adapter_verification:
             reviewer, reviewer_grant, verifier, verifier_grant = [str(uuid.uuid4()) for _ in range(4)]
-            sql(f"INSERT INTO resource_targets VALUES('{firm}','adapter-tools','unbound-adapter',true,'{{}}',4096); INSERT INTO resource_scopes VALUES('{firm}','{work}','{grant}','adapter-tools',ARRAY['inspect','adapter.submit','adapter.verify','adapter.evaluate','adapter.accept','adapter.activate','adapter.invoke','adapter.stop'],NULL)",dbs['core'])
-            candidate=cli('request','POST','/adapter-submissions','--key','adapter-code',body={'work_id':work,'delegation_id':grant,'target':'adapter-tools','source_execution_id':execution},expected=201)
+            extra_control = ",'service.manage'" if continuation else ''
+            sql(f"INSERT INTO resource_targets VALUES('{firm}','adapter-tools','unbound-adapter',true,'{{}}',4096); INSERT INTO resource_scopes VALUES('{firm}','{work}','{grant}','adapter-tools',ARRAY['inspect','adapter.submit','adapter.verify','adapter.evaluate','adapter.accept','adapter.activate','adapter.invoke','adapter.stop'{extra_control}],NULL)",dbs['core'])
+            candidate=cli('request','POST','/adapter-submissions','--key','adapter-code',body={'work_id':work,'delegation_id':grant,'target':'adapter-tools','source_execution_id':execution,**({'service_operation':continuation.plan()} if continuation else {})},expected=201)
             assert candidate['program']==program and candidate['tool_exposed'] is False
             assert cli('request','POST',f"/adapter-submissions/{candidate['id']}/inspect",body={'work_id':work,'delegation_id':grant})==candidate
             verifier_request=dict(execution_request,program=None,predecessor_execution_id=None)
@@ -719,7 +742,7 @@ exit 0
             cli('request','POST',route,'--key','adapter-assessment',body={**assessment,'conclusion':'unsupported'},expected=409,client='reviewer')
             cli('request','POST',route,'--key','self-assessment',body={**assessment,'delegation_id':grant},expected=403)
             acceptance={'work_id':work,'delegation_id':reviewer_grant,'evaluation_id':reviewed['id'],
-                'max_calls':2,'lifetime_seconds':60,
+                'max_calls':2,'lifetime_seconds':600 if continuation else 60,
                 'rationale':'Bounded reuse of the exact environment fixture; the cited byte and isolation checks support this scope only',
                 'independence_basis':'Reviewer is a separate fixture principal with source access; this does not establish real organizational independence'}
             accept_route=f"/adapter-submissions/{candidate['id']}/acceptances"
@@ -735,10 +758,13 @@ exit 0
             activation={'work_id':work,'delegation_id':reviewer_grant,'acceptance_id':accepted_scope['id'],'expected_activation_id':None}
             selected=cli('request','POST',activate_route,'--key','adapter-activate',body=activation,expected=201,client='reviewer')
             assert cli('request','POST',activate_route,'--key','adapter-activate',body=activation,expected=201,client='reviewer')==selected
-            invoke_route=f"/adapter-submissions/{candidate['id']}/invocations"
-            invocation={'activation_id':selected['id'],'execution':verifier_request}
-            mcp_path=f'/mcp/work/{work}/delegation/{reviewer_grant}'
-            transport_probe = r"""import http.client,json,ssl,sys,urllib.parse
+            if continuation:
+                continuation.run()
+            else:
+                invoke_route=f"/adapter-submissions/{candidate['id']}/invocations"
+                invocation={'activation_id':selected['id'],'execution':verifier_request}
+                mcp_path=f'/mcp/work/{work}/delegation/{reviewer_grant}'
+                transport_probe = r"""import http.client,json,ssl,sys,urllib.parse
 from pathlib import Path
 stage='setup'
 try:
@@ -764,60 +790,60 @@ except Exception as error:
  print(json.dumps({'result':'FAIL','stage':stage,'type':type(error).__name__}))
  sys.exit(1)
 """
-            probe=command(['python3','-c',transport_probe,str(root/'reviewer/config.json'),mcp_path],uid=70004)
-            probe_result=json.loads(probe.stdout)
-            write(root/'managed-mcp-transport.json',json.dumps(probe_result),0)
-            assert probe_result=={'result':'PASS'},probe_result
-            init=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'ouroboros-fixture','version':'1'}}},client='reviewer')
-            assert init['result']['protocolVersion']=='2025-11-25'
-            assert cli('request','POST',mcp_path,body={'jsonrpc':'2.0','method':'notifications/initialized'},binary_output=True,client='reviewer').strip()==b''
-            cli('request','GET',mcp_path,expected=405,client='reviewer')
-            listing=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':2,'method':'tools/list'},client='reviewer')
-            tool='invoke_'+selected['id'].replace('-','')
-            assert any(t['name']==tool for t in listing['result']['tools'])
-            rpc={'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':tool,'arguments':{'request_key':'adapter-invoke','agent_delegation_id':verifier_grant}}}
-            mcp_admission=cli('request','POST',mcp_path,body=rpc,client='reviewer')['result']
-            assert mcp_admission['isError'] is False and mcp_admission['structuredContent']['completion']=='not_confirmed'
-            invoked=mcp_admission['structuredContent']['admission']
-            invocation_replay=cli('request','POST',invoke_route,'--key','adapter-invoke',body=invocation,expected=202,client='reviewer')
-            assert invocation_replay['resource_id']==invoked['resource_id'] and invocation_replay['intent_id']==invoked['intent_id']
-            with (root/'runtime/invocation-process.log').open('xb') as stream:
-                runtime=subprocess.Popen([str(binary/'ouroboros-runtime'),'--config',str(root/'runtime/config.json')],stdout=stream,stderr=stream,env=environment)
-            wait_until(lambda: True if runtime.poll() is not None else None,15,'managed invocation completion')
-            assert runtime.returncode==0
-            used=cli('get','executions',invoked['resource_id'])
-            mcp_observed=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':4,'method':'tools/call','params':{'name':'execution_get','arguments':{'execution_id':invoked['resource_id']}}},client='reviewer')
-            assert mcp_observed['result']['structuredContent']==used
-            invoked_instance=used['program_observation']['receipt']['instance_id']
-            assert invoked_instance not in [preparing['instance_id'],next_binding['instance_id']]
-            assert used['program_observation']['receipt']['exit_code']==0 and used['compute_return']['units']==20
-            called_effects=json.loads(sql(f"SELECT jsonb_agg(jsonb_build_object('operation',r.operation,'intent_id',r.intent_id,'reply',r.reply)) FROM resource_calls r WHERE instance_id='{invoked_instance}' AND operation IN ('workspace.create','file.upload','file.publish')",dbs['core']))
-            assert sorted(e['operation'] for e in called_effects)==['file.publish','file.upload','workspace.create']
-            called_publication=next(e['intent_id'] for e in called_effects if e['operation']=='file.publish')
-            called_workspace=sql(f"SELECT input->'input'->>'workspace_id' FROM intents WHERE id='{called_publication}'",dbs['core'])
-            called_output=root/'cli/invoked-output.bin'
-            scoped('GET',f'/workspaces/{called_workspace}/snapshots/1/files/output.bin',output=called_output)
-            assert called_output.read_bytes()==output_data
-            assert sql('SELECT count(*) FROM adapter_invocations',dbs['core'])=='1'
-            stop={'work_id':work,'delegation_id':reviewer_grant,'activation_id':selected['id']}
-            stopped=cli('request','POST',f"/adapter-submissions/{candidate['id']}/stop",'--key','adapter-stop',body=stop,client='reviewer')
-            assert stopped['termination_confirmed'] is False
-            cli('request','POST',invoke_route,'--key','after-adapter-stop',body=invocation,expected=403,client='reviewer')
-            assert sql('SELECT count(*) FROM adapter_invocations',dbs['core'])=='1'
-            stopped_view=cli('request','POST',f"/adapter-submissions/{candidate['id']}/inspect",body={'work_id':work,'delegation_id':grant})
-            assert stopped_view['activations'][0]['stop_recorded'] is True and stopped_view['activations'][0]['admitted_calls']==1
-            listing=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':5,'method':'tools/list'},client='reviewer')
-            assert all(t['name']!=tool for t in listing['result']['tools'])
-            denied=cli('request','POST',mcp_path,body={**rpc,'id':6},client='reviewer')
-            assert denied['result']['isError'] is True
-            checks.append('managed MCP initialization, discovery, third execution admission and observation use current Gateway authority; direct API replay shares its slot and stopped tools disappear')
-            checks.append('explicit activation admits a real third contained invocation with exact published output; replay consumes one slot and stop denies a new call while allowance remains')
-            write(root/'adapter-evaluation.json',json.dumps(reviewed,indent=2),0)
-            checks.append('scoped evaluator records criteria and limitations tied to actual backend observation; replay is stable, self-assessment and changed-key input rejected; no activation')
-            checks.append('registered immutable adapter runs as a distinct verifier instance via API/CLI; normal Gateway workspace/upload/publication and Runtime materialization remain enforced')
+                probe=command(['python3','-c',transport_probe,str(root/'reviewer/config.json'),mcp_path],uid=70004)
+                probe_result=json.loads(probe.stdout)
+                write(root/'managed-mcp-transport.json',json.dumps(probe_result),0)
+                assert probe_result=={'result':'PASS'},probe_result
+                init=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'ouroboros-fixture','version':'1'}}},client='reviewer')
+                assert init['result']['protocolVersion']=='2025-11-25'
+                assert cli('request','POST',mcp_path,body={'jsonrpc':'2.0','method':'notifications/initialized'},binary_output=True,client='reviewer').strip()==b''
+                cli('request','GET',mcp_path,expected=405,client='reviewer')
+                listing=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':2,'method':'tools/list'},client='reviewer')
+                tool='invoke_'+selected['id'].replace('-','')
+                assert any(t['name']==tool for t in listing['result']['tools'])
+                rpc={'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':tool,'arguments':{'request_key':'adapter-invoke','agent_delegation_id':verifier_grant}}}
+                mcp_admission=cli('request','POST',mcp_path,body=rpc,client='reviewer')['result']
+                assert mcp_admission['isError'] is False and mcp_admission['structuredContent']['completion']=='not_confirmed'
+                invoked=mcp_admission['structuredContent']['admission']
+                invocation_replay=cli('request','POST',invoke_route,'--key','adapter-invoke',body=invocation,expected=202,client='reviewer')
+                assert invocation_replay['resource_id']==invoked['resource_id'] and invocation_replay['intent_id']==invoked['intent_id']
+                with (root/'runtime/invocation-process.log').open('xb') as stream:
+                    runtime=subprocess.Popen([str(binary/'ouroboros-runtime'),'--config',str(root/'runtime/config.json')],stdout=stream,stderr=stream,env=environment)
+                wait_until(lambda: True if runtime.poll() is not None else None,15,'managed invocation completion')
+                assert runtime.returncode==0
+                used=cli('get','executions',invoked['resource_id'])
+                mcp_observed=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':4,'method':'tools/call','params':{'name':'execution_get','arguments':{'execution_id':invoked['resource_id']}}},client='reviewer')
+                assert mcp_observed['result']['structuredContent']==used
+                invoked_instance=used['program_observation']['receipt']['instance_id']
+                assert invoked_instance not in [preparing['instance_id'],next_binding['instance_id']]
+                assert used['program_observation']['receipt']['exit_code']==0 and used['compute_return']['units']==20
+                called_effects=json.loads(sql(f"SELECT jsonb_agg(jsonb_build_object('operation',r.operation,'intent_id',r.intent_id,'reply',r.reply)) FROM resource_calls r WHERE instance_id='{invoked_instance}' AND operation IN ('workspace.create','file.upload','file.publish')",dbs['core']))
+                assert sorted(e['operation'] for e in called_effects)==['file.publish','file.upload','workspace.create']
+                called_publication=next(e['intent_id'] for e in called_effects if e['operation']=='file.publish')
+                called_workspace=sql(f"SELECT input->'input'->>'workspace_id' FROM intents WHERE id='{called_publication}'",dbs['core'])
+                called_output=root/'cli/invoked-output.bin'
+                scoped('GET',f'/workspaces/{called_workspace}/snapshots/1/files/output.bin',output=called_output)
+                assert called_output.read_bytes()==output_data
+                assert sql('SELECT count(*) FROM adapter_invocations',dbs['core'])=='1'
+                stop={'work_id':work,'delegation_id':reviewer_grant,'activation_id':selected['id']}
+                stopped=cli('request','POST',f"/adapter-submissions/{candidate['id']}/stop",'--key','adapter-stop',body=stop,client='reviewer')
+                assert stopped['termination_confirmed'] is False
+                cli('request','POST',invoke_route,'--key','after-adapter-stop',body=invocation,expected=403,client='reviewer')
+                assert sql('SELECT count(*) FROM adapter_invocations',dbs['core'])=='1'
+                stopped_view=cli('request','POST',f"/adapter-submissions/{candidate['id']}/inspect",body={'work_id':work,'delegation_id':grant})
+                assert stopped_view['activations'][0]['stop_recorded'] is True and stopped_view['activations'][0]['admitted_calls']==1
+                listing=cli('request','POST',mcp_path,body={'jsonrpc':'2.0','id':5,'method':'tools/list'},client='reviewer')
+                assert all(t['name']!=tool for t in listing['result']['tools'])
+                denied=cli('request','POST',mcp_path,body={**rpc,'id':6},client='reviewer')
+                assert denied['result']['isError'] is True
+                checks.append('managed MCP initialization, discovery, third execution admission and observation use current Gateway authority; direct API replay shares its slot and stopped tools disappear')
+                checks.append('explicit activation admits a real third contained invocation with exact published output; replay consumes one slot and stop denies a new call while allowance remains')
+                write(root/'adapter-evaluation.json',json.dumps(reviewed,indent=2),0)
+                checks.append('scoped evaluator records criteria and limitations tied to actual backend observation; replay is stable, self-assessment and changed-key input rejected; no activation')
+                checks.append('registered immutable adapter runs as a distinct verifier instance via API/CLI; normal Gateway workspace/upload/publication and Runtime materialization remain enforced')
         else:
             assert sql(f"SELECT revision FROM workspaces WHERE id='{output_workspace}'", dbs['catalog']) == '2'
-        assert sql(f"SELECT count(*) FROM compute_returns", dbs['core']) == ('3' if args.adapter_verification else '2')
+        assert sql(f"SELECT count(*) FROM compute_returns", dbs['core']) == ('4' if continuation else '3' if args.adapter_verification else '2')
         assert sql(f"SELECT committed FROM limits WHERE id='compute'", dbs['core']) == '0'
         assert sql(f"SELECT count(*) FROM execution_inputs WHERE execution_id='{execution}' AND retained", dbs['core']) == '2'
         assert sql(f"SELECT count(*) FROM execution_inputs WHERE execution_id='{next_accepted['resource_id']}' AND retained", dbs['core']) == ('2' if args.adapter_verification else '3')
@@ -838,6 +864,9 @@ except Exception as error:
         'db_workflow': 'NOT RUN', 'program_natural_exit': 'PASS' if args.restriction == 'complete' else 'NOT RUN', 'full_network_bypass_matrix': 'NOT RUN',
         'compute_settlement': 'PASS', 'successful_successor': 'PASS' if successor_result else 'NOT RUN', 'successor': successor_result,
         'dependency_release': 'NOT IMPLEMENTED', 'production_qualification': 'NOT RUN'}
+    if continuation:
+        result['service_continuation'] = continuation.result
+        result['db_workflow'] = 'PASS: one contained Company write, same receipt after recovery'
 except BaseException as error:
     result = {'result': 'FAIL', 'fixture_id': fixture.identity, 'error_type': type(error).__name__, 'completed_checks': checks}
     raise

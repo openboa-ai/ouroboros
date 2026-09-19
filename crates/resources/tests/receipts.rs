@@ -2479,6 +2479,8 @@ async fn provider_denial_checks(
     let config = ProviderBinding {
         target: "approved-model".into(),
         endpoint: "https://127.0.0.1:1/responses".into(),
+        chatgpt_account_id: None,
+        codex_responses_lite: false,
         credential_id: active.credential,
         credential_version: 10,
         timeout_ms: 1000,
@@ -2508,6 +2510,22 @@ async fn provider_denial_checks(
             .is_err()
     );
     ticket.target = config.target;
+    ticket.configuration["chatgpt_account_id"] = json!("unapproved-account");
+    assert!(
+        sender
+            .execute(&ticket, || async {
+                panic!("account substitution authorized");
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+            .await
+            .is_err()
+    );
+    ticket
+        .configuration
+        .as_object_mut()
+        .unwrap()
+        .remove("chatgpt_account_id");
     let calls = std::sync::atomic::AtomicUsize::new(0);
     assert!(
         sender
@@ -2601,6 +2619,8 @@ async fn provider_https_checks(
     let config = ProviderBinding {
         target: "local-tls-fixture".into(),
         endpoint: ready["endpoint"].as_str().unwrap().into(),
+        chatgpt_account_id: None,
+        codex_responses_lite: false,
         credential_id: active.credential,
         credential_version: 11,
         timeout_ms: 2000,

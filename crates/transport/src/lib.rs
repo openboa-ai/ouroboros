@@ -56,6 +56,14 @@ pub fn client(files: &TlsFiles) -> Result<reqwest::Client> {
         .timeout(Duration::from_secs(65))
         .build()?)
 }
+fn tls_http1() -> hyper::server::conn::http1::Builder {
+    let mut builder = hyper::server::conn::http1::Builder::new();
+    // Each request gets its own bounded connection. Reusing a connection would
+    // let an earlier request's deadline truncate a later model response.
+    builder.keep_alive(false);
+    builder
+}
+
 pub async fn serve(addr: SocketAddr, files: TlsFiles, app: Router) -> Result<()> {
     provider();
     let cert_bytes = config::read_regular(&files.certificate, 1024 * 1024)?;
@@ -109,8 +117,7 @@ pub async fn serve(addr: SocketAddr, files: TlsFiles, app: Router) -> Result<()>
             };
             let service = TowerToHyperService::new(app.layer(Extension(peer)));
             // Bounded connection lifetime also forces periodic certificate revalidation.
-            let connection = hyper::server::conn::http1::Builder::new()
-                .serve_connection(TokioIo::new(tls), service);
+            let connection = tls_http1().serve_connection(TokioIo::new(tls), service);
             tokio::pin!(connection);
             let _ = tokio::time::timeout(Duration::from_secs(60), async {
                 tokio::select! {
@@ -126,6 +133,38 @@ pub async fn serve(addr: SocketAddr, files: TlsFiles, app: Router) -> Result<()>
     }
     drop(listener);
     shutdown::drain(&mut tasks, &stop, Duration::from_secs(5)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn tls_response_closes_connection_before_another_request_inherits_its_deadline() {
+        let (mut client, server) = tokio::io::duplex(4096);
+        let app = Router::new().route("/", axum::routing::get(|| async { "complete" }));
+        let connection = tokio::spawn(async move {
+            tls_http1()
+                .serve_connection(TokioIo::new(server), TowerToHyperService::new(app))
+                .await
+                .unwrap();
+        });
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(2), client.read_to_end(&mut response))
+            .await
+            .expect("response must close without waiting for the connection lifetime limit")
+            .unwrap();
+        let response = String::from_utf8(response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(response.contains("connection: close\r\n"));
+        assert!(response.ends_with("complete"));
+        connection.await.unwrap();
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -237,9 +276,13 @@ pub async fn serve_instance_socket(path: PathBuf, app: Router) -> Result<()> {
             let service = TowerToHyperService::new(app.layer(Extension(peer)));
             let connection = hyper::server::conn::http1::Builder::new()
                 .keep_alive(false)
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(Duration::from_secs(5))
                 .serve_connection(TokioIo::new(socket), service);
             tokio::pin!(connection);
-            let _ = tokio::time::timeout(Duration::from_secs(5), async {
+            // Model streams can outlive a short RPC. Bound header admission separately;
+            // Gateway keeps checking current authority while the one response is delivered.
+            let _ = tokio::time::timeout(Duration::from_secs(60), async {
                 tokio::select! {
                     result = &mut connection => { let _ = result; },
                     _ = stopping.changed() => {

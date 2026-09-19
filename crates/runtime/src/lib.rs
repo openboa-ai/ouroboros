@@ -1,6 +1,10 @@
 //! Runtime preparation is not admission. A Core-approved, qualified profile is required before payload release.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod claim_journal;
+pub mod command;
 #[cfg(target_os = "linux")]
 mod shutdown;
+pub mod worker;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

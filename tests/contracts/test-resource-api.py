@@ -27,6 +27,8 @@ if __package__ in (None, ""):
 
 import argparse, fcntl, hashlib, http.client, json, os, secrets, shutil, socket, ssl, subprocess, time, urllib.error, urllib.parse, urllib.request, uuid
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Barrier, Lock
 from tests.support.fixture_config import clean_environment, load_config, local_url, postgres_environment
@@ -144,11 +146,12 @@ if a.workspace_checks:
 ctx=ssl.create_default_context(cafile=str(root/'ca.pem'));ctx.load_cert_chain(root/'human.pem',root/'human.key')
 opener=fixture.opener(ctx)
 work=None
-def call(method,path,body=None,key=None,target=None):
+def call(method,path,body=None,key=None,target=None,extra=None):
     headers={}
     if work:headers.update({'x-ouro-work-id':work,'x-ouro-delegation-id':grant})
     if target:headers['x-ouro-resource-target']=target
     if key:headers['idempotency-key']=key
+    headers.update(extra or {})
     data=body if isinstance(body,bytes) else json.dumps(body).encode() if body is not None else None
     if body is not None:headers['content-type']='application/octet-stream' if isinstance(body,bytes) else 'application/json'
     request=urllib.request.Request(fixture.url('gateway')+path,data=data,headers=headers,method=method)
@@ -203,7 +206,7 @@ def start_services(label,ready_status=200):
         assert all(proc.poll() is None for proc in processes.values()),'service exited during startup'
         try:
             if all(listening(name) for name in service_names) and call('GET','/conditions')[0]==ready_status:break
-        except OSError:pass
+        except OSError:pass  # A listener may start during this bounded readiness loop.
         time.sleep(.1)
     else:raise RuntimeError('services not ready: '+label)
     service_runs.append({'phase':label,'pids':{name:proc.pid for name,proc in processes.items()}})
@@ -345,8 +348,14 @@ def workspace_checks():
         assert status==200 and [row['workspace_id'] for row in listed['items']]==[workspace_id]
         assert listed['next_cursor'] is None
         status,detail,_=json_call('GET',f'/workspaces/{workspace_id}')
-        assert status==200 and detail==listed['items'][0] and detail['state']=='active'
-        assert cli('show',workspace_id)==detail
+        assert status==200 and {key:detail[key] for key in listed['items'][0]}==listed['items'][0] and detail['state']=='active'
+        observation=detail['publication_observation']
+        assert observation['source']=='core_publication_records' and observation['initial_revision']==0
+        assert observation['latest_confirmed_publication'] is None and not observation['has_pending_publication']
+        shown=cli('show',workspace_id)
+        assert shown.keys()==detail.keys()
+        expected_detail={**detail,'publication_observation':{**observation,'observed_at':shown['publication_observation']['observed_at']}}
+        assert shown==expected_detail
         cli_created=cli('create','--label','CLI workspace','--key','workspace-cli-create')
         observe_created(cli_created,'CLI workspace')
         cli_list=cli('list')
@@ -373,8 +382,34 @@ def workspace_checks():
         assert report['objects'][0]['object_id']!=report['objects'][1]['object_id'],'equal bytes reused a physical object identity'
         for revision,identity in enumerate(uploads):
             publication={'workspace_id':workspace_id,'expected_revision':revision,'files':{'result.bin':identity}}
+            if revision==1:
+                # Preserve two total revisions while observing a real committed effect whose Core receipt is lost.
+                assert fault_proxy is not None
+                fault_proxy.arm(None,'before-completion')
             status,published,_=json_call('POST','/publications',publication,'workspace-publish-'+str(revision))
+            if revision==1:
+                assert status==503 and fault_proxy.consumed(),'publication loss did not cross the intended Core boundary'
+                publication_intent=sql(f"SELECT intent_id FROM publication_receipts WHERE firm_id='{firm}' AND workspace_id='{workspace_id}' AND revision=2",urls['catalog'])
+                uuid.UUID(publication_intent)
+                before_observation=persisted_state()
+                pending_observation=json_call('GET',f'/workspaces/{workspace_id}')[1]['publication_observation']
+                assert pending_observation['has_pending_publication']
+                assert pending_observation['latest_confirmed_publication']['revision']==1
+                assert pending_observation['latest_confirmed_publication']['files'][0]['upload_id']==uploads[0]
+                assert any(item['intent_id']==publication_intent and item['expected_revision']==1 for item in pending_observation['pending_publications'])
+                assert persisted_state()==before_observation,'publication metadata discovery replayed an external effect'
+                status,published,_=json_call('POST',f'/resource-intents/{publication_intent}/reconcile')
+                assert effects(persisted_state())==effects(before_observation),'receipt reconciliation republished the file'
             assert status==200 and published['revision']==revision+1
+            before_observation=persisted_state()
+            observed=json_call('GET',f'/workspaces/{workspace_id}')[1]['publication_observation']
+            confirmed=observed['latest_confirmed_publication']
+            assert not observed['has_pending_publication'] and not observed['pending_has_more']
+            assert confirmed['intent_id']==published['intent_id'] and confirmed['revision']==revision+1
+            assert confirmed['files_complete'] and confirmed['file_count']==1 and confirmed['retirement_state']=='none_recorded'
+            assert confirmed['files']==[{'workspace_id':workspace_id,'revision':revision+1,'path':'result.bin','upload_id':identity,'work_id':work,'target_id':workspace_target}]
+            assert confirmed['confirmed_at'] is not None
+            assert persisted_state()==before_observation,'confirmed publication discovery mutated persistent state'
             report['publications'].append({'reply':published,'input':publication,'request_key':'workspace-publish-'+str(revision)})
             snapshot=json.loads(sql(f"SELECT manifest FROM workspace_snapshots WHERE firm_id='{firm}' AND workspace_id='{workspace_id}' AND revision={revision+1}",urls['catalog']))
             expected_object={key:value for key,value in report['objects'][revision].items() if key!='upload_id'}
@@ -388,6 +423,7 @@ def workspace_checks():
         assert sql(f"SELECT count(*) FROM upload_object_holds WHERE firm_id='{firm}' AND intent_id IN ('{uploads[0]}','{uploads[1]}')",urls['catalog'])=='2'
         assert sql(f"SELECT count(*) FROM revision_object_holds WHERE firm_id='{firm}' AND workspace_id='{workspace_id}'",urls['catalog'])=='2'
         assert sql(f"SELECT count(*) FROM workspace_snapshots WHERE firm_id='{firm}' AND workspace_id='{workspace_id}' AND revision=0 AND manifest='{{}}'::jsonb",urls['catalog'])=='1'
+        report['checks'].append('publication metadata separates Core-confirmed revision from pending Catalog effects; reconciliation reveals the same immutable file refs without another publication')
         report['checks'].append('two equal-byte uploads have distinct object identities; upload and both immutable revision holds persist after replacing the workspace head; both historical binary reads are exact')
 
         status,other,_=json_call('POST','/work',{'purpose':'namespace isolation fixture','delegation_id':grant},'workspace-other-work')
@@ -1110,16 +1146,31 @@ try:
             sql(f"INSERT INTO resource_scopes(firm_id,work_id,delegation_id,target_id,operations,namespace_id) VALUES('{firm}','{work}','{scope_grant}','{workspace_target}',ARRAY[{','.join(repr(op) for op in workspace_ops)}],'{workspace_namespace}')",urls['core'])
     if a.binary_checks:
         sql(f"INSERT INTO resource_scopes VALUES('{firm}','{work}','{binary_stream_grant}','catalog',ARRAY['inspect','file.upload'])",urls['core'])
-    initial_read=call('GET',f'/workspaces/{workspace}/snapshots/0/files/input.txt')
+    bound={'X-Ouro-Owner-Binding':json.dumps(call('GET','/conditions')[1]['owner_binding'])}
+    initial_read=call('GET',f'/workspaces/{workspace}/snapshots/0/files/input.txt',extra=bound)
     assert initial_read[:2]==(200,'fixture input'),('initial fixture read',initial_read[0],str(initial_read[1])[:512],initial_read[2])
-    assert call('POST','/db/queries',{'operation':'read_input','parameters':{'input_id':input_id}},'query')[:2]==(200,{'input':True})
+    # A slot selector has no authority without a server-established service execution.
+    before_service_spoof=persisted_state()
+    for slot,status in [('snapshot',403),('root:child',400),('*',400)]:
+        extra={**bound,'X-Ouro-Effect-Slot':slot,'X-Ouro-Effective-Caller':str(uuid.uuid4()),'X-Ouro-Root-Intent':str(uuid.uuid4())}
+        result=call('POST','/db/queries',{'operation':'read_input','parameters':{'input_id':input_id}},'service-spoof',extra=extra)
+        assert result[0]==status,(slot,result[0])
+    assert persisted_state()==before_service_spoof,'unbound service selector created an effect'
+    assert call('POST','/db/queries',{'operation':'read_input','parameters':{'input_id':input_id}},'query',extra=bound)[:2]==(200,{'input':True})
     db={'operation':'record_result','parameters':{'marker':'recorded'}}
-    status,record,_=call('POST','/db/transactions',db,'record');assert status==200,(status,record)
+    status,record,_=call('POST','/db/transactions',db,'record',extra=bound);assert status==200,(status,record)
+    before_binding=sql(f"SELECT count(*) FROM resource_calls WHERE firm_id='{firm}'",urls['core'])
+    observed_binding=json.loads(bound['X-Ouro-Owner-Binding'])
+    for field in ('environment_id','firm_id','principal_id','serving_generation'):
+        changed={**observed_binding,field:str(uuid.uuid4())}
+        for original_key in ('record','binding-must-not-write'):
+            assert call('POST','/db/transactions',db,original_key,extra={'X-Ouro-Owner-Binding':json.dumps(changed)})[0]==409
+    assert sql(f"SELECT count(*) FROM resource_calls WHERE firm_id='{firm}'",urls['core'])==before_binding,'stale owner binding reserved or dispatched a resource'
     assert call('POST','/db/transactions',db,'record')[1]==record
     assert call('POST','/db/transactions',{**db,'parameters':{}},'record')[0]==409
     assert call('PUT',f"/uploads/{record['intent_id']}/content",b'wrong')[0]==409
     result=b'result';sha=hashlib.sha256(result).hexdigest()
-    status,upload,_=call('POST','/uploads',{'size':len(result),'sha256':sha},'upload');assert status==202,(status,upload)
+    status,upload,_=call('POST','/uploads',{'size':len(result),'sha256':sha},'upload',extra=bound);assert status==202,(status,upload)
     upload_id=upload['upload_id'];path=f'/uploads/{upload_id}/content'
     sql("UPDATE resource_scopes SET operations=array_remove(operations,'file.upload') WHERE target_id='catalog'",urls['core'])
     assert call('GET','/resource-intents/'+upload_id)[0]==200
@@ -1128,7 +1179,7 @@ try:
     sql("UPDATE resource_scopes SET operations=operations||ARRAY['file.upload'] WHERE target_id='catalog'",urls['core'])
     assert call('PUT',path,b'wrong first body')[0]==409
     # A denied content attempt leaves the approved intent available for its exact body.
-    status,receipt,_=call('PUT',path,result);assert status==200,(status,receipt)
+    status,receipt,_=call('PUT',path,result,extra=bound);assert status==200,(status,receipt)
     assert call('PUT',path,result)[1]==receipt
     assert call('PUT',path,b'changed')[0]==409
     publication={'workspace_id':workspace,'expected_revision':0,'files':{'result.txt':upload_id}}
@@ -1146,6 +1197,14 @@ try:
     assert sql('SELECT count(*) FROM results',urls['company'])=='1'
     assert sql('SELECT count(*) FROM effect_receipts',urls['company'])=='1'
     assert sql('SELECT count(*) FROM publication_receipts',urls['catalog'])=='1'
+    status,notifications,_=call('GET','/notifications')
+    assert status==200 and notifications['unread']['by_category']['publication']==1
+    notices=[item for item in notifications['items'] if item['category']=='publication']
+    assert len(notices)==1 and notices[0]['source']=={'work_id':work,'intent_id':pub['intent_id']}
+    assert notices[0]['kind']=='publication_recorded' and not any(key in notices[0]['source'] for key in ['workspace_id','path','revision','target_id'])
+    assert call('POST','/notifications/read',{'ids':[notices[0]['id']]})[0]==200
+    assert call('GET','/notifications')[1]['unread']['by_category']['publication']==0
+
     storage_failure={'result':'NOT RUN'}
     if a.storage_failure_checks:
         failure_checks=[]
@@ -1295,7 +1354,9 @@ try:
     collection_paths.update(f"/resource-intents/{item['record']['intent_id']}" for item in collection_result.get('additional_retirements',[]))
     scoped_paths=namespace_paths|retirement_paths|collection_paths
     lookup_paths+=sorted(scoped_paths)
+    before_query_start=datetime.now(timezone.utc)
     historical={path:call('GET',path,target=workspace_target if path in scoped_paths else None) for path in lookup_paths}
+    before_query_end=datetime.now(timezone.utc)
     assert all(reply[0]==200 for reply in historical.values()),'historical API evidence unavailable before restart'
     baseline=persisted_state();baseline_tree=tree_state(blob)
     write('restart-before.json',json.dumps({'state':baseline,'api':historical,'artifacts':baseline_tree},indent=2))
@@ -1304,10 +1365,26 @@ try:
     start_services('persisted-restart')
     assert persisted_state()==baseline,'service restart changed persisted identities or receipts'
     assert tree_state(blob)==baseline_tree,'service restart changed artifact contents'
-    assert {path:call('GET',path,target=workspace_target if path in scoped_paths else None) for path in lookup_paths}==historical,'API evidence changed after restart'
+    after_query_start=datetime.now(timezone.utc)
+    restarted={path:call('GET',path,target=workspace_target if path in scoped_paths else None) for path in lookup_paths}
+    after_query_end=datetime.now(timezone.utc)
+    stable_restarted=deepcopy(restarted)
+    for path in namespace_paths:
+        assert restarted[path][0]==200,'workspace evidence unavailable after restart'
+        before_observation=historical[path][1]['publication_observation']
+        after_observation=restarted[path][1]['publication_observation']
+        before_time=datetime.fromisoformat(before_observation['observed_at'])
+        after_time=datetime.fromisoformat(after_observation['observed_at'])
+        assert before_time.tzinfo is not None and after_time.tzinfo is not None,'observation time lacks timezone'
+        assert before_query_start<=before_time<=before_query_end,'prior observation is not from its actual query window'
+        assert after_query_start<=after_time<=after_query_end and after_time>before_time,'restarted observation is not fresh'
+        # Query observation time advances; every persisted identity, receipt, state,
+        # file reference, confirmation time and response status must remain exact.
+        stable_restarted[path][1]['publication_observation']['observed_at']=before_observation['observed_at']
+    assert stable_restarted==historical,'API evidence changed after restart'
     if a.workspace_checks:
         workspace_result['post_restart']='PASS'
-        workspace_result['checks'].append('all-service restart preserves Core namespace allocations, Catalog creation receipts, object holds, artifacts and exact workspace detail responses')
+        workspace_result['checks'].append('all-service restart preserves exact workspace records and refreshes only the verified query observation time')
         write('workspace-checks.json',json.dumps(workspace_result,indent=2))
     if a.retirement_checks:
         for item in retirement_result['receipts']:
@@ -1348,7 +1425,7 @@ try:
         status,body,_=call('GET',f'/workspaces/{workspace}/snapshots/{revision}/files/{filename}')
         assert status==200 and hashlib.sha256(body.encode()).digest()==hashlib.sha256(expected).digest(),'snapshot content hash changed after restart'
     assert effects(persisted_state())==effects(baseline),'snapshot reads changed domain state'
-    write('restart-after.json',json.dumps({'state':persisted_state(),'api':historical,'artifacts':tree_state(blob),'postgres':postgres_restart},indent=2))
+    write('restart-after.json',json.dumps({'state':persisted_state(),'api':restarted,'artifacts':tree_state(blob),'postgres':postgres_restart},indent=2))
     # CLI reads the same Gateway API and receipt, including an inactive target.
     cfg=write('cli.json',json.dumps({'gateway_url':fixture.url('gateway'),'tls':tls('human')}))
     sql("UPDATE resource_targets SET active=false WHERE id='catalog'",urls['core'])
@@ -1419,7 +1496,7 @@ try:
             if blob.exists():blob.rename(replacement)
             displaced.rename(blob)
     negative_checks+=['live root replacement read and upload denied with 503 and no replacement writes','restored root remains restricted in same process','durable restriction rejects Catalog restart']
-    report={'result':'PASS','checks':['mTLS Core/worker dispatch','fixed file and DB scopes','stable-key replay and conflict','one DB effect and receipt','upload content retry binding','separate publication and historical snapshot','raw native Responses and MCP fixture transports','owner CLI historical receipt and current revocation','same binaries/configuration/certificates and persisted state after all-service restart','identical work/request/result/publication receipts and content hashes after restart','stable-key replay after restart creates no new effects','original grant stays revoked across all-service restart']+negative_checks,'fixture_id':fixture.identity,'storage_failure':storage_failure,'restart':{'services':{'result':'PASS','runs':service_runs},'postgresql':postgres_restart,'vm':'NOT RUN','power_loss':'NOT RUN','storage_device':'explicit storage_root' if 'storage_root' in fixture.data else 'dedicated fixture directories','physical_ssd_loss':'NOT RUN','physical_mount_loss':'NOT RUN'},'native_codex':'NOT RUN','linux_isolation':'NOT RUN','subscription':'NOT RUN'}
+    report={'result':'PASS','checks':['mTLS Core/worker dispatch','fixed file and DB scopes','stable-key replay and conflict','one DB effect and receipt','upload content retry binding','separate publication and historical snapshot','raw native Responses and MCP fixture transports','owner CLI historical receipt and current revocation','same binaries/configuration/certificates and persisted state after all-service restart','identical work/request/result/publication receipts and content hashes after restart','stable-key replay after restart creates no new effects','original grant stays revoked across all-service restart','completed publication notification uses safe work/intent metadata and durable reads']+negative_checks,'fixture_id':fixture.identity,'storage_failure':storage_failure,'restart':{'services':{'result':'PASS','runs':service_runs},'postgresql':postgres_restart,'vm':'NOT RUN','power_loss':'NOT RUN','storage_device':'explicit storage_root' if 'storage_root' in fixture.data else 'dedicated fixture directories','physical_ssd_loss':'NOT RUN','physical_mount_loss':'NOT RUN'},'native_codex':'NOT RUN','linux_isolation':'NOT RUN','subscription':'NOT RUN'}
     report['binary']=binary_result
     report['workspace']=workspace_result
     report['retirement']=retirement_result
@@ -1431,7 +1508,7 @@ except BaseException:
         # or credentials. Do not replace the original failure if observation also fails.
         states=sql(f"SELECT coalesce(jsonb_agg(v),'[]'::jsonb) FROM (SELECT id,operation,state,(SELECT count(*) FROM attempts a WHERE a.firm_id=i.firm_id AND a.intent_id=i.id) AS attempts FROM intents i WHERE firm_id='{firm}' ORDER BY id LIMIT 200) v",urls['core'])
         write('failure-states.json',states)
-    except Exception:pass
+    except Exception:pass  # Keep the original failure if diagnostic observation also fails.
     print(json.dumps({'result':'FAIL','fixture_id':fixture.identity}));raise
 finally:
     try:stop_services()

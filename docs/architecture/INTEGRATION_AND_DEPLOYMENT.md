@@ -6,12 +6,193 @@ Paths, unit names, and ports below are symbolic or illustrative design identifie
 host paths, deployment defaults, or commands to execute. The same product build accepts an
 explicit environment binding; the developer's Mac is one reference environment.
 
+## Development, verification and firm operation
+
+[Integrated System Design](SYSTEM_DESIGN.md#6-environments-data-and-operational-continuity)
+connects source, package and runtime lifetimes. Both source repositories target main-only trunk;
+development/test/operation are **environment boundaries**, not Git branches or automatic deployment
+aliases. Product Git rulesets/reviews and host lifecycle enforcement remain in force during migration.
+
+A development working copy is disposable source/build storage. A verification environment is an
+explicitly prepared fresh identity, database, file namespace and bounded execution fixture. It may
+be created only when needed; no permanent staging service is required. Firm operation uses enrolled
+storage, current authority and exact selected packages/configuration. Separate directories or Git
+remotes alone do not isolate credentials, network, queues, state, storage budgets or external effects.
+Builders and candidate test jobs cannot inherit production keys/DB roles or run unrestricted on a
+persistent production runner. Real provider tests remain a separately scoped lane.
+
+Company Git contains code/schemas/migrations and synthetic templates, not actual deployed settings,
+member profiles, accounts, limits, conversations, secrets or operational evidence. Applied settings
+and protected credential/endpoint references belong to the owning enrolled environment/services.
+Company source ingress uses admitted repository resources or explicit source snapshots, never
+implicit developer-home sharing. A Company package is qualified for a declared runtime/SDK/profile;
+same-byte promotion does not qualify new material config or production account bindings by itself.
+
+Package, verification and selected-use records bind exact content and current target/config/data
+revisions. The owning job/service/UI contract handles admission or activation, retained dependencies,
+current-revision conflict checks, actual readiness and original-intent reconciliation. UI packages
+are displayed in the product Mac host; ordinary Company services/programs stay in secretless Runtime
+profiles. Their packages cannot install an outer service or update the Mac application binary.
+Separately qualified AuthModules use the protected Resources installation contract below; source
+ownership alone never supplies that trust. Product upgrades and SDK migrations retain the existing
+governed installation path.
+
+The symmetric extension names are Company UI Host and Company Service Host. The latter uses
+existing Gateway/Runtime/resources, not another runtime engine. Investment APIs, financial
+rules/enforcement and Binance adapters are Company service packages. The product deploys only
+generic hosting, contracts, common resources and protected dispatch/custody; it does not link
+Company business code into a privileged worker. UI and service health/selection are independent.
+
+### Independent AuthModule installation
+
+An AuthModule implements provider authentication inside a dedicated protected Resources host
+profile. It is an independently versioned package, not an ordinary Company adapter, another Runtime
+engine or another custody system. Existing package/verification/selection records bind its source,
+locked build inputs, host ABI, credential schema, allowed authentication operations/destinations,
+result filtering and resource bounds. AuthModule source may be prepared by Company agents; author,
+repository or maintainer identity cannot grant secret access or replace independent qualification.
+
+Within a qualified compatible host ABI, install and select the exact accepted AuthModule without
+rebuilding or updating the full product. Only a required host ABI, isolation, transport or common
+custody capability outside that contract needs a governed product change. The protected Resources
+host owns loading, credential-consumer binding and lifecycle; an ordinary execution, mutable
+checkout or adapter update cannot choose that profile or dynamically enter its process. Existing
+Runtime/backend isolation mechanisms may be reused without sharing ordinary-instance credentials,
+memory, mounts, service identities or unrestricted network access.
+
+The module consumes only its assigned credential version within that protected boundary. The
+product-supplied encryption/envelope and key-custody implementation remains common and unchanged;
+an authentication extension cannot substitute its own storage cipher, key export or reveal route.
+Source/build inputs and synthetic verification remain separate from deployed settings, actual
+credentials, company data and retained operating evidence. Modules use the existing managed
+capability/connection catalog and evidence path, not a new registry or approval platform.
+
+Current delegation may cover preparation, independent qualification, installation and activation
+of an added connection; these steps need no routine owner confirmation when all required scope
+already exists. Missing authority or provider-required human authentication remains an explicit
+boundary. Enrollment, verified account identity, technical qualification and current business-use authority are distinct;
+a newly generated credential is captured into custody before ordinary code receives any result.
+
+### Connection maintenance and inbound sessions
+
+Resources owns unattended authentication maintenance independently of a UI or calling agent's
+lifetime. A selected connection binds the exact adapter/AuthModule/host ABI, account/configuration,
+credential schema/version, consumer generation and current authority. Refresh has its own bounded
+maintenance scope, deadline and durable attempt; serialize it per credential lineage/account binding and conditionally publish
+the new custody version against the expected active version. Losing a provider token-rotation
+response leaves the original attempt unresolved, not permission to replay with an obsolete token.
+Refresh cannot extend business authority or replay a model/trading request. Failed or uncertain
+refresh blocks dependent new use; separately authorized observation of existing obligations remains
+distinct. Provider-required reauthentication is visible rather than replaced by another account.
+
+An authenticated long-lived session is not continuing permission for every message. Its protected
+owner retains connection/subscription and attempt identities, bounded validity, current restriction
+generation, usage and cursor/gap evidence. Each consequential operation still passes current
+admission and exact dispatch checks. Reconnect may restore only the authorized authentication or
+subscription state; it cannot silently resend a business effect. A caller exit or closed UI does
+not delete an external subscription, discharge charges or settle in-flight work.
+
+Provider callbacks and webhooks enter a bounded registered Resources/Gateway ingress, never a
+general listener in an ordinary Company instance. The accepted connection binds callback purpose,
+provider/account, allowed endpoint and current subscription generation. AuthModule verification
+and secret-response filtering precede delivery of permitted events to ordinary Company code.
+Persist the bounded verified event or retained payload reference with its inbox/source identity
+before acknowledging receipt. Deduplicate the ConnectionType-defined canonical provider/account/event namespace and retain
+original ingestion attempts across crashes. Connection aliases and old/new subscription generations
+are delivery provenance, not fresh event identities; subscription-local ID limitations require the
+qualified reconciliation strategy before a repeated effect; expose missing keys and gaps rather than claim universal
+exactly-once delivery. Inbox consumption may create an existing authorized wake occurrence, not a
+new mandate or financial operation. Subscription creation, renewal and removal have their own
+admission/effect records. A provider authentication event cannot authorize its own business action or choose the receiving firm from an untrusted payload.
+
+The independent AuthModule host, unattended refresh, qualified inbound ingress and full session
+recovery are target integration work. Existing custody/enrollment and bounded provider fixtures
+do not establish these deployment capabilities or authorize live connections.
+
+A data migration is a separate state-changing operation with observed completion and compatible
+recovery conditions. A package rollback requires current rights and schema compatibility; it does
+not rewind a company DB or undo an exchange fill. Restore binds a coherent recovery inventory,
+starts without external effects, and reconciles current authority, accounts and obligations before
+dependent work resumes. Source backups and app bundles are not company recovery sets.
+
+UI/service/config transitions obey the [compatible-selection and schema-barrier contract](CONTRACTS_AND_STATE.md#compatible-selection-and-schema-transitions).
+Check the whole affected dependency selection and DB schema epoch, not one slot revision. Prepare
+without business effects, observe readiness, conditionally select, then observe actual application.
+Database migration fences incompatible writers; uncertain completion blocks dependent cutover
+and rollback until the original migration receipt and new epoch are reconciled.
+
+For a connection, that compatible set includes adapter, AuthModule, host ABI, account/configuration
+and credential schema. Actual attempts separately pin credential-material epochs; routine same-scope
+renewal follows [renewal epochs](CONTRACTS_AND_STATE.md#credential-renewal-and-structural-selection-epochs)
+without a full UI/service selection or teardown. Qualification and retained evidence bind the
+structural set and applicable renewal/overlap rules;
+candidate readiness alone cannot replace it. Before enabling a conflicting consumer, observe the
+old worker/lease and channel fencing, including egress and key-service access where used. A copied
+plaintext credential cannot be recalled by a local lease; provider-side revocation, existing
+sessions and previously dispatched effects require their own observations. Keep original attempts,
+required old schema/module evidence and recovery inputs until their owners release the holds.
+Code rollback is not credential rollback, provider revocation or permission to reuse an old secret.
+
+### Company recovery and operating-end barriers
+
+Distinguish UI reconnect, same-boot management recovery, new-boot recovery and backup restoration.
+They require different evidence. Actual environment/store incarnation, host/boot/invocation,
+exclusive writer, trusted time, live instance generations and original unresolved effects must be
+checked before dependent execution. A restored store starts under a new recovery generation with
+business effects disabled; old credentials, snapshots and success files are not current authority.
+
+Protected infrastructure supplies the minimal custody unlock/identity and retained qualified host/
+module inputs before dependent startup. Fetching the bootstrap AuthModule cannot require the same
+locked credential, Company service or network connection that it must first establish. Package
+prefetch uses an independently authorized enrolled source or retained immutable staging; failure
+leaves the dependency unavailable, never a private credential path. Validate the product envelope
+and current key binding without restoring a historical activation or treating a backup as authority.
+
+Recovery ordering is protected control/storage and containment -> selected recovery Company
+services -> exact outstanding-state reconciliation -> per-capability eligibility -> ordinary work.
+To avoid a startup cycle, explicitly authorized recovery profiles may start selected exact service
+releases with bounded compute and named observation/receipt operations while business admission is
+closed. They cannot create replacement orders/resources, use arbitrary signing, erase origin scope
+or self-unpause. This is not an exception inferred from the word recovery. Protected authority fixes
+the profile, operations, service generation, resource ceiling and deadline. The current global
+`admission_paused` blocks these paths too; its implementation must remain restrictive until a
+separately verified scoped path exists. Merely flipping pause or `Restart=always` is not the design.
+
+Before any recovery-service launch, protected host/backend observation reconciles that service's
+existing instances and uncertain create attempts and fences stale writers/generations. An unresolved
+prior create cannot be bypassed by starting a recovery copy. Only provider/business-effect
+reconciliation waits for the eligible Company service to run; basic host-instance inventory does not.
+
+The same ordering covers AuthModule consumers, refresh attempts and external subscriptions. Resolve
+actual account/resource identity across connection aliases and reconcile uncertain provisioning
+before creating a replacement. A restored custody version or an empty local instance list cannot
+prove provider revocation, token validity, absent sessions or settled obligations. Fence old local
+consumers and outbound/key-service access; retain unknown provider outcomes with a current bounded
+observer instead of deleting the connection or minting fresh identities to hide them.
+
+Operating end is a durable intent and barrier revision: restrict new business effects -> observe
+restriction -> reconcile or explicitly transfer residual duties -> drain dependent Company
+services -> stop Runtime -> stop protected control/storage when safe. Protected resume/unpause
+compares this same barrier/revision; a pre-stop snapshot alone cannot serialize concurrent resume.
+Keep a designated observer and bounded resources while duties remain. If required reconciliation
+is impossible, report suspended/unresolved operation with those duties, not a completed shutdown.
+Responsibility transfer requires observed acceptance by a current authorized recipient with enough
+capacity and a lifecycle outside the Runtime/VM being stopped. A recipient inside the shutdown
+target is not a surviving custodian; retain that environment and report suspended/unresolved if
+no valid external recipient or settled-duty evidence exists.
+Emergency containment may stop processes sooner but still cannot claim external settlement.
+
+The present same-boot maintenance helpers and runtime-then-control stop scripts do not implement
+this Company operating-end or cross-boot recovery contract. Their existing limits remain explicit.
+
 ## Reference Implementation and Its Limits
 
 Start with one firm on one active host, with interruption followed by verified recovery.
 On Mac, the target is Lima with Apple's Virtualization.framework (`vz`) and a plain Ubuntu
 24.04 LTS guest. Run the protected outer services, storage, and Docker Engine inside that guest;
-run private workloads in constrained containers. The Mac hosts the VM lifecycle and Rust CLI client.
+run private workloads in constrained containers. The Mac hosts the fixed lifecycle-management client, Rust CLI and Tauri application. Closing its
+window does not command service shutdown; Mac sleep or a stopped VM still interrupts that local
+operating dependency and requires observed recovery.
 On a Linux server, run the same guest-side responsibilities against the native Linux host.
 Neither arrangement claims automatic failover, independent tenants, or production-approved isolation.
 
@@ -346,6 +527,8 @@ and per-instance bridge and deadline-guard processes. These implement four logic
 neither three services nor one process per module is an invariant. Separate additional workers where
 credentials, native libraries, or independently contained failure require another boundary.
 Private business services always execute as private workloads, even when long-lived or useful to others.
+Separately qualified AuthModules execute only in protected Resources host profiles. Reusing Runtime
+isolation does not make these profiles selectable by ordinary Company execution or provider adapters.
 Only Runtime constructs Bollard with the activated fixed Unix endpoint; ignore ambient Docker
 environment defaults. An unavailable endpoint is a failed prerequisite, not permission to select another engine.
 
@@ -355,6 +538,7 @@ environment defaults. An unavailable endpoint is a failed prerequisite, not perm
 | Control service | Core state transitions, current authority, admission, durable dispatch records, and approved scheduling. | Own protected database write credentials; do not execute private plugins or accept raw client administration. |
 | Gateway service | Caller authentication, admitted routing, stream control, and scoped resource handlers. | Expose the only company client entrance; do not hold unrestricted runtime or database-administrator credentials. |
 | File, database, model, or protocol worker | A named capability and scoped provider target, with only required credentials. | Accept bound internal dispatch, not arbitrary client destinations, forwarded authority claims, or private configuration files. |
+| Protected Resources AuthModule host | Independently qualified module selection, fixed host ABI and assigned credential-consumer binding. | Load only the exact accepted artifact; bound authentication, refresh and verified callback operations; no ordinary plugin loading, secret return or arbitrary signing/egress. |
 | Runtime supervisor | Docker Engine access, launch profiles, instance binding, observation, fencing, and containment. | Only this trusted backend owner holds general engine control; never expose the socket or raw launch options to workloads or the console. |
 | Per-instance authentication bridge | The actual workload network namespace and its registered outer Unix-socket channel. | Unique service UID/process lifetime; no private PID/mount namespace, private callbacks, arbitrary destinations, or Docker access. |
 | Independent Runtime deadline guard | One execution cgroup's pre-opened `cgroup.kill` write FD and fixed `CLOCK_BOOTTIME` deadline. | No Docker socket, cgroup path lookup, target selection, launch, or deadline extension; survive supervisor EOF/crash until the existing deadline. |
@@ -365,6 +549,11 @@ Use separate operating-system identities and restrictive file ownership for prot
 Adapters in one process share its memory and credentials. Give independently protected provider
 accounts separate workers or a verified provider-enforced boundary; package names do not isolate secrets.
 No private workload can install an outer unit, edit a launch profile, or reload the Gateway configuration.
+Protected AuthModule installation uses the existing qualified Resources lifecycle under current
+installation authority; it is not an outer-unit API exposed to an ordinary package. Authentication,
+provider API and callback destinations are explicit accepted bindings. Redirects, DNS changes or
+new protocol endpoints cannot widen them; source downloads/build dependencies use separately scoped
+resources and cannot borrow an installed consumer's credential or egress identity.
 The host administrator remains in the trusted computing base and can compromise this local deployment.
 
 ## Reachability and Internal Authentication
@@ -895,12 +1084,18 @@ state through boot, restart, migration, and restore; readiness is not merely an 
 
 1. Establish the single active host, trusted service identities, protected storage ownership,
    network deny rules, available containment, and valid guest/host clock before any workload starts.
-2. Open PostgreSQL and artifact storage in a restricted recovery posture; verify schema compatibility,
-   required content references, durable configuration identities, and available evidence capacity.
+2. Open PostgreSQL, custody and artifact storage in a restricted recovery posture using their
+   protected bootstrap inputs; verify schema compatibility, retained host/module/content references,
+   durable configuration identities and available evidence capacity without a credential-fetch cycle.
 3. Load Core authority, restrictions, pending intents, reservations, and activation state. Determine
    whether these records establish current authority; an old snapshot cannot prove no later revocation.
+   Reconcile host-side instances and uncertain creates for required recovery services and AuthModule
+   consumers, enforce exclusive writers and fence stale generations/egress/key access before admitting
+   a replacement. A restored secret version cannot establish current provider-side validity.
 4. Start authenticated internal services and Gateway inspection/restriction with ordinary dispatch
-   disabled. Confirm credential scope; enable only separately authorized observation/reconciliation.
+   disabled. Confirm the selected compatible adapter/AuthModule/connection bindings and credential
+   scope; admit only exact selected recovery consumers/services and named observation/reconciliation
+   under the bounded recovery profile above. Refresh and event ingestion need their own current scope.
 5. Inventory actual containers, workers, external resources, and incomplete attempts. Fence stale
    generations and reconcile remaining effects, costs, and observation gaps against provider evidence.
 6. Publish per-capability degraded conditions, unresolved state, and reserved control capacity.
@@ -948,9 +1143,10 @@ stopped. Preserve gaps and obtain current authority rather than reissuing histor
 
 ## Portability, Source Ownership, and Future Providers
 
-The public source owns outer control contracts, native lifecycle adapters, Gateway/resource adapters,
-runtime profiles, evidence collection, console, and validation fixtures. Private source owns operating
-methods, research, business schemas, agent organization, and private applications. Native harness
+The public source owns outer control contracts, native lifecycle adapters, generic Company hosts,
+common transport/resource/custody, runtime profiles, evidence collection, console and synthetic
+validation fixtures. Private Company source owns business services, financial semantics/enforcement,
+exchange adapters, operating methods, research, business schemas, organization and applications. Native harness
 integration can contain public reusable glue and private configuration; provider libraries keep
 their own licenses. Public/private describes ownership boundaries, not current repositories or data
 visibility. This work neither splits repositories nor publishes company state or secret material.
@@ -1164,11 +1360,18 @@ qualification is recorded in VALIDATION.md. This is not yet an end-to-end persis
 release-switching mechanism, storage-readiness gate or independent backup/restore tool.
 
 
-Runtime requires UID/GID zero and a `worker` object with `max_executions` (1–100),
-`idle_timeout_seconds` (1–300), and `lifetime_seconds` (1–86400). Other roles reject this object.
-The generated command requires `--require-managed-guard`; a configuration without the independent
-managed guard fails before claim. It retains bounded-worker semantics and has no automatic restart
-or boot enablement. The service lifetime is a host limit, not an extension of any private deadline.
+Runtime requires UID/GID zero and one explicit `worker` configuration. Existing bounded fixtures
+use `max_executions` (1–100), `idle_timeout_seconds` (1–300), and `lifetime_seconds` (1–86400).
+Persistent supervisor mode instead uses `{"mode":"service","poll_interval_seconds":2}` with a
+polling interval of 1–60 seconds. Mixed or missing mode-specific fields are rejected; other service
+roles reject the entire worker object. Both commands require `--require-managed-guard`.
+
+Persistent mode emits `--service` and no `RuntimeMaxSec`; the existing memory/task limits,
+`Restart=no` and explicit stop timeout remain. Bounded mode retains its count/idle limits and host
+lifetime. Neither mode renews a private deadline, creates work, retries an ambiguous claim or enables
+boot startup. Both retain an uncertain original claim before transport; service startup additionally
+checks earlier instance journals. See [Runtime claim recovery](RUNTIME.md#persistent-supervisor-and-original-claim-recovery).
+Rendering this mode is not qualification of an installed persistent Linux service.
 
 The Runtime profile uses `KillMode=mixed`: the initial SIGTERM reaches the main process so it can
 retire its bridge and guard after payload closure; systemd force-stops remaining unit processes

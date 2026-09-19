@@ -167,9 +167,15 @@ def verify(context,unit,graceful=False):
         assert not (evidence/'compute-return.json').exists()
         receipt=evidence/'guard-closure.json';saved=evidence/'guard-closure.withheld'
         assert receipt.exists() and receipt.stat().st_size>0
+        pending=root/'runtime/pending-claim.json'
+        original_pending=pending.read_bytes()
         receipt.rename(saved)
         try:
-            run([str(c['binary']/'ouroboros-runtime'),'--config',str(root/'runtime/config.json'),'--reconcile',state['instance_id']],timeout=15)
+            # Termination without original closure cannot resolve the durable claim.
+            # The CLI must report incomplete recovery, not release the worker slot.
+            incomplete=subprocess.run([str(c['binary']/'ouroboros-runtime'),'--config',str(root/'runtime/config.json'),'--reconcile',state['instance_id']],env=c['child_env'],capture_output=True,timeout=15)
+            assert incomplete.returncode!=0 and b'original Runtime claim remains unresolved' in incomplete.stderr
+            assert pending.read_bytes()==original_pending
             assert query('SELECT committed FROM limits WHERE id=\'compute\'',db)==reservations
             assert query('SELECT count(*) FROM compute_returns',db)=='0'
         finally:saved.rename(receipt)
@@ -189,6 +195,7 @@ def verify(context,unit,graceful=False):
         assert recovered['terminated'] and query('SELECT count(*) FROM results',c['resource_dbs']['company'])==rows
         assert query('SELECT committed FROM limits WHERE id=\'compute\'',db)=='0'
         assert query('SELECT count(*) FROM compute_returns',db)=='1'
+        assert not pending.exists()
         run([str(c['binary']/'ouroboros-runtime'),'--config',str(root/'runtime/config.json'),'--reconcile',state['instance_id']],timeout=15)
         assert query('SELECT count(*) FROM compute_returns',db)=='1'
         assert query('SELECT count(*) FROM executions',db)=='1'
@@ -226,7 +233,7 @@ def start_rendered(binary,config,unit,env):
         assert unit==installed['runtime_unit']
         assert destination.read_bytes()==content and not destination.is_symlink()
     else:
-        fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o644)
+        fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'wb') as output:output.write(content);output.flush();os.fsync(output.fileno())
     subprocess.run(['/usr/bin/systemd-analyze','verify',str(destination)],capture_output=True,check=True,timeout=10)
     if bundled:

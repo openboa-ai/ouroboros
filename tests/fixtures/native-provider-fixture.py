@@ -5,10 +5,14 @@ import json
 from pathlib import Path
 import ssl
 import sys
+import time
 
 root = Path(sys.argv[1])
 config = json.loads((root/'server.json').read_text())
 count = 0
+first_response_delay_elapsed = 0.0
+first_response_delay = config.get('first_response_delay_seconds', 0)
+assert first_response_delay in (0, 6)
 def find_tool(value,name,prefix=False):
     choices=[]
     def matches(candidate):return candidate.startswith(name) if prefix else candidate==name
@@ -23,7 +27,7 @@ def find_tool(value,name,prefix=False):
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_POST(self):
-        global count
+        global count, first_response_delay_elapsed
         size = int(self.headers.get('content-length', '0'))
         if not 0 < size <= 1048576 or self.path != '/responses' or count >= config.get('max_calls',3):
             self.send_error(400); return
@@ -33,9 +37,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         adapter = config.get('adapter',False) and value.get('model')=='fixture-adapter' and value.get('stream') is False
         assert adapter or (value['model']=='fixture-model' and value['stream'] is True)
         count += 1
+        if count == 1 and first_response_delay:
+            started = time.monotonic()
+            time.sleep(first_response_delay)
+            first_response_delay_elapsed = time.monotonic() - started
         if adapter:
             body=json.dumps({'id':f'adapter_{count}','model':'fixture-confirmed-adapter','output':[],'usage':{'input_tokens':1,'output_tokens':1,'total_tokens':2}}).encode()
-            (root/'observed.json').write_text(json.dumps({'count':count,'authorized':True,'requested_model':value['model'],'requested_effort':value.get('reasoning',{}).get('effort')}))
+            (root/'observed.json').write_text(json.dumps({'count':count,'first_response_delay_elapsed':first_response_delay_elapsed,'authorized':True,'requested_model':value['model'],'requested_effort':value.get('reasoning',{}).get('effort')}))
             self.send_response(200);self.send_header('content-type','application/json');self.send_header('content-length',str(len(body)));self.end_headers();self.wfile.write(body)
             return
 
@@ -64,10 +72,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         response={'id':f'response_fixture_{count}','object':'response','model':'fixture-confirmed-native','status':'completed','output':[item],'usage':{'input_tokens':1,'output_tokens':1,'total_tokens':2}}
         events=[{'type':'response.created','response':{'id':response['id'],'status':'in_progress','output':[]}}, {'type':'response.output_item.added','output_index':0,'item':item}, {'type':'response.output_item.done','output_index':0,'item':item}, {'type':'response.completed','response':response}]
         body=''.join('event: '+e['type']+'\ndata: '+json.dumps(e)+'\n\n' for e in events).encode()
-        (root/'observed.json').write_text(json.dumps({'count':count,'authorized':True,'requested_model':value['model'],'requested_effort':value.get('reasoning',{}).get('effort')}))
+        (root/'observed.json').write_text(json.dumps({'count':count,'first_response_delay_elapsed':first_response_delay_elapsed,'authorized':True,'requested_model':value['model'],'requested_effort':value.get('reasoning',{}).get('effort')}))
         self.send_response(200);self.send_header('content-type','text/event-stream');self.send_header('content-length',str(len(body)));self.end_headers();self.wfile.write(body)
 server=http.server.HTTPServer(('127.0.0.1',config['port']),Handler)
 context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.minimum_version=ssl.TLSVersion.TLSv1_2
 context.load_cert_chain(root/'upstream.pem',root/'upstream.key')
 server.socket=context.wrap_socket(server.socket,server_side=True)
 (root/'ready').write_text('ready')

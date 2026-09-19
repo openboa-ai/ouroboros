@@ -138,6 +138,7 @@ impl Fixture {
             .resource_admit(
                 ResourceActor::Human(self.caller.clone()),
                 ResourceRequest {
+                    effect_slot: None,
                     target: "catalog".into(),
                     operation: operation.into(),
                     request_key: Uuid::new_v4().to_string(),
@@ -450,6 +451,7 @@ async fn publication_selector_is_exact_and_non_storage_effects_cannot_reconcile(
 async fn unresolved_publication_fences_only_its_physical_workspace_across_grants_and_aliases() {
     let f = Fixture::new().await;
     let request = |key: &str, grant, target: &str, workspace| ResourceRequest {
+        effect_slot: None,
         target: target.into(),
         operation: "file.publish".into(),
         request_key: key.into(),
@@ -521,6 +523,7 @@ async fn unresolved_publication_fences_only_its_physical_workspace_across_grants
             .resource_admit(
                 actor(),
                 ResourceRequest {
+                    effect_slot: None,
                     target: "catalog".into(),
                     operation: "file.read".into(),
                     request_key: "read-during-unknown".into(),
@@ -747,6 +750,7 @@ async fn admission_pause_keeps_company_observation_but_blocks_new_effects() {
         Err(Error::Denied)
     ));
     let request = ResourceRequest {
+        effect_slot: None,
         target: "catalog".into(),
         operation: "db.write".into(),
         request_key: "after-pause".into(),

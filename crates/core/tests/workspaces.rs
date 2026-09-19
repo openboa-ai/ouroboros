@@ -219,6 +219,7 @@ impl Fixture {
         input: Value,
     ) -> ResourceRequest {
         ResourceRequest {
+            effect_slot: None,
             target: target.into(),
             operation: operation.into(),
             request_key: key.into(),
@@ -965,7 +966,7 @@ async fn creation_receipt_recovers_original_binding_after_revocation_without_new
             );
             assert_eq!(label, "preserved original label");
         }
-        other => panic!("wrong recovery selector: {other:?}"),
+        _ => panic!("wrong recovery selector"),
     }
     assert_eq!(f.effect_snapshot().await, before);
     f.core
@@ -2077,7 +2078,7 @@ async fn workspace_close_receipt_releases_one_slot_after_revocation_and_retains_
             assert_eq!(json!(fixed), request.input);
             assert_eq!(fixed_policy, policy);
         }
-        other => panic!("wrong retirement receipt selector: {other:?}"),
+        _ => panic!("wrong retirement receipt selector"),
     }
     assert_eq!(
         f.effect_snapshot().await,
@@ -2678,7 +2679,7 @@ async fn collection_exact_late_receipt_releases_bytes_once_and_preserves_provena
             assert_eq!(fixed, binding);
             assert_eq!(fixed_policy, policy);
         }
-        other => panic!("wrong collection observation selector: {other:?}"),
+        _ => panic!("wrong collection observation selector"),
     }
     assert_eq!(
         f.effect_snapshot().await,
@@ -2922,5 +2923,76 @@ async fn collection_requires_retired_exact_source_policy_and_current_namespace_s
         f.authority_snapshot().await,
         authority,
         "collection consumes preexisting rights and creates no grants or scopes"
+    );
+}
+
+#[tokio::test]
+async fn publication_observation_keeps_original_revision_after_manifest_replacement() {
+    let f = Fixture::new(6).await;
+    let created = f
+        .activate(TARGET, f.work, "history-workspace", "history")
+        .await;
+    let workspace = created.workspace.as_ref().unwrap().workspace_id;
+    let upload = f.retained_upload(TARGET, f.work, "history-upload").await;
+    let first = f
+        .retained_publication(workspace, 0, upload.intent_id, "history-first")
+        .await;
+    let second = f
+        .retained_publication(workspace, 1, upload.intent_id, "history-second")
+        .await;
+    let latest = f
+        .core
+        .read_workspace(f.actor(), workspace, f.query(TARGET, f.work, f.grant))
+        .await
+        .unwrap();
+    assert_eq!(
+        latest["publication_observation"]["latest_confirmed_publication"]["intent_id"],
+        second.intent_id.to_string()
+    );
+    let original = f
+        .core
+        .read_workspace_publication(
+            f.actor(),
+            workspace,
+            f.query(TARGET, f.work, f.grant),
+            Some(first.intent_id),
+        )
+        .await
+        .unwrap();
+    let evidence = &original["publication_observation"];
+    assert!(evidence["latest_confirmed_publication"].is_null());
+    assert_eq!(
+        evidence["confirmed_publication"]["intent_id"],
+        first.intent_id.to_string()
+    );
+    assert_eq!(evidence["confirmed_publication"]["revision"], 1);
+    assert_eq!(evidence["confirmed_publication"]["files"][0]["revision"], 1);
+    let absent = f
+        .core
+        .read_workspace_publication(
+            f.actor(),
+            workspace,
+            f.query(TARGET, f.work, f.grant),
+            Some(Uuid::new_v4()),
+        )
+        .await
+        .unwrap();
+    assert!(absent["publication_observation"]["confirmed_publication"].is_null());
+    sqlx::query("UPDATE delegations SET revoked=true WHERE firm_id=$1 AND id=$2")
+        .bind(f.core.firm)
+        .bind(f.grant)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    assert!(
+        f.core
+            .read_workspace_publication(
+                f.actor(),
+                workspace,
+                f.query(TARGET, f.work, f.grant),
+                Some(first.intent_id)
+            )
+            .await
+            .is_err()
     );
 }

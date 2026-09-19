@@ -338,6 +338,7 @@ mod tests {
     fn fixture() -> (Profile, ProgramProfile, RuntimeTicket) {
         let profile = ProgramProfile {
             native_codex: false,
+            native_model: None,
             image: format!("sha256:{}", "a".repeat(64)),
             memory_bytes: 64 * 1024 * 1024,
             nano_cpus: 500_000_000,

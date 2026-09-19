@@ -1,0 +1,18 @@
+[package]
+name = "ouroboros-mac"
+version = "0.1.0"
+description = "Ouroboros owner console for macOS"
+edition = "2024"
+[workspace]
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+[dependencies]
+tauri = { version = "2", features = ["unstable"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+tokio = { version = "1", features = ["sync", "fs", "macros", "time"] }
+rfd = "0.15"
+ouroboros-contracts = { path = "../../../crates/contracts" }
+ouroboros-transport = { path = "../../../crates/transport" }

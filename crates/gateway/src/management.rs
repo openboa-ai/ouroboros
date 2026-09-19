@@ -14,10 +14,35 @@ fn management_route(method: &Method, uri: &Uri) -> bool {
     if uri.scheme().is_some() || uri.authority().is_some() {
         return false;
     }
+    if uri.path() == "/intents/by-request-key" {
+        if method != Method::GET {
+            return false;
+        }
+        let Some(query) = uri.query().filter(|q| q.len() <= 4096) else {
+            return false;
+        };
+        let mut fields = query.split('&');
+        let valid = |part: Option<&str>, name: &str| {
+            part.and_then(|p| p.strip_prefix(name))
+                .is_some_and(|value| !value.is_empty())
+        };
+        return valid(fields.next(), "operation=")
+            && valid(fields.next(), "request_key=")
+            && fields.next().is_none();
+    }
     let segments: Vec<_> = uri.path().split('/').collect();
     let query_allowed = method == Method::GET
-        && (matches!(uri.path(), "/work" | "/events")
-            || matches!(segments.as_slice(), ["", "conversations", _, "messages"]));
+        && (matches!(uri.path(), "/work" | "/events" | "/notifications")
+            || matches!(segments.as_slice(), ["", "conversations", _, "messages"])
+            || matches!(
+                segments.as_slice(),
+                [
+                    "",
+                    "work",
+                    _,
+                    "executions" | "activity" | "service-continuations"
+                ]
+            ));
     if let Some(query) = uri.query()
         && (!query_allowed
             || query.len() > 4096
@@ -28,7 +53,29 @@ fn management_route(method: &Method, uri: &Uri) -> bool {
         return false;
     }
     match (method.as_str(), segments.as_slice()) {
+        ("POST", ["", "service-continuations"]) => true,
+        ("GET", ["", "service-continuations", id])
+        | ("POST", ["", "service-continuations", id, "stop"]) => uuid::Uuid::parse_str(id).is_ok(),
+        ("GET", ["", "notifications"]) | ("POST", ["", "notifications", "read"]) => true,
         ("POST", ["", "environment", "admission"]) => true,
+        (
+            "GET",
+            [
+                "",
+                "executions" | "service-continuations",
+                id,
+                "stop-requests",
+                key,
+            ],
+        ) => {
+            uuid::Uuid::parse_str(id).is_ok()
+                && !key.is_empty()
+                && key.len() <= 128
+                && key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_graphic() && !b"%/?#\\".contains(&byte))
+                && !matches!(*key, "." | "..")
+        }
         ("GET", ["", "environment", "status", grant]) => uuid::Uuid::parse_str(grant).is_ok(),
         ("GET" | "POST", ["", "mcp", "work", work, "delegation", grant]) => {
             uuid::Uuid::parse_str(work).is_ok() && uuid::Uuid::parse_str(grant).is_ok()
@@ -69,7 +116,15 @@ fn management_route(method: &Method, uri: &Uri) -> bool {
         )
         | ("GET" | "POST", ["", "conversations", id, "messages"])
         | ("POST", ["", "conversations", id, "participants"])
-        | ("GET", ["", "work", id, "conversations"])
+        | (
+            "GET",
+            [
+                "",
+                "work",
+                id,
+                "conversations" | "executions" | "activity" | "service-continuations",
+            ],
+        )
         | (
             "POST",
             [
@@ -111,7 +166,9 @@ fn management_headers(actor: &Actor, incoming: &HeaderMap) -> Result<HeaderMap, 
     // header may cross this management boundary as trusted Core context.
     let mut headers = HeaderMap::new();
     let (name, value) = match actor {
-        Actor::Human(fingerprint) => ("x-ouro-client-fingerprint", fingerprint.clone()),
+        Actor::Human(fingerprint) | Actor::BoundHuman(fingerprint, _) => {
+            ("x-ouro-client-fingerprint", fingerprint.clone())
+        }
         #[cfg(target_os = "linux")]
         Actor::Instance(peer) => (
             "x-ouro-bridge-peer",
@@ -119,6 +176,15 @@ fn management_headers(actor: &Actor, incoming: &HeaderMap) -> Result<HeaderMap, 
         ),
     };
     headers.insert(name, value.parse().map_err(|_| StatusCode::FORBIDDEN)?);
+    if let Actor::BoundHuman(_, binding) = actor {
+        headers.insert(
+            ouroboros_contracts::OWNER_BINDING_HEADER,
+            serde_json::to_string(binding)
+                .map_err(|_| StatusCode::BAD_REQUEST)?
+                .parse()
+                .map_err(|_| StatusCode::BAD_REQUEST)?,
+        );
+    }
     for name in [
         "content-type",
         "idempotency-key",
@@ -231,6 +297,30 @@ mod management_tests {
     use crate::resources;
 
     #[test]
+    fn original_request_lookup_has_an_exact_read_only_query_shape() {
+        for path in [
+            "/intents/by-request-key?operation=execution.stop&request_key=original",
+            "/intents/by-request-key?operation=file.publish&request_key=a%2Fb",
+        ] {
+            assert!(management_route(&Method::GET, &path.parse().unwrap()));
+        }
+        for path in [
+            "/intents/by-request-key",
+            "/intents/by-request-key?operation=execution.stop&request_key=",
+            "/intents/by-request-key?operation=execution.stop&request_key=x&request_key=y",
+            "/intents/by-request-key?operation=execution.stop&request_key=x&principal_id=other",
+        ] {
+            assert!(!management_route(&Method::GET, &path.parse().unwrap()));
+        }
+        assert!(!management_route(
+            &Method::POST,
+            &"/intents/by-request-key?operation=execution.stop&request_key=x"
+                .parse()
+                .unwrap()
+        ));
+    }
+
+    #[test]
     fn managed_mcp_is_not_the_native_resource_prefix() {
         let work = uuid::Uuid::new_v4();
         let grant = uuid::Uuid::new_v4();
@@ -251,8 +341,25 @@ mod management_tests {
             ("POST", "/work".to_owned()),
             ("POST", "/executions".to_owned()),
             ("POST", "/wakes".to_owned()),
+            ("POST", "/service-continuations".to_owned()),
+            ("GET", format!("/service-continuations/{id}")),
+            (
+                "GET",
+                format!("/service-continuations/{id}/stop-requests/original-key"),
+            ),
+            (
+                "GET",
+                format!("/work/{id}/service-continuations?cursor=opaque%3A1"),
+            ),
+            ("POST", format!("/service-continuations/{id}/stop")),
             ("POST", "/conversations".to_owned()),
             ("GET", format!("/work/{id}/conversations")),
+            ("GET", format!("/work/{id}/executions")),
+            (
+                "GET",
+                format!("/work/{id}/executions?cursor=opaque%3Acursor"),
+            ),
+            ("GET", format!("/work/{id}/activity?cursor=opaque%3Acursor")),
             ("POST", format!("/conversations/{id}/messages/{id}/deliver")),
             ("POST", format!("/conversations/{id}/messages")),
             ("GET", format!("/conversations/{id}/messages?cursor=0")),
@@ -260,11 +367,18 @@ mod management_tests {
             ("POST", format!("/wakes/{id}/cancel")),
             ("GET", format!("/work/{id}")),
             ("GET", format!("/executions/{id}")),
+            (
+                "GET",
+                format!("/executions/{id}/stop-requests/original-request"),
+            ),
             ("GET", format!("/intents/{id}")),
             ("POST", format!("/executions/{id}/stop")),
             ("POST", format!("/executions/{id}/cancel-unstarted")),
             ("POST", format!("/executions/{id}/native-controls")),
             ("POST", format!("/delegations/{id}/revoke")),
+            ("GET", "/notifications".to_owned()),
+            ("GET", "/notifications?cursor=opaque%3A1".to_owned()),
+            ("POST", "/notifications/read".to_owned()),
             ("GET", "/events".to_owned()),
             ("GET", "/events?cursor=opaque%3A1".to_owned()),
         ] {
@@ -285,8 +399,37 @@ mod management_tests {
             ("GET", "/work?cursor=1&cursor=2"),
             ("GET", "/work?target=https://example.invalid"),
             ("GET", "/work?cursor="),
+            ("POST", "/notifications"),
+            ("GET", "/notifications/read"),
+            ("POST", "/notifications/read?cursor=1"),
+            ("GET", "/notifications?cursor=1&cursor=2"),
+            ("GET", "/notifications?principal=other"),
             ("POST", "/events"),
+            (
+                "POST",
+                "/work/00000000-0000-4000-8000-000000000001/activity",
+            ),
+            (
+                "GET",
+                "/work/00000000-0000-4000-8000-000000000001/activity?cursor=1&cursor=2",
+            ),
             ("GET", "/runtime/pending"),
+            ("POST", "/runtime/service-continuations/reconcile"),
+            ("GET", "/service-continuations"),
+            (
+                "POST",
+                "/work/00000000-0000-4000-8000-000000000001/service-continuations",
+            ),
+            (
+                "GET",
+                "/service-continuations/00000000-0000-4000-8000-000000000001/stop-requests/a%2Fb",
+            ),
+            (
+                "GET",
+                "/work/00000000-0000-4000-8000-000000000001/service-continuations?cursor=1&worker=forged",
+            ),
+            ("POST", "/service-continuations/invalid/stop"),
+            ("POST", "/service-continuations?worker_id=forged"),
             ("POST", "/resource/admissions"),
             ("GET", "https://example.invalid/work"),
             ("GET", "//example.invalid/work"),

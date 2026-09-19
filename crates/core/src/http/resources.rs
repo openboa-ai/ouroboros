@@ -285,3 +285,17 @@ pub(super) async fn resource_receipt_recovery(
             .await?,
     ))
 }
+
+pub(super) async fn workspace_publication(
+    State(a): State<App>,
+    Extension(p): Extension<Peer>,
+    Path((id, publication)): Path<(Uuid, Uuid)>,
+    h: HeaderMap,
+    Json(q): Json<ouroboros_contracts::WorkspaceQuery>,
+) -> Result<Json<serde_json::Value>, Failure> {
+    Ok(Json(
+        a.core
+            .read_workspace_publication(resource_actor(&a, p, &h)?, id, q, Some(publication))
+            .await?,
+    ))
+}

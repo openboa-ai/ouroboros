@@ -24,6 +24,19 @@ implementation.
 
 Start with the [architecture reading map](ARCHITECTURE.md#3-detail-map-and-reading-order) for the
 component designs, shared contracts, reference integration, and validation plan.
+The [Integrated System Design](docs/architecture/SYSTEM_DESIGN.md) connects the Mac app, autonomous
+firm operation, product/private source, main-only development, verification and deployment,
+company data, artifact custody and recovery. It distinguishes the target from current implementation
+and gives the dependency order and whole-system acceptance requirements. The product hosts
+Company UI and Company services symmetrically; investment logic and exchange adapters belong to
+the Company's independently verified packages, not built-in product domain modules.
+[Connection and authentication extensions](docs/architecture/SYSTEM_DESIGN.md#connection-adapters-and-protected-auth-modules)
+add independently qualified protected Auth Modules, operation-only credential use, and connection
+adoption inside current delegation. These are design contracts; the
+[checkpoint](docs/implementation/CONNECTION_EXTENSION_DESIGN.md) separates documentation verification
+from remaining implementation and runtime qualification.
+The [Company flow review](docs/implementation/COMPANY_FLOW_REVIEW.md) traces the twelve connection
+boundaries, corrected failure cases and concrete remaining implementation gaps.
 The worktree now contains a locally implemented Rust external environment and CLI under separate
 bounded owner authorization. The [local implementation status](ARCHITECTURE.md#local-implementation-boundary)
 separates tested behavior from remaining storage, recovery-authority and real-subscription gaps.
@@ -43,8 +56,9 @@ the firm's accountability and feedback must remain connected. Separate repositor
 intended implementation direction, not an existing split. Astra is the planned implementation
 agent, not a selected internal operating model.
 
-The architecture proposal separates common execution mechanics, mandatory investment enforcement,
-and provider connectors inside the outer environment. It covers independently operated firms,
+The architecture proposal separates common execution mechanics from Company-owned investment
+enforcement and exchange adapters, with generic protected hosting and mandatory dispatch bindings.
+It covers independently operated firms,
 persistent private operation, company-wide observation and control, dependency isolation, and
 continuity across replacement and exit. Reusable capabilities do not change the firm's purpose
 or grant permission to use them.

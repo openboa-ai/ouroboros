@@ -20,7 +20,7 @@ key('ca')
 run('openssl','req','-x509','-new','-key',str(p/'ca.key'),'-subj','/CN=Ouroboros fixture CA','-days','1','-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,keyCertSign,cRLSign','-out',str(p/'ca.pem'))
 (p/'cert.ext').write_text(fixture.cert_extensions())
 fps={}
-for name in ['core','gateway','gateway-service','human','unregistered']:
+for name in ['core','gateway','gateway-service','runtime','human','unregistered']:
  key(name);run('openssl','req','-new','-key',str(p/(name+'.key')),'-subj','/CN='+name,'-out',str(p/(name+'.csr')))
  run('openssl','x509','-req','-in',str(p/(name+'.csr')),'-CA',str(p/'ca.pem'),'-CAkey',str(p/'ca.key'),'-CAcreateserial','-days','1','-extfile',str(p/'cert.ext'),'-out',str(p/(name+'.pem')))
  fps[name]=hashlib.sha256(run('openssl','x509','-in',str(p/(name+'.pem')),'-outform','DER')).hexdigest()
@@ -43,7 +43,7 @@ fixture.sql(sql,meta['database'])
 urlfile=p/'core-database.url';urlfile.write_text(f"postgresql://{role}:{pw}@{('['+meta['host']+']') if ':' in meta['host'] else meta['host']}:{meta['port']}/{meta['database']}?sslmode=disable\n");os.chmod(urlfile,0o600)
 def tls(name):return {'certificate':str(p/(name+'.pem')),'private_key':str(p/(name+'.key')),'ca':str(p/'ca.pem')}
 def write(name,obj):(p/name).write_text(json.dumps(obj,indent=2)+'\n')
-write('core.json',{'listen':fixture.endpoint('core'),'tls':tls('core'),'database_url_file':str(urlfile),'firm_id':firm,'gateway_fingerprint':fps['gateway-service']})
+write('core.json',{'listen':fixture.endpoint('core'),'tls':tls('core'),'database_url_file':str(urlfile),'firm_id':firm,'gateway_fingerprint':fps['gateway-service'],'runtime_fingerprint':fps['runtime']})
 write('gateway.json',{'listen':fixture.endpoint('gateway'),'tls':tls('gateway'),'core_url':fixture.url('core'),'core_client':tls('gateway-service')})
 write('cli.json',{'gateway_url':fixture.url('gateway'),'tls':tls('human')})
 write('fixture.json',{'firm_id':firm,'principal_id':principal,'delegation_id':work_grant,'control_grant':control_grant,'fingerprints':fps})
