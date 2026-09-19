@@ -82,8 +82,7 @@ def lose_admission_response(config, path, body, key):
 
 class ProgramServiceHost(ProgramServiceContinuation):
     def __init__(self, context):
-        super().__init__(context)
-        self.target = 'host-state'
+        super().__init__(context, target='host-state')
 
     def plan(self):
         return {'name': 'retain_test_state',
