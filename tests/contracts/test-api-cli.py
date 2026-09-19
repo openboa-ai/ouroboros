@@ -200,7 +200,7 @@ try:
  for name in ['core','gateway']:
   log=(p/(name+'-notification-restart.log')).open('wb')
   processes.append(subprocess.Popen([str(fixture.binary/f'ouroboros-{name}'),'--config',str(p/(name+'.json'))],stdout=log,stderr=log,env=clean_environment()));log.close()
- for attempt in range(30):
+ for _ in range(30):
   try:
    if call('/conditions')[0]==200:break
   except OSError:

@@ -301,11 +301,11 @@ class DemoCredentialFiles(unittest.TestCase):
                 env = {'pg_bin': root, 'run_root': root, 'deployment_root': root, 'ipc_root': root}
                 demo = self.demo.Demo(env, SimpleNamespace(run_name='fixture'))
                 demo.root.mkdir()
-                owned = demo.root / 'binding'
+                owned = Mock()
+                demo.credentials.append(owned)
                 retained = demo.root / 'evidence'
                 retained.write_bytes(b'retained evidence')
                 with patch.object(self.demo.os, 'fchown'):
-                    demo.credential_file(owned, b'fixture input')
                     if closed:
                         demo.cleanup()
                     else:
@@ -314,8 +314,33 @@ class DemoCredentialFiles(unittest.TestCase):
                         demo.postgres.wait.side_effect = subprocess.TimeoutExpired('postgres', 30)
                         with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
                             demo.cleanup()
-                self.assertEqual(owned.exists(), not closed)
+                self.assertEqual(owned.close.call_count, 1 if closed else 0)
                 self.assertEqual(retained.read_bytes(), b'retained evidence')
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux memfd and memory locking required')
+    def test_memory_credentials_are_locked_sealed_and_released(self):
+        from tests.support.volatile_credentials import VolatileCredential
+        import re
+        def locked():
+            return int(re.search(r'VmLck:\s+(\d+)', Path('/proc/self/status').read_text()).group(1))
+        before = locked()
+        value = VolatileCredential(b'fixture input', os.getuid(), os.getgid())
+        descriptor = value.fd
+        try:
+            self.assertGreater(locked(), before)
+            self.assertIn('memfd:ouroboros-demo-credential', os.readlink(f'/proc/self/fd/{descriptor}'))
+            self.assertEqual(os.pread(descriptor, 64, 0), b'fixture input')
+            self.assertEqual(os.fstat(descriptor).st_mode & 0o777, 0o400)
+            self.assertFalse(os.get_inheritable(descriptor))
+            with self.assertRaises(OSError):
+                os.pwrite(descriptor, b'changed', 0)
+            with self.assertRaises(OSError):
+                os.ftruncate(descriptor, 0)
+        finally:
+            value.close()
+        self.assertEqual(locked(), before)
+        with self.assertRaises(OSError):
+            os.fstat(descriptor)
 
 
 class ResourceSmokeEvidence(unittest.TestCase):

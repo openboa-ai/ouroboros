@@ -508,8 +508,10 @@ def resume_native(previous,turn,artifact):
     if a.invalid_checkpoint or a.revoke_restore:
         assert not (evidence/'native-restore.json').exists() and not (evidence/'native.jsonl').exists()
         assert (evidence/'materialization.json').exists(),'invalid state was not tested after valid materialization'
-        expected='403 Forbidden' if a.revoke_restore else 'native checkpoint identity mismatch' if a.invalid_checkpoint=='identity' else 'incomplete or oversized native state'
-        assert expected in (root/'runtime/successor-process.log').read_text()
+        # Either authenticated permission check may observe revocation first: the
+        # native restore guard or the independent typed program supervisor.
+        expected=('403 Forbidden','current execution permission ended') if a.revoke_restore else ('native checkpoint identity mismatch',) if a.invalid_checkpoint=='identity' else ('incomplete or oversized native state',)
+        assert any(reason in (root/'runtime/successor-process.log').read_text() for reason in expected)
         assert query(f"SELECT count(*) FROM resource_calls WHERE instance_id='{state['instance_id']}' AND operation='model.responses'",db)=='0'
         assert query('SELECT count(*) FROM compute_returns',db)=='2' and query("SELECT committed FROM limits WHERE id='compute'",db)=='0'
         assert query('SELECT count(*) FROM execution_inputs',db)=='3'

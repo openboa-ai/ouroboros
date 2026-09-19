@@ -29,6 +29,7 @@ from tests.support.fixture_config import FixtureConfig, guard_preexec
 from tests.support.fixture_release import install
 from tests.support.native_build_input import hash_build_binary
 from tests.support.native_suite_environment import child_environment, load_environment, preflight
+from tests.support.volatile_credentials import VolatileCredential
 
 SAMPLE = """동네 도서관 운영 메모
 1. 지난달 방문자는 120명, 이번 달 방문자는 150명이다.
@@ -125,13 +126,15 @@ class Demo:
         self.postgres = None
         self.executions = []
         self.transcript = []
-        self.credential_paths = []
+        self.credentials = []
         self.step = 'prepare'
 
     def credential_file(self, path, content, uid=0):
-        """Track only this run's newly created, private fixture inputs for retirement."""
-        private(path, content, uid)
-        self.credential_paths.append(path)
+        """Expose a locked memory file through the existing regular-file contract."""
+        value = VolatileCredential(content, uid)
+        self.credentials.append(value)
+        value.publish(path, self.child_env)
+        return value
 
     def command(self, argv, uid=None, timeout=30, input=None):
         return subprocess.run([str(x) for x in argv], input=input, capture_output=True,
@@ -159,11 +162,11 @@ class Demo:
         pg.mkdir(mode=0o700)
         os.chown(pg, self.env['postgres_uid'], self.env['postgres_gid'])
         password = secrets.token_hex(24)
-        self.credential_file(pg / 'password', password, self.env['postgres_uid'])
+        bootstrap = self.credential_file(pg / 'password', password, self.env['postgres_uid'])
         self.command([self.env['pg_bin'] / 'initdb', '-D', pg / 'data', '--username=demo_owner',
                       '--auth-local=scram-sha-256', '--auth-host=scram-sha-256',
                       '--pwfile', pg / 'password', '--no-locale'], self.env['postgres_uid'])
-        (pg / 'password').unlink()
+        bootstrap.close()
         chosen = ports(['database', 'core', 'gateway', 'catalog', 'fixture', *[name for name, _ in self.extra_services]])
         self.pg_port = chosen.pop('database')
         with (pg / 'postgres.log').open('xb') as log:
@@ -235,7 +238,8 @@ INSERT INTO storage_budgets(firm_id,store_id,generation,capacity_bytes) VALUES('
         aad = header + uuid.UUID(i['firm']).bytes + uuid.UUID(i['credential']).bytes + (1).to_bytes(8, 'big')
         envelope = header + nonce + AESGCM(key).encrypt(nonce, token, aad)
         self.sql(f"INSERT INTO credential_versions(owner_id,credential_id,version,envelope) VALUES('{i['firm']}','{i['credential']}',1,decode('{envelope.hex()}','hex'))", custody)
-        self.credential_file(self.test / 'provider/custody.key', key, 70007)
+        # The existing custody key loader requires a private, singly linked key file.
+        private(self.test / 'provider/custody.key', key, 70007)
         del key, envelope, token
         self.resource('provider', 70007, {'key_file': str(self.test / 'provider/custody.key'), 'provider': provider})
         blobs = self.test / 'catalog/blobs'
@@ -507,8 +511,8 @@ After the command succeeds, finish your turn. Do not wait for another message.
             except subprocess.TimeoutExpired:
                 failures.append('database closure')
         if all(proc.poll() is not None for proc in processes) and (self.postgres is None or self.postgres.poll() is not None):
-            for path in self.credential_paths:
-                path.unlink(missing_ok=True)
+            for credential in self.credentials:
+                credential.close()
         if self.root.exists():
             private(self.root / 'transcript.json', json.dumps(self.transcript, ensure_ascii=False, indent=2))
             private(self.root / 'cleanup.json', json.dumps({'errors': failures}))

@@ -18,6 +18,11 @@ Build the current source and its native image before running. All native environ
 paths, image identities, PostgreSQL tools and service UIDs must pass existing preflight.
 Each attempt requires a fresh run name; previous evidence is preserved.
 
+Disposable DB passwords and connection URLs use locked, sealed Linux memory files,
+bound at the existing regular-file locators. They require memfd seals, memory locking
+and bind-mount permission; there is no disk-backed fallback. The native environment
+scenario verifies the actual binding, worker UID isolation, write rejection and cleanup.
+
 The pinned Codex package includes `codex-code-mode-host`, which `gpt-5.6-sol`
 needs to run local tools. The image preparation script verifies the official
 helper archive's checksum before installation. Demo preflight checks that the
@@ -155,7 +160,10 @@ Private evidence is stored under the explicit run/deployment roots: `transcript.
 `cleanup.json`, and `failure.json` when applicable. The driver removes only its recorded,
 verified stopped containers, stops its own services and PostgreSQL, and removes its
 provider decryption key after service shutdown. Failure or unconfirmed cleanup stays
-visible. No independent backup, GUI, market access, trading or production acceptance
+visible. DB credential mounts are released after their consumers stop; their underlying
+disk files are empty and removed. The custody key retains its existing protected,
+singly linked file contract and is separately removed after provider shutdown.
+No independent backup, GUI, market access, trading or production acceptance
 is included. This live demonstration is not added to the synthetic CI catalog.
 
 ### Agent-authored Company UI candidate

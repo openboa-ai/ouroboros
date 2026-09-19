@@ -284,6 +284,10 @@ class NativeRun:
         self.created = True
         self.container_baseline = self.containers()
         self.root.chmod(0o755)  # only the explicitly dropped PostgreSQL uid traverses this parent
+        if self.scenario_id == 'native.environment':
+            from tests.support.volatile_credentials import verify_binding
+            verify_binding(self.root, child_environment(self.environment))
+            write_json(self.root / 'volatile-credentials.json', {'binding': 'PASS', 'cleanup': 'PASS'})
         self.deployment.mkdir(mode=0o755)
         self.deployment.chmod(0o755)
         self.pg_home.mkdir(mode=0o700)
