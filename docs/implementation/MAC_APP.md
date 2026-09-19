@@ -1200,3 +1200,41 @@ Local review artifacts are retained under the ignored `.local/precommit-review/`
 include partitioned source review, the pre-fix reproduction, regression results and a generated
 security review report with explicit partial native-adversarial coverage. This checkpoint authorizes
 no public release; pushing and opening a PR are separate delivery actions.
+
+## September 20 native UI verification and delivery handoff
+
+Verified the native bundle built from `2a7d7d9` without another product-code change. The owner
+provided a rendered connection-screen capture; subsequent native activation, accessibility reads
+and window captures succeeded. Earlier blank tool captures did not establish a product rendering
+defect or the owner's screen-lock state. Those inconclusive attempts remain separate evidence.
+
+The explicit sample session passed navigation through Home, Work, Agents, System, Conversations,
+Library, Notifications, Owner controls, Settings and Portfolio. A native file-save dialog produced
+the displayed revision, whose bytes matched the preview. Ask CEO preserved workspace, revision,
+path and return context. Reading one sample notification changed the total from four to three and
+removed the Library badge. Closing the window hid it while the process remained alive; normal
+reopening retained the same process, Home and sample read state. Sixteen current native captures
+and the saved test file remain in local evidence outside source Git. No message, operating-company
+connection, model call or exchange action was submitted in this verification.
+
+This supplements the September 19 real Linux/native owner-stop acceptance; it does not repeat that
+backend scenario or qualify private Company WebViews. The delivery boundary remains **common
+execution, observation and owner stop**, with the preceding basic-flow and resource-smoke tooling.
+
+### Prepared next unit: a bounded Company Service Host
+
+Start from the admitted product main after this unit is merged. Reuse the existing Company call,
+selected program, permission, execution and receipt contracts for one deterministic private service
+package. The first outcome is two separately authorized requests handled by one observed service
+instance while the Mac window is closed, with each request retaining its own result and receipt.
+
+Before implementation, map selected package/configuration identity, current caller permission,
+request identity, contained service lifetime and owner stop to the existing Gateway/Runtime paths.
+Resolve any missing contract explicitly; do not turn the finite-call controller into an implicit
+unbounded restart or health guarantee. Acceptance must cover an original-request lookup after a
+lost response, refusal of new work after restriction, and actual termination/resource return with
+unresolved effects still visible. Use a disposable Linux environment and synthetic inputs.
+
+Protected Auth Module execution, autonomous CEO continuity, private financial services and live
+Binance connection remain subsequent units. Preparing this next unit does not implement, deploy
+or activate it, and merging this PR does not establish whole-product completion.
