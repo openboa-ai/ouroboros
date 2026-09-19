@@ -233,7 +233,7 @@ def start_rendered(binary,config,unit,env):
         assert unit==installed['runtime_unit']
         assert destination.read_bytes()==content and not destination.is_symlink()
     else:
-        fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o644)
+        fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'wb') as output:output.write(content);output.flush();os.fsync(output.fileno())
     subprocess.run(['/usr/bin/systemd-analyze','verify',str(destination)],capture_output=True,check=True,timeout=10)
     if bundled:
