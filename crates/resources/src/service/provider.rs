@@ -126,6 +126,15 @@ pub(super) async fn execute(
     worker: &ouroboros_resources::provider::ProviderSender,
     t: &ResourceTicket,
 ) -> Result<ResourceReply> {
+    if t.operation == "auth-module.verify" {
+        return Ok(worker
+            .verify_auth_module(t, || async {
+                super::admission::operation_live(a, t)
+                    .await
+                    .map_err(|_| ouroboros_resources::credential_envelope::CustodyError)
+            })
+            .await?);
+    }
     Ok(worker
         .execute(t, || async {
             let response = a

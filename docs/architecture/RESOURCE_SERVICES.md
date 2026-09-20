@@ -1800,3 +1800,11 @@ admission pause. A failed check interrupts delivery without synthesizing a nativ
 settling the original request. Received bytes do not establish terminal usage, and local disconnect
 does not establish provider cancellation. The connected first-byte/pause qualification is recorded
 in [Validation](VALIDATION.md#environment-pause-after-first-model-stream-data).
+
+### Bounded Bearer module implementation
+
+The [protected Bearer module unit](../implementation/PROTECTED_AUTH_MODULE.md) adds a fixed,
+capability-free Wasm Host ABI in a separate Runtime process, exact package verification and
+protected selection grants to the existing Responses sender. Its immutable slot permits only the
+assigned Bearer transformation. This is a bounded implementation of outbound authentication;
+it does not implement the broader refresh, session, ingress, native-plugin or KMS contracts above.

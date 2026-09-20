@@ -28,10 +28,20 @@ struct Config {
     #[serde(default)]
     provider_managed_versions: bool,
     provider: Option<ouroboros_resources::provider::ProviderBinding>,
+    auth_module_host: Option<ouroboros_resources::auth_module::AuthModuleHost>,
 }
 pub(crate) async fn run(config: &Path) -> Result<()> {
     let (mut cfg, root) = ouroboros_transport::config::load::<Config>(config)?;
     cfg.tls.resolve_paths(&root)?;
+    if let Some(host) = cfg.auth_module_host.as_mut() {
+        ensure!(
+            cfg.role == "provider",
+            "auth module host belongs only to protected provider worker"
+        );
+        root.resolve(&mut host.worker_executable)?;
+        root.resolve(&mut host.package_directory)?;
+        host.validate()?;
+    }
     cfg.core_client.resolve_paths(&root)?;
     if let Some(path) = cfg.database_url_file.as_mut() {
         root.resolve(path)?;
@@ -158,7 +168,8 @@ pub(crate) async fn run(config: &Path) -> Result<()> {
                         custody,
                         trust.as_deref(),
                     )?
-                    .with_managed_versions(cfg.provider_managed_versions),
+                    .with_managed_versions(cfg.provider_managed_versions)
+                    .with_auth_module_host(cfg.auth_module_host)?,
                 ))
             }
             "company" => {

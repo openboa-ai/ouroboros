@@ -145,3 +145,10 @@ results. The listed outcomes are design acceptance requirements, not registered 
 Implement cases in their existing owning lane/catalog; do not claim a passed document check or one
 resource-smoke run satisfies them. Test exact package/config/profile/evaluator identities, retain
 negative/NOT RUN evidence, and keep actual company secrets/content out of product CI artifacts.
+
+The protected Bearer module cases extend `resources.receipts` through
+`support/auth_module_fixture.py` and the existing real Linux provider-process fixture. A compatible
+Wasm package is installed without rebuilding, independently verified under separate grants and
+selected through Core, then tested for mock dispatch, original-receipt recovery and restriction.
+`crates/runtime/tests/auth_module.rs` covers capability denial and execution/output bounds. Mac
+interpreter tests cannot substitute for the Linux custody-process integration.

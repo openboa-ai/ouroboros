@@ -94,6 +94,7 @@ _SCRIPT_RESPONSIBILITIES = {
     "tests/integration/test-managed-guard-guest.py": ("runtime", "deployment"),
     "tests/integration/test-service-install.py": ("deployment",),
     "tests/recovery/test-existing-storage-guest.py": ("deployment", "recovery", "resources"),
+    "tests/support/auth_module_fixture.py": ("credentials", "resources", "gateway", "core"),
     "tests/integration/test-provider-process.py": ("credentials", "resources", "gateway"),
     "tests/integration/test-provider-https-fixture.py": ("credentials", "resources"),
     "tests/recovery/test-backup-seal.py": ("recovery",),

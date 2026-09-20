@@ -1,3 +1,4 @@
+pub mod auth_module;
 mod service_call;
 mod service_continuation;
 use serde::{Deserialize, Serialize};
@@ -331,6 +332,9 @@ pub enum CredentialRecoveryTicket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionCandidateRequest {
+    /// Optional separately qualified module selection; omission preserves existing selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_module: Option<auth_module::AuthModuleSelection>,
     pub target: String,
     pub work_id: Option<Uuid>,
     pub delegation_id: Option<Uuid>,

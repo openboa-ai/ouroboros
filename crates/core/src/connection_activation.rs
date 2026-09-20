@@ -29,6 +29,20 @@ impl Core {
         let target: String = candidate.get("target_id");
         self.resource_permission(tx, p, w, d, &target, action)
             .await?;
+        if candidate
+            .get::<Value, _>("proposed_configuration")
+            .get("auth_module")
+            .is_some()
+            && matches!(action, "connection.accept" | "connection.activate")
+        {
+            let protected_action = if action == "connection.accept" {
+                "auth-module.accept"
+            } else {
+                "auth-module.select"
+            };
+            self.resource_permission(tx, p, w, d, &target, protected_action)
+                .await?;
+        }
         self.resource_permission(tx, p, w, d, &target, "inspect")
             .await?;
         let source: String = sqlx::query_scalar(
@@ -110,6 +124,7 @@ impl Core {
             )
             .await?;
         }
+        self.auth_module_evidence(&mut tx, &c, &review).await?;
         let fixed = json!({"candidate_id":id,"work_id":w,"review_id":r.review_id,
             "max_calls":r.max_calls,"lifetime_seconds":r.lifetime_seconds,"operation":"model.responses"});
         if let Some(old)=sqlx::query("SELECT *,expires_at::text AS deadline FROM connection_acceptances WHERE firm_id=$1 AND acceptor_id=$2 AND request_key=$3")
@@ -365,6 +380,54 @@ impl Core {
         tx.commit().await?;
         Ok(out)
     }
+    async fn auth_module_evidence(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        candidate: &PgRow,
+        review: &PgRow,
+    ) -> Result<()> {
+        let configuration: Value = candidate.get("proposed_configuration");
+        let Some(module) = configuration.get("auth_module") else {
+            return Ok(());
+        };
+        let author: Uuid = candidate.get("author_id");
+        let reviewer: Uuid = review.get("reviewer_id");
+        let evidence: Value = review.get("evidence");
+        for reference in evidence.as_array().ok_or(Error::Denied)? {
+            let Some(id) = reference["intent_id"]
+                .as_str()
+                .and_then(|v| Uuid::parse_str(v).ok())
+            else {
+                continue;
+            };
+            let Some(record) = sqlx::query("SELECT r.*,i.principal_id FROM resource_calls r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id) WHERE r.firm_id=$1 AND r.intent_id=$2 AND r.operation='auth-module.verify' AND i.state='succeeded'")
+                .bind(self.firm).bind(id).fetch_optional(&mut **tx).await? else { continue; };
+            let receipt: Value = record.get("reply");
+            if record.get::<Uuid, _>("principal_id") == reviewer
+                && reviewer != author
+                && record.get::<String, _>("worker_id") == candidate.get::<String, _>("worker_id")
+                && record.get::<String, _>("target_id") == candidate.get::<String, _>("target_id")
+                && record.get::<Uuid, _>("work_id") == candidate.get::<Uuid, _>("work_id")
+                && receipt["receipt"]["source"] == "auth_module_verifier"
+                && receipt["receipt"]["profile"] == "bounded-bearer-wasm-v1"
+                && &receipt["receipt"]["module"] == module
+                && receipt["receipt"]["vectors"] == 2
+                && receipt["receipt"]["provider_calls"] == 0
+            {
+                self.resource_permission(
+                    tx,
+                    reviewer,
+                    record.get("work_id"),
+                    record.get("delegation_id"),
+                    &record.get::<String, _>("target_id"),
+                    "auth-module.verify",
+                )
+                .await?;
+                return Ok(());
+            }
+        }
+        Err(Error::Denied)
+    }
     async fn check_connection_acceptance(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -381,6 +444,26 @@ impl Core {
                 .await?;
         if !valid || !enabled {
             return Err(Error::Denied);
+        }
+        if c.get::<Value, _>("proposed_configuration")
+            .get("auth_module")
+            .is_some()
+        {
+            self.resource_permission(
+                tx,
+                a.get("acceptor_id"),
+                c.get("work_id"),
+                a.get("delegation_id"),
+                &c.get::<String, _>("target_id"),
+                "auth-module.accept",
+            )
+            .await?;
+            let review = sqlx::query("SELECT * FROM connection_reviews WHERE firm_id=$1 AND id=$2")
+                .bind(self.firm)
+                .bind(a.get::<Uuid, _>("review_id"))
+                .fetch_one(&mut **tx)
+                .await?;
+            self.auth_module_evidence(tx, c, &review).await?;
         }
         self.resource_permission(
             tx,
@@ -400,6 +483,10 @@ impl Core {
         work: Uuid,
         operation: &str,
     ) -> Result<Option<(Uuid, i64)>> {
+        // Verification is a separately granted, secret-free operation, never business dispatch.
+        if operation == "auth-module.verify" {
+            return Ok(None);
+        }
         let Some(active)=sqlx::query("SELECT x.* FROM active_connections n JOIN connection_activations x ON (x.firm_id,x.id)=(n.firm_id,n.activation_id) WHERE n.firm_id=$1 AND n.target_id=$2")
             .bind(self.firm).bind(target).fetch_optional(&mut **tx).await? else {return Ok(None);};
         let stopped: bool = sqlx::query_scalar(
@@ -444,6 +531,20 @@ impl Core {
             "connection.activate",
         )
         .await?;
+        if c.get::<Value, _>("proposed_configuration")
+            .get("auth_module")
+            .is_some()
+        {
+            self.resource_permission(
+                tx,
+                active.get("activator_id"),
+                work,
+                active.get("delegation_id"),
+                target,
+                "auth-module.select",
+            )
+            .await?;
+        }
         let matches:bool=sqlx::query_scalar("SELECT configuration=$3 AND worker_id=$4 AND active FROM resource_targets WHERE firm_id=$1 AND id=$2")
             .bind(self.firm).bind(target).bind(c.get::<Value,_>("proposed_configuration")).bind(c.get::<String,_>("worker_id")).fetch_one(&mut **tx).await?;
         if !matches {

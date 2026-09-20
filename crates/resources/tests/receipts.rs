@@ -2477,6 +2477,7 @@ async fn provider_denial_checks(
         .await
         .unwrap();
     let config = ProviderBinding {
+        auth_module: None,
         target: "approved-model".into(),
         endpoint: "https://127.0.0.1:1/responses".into(),
         chatgpt_account_id: None,
@@ -2617,6 +2618,7 @@ async fn provider_https_checks(
         .await
         .unwrap();
     let config = ProviderBinding {
+        auth_module: None,
         target: "local-tls-fixture".into(),
         endpoint: ready["endpoint"].as_str().unwrap().into(),
         chatgpt_account_id: None,

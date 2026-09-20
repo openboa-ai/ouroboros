@@ -119,7 +119,7 @@ fn response(intent: Uuid, r: ResourceReply) -> Response {
 pub fn is_resource(path: &str) -> bool {
     matches!(
         path,
-        "/workspaces" | "/retirements" | "/collections" | "/mcp"
+        "/workspaces" | "/retirements" | "/collections" | "/mcp" | "/auth-module-verifications"
     ) || [
         "/v1/responses",
         "/db/",
@@ -317,6 +317,11 @@ async fn inner(
                 "db.write",
                 serde_json::from_slice(&data).map_err(|_| StatusCode::BAD_REQUEST)?,
             ),
+            ("POST", ["auth-module-verifications"]) => (
+                selected_target(&parts.headers)?,
+                "auth-module.verify",
+                serde_json::from_slice(&data).map_err(|_| StatusCode::BAD_REQUEST)?,
+            ),
             ("POST", ["credential-disables"]) => (
                 selected_target(&parts.headers)?,
                 "credential.disable",
@@ -389,7 +394,7 @@ async fn inner(
         };
         if matches!(
             operation,
-            "file.collect" | "credential.enroll" | "credential.disable"
+            "file.collect" | "credential.enroll" | "credential.disable" | "auth-module.verify"
         ) {
             if parts.headers.get_all("idempotency-key").iter().count() != 1 {
                 return Err(StatusCode::BAD_REQUEST);

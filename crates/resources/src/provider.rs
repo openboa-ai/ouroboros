@@ -12,6 +12,8 @@ use uuid::Uuid;
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderBinding {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_module: Option<ouroboros_contracts::auth_module::AuthModuleSelection>,
     pub target: String,
     pub endpoint: String,
     /// Explicit deployment-owned subscription routing; never supplied by the workload.
@@ -95,6 +97,7 @@ pub struct ProviderSender {
     managed_versions: bool,
     client: reqwest::Client,
     custody: CredentialStore,
+    auth_host: Option<crate::auth_module::AuthModuleHost>,
 }
 impl ProviderSender {
     pub fn new(binding: ProviderBinding, custody: CredentialStore) -> Result<Self, CustodyError> {
@@ -143,7 +146,45 @@ impl ProviderSender {
             managed_versions: false,
             client,
             custody,
+            auth_host: None,
         })
+    }
+    /// Only an explicitly configured protected host may select installed module bytes.
+    pub fn with_auth_module_host(
+        mut self,
+        host: Option<crate::auth_module::AuthModuleHost>,
+    ) -> Result<Self, CustodyError> {
+        if let Some(host) = &host {
+            host.validate()?;
+        }
+        if self.binding.auth_module.is_some() && host.is_none() {
+            return Err(CustodyError);
+        }
+        self.auth_host = host;
+        Ok(self)
+    }
+    pub async fn verify_auth_module<F: std::future::Future<Output = Result<(), CustodyError>>>(
+        &self,
+        ticket: &ResourceTicket,
+        authorize: impl FnOnce() -> F,
+    ) -> Result<ResourceReply, CustodyError> {
+        if ticket.operation != "auth-module.verify"
+            || ticket.attempt_id.is_nil()
+            || ticket.target != self.binding.target
+        {
+            return Err(CustodyError);
+        }
+        let selected: ouroboros_contracts::auth_module::AuthModuleSelection =
+            serde_json::from_value(ticket.input.clone()).map_err(|_| CustodyError)?;
+        tokio::time::timeout(Duration::from_millis(500), authorize())
+            .await
+            .map_err(|_| CustodyError)??;
+        self.auth_host
+            .as_ref()
+            .ok_or(CustodyError)?
+            .verify(&selected)
+            .await?;
+        Ok(ResourceReply { status: 200, content_type: "application/json".into(), body: json!({"verified":true,"module":selected,"profile":"bounded-bearer-wasm-v1","operating_qualification":false}).to_string(), receipt: json!({"source":"auth_module_verifier","attempt_id":ticket.attempt_id,"module":selected,"profile":"bounded-bearer-wasm-v1","vectors":2,"provider_calls":0}) })
     }
     /// Deployment opt-in: only the version of the same credential may be selected by Core.
     /// Endpoint, protocol limits, target and credential identity remain pinned locally.
@@ -205,6 +246,12 @@ impl ProviderSender {
         {
             permitted.credential_version = selected.credential_version;
         }
+        if self.auth_host.is_some() {
+            if let Some(module) = &selected.auth_module {
+                module.validate().map_err(|_| CustodyError)?;
+            }
+            permitted.auth_module = selected.auth_module.clone();
+        }
         if selected != permitted
             || ticket.target != self.binding.target
             || ticket.operation != "model.responses"
@@ -228,7 +275,14 @@ impl ProviderSender {
             version: selected.credential_version,
         };
         let result=self.custody.consume_async(binding,ticket.attempt_id,Duration::from_millis(self.binding.timeout_ms),|secret|async move {
-            let request=self.binding.request(&self.client,&secret,body).map_err(|_|{eprintln!("provider request construction failed");CustodyError})?;
+            tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|CustodyError)??;
+            let mut request=self.binding.request(&self.client,&secret,body).map_err(|_|{eprintln!("provider request construction failed");CustodyError})?;
+            if let Some(module) = &selected.auth_module {
+                let value = self.auth_host.as_ref().ok_or(CustodyError)?.authenticate(module, &secret).await?;
+                let mut header = reqwest::header::HeaderValue::from_bytes(&value).map_err(|_|CustodyError)?;
+                header.set_sensitive(true);
+                request.headers_mut().insert(reqwest::header::AUTHORIZATION, header);
+            }
             tokio::time::timeout(Duration::from_millis(500),authorize()).await.map_err(|_|{eprintln!("provider dispatch authorization timed out");CustodyError})?.map_err(|_|{eprintln!("provider dispatch authorization denied");CustodyError})?;
             let transfer=async {
             let mut response=self.client.execute(request).await.map_err(|error|{
@@ -257,7 +311,7 @@ impl ProviderSender {
             let body=String::from_utf8(bytes).map_err(|_|failure("response encoding"))?;
             let observation=crate::provider_observation::observe(&content_type,&body);
             if verify_terminal && !verified_stream(&observation) {return Err(failure("unverified Codex response stream"))}
-            Ok(ResourceReply {status,content_type,body,receipt:json!({"source":"provider_worker","attempt_id":ticket.attempt_id,"credential_id":binding.credential,"credential_version":binding.version,"requested_model":ticket.input.get("model"),"requested_effort":ticket.input.pointer("/reasoning/effort"),"provider_observation":observation})})
+            Ok(ResourceReply {status,content_type,body,receipt:json!({"source":"provider_worker","attempt_id":ticket.attempt_id,"auth_module":selected.auth_module,"credential_id":binding.credential,"credential_version":binding.version,"requested_model":ticket.input.get("model"),"requested_effort":ticket.input.pointer("/reasoning/effort"),"provider_observation":observation})})
             };
             tokio::pin!(transfer);
             let mut checks=tokio::time::interval(Duration::from_millis(250));
@@ -320,6 +374,7 @@ mod tests {
 
     fn binding() -> ProviderBinding {
         ProviderBinding {
+            auth_module: None,
             target: "model-fixture".into(),
             endpoint: "https://chatgpt.com/backend-api/codex/responses".into(),
             chatgpt_account_id: None,

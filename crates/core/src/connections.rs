@@ -26,7 +26,7 @@ fn provider_configuration(value: &Value, target: &str) -> Result<(Uuid, u64)> {
         "timeout_ms",
         "max_response_bytes",
     ];
-    let optional = ["chatgpt_account_id", "codex_responses_lite"];
+    let optional = ["chatgpt_account_id", "codex_responses_lite", "auth_module"];
     if fields.len()
         != keys.len()
             + optional
@@ -37,6 +37,11 @@ fn provider_configuration(value: &Value, target: &str) -> Result<(Uuid, u64)> {
         || value["target"] != target
     {
         return Err(Error::Invalid);
+    }
+    if let Some(module) = value.get("auth_module") {
+        let module: ouroboros_contracts::auth_module::AuthModuleSelection =
+            serde_json::from_value(module.clone()).map_err(|_| Error::Invalid)?;
+        module.validate().map_err(|_| Error::Invalid)?;
     }
     if let Some(lite) = value.get("codex_responses_lite") {
         let lite = lite.as_bool().ok_or(Error::Invalid)?;
@@ -127,6 +132,21 @@ impl Core {
             return Err(Error::Denied);
         }
         let target: String = row.get("target_id");
+        if row
+            .get::<Value, _>("proposed_configuration")
+            .get("auth_module")
+            .is_some()
+        {
+            self.resource_permission(
+                &mut tx,
+                principal,
+                work,
+                grant,
+                &target,
+                "auth-module.review",
+            )
+            .await?;
+        }
         self.resource_permission(
             &mut tx,
             principal,
@@ -282,7 +302,20 @@ impl Core {
         .await?;
         self.resource_permission(&mut tx, principal, work, grant, &request.target, "inspect")
             .await?;
-        let fixed = json!({"work_id":work,"target":request.target,"expected_credential_version":request.expected_credential_version,"enrollment_intent_id":request.enrollment_intent_id});
+        let mut fixed = json!({"work_id":work,"target":request.target,"expected_credential_version":request.expected_credential_version,"enrollment_intent_id":request.enrollment_intent_id});
+        if let Some(module) = &request.auth_module {
+            module.validate().map_err(|_| Error::Invalid)?;
+            self.resource_permission(
+                &mut tx,
+                principal,
+                work,
+                grant,
+                &request.target,
+                "auth-module.propose",
+            )
+            .await?;
+            fixed["auth_module"] = json!(module);
+        }
         if let Some(row)=sqlx::query("SELECT * FROM connection_candidates WHERE firm_id=$1 AND author_id=$2 AND request_key=$3")
             .bind(self.firm).bind(principal).bind(request_key).fetch_optional(&mut *tx).await? {
             if row.get::<Value,_>("request")!=fixed {return Err(Error::Conflict);}
@@ -313,7 +346,10 @@ impl Core {
         let reply: Value = enrollment.get("reply");
         let next = input["input"]["version"]
             .as_u64()
-            .filter(|v| *v > version && *v <= i64::MAX as u64)
+            .filter(|v| {
+                (*v > version || (*v == version && request.auth_module.is_some()))
+                    && *v <= i64::MAX as u64
+            })
             .ok_or(Error::Invalid)?;
         let receipt = &reply["receipt"];
         if input["input"]["credential_id"] != json!(credential)
@@ -346,6 +382,12 @@ impl Core {
         }
         let mut proposed = configuration.clone();
         proposed["credential_version"] = json!(next);
+        if let Some(module) = &request.auth_module {
+            proposed["auth_module"] = json!(module);
+        }
+        if proposed == configuration {
+            return Err(Error::Conflict);
+        }
         let id = Uuid::new_v4();
         let row=sqlx::query("INSERT INTO connection_candidates(firm_id,id,work_id,target_id,author_id,origin_instance_id,origin_generation,request_key,request,enrollment_intent_id,worker_id,base_configuration,proposed_configuration) VALUES($1,$2,$3,$4,$5,$6,(SELECT generation FROM runtime_instances WHERE firm_id=$1 AND instance_id=$6),$7,$8,$9,$10,$11,$12) RETURNING *")
             .bind(self.firm).bind(id).bind(work).bind(&request.target).bind(principal).bind(instance)
