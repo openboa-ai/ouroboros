@@ -2832,6 +2832,16 @@ async fn provider_https_checks(
     .unwrap()
     .unwrap();
     std::fs::write(root.join("process-check.log"), &output.stderr).unwrap();
+    if !output.status.success() {
+        // Traceback source locations are useful even when the runner deletes private fixtures.
+        // Do not print assertion values, SQL, request bodies or arbitrary exception messages.
+        for line in String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter(|line| line.trim_start().starts_with("File "))
+        {
+            eprintln!("provider fixture location: {line}");
+        }
+    }
     assert!(
         output.status.success(),
         "provider process fixture failed; inspect retained local fixture log"

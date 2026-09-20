@@ -620,7 +620,7 @@ try:
     assert sql('SELECT count(*) FROM connection_candidates',name)=='3'
     assert json.loads((root/'observed.json').read_text())['count']==call_count
     from tests.support.auth_module_fixture import check_auth_module
-    auth_evidence=check_auth_module(root=root,binary=binary,env=env,sql=sql,database=name,firm=firm,work=work,credential=c['credential'],author=human,author_grant=candidate_grant,author_config=original_cli_config,reviewer=reviewer,review_grant=review_grant,reviewer_config=reviewer_config,enrollment=sql("SELECT enrollment_intent_id FROM connection_candidates WHERE proposed_configuration->>'credential_version'='14'",name))
+    auth_evidence=check_auth_module(root=root,binary=binary,env=env,sql=sql,database=name,firm=firm,work=work,credential=c['credential'],author=human,author_grant=candidate_grant,author_config=original_cli_config,reviewer=reviewer,review_grant=review_grant,reviewer_config=root/'process-reviewer-cli.json',enrollment=sql("SELECT enrollment_intent_id FROM connection_candidates WHERE proposed_configuration->>'credential_version'='14'",name))
     records=sql(f"SELECT input::text FROM intents WHERE id='{enrollment_intent}'; SELECT reply::text FROM resource_calls WHERE intent_id='{enrollment_intent}';",name)
     assert secret.decode() not in records
     for p in root.glob('process-*.log'): assert secret not in p.read_bytes()
