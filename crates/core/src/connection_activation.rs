@@ -400,10 +400,11 @@ impl Core {
             else {
                 continue;
             };
-            let Some(record) = sqlx::query("SELECT r.*,i.principal_id FROM resource_calls r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id) WHERE r.firm_id=$1 AND r.intent_id=$2 AND r.operation='auth-module.verify' AND i.state='succeeded'")
+            let Some(record) = sqlx::query("SELECT r.*,i.principal_id,p.enabled FROM resource_calls r JOIN intents i ON (i.firm_id,i.id)=(r.firm_id,r.intent_id) JOIN principals p ON (p.firm_id,p.id)=(i.firm_id,i.principal_id) WHERE r.firm_id=$1 AND r.intent_id=$2 AND r.operation='auth-module.verify' AND i.state='succeeded'")
                 .bind(self.firm).bind(id).fetch_optional(&mut **tx).await? else { continue; };
             let receipt: Value = record.get("reply");
-            if record.get::<Uuid, _>("principal_id") == reviewer
+            if record.get::<bool, _>("enabled")
+                && record.get::<Uuid, _>("principal_id") == reviewer
                 && reviewer != author
                 && record.get::<String, _>("worker_id") == candidate.get::<String, _>("worker_id")
                 && record.get::<String, _>("target_id") == candidate.get::<String, _>("target_id")

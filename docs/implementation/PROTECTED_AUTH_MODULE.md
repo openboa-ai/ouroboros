@@ -70,8 +70,11 @@ response bounds and existing Core current-use checks. Redirects and transport re
    individually leave the current connection unchanged. Selection replay never extends its scope.
 
 Protected acceptance, verifier-use and selection grants are rechecked for subsequent business
-admission/dispatch, together with the existing caller/service chain. The admitted ticket pins the
-module and credential version. The child process receives only the one version selected by the
+admission/dispatch, together with the existing caller/service chain. The verifier principal must
+also remain enabled, even when the acceptor, selector and caller are different principals.
+Historical verification and activation records remain available without renewing use authority.
+The admitted ticket pins the module and credential version. The child process receives only the
+one version selected by the
 existing custody use claim. Resources rechecks Core authorization before authentication and before
 send. A worker error, unavailable package or incompatible ABI provides no fallback authentication.
 
