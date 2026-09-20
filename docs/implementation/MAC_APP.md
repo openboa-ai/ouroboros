@@ -1221,20 +1221,54 @@ This supplements the September 19 real Linux/native owner-stop acceptance; it do
 backend scenario or qualify private Company WebViews. The delivery boundary remains **common
 execution, observation and owner stop**, with the preceding basic-flow and resource-smoke tooling.
 
-### Prepared next unit: a bounded Company Service Host
+### Bounded Company Service Host
 
-Start from the admitted product main after this unit is merged. Reuse the existing Company call,
-selected program, permission, execution and receipt contracts for one deterministic private service
-package. The first outcome is two separately authorized requests handled by one observed service
-instance while the Mac window is closed, with each request retaining its own result and receipt.
+The selected immutable operation plan can now declare an optional `host` policy. The existing
+independent submission verification, acceptance, activation, execution, containment and owner-stop
+paths still govern the service. One released execution accepts at most `max_requests` separately
+authorized requests (1–16), each with bounded object input and result. Input is at most 60 KiB so
+the complete admission fits the Gateway's 64 KiB management envelope; a result is at most 64 KiB.
+The qualified program deadline still bounds lifetime. Acceptance `max_calls` counts host launches,
+so the maximum admitted requests for that acceptance is `max_calls × max_requests`. Hosting does
+not register with the finite continuation controller or restart automatically.
 
-Before implementation, map selected package/configuration identity, current caller permission,
-request identity, contained service lifetime and owner stop to the existing Gateway/Runtime paths.
-Resolve any missing contract explicitly; do not turn the finite-call controller into an implicit
-unbounded restart or health guarantee. Acceptance must cover an original-request lookup after a
-lost response, refusal of new work after restriction, and actual termination/resource return with
-unresolved effects still visible. Use a disposable Linux environment and synthetic inputs.
+`POST /service-hosts/{execution}/requests` retains the original caller, work, delegation, request
+key and immutable input. It consumes one request slot and no additional execution or compute.
+The authenticated contained instance claims sequentially at `/service-hosts/self/claim` and records
+its immutable result at `/service-hosts/self/requests/{request}/reply`. Claims bind the actual
+instance and generation. Each resource request selects that claim with `x-ouro-service-request`
+and its qualified `x-ouro-effect-slot`; these selectors do not carry caller authority. Core derives
+the caller from the retained request and rechecks current invocation and effect permissions at
+admission and dispatch. Effects have independent request/slot identities. A finalized request
+cannot admit further effects, and another host cannot use its claim or reply.
+
+The original issuer recovers with
+`GET /intents/by-request-key?operation=service.request&request_key=...`, followed by
+`GET /service-requests/{request}`. Reads return the retained state, result, assignment and effect
+metadata under current inspection permission. They never resubmit work. Same-key admission replay
+also returns the original identity after stop; changed input conflicts. An unclaimed request whose
+caller lost permission is visibly restricted before the next eligible request is claimed. An
+already claimed request with uncertain effects cannot silently be skipped.
+
+Execution observation includes host policy, request states and effect receipts. Existing execution
+stop denies new requests even with spare quota. Acceptance of stop, actual termination, and compute
+return remain separate observations; request replies and compute return do not settle external
+effects. This unit adds no System-page host controller; the existing execution inspector owns stop.
+
+The September 20 disposable Linux `native.program-host` run observed two distinct request results
+and Company DB receipts through one instance/generation, an actual dropped admission response,
+original-key recovery without resubmission, stop before the program deadline with one request slot
+still available, actual container/guard closure, one compute return and shared Runtime survival.
+Its source and separate verifier were real contained programs; business inputs were synthetic and
+model/exchange calls were zero. PostgreSQL regressions separately cover concurrent quota/replay,
+foreign-host denial, caller revocation, retained unresolved effects and return replay.
+
+Native Mac acceptance is still **NOT RUN for this unit**: the Mac was locked when observation was
+attempted. The Linux fixture's owner CLI stop does not prove an app click or a closed Mac window.
+The remaining checkpoint is two requests while the app window is visibly closed, then reopening,
+observing the retained execution and stopping it through the native execution inspector. The
+explicit native-owner fixture mode waits for those observations without submitting the stop.
 
 Protected Auth Module execution, autonomous CEO continuity, private financial services and live
-Binance connection remain subsequent units. Preparing this next unit does not implement, deploy
-or activate it, and merging this PR does not establish whole-product completion.
+Binance connection remain subsequent units. This synthetic host proof does not deploy or activate
+an operating Company, and does not establish whole-product completion.

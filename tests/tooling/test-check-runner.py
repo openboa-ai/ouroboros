@@ -272,6 +272,7 @@ class CheckRunnerContract(unittest.TestCase):
     def test_native_zero_exit_requires_matching_underlying_result(self):
         native = load_native_driver()
         job = native.NativeRun.__new__(native.NativeRun)
+        job.native_owner_stop = False
         job.scenario_id = 'native.workflow'
         job.scenario = SCENARIOS[job.scenario_id]
         job.environment = {'source_root': self.root}

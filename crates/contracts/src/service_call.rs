@@ -4,11 +4,31 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub const SERVICE_EFFECT_SLOT_HEADER: &str = "x-ouro-effect-slot";
+pub const SERVICE_REQUEST_HEADER: &str = "x-ouro-service-request";
+
+/// Qualified per-execution bounds; the existing program deadline still controls lifetime.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceHostPolicy {
+    pub max_requests: u16,
+    pub max_input_bytes: u32,
+    pub max_result_bytes: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceHostRequest {
+    pub work_id: uuid::Uuid,
+    pub delegation_id: uuid::Uuid,
+    pub invocation: ServiceInvocation,
+}
 
 /// One qualified operation of an immutable submitted program. Each slot can admit one effect.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ServiceOperationPlan {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<ServiceHostPolicy>,
     pub name: String,
     pub effects: Vec<ServiceEffectSlot>,
 }
@@ -46,6 +66,11 @@ impl ServiceOperationPlan {
     pub fn valid(&self) -> bool {
         let mut slots = std::collections::BTreeSet::new();
         service_slot_name(&self.name)
+            && self.host.as_ref().is_none_or(|host| {
+                (1..=16).contains(&host.max_requests)
+                    && (1..=61_440).contains(&host.max_input_bytes)
+                    && (1..=65_536).contains(&host.max_result_bytes)
+            })
             && self.effects.len() <= 32
             && self.effects.iter().all(|effect| {
                 service_slot_name(&effect.slot)
@@ -77,6 +102,49 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn host_bounds_fit_a_management_request_without_authority_extensions() {
+        let mut plan = ServiceOperationPlan {
+            name: "snapshot".into(),
+            effects: vec![],
+            host: Some(ServiceHostPolicy {
+                max_requests: 16,
+                max_input_bytes: 61_440,
+                max_result_bytes: 65_536,
+            }),
+        };
+        assert!(plan.valid());
+        for (requests, input, result) in [
+            (0, 1, 1),
+            (17, 1, 1),
+            (1, 0, 1),
+            (1, 61_441, 1),
+            (1, 1, 0),
+            (1, 1, 65_537),
+        ] {
+            plan.host = Some(ServiceHostPolicy {
+                max_requests: requests,
+                max_input_bytes: input,
+                max_result_bytes: result,
+            });
+            assert!(!plan.valid());
+        }
+        let request = ServiceHostRequest {
+            work_id: uuid::Uuid::new_v4(),
+            delegation_id: uuid::Uuid::new_v4(),
+            invocation: ServiceInvocation {
+                operation: "a".repeat(64),
+                input: json!({"value":"a".repeat(61_428)}),
+            },
+        };
+        assert_eq!(
+            serde_json::to_vec(&request.invocation.input).unwrap().len(),
+            61_440
+        );
+        assert!(serde_json::to_vec(&request).unwrap().len() < 65_536);
+        assert!(serde_json::from_value::<ServiceHostPolicy>(json!({"max_requests":1,"max_input_bytes":1,"max_result_bytes":1,"principal_id":"forged"})).is_err());
+    }
+
+    #[test]
     fn plans_bound_unique_slots_and_do_not_accept_authority_fields() {
         let effect = ServiceEffectSlot {
             slot: "snapshot".into(),
@@ -86,6 +154,7 @@ mod tests {
             input_equals: BTreeMap::new(),
         };
         let mut plan = ServiceOperationPlan {
+            host: None,
             name: "snapshot".into(),
             effects: vec![effect.clone()],
         };

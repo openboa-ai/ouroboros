@@ -45,12 +45,15 @@ if not __debug__:
 parser.add_argument('--restriction', choices=['stop', 'revoke', 'complete'], default='revoke')
 parser.add_argument('--adapter-verification', action='store_true')
 parser.add_argument('--service-continuation', action='store_true')
+parser.add_argument('--service-host', action='store_true')
 parser.add_argument('--native-owner-stop', action='store_true', help='Wait for the native Mac owner stop; the fixture never submits that control.')
 args, fixture = load_config(parser)
-if args.service_continuation and not args.adapter_verification:
+if args.service_host and args.service_continuation:
+    parser.error('select one scoped service scenario')
+if (args.service_continuation or args.service_host) and not args.adapter_verification:
     parser.error('service continuation requires independent adapter verification')
-if args.native_owner_stop and not args.service_continuation:
-    parser.error('native owner stop requires the service continuation scenario')
+if args.native_owner_stop and not (args.service_continuation or args.service_host):
+    parser.error('native owner stop requires a scoped service scenario')
 if args.adapter_verification and args.restriction != 'complete':
     parser.error('adapter verification requires natural completion')
 if os.geteuid() != 0 or not Path('/proc/self/status').is_file():
@@ -78,7 +81,7 @@ container = None
 result = None
 checks = []
 work = None
-lifetime = 90
+lifetime = 240 if args.service_host else 90
 profile_id = 'artifact-program'
 target = 'company-files'
 file_bound = 524288
@@ -243,6 +246,10 @@ if args.service_continuation:
     from tests.support.program_service_continuation import ProgramServiceContinuation
     fixture.require_ports('company')
     continuation = ProgramServiceContinuation(globals())
+elif args.service_host:
+    from tests.support.program_service_host import ProgramServiceHost
+    fixture.require_ports('company')
+    continuation = ProgramServiceHost(globals())
 
 try:
     owners = [('reviewer', 70004), ('core', 70001), ('gateway', 70002), ('cli', 70003), ('catalog', 70005), ('runtime', 0), ('ca', 0)]
@@ -843,7 +850,7 @@ except Exception as error:
                 checks.append('registered immutable adapter runs as a distinct verifier instance via API/CLI; normal Gateway workspace/upload/publication and Runtime materialization remain enforced')
         else:
             assert sql(f"SELECT revision FROM workspaces WHERE id='{output_workspace}'", dbs['catalog']) == '2'
-        assert sql(f"SELECT count(*) FROM compute_returns", dbs['core']) == ('4' if continuation else '3' if args.adapter_verification else '2')
+        assert sql(f"SELECT count(*) FROM compute_returns", dbs['core']) == ('4' if args.service_continuation else '3' if args.adapter_verification else '2')
         assert sql(f"SELECT committed FROM limits WHERE id='compute'", dbs['core']) == '0'
         assert sql(f"SELECT count(*) FROM execution_inputs WHERE execution_id='{execution}' AND retained", dbs['core']) == '2'
         assert sql(f"SELECT count(*) FROM execution_inputs WHERE execution_id='{next_accepted['resource_id']}' AND retained", dbs['core']) == ('2' if args.adapter_verification else '3')
@@ -865,8 +872,9 @@ except Exception as error:
         'compute_settlement': 'PASS', 'successful_successor': 'PASS' if successor_result else 'NOT RUN', 'successor': successor_result,
         'dependency_release': 'NOT IMPLEMENTED', 'production_qualification': 'NOT RUN'}
     if continuation:
-        result['service_continuation'] = continuation.result
-        result['db_workflow'] = 'PASS: one contained Company write, same receipt after recovery'
+        result['service_host' if args.service_host else 'service_continuation'] = continuation.result
+        result['db_workflow'] = ('PASS: two separate Company writes in one host; original-key lookup after admission response loss'
+                                 if args.service_host else 'PASS: one contained Company write, same receipt after recovery')
 except BaseException as error:
     result = {'result': 'FAIL', 'fixture_id': fixture.identity, 'error_type': type(error).__name__, 'completed_checks': checks}
     raise

@@ -53,6 +53,10 @@ fn management_route(method: &Method, uri: &Uri) -> bool {
         return false;
     }
     match (method.as_str(), segments.as_slice()) {
+        ("POST", ["", "service-hosts", "self", "claim"]) => true,
+        ("POST", ["", "service-hosts", id, "requests"])
+        | ("POST", ["", "service-hosts", "self", "requests", id, "reply"])
+        | ("GET", ["", "service-requests", id]) => uuid::Uuid::parse_str(id).is_ok(),
         ("POST", ["", "service-continuations"]) => true,
         ("GET", ["", "service-continuations", id])
         | ("POST", ["", "service-continuations", id, "stop"]) => uuid::Uuid::parse_str(id).is_ok(),
@@ -295,6 +299,38 @@ pub(crate) async fn management_forward(
 mod management_tests {
     use super::*;
     use crate::resources;
+
+    #[test]
+    fn company_host_routes_are_exact_and_request_lookup_is_read_only() {
+        let id = uuid::Uuid::new_v4();
+        for (method, path) in [
+            (Method::POST, format!("/service-hosts/{id}/requests")),
+            (Method::POST, "/service-hosts/self/claim".into()),
+            (
+                Method::POST,
+                format!("/service-hosts/self/requests/{id}/reply"),
+            ),
+            (Method::GET, format!("/service-requests/{id}")),
+        ] {
+            assert!(management_route(&method, &path.parse().unwrap()));
+            assert!(!management_route(
+                &method,
+                &format!("{path}/extra").parse().unwrap()
+            ));
+            assert!(!management_route(
+                &method,
+                &format!("{path}?principal=other").parse().unwrap()
+            ));
+            assert!(!management_route(&Method::DELETE, &path.parse().unwrap()));
+        }
+        for path in [
+            format!("/service-hosts/{id}/claim"),
+            "/service-hosts/self/requests".into(),
+            format!("/service-requests/{id}"),
+        ] {
+            assert!(!management_route(&Method::POST, &path.parse().unwrap()));
+        }
+    }
 
     #[test]
     fn original_request_lookup_has_an_exact_read_only_query_shape() {

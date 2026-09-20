@@ -21,6 +21,9 @@ impl Core {
             .service_root(&mut tx, request.execution_id)
             .await?
             .ok_or(Error::Denied)?;
+        if super::service_hosts::host_policy(&root)?.is_some() {
+            return Err(Error::Denied);
+        }
         // Only the original submitter can attach continuation authority to its own call.
         if root.get::<Uuid, _>("execution_id") != request.execution_id
             || root.get::<Uuid, _>("principal_id") != ctx.principal

@@ -538,6 +538,7 @@ impl Core {
             .ok_or(Error::Denied)?
             .clone();
         let request = ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: input.reference.target.clone(),
             operation: "file.read".into(),

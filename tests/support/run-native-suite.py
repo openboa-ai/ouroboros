@@ -46,6 +46,7 @@ _ROOT_EVIDENCE = (
     'result.json', 'credential-boundaries.json', 'service-identities.json',
     'cold-restart-result.json', 'bounded-load-result.json', 'cold-native-result.json',
     'service-units-result.json', 'installation-faults-result.json',
+    'host-result.json', 'host-requests.json', 'host-response-loss.json',
 )
 _INSTANCE_EVIDENCE = (
     'container.json', 'finish.json', 'binding.json', 'guard.json', 'materialization.json',
@@ -153,8 +154,9 @@ def evidence_export(source, destination):
 
 class NativeRun:
     """Own only this invocation's DB, logs, release reference and fixture process."""
-    def __init__(self, environment, scenario_id, run_name):
+    def __init__(self, environment, scenario_id, run_name, native_owner_stop=False):
         self.environment = environment
+        self.native_owner_stop = native_owner_stop
         self.scenario_id = scenario_id
         self.scenario = select_scenario(scenario_id)
         self.root = environment['run_root'] / run_name
@@ -394,8 +396,12 @@ class NativeRun:
             self.scenario.driver, ['--scenario', self.scenario_id])
         if self.scenario_id == 'native.program-continuation':
             options += ['--adapter-verification', '--service-continuation']
+        if self.scenario_id == 'native.program-host':
+            options += ['--adapter-verification', '--service-host']
+        if self.native_owner_stop:
+            options.append('--native-owner-stop')
         self.command([sys.executable, '-B', self.environment['source_root'] / 'tests/integration' / driver,
-                      '--config', self.config_file, *options], 'program', timeout=300)
+                      '--config', self.config_file, *options], 'program', timeout=780 if self.native_owner_stop else 300)
         result_file = self.deployment / 'test/result.json'
         result = json.loads(result_file.read_text())
         if result.get('result') != 'PASS' or (self.scenario.driver not in ('management', 'program') and result.get('scenario_id') != self.scenario_id):
@@ -412,6 +418,13 @@ class NativeRun:
                 if (continuation.get('result') != 'PASS' or final.get('state') != 'stopped'
                         or final.get('restarts_used') != 1 or final.get('compute_returned') is not True):
                     raise RuntimeError('actual Company recovery and owner stop proof missing')
+            if self.scenario_id == 'native.program-host':
+                host = result.get('service_host', {})
+                if (host.get('result') != 'PASS' or host.get('request_count') != 2
+                        or host.get('effect_count') != 2 or host.get('compute_return_count') != 1
+                        or host.get('stop_with_spare_quota') is not True
+                        or host.get('response_loss', {}).get('forwarded_response_bytes') != 0):
+                    raise RuntimeError('actual Company host, lost response recovery or stop proof missing')
         if self.scenario.driver == 'installation':
             release = json.loads((self.root / 'release.json').read_text())
             install_root = self.deployment / 'test/installation-faults'
@@ -498,7 +511,10 @@ def main():
     parser.add_argument('--environment', type=Path)
     parser.add_argument('--scenario', choices=tuple(SCENARIOS), action='append')
     parser.add_argument('--run-name')
+    parser.add_argument('--native-owner-stop', action='store_true', help='Local Mac acceptance: wait for the native owner instead of submitting fixture stop.')
     args = parser.parse_args()
+    if args.native_owner_stop and (args.preflight or args.list or args.scenario != ['native.program-host']):
+        parser.error('--native-owner-stop requires exactly native.program-host execution')
     if args.list:
         if args.preflight or args.environment or args.scenario or args.run_name:
             parser.error('--list must be used alone')
@@ -540,7 +556,8 @@ def main():
             results = []
             for index, name in enumerate(args.scenario):
                 run_name = args.run_name if len(args.scenario) == 1 else f'{args.run_name}-{index + 1}'
-                result = NativeRun(data, name, run_name).run()
+                run = NativeRun(data, name, run_name, native_owner_stop=True) if args.native_owner_stop else NativeRun(data, name, run_name)
+                result = run.run()
                 results.append(result)
                 print(json.dumps(result), flush=True)
                 if result['status'] != 'PASS':

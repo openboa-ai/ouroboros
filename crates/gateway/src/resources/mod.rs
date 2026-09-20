@@ -27,6 +27,24 @@ mod files;
 mod inputs;
 pub(crate) mod native;
 
+fn service_request(headers: &HeaderMap) -> Result<Option<Uuid>, StatusCode> {
+    let name = ouroboros_contracts::SERVICE_REQUEST_HEADER;
+    if headers.get_all(name).iter().count() > 1 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    headers
+        .get(name)
+        .map(|value| {
+            let value = value.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
+            let id = Uuid::parse_str(value).map_err(|_| StatusCode::BAD_REQUEST)?;
+            if id.is_nil() {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+            Ok(id)
+        })
+        .transpose()
+}
+
 fn service_effect_slot(headers: &HeaderMap) -> Result<Option<String>, StatusCode> {
     let name = ouroboros_contracts::SERVICE_EFFECT_SLOT_HEADER;
     if headers.get_all(name).iter().count() > 1 {
@@ -382,6 +400,7 @@ async fn inner(
             file_input = Some(input.clone());
         }
         let request = ResourceRequest {
+            service_request_id: service_request(&parts.headers)?,
             effect_slot: service_effect_slot(&parts.headers)?,
             target: target.into(),
             operation: operation.into(),
@@ -567,6 +586,27 @@ mod workspace_tests {
     use crate::identity::Actor;
     use axum::{Router, extract::State};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn service_request_selector_is_one_non_nil_uuid() {
+        let header = ouroboros_contracts::SERVICE_REQUEST_HEADER;
+        let mut headers = HeaderMap::new();
+        assert_eq!(service_request(&headers), Ok(None));
+        for invalid in [
+            "",
+            "not-an-id",
+            "00000000-0000-0000-0000-000000000000",
+            "one,two",
+        ] {
+            headers.insert(header, invalid.parse().unwrap());
+            assert_eq!(service_request(&headers), Err(StatusCode::BAD_REQUEST));
+        }
+        let id = Uuid::new_v4();
+        headers.insert(header, id.to_string().parse().unwrap());
+        assert_eq!(service_request(&headers), Ok(Some(id)));
+        headers.append(header, id.to_string().parse().unwrap());
+        assert_eq!(service_request(&headers), Err(StatusCode::BAD_REQUEST));
+    }
 
     #[test]
     fn effect_slot_is_one_bounded_name_and_never_a_caller_context() {

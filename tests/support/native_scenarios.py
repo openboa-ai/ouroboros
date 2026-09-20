@@ -139,6 +139,9 @@ _add('native.program-completion', 'Before materialization release no private aut
 _add('native.program-continuation', 'An independently qualified Company program recovers one abnormal exit under its original finite policy, reuses one DB effect receipt, and returns capacity after an exact owner stop.',
      ('runtime', 'resources', 'gateway', 'core', 'cli', 'adapters'), driver='program')
 
+_add('native.program-host', 'One independently qualified Company instance handles two separately admitted requests, recovers a dropped admission response by its original key, and returns capacity after restriction with spare quota.',
+     ('runtime', 'resources', 'gateway', 'core', 'cli', 'adapters'), driver='program')
+
 _add('native.kernel-contracts', 'SCM_RIGHTS preserves distinct close-on-exec handles and rejects missing descriptors and non-cgroup capabilities.',
      ('runtime',), driver='kernel')
 

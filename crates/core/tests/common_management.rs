@@ -240,6 +240,7 @@ async fn child_work_is_visible_to_parent_but_does_not_inherit_resource_access() 
             .bind(f.core.firm).bind(f.root_a).bind(grant).execute(&f.db).await.unwrap();
     }
     let resource = |key: &str| ResourceRequest {
+        service_request_id: None,
         effect_slot: None,
         target: "management-input".into(),
         operation: "file.read".into(),
@@ -634,6 +635,7 @@ async fn prepare_human_db_target(f: &Fixture) {
 
 fn human_db_request(f: &Fixture, key: &str, marker: &str) -> ResourceRequest {
     ResourceRequest {
+        service_request_id: None,
         effect_slot: None,
         target: "management-db".into(),
         operation: "db.read".into(),

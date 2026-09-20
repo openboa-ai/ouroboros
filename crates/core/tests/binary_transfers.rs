@@ -154,6 +154,7 @@ impl Fixture {
 
     fn request(&self, operation: &str, target: &str, key: &str, input: Value) -> ResourceRequest {
         ResourceRequest {
+            service_request_id: None,
             effect_slot: None,
             target: target.into(),
             operation: operation.into(),

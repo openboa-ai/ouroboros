@@ -119,6 +119,18 @@ configuration. The operator connects the app before creating the fixture's `owne
 then captures its actual stopped state before creating `owner-observed`; these markers coordinate
 observation only and neither submits a stop nor supplies a success receipt. No model account is used.
 
+`native.program-host` qualifies a bounded operation with the same source/verifier path, then runs
+two separately admitted requests in one contained instance. It checks each request's exact Company
+result and effect receipt, deliberately drops one HTTP admission response, recovers by original key,
+and stops the host with spare quota before its deadline. Actual container/guard termination, one
+compute return, retained results and the surviving shared Runtime are observed separately. Its
+normal owner is the fixture reviewer; this is model-free Linux evidence, not Mac-window evidence.
+For the Mac checkpoint, the native suite accepts `--native-owner-stop` only with this single
+scenario. Connect using the disposable owner profile, visibly close the window before writing
+`owner-ready`, reopen after `awaiting_owner_stop`, use the execution inspector's Stop control,
+and capture the stopped state before writing `owner-observed`. The fixture verifies the actual
+human principal's stop record; the markers supply neither authorization nor outcome evidence.
+
 System test files previously under `scripts/` now live here. Update direct file-path callers to the
 locations above; there is no second copy or compatibility alias for old scenario paths. The public
 `check.py`, `ci_environment.py` and `ci_report.py` commands remain in `scripts/`. No product API,

@@ -13,9 +13,9 @@ import subprocess
 
 
 class ProgramServiceContinuation:
-    def __init__(self, context):
+    def __init__(self, context, target='continuation-state'):
         self.c = context
-        self.target = 'continuation-state'
+        self.target = target
         self.result = None
 
     def prepare_company(self):
