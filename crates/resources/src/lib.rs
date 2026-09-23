@@ -39,3 +39,5 @@ mod provider_observation;
 pub mod provider_stream;
 
 pub mod host_storage;
+
+pub mod auth_module;

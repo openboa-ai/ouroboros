@@ -24,6 +24,11 @@ url = "2"
 postgres-tests = []
 
 [[test]]
+name = "auth_module_authority"
+path = "tests/auth_module_authority.rs"
+required-features = ["postgres-tests"]
+
+[[test]]
 name = "binary_transfers"
 path = "tests/binary_transfers.rs"
 required-features = ["postgres-tests"]

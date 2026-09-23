@@ -1,4 +1,5 @@
 //! Runtime preparation is not admission. A Core-approved, qualified profile is required before payload release.
+pub mod auth_module;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod claim_journal;
 pub mod command;

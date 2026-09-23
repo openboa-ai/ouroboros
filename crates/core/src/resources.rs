@@ -175,11 +175,17 @@ impl Core {
                 | "db.read"
                 | "db.write"
                 | "model.responses"
+                | "auth-module.verify"
                 | "credential.enroll"
                 | "credential.disable"
                 | "mcp"
         ) {
             return Err(Error::Invalid);
+        }
+        if request.operation == "auth-module.verify" {
+            let module: ouroboros_contracts::auth_module::AuthModuleSelection =
+                serde_json::from_value(request.input.clone()).map_err(|_| Error::Invalid)?;
+            module.validate().map_err(|_| Error::Invalid)?;
         }
         if matches!(
             request.operation.as_str(),
@@ -957,6 +963,7 @@ impl Core {
                 | "db.write"
                 | "mcp"
                 | "model.responses"
+                | "auth-module.verify"
                 | "credential.enroll"
                 | "credential.disable"
         ) || !(state == "claimed" || (op == "file.read" && state == "succeeded"))

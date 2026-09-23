@@ -16,7 +16,7 @@ pub(super) async fn execute_inner(
         }
         (Worker::Company(worker), _) => super::company::execute(a, worker, intent, ticket).await?,
         (Worker::Catalog(worker), _) => super::catalog::execute(a, worker, intent, ticket).await?,
-        (Worker::Provider(worker), "model.responses") => {
+        (Worker::Provider(worker), "model.responses" | "auth-module.verify") => {
             super::provider::execute(a, worker, ticket).await?
         }
         (Worker::Fixture(_), "mcp") => {

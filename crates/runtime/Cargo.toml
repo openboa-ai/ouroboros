@@ -19,3 +19,9 @@ bollard.workspace = true
 futures-util.workspace = true
 ouroboros-transport = { path = "../transport" }
 ouroboros-contracts = { path = "../contracts" }
+
+wasmi = { version = "=1.1.0", default-features = false, features = ["std", "extra-checks"] }
+zeroize = "=1.9.0"
+
+[dev-dependencies]
+wat = "=1.239.0"
