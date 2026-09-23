@@ -24,4 +24,4 @@ wasmi = { version = "=1.1.0", default-features = false, features = ["std", "extr
 zeroize = "=1.9.0"
 
 [dev-dependencies]
-wat = "=1.239.0"
+wat = "=1.259.0"
