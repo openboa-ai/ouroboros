@@ -36,7 +36,7 @@
     "vite": "^6.4.1",
     "vitest": "^3.2.4",
     "@eslint/js": "^10",
-    "@types/node": "^20",
+    "@types/node": "^26",
     "eslint": "^10",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
