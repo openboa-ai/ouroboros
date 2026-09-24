@@ -112,6 +112,7 @@ impl Fixture {
             prepare(&PrepareConfig {
                 root: content.clone(),
                 binding_file: binding_file.clone(),
+                // SAFETY: geteuid has no pointer arguments and only observes process identity.
                 owner_uid: unsafe { libc::geteuid() },
                 firm_id: firm,
                 store_id,

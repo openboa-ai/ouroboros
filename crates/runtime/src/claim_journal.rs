@@ -40,6 +40,7 @@ fn read_bounded<T: DeserializeOwned>(path: &Path, limit: u64) -> Result<Option<T
     ensure!(
         meta.is_file()
             && meta.nlink() == 1
+            // SAFETY: geteuid has no pointer arguments and only observes identity.
             && meta.uid() == unsafe { libc::geteuid() }
             && meta.permissions().mode() & 0o077 == 0
             && meta.len() <= limit,

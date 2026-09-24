@@ -16,3 +16,19 @@ updates:
     groups:
       routine-cargo:
         update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /apps/mac/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      routine-mac-cargo:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /apps/mac
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      routine-mac-npm:
+        update-types: [minor, patch]

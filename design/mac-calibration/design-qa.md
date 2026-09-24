@@ -1,6 +1,6 @@
 # Portfolio design calibration — revision 02
 
-Historical record. Current redesign evidence is in [revision 03](evidence/v3/README.md).
+Historical record. Current redesign evidence is in the local revision 03 record (`evidence/v3/README.md`, excluded from product Git).
 
 Final result: passed for the local design-preview checks below. This is not user design acceptance or a completed Mac application.
 

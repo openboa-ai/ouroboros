@@ -40,6 +40,7 @@ mod native {
     }
     fn read(parent: &File, name: &str, limit: usize) -> Result<Option<(File, Vec<u8>)>> {
         let name = CString::new(name)?;
+        // SAFETY: the parent descriptor stays borrowed and the CString pathname is live and NUL-terminated.
         let fd = unsafe {
             libc::openat(
                 parent.as_raw_fd(),
@@ -54,6 +55,7 @@ mod native {
             }
             return Err(e.into());
         }
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let mut file = unsafe { File::from_raw_fd(fd) };
         let m = file.metadata()?;
         ensure!(
@@ -67,6 +69,7 @@ mod native {
     }
     fn create(parent: &File, name: &str, bytes: &[u8], mode: u32) -> Result<File> {
         let name = CString::new(name)?;
+        // SAFETY: the parent descriptor stays borrowed and the CString pathname is live and NUL-terminated.
         let fd = unsafe {
             libc::openat(
                 parent.as_raw_fd(),
@@ -76,6 +79,7 @@ mod native {
             )
         };
         ensure!(fd >= 0, "installation entry exists or cannot be created");
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let mut file = unsafe { File::from_raw_fd(fd) };
         file.write_all(bytes)?;
         file.sync_all()?;
@@ -147,6 +151,7 @@ mod native {
         reviewed: &str,
     ) -> Result<Verified> {
         ensure!(
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             unsafe { libc::geteuid() } == 0,
             "trusted Linux host owner required"
         );
@@ -161,6 +166,7 @@ mod native {
             "distinct receipt directory required"
         );
         ensure!(
+            // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
             unsafe { libc::flock(target.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
             "installation is busy"
         );
@@ -221,6 +227,7 @@ mod native {
         resume: bool,
     ) -> Result<Value> {
         ensure!(
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             unsafe { libc::geteuid() } == 0,
             "installation requires the trusted host owner"
         );
@@ -239,6 +246,7 @@ mod native {
             "separate receipt directory required"
         );
         ensure!(
+            // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
             unsafe { libc::flock(target.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
             "another installer owns the target"
         );
@@ -329,6 +337,7 @@ mod native {
                 let src = CString::new(pending.as_str())?;
                 let dst = CString::new(name)?;
                 ensure!(
+                    // SAFETY: both pathnames are live NUL-terminated CStrings and the borrowed directory stays open.
                     unsafe {
                         libc::linkat(
                             target.as_raw_fd(),
@@ -355,6 +364,7 @@ mod native {
                 );
                 let src = CString::new(pending)?;
                 ensure!(
+                    // SAFETY: the borrowed directory remains open and the pathname is a live NUL-terminated CString.
                     unsafe { libc::unlinkat(target.as_raw_fd(), src.as_ptr(), 0) } == 0,
                     "pending link retirement unresolved"
                 );

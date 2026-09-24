@@ -41,8 +41,8 @@ def child_environment():
     return result
 
 
-def run(argv, *, timeout=600, capture=False, env=None):
-    return subprocess.run([str(arg) for arg in argv], check=True, cwd=ROOT,
+def run(argv, *, timeout=600, capture=False, env=None, cwd=None):
+    return subprocess.run([str(arg) for arg in argv], check=True, cwd=cwd or ROOT,
                           stdin=subprocess.DEVNULL, env=env or child_environment(),
                           stdout=subprocess.PIPE if capture else None,
                           timeout=timeout).stdout
@@ -133,6 +133,35 @@ def postgres(stage):
     return binary
 
 
+def mac_postgres(stage):
+    """Build the same PG18.6 release; never start a Homebrew-managed server."""
+    if platform.system() != 'Darwin':
+        raise ValueError('Mac preparation requires macOS')
+    run(['brew', 'install', 'bison', 'flex', 'openssl@3'])
+    openssl = run(['brew', '--prefix', 'openssl@3'], capture=True).decode().strip() + '/bin'
+    with open(os.environ['GITHUB_PATH'], 'a') as output_path:
+        output_path.write(openssl + '\n')
+    env = child_environment()
+    paths = [run(['brew', '--prefix', tool], capture=True).decode().strip() + '/bin'
+             for tool in ('bison', 'flex')]
+    env['PATH'] = os.pathsep.join([*paths, env.get('PATH', os.defpath)])
+    archive = stage / 'postgresql.tar.bz2'
+    download('https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2', archive,
+             40 * 1024**2, '555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f')
+    with tarfile.open(archive) as source:
+        source.extractall(stage, filter='data')
+    build = stage / 'postgresql-18.6'
+    prefix = stage / 'postgres-install'
+    run([build / 'configure', '--prefix=' + str(prefix), '--without-icu', '--without-readline',
+         '--without-zlib'], cwd=build, env=env)
+    run(['make', '-j', '3'], cwd=build, env=env, timeout=900)
+    run(['make', 'install'], cwd=build, env=env)
+    binary = prefix / 'bin'
+    if run([binary / 'postgres', '--version'], capture=True).decode().strip() != 'postgres (PostgreSQL) 18.6':
+        raise ValueError('Mac PostgreSQL does not match the required version')
+    return binary
+
+
 def age(stage):
     linux()
     archive = stage / 'age.tar.gz'
@@ -220,6 +249,22 @@ def prepare(lane, output):
             run(['cargo', 'fetch', '--locked'], timeout=600)
     if lane in ('postgres', 'recovery', 'native'):
         config['pg_bin'] = str(postgres(scratch))
+    if lane == 'audit':
+        from tests.support.rust_quality import policy
+        audit_root = private_directory(local / 'audit-tools')
+        run(['cargo', 'install', 'cargo-audit', '--version', policy()['audit'], '--locked',
+             '--root', audit_root, '--target-dir', local / 'audit-target'], timeout=1200)
+        # GitHub persists this explicit tool location for the later runner step.
+        with open(os.environ['GITHUB_PATH'], 'a') as output_path:
+            output_path.write(str(audit_root / 'bin') + '\n')
+        database = scratch / 'advisory-db'
+        run(['git', 'clone', '--depth', '1', 'https://github.com/RustSec/advisory-db.git', database])
+        config['audit_database'] = str(database)
+    if lane == 'mac':
+        config['pg_bin'] = str(mac_postgres(scratch))
+        config['mac_target_dir'] = str(private_directory(local / 'mac-target'))
+        run(['cargo', 'fetch', '--locked', '--manifest-path', ROOT / 'apps/mac/src-tauri/Cargo.toml'])
+        run(['npm', 'ci'], cwd=ROOT / 'apps/mac')
     if lane == 'recovery':
         tools = age(scratch)
         config.update(age=tools['age'], keygen=tools['age-keygen'])
@@ -340,7 +385,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     prepare_parser = sub.add_parser('prepare')
-    prepare_parser.add_argument('--lane', choices=('integrity', 'build', 'fast', 'postgres', 'native', 'recovery', 'package'), required=True)
+    prepare_parser.add_argument('--lane', choices=('integrity', 'build', 'audit', 'fast', 'postgres', 'native', 'recovery', 'mac', 'package'), required=True)
     prepare_parser.add_argument('--output', type=Path, required=True)
     for name in ('bundle', 'unpack'):
         sub.add_parser(name).add_argument('--archive', type=Path, required=True)

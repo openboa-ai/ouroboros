@@ -2,6 +2,7 @@
 name = "ouroboros-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
@@ -62,3 +63,6 @@ required-features = ["postgres-tests"]
 name = "notifications"
 path = "tests/notifications.rs"
 required-features = ["postgres-tests"]
+
+[lints]
+workspace = true

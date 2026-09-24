@@ -292,6 +292,10 @@ struct CatalogScope {
     #[serde(default)]
     connection_generation: Option<String>,
 }
+enum CatalogBody {
+    Json(Value),
+    Bytes(Vec<u8>),
+}
 impl CatalogScope {
     fn validate(&self) -> Result<(), String> {
         identifier(&self.work_id)?;
@@ -336,9 +340,8 @@ impl Gateway {
         method: reqwest::Method,
         segments: &[&str],
         cursor: Option<&str>,
-        body: Option<Value>,
+        body: Option<CatalogBody>,
         key: Option<&str>,
-        content: Option<Vec<u8>>,
     ) -> Result<Value, String> {
         scope.validate()?;
         self.check_environment(
@@ -357,14 +360,13 @@ impl Gateway {
             request_reference(key)?;
             request = request.header("idempotency-key", key);
         }
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        if let Some(content) = content {
-            request = request
+        request = match body {
+            Some(CatalogBody::Json(value)) => request.json(&value),
+            Some(CatalogBody::Bytes(bytes)) => request
                 .header("content-type", "application/octet-stream")
-                .body(content);
-        }
+                .body(bytes),
+            None => request,
+        };
         let mut response=request.send().await.map_err(|_|"Catalog outcome unknown. Retain the original key and inspect its receipt before another operation.")?;
         if !response.status().is_success() {
             return Err(match response.status().as_u16(){
@@ -473,7 +475,6 @@ async fn catalog_workspaces(
             cursor.as_deref(),
             None,
             None,
-            None,
         )
         .await
 }
@@ -489,7 +490,6 @@ async fn catalog_workspace(
             &scope,
             reqwest::Method::GET,
             &["workspaces", &workspace_id],
-            None,
             None,
             None,
             None,
@@ -520,9 +520,8 @@ async fn catalog_upload(
             reqwest::Method::POST,
             &["uploads"],
             None,
-            Some(json!({"size":size,"sha256":sha256})),
+            Some(CatalogBody::Json(json!({"size":size,"sha256":sha256}))),
             Some(&request_key),
-            None,
         )
         .await
 }
@@ -543,9 +542,8 @@ async fn catalog_upload_content(
             reqwest::Method::PUT,
             &["uploads", &upload_id, "content"],
             None,
+            Some(CatalogBody::Bytes(content.into_bytes())),
             None,
-            None,
-            Some(content.into_bytes()),
         )
         .await
 }
@@ -567,7 +565,7 @@ async fn catalog_publish(
         identifier(upload)?;
     }
     // expected_revision belongs to Catalog. It is unrelated to Core authority_revision.
-    gateway_for_scope(&s,&scope)?.scoped_json(&scope,reqwest::Method::POST,&["publications"],None,Some(json!({"workspace_id":workspace_id,"expected_revision":expected_revision,"files":files})),Some(&request_key),None).await
+    gateway_for_scope(&s,&scope)?.scoped_json(&scope, reqwest::Method::POST, &["publications"], None, Some(CatalogBody::Json(json!({"workspace_id":workspace_id,"expected_revision":expected_revision,"files":files}))), Some(&request_key)).await
 }
 #[tauri::command]
 async fn catalog_resource_receipt(
@@ -591,7 +589,6 @@ async fn catalog_resource_receipt(
                 reqwest::Method::GET
             },
             &segments,
-            None,
             None,
             None,
             None,
@@ -661,12 +658,12 @@ async fn observe_workspaces(g: &Gateway, work: &Value) -> Value {
     let result:Result<Value,String>=async {
         let scope=CatalogScope {work_id:work["id"].as_str().ok_or("Missing work scope")?.into(),
             delegation_id:work["delegation_id"].as_str().ok_or("Missing work delegation")?.into(),target_id:g.catalog_target.clone(),expected_environment_id:None,connection_generation:None};
-        let listed=g.scoped_json(&scope,reqwest::Method::GET,&["workspaces"],None,None,None,None).await?;
+        let listed=g.scoped_json(&scope, reqwest::Method::GET, &["workspaces"], None, None, None).await?;
         let allocated=listed["items"].as_array().ok_or("Invalid workspace list")?;
         let mut items=Vec::new();
         for item in allocated.iter().take(10) {
             let id=item["workspace_id"].as_str().ok_or("Invalid workspace reference")?;identifier(id)?;
-            let mut detail=g.scoped_json(&scope,reqwest::Method::GET,&["workspaces",id],None,None,None,None).await.unwrap_or_else(unavailable);
+            let mut detail=g.scoped_json(&scope, reqwest::Method::GET, &["workspaces",id], None, None, None).await.unwrap_or_else(unavailable);
             if detail["unavailable"]==true {detail["workspace_id"]=json!(id);}
             detail["read_scope"]=json!({"work_id":scope.work_id,"delegation_id":scope.delegation_id,"target_id":scope.target_id});
             items.push(detail);
@@ -691,7 +688,6 @@ async fn catalog_publication(
             &scope,
             reqwest::Method::GET,
             &["workspaces", &workspace_id, "publications", &intent_id],
-            None,
             None,
             None,
             None,
@@ -1116,16 +1112,13 @@ fn main() {
         .manage(CompanyViews::default())
         .register_uri_scheme_protocol("company-ui", company_views::protocol)
         .setup(|app| {
-            if let Ok(dir) = app.path().app_config_dir() {
-                if let Ok(bytes) = std::fs::read(dir.join("connection-reference.json")) {
-                    if let Ok(path) = serde_json::from_slice::<PathBuf>(&bytes) {
-                        if let Ok(g) = Gateway::load(&path) {
-                            if let Ok(mut s) = app.state::<Connection>().0.lock() {
-                                *s = Some(g);
-                            }
-                        }
-                    }
-                }
+            if let Ok(dir) = app.path().app_config_dir()
+                && let Ok(bytes) = std::fs::read(dir.join("connection-reference.json"))
+                && let Ok(path) = serde_json::from_slice::<PathBuf>(&bytes)
+                && let Ok(g) = Gateway::load(&path)
+                && let Ok(mut s) = app.state::<Connection>().0.lock()
+            {
+                *s = Some(g);
             }
             Ok(())
         })
@@ -1171,11 +1164,11 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("build Ouroboros Mac app")
         .run(|handle, event| {
-            if let tauri::RunEvent::Reopen { .. } = event {
-                if let Some(w) = handle.get_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+            if let tauri::RunEvent::Reopen { .. } = event
+                && let Some(w) = handle.get_window("main")
+            {
+                let _ = w.show();
+                let _ = w.set_focus();
             }
         });
 }

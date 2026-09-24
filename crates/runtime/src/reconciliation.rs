@@ -12,6 +12,7 @@ use std::time::Duration;
 pub async fn reconcile(cfg: Config, instance: uuid::Uuid) -> Result<()> {
     let _slot = supervisor_lock(&cfg.evidence_dir)?;
     ensure!(
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         unsafe { libc::geteuid() } == 0,
         "trusted Runtime identity required"
     );

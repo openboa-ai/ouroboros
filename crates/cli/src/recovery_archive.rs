@@ -66,12 +66,10 @@ fn open(path: &Path) -> Result<File> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
     let m = f.metadata()?;
+    // SAFETY: geteuid takes no pointers and only observes process identity.
+    let uid = unsafe { libc::geteuid() };
     ensure!(
-        m.is_file()
-            && m.mode() & 0o022 == 0
-            && (m.uid() == unsafe { libc::geteuid() }
-                || m.uid() == 0
-                || unsafe { libc::geteuid() } == 0),
+        m.is_file() && m.mode() & 0o022 == 0 && (m.uid() == uid || m.uid() == 0 || uid == 0),
         "protected regular file required"
     );
     Ok(f)
@@ -113,10 +111,10 @@ fn walk(
         "invalid path or entry bound exceeded"
     );
     let m = fs::symlink_metadata(path)?;
+    // SAFETY: geteuid takes no pointers and only observes process identity.
+    let uid = unsafe { libc::geteuid() };
     ensure!(
-        (m.is_dir() || m.is_file())
-            && m.mode() & 0o022 == 0
-            && (m.uid() == unsafe { libc::geteuid() } || unsafe { libc::geteuid() } == 0),
+        (m.is_dir() || m.is_file()) && m.mode() & 0o022 == 0 && (m.uid() == uid || uid == 0),
         "unsupported or unprotected recovery entry"
     );
     let digest = if m.is_file() {
@@ -363,8 +361,10 @@ pub(crate) fn stage(
     );
     let parent_file = File::open(parent)?;
     let m = parent_file.metadata()?;
+    // SAFETY: geteuid takes no pointers and only observes process identity.
+    let uid = unsafe { libc::geteuid() };
     ensure!(
-        m.is_dir() && m.uid() == unsafe { libc::geteuid() } && m.mode() & 0o077 == 0,
+        m.is_dir() && m.uid() == uid && m.mode() & 0o077 == 0,
         "private staging parent required"
     );
     fs::DirBuilder::new()
@@ -478,8 +478,10 @@ pub(crate) fn create(spec: &Path, output: &Path) -> Result<serde_json::Value> {
     );
     let directory = File::open(parent)?;
     let m = directory.metadata()?;
+    // SAFETY: geteuid takes no pointers and only observes process identity.
+    let uid = unsafe { libc::geteuid() };
     ensure!(
-        m.is_dir() && m.uid() == unsafe { libc::geteuid() } && m.mode() & 0o077 == 0,
+        m.is_dir() && m.uid() == uid && m.mode() & 0o077 == 0,
         "private destination required"
     );
     let mut name = output.as_os_str().to_owned();

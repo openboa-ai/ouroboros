@@ -253,14 +253,10 @@ class PostgreSQL:
         if not re.fullmatch(rb"postgres \(PostgreSQL\) 18\.\d+[^\n]*\n?", version):
             raise SuiteFailure("PostgreSQL 18 release binaries are required")
         self.version = version.decode().strip()
-        password_file = self.root / "initial-password"
-        private_write(password_file, self.password + "\n")
-        try:
-            self.commands.run("initdb", [str(self.pg / "initdb"), "-D", str(self.cluster),
-                "--username", self.username, "--pwfile", str(password_file),
-                "--auth-local=scram-sha-256", "--auth-host=scram-sha-256", "--no-locale", "--encoding=UTF8"])
-        finally:
-            password_file.unlink(missing_ok=True)
+        self.commands.run("initdb", [str(self.pg / "initdb"), "-D", str(self.cluster),
+            "--username", self.username, "--pwfile=/dev/stdin",
+            "--auth-local=scram-sha-256", "--auth-host=scram-sha-256", "--no-locale", "--encoding=UTF8"],
+            input_text=self.password + "\n")
         # No SQL statements or passwords enter a PostgreSQL log. The foreground
         # server has no daemon/pidfile discovery path and no shared Unix socket.
         self.child = subprocess.Popen([str(self.pg / "postgres"), "-D", str(self.cluster),

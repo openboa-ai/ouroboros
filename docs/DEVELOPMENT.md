@@ -40,6 +40,12 @@ Reconciling host tooling and admission transport with main-only development must
 controls; this design does not authorize direct-push bypasses, branch rewrites or policy weakening.
 Actual company data, applied settings, build outputs and evidence remain outside source Git.
 
+### Rust engineering contract
+
+Use the common [Rust quality contract](engineering/rust-quality/spec.md) for both Rust workspaces
+and [REVIEW.md](../REVIEW.md) for affected-boundary review. Workspace inventory, inherited lints,
+actual test accounting and both lockfile audits are required evidence.
+
 ### Working and verification boundaries
 
 Implement only the accepted scope in an isolated worktree. Independent work needs separate

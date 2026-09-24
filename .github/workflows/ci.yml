@@ -77,21 +77,7 @@ jobs:
             git diff-tree --check --no-commit-id --root -r HEAD
           fi
 
-  mac-ui-boundaries:
-    name: mac-ui-boundaries
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: apps/mac
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Verify clean product build
+      - name: Check complete Rust quality policy and nested documentation
         run: |
-          node --version
-          npm ci
-          npm run test
-          npm run lint
-          npm run build
-          npm run build:sdk
-          node scripts/check-company-boundaries.mjs --distribution
+          python3 -m tests.support.rust_quality
+          python3 -c "from tests.support.check_integrity import check; from pathlib import Path; import json; result = check(Path.cwd()); print(json.dumps(result)); raise SystemExit(result['status'] != 'PASS')"

@@ -56,9 +56,10 @@ jobs:
           plan = json.load(open('.local/plan.json'))
           lanes = {entry['lane'] for entry in plan['matrix']['include']}
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('matrix=' + json.dumps(plan['matrix'], separators=(',', ':')) + '\n')
-              output.write('build_required=' + str(bool(lanes - {'integrity'})).lower() + '\n')
-              output.write('mac_required=' + str('fast' in lanes).lower() + '\n')
+              matrix = {'include': [entry for entry in plan['matrix']['include'] if entry['lane'] != 'mac']}
+              output.write('matrix=' + json.dumps(matrix, separators=(',', ':')) + '\n')
+              output.write('build_required=' + str(bool(lanes - {'integrity', 'audit', 'mac'})).lower() + '\n')
+              output.write('mac_required=' + str('mac' in lanes).lower() + '\n')
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -122,7 +123,7 @@ jobs:
           name: behavior-plan
           path: .local
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.lane != 'integrity'
+        if: matrix.lane != 'integrity' && matrix.lane != 'audit'
         with:
           path: |
             ~/.cargo/registry
@@ -132,12 +133,12 @@ jobs:
           restore-keys: |
             outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: matrix.lane != 'integrity'
+        if: matrix.lane != 'integrity' && matrix.lane != 'audit'
         with:
           name: behavior-linux-build
           path: .local
       - name: Restore source-bound executables
-        if: matrix.lane != 'integrity'
+        if: matrix.lane != 'integrity' && matrix.lane != 'audit'
         run: python3 scripts/ci_environment.py unpack --archive .local/build-bundle.tar.gz
       - name: Prepare explicit disposable environment
         env:
@@ -182,7 +183,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.mac_required == 'true'
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -199,30 +200,43 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             .local/target
-          key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+            .local/mac-target
+          key: outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock', 'apps/mac/src-tauri/Cargo.lock', 'apps/mac/package-lock.json') }}-${{ github.sha }}
           restore-keys: |
-            outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock') }}-
+            outer-${{ runner.os }}-${{ runner.arch }}-rust1941-${{ hashFiles('Cargo.lock', 'apps/mac/src-tauri/Cargo.lock', 'apps/mac/package-lock.json') }}-
       - name: Qualify synthetic release-store filesystem before compilation
         shell: bash
         run: env -i "PATH=$PATH" "HOME=$HOME" PYTHONDONTWRITEBYTECODE=1 python3 tests/tooling/test-fixture-release.py
-      - name: Build and run supplemental Mac contracts
+      - name: Prepare Mac dependencies and disposable environment
+        run: python3 scripts/ci_environment.py prepare --lane mac --output .local/environment.json
+      - name: Build and run required Mac Rust, frontend and connection contracts
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/ci_environment.py prepare --lane fast --output .local/environment.json
           python3 scripts/check.py build --environment .local/environment.json --output .local/build.json
           python3 scripts/check.py run --plan .local/plan.json --lane fast \
-            --environment .local/environment.json --output .local/mac-result.json
+            --environment .local/environment.json --output .local/mac-compatibility.json
+          python3 scripts/check.py run --plan .local/plan.json --lane mac \
+            --environment .local/environment.json --output .local/results/mac.json
       - name: Summarize Mac results
         if: always()
         env:
           CACHE_HIT: ${{ steps.build-cache.outputs.cache-hit }}
-        run: python3 scripts/ci_report.py --results .local/mac-result.json
+        run: python3 scripts/ci_report.py --results .local/mac-compatibility.json .local/results/mac.json
+      - name: Preserve macOS root-workspace receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: mac-root-compatibility
+          path: .local/mac-compatibility.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: behavior-mac-compatibility
-          path: .local/mac-result.json
+          name: behavior-results-mac
+          path: .local/results/mac.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30

@@ -17,13 +17,13 @@ mod socket_cleanup;
 #[serde(deny_unknown_fields)]
 pub struct TlsFiles {
     pub certificate: PathBuf,
-    pub private_key: PathBuf,
+    pub private_key: config::SecretInput,
     pub ca: PathBuf,
 }
 impl TlsFiles {
     pub fn resolve_paths(&mut self, root: &config::ConfigRoot) -> Result<()> {
         root.resolve(&mut self.certificate)?;
-        root.resolve(&mut self.private_key)?;
+        self.private_key.resolve(root)?;
         root.resolve(&mut self.ca)
     }
 }
@@ -40,7 +40,7 @@ pub fn fingerprint(der: &[u8]) -> String {
 pub fn client(files: &TlsFiles) -> Result<reqwest::Client> {
     provider();
     let mut identity = config::read_regular(&files.certificate, 1024 * 1024)?;
-    identity.extend(config::read_regular(&files.private_key, 1024 * 1024)?);
+    identity.extend(files.private_key.read(1024 * 1024)?);
     Ok(reqwest::Client::builder()
         .https_only(true)
         .no_proxy()
@@ -69,7 +69,7 @@ pub async fn serve(addr: SocketAddr, files: TlsFiles, app: Router) -> Result<()>
     let cert_bytes = config::read_regular(&files.certificate, 1024 * 1024)?;
     let certs = rustls_pemfile::certs(&mut cert_bytes.as_slice())
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let key_bytes = config::read_regular(&files.private_key, 1024 * 1024)?;
+    let key_bytes = files.private_key.read(1024 * 1024)?;
     let key =
         rustls_pemfile::private_key(&mut key_bytes.as_slice())?.context("missing private key")?;
     let ca_bytes = config::read_regular(&files.ca, 1024 * 1024)?;
@@ -203,6 +203,7 @@ impl InstancePeer {
             revents: 0,
         };
         // A socket-derived pidfd identifies the original peer even after numeric PID reuse.
+        // SAFETY: the pointer refers to the stated number of initialized pollfd records, alive for this call.
         (unsafe { libc::poll(&mut p, 1, 0) }) == 0
             && linux_peer(self.identity.pid, self.identity.uid)
                 .ok()
@@ -248,6 +249,7 @@ pub async fn serve_instance_socket(path: PathBuf, app: Router) -> Result<()> {
         use std::os::fd::{AsRawFd, FromRawFd};
         let mut raw = -1_i32;
         let mut size = std::mem::size_of::<i32>() as libc::socklen_t;
+        // SAFETY: the socket stays open and the value/length pointers refer to writable storage sized for this option.
         if unsafe {
             libc::getsockopt(
                 socket.as_raw_fd(),
@@ -261,6 +263,7 @@ pub async fn serve_instance_socket(path: PathBuf, app: Router) -> Result<()> {
         {
             continue;
         }
+        // SAFETY: SO_PEERPIDFD succeeded and returned a new nonnegative descriptor; ownership transfers once.
         let lifetime = Arc::new(unsafe { std::os::fd::OwnedFd::from_raw_fd(raw) });
         let Ok(identity) = linux_peer(pid, credential.uid()) else {
             continue;

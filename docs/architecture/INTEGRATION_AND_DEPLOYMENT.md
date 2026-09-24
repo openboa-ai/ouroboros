@@ -437,6 +437,21 @@ to provision or connect a new account. The fixture runner explicitly removes amb
 settings from child environments; directly launched services reject them rather than mutate the
 global environment after threads exist.
 
+Database and TLS private-key inputs can explicitly select an environment variable with
+`{"env":"OURO_SECRET_DB_URL"}` or `{"env":"OURO_SECRET_TLS_KEY"}`. Core and workers accept
+`database_url`; `database_url_file` remains its legacy alias, and supplying both is invalid.
+Migration commands select exactly one of `--database-url-env NAME` and `--database-url-file PATH`.
+TLS `private_key` accepts the same environment selector; certificate and CA inputs are public
+files. Environment names must be explicit uppercase identifiers, and values are bounded and
+required. Missing, empty or invalid values never fall back to a file or ambient connection.
+Configuration serialization and errors contain selectors, never resolved secret values.
+
+The Mac connection fixture generates fresh synthetic values in memory and injects only the
+database/TLS values needed by each child. It creates no password URL or private-key files, does
+not add secrets to compiler environments, disables core dumps, and verifies that no secret value
+was persisted before removing its owned database and private fixture material. External crypto
+and database bootstrap tools receive transient standard input when their interface requires it.
+
 These changes do not implement enrollment, full storage readiness, independent process isolation
 or a general configuration-activation API. No personal username, host home path or external-volume
 name belongs in reusable source or examples. The remaining boundaries are:

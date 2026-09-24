@@ -1,7 +1,7 @@
 //! One explicit, bounded configuration input. Loading never activates authority or discovers peers.
 use anyhow::{Context, Result, ensure};
 use serde::{
-    Deserialize,
+    Deserialize, Serialize,
     de::{self, DeserializeOwned, MapAccess, SeqAccess, Visitor},
 };
 use serde_json::Value;
@@ -12,6 +12,59 @@ use std::{
 };
 
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
+
+/// An explicit secret source. Serialized configuration contains a locator, never its value.
+/// Environment inputs are selected by name; there is no ambient fallback or interpolation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SecretInput {
+    File(PathBuf),
+    Environment(EnvironmentInput),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentInput {
+    pub env: String,
+}
+
+impl SecretInput {
+    pub fn environment(name: String) -> Self {
+        Self::Environment(EnvironmentInput { env: name })
+    }
+
+    pub fn resolve(&mut self, root: &ConfigRoot) -> Result<()> {
+        if let Self::File(path) = self {
+            root.resolve(path)?;
+        }
+        Ok(())
+    }
+
+    pub fn read(&self, max_bytes: u64) -> Result<Vec<u8>> {
+        match self {
+            Self::File(path) => read_regular(path, max_bytes),
+            Self::Environment(input) => {
+                let name = &input.env;
+                ensure!(
+                    (1..=128).contains(&name.len())
+                        && name.bytes().next().is_some_and(|b| b.is_ascii_uppercase())
+                        && name
+                            .bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'),
+                    "invalid secret environment selector"
+                );
+                let value = std::env::var(name).map_err(|_| {
+                    anyhow::anyhow!("selected secret environment input unavailable")
+                })?;
+                ensure!(
+                    !value.is_empty() && value.len() as u64 <= max_bytes,
+                    "secret environment input size limit"
+                );
+                Ok(value.into_bytes())
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ConfigRoot(PathBuf);
@@ -85,11 +138,15 @@ pub fn read_regular(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
 /// settings and require complete credentials/target/TLS policy before the parser sees the URL.
 /// No global process environment is mutated, and invalid values are never included in errors.
 pub fn postgres_url_file(path: &Path) -> Result<String> {
+    postgres_url(&SecretInput::File(path.to_path_buf()))
+}
+
+pub fn postgres_url(input: &SecretInput) -> Result<String> {
     ensure!(
         !std::env::vars_os().any(|(key, _)| key.to_string_lossy().starts_with("PG")),
         "ambient PostgreSQL settings are not accepted; use the explicit deployment binding"
     );
-    let bytes = read_regular(path, 65536)?;
+    let bytes = input.read(65536)?;
     let value = std::str::from_utf8(&bytes)
         .context("database configuration must be UTF-8")?
         .trim();
@@ -281,6 +338,7 @@ mod tests {
         let f = Fixture::new();
         let path = f.0.join("fifo");
         let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name is a live, NUL-terminated CString; mkfifo does not retain its pointer.
         assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
         assert!(read_regular(&path, 128).is_err());
         assert!(load::<Example>(&path).is_err());

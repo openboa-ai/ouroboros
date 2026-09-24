@@ -44,9 +44,11 @@ pub fn send(socket: &UnixDatagram, files: [&File; 3]) -> Result<()> {
 
 pub fn receive(socket: &UnixDatagram) -> Result<[File; 3]> {
     socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+    // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
     let mut peer: libc::ucred = unsafe { std::mem::zeroed() };
     let mut length = std::mem::size_of_val(&peer) as libc::socklen_t;
     ensure!(
+        // SAFETY: the socket stays open and the value/length pointers refer to writable storage sized for this option.
         unsafe {
             libc::getsockopt(
                 socket.as_raw_fd(),
@@ -117,27 +119,36 @@ pub struct DeadlineWait {
 }
 impl DeadlineWait {
     pub fn new(deadline: u64) -> Result<Self> {
+        // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
         let mut mask: libc::sigset_t = unsafe { std::mem::zeroed() };
+        // SAFETY: mask is live writable sigset_t storage for both initialization calls.
         unsafe {
             libc::sigemptyset(&mut mask);
             libc::sigaddset(&mut mask, libc::SIGUSR1);
         }
         ensure!(
+            // SAFETY: mask is initialized; the unused old-mask output is explicitly null.
             unsafe { libc::sigprocmask(libc::SIG_BLOCK, &mask, std::ptr::null_mut()) } == 0,
             "cannot block early-stop signal"
         );
+        // SAFETY: mask is initialized and borrowed for this call; -1 requests a new owned descriptor.
         let fd = unsafe { libc::signalfd(-1, &mask, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK) };
         ensure!(fd >= 0, "cannot create early-stop signal handle");
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let signal = unsafe { File::from_raw_fd(fd) };
+        // SAFETY: timerfd_create takes scalar arguments only and returns a new descriptor checked below.
         let fd = unsafe {
             libc::timerfd_create(libc::CLOCK_BOOTTIME, libc::TFD_CLOEXEC | libc::TFD_NONBLOCK)
         };
         ensure!(fd >= 0, "cannot create independent deadline timer");
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let timer = unsafe { File::from_raw_fd(fd) };
+        // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
         let mut when: libc::itimerspec = unsafe { std::mem::zeroed() };
         when.it_value.tv_sec = (deadline / 1_000_000_000) as libc::time_t;
         when.it_value.tv_nsec = (deadline % 1_000_000_000) as libc::c_long;
         ensure!(
+            // SAFETY: the timer stays open and when is initialized; no old-timer output is requested.
             unsafe {
                 libc::timerfd_settime(
                     timer.as_raw_fd(),
@@ -164,6 +175,7 @@ impl DeadlineWait {
                     revents: 0,
                 },
             ];
+            // SAFETY: the pointer refers to the stated number of initialized pollfd records, alive for this call.
             let count = unsafe { libc::poll(descriptors.as_mut_ptr(), 2, -1) };
             if count < 0 {
                 let error = std::io::Error::last_os_error();
@@ -182,7 +194,9 @@ impl DeadlineWait {
                 return Ok(());
             }
             if descriptors[1].revents & libc::POLLIN != 0 {
+                // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
                 let mut info: libc::signalfd_siginfo = unsafe { std::mem::zeroed() };
+                // SAFETY: info provides writable storage of exactly the passed length; the signal descriptor stays open.
                 let read = unsafe {
                     libc::read(
                         self.signal.as_raw_fd(),
@@ -226,13 +240,16 @@ fn population(events: &File) -> Result<Option<ouroboros_contracts::AllocationClo
 
 pub fn validate(files: &[File; 3]) -> Result<()> {
     for (file, access) in [(&files[0], libc::O_WRONLY), (&files[1], libc::O_RDONLY)] {
+        // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
         let mut fs: libc::statfs = unsafe { std::mem::zeroed() };
         ensure!(
+            // SAFETY: the descriptor remains open and the output pointer refers to writable statfs storage.
             unsafe { libc::fstatfs(file.as_raw_fd(), &mut fs) } == 0
                 && fs.f_type == libc::CGROUP2_SUPER_MAGIC,
             "guard cgroup descriptor required"
         );
         ensure!(
+            // SAFETY: F_GETFL/F_GETFD take no pointer argument and do not transfer descriptor ownership.
             unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFL) } & libc::O_ACCMODE == access,
             "guard descriptor access mismatch"
         );
@@ -247,6 +264,7 @@ pub fn validate(files: &[File; 3]) -> Result<()> {
         "fresh protected guard receipt required"
     );
     ensure!(
+        // SAFETY: F_GETFL/F_GETFD take no pointer argument and do not transfer descriptor ownership.
         unsafe { libc::fcntl(files[2].as_raw_fd(), libc::F_GETFL) } & libc::O_ACCMODE
             == libc::O_WRONLY,
         "guard receipt must be write-only"
@@ -286,6 +304,7 @@ mod tests {
     #[test]
     #[ignore = "requires root in the dedicated Linux guest to test the trusted sender"]
     fn descriptor_packet_preserves_handles_and_rejects_unbacked_input() {
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         assert_eq!(unsafe { libc::geteuid() }, 0);
         let (sender, receiver) = UnixDatagram::pair().unwrap();
         let files = [
@@ -302,6 +321,7 @@ mod tests {
             );
             assert_ne!(source.as_raw_fd(), received.as_raw_fd());
             assert_ne!(
+                // SAFETY: F_GETFL/F_GETFD take no pointer argument and do not transfer descriptor ownership.
                 unsafe { libc::fcntl(received.as_raw_fd(), libc::F_GETFD) } & libc::FD_CLOEXEC,
                 0
             );

@@ -30,9 +30,11 @@ fn cgroup_filesystem(file: &File) -> Result<()> {
     let mut fs = std::mem::MaybeUninit::<libc::statfs>::uninit();
     // SAFETY: fstatfs writes the provided statfs for this live owned descriptor.
     ensure!(
+        // SAFETY: the descriptor remains open and the output pointer refers to writable statfs storage.
         unsafe { libc::fstatfs(file.as_raw_fd(), fs.as_mut_ptr()) } == 0,
         "cgroup filesystem unavailable"
     );
+    // SAFETY: the preceding successful stat syscall initialized the entire returned record.
     let fs = unsafe { fs.assume_init() };
     ensure!(fs.f_type == 0x63677270, "cgroup v2 filesystem required");
     Ok(())
@@ -141,6 +143,7 @@ impl PinnedCgroup {
         if fd < 0 {
             return Err(io::Error::last_os_error().into());
         }
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let file = unsafe { File::from_raw_fd(fd) };
         cgroup_filesystem(&file)?;
         Ok(file)

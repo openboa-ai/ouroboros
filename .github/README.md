@@ -17,8 +17,12 @@ runs select full synthetic regression. Missing, failed, cancelled or required NO
 cannot pass. Local and hosted execution use the same plan/run/report contracts.
 
 Linux native cases require a disposable Ubuntu ARM64 VM with the real kernel/daemon prerequisites.
-Mac validation is supplemental; it does not establish Linux isolation. Test fixtures never adopt
+The independent Mac workspace, frontend and real Gateway/Catalog client fixture are required
+selected cases in `behavior-gate`. Root Rust validation also runs on Mac; neither establishes Linux isolation. Test fixtures never adopt
 account credentials, company state, or a developer's VM. Actual provider calls remain separate.
+
+The [Rust quality contract](../docs/engineering/rust-quality/spec.md) defines workspace coverage,
+test accounting, inherited lints and fresh vulnerability audits for both lockfiles.
 
 ## Review and merge
 
@@ -79,7 +83,7 @@ is enforced by repository policy. External contributors require workflow executi
 The default token is read-only and cannot approve PRs. Candidate-executing jobs have no operating
 secrets. Privileged metadata-only jobs never check out or execute PR code.
 
-Dependabot manages Actions and Cargo weekly, with up to three version-update PRs per ecosystem
+Dependabot manages Actions, both Cargo workspaces and Mac npm weekly, with up to three version-update PRs per ecosystem
 and grouped minor/patch updates. Security updates are enabled. Dependency Review blocks new
 High/Critical vulnerable dependencies without inventing a license allowlist. Secret scanning,
 push protection and private vulnerability reporting remain enabled.

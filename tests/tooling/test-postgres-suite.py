@@ -21,7 +21,7 @@ import unittest
 from unittest.mock import patch
 
 from tests.support.postgres_suite_support import (Commands, SuiteFailure, cargo_result, free_ports,
-                                    private_write, redact, safe_environment)
+                                    private_write, redact, safe_environment, PostgreSQL)
 
 
 class DatabaseDriverContract(unittest.TestCase):
@@ -34,6 +34,26 @@ class DatabaseDriverContract(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_bootstrap_password_uses_transient_input_without_creating_a_file(self):
+        class StopAfterBootstrap(Exception):
+            pass
+        calls = []
+        def run(label, argv, **options):
+            calls.append((label, argv, options))
+            if label == 'postgres-version':
+                return b'postgres (PostgreSQL) 18.6\n'
+            if label == 'initdb':
+                self.assertEqual(options['input_text'], self.secret + '\n')
+                self.assertIn('--pwfile=/dev/stdin', argv)
+                self.assertEqual(list(self.root.iterdir()), [])
+                raise StopAfterBootstrap()
+            raise AssertionError('unexpected subprocess')
+        pg = PostgreSQL(self.root, Path('/synthetic/pg'), self.commands, 'fixture', self.secret)
+        with patch.object(self.commands, 'run', side_effect=run), self.assertRaises(StopAfterBootstrap):
+            pg.start()
+        self.assertEqual([item[0] for item in calls], ['postgres-version', 'initdb'])
+        self.assertEqual(list(self.root.iterdir()), [])
 
     def test_mutation_driver_preserves_cargo_proxy_dispatch_name(self):
         spec = importlib.util.spec_from_file_location("control_mutations", Path(__file__).resolve().parents[2] / "tests/contracts/test-control-mutations.py")

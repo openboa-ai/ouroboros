@@ -16,7 +16,7 @@ import re
 from tests.support.native_scenarios import SCENARIOS
 
 
-LANES = ("integrity", "fast", "postgres", "native", "recovery")
+LANES = ("integrity", "audit", "fast", "postgres", "native", "recovery", "mac")
 
 
 class CatalogError(ValueError):
@@ -25,7 +25,12 @@ class CatalogError(ValueError):
 
 _BASE = {
     "repository.integrity": ("integrity", ("repository",), "Required repository, paths and source integrity."),
+    "rust.policy": ("integrity", ("rust",), "Complete workspace, toolchain, lint and ignored-test inventory."),
+    "rust.dependencies": ("audit", ("rust",), "RustSec audit of every registered Cargo lockfile."),
     "rust.invariants": ("fast", ("rust",), "Deterministic Rust invariants and static checks."),
+    "mac.frontend": ("mac", ("mac",), "Mac frontend type, lint, boundary, unit and distribution checks."),
+    "mac.gateway": ("mac", ("mac", "gateway", "resources"), "Actual native client observes disposable mTLS Gateway and exact Catalog bytes."),
+    "mac.rust": ("mac", ("mac", "rust"), "Independent Mac Rust workspace format, Clippy, tests and build."),
     "tooling.contracts": ("fast", ("tooling",), "Fixture binding, runner selection and bounded tool contracts."),
     "config.startup": ("fast", ("configuration",), "Invalid configuration fails before ambient credentials or effects."),
     "core.transactions": ("postgres", ("core",), "Current authority, shared limits, idempotency and unresolved state."),
@@ -59,7 +64,8 @@ _SHARED_PREFIXES = (
     "crates/contracts/", "crates/transport/", ".github/workflows/", ".cargo/",
     "tests/fixtures/", "scripts/ci/",
 )
-_FAST = frozenset({"rust.invariants", "tooling.contracts", "config.startup"})
+_FAST = frozenset({"rust.invariants", "tooling.contracts", "config.startup",
+                   "rust.dependencies", "mac.frontend", "mac.gateway", "mac.rust"})
 _RECOVERY = frozenset({"recovery.crypto", "recovery.archive", "recovery.postgres"})
 
 # Responsibility closure includes dependent connected behaviors, not a Rust import graph.
@@ -214,7 +220,8 @@ def build_plan(changed_paths: Iterable[str], *, base: str, head: str,
         raise CatalogError("mode must be affected or full")
     paths = _paths(changed_paths)
     checks = catalog()
-    reasons: dict[str, set[str]] = {"repository.integrity": {"always required"}}
+    reasons: dict[str, set[str]] = {"repository.integrity": {"always required"},
+                                   "rust.policy": {"always required"}}
 
     def add(ids: Iterable[str], why: str):
         for check in ids:

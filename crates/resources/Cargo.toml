@@ -2,6 +2,7 @@
 name = "ouroboros-resources"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 [dependencies]
 anyhow.workspace = true
@@ -31,3 +32,6 @@ postgres-tests = []
 name = "receipts"
 path = "tests/receipts.rs"
 required-features = ["postgres-tests"]
+
+[lints]
+workspace = true

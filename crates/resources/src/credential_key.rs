@@ -39,10 +39,12 @@ mod linux {
             | libc::O_NOFOLLOW
             | libc::O_NONBLOCK
             | if directory { libc::O_DIRECTORY } else { 0 };
+        // SAFETY: parent remains open and name is a live NUL-terminated CString for this synchronous call.
         let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
         if fd < 0 {
             return Err(CustodyError);
         }
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         Ok(unsafe { File::from_raw_fd(fd) })
     }
     pub(super) fn load(path: &Path) -> Result<EnvelopeKey, CustodyError> {
@@ -58,6 +60,7 @@ mod linux {
         {
             return Err(CustodyError);
         }
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let uid = unsafe { libc::geteuid() };
         let mut parent = File::open("/").map_err(|_| CustodyError)?;
         for component in &parts[1..parts.len() - 1] {

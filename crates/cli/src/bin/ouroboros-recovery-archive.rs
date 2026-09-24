@@ -47,6 +47,7 @@ fn main() -> Result<()> {
         rlim_max: 0,
     };
     ensure!(
+        // SAFETY: no_core is an initialized rlimit borrowed for this synchronous call.
         unsafe { libc::setrlimit(libc::RLIMIT_CORE, &no_core) } == 0,
         "cannot disable core dumps"
     );

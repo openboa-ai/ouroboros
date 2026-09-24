@@ -49,6 +49,7 @@ impl PeerLifetime {
             revents: 0,
         };
         ensure!(
+            // SAFETY: the pointer refers to the stated number of initialized pollfd records, alive for this call.
             (unsafe { libc::poll(&mut event, 1, 0) }) == 0
                 && ouroboros_transport::linux_peer(self.identity.pid, self.identity.uid)?
                     == self.identity,
@@ -244,6 +245,7 @@ impl SocketBinding {
         )?;
         let mut raw = -1_i32;
         let mut size = std::mem::size_of::<i32>() as libc::socklen_t;
+        // SAFETY: the socket stays open and the value/length pointers refer to writable storage sized for this option.
         let outcome = unsafe {
             libc::getsockopt(
                 stream.as_raw_fd(),
@@ -257,6 +259,7 @@ impl SocketBinding {
             outcome == 0 && raw >= 0,
             "upstream lifetime descriptor unavailable"
         );
+        // SAFETY: SO_PEERPIDFD succeeded and returned a new nonnegative descriptor; ownership transfers once.
         let lifetime = unsafe { OwnedFd::from_raw_fd(raw) };
         let mut existing = self
             .peer
@@ -305,6 +308,7 @@ mod tests {
         let f = Fixture::new();
         let path = f.root.join("alternate.sock");
         let old = UnixListener::bind(&path).unwrap();
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let binding = SocketBinding::capture(&f.root, &path, unsafe { libc::geteuid() }).unwrap();
         let first = UnixStream::connect(binding.address()).unwrap();
         let _accepted = old.accept().unwrap();
@@ -323,6 +327,7 @@ mod tests {
         let f = Fixture::new();
         let path = f.root.join("test.sock");
         let _listener = UnixListener::bind(&path).unwrap();
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let uid = unsafe { libc::geteuid() };
         assert!(SocketBinding::capture(&f.root, &path, uid.wrapping_add(1)).is_err());
         let ordinary = f.root.join("ordinary");
@@ -343,12 +348,14 @@ mod tests {
         let alias = f.root.join("alias");
         symlink(&a, &alias).unwrap();
         let bound =
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             SocketBinding::capture(&f.root, &alias.join("socket"), unsafe { libc::geteuid() })
                 .unwrap();
         std::fs::remove_file(&alias).unwrap();
         symlink(&b, &alias).unwrap();
         assert!(bound.check().is_err());
         let direct =
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             SocketBinding::capture(&f.root, &a.join("socket"), unsafe { libc::geteuid() }).unwrap();
         std::fs::rename(&a, f.root.join("retired-a")).unwrap();
         std::fs::DirBuilder::new().mode(0o700).create(&a).unwrap();
@@ -361,6 +368,7 @@ mod tests {
         let path = f.root.join("peer.sock");
         let _listener = UnixListener::bind(&path).unwrap();
         let mut binding =
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             SocketBinding::capture(&f.root, &path, unsafe { libc::geteuid() }).unwrap();
         let first = tokio::net::UnixStream::connect(binding.address())
             .await
@@ -380,6 +388,7 @@ mod tests {
         let path = f.root.join("dead.sock");
         let listener = UnixListener::bind(&path).unwrap();
         drop(listener);
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let binding = SocketBinding::capture(&f.root, &path, unsafe { libc::geteuid() }).unwrap();
         assert!(binding.ready().is_err());
         assert!(binding.probe().await.is_err());
@@ -390,6 +399,7 @@ mod tests {
         let f = Fixture::new();
         let path = f.root.join("ready.sock");
         let listener = UnixListener::bind(&path).unwrap();
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let binding = SocketBinding::capture(&f.root, &path, unsafe { libc::geteuid() }).unwrap();
         assert!(binding.ready().is_err());
         binding.probe().await.unwrap();

@@ -17,12 +17,15 @@ from tests.support.check_catalog import catalog
 
 
 def safe_locations(values):
-    known = {str(p.relative_to(Path(__file__).parents[1])) for p in Path(__file__).parents[1].rglob('*.py')}
+    root = Path(__file__).resolve().parents[2]
+    known = {str(p.relative_to(root / 'tests')) for p in (root / 'tests').rglob('*.py')}
+    known.update(str(p.relative_to(root)) for directory in (root / 'crates', root / 'apps/mac/src-tauri/src')
+                 for p in directory.rglob('*.rs'))
     if not isinstance(values, list):
         return []
     result = []
     for value in values[:16]:
-        match = re.fullmatch(r'([A-Za-z0-9_/-]+\.py):([1-9][0-9]{0,5})', value) if isinstance(value, str) else None
+        match = re.fullmatch(r'([A-Za-z0-9_/-]+\.(?:py|rs)):([1-9][0-9]{0,5})', value) if isinstance(value, str) else None
         if match and match[1] in known:
             result.append(value)
     return result
@@ -53,6 +56,12 @@ def render(plan, records):
         if locations:
             detail += '; ' + ', '.join(locations)
         lines.append(f'| {name} | {status} | {seconds} | {detail} |')
+        quality = row.get('quality')
+        if name in ('rust.invariants', 'mac.rust') and isinstance(quality, dict):
+            counts = quality.get('tests', {})
+            values = [counts.get(key) for key in ('passed', 'ignored', 'discovered', 'harnesses')] if isinstance(counts, dict) else []
+            if len(values) == 4 and all(type(value) is int and 0 <= value <= 100000 for value in values):
+                lines.append(f'| {name} test accounting | {values[0]} passed / {values[1]} ignored | - | {values[2]} discovered / {values[3]} harnesses |')
         if status != 'PASS':
             annotations.append(f'::error title=Responsibility check::{name}: {status}; {detail}')
     if isinstance(plan, dict):

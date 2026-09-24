@@ -47,7 +47,7 @@ npm run build
 npm --prefix ../../apps/mac run lint
 ```
 
-See Mac implementation verification (retained local evidence; excluded from product Git) for current evidence. [Revision 03 screenshots](evidence/v3/README.md) retain the accepted pre-migration design. [design-qa.md](design-qa.md) and `evidence/*v2*` retain the earlier revision's historical checks. User design acceptance and actual product implementation remain separate steps.
+See Mac implementation verification (retained local evidence; excluded from product Git) for current evidence. Local revision 03 screenshots (`evidence/v3/README.md`, excluded from product Git) retain the accepted pre-migration design. [design-qa.md](design-qa.md) and `evidence/*v2*` retain the earlier revision's historical checks. User design acceptance and actual product implementation remain separate steps.
 
 ## Purpose and interaction specification
 
@@ -56,6 +56,6 @@ layout rationale, behavior, states and acceptance criteria for all four product 
 the shared shell, controls, connections and setup flows. `UX:` comments in the compositions link
 to stable element IDs; generated shadcn internals inherit the shared primitive contract.
 
-[Purpose audit](evidence/purpose-audit/REPORT.md) records revision 02's gaps from a chair's
+The local purpose audit (`evidence/purpose-audit/REPORT.md`, excluded from product Git) records revision 02's gaps from a chair's
 investigation flow. Revision 03 implements the connected local flows listed above; the
 [current coverage table](../../docs/design/UI_PURPOSE_CONTRACT.md#coverage) identifies remaining product work.

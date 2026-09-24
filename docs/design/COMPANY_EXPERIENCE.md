@@ -2,7 +2,7 @@
 
 이 문서는 회장이 `Company`에서 무엇을 판단하고 어떤 근거를 따라가는지 정의한다.
 설명은 한국어로 작성하며 따옴표와 코드 표기의 UI label은 영어를 사용한다.
-화면 계약의 원본은 [Application Shell and Views](../architecture/APPLICATION_SHELL_AND_VIEWS.md#company-operations--is-the-ceo-using-the-company-well), 구현 기록은 [MAC_APP](../implementation/MAC_APP.md)이다.
+화면 계약의 원본은 [Application Shell and Views](../architecture/APPLICATION_SHELL_AND_VIEWS.md#work-and-agents--is-the-ceo-using-the-company-well), 구현 기록은 [MAC_APP](../implementation/MAC_APP.md)이다.
 구성원·책임·인계의 의미는 [공유 계약](../architecture/CONTRACTS_AND_STATE.md#company-agent-identity-and-membership)을 따른다.
 이 문서는 새 API·조직·권한·스케줄러를 정의하지 않는다.
 v3의 독립 Company 화면·업무·실행·Trace 구현 범위는 [현재 coverage](UI_PURPOSE_CONTRACT.md#coverage),
