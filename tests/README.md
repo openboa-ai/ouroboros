@@ -40,6 +40,20 @@ A directory name is not a promise that a test is fast or dependency-free. For ex
 runner so source identity, required prerequisites, deadlines, cleanup and evidence remain enforced.
 Do not run all files by indiscriminate discovery: some are fixture servers or Linux-only drivers.
 
+## Rust and Mac quality cases
+
+The [Rust quality contract](../docs/engineering/rust-quality/spec.md) covers both workspaces.
+`rust.policy` checks inventory and inheritance; `rust.dependencies` audits both lockfiles;
+`rust.invariants` and `mac.rust` record actual test counts and durations. `mac.frontend` and
+`mac.gateway` are required Mac-lane cases, including the explicitly executed ignored client test.
+The latter provisions its own synthetic PostgreSQL/Core/Gateway/Catalog and verifies exact
+published bytes through native Rust; it does not require accounts or exercise a native window.
+
+Local environment JSON adds `mac_target_dir` for the independent Mac target, `pg_bin` and
+`scratch_root` for the disposable connection fixture, and `audit_database` for a freshly fetched
+RustSec checkout. The root build manifest and binary directory remain source-bound as before.
+Use OpenSSL 3 for synthetic Mac certificates and cargo-audit 0.22.2 on PATH; the pinned Rust version applies to both workspaces.
+
 ## Run the checks
 
 Use change-impact selection for ordinary development and the full plan when the selector or

@@ -77,8 +77,10 @@ pub fn check(config: &Config) -> Result<Value> {
     let directory = File::open(&config.mount_path)?;
     let before = directory.metadata()?;
     ensure!(before.is_dir(), "mount directory required");
+    // SAFETY: statfs contains integer and fixed-array fields for which zero is valid.
     let mut fs: libc::statfs = unsafe { std::mem::zeroed() };
     ensure!(
+        // SAFETY: directory remains open and fs is valid writable statfs storage.
         unsafe { libc::fstatfs(directory.as_raw_fd(), &mut fs) } == 0,
         "cannot observe mounted filesystem"
     );

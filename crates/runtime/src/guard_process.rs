@@ -147,6 +147,7 @@ pub fn observe_identity(identity: &ouroboros_contracts::BridgeIdentity) -> Resul
             );
             "gone"
         } else {
+            // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
             let process = unsafe { File::from_raw_fd(fd) };
             if exited(&process)? {
                 "gone"
@@ -316,6 +317,7 @@ impl Guard {
         // SAFETY: pidfd_open returns a new descriptor or -1; ownership is taken only on success.
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
         ensure!(fd >= 0, "cannot pin guard process");
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let process = unsafe { File::from_raw_fd(fd) };
         ensure!(!exited(&process)?, "guard exited before binding");
         let identity = ouroboros_transport::linux_peer(pid, uid)?;
@@ -449,6 +451,7 @@ mod tests {
         let mut process = Command::new("/usr/bin/sleep").arg("20").spawn().unwrap();
         let instance = uuid::Uuid::new_v4();
         let generation = uuid::Uuid::new_v4();
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let uid = unsafe { libc::geteuid() };
         let identity = ouroboros_transport::linux_peer(process.id().unwrap() as i32, uid).unwrap();
         let mut record = json!({"backend":"systemd","unit":format!("ouroboros-guard-{instance}.service"),
@@ -492,7 +495,9 @@ mod tests {
         // SAFETY: successful pidfd_open yields an owned descriptor for the spawned test child.
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
         assert!(fd >= 0);
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let process = unsafe { File::from_raw_fd(fd) };
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let identity = ouroboros_transport::linux_peer(pid, unsafe { libc::geteuid() }).unwrap();
         let mut guard = Guard::Managed {
             helper,

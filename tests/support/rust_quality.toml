@@ -1,0 +1,38 @@
+# Executable inventory for docs/engineering/rust-quality/spec.md.
+version = 1
+rust = "1.94.1"
+audit = "0.22.2"
+
+[[workspaces]]
+manifest = "Cargo.toml"
+lockfile = "Cargo.lock"
+scenario = "rust.invariants"
+
+[[workspaces]]
+manifest = "apps/mac/src-tauri/Cargo.toml"
+lockfile = "apps/mac/src-tauri/Cargo.lock"
+scenario = "mac.rust"
+
+[[ignored_tests]]
+path = "crates/runtime/src/guard_handoff.rs"
+name = "guard_handoff::tests::descriptor_packet_preserves_handles_and_rejects_unbacked_input"
+scenario = "native.kernel-contracts"
+platform = "Linux"
+reason = "Requires root and actual Linux SCM_RIGHTS/cgroup descriptors."
+
+[[ignored_tests]]
+path = "apps/mac/src-tauri/src/main.rs"
+name = "gateway_fixture_tests::observes_real_gateway_and_exact_catalog_bytes"
+scenario = "mac.gateway"
+platform = "Darwin"
+reason = "Requires a freshly provisioned mTLS Gateway and Catalog backed by disposable PostgreSQL."
+
+[[feature_tests]]
+manifest = "crates/core/Cargo.toml"
+features = ["postgres-tests"]
+scenario = "core.transactions"
+
+[[feature_tests]]
+manifest = "crates/resources/Cargo.toml"
+features = ["postgres-tests"]
+scenario = "resources.receipts"

@@ -11,7 +11,8 @@ from urllib.parse import unquote
 def check(root):
     root = Path(root).resolve(strict=True)
     errors = []
-    documents = sorted([*root.glob('*.md'), *root.glob('docs/architecture/*.md'), *root.glob('tests/*.md')])
+    paths = subprocess.check_output(['git', 'ls-files', '-c', '-o', '--exclude-standard', '-z'], cwd=root).decode().split('\0')
+    documents = sorted(root / name for name in set(paths) if name.endswith('.md') and (root / name).is_file())
 
     def prose(text):
         return re.sub(r'(?ms)^```[^\n]*\n.*?^```[^\n]*$', '', text)

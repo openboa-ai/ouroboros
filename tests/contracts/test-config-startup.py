@@ -90,6 +90,52 @@ class ConfigurationStartup(unittest.TestCase):
             output = self.invoke('ouroboros-migrate', '--database-url-file', str(selected), extra_env=env)
             self.assertIn('ambient PostgreSQL settings are not accepted', output)
 
+    def test_explicit_environment_database_binding_is_bounded_and_never_echoed(self):
+        name = 'OURO_TEST_DATABASE_URL'
+        valid = 'postgresql://worker:secret-canary@127.0.0.1:9/company?sslmode=disable'
+        for binary, tail in (('ouroboros-migrate', []), ('ouroboros-resource-migrate', ['--role', 'catalog'])):
+            for value in ('', 'secret-canary' * 6000, valid + '&host=other'):
+                output = self.invoke(binary, '--database-url-env', name, *tail, extra_env={name: value})
+                self.assertNotIn('database unavailable', output)
+                self.assertNotIn('migration DB unavailable', output)
+            output = self.invoke(binary, '--database-url-env', name, *tail)
+            self.assertIn('selected secret environment input unavailable', output)
+            self.invoke(binary, '--database-url-env', name, '--database-url-file', 'missing.url', *tail)
+
+    def test_environment_source_has_no_file_fallback_and_rejects_ambiguous_aliases(self):
+        config = self.root / 'core.json'
+        value = {'listen': '127.0.0.1:9', 'tls': {'certificate': 'not-read.pem',
+                 'private_key': {'env': 'OURO_TEST_TLS_KEY'}, 'ca': 'not-read-ca.pem'},
+                 'database_url': {'env': 'OURO_TEST_DATABASE_URL'},
+                 'firm_id': '00000000-0000-0000-0000-000000000001', 'gateway_fingerprint': '0' * 64}
+        config.write_text(json.dumps(value))
+        output = self.invoke('ouroboros-core', '--config', str(config))
+        self.assertIn('selected secret environment input unavailable', output)
+        value['database_url_file'] = 'missing.url'
+        config.write_text(json.dumps(value))
+        output = self.invoke('ouroboros-core', '--config', str(config),
+                             extra_env={'OURO_TEST_DATABASE_URL': 'secret-canary'})
+        self.assertIn('invalid configuration structure', output)
+
+    def test_tls_environment_key_is_explicit_and_not_echoed(self):
+        (self.root / 'public.pem').write_text('public certificate fixture')
+        config = self.root / 'cli.json'
+        value = {'gateway_url': 'https://127.0.0.1:9', 'tls': {
+            'certificate': 'public.pem', 'ca': 'public.pem',
+            'private_key': {'env': 'OURO_TEST_TLS_KEY'}}}
+        config.write_text(json.dumps(value))
+        output = self.invoke('ouroboros-cli', '--config', str(config), 'conditions')
+        self.assertIn('selected secret environment input unavailable', output)
+        output = self.invoke('ouroboros-cli', '--config', str(config), 'conditions',
+                             extra_env={'OURO_TEST_TLS_KEY': ''})
+        self.assertIn('secret environment input size limit', output)
+        self.invoke('ouroboros-cli', '--config', str(config), 'conditions',
+                    extra_env={'OURO_TEST_TLS_KEY': 'secret-canary'})
+        value['tls']['private_key'] = {'env': 'invalid-selector'}
+        config.write_text(json.dumps(value))
+        output = self.invoke('ouroboros-cli', '--config', str(config), 'conditions')
+        self.assertIn('invalid secret environment selector', output)
+
 
 if __name__ == '__main__':
     unittest.main(argv=[sys.argv[0], *remaining])

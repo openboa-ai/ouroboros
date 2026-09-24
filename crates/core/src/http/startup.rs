@@ -17,7 +17,8 @@ struct Args {
 struct Config {
     listen: SocketAddr,
     tls: TlsFiles,
-    database_url_file: PathBuf,
+    #[serde(alias = "database_url_file")]
+    database_url: ouroboros_transport::config::SecretInput,
     firm_id: Uuid,
     gateway_fingerprint: String,
     runtime_fingerprint: Option<String>,
@@ -29,8 +30,8 @@ pub(crate) async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let (mut cfg, root) = ouroboros_transport::config::load::<Config>(&args.config)?;
     cfg.tls.resolve_paths(&root)?;
-    root.resolve(&mut cfg.database_url_file)?;
-    let url = ouroboros_transport::config::postgres_url_file(&cfg.database_url_file)?;
+    cfg.database_url.resolve(&root)?;
+    let url = ouroboros_transport::config::postgres_url(&cfg.database_url)?;
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(8)
         .acquire_timeout(Duration::from_secs(5))

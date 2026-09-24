@@ -3,7 +3,24 @@ name = "ouroboros-mac"
 version = "0.1.0"
 description = "Ouroboros owner console for macOS"
 edition = "2024"
+rust-version.workspace = true
 [workspace]
+resolver = "2"
+
+[workspace.package]
+rust-version = "1.94.1"
+
+[lints]
+workspace = true
+
+[workspace.lints.rust]
+unused_must_use = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+await_holding_lock = "deny"
+undocumented_unsafe_blocks = "deny"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 [dependencies]

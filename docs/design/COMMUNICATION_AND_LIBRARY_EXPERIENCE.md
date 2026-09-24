@@ -9,7 +9,7 @@
 ## 기준과 공통 문법
 
 - 제품 기준: [Mac 앱 계획](../implementation/MAC_APP.md#하나의-대화-기능과-별도의-관찰-화면).
-- 화면 기준: [Rooms](../architecture/APPLICATION_SHELL_AND_VIEWS.md#rooms--who-do-i-need-to-talk-with-and-about-what), [Library](../architecture/APPLICATION_SHELL_AND_VIEWS.md#library--what-did-the-company-rely-on-and-produce), [공통 상세](../architecture/APPLICATION_SHELL_AND_VIEWS.md#shared-inspector-conversations-and-notifications).
+- 화면 기준: [Rooms](../architecture/APPLICATION_SHELL_AND_VIEWS.md#rooms--who-do-i-need-to-talk-with-and-about-what), [Library](../architecture/APPLICATION_SHELL_AND_VIEWS.md#library--what-did-the-company-rely-on-and-produce), [공통 상세](../architecture/APPLICATION_SHELL_AND_VIEWS.md#shared-full-page-details-conversations-and-notifications).
 - 기록 기준: [통합 대화 계약](../architecture/CONTRACTS_AND_STATE.md#unified-rooms-and-proactive-messages). 자료는 기존 Gateway·Catalog의 접근·게시·revision 계약을 따른다.
 - 시각·조작은 [공통 primitives](./UI_PURPOSE_CONTRACT.md#primitives), 상태는 [shared states](./UI_PURPOSE_CONTRACT.md#shared-states)를 사용한다.
 - OpenBoa의 전체 서체 역할과 Mira 컴포넌트를 유지한다. 제목은 현재 대상을, 본문은 내용을, 메타는 출처·시각을 구분한다. 누락·권한 제한처럼 판단을 바꾸는 정보는 메타 색으로 숨기지 않는다.

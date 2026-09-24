@@ -23,6 +23,7 @@ before proposing or implementing product work; that historical exception is not 
 | --- | --- |
 | Product purpose or substantive change | [Operating test](docs/DEVELOPMENT.md#operating-test), [Whitepaper](WHITEPAPER.md), [Product Specification](PRODUCT_SPECIFICATION.md) |
 | Architecture or component contract | [Architecture reading map](ARCHITECTURE.md#3-detail-map-and-reading-order), then shared contracts and the affected component |
+| Rust implementation or quality policy | [Rust quality contract](docs/engineering/rust-quality/spec.md), [review criteria](REVIEW.md) |
 | Test design, execution, or evidence | [Testing Ouroboros](tests/README.md) |
 | PR review, CI recovery, approval readiness, or merge | [GitHub delivery contract](.github/README.md) |
 | Installation, environment, recovery, or deployment planning | [Integration and deployment](docs/architecture/INTEGRATION_AND_DEPLOYMENT.md) |

@@ -60,6 +60,9 @@ impl AuthModuleHost {
             .kill_on_drop(true);
         // The interpreter exposes no imports, including process creation, files or sockets.
         // Bound its outer process too; module bytes and secrets never appear in argv/env/files.
+        // SAFETY: the post-fork closure uses stack data and synchronous setrlimit calls
+        // only; it does not allocate, acquire locks or access shared Rust state.
+        // Each rlimit pointer stays valid for its call.
         unsafe {
             command.pre_exec(|| {
                 for (resource, value) in [

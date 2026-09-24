@@ -32,10 +32,10 @@ class CoverageSelection(unittest.TestCase):
 
     def test_known_documentation_requires_integrity_only(self):
         plan = self.plan(["README.md", "docs/architecture/CONTROL_CORE.md"])
-        self.assertEqual(plan["selected"], ["repository.integrity"])
+        self.assertEqual(plan["selected"], ["repository.integrity", "rust.policy"])
         self.assertEqual(plan["matrix"], {"include": [
-            {"lane": "integrity", "scenarios": ["repository.integrity"]}]})
-        self.assertEqual(self.plan()["selected"], ["repository.integrity"])
+            {"lane": "integrity", "scenarios": ["repository.integrity", "rust.policy"]}]})
+        self.assertEqual(self.plan()["selected"], ["repository.integrity", "rust.policy"])
 
     def test_core_and_runtime_select_each_declared_connected_dependency(self):
         for path, responsibility in [("crates/core/src/http/context.rs", "core"),

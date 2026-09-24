@@ -27,6 +27,7 @@ impl OwnedSocket {
             .open(path.parent().context("socket parent required")?)?;
         let metadata = parent.metadata()?;
         ensure!(
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             metadata.uid() == unsafe { libc::geteuid() } && metadata.mode() & 0o022 == 0,
             "socket directory must be owned by this service and not externally writable"
         );
@@ -40,6 +41,7 @@ impl OwnedSocket {
         let stat = owned.stat()?;
         ensure!(
             stat.st_mode & libc::S_IFMT == libc::S_IFSOCK
+                // SAFETY: geteuid has no pointer arguments and only observes process identity.
                 && stat.st_uid == unsafe { libc::geteuid() },
             "bound pathname is not this service's socket"
         );
@@ -49,6 +51,7 @@ impl OwnedSocket {
     }
     fn stat(&self) -> Result<libc::stat> {
         let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: the directory is borrowed, the name is NUL-terminated and stat provides aligned writable storage.
         let result = unsafe {
             libc::fstatat(
                 self.parent.as_raw_fd(),
@@ -60,6 +63,7 @@ impl OwnedSocket {
         if result != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
+        // SAFETY: the preceding successful stat syscall initialized the entire returned record.
         Ok(unsafe { stat.assume_init() })
     }
     pub(crate) fn retire(self) -> Result<()> {
@@ -68,11 +72,13 @@ impl OwnedSocket {
             stat.st_dev == self.device
                 && stat.st_ino == self.inode
                 && stat.st_mode & libc::S_IFMT == libc::S_IFSOCK
+                // SAFETY: geteuid has no pointer arguments and only observes process identity.
                 && stat.st_uid == unsafe { libc::geteuid() },
             "socket pathname changed; preserved for recovery"
         );
         // The parent is held by FD and writable only by this trusted service identity/root.
         // Call only after listener closure and successful drain; never from Drop or startup.
+        // SAFETY: the borrowed directory remains open and the pathname is a live NUL-terminated CString.
         if unsafe { libc::unlinkat(self.parent.as_raw_fd(), self.name.as_ptr(), 0) } != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
@@ -149,6 +155,7 @@ impl SocketLease {
             .open(path.parent().context("socket parent required")?)?;
         let m = parent.metadata()?;
         ensure!(
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             m.uid() == unsafe { libc::geteuid() } && m.mode() & 0o022 == 0,
             "socket directory ownership required"
         );
@@ -157,6 +164,7 @@ impl SocketLease {
         let owner_name = CString::new([name, b".owner.json"].concat())?;
         let lock = Self::open(&parent, &lock_name, true)?;
         ensure!(
+            // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
             unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
             "socket lifecycle already owned"
         );
@@ -172,14 +180,17 @@ impl SocketLease {
             | libc::O_NOFOLLOW
             | libc::O_CLOEXEC
             | if create { libc::O_CREAT } else { 0 };
+        // SAFETY: parent remains open and name is a live NUL-terminated CString for this synchronous call.
         let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, 0o600) };
         if fd < 0 {
             return Err(std::io::Error::last_os_error().into());
         }
+        // SAFETY: the preceding syscall returned a new nonnegative descriptor; ownership transfers to File once.
         let file = unsafe { File::from_raw_fd(fd) };
         let m = file.metadata()?;
         ensure!(
             m.is_file()
+                // SAFETY: geteuid has no pointer arguments and only observes process identity.
                 && m.uid() == unsafe { libc::geteuid() }
                 && m.nlink() == 1
                 && m.mode() & 0o077 == 0,
@@ -195,6 +206,7 @@ impl SocketLease {
             "socket directory changed"
         );
         let value = SocketOwner {
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             identity: crate::linux_peer(std::process::id() as i32, unsafe { libc::geteuid() })?,
             device: socket.device,
             inode: socket.inode,
@@ -217,6 +229,7 @@ impl SocketLease {
         file.take(4097).read_to_end(&mut bytes)?;
         let owner: SocketOwner = serde_json::from_slice(&bytes)?;
         ensure!(
+            // SAFETY: geteuid has no pointer arguments and only observes process identity.
             owner.identity.pid > 0 && owner.identity.uid == unsafe { libc::geteuid() },
             "invalid recorded socket owner"
         );

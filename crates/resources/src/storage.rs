@@ -263,6 +263,7 @@ mod native {
 
     impl BoundStore {
         pub fn open(binding_file: &Path) -> Result<Self> {
+            // SAFETY: geteuid takes no pointer arguments and only observes process identity.
             let uid = unsafe { libc::geteuid() };
             let (parent, name) = split_file(binding_file)?;
             let descriptor_parent = Chain::open(parent, uid, true)?;
@@ -551,6 +552,7 @@ mod native {
                 0,
             )?;
             // An ordinary live reader/writer is a retryable conflict, not storage corruption.
+            // SAFETY: file retains ownership of a live descriptor throughout the synchronous flock call.
             if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
                 // Preserve WouldBlock in the anyhow chain so Catalog never classifies a
                 // changed identity or corrupt metadata as an ordinary lock conflict.
@@ -655,6 +657,7 @@ mod native {
             // The single-writer store and namespace mutex serialize cooperating mutations.
             // A process that can bypass this custody is outside this local storage boundary.
             ensure!(
+                // SAFETY: the root descriptor is borrowed and name is a live NUL-terminated CString.
                 unsafe { libc::unlinkat(self.root.leaf().as_raw_fd(), name.as_ptr(), 0) } == 0,
                 "collection object unlink failed: {}",
                 std::io::Error::last_os_error()
@@ -1060,6 +1063,7 @@ mod native {
                 } else {
                     protect_file(&staged.file.metadata()?, self.binding.owner_uid, true)?;
                     ensure!(
+                        // SAFETY: both names are live CStrings and directory stays borrowed for this call.
                         unsafe {
                             libc::linkat(
                                 directory,
@@ -1207,6 +1211,7 @@ mod native {
     /// Explicit fixture maintenance only: no directory creation, discovery, formatting, DB
     /// changes, repair, or adoption of a nonempty directory. Physical fields are measured here.
     pub fn prepare(config: &PrepareConfig) -> Result<StorageBinding> {
+        // SAFETY: geteuid takes no pointer arguments and only observes process identity.
         let uid = unsafe { libc::geteuid() };
         ensure!(
             config.owner_uid == uid,
@@ -1420,15 +1425,18 @@ mod native {
         open_cstr(directory, &cstring(name)?, flags, mode)
     }
     fn open_cstr(directory: RawFd, name: &CStr, flags: i32, mode: libc::mode_t) -> Result<File> {
+        // SAFETY: name is a borrowed NUL-terminated CStr; the kernel validates the descriptor and flags.
         let fd = unsafe { libc::openat(directory, name.as_ptr(), flags, mode as libc::c_uint) };
         if fd < 0 {
             return Err(std::io::Error::last_os_error()).context("storage entry unavailable");
         }
+        // SAFETY: openat returned a new nonnegative descriptor; File becomes its sole owner.
         Ok(unsafe { File::from_raw_fd(fd) })
     }
     fn exists_at(directory: RawFd, name: &OsStr) -> Result<bool> {
         let name = cstring(name)?;
         let mut meta = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: name is NUL-terminated and meta provides writable aligned stat storage.
         if unsafe {
             libc::fstatat(
                 directory,
@@ -1448,6 +1456,7 @@ mod native {
         }
     }
     fn lock(directory: &File) -> Result<()> {
+        // SAFETY: directory retains its live descriptor for this synchronous flock call.
         if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             let error = std::io::Error::last_os_error();
             if error
@@ -1461,6 +1470,7 @@ mod native {
         Ok(())
     }
     fn shared_lock(file: &File) -> Result<()> {
+        // SAFETY: file retains ownership of a live descriptor throughout the synchronous flock call.
         if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
@@ -1482,9 +1492,11 @@ mod native {
     fn filesystem_id(file: &File) -> Result<String> {
         let mut value = std::mem::MaybeUninit::<libc::statfs>::uninit();
         ensure!(
+            // SAFETY: file stays open and value provides aligned writable statfs storage.
             unsafe { libc::fstatfs(file.as_raw_fd(), value.as_mut_ptr()) } == 0,
             "filesystem identity unavailable"
         );
+        // SAFETY: the successful fstatfs call above initialized value.
         let value = unsafe { value.assume_init() };
         // libc's macOS/BSD and Linux fsid_t are repr(C) two i32s (8 bytes, no padding).
         // Capture only that initialized field, never struct padding or a display mount path.
@@ -1493,6 +1505,7 @@ mod native {
             "unsupported filesystem identity layout"
         );
         let bytes =
+            // SAFETY: f_fsid is an initialized pair of i32s on supported targets, with no padding; value outlives the borrowed eight bytes.
             unsafe { std::slice::from_raw_parts(std::ptr::addr_of!(value.f_fsid).cast::<u8>(), 8) };
         Ok(bytes.iter().map(|v| format!("{v:02x}")).collect())
     }
@@ -1524,6 +1537,7 @@ mod native {
     }
     fn unlink(directory: RawFd, name: &CStr) -> Result<()> {
         ensure!(
+            // SAFETY: name is a live NUL-terminated CStr; the kernel validates the directory descriptor.
             unsafe { libc::unlinkat(directory, name.as_ptr(), 0) } == 0,
             "storage staging cleanup failed"
         );
@@ -1570,8 +1584,10 @@ mod native {
     fn require_empty(directory: &File) -> Result<()> {
         let fd =
             open_at(directory.as_raw_fd(), OsStr::new("."), directory_flags(), 0)?.into_raw_fd();
+        // SAFETY: fd is a newly owned directory descriptor; ownership passes to DIR only on success.
         let stream = unsafe { libc::fdopendir(fd) };
         if stream.is_null() {
+            // SAFETY: failed fdopendir did not take ownership; close the still-owned fd once.
             unsafe {
                 libc::close(fd);
             }
@@ -1580,6 +1596,7 @@ mod native {
         struct Stream(*mut libc::DIR);
         impl Drop for Stream {
             fn drop(&mut self) {
+                // SAFETY: Stream uniquely owns the nonnull DIR and closes it exactly once.
                 unsafe {
                     libc::closedir(self.0);
                 }
@@ -1589,13 +1606,16 @@ mod native {
         loop {
             // Distinguish EOF from failure; a failed enumeration must not certify emptiness.
             #[cfg(target_os = "macos")]
+            // SAFETY: __error returns this thread's writable errno pointer.
             unsafe {
                 *libc::__error() = 0;
             }
             #[cfg(target_os = "linux")]
+            // SAFETY: __errno_location returns this thread's writable errno pointer.
             unsafe {
                 *libc::__errno_location() = 0;
             }
+            // SAFETY: stream owns a live DIR used only by this thread and remains open for enumeration.
             let entry = unsafe { libc::readdir(stream.0) };
             if entry.is_null() {
                 ensure!(
@@ -1604,6 +1624,7 @@ mod native {
                 );
                 return Ok(());
             }
+            // SAFETY: entry was checked nonnull; readdir supplies a NUL-terminated d_name, read before the next readdir or closedir.
             let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
             ensure!(
                 name == b"." || name == b"..",
@@ -1639,6 +1660,7 @@ mod native {
                 let config = PrepareConfig {
                     root,
                     binding_file: base.join("binding.json"),
+                    // SAFETY: geteuid has no pointer arguments and only observes process identity.
                     owner_uid: unsafe { libc::geteuid() },
                     firm_id: Uuid::new_v4(),
                     store_id: Uuid::new_v4(),
@@ -2900,6 +2922,7 @@ mod native {
             let digest = hash(b"payload");
             let path = f.config.root.join(&digest);
             let name = cstring(path.as_os_str()).unwrap();
+            // SAFETY: name is a live NUL-terminated CString; mkfifo does not retain it.
             assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
             assert!(store.read_blob(&digest, 64).is_err());
             assert!(store.ensure_blob(&digest, b"payload").is_err());

@@ -32,21 +32,26 @@ fn main() -> anyhow::Result<()> {
     )?);
     // SAFETY: called on the single-threaded launcher, with only the supervisor-supplied netns FD.
     ensure!(
+        // SAFETY: the single-threaded launcher uses the inherited namespace descriptor before dropping privilege.
         unsafe { libc::setns(fd, libc::CLONE_NEWNET) } == 0,
         "cannot enter workload network namespace"
     );
+    // SAFETY: this launcher owns the inherited descriptor and closes it once after its final use.
     unsafe {
         libc::close(fd);
     }
     ensure!(
+        // SAFETY: a zero group count permits a null pointer; this launcher is still single-threaded.
         unsafe { libc::setgroups(0, std::ptr::null()) } == 0,
         "cannot clear groups"
     );
     ensure!(
+        // SAFETY: both calls take scalar IDs only and run before any launcher threads are created.
         unsafe { libc::setgid(gid) } == 0 && unsafe { libc::setuid(uid) } == 0,
         "cannot drop bridge identity"
     );
     ensure!(
+        // SAFETY: PR_SET_NO_NEW_PRIVS takes scalar arguments and only restricts this launcher.
         unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } == 0,
         "cannot prohibit privilege gain"
     );

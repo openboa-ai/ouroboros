@@ -172,6 +172,7 @@ mod tests {
         let socket = root.0.join("engine.sock");
         let listener = tokio::net::UnixListener::bind(&socket).unwrap();
         // The fixture uses its existing test UID. Production docker_binding still requires UID 0.
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         let binding = super::super::socket::SocketBinding::capture(&root.0, &socket, unsafe {
             libc::geteuid()
         })

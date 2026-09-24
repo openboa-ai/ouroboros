@@ -285,7 +285,6 @@ fn bounds(b: &Bounds, w: f64, h: f64) -> Result<(), String> {
 #[tauri::command]
 pub async fn mount_company_view(
     view: Webview,
-    app: tauri::AppHandle,
     s: State<'_, Connection>,
     store: State<'_, CompanyViews>,
     handle: String,
@@ -294,6 +293,7 @@ pub async fn mount_company_view(
     bounds: Bounds,
 ) -> Result<String, String> {
     owner(&view)?;
+    let app = view.app_handle().clone();
     let generation = store.generation.load(Ordering::SeqCst);
     let package = store
         .packages

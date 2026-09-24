@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from tests.support.check_catalog import aggregate_results, build_plan, catalog, validate_plan
+from tests.support.check_catalog import LANES, aggregate_results, build_plan, catalog, validate_plan
 from tests.support.check_integrity import check as integrity
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -76,18 +76,31 @@ def configured(config, name, *, directory=True):
 
 def commands(identifier, config):
     python = sys.executable
-    if identifier == 'rust.invariants':
-        target = configured(config, 'target_dir')
-        common = ['--workspace', '--all-targets', '--locked', '--offline', '--target-dir', target]
-        return [(['cargo', 'fmt', '--all', '--check'], 120),
-                (['cargo', 'clippy', *common, '--all-features', '--', '-D', 'warnings'], 1200),
-                (['cargo', 'test', *common], 1200),
-                (['cargo', 'build', '--workspace', '--bins', '--locked', '--offline', '--target-dir', target], 1200)]
+    if identifier == 'rust.policy':
+        return [([python, '-m', 'tests.support.rust_quality'], 120)]
+    if identifier in ('rust.invariants', 'mac.rust'):
+        mac = identifier == 'mac.rust'
+        target = configured(config, 'mac_target_dir' if mac else 'target_dir')
+        return [([python, str(ROOT / 'tests/support/rust_suite.py'), '--manifest',
+                  'apps/mac/src-tauri/Cargo.toml' if mac else 'Cargo.toml', '--target-dir', target], 2400)]
+    if identifier == 'rust.dependencies':
+        return [([python, str(ROOT / 'tests/support/rust_audit.py'), '--database',
+                  configured(config, 'audit_database')], 300)]
+    if identifier == 'mac.frontend':
+        return [(['npm', '--prefix', str(ROOT / 'apps/mac'), 'run', name], 600)
+                for name in ('test', 'lint', 'build', 'build:sdk')] + [
+            (['node', str(ROOT / 'apps/mac/scripts/check-company-boundaries.mjs'), '--distribution'], 120)]
+    if identifier == 'mac.gateway':
+        require_build(config)
+        return [([python, str(ROOT / 'tests/support/run-mac-gateway.py'),
+                  '--binary-dir', configured(config, 'bin_dir'), '--pg-bin', configured(config, 'pg_bin'),
+                  '--scratch-root', configured(config, 'scratch_root'),
+                  '--target-dir', configured(config, 'mac_target_dir')], 1500)]
     if identifier == 'tooling.contracts':
         names = ['test-layout.py', 'test-build-profile.py', 'test-fixture-config.py', 'test-fixture-release.py',
                  'test-check-catalog.py', 'test-check-runner.py', 'test-check-build.py',
                  'test-ci-environment.py', 'test-postgres-suite.py', 'test-native-suite-contract.py',
-                 'test-worker-observation.py', 'test-runtime-pause-barrier.py']
+                 'test-worker-observation.py', 'test-runtime-pause-barrier.py', 'test-rust-quality.py']
         return [([python, str(ROOT / 'tests/tooling' / name)], 180) for name in names]
     if identifier == 'config.startup':
         require_build(config)
@@ -229,8 +242,21 @@ def run(plan, lane, config, result_file):
                             break
                     else:
                         record['status'] = 'PASS'
+                    if record['status'] == 'PASS' and identifier in ('rust.invariants', 'mac.rust'):
+                        log.flush()
+                        receipts = []
+                        for line in log_path.read_text(errors='replace').splitlines():
+                            try:
+                                item = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            if isinstance(item, dict) and item.get('scenario_id') == identifier and 'quality' in item:
+                                receipts.append(item['quality'])
+                        if len(receipts) != 1:
+                            raise ValueError('Rust result requires one test-accounting receipt')
+                        record['quality'] = receipts[0]
         except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
-            record['failure_kind'] = type(error).__name__
+            record.update(status='FAIL', failure_kind=type(error).__name__)
         record['duration_seconds'] = round(time.monotonic() - start, 3)
         if source_digest() != current:
             source_changed = True
@@ -258,7 +284,7 @@ def main():
     plan.add_argument('--output', required=True, type=Path)
     run_parser = sub.add_parser('run')
     run_parser.add_argument('--plan', required=True, type=Path)
-    run_parser.add_argument('--lane', required=True, choices=['integrity', 'fast', 'postgres', 'native', 'recovery'])
+    run_parser.add_argument('--lane', required=True, choices=LANES)
     run_parser.add_argument('--environment', type=Path)
     run_parser.add_argument('--output', required=True, type=Path)
     report = sub.add_parser('report')

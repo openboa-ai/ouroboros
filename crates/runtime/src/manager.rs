@@ -86,14 +86,17 @@ pub(super) fn supervisor_lock(root: &Path) -> Result<File> {
         .mode(0o600)
         .open(root.join("supervisor.lock"))?;
     ensure!(
+        // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
         unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
         "another Runtime owns this configured execution slot"
     );
     Ok(lock)
 }
 fn clock() -> Result<u64> {
+    // SAFETY: this libc record contains only integers and fixed arrays; all-zero bits are valid.
     let mut t: libc::timespec = unsafe { std::mem::zeroed() };
     ensure!(
+        // SAFETY: the output points to a live writable timespec; clock_gettime does not retain it.
         unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut t) } == 0,
         "clock unavailable"
     );
@@ -101,6 +104,7 @@ fn clock() -> Result<u64> {
 }
 fn inherit(command: &mut Command, fd: i32, guard_uid: Option<u32>) {
     // Only async-signal-safe calls in the fork/exec window. All other handles stay CLOEXEC.
+    // SAFETY: the post-fork closure only makes async-signal-safe syscalls with scalar arguments; it does not allocate or lock Rust state.
     unsafe {
         command.pre_exec(move || {
             if libc::fcntl(fd, libc::F_SETFD, 0) == -1 {
@@ -286,6 +290,7 @@ async fn run_one(cfg: &Config, wait: WaitPolicy, stop: &super::shutdown::Stop) -
         return Ok(Step::Stopped);
     }
     ensure!(
+        // SAFETY: geteuid has no pointer arguments and only observes process identity.
         unsafe { libc::geteuid() } == 0,
         "Runtime requires the dedicated trusted Linux supervisor"
     );

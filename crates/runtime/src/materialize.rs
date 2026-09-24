@@ -130,9 +130,10 @@ pub async fn materialize(descriptor: MaterializationDescriptor) -> Result<Materi
         cfg!(target_os = "linux"),
         "contained materialization requires Linux"
     );
-    // SAFETY: These calls only read the process's actual effective identity.
+    // SAFETY: These calls have no pointer arguments and only observe identity.
+    let identity = unsafe { (libc::geteuid(), libc::getegid()) };
     ensure!(
-        unsafe { libc::geteuid() } == 65_532 && unsafe { libc::getegid() } == 65_532,
+        identity == (65_532, 65_532),
         "contained materializer requires the private identity"
     );
     let lifetime = Duration::from_secs(descriptor.program.profile.lifetime_seconds);
@@ -468,6 +469,7 @@ fn open_at(
     if fd < 0 {
         bail!(std::io::Error::last_os_error());
     }
+    // SAFETY: openat returned a new nonnegative descriptor; File takes its sole ownership.
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
@@ -486,6 +488,7 @@ fn verify_name(parent: libc::c_int, name: &CString, metadata: &Metadata) -> Resu
     {
         return Err(std::io::Error::last_os_error()).context("destination binding unavailable");
     }
+    // SAFETY: fstatat succeeded above and initialized stat.
     let stat = unsafe { stat.assume_init() };
     ensure!(
         stat.st_dev as u64 == metadata.dev()
@@ -784,6 +787,7 @@ mod tests {
         let root = TestRoot::new();
         let mut tree = DestinationTree::open(&root.0).unwrap();
         let fifo = CString::new(root.0.join("pipe").as_os_str().as_bytes()).unwrap();
+        // SAFETY: fifo is a live NUL-terminated CString; mkfifo does not retain it.
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         assert!(tree.create_file("pipe").is_err());
         let moved = root.0.with_extension("moved");

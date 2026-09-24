@@ -34,3 +34,11 @@
 
 # Test oracles, fixture authority and required-check selection remain review protected.
 /tests/ @SonSangjoon
+
+# Shared engineering requirements and the native owner capability boundary.
+/docs/engineering/ @SonSangjoon
+/REVIEW.md @SonSangjoon
+/apps/mac/src-tauri/ @SonSangjoon
+/apps/mac/src/contracts/ @SonSangjoon
+/apps/mac/package.json @SonSangjoon
+/apps/mac/package-lock.json @SonSangjoon

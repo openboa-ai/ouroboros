@@ -20,7 +20,8 @@ struct Config {
     core_client: TlsFiles,
     gateway_fingerprint: String,
     role: String,
-    database_url_file: Option<PathBuf>,
+    #[serde(alias = "database_url_file")]
+    database_url: Option<ouroboros_transport::config::SecretInput>,
     storage_binding_file: Option<PathBuf>,
     fixture_command: Option<String>,
     key_file: Option<PathBuf>,
@@ -43,8 +44,8 @@ pub(crate) async fn run(config: &Path) -> Result<()> {
         host.validate()?;
     }
     cfg.core_client.resolve_paths(&root)?;
-    if let Some(path) = cfg.database_url_file.as_mut() {
-        root.resolve(path)?;
+    if let Some(path) = cfg.database_url.as_mut() {
+        path.resolve(&root)?;
     }
     if let Some(path) = cfg.storage_binding_file.as_mut() {
         root.resolve(path)?;
@@ -75,28 +76,28 @@ pub(crate) async fn run(config: &Path) -> Result<()> {
         match cfg.role.as_str() {
             "fixture" =>
                 cfg.fixture_command.is_some()
-                    && cfg.database_url_file.is_none()
+                    && cfg.database_url.is_none()
                     && cfg.storage_binding_file.is_none(),
             "company" =>
                 cfg.fixture_command.is_none()
-                    && cfg.database_url_file.is_some()
+                    && cfg.database_url.is_some()
                     && cfg.storage_binding_file.is_none(),
             "provider" =>
                 cfg.fixture_command.is_none()
-                    && cfg.database_url_file.is_some()
+                    && cfg.database_url.is_some()
                     && cfg.storage_binding_file.is_none()
                     && cfg.key_file.is_some()
                     && cfg.provider.is_some(),
             "custody-management" =>
                 cfg.fixture_command.is_none()
-                    && cfg.database_url_file.is_some()
+                    && cfg.database_url.is_some()
                     && cfg.storage_binding_file.is_none()
                     && cfg.key_file.is_some()
                     && cfg.provider.is_none()
                     && cfg.provider_ca_file.is_none(),
             "catalog" =>
                 cfg.fixture_command.is_none()
-                    && cfg.database_url_file.is_some()
+                    && cfg.database_url.is_some()
                     && cfg.storage_binding_file.is_some(),
             _ => false,
         },
@@ -120,7 +121,7 @@ pub(crate) async fn run(config: &Path) -> Result<()> {
     let client = ouroboros_transport::client(&cfg.core_client)?;
     let worker = if cfg.role == "fixture" {
         ensure!(
-            cfg.database_url_file.is_none() && cfg.storage_binding_file.is_none(),
+            cfg.database_url.is_none() && cfg.storage_binding_file.is_none(),
             "fixture holds no DB or artifact authority"
         );
         Worker::Fixture(
@@ -128,8 +129,8 @@ pub(crate) async fn run(config: &Path) -> Result<()> {
                 .context("explicit fixture command required")?,
         )
     } else {
-        let url = ouroboros_transport::config::postgres_url_file(
-            &cfg.database_url_file.context("worker DB required")?,
+        let url = ouroboros_transport::config::postgres_url(
+            &cfg.database_url.context("worker DB required")?,
         )?;
         let db = sqlx::postgres::PgPoolOptions::new()
             .max_connections(4)

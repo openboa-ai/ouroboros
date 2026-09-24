@@ -320,6 +320,7 @@ async fn retained_objects_and_workspaces(
         .open(&path_a)
         .unwrap();
     assert_eq!(
+        // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
         unsafe { libc::flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
         -1
     );
@@ -338,9 +339,11 @@ async fn retained_objects_and_workspaces(
     assert_eq!(file.read_file_chunk(&mut reader, 1024).unwrap(), bytes);
     drop(reader);
     assert_eq!(
+        // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
         unsafe { libc::flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
         0
     );
+    // SAFETY: the File owner keeps this descriptor alive throughout the synchronous flock call.
     assert_eq!(unsafe { libc::flock(fd.as_raw_fd(), libc::LOCK_UN) }, 0);
 
     // Reference loss is not repaired by observation. The other hold owner remains independent.

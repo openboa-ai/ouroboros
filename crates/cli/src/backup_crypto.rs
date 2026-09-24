@@ -43,6 +43,7 @@ fn regular(path: &std::path::Path, private: bool) -> Result<std::fs::File> {
     let m = file.metadata()?;
     ensure!(
         m.is_file()
+            // SAFETY: geteuid takes no pointers and has no memory preconditions.
             && (m.uid() == unsafe { libc::geteuid() } || m.uid() == 0)
             && m.mode() & if private { 0o077 } else { 0o022 } == 0,
         "unprotected input file"
@@ -59,6 +60,7 @@ pub async fn run(open: bool) -> Result<()> {
         rlim_max: 0,
     };
     ensure!(
+        // SAFETY: no_core is an initialized rlimit, borrowed for this synchronous call.
         unsafe { libc::setrlimit(libc::RLIMIT_CORE, &no_core) } == 0,
         "cannot disable core dumps"
     );
@@ -185,6 +187,7 @@ pub async fn run(open: bool) -> Result<()> {
     let parent_file = std::fs::File::open(parent)?;
     let m = parent_file.metadata()?;
     ensure!(
+        // SAFETY: geteuid takes no pointers and has no memory preconditions.
         m.is_dir() && m.uid() == unsafe { libc::geteuid() } && m.mode() & 0o077 == 0,
         "private destination directory required"
     );
