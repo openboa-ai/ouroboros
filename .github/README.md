@@ -83,10 +83,25 @@ is enforced by repository policy. External contributors require workflow executi
 The default token is read-only and cannot approve PRs. Candidate-executing jobs have no operating
 secrets. Privileged metadata-only jobs never check out or execute PR code.
 
-Dependabot manages Actions, both Cargo workspaces and Mac npm weekly, with up to three version-update PRs per ecosystem
+Dependabot manages Actions, both Cargo workspaces and both npm roots (`apps/mac` and
+`design/mac-calibration`) weekly, with up to three version-update PRs per ecosystem/directory
 and grouped minor/patch updates. Security updates are enabled. Dependency Review blocks new
 High/Critical vulnerable dependencies without inventing a license allowlist. Secret scanning,
 push protection and private vulnerability reporting remain enabled.
+
+The `npm-security` workflow checks both committed npm graphs on every PR, main push, weekly
+schedule and manual run. It verifies frozen installs without lifecycle scripts, then audits all
+locked production, development and optional dependencies against current registry advisories.
+Low-or-higher vulnerabilities and registry/auditor errors fail the job; JSON results are retained
+for 30 days, including failed audits. The SDK peer dependencies are resolved by the Mac consumer
+graph. New npm roots must be added to this workflow and Dependabot together. These visible checks
+do not change the separately managed required-check rules.
+
+Advanced CodeQL analyzes Actions, Rust, Python and JavaScript/TypeScript on PRs, main pushes,
+weekly schedules and manual runs. The JavaScript/TypeScript scan includes the Mac frontend,
+calibration sources, shared SDK and helper scripts. Existing query findings and RustSec
+unsound/unmaintained notices remain evidence for triage; a successful scanner run does not
+assert that all existing findings have been resolved.
 
 ## Artifacts and diagnostics
 
