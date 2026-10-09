@@ -6,7 +6,7 @@ job, read-only permissions, branch protection and code-owner policy remain intac
 
 Add a caller job named `trusted-baseline` to Repository CI for pull requests and
 main pushes. It invokes the reviewed OpenBoa repository-baseline workflow at full
-SHA `b5df6ff3dbdf210ed9de5acb92a91e93c99d706c` without inputs or inherited secrets.
+SHA `04b282e50ed07ebf4ddb467dac95c2f7222f199e` without inputs or inherited secrets.
 The shared workflow checks event commits, workflow syntax, whitespace and secrets;
 it never executes product code. Manual dispatch retains the original baseline and
 does not call the event-bound shared workflow.
