@@ -17,7 +17,7 @@ jobs:
   trusted-baseline:
     name: trusted-baseline
     if: github.event_name == 'pull_request' || github.event_name == 'push'
-    uses: openboa-ai/.github/.github/workflows/repository-baseline.yml@b5df6ff3dbdf210ed9de5acb92a91e93c99d706c
+    uses: openboa-ai/.github/.github/workflows/repository-baseline.yml@04b282e50ed07ebf4ddb467dac95c2f7222f199e
 
   baseline:
     name: Repository baseline
