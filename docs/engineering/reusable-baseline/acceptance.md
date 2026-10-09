@@ -28,3 +28,17 @@ The separate inert wrapper received independent source review; the original
 `ci.yml` is identical to this repository's initial main. Current-head CI and
 Code Review/Security Review are recorded on the PR, separately from native
 code-owner approval and subsequent target-event producer qualification.
+
+## Installed-contract documentation reconciliation
+
+On 2026-10-09 independent specification review accepted the consolidated
+`spec.md` content SHA256
+`e8be60af92c82becddaed327e1d0e78baf518097e5f54ac866f0034e46702ab4`
+before the README follow-up. R1-R4 retain the previously accepted behavior; this
+change corrects obsolete descriptions and adds the development entry point.
+Workflow, required checks, ownership and product requirements are unchanged.
+The historical source revisions above remain delivery records, not current pins.
+
+Acceptance requires a documentation-only diff, current PR hygiene checks and
+independent review, followed by main-push checks. Target-event run qualification
+and any required-check enrollment are separately observed operations.
