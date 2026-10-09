@@ -14,6 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  trusted-baseline:
+    name: trusted-baseline
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    uses: openboa-ai/.github/.github/workflows/repository-baseline.yml@b5df6ff3dbdf210ed9de5acb92a91e93c99d706c
+
   baseline:
     name: Repository baseline
     runs-on: ubuntu-24.04
