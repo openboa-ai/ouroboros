@@ -6,3 +6,4 @@
 /docs/CODEOWNERS @SonSangjoon
 /.gitleaks* @SonSangjoon
 /.githooks/ @SonSangjoon
+/.hydra.toml @SonSangjoon
