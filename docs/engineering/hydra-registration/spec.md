@@ -1,7 +1,8 @@
 # Register Hydra for bounded documentation work
 
 Status: proposed enabling policy; not accepted, installed or activated.
-External merge-effect boundary: pending verification; do not adopt before it is recorded.
+External merge-effect boundary: operator confirmed no external main-triggered deployment
+or public-release connection on 2026-10-11; policy adoption remains subject to review.
 Repository: `openboa-ai/ouroboros` (numeric ID `1411114385`).
 Intended path: `docs/engineering/hydra-registration/spec.md`.
 
@@ -61,11 +62,13 @@ this specification or its linked public-safe work record:
 - Existing required checks and authenticated reviews pass, and the exact policy
   head has the current-head native human review already required for these paths.
 
-External hosting/provider effects are currently **pending**. Accordingly this
-package is ready for review as a concrete proposal but is not ready for adoption.
-If investigation finds a material effect, hold this policy and resolve only that
-specific effect boundary; do not silently treat it as none or expand delivery scope.
-No provisional policy must be merged merely to create another policy review later.
+On 2026-10-11 the operator confirmed that this repository currently has no external
+main-triggered hosting deployment, package publication or public-release connection.
+This resolves the external-effect factual boundary for the initial documentation
+scope. Policy adoption still requires current-head native human review and the
+existing checks and authenticated reviews. The confirmation is dated evidence,
+not a guarantee about future integrations. If a later connection introduces a
+material effect, hold automatic delivery and review that specific boundary.
 
 Once adopted, normal documentation episodes within R3 proceed through independent
 spec/change review, final-head CI and authenticated Code/Security Review to immediate
@@ -119,4 +122,5 @@ The trusted workflow uses shared revision `83967987ca23cc8b8eda60975eda320e434fb
 Both required workflows passed for PR #2 and its merge; the authenticated provider
 summary is [on PR #2](https://github.com/openboa-ai/ouroboros/pull/2#issuecomment-6074182170).
 GitHub currently reports no configured environments, deployments or repository hooks,
-and no Pages site. External hosting/provider connections have not been established.
+and no Pages site. On 2026-10-11 the operator confirmed no external main-triggered
+deployment or public-release connection. Recheck this boundary when integrations change.

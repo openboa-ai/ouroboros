@@ -1,5 +1,6 @@
 # PROPOSED docs-only enabling policy; not adopted.
-# Adopt only after merge-effect evidence and current-head native policy review.
+# External main-triggered deployment/release connections are absent as confirmed
+# by the operator on 2026-10-11. Adoption still requires current-head policy review.
 version = 1
 repository_id = 1411114385
 authorized_actors = ["openboa", "SonSangjoon"]
@@ -44,5 +45,6 @@ format = "codex_summary_v1"
 
 [delivery]
 automatic_merge = true
-# Proposed value, conditional on the registration spec; external effects are pending verification.
+# Operator-confirmed absence applies to this dated documentation boundary;
+# reassess before adding any external deployment or public-release connection.
 production_effect = false
