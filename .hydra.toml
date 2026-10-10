@@ -1,0 +1,48 @@
+# PROPOSED docs-only enabling policy; not adopted.
+# Adopt only after merge-effect evidence and current-head native policy review.
+version = 1
+repository_id = 1411114385
+authorized_actors = ["openboa", "SonSangjoon"]
+human_reviewers = ["SonSangjoon"]
+spec_directory = "docs/engineering"
+allowed_paths = ["README.md", "CONTRIBUTING.md", "docs/engineering/development-workflow/"]
+protected_paths = [".gitleaks*", ".githooks/"]
+ui_paths = []
+
+[labels]
+ready = "hydra:ready"
+paused = "hydra:paused"
+decision = "hydra:decision"
+
+# Runs after the candidate is checkpointed. Exact-current-base CI is also required.
+[[verification]]
+argv = ["git", "diff", "--check", "--no-ext-diff", "--no-textconv", "origin/main", "HEAD", "--"]
+cwd = "."
+timeout = 30
+
+[[required_checks]]
+workflow_id = 379166130
+workflow_path = ".github/workflows/ci.yml"
+job = "Repository baseline"
+events = ["pull_request", "push"]
+app_id = 15368
+
+[[required_checks]]
+workflow_id = 379254350
+workflow_path = ".github/workflows/trusted-baseline.yml"
+job = "trusted-baseline / Trusted repository baseline"
+events = ["pull_request_target", "push"]
+app_id = 15368
+reusable_workflow = "openboa-ai/.github/.github/workflows/repository-baseline.yml"
+reusable_sha = "83967987ca23cc8b8eda60975eda320e434fb7bd"
+
+[review_provider]
+login = "chatgpt-codex-connector[bot]"
+user_id = 199175422
+app_id = 1144995
+format = "codex_summary_v1"
+
+[delivery]
+automatic_merge = true
+# Proposed value, conditional on the registration spec; external effects are pending verification.
+production_effect = false
