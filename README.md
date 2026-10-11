@@ -7,6 +7,8 @@ No deployment target, deployment credentials or release pipeline is configured.
 
 ## Development entry
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the supported development workflow.
+
 Start with a scoped specification and observable acceptance criteria before
 product implementation. Product goals and runtime build/test commands remain
 pending joint planning.

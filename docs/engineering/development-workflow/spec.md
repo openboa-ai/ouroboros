@@ -8,7 +8,8 @@ Intended path: `docs/engineering/development-workflow/spec.md`.
 
 Make this repository's existing development foundation understandable and usable.
 Product requirements and runtime implementation remain pending. This change creates
-CONTRIBUTING and a README entry, using the adopted Hydra policy and actual CLI as
+CONTRIBUTING and a README entry, using the adopted Hydra policy and native Codex
+workflow as
 inputs. It does not define product behavior or grant new operating authority.
 
 D1. Limit changes to `CONTRIBUTING.md`, the README entry and this specification's
@@ -22,11 +23,17 @@ independent spec acceptance happens before dependent implementation; a SHA, labe
 or progress comment is not evidence by itself. Include one complete example with
 public-safe placeholder values and distinguish commands from illustrative markup.
 
-D3. Document the delivered `hydra status --repos openboa-ai/ouroboros` command and
-point to Hydra's current registration/host instructions for `run` or `serve`.
+D3. Explain the native Codex workflow first: link Hydra's delivered native setup
+guide and describe `hydra_status`, `hydra_begin`, `hydra_checkpoint`, `hydra_verify`
+and `hydra_deliver`, visible outcome tasks, questions, answers and resumption.
+Keep the supported `hydra status --repos openboa-ai/ouroboros` command and linked
+`run`/`serve` host instructions as the standalone alternative.
 Do not invent runtime options, copy host-specific paths, create another daemon or
-state store, or require a project-specific execution loop. Describe how paused,
-decision and existing CI/review waits preserve work and release other work capacity.
+state store, or require a project-specific execution loop. Explain that paused
+labels do not release an active assignment. An interrupted native assignment needs
+confirmed termination and its exact `stopped` checkpoint. Decision and remote
+CI/review waits can release capacity after their checkpoint and assignment end
+are confirmed; preserve work and reconcile it before resuming.
 
 D4. Show the exact registered local whitespace command for a checkpointed candidate.
 Explain that repository CI checks workflow syntax, whitespace and secrets, not
@@ -48,7 +55,8 @@ Do not claim the registration or this guide establishes full unattended operatio
 
 Keep existing README content and the accepted CI contract accurate; add one concise
 CONTRIBUTING link rather than duplicate the full guide. Do not rename existing docs.
-Use current Hydra CLI help/source and observed repository settings for factual claims.
+Use current Hydra native setup/skill/source, CLI help and observed repository settings
+for factual claims.
 If those sources disagree, stop the affected claim and report the concrete gap.
 A failed check returns the same owned branch to correction; reconcile remote state
 before publication retry. No new work is started merely to discard a failed PR.
@@ -58,7 +66,7 @@ before publication retry. No new work is started merely to discard a failed PR.
 - D1: inspect complete changed-path and rename-origin lists. Only the allowed docs
   change; workflows, policy, ownership and security content stay unchanged.
 - D2-D3: independently inspect the actual Issue example, installed label/config
-  values, delivered CLI syntax and links. Any external-link availability uncertainty
+  values, delivered native tool flow, CLI syntax and links. Any external-link availability uncertainty
   is recorded rather than represented as a successful link check.
 - D4: run registered whitespace verification through the host's resource provider,
   retain its actual result, then require both real CI jobs for the final PR head.
