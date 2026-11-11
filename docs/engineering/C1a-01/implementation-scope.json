@@ -1,0 +1,86 @@
+{
+  "change_id": "C1a-01",
+  "design_version": "1.0.0",
+  "review_base": "09ec99f1fa6ae818f6c8ff5f1875935cd17219d8",
+  "prerequisites": [],
+  "required_consumers": [
+    "C1b-01",
+    "C2a-01"
+  ],
+  "specification_files": [
+    "docs/engineering/C1a-01/spec.md",
+    "docs/engineering/C1a-01/verification.md",
+    "docs/engineering/C1a-01/implementation-scope.json",
+    "docs/engineering/C1a-01/storage-v1.sql",
+    "docs/engineering/C1a-01/fixture-schema.sql",
+    "docs/engineering/C1a-01/sql-catalog.json",
+    "docs/engineering/C1a-01/column-bindings.json",
+    "docs/engineering/C1a-01/codec-contract.json",
+    "docs/engineering/C1a-01/codec-vectors.json",
+    "docs/engineering/C1a-01/fixture-plan.json",
+    "docs/engineering/C1a-01/acceptance-cases.json",
+    "docs/engineering/C1a-01/fault-cuts.json"
+  ],
+  "implementation_paths": {
+    "workspace": [
+      "Cargo.toml",
+      "Cargo.lock",
+      "rust-toolchain.toml"
+    ],
+    "core": [
+      "crates/company-core/Cargo.toml",
+      "crates/company-core/src/lib.rs",
+      "crates/company-core/src/storage/mod.rs",
+      "crates/company-core/src/storage/codec.rs",
+      "crates/company-core/src/storage/schema.rs",
+      "crates/company-core/src/storage/repository.rs",
+      "crates/company-core/src/storage/recovery.rs",
+      "crates/company-core/src/storage/maintenance.rs"
+    ],
+    "service": [
+      "crates/company-service/Cargo.toml",
+      "crates/company-service/src/lib.rs",
+      "crates/company-service/src/main.rs",
+      "crates/company-service/src/ownership.rs",
+      "crates/company-service/src/actor.rs"
+    ],
+    "qualification": [
+      "crates/company-service/tests/c1a_process.rs",
+      "crates/company-service/tests/c1a/mod.rs",
+      "crates/company-service/tests/c1a/supervisor.rs",
+      "crates/company-service/tests/c1a/observer.rs",
+      "crates/company-service/tests/c1a/fault_vfs.rs",
+      "crates/company-service/tests/c1a/fixture_subject.rs"
+    ],
+    "verification_record": [
+      "docs/engineering/C1a-01/evidence.md"
+    ]
+  },
+  "dependencies": {
+    "rust": "1.94.1",
+    "target": "aarch64-apple-darwin",
+    "edition": 2024,
+    "rusqlite": {
+      "version": "=0.41.0",
+      "default_features": false,
+      "features": [
+        "bundled"
+      ]
+    },
+    "libsqlite3-sys": "=0.39.0",
+    "libc": "=0.2.183",
+    "sha2": "=0.10.9",
+    "sqlite": {
+      "version": "3.54.0",
+      "source_id": "2026-10-09 15:46:58 be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+    }
+  },
+  "bootstrap_wal_transition": {
+    "page_size_bytes": 4096,
+    "journal_header_bytes": 512,
+    "journal_magic_hex": "d9d505f920a163d7",
+    "original_page_count": 0,
+    "page_record_count": 0,
+    "wal_negotiation_page_sha256": "2e96884c16791c7d4bde90a6db2c9da33c2a2aab3e52088adc148c368552a423"
+  }
+}

@@ -1,0 +1,286 @@
+{
+  "scope": "Expected canonical bytes, digests and malformed inputs.",
+  "positive": [
+    {
+      "id": "equivalent-field-order-and-escape",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{ \"revision\": 1, \"id\": \"\\u00441\" }",
+      "expected_normalized_utf8": "{\"normalization_version\":1,\"schema_name\":\"reference-fixture\",\"schema_version\":1,\"body\":{\"id\":\"D1\",\"revision\":1}}",
+      "expected_sha256": "f4877aa8e6e728806f7cbd23f3fed798a2ca84629d1f918e726769168feea822"
+    },
+    {
+      "id": "u64-upper-bound",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":18446744073709551615}",
+      "expected_normalized_utf8": "{\"normalization_version\":1,\"schema_name\":\"reference-fixture\",\"schema_version\":1,\"body\":{\"id\":\"D1\",\"revision\":18446744073709551615}}",
+      "expected_sha256": "d14b476265f08327d1b9139d91cd8ec97b2b35ed4a0f5dcb04f99c192eaf73fc"
+    },
+    {
+      "id": "unicode-not-folded",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"é/α\",\"revision\":9223372036854775808}",
+      "expected_normalized_utf8": "{\"normalization_version\":1,\"schema_name\":\"reference-fixture\",\"schema_version\":1,\"body\":{\"id\":\"é/α\",\"revision\":9223372036854775808}}",
+      "expected_sha256": "e9e332c6c7973b60b0f95f4b0eb9b0736f4084be9032c7e3cd93a4f6ba4dc1da"
+    },
+    {
+      "id": "decomposed-unicode-distinct",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"e\\u0301/α\",\"revision\":9223372036854775808}",
+      "expected_normalized_utf8": "{\"normalization_version\":1,\"schema_name\":\"reference-fixture\",\"schema_version\":1,\"body\":{\"id\":\"é/α\",\"revision\":9223372036854775808}}",
+      "expected_sha256": "e132b2632628037d7d2f51024759ad203ce4abaf27ea13a24e414a478bbd7500"
+    },
+    {
+      "id": "empty-conditions",
+      "schema": "maintenance-conditions",
+      "input_body_utf8": "[]",
+      "expected_normalized_utf8": "{\"normalization_version\":1,\"schema_name\":\"maintenance-conditions\",\"schema_version\":1,\"body\":[]}",
+      "expected_sha256": "fde96da375d0d391507bc37f8a722bcbe0ec8663ed8ddf7744cc9d462da7fa50"
+    }
+  ],
+  "negative": [
+    {
+      "id": "empty-id",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"\",\"revision\":1}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "escaped-duplicate-key",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"\\u0069d\":\"D2\",\"revision\":1}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "unexpected-field",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":1,\"x\":0}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "missing-field",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\"}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "invalid-zero-reference-revision",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":0}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "u64-overflow",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":18446744073709551616}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "negative-zero",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":-0}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "exponent",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":1e0}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "fraction",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":1.0}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "numeric-string",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":\"1\"}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "boolean",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":true}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "unpaired-surrogate",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"\\ud800\",\"revision\":1}",
+      "expected": "reject-before-bind; no mutation"
+    },
+    {
+      "id": "trailing-input",
+      "schema": "reference-fixture",
+      "input_body_utf8": "{\"id\":\"D1\",\"revision\":1}{}",
+      "expected": "reject-before-bind; no mutation"
+    }
+  ],
+  "counter_bytes": {
+    "0": "0000000000000000",
+    "1": "0000000000000001",
+    "9007199254740993": "0020000000000001",
+    "9223372036854775808": "8000000000000000",
+    "18446744073709551615": "ffffffffffffffff"
+  },
+  "instrument_filter": {
+    "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-instrument-filter\",\"schema_version\":1,\"body\":{\"id\":\"fixture-step-filter\",\"revision\":1,\"quantity_step\":2,\"price_step\":5}}",
+    "digest": "c7e091dbcd2807018542b8f28f61f5da4563875b399c6a2704ae279799aaa5a1"
+  },
+  "primitive_cases": [
+    {
+      "id": "aligned-known-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "accepted",
+      "expected_notional": 10
+    },
+    {
+      "id": "unknown-money-with-reason",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":null,\"unknown_reason\":\"unavailable\",\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "accepted-unknown-money",
+      "expected_notional": null
+    },
+    {
+      "id": "unknown-money-without-reason",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":null,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-missing-reason",
+      "expected_notional": null
+    },
+    {
+      "id": "unknown-money-coerced-to-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":\"unavailable\",\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-known-value-with-unknown-reason",
+      "expected_notional": null
+    },
+    {
+      "id": "quantity-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":0,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-nonpositive-quantity",
+      "expected_notional": null
+    },
+    {
+      "id": "quantity-negative",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":-2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-nonpositive-quantity",
+      "expected_notional": null
+    },
+    {
+      "id": "price-negative",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":-5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-nonpositive-price",
+      "expected_notional": null
+    },
+    {
+      "id": "price-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":0,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-nonpositive-price",
+      "expected_notional": null
+    },
+    {
+      "id": "quantity-step-mismatch",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":3,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-misalignment",
+      "expected_notional": null
+    },
+    {
+      "id": "price-step-mismatch",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":6,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-misalignment",
+      "expected_notional": null
+    },
+    {
+      "id": "filter-revision-mismatch",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":2},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-filter-reference",
+      "expected_notional": null
+    },
+    {
+      "id": "rational-denominator-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":0}",
+      "expected": "reject-rational",
+      "expected_notional": null
+    },
+    {
+      "id": "rational-denominator-negative",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":-2}",
+      "expected": "reject-rational",
+      "expected_notional": null
+    },
+    {
+      "id": "rational-not-reduced",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":2,\"rational_denominator\":4}",
+      "expected": "reject-rational",
+      "expected_notional": null
+    },
+    {
+      "id": "rational-noncanonical-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":0,\"rational_denominator\":2}",
+      "expected": "reject-rational",
+      "expected_notional": null
+    },
+    {
+      "id": "rational-canonical-zero",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":0,\"rational_denominator\":1}",
+      "expected": "accepted",
+      "expected_notional": 10
+    },
+    {
+      "id": "signed128-minimum",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-170141183460469231731687303715884105728,\"rational_denominator\":1}",
+      "expected": "accepted",
+      "expected_notional": 10
+    },
+    {
+      "id": "signed128-overflow",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":2,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":170141183460469231731687303715884105728,\"rational_denominator\":2}",
+      "expected": "reject-overflow",
+      "expected_notional": null
+    },
+    {
+      "id": "notional-signed64-overflow",
+      "schema": "primitive-fixture",
+      "input_body_utf8": "{\"filter_ref\":{\"id\":\"fixture-step-filter\",\"revision\":1},\"quantity_units\":9223372036854775806,\"price_units\":5,\"money_units\":0,\"unknown_reason\":null,\"duration_ms\":0,\"observed_at\":\"2026-01-01T00:00:00.000Z\",\"rational_numerator\":-1,\"rational_denominator\":2}",
+      "expected": "reject-notional-overflow",
+      "expected_notional": null
+    }
+  ],
+  "counter_overflow": [
+    {
+      "input": 18446744073709551614,
+      "expected_next": 18446744073709551615,
+      "expected_error": null
+    },
+    {
+      "input": 18446744073709551615,
+      "expected_next": null,
+      "expected_error": "storage_overflow"
+    }
+  ],
+  "checked_arithmetic": [
+    {
+      "operation": "i128_checked_multiply",
+      "left": 170141183460469231731687303715884105727,
+      "right": 2,
+      "expected_error": "arithmetic_overflow"
+    }
+  ]
+}

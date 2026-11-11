@@ -1,0 +1,1651 @@
+{
+  "document_role": "C1a-01 storage codec contract",
+  "normalization_version": 1,
+  "wrapper_fields": [
+    [
+      "normalization_version",
+      "Const1"
+    ],
+    [
+      "schema_name",
+      "KnownSchema"
+    ],
+    [
+      "schema_version",
+      "Const1"
+    ],
+    [
+      "body",
+      "SelectedClosedBody"
+    ]
+  ],
+  "input_limits": {
+    "bytes": 65536,
+    "containers": 32,
+    "fixture_unit_count": 2,
+    "fixture_dependency_count": 7
+  },
+  "primitives": {
+    "ID": "UTF-8 scalar string, 1..256 bytes, excludes U+0000..001F and U+007F; exact BINARY equality",
+    "H": "64 lowercase hexadecimal digits; decoded as 32-byte BLOB; SHA-256 of specified canonical bytes",
+    "U64": "exact integer 0..18446744073709551615, persisted as 8-byte big-endian BLOB",
+    "V": "U64 greater than zero",
+    "I64": "exact signed 64-bit integer",
+    "N": "I64 nonnegative; N+ is positive",
+    "I128": "exact signed 128-bit integer, no float conversion",
+    "Time": "UTC YYYY-MM-DDTHH:MM:SS.sssZ, Gregorian years 0001..9999, no leap seconds, persisted as Unix ms I64",
+    "Bool": "JSON true or false only",
+    "CanonicalString": "a string containing the exact canonical UTF-8 JSON of the selected closed nested schema",
+    "HexBytes": "even-length lowercase hexadecimal for non-JSON binary fields",
+    "EmptyOrValue": "nullable only where explicitly marked; missing is invalid",
+    "PositiveI64": "Exact integer in 1..9223372036854775807.",
+    "PositiveI128": "Exact integer in 1..170141183460469231731687303715884105727."
+  },
+  "enums": {
+    "Principal": [
+      "FIXTURE",
+      "COMPANY"
+    ],
+    "Operation": [
+      "UPGRADE",
+      "REPAIR"
+    ],
+    "ControlAction": [
+      "APPLY_UNIT",
+      "FINALIZE",
+      "SUPERSEDE"
+    ],
+    "Dependency": [
+      "AUTHORITY",
+      "STOP",
+      "POLICY",
+      "RESOURCE",
+      "RESPONSIBILITY",
+      "BINDING",
+      "TIME"
+    ],
+    "Verdict": [
+      "ALLOW",
+      "DENY",
+      "UNDETERMINED"
+    ],
+    "RequestAction": [
+      "ADMIT",
+      "CLAIM_UNIT",
+      "COMMIT_UNIT",
+      "FINALIZE",
+      "SUPERSEDE",
+      "APPLY_CONTROL",
+      "BIND_EXECUTOR"
+    ],
+    "ReceiptKind": [
+      "ADMITTED",
+      "UNIT_CLAIMED",
+      "UNIT_COMMITTED",
+      "FINAL_VALIDATED",
+      "SUPERSEDED",
+      "CONTROL_APPLIED",
+      "EXECUTOR_BOUND"
+    ],
+    "WriteKind": [
+      "CREATE_RELATION",
+      "ALTER_RELATION",
+      "INSERT",
+      "UPDATE",
+      "CREATE_INDEX"
+    ],
+    "AdmissionAction": [
+      "ADMIT",
+      "APPLY_UNIT",
+      "FINALIZE",
+      "SUPERSEDE",
+      "REPAIR_ADMIT"
+    ],
+    "AuditKind": [
+      "store_created",
+      "generation_acquired",
+      "maintenance_admitted",
+      "maintenance_unit_claimed",
+      "maintenance_unit_committed",
+      "maintenance_control_applied",
+      "maintenance_replaced",
+      "maintenance_final_validated"
+    ],
+    "EntryKind": [
+      "CREATED",
+      "OPENED"
+    ]
+  },
+  "nested_shapes": {
+    "source-ref": [
+      [
+        "kind",
+        "ID"
+      ],
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "revision",
+        "V"
+      ],
+      [
+        "digest",
+        "H"
+      ]
+    ],
+    "condition": [
+      [
+        "condition_id",
+        "ID"
+      ],
+      [
+        "expected_digest",
+        "H"
+      ]
+    ],
+    "relation-operation": [
+      [
+        "relation_id",
+        "ID"
+      ],
+      [
+        "operation",
+        "WriteKind"
+      ]
+    ],
+    "plan-unit": [
+      [
+        "ordinal",
+        "N+"
+      ],
+      [
+        "unit_id",
+        "ID"
+      ],
+      [
+        "unit_digest",
+        "H"
+      ],
+      [
+        "bundled_entry_id",
+        "ID"
+      ],
+      [
+        "from_schema",
+        "N+"
+      ],
+      [
+        "from_schema_digest",
+        "H"
+      ],
+      [
+        "to_schema",
+        "N+"
+      ],
+      [
+        "to_schema_digest",
+        "H"
+      ],
+      [
+        "preceding_checkpoint_digest",
+        "H"
+      ],
+      [
+        "resulting_checkpoint_digest",
+        "H"
+      ]
+    ],
+    "dependency-ref": [
+      [
+        "dependency_kind",
+        "Dependency"
+      ],
+      [
+        "dependency_id",
+        "ID"
+      ],
+      [
+        "expected_revision",
+        "V"
+      ],
+      [
+        "source_digest",
+        "H"
+      ]
+    ],
+    "bound-schema": [
+      [
+        "schema_version",
+        "N+"
+      ],
+      [
+        "schema_digest",
+        "H"
+      ]
+    ],
+    "authority-key": [
+      [
+        "action",
+        "AdmissionAction"
+      ],
+      [
+        "operation_id",
+        "ID"
+      ],
+      [
+        "plan_digest",
+        "H"
+      ],
+      [
+        "unit_ordinal",
+        "N"
+      ],
+      [
+        "peer_operation_id",
+        "ID?"
+      ],
+      [
+        "peer_plan_digest",
+        "H?"
+      ]
+    ],
+    "row-change": [
+      [
+        "relation",
+        "KnownRelation"
+      ],
+      [
+        "key",
+        "TypedPrimaryKey"
+      ],
+      [
+        "before_digest",
+        "H?"
+      ],
+      [
+        "after_digest",
+        "H?"
+      ]
+    ],
+    "fixture-source-value": {
+      "tag_from": "dependency_kind",
+      "variants": {
+        "AUTHORITY": [
+          [
+            "principal_id",
+            "ID"
+          ],
+          [
+            "allowed_keys",
+            "Set<authority-key>"
+          ]
+        ],
+        "STOP": [
+          [
+            "maintenance_stopped",
+            "Bool"
+          ],
+          [
+            "ordinary_stopped",
+            "Bool"
+          ]
+        ],
+        "POLICY": [
+          [
+            "control_schema_version",
+            "Const1"
+          ],
+          [
+            "allowed_plan_digests",
+            "Set<H>"
+          ],
+          [
+            "max_unit_count",
+            "N+"
+          ]
+        ],
+        "RESOURCE": [
+          [
+            "allowance_id",
+            "ID"
+          ],
+          [
+            "allowance_digest",
+            "H"
+          ]
+        ],
+        "RESPONSIBILITY": [
+          [
+            "duty_id",
+            "ID"
+          ],
+          [
+            "duty_digest",
+            "H"
+          ],
+          [
+            "responsible_id",
+            "ID"
+          ]
+        ],
+        "BINDING": [
+          [
+            "bundle_digest",
+            "H"
+          ],
+          [
+            "compatible_schemas",
+            "Set<bound-schema>"
+          ]
+        ],
+        "TIME": [
+          [
+            "clock_id",
+            "ID"
+          ],
+          [
+            "tick",
+            "V"
+          ],
+          [
+            "lower_utc",
+            "Time"
+          ],
+          [
+            "upper_utc",
+            "Time"
+          ],
+          [
+            "qualified_until",
+            "Time"
+          ],
+          [
+            "verified",
+            "Bool"
+          ]
+        ]
+      }
+    },
+    "ActionBody": {
+      "tag_from": "action",
+      "variants": {
+        "ADMIT": [
+          [
+            "intent_digest",
+            "H"
+          ],
+          [
+            "plan_digest",
+            "H"
+          ],
+          [
+            "admission_source_ref",
+            "source-ref"
+          ],
+          [
+            "continuity_digest",
+            "H"
+          ]
+        ],
+        "CLAIM_UNIT": [
+          [
+            "unit_digest",
+            "H"
+          ],
+          [
+            "budget_owner_operation_id",
+            "ID"
+          ]
+        ],
+        "COMMIT_UNIT": [
+          [
+            "unit_digest",
+            "H"
+          ],
+          [
+            "claim_receipt_id",
+            "ID"
+          ]
+        ],
+        "FINALIZE": [
+          [
+            "installed_bundle_digest",
+            "H"
+          ],
+          [
+            "final_schema_digest",
+            "H"
+          ],
+          [
+            "affected_restriction_ids",
+            "Set<ID>"
+          ],
+          [
+            "validation_input_digest",
+            "H"
+          ]
+        ],
+        "SUPERSEDE": [
+          [
+            "admission_request_id",
+            "ID"
+          ],
+          [
+            "successor_operation_id",
+            "ID"
+          ],
+          [
+            "successor_intent_digest",
+            "H"
+          ],
+          [
+            "successor_plan_digest",
+            "H"
+          ],
+          [
+            "supersession_source_ref",
+            "source-ref"
+          ],
+          [
+            "repair_admission_source_ref",
+            "source-ref"
+          ],
+          [
+            "continuity_digest",
+            "H"
+          ]
+        ],
+        "APPLY_CONTROL": [
+          [
+            "source_command_schema",
+            "ID"
+          ],
+          [
+            "source_command_bytes",
+            "CanonicalString<fixture-control-command>"
+          ],
+          [
+            "source_command_digest",
+            "H"
+          ],
+          [
+            "expected_source_ref",
+            "source-ref"
+          ],
+          [
+            "dependency_digest",
+            "H"
+          ]
+        ],
+        "BIND_EXECUTOR": [
+          [
+            "storage_entry_id",
+            "ID"
+          ]
+        ]
+      }
+    },
+    "record-ref": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "revision",
+        "V"
+      ]
+    ]
+  },
+  "schemas": {
+    "creation-request": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "creation_id",
+            "ID"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "initial_manifest_digest",
+            "H"
+          ],
+          [
+            "directory_device",
+            "U64"
+          ],
+          [
+            "directory_inode",
+            "U64"
+          ]
+        ]
+      }
+    },
+    "creation-intent": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "format_version",
+            "Const1"
+          ],
+          [
+            "creation_id",
+            "ID"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "request_bytes",
+            "CanonicalString<creation-request>"
+          ],
+          [
+            "request_digest",
+            "H"
+          ],
+          [
+            "initial_manifest_digest",
+            "H"
+          ],
+          [
+            "directory_device",
+            "U64"
+          ],
+          [
+            "directory_inode",
+            "U64"
+          ]
+        ]
+      }
+    },
+    "creation-allocation": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "format_version",
+            "Const1"
+          ],
+          [
+            "creation_id",
+            "ID"
+          ],
+          [
+            "intent_digest",
+            "H"
+          ],
+          [
+            "database_device",
+            "U64"
+          ],
+          [
+            "database_inode",
+            "U64"
+          ]
+        ]
+      }
+    },
+    "storage-entry-result": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "entry_id",
+            "ID"
+          ],
+          [
+            "kind",
+            "EntryKind"
+          ],
+          [
+            "creation_id",
+            "ID"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "generation",
+            "V"
+          ],
+          [
+            "previous_generation",
+            "U64"
+          ],
+          [
+            "schema_version",
+            "N+"
+          ],
+          [
+            "schema_digest",
+            "H"
+          ],
+          [
+            "state_revision",
+            "V"
+          ],
+          [
+            "record_sequence",
+            "V"
+          ],
+          [
+            "transaction_id",
+            "ID"
+          ]
+        ]
+      }
+    },
+    "maintenance-intent": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "request_id",
+            "ID"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "kind",
+            "Operation"
+          ],
+          [
+            "plan_digest",
+            "H"
+          ],
+          [
+            "source_bundle_digest",
+            "H"
+          ],
+          [
+            "target_bundle_digest",
+            "H"
+          ],
+          [
+            "predecessor_operation_id",
+            "ID?"
+          ],
+          [
+            "budget_owner_operation_id",
+            "ID"
+          ],
+          [
+            "unit_attempt_limit",
+            "N+"
+          ],
+          [
+            "original_not_after",
+            "Time"
+          ],
+          [
+            "responsible_kind",
+            "Principal"
+          ],
+          [
+            "responsible_id",
+            "ID"
+          ]
+        ]
+      }
+    },
+    "maintenance-conditions": {
+      "schema_version": 1,
+      "body": {
+        "array_of": "condition",
+        "order": "declared sequence",
+        "unique_semantic_key": [
+          "condition_id"
+        ]
+      }
+    },
+    "maintenance-write-set": {
+      "schema_version": 1,
+      "body": {
+        "array_of": "relation-operation",
+        "order": "canonical UTF-8 byte order",
+        "unique_semantic_key": [
+          "relation_id",
+          "operation"
+        ]
+      }
+    },
+    "maintenance-dependencies": {
+      "schema_version": 1,
+      "body": {
+        "array_of": "dependency-ref",
+        "order": "canonical UTF-8 byte order",
+        "unique_semantic_key": [
+          "dependency_kind",
+          "dependency_id"
+        ]
+      }
+    },
+    "maintenance-unit-descriptor": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "unit_id",
+            "ID"
+          ],
+          [
+            "bundled_entry_id",
+            "ID"
+          ],
+          [
+            "compiled_entry_digest",
+            "H"
+          ],
+          [
+            "from_schema",
+            "N+"
+          ],
+          [
+            "from_schema_digest",
+            "H"
+          ],
+          [
+            "to_schema",
+            "N+"
+          ],
+          [
+            "to_schema_digest",
+            "H"
+          ],
+          [
+            "preconditions",
+            "Seq<condition>"
+          ],
+          [
+            "permitted_writes",
+            "Set<relation-operation>"
+          ],
+          [
+            "postconditions",
+            "Seq<condition>"
+          ]
+        ]
+      }
+    },
+    "maintenance-checkpoint": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "committed_ordinal",
+            "N"
+          ],
+          [
+            "schema_version",
+            "N+"
+          ],
+          [
+            "schema_digest",
+            "H"
+          ],
+          [
+            "committed_unit_digests",
+            "Seq<H>"
+          ]
+        ]
+      }
+    },
+    "maintenance-plan": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "source_schema",
+            "N+"
+          ],
+          [
+            "source_schema_digest",
+            "H"
+          ],
+          [
+            "target_schema",
+            "N+"
+          ],
+          [
+            "target_schema_digest",
+            "H"
+          ],
+          [
+            "units",
+            "Seq<plan-unit>"
+          ]
+        ]
+      }
+    },
+    "maintenance-continuity": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "restriction_ids",
+            "Set<ID>"
+          ],
+          [
+            "responsible_kind",
+            "Principal"
+          ],
+          [
+            "responsible_id",
+            "ID"
+          ],
+          [
+            "next_conditions",
+            "Seq<condition>"
+          ],
+          [
+            "external_obligation_refs",
+            "Set<source-ref>"
+          ],
+          [
+            "resource_condition_ids",
+            "Set<ID>"
+          ]
+        ]
+      }
+    },
+    "maintenance-assessment": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "source_record_kind",
+            "ID"
+          ],
+          [
+            "source_record_id",
+            "ID"
+          ],
+          [
+            "source_record_revision",
+            "V"
+          ],
+          [
+            "source_record_digest",
+            "H"
+          ],
+          [
+            "action",
+            "ControlAction"
+          ],
+          [
+            "unit_ordinal",
+            "N"
+          ],
+          [
+            "checkpoint_digest",
+            "H"
+          ],
+          [
+            "dependency_digest",
+            "H"
+          ],
+          [
+            "verdict",
+            "Verdict"
+          ],
+          [
+            "reason_code",
+            "ID"
+          ],
+          [
+            "time_evidence_digest",
+            "H"
+          ],
+          [
+            "installed_bundle_digest",
+            "H"
+          ]
+        ]
+      }
+    },
+    "maintenance-validation-input": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "committed_unit_digests",
+            "Seq<H>"
+          ],
+          [
+            "schema_digest",
+            "H"
+          ],
+          [
+            "checkpoint_digest",
+            "H"
+          ],
+          [
+            "affected_restriction_ids",
+            "Set<ID>"
+          ],
+          [
+            "checked_conditions",
+            "Seq<condition>"
+          ],
+          [
+            "observation_refs",
+            "Set<source-ref>"
+          ]
+        ]
+      }
+    },
+    "maintenance-request": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "request_id",
+            "ID"
+          ],
+          [
+            "parent_request_id",
+            "ID?"
+          ],
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "action",
+            "RequestAction"
+          ],
+          [
+            "unit_ordinal",
+            "N+?"
+          ],
+          [
+            "claim_receipt_id",
+            "ID?"
+          ],
+          [
+            "expected_executor_version",
+            "V"
+          ],
+          [
+            "expected_checkpoint_digest",
+            "H?"
+          ],
+          [
+            "generation",
+            "V"
+          ],
+          [
+            "action_body",
+            "ActionBody"
+          ]
+        ]
+      }
+    },
+    "maintenance-result": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "receipt_kind",
+            "ReceiptKind"
+          ],
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "unit_ordinal",
+            "N+?"
+          ],
+          [
+            "claim_receipt_id",
+            "ID?"
+          ],
+          [
+            "checkpoint_digest",
+            "H?"
+          ],
+          [
+            "schema_version",
+            "N+?"
+          ],
+          [
+            "schema_digest",
+            "H?"
+          ],
+          [
+            "affected_restriction_ids",
+            "Set<ID>"
+          ],
+          [
+            "successor_operation_id",
+            "ID?"
+          ],
+          [
+            "admission_request_id",
+            "ID?"
+          ],
+          [
+            "source_record_digest",
+            "H?"
+          ]
+        ]
+      }
+    },
+    "fixture-control-command": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "dependency_kind",
+            "Dependency"
+          ],
+          [
+            "source_id",
+            "ID"
+          ],
+          [
+            "expected_source_ref",
+            "source-ref"
+          ],
+          [
+            "new_value",
+            "fixture-source-value"
+          ]
+        ]
+      }
+    },
+    "fixture-control-source": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "dependency_kind",
+            "Dependency"
+          ],
+          [
+            "source_id",
+            "ID"
+          ],
+          [
+            "revision",
+            "V"
+          ],
+          [
+            "value",
+            "fixture-source-value"
+          ]
+        ]
+      }
+    },
+    "fixture-allowance": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "allowance_id",
+            "ID"
+          ],
+          [
+            "limit_units",
+            "N+"
+          ],
+          [
+            "consumed_units",
+            "N"
+          ]
+        ]
+      }
+    },
+    "fixture-duty": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "duty_id",
+            "ID"
+          ],
+          [
+            "cause_id",
+            "ID"
+          ],
+          [
+            "responsible_id",
+            "ID"
+          ],
+          [
+            "status",
+            "ConstUNRESOLVED"
+          ]
+        ]
+      }
+    },
+    "storage-audit": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "event_kind",
+            "AuditKind"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "transaction_id",
+            "ID"
+          ],
+          [
+            "generation",
+            "V"
+          ],
+          [
+            "state_before",
+            "U64"
+          ],
+          [
+            "state_after",
+            "V"
+          ],
+          [
+            "first_sequence",
+            "V"
+          ],
+          [
+            "last_sequence",
+            "V"
+          ],
+          [
+            "recorded_at",
+            "Time"
+          ],
+          [
+            "subject_id",
+            "ID"
+          ],
+          [
+            "time_evidence_bytes",
+            "CanonicalString<fixture-time-evidence>?"
+          ],
+          [
+            "changes",
+            "Seq<row-change>"
+          ]
+        ]
+      }
+    },
+    "row-image": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "relation",
+            "KnownRelation"
+          ],
+          [
+            "values",
+            "TypedColumnsInPhysicalOrder"
+          ]
+        ]
+      }
+    },
+    "reference-fixture": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "id",
+            "ID"
+          ],
+          [
+            "revision",
+            "V"
+          ]
+        ]
+      }
+    },
+    "primitive-fixture": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "filter_ref",
+            "record-ref"
+          ],
+          [
+            "quantity_units",
+            "PositiveI64"
+          ],
+          [
+            "price_units",
+            "PositiveI64"
+          ],
+          [
+            "money_units",
+            "I64?"
+          ],
+          [
+            "unknown_reason",
+            "ID?"
+          ],
+          [
+            "duration_ms",
+            "N"
+          ],
+          [
+            "observed_at",
+            "Time"
+          ],
+          [
+            "rational_numerator",
+            "I128"
+          ],
+          [
+            "rational_denominator",
+            "PositiveI128"
+          ]
+        ]
+      }
+    },
+    "storage-schema-manifest": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "profile",
+            "ID"
+          ],
+          [
+            "schema_version",
+            "N+"
+          ],
+          [
+            "ordered_ddl_digests",
+            "Seq<H>"
+          ]
+        ]
+      }
+    },
+    "fixture-shape-predicate": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "schema_version",
+            "N+"
+          ],
+          [
+            "schema_digest",
+            "H"
+          ],
+          [
+            "fact_id",
+            "ID"
+          ],
+          [
+            "payload_hex",
+            "HexBytes"
+          ],
+          [
+            "encoding_version",
+            "N+?"
+          ],
+          [
+            "payload_digest",
+            "H?"
+          ],
+          [
+            "allowance_id",
+            "ID"
+          ],
+          [
+            "limit_units",
+            "N+"
+          ],
+          [
+            "consumed_units",
+            "N"
+          ],
+          [
+            "duty_id",
+            "ID"
+          ],
+          [
+            "cause_id",
+            "ID"
+          ],
+          [
+            "responsible_id",
+            "ID"
+          ],
+          [
+            "duty_status",
+            "ConstUNRESOLVED"
+          ]
+        ]
+      }
+    },
+    "fixture-compiled-entry": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "entry_id",
+            "ID"
+          ],
+          [
+            "ordered_statement_digests",
+            "Seq<H>"
+          ],
+          [
+            "precondition_digest",
+            "H"
+          ],
+          [
+            "postcondition_digest",
+            "H"
+          ],
+          [
+            "permitted_writes",
+            "Set<relation-operation>"
+          ]
+        ]
+      }
+    },
+    "fixture-bundle-manifest": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "core_schema_digest",
+            "H"
+          ],
+          [
+            "fixture_schema_digests",
+            "Seq<H>"
+          ],
+          [
+            "compiled_entries",
+            "Seq<H>"
+          ],
+          [
+            "codec_contract_digest",
+            "H"
+          ]
+        ]
+      }
+    },
+    "storage-initial-manifest": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "profile",
+            "ID"
+          ],
+          [
+            "initial_schema_digest",
+            "H"
+          ],
+          [
+            "fixture_bundle_digest",
+            "H?"
+          ],
+          [
+            "fixture_seed_digest",
+            "H?"
+          ]
+        ]
+      }
+    },
+    "fixture-bootstrap-seed": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "fact_id",
+            "ID"
+          ],
+          [
+            "payload_hex",
+            "HexBytes"
+          ],
+          [
+            "allowance_bytes",
+            "CanonicalString<fixture-allowance>"
+          ],
+          [
+            "duty_bytes",
+            "CanonicalString<fixture-duty>"
+          ],
+          [
+            "source_bytes",
+            "Seq<CanonicalString<fixture-control-source>>"
+          ]
+        ]
+      }
+    },
+    "open-request": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "entry_id",
+            "ID"
+          ],
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "creation_id",
+            "ID"
+          ],
+          [
+            "directory_device",
+            "U64"
+          ],
+          [
+            "directory_inode",
+            "U64"
+          ]
+        ]
+      }
+    },
+    "fixture-time-evidence": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "company_id",
+            "ID"
+          ],
+          [
+            "store_id",
+            "ID"
+          ],
+          [
+            "generation",
+            "V"
+          ],
+          [
+            "entry_id",
+            "ID"
+          ],
+          [
+            "operation_id",
+            "ID"
+          ],
+          [
+            "action",
+            "RequestAction"
+          ],
+          [
+            "request_id",
+            "ID"
+          ],
+          [
+            "challenge_id",
+            "ID"
+          ],
+          [
+            "clock_id",
+            "ID"
+          ],
+          [
+            "observation_sequence",
+            "V"
+          ],
+          [
+            "anchor_revision",
+            "V"
+          ],
+          [
+            "anchor_digest",
+            "H"
+          ],
+          [
+            "lower_utc",
+            "Time"
+          ],
+          [
+            "upper_utc",
+            "Time"
+          ],
+          [
+            "qualified_until",
+            "Time"
+          ]
+        ]
+      }
+    },
+    "schema-migration-identity": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "profile",
+            "ID"
+          ],
+          [
+            "migration_number",
+            "N+"
+          ],
+          [
+            "from_schema",
+            "N"
+          ],
+          [
+            "from_schema_digest",
+            "H?"
+          ],
+          [
+            "to_schema",
+            "N+"
+          ],
+          [
+            "to_schema_digest",
+            "H"
+          ],
+          [
+            "initial_manifest_digest",
+            "H?"
+          ],
+          [
+            "operation_id",
+            "ID?"
+          ],
+          [
+            "unit_digest",
+            "H?"
+          ]
+        ]
+      }
+    },
+    "fixture-instrument-filter": {
+      "schema_version": 1,
+      "body": {
+        "fields": [
+          [
+            "id",
+            "ID"
+          ],
+          [
+            "revision",
+            "V"
+          ],
+          [
+            "quantity_step",
+            "N+"
+          ],
+          [
+            "price_step",
+            "N+"
+          ]
+        ]
+      }
+    }
+  },
+  "typed_column_catalog": "column-bindings.json",
+  "grammar": [
+    "Require valid UTF-8; no BOM, unpaired surrogates or trailing input. Detect duplicate keys after decoding before object construction. Unknown/missing fields are errors at every level. A question mark means required key with explicit nullable value.",
+    "Exact integer token grammar is 0 or -?[1-9][0-9]*. Reject -0, exponent, fraction, Boolean, numeric string and overflow for integer fields. Emit exact decimal values without floating intermediates.",
+    "Canonical object order is the field list, not input order. No whitespace outside strings. Escape quote and backslash, encode U+0000..001F as lowercase backslash-u00xx, emit other scalars directly. No slash escaping, case folding or Unicode normalization.",
+    "Seq preserves order. Set rejects duplicate semantic keys and sorts by complete canonical member bytes. Source-ref set identity is kind and id; bound-schema identity is schema_version; authority-key identity is action, operation_id, unit_ordinal and peer_operation_id. Incomplete or contradictory duplicate sets fail.",
+    "Nested CanonicalString must decode and re-encode byte-for-byte under the named schema; compare stored bytes, decoded fields and SHA-256 before replay. Computed digests never enter their own input.",
+    "TypedPrimaryKey uses the sealed table primary key column order and typed storage decoding. TypedColumnsInPhysicalOrder uses its exact catalog: BLOB counters decode to exact integers, digest BLOBs to H, canonical body BLOBs to canonical UTF-8 strings and other binary fixture fields to HexBytes. All nonnull and cross-field repository checks apply before hashing.",
+    "Audit change lists use declared statement order then typed primary key byte order within each statement, and compare before/after images of the actual owned rows. Exclude audit entries, mutation-group descriptors and company high-water metadata from recursively generated changes. At least one image digest exists per change; a no-op replay has no audit event.",
+    "Only ADMIT may have a nonnull parent request, only the internal repair child uses it, and its ID must be preallocated in the parent. CLAIM_UNIT and COMMIT_UNIT require unit ordinal; only COMMIT_UNIT requires claim_receipt_id and it matches its nested field. Ordinary ADMIT has no expected checkpoint; repair ADMIT binds the old checkpoint. All other actions target their exact current executor/checkpoint.",
+    "Receipt kind selects the permitted relational fields. Match result schema/checkpoint/unit/claim fields to the row and compiled receipt kind. Only SUPERSEDED carries nonnull successor and admission_request_id. A lookup returns the immutable result plus separately evaluated current eligibility.",
+    "The fixture source schemas are not real authorization. Set and Time fields are validated against exact current source rows, actual installed bundle and current synthetic clock domain. No open key/value maps or unrecognized source kind grant permission.",
+    "An open-request is reconstructed from the immutable OPENED entry and its verified original creation identity. The caller retains its original key and exact request before starting the operation. Compatibility, generation and the actor witness are admission results.",
+    "A migration identity uses migration_number equal to to_schema and adjacent schema numbers. Bootstrap uses from_schema 0, null from_schema_digest, nonnull original initial_manifest_digest, and null operation and unit fields. An advancing unit uses exact nonnull source digest, operation and unit, with null initial_manifest_digest. Same-schema unit work creates no migration entry.",
+    "The fixture-time-evidence body is supplied by the separately trusted test clock port. Match current generation, entry, exact operation/action/request/challenge, clock domain, anchor revision and anchor digest. Use the fresh ordered lower and upper bounds within the anchor horizon and the exclusive original deadline. The committed audit event retains the exact current observation for time-dependent decisions. The assessment time_evidence_digest binds the durable clock anchor.",
+    "The qualification supervisor has a separately bound control ingress. The stored principal kind or role text supplies no authority. A maintenance request cannot change the trusted source or provide its own time witness. Source updates compare exact prior revision, full canonical source command and current supervisor capability.",
+    "Use the exact pinned instrument filter reference and integer steps. Require positive aligned quantity and price. Use checked signed128 intermediate multiplication and require a signed64 result for notional money. Require one of known money with null reason or null money with a nonempty reason. An unknown amount never participates in arithmetic.",
+    "Construct reduced rationals with positive denominators and zero represented as 0/1. Decode only canonical reduced pairs at this typed record boundary. Compute the gcd on unsigned magnitudes, including for signed128 minimum. Preserve canonical decimal text in storage and reject noncanonical or out-of-range values on load."
+  ]
+}
