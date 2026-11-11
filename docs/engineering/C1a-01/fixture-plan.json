@@ -1,0 +1,661 @@
+{
+  "design_version": "1.0.0",
+  "profile": "C1a process qualification only",
+  "status": "NOT_RUN",
+  "subject_build": null,
+  "schema_manifests": {
+    "core": {
+      "ddl_ids": [
+        "ddl.core.01",
+        "ddl.core.02",
+        "ddl.core.03",
+        "ddl.core.04",
+        "ddl.core.05",
+        "ddl.core.06",
+        "ddl.core.07",
+        "ddl.core.08",
+        "ddl.core.09",
+        "ddl.core.10",
+        "ddl.core.11",
+        "ddl.core.12",
+        "ddl.core.13",
+        "ddl.core.14",
+        "ddl.core.15",
+        "ddl.core.16",
+        "ddl.core.17",
+        "ddl.core.18",
+        "ddl.core.19",
+        "ddl.core.20"
+      ],
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-schema-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"core\",\"schema_version\":1,\"ordered_ddl_digests\":[\"c7411c49da538ec04e9057c3b3f54dea2385f032eda6de49a9b2d36c61f5b5d0\",\"77094987859950674d0fb0a2c2c65b6477a8342a49ca7befa404896d3c86cd37\",\"04a9783d64e719a11290d7fb02365436f6f48764a3c3fa136020b9446426c7d9\",\"d5838a17f1e13b2a70c8e01fba690b91b92d8d61045a2e9a518d121c7902636f\",\"b947177b11a1bdb16f9ec9ca4721577dc268318f204ffaffea6c620550fd3a71\",\"910147989d968f463b7ac06f23906b87b272875e37a653bfcf9efeede39d4463\",\"ab7370351503d81ad00c1d86dd04fbc7adf8c5e08e6974dcf2fbb3384fe322cc\",\"252df95eb1bf2b26d394c4c428d6e932fe6fb67f93db518838c263854c02ad8b\",\"d987176d61836919af40a90f7dc95be7e3c4195fc08d950699449bac3336b5e4\",\"97fbc47e2404af7a7ff818ed9ec1e069bcb7553e01ca465fa401b4e21e9ba5c1\",\"21eab0d8b092a7e47319cf2735078015835c22e0e7d1ff0e3f5a054d1cbe8e55\",\"f7c97a48960b250626c3129173adc33d1c025ef97f6012066bebde76e25bcaee\",\"124f4d457fc83cf2f7734884342b0091ef61ebc788031437bd46cc3d492faec8\",\"167756c3266f3b6a0b168b4961c44c7649e4d7b95112171225bfeacabb3fdcde\",\"f2128d59c53adb1948b55a1a2ed55495248d793926cde9e208b3b620ceca2ad1\",\"45b230428cc7a6ac784bc304130f9d77c1abd0c7715d4bb084f673ad72f7d106\",\"18c705d3ab5194fb147c0704dcefff7ef15581cf16d893af4c53b97f6c1cc47e\",\"de00ea82b3be348c6b498bd053b0f73e0e0a60fc6b95cec9a9aba23bdd6a542e\",\"3000ae9aee4d3ca700ee03a3df2092387eb124a16099f849391eb3dd64e6c860\",\"5b7ec9ae23c9ce0f48a2367e9a52bca2f8c98209bb8e82be5b68057e3881ea11\"]}}",
+      "digest": "48d7f798f8a4329f324bb79fbdf13077e33847ef740ee7b43aed9fe78e8f0b13"
+    },
+    "S0": {
+      "ddl_ids": [
+        "ddl.core.01",
+        "ddl.core.02",
+        "ddl.core.03",
+        "ddl.core.04",
+        "ddl.core.05",
+        "ddl.core.06",
+        "ddl.core.07",
+        "ddl.core.08",
+        "ddl.core.09",
+        "ddl.core.10",
+        "ddl.core.11",
+        "ddl.core.12",
+        "ddl.core.13",
+        "ddl.core.14",
+        "ddl.core.15",
+        "ddl.core.16",
+        "ddl.core.17",
+        "ddl.core.18",
+        "ddl.core.19",
+        "ddl.core.20",
+        "ddl.fixture.01",
+        "ddl.fixture.02",
+        "ddl.fixture.03",
+        "ddl.fixture.04"
+      ],
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-schema-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"schema_version\":1,\"ordered_ddl_digests\":[\"c7411c49da538ec04e9057c3b3f54dea2385f032eda6de49a9b2d36c61f5b5d0\",\"77094987859950674d0fb0a2c2c65b6477a8342a49ca7befa404896d3c86cd37\",\"04a9783d64e719a11290d7fb02365436f6f48764a3c3fa136020b9446426c7d9\",\"d5838a17f1e13b2a70c8e01fba690b91b92d8d61045a2e9a518d121c7902636f\",\"b947177b11a1bdb16f9ec9ca4721577dc268318f204ffaffea6c620550fd3a71\",\"910147989d968f463b7ac06f23906b87b272875e37a653bfcf9efeede39d4463\",\"ab7370351503d81ad00c1d86dd04fbc7adf8c5e08e6974dcf2fbb3384fe322cc\",\"252df95eb1bf2b26d394c4c428d6e932fe6fb67f93db518838c263854c02ad8b\",\"d987176d61836919af40a90f7dc95be7e3c4195fc08d950699449bac3336b5e4\",\"97fbc47e2404af7a7ff818ed9ec1e069bcb7553e01ca465fa401b4e21e9ba5c1\",\"21eab0d8b092a7e47319cf2735078015835c22e0e7d1ff0e3f5a054d1cbe8e55\",\"f7c97a48960b250626c3129173adc33d1c025ef97f6012066bebde76e25bcaee\",\"124f4d457fc83cf2f7734884342b0091ef61ebc788031437bd46cc3d492faec8\",\"167756c3266f3b6a0b168b4961c44c7649e4d7b95112171225bfeacabb3fdcde\",\"f2128d59c53adb1948b55a1a2ed55495248d793926cde9e208b3b620ceca2ad1\",\"45b230428cc7a6ac784bc304130f9d77c1abd0c7715d4bb084f673ad72f7d106\",\"18c705d3ab5194fb147c0704dcefff7ef15581cf16d893af4c53b97f6c1cc47e\",\"de00ea82b3be348c6b498bd053b0f73e0e0a60fc6b95cec9a9aba23bdd6a542e\",\"3000ae9aee4d3ca700ee03a3df2092387eb124a16099f849391eb3dd64e6c860\",\"5b7ec9ae23c9ce0f48a2367e9a52bca2f8c98209bb8e82be5b68057e3881ea11\",\"efdf496d54172f51b2647b113387f012dea4ffc9affe662c8b8190104228b781\",\"355bfe45ef30e42e405245bf239fd1bcfdfe06276a368ebaa70ff57656d88504\",\"b17545e8bd4d69c1758d898a9e7e42f3d102800eaeecd569f6d9c4b466c05521\",\"815da8d90010c3bbe11f58bf8001c86fdf7f6a2dbec1237dc5e473a06f5ed89e\"]}}",
+      "digest": "41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d"
+    },
+    "S1": {
+      "ddl_ids": [
+        "ddl.core.01",
+        "ddl.core.02",
+        "ddl.core.03",
+        "ddl.core.04",
+        "ddl.core.05",
+        "ddl.core.06",
+        "ddl.core.07",
+        "ddl.core.08",
+        "ddl.core.09",
+        "ddl.core.10",
+        "ddl.core.11",
+        "ddl.core.12",
+        "ddl.core.13",
+        "ddl.core.14",
+        "ddl.core.15",
+        "ddl.core.16",
+        "ddl.core.17",
+        "ddl.core.18",
+        "ddl.core.19",
+        "ddl.core.20",
+        "ddl.fixture.01",
+        "ddl.fixture.02",
+        "ddl.fixture.03",
+        "ddl.fixture.04",
+        "unit.add-encoding"
+      ],
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-schema-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"schema_version\":2,\"ordered_ddl_digests\":[\"c7411c49da538ec04e9057c3b3f54dea2385f032eda6de49a9b2d36c61f5b5d0\",\"77094987859950674d0fb0a2c2c65b6477a8342a49ca7befa404896d3c86cd37\",\"04a9783d64e719a11290d7fb02365436f6f48764a3c3fa136020b9446426c7d9\",\"d5838a17f1e13b2a70c8e01fba690b91b92d8d61045a2e9a518d121c7902636f\",\"b947177b11a1bdb16f9ec9ca4721577dc268318f204ffaffea6c620550fd3a71\",\"910147989d968f463b7ac06f23906b87b272875e37a653bfcf9efeede39d4463\",\"ab7370351503d81ad00c1d86dd04fbc7adf8c5e08e6974dcf2fbb3384fe322cc\",\"252df95eb1bf2b26d394c4c428d6e932fe6fb67f93db518838c263854c02ad8b\",\"d987176d61836919af40a90f7dc95be7e3c4195fc08d950699449bac3336b5e4\",\"97fbc47e2404af7a7ff818ed9ec1e069bcb7553e01ca465fa401b4e21e9ba5c1\",\"21eab0d8b092a7e47319cf2735078015835c22e0e7d1ff0e3f5a054d1cbe8e55\",\"f7c97a48960b250626c3129173adc33d1c025ef97f6012066bebde76e25bcaee\",\"124f4d457fc83cf2f7734884342b0091ef61ebc788031437bd46cc3d492faec8\",\"167756c3266f3b6a0b168b4961c44c7649e4d7b95112171225bfeacabb3fdcde\",\"f2128d59c53adb1948b55a1a2ed55495248d793926cde9e208b3b620ceca2ad1\",\"45b230428cc7a6ac784bc304130f9d77c1abd0c7715d4bb084f673ad72f7d106\",\"18c705d3ab5194fb147c0704dcefff7ef15581cf16d893af4c53b97f6c1cc47e\",\"de00ea82b3be348c6b498bd053b0f73e0e0a60fc6b95cec9a9aba23bdd6a542e\",\"3000ae9aee4d3ca700ee03a3df2092387eb124a16099f849391eb3dd64e6c860\",\"5b7ec9ae23c9ce0f48a2367e9a52bca2f8c98209bb8e82be5b68057e3881ea11\",\"efdf496d54172f51b2647b113387f012dea4ffc9affe662c8b8190104228b781\",\"355bfe45ef30e42e405245bf239fd1bcfdfe06276a368ebaa70ff57656d88504\",\"b17545e8bd4d69c1758d898a9e7e42f3d102800eaeecd569f6d9c4b466c05521\",\"815da8d90010c3bbe11f58bf8001c86fdf7f6a2dbec1237dc5e473a06f5ed89e\",\"fb2f60794d969675bdaa57509820991e7f8b1c2b3b74a0cf502067c5ad2273b3\"]}}",
+      "digest": "d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b"
+    },
+    "S2": {
+      "ddl_ids": [
+        "ddl.core.01",
+        "ddl.core.02",
+        "ddl.core.03",
+        "ddl.core.04",
+        "ddl.core.05",
+        "ddl.core.06",
+        "ddl.core.07",
+        "ddl.core.08",
+        "ddl.core.09",
+        "ddl.core.10",
+        "ddl.core.11",
+        "ddl.core.12",
+        "ddl.core.13",
+        "ddl.core.14",
+        "ddl.core.15",
+        "ddl.core.16",
+        "ddl.core.17",
+        "ddl.core.18",
+        "ddl.core.19",
+        "ddl.core.20",
+        "ddl.fixture.01",
+        "ddl.fixture.02",
+        "ddl.fixture.03",
+        "ddl.fixture.04",
+        "unit.add-encoding",
+        "unit.add-digest"
+      ],
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-schema-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"schema_version\":3,\"ordered_ddl_digests\":[\"c7411c49da538ec04e9057c3b3f54dea2385f032eda6de49a9b2d36c61f5b5d0\",\"77094987859950674d0fb0a2c2c65b6477a8342a49ca7befa404896d3c86cd37\",\"04a9783d64e719a11290d7fb02365436f6f48764a3c3fa136020b9446426c7d9\",\"d5838a17f1e13b2a70c8e01fba690b91b92d8d61045a2e9a518d121c7902636f\",\"b947177b11a1bdb16f9ec9ca4721577dc268318f204ffaffea6c620550fd3a71\",\"910147989d968f463b7ac06f23906b87b272875e37a653bfcf9efeede39d4463\",\"ab7370351503d81ad00c1d86dd04fbc7adf8c5e08e6974dcf2fbb3384fe322cc\",\"252df95eb1bf2b26d394c4c428d6e932fe6fb67f93db518838c263854c02ad8b\",\"d987176d61836919af40a90f7dc95be7e3c4195fc08d950699449bac3336b5e4\",\"97fbc47e2404af7a7ff818ed9ec1e069bcb7553e01ca465fa401b4e21e9ba5c1\",\"21eab0d8b092a7e47319cf2735078015835c22e0e7d1ff0e3f5a054d1cbe8e55\",\"f7c97a48960b250626c3129173adc33d1c025ef97f6012066bebde76e25bcaee\",\"124f4d457fc83cf2f7734884342b0091ef61ebc788031437bd46cc3d492faec8\",\"167756c3266f3b6a0b168b4961c44c7649e4d7b95112171225bfeacabb3fdcde\",\"f2128d59c53adb1948b55a1a2ed55495248d793926cde9e208b3b620ceca2ad1\",\"45b230428cc7a6ac784bc304130f9d77c1abd0c7715d4bb084f673ad72f7d106\",\"18c705d3ab5194fb147c0704dcefff7ef15581cf16d893af4c53b97f6c1cc47e\",\"de00ea82b3be348c6b498bd053b0f73e0e0a60fc6b95cec9a9aba23bdd6a542e\",\"3000ae9aee4d3ca700ee03a3df2092387eb124a16099f849391eb3dd64e6c860\",\"5b7ec9ae23c9ce0f48a2367e9a52bca2f8c98209bb8e82be5b68057e3881ea11\",\"efdf496d54172f51b2647b113387f012dea4ffc9affe662c8b8190104228b781\",\"355bfe45ef30e42e405245bf239fd1bcfdfe06276a368ebaa70ff57656d88504\",\"b17545e8bd4d69c1758d898a9e7e42f3d102800eaeecd569f6d9c4b466c05521\",\"815da8d90010c3bbe11f58bf8001c86fdf7f6a2dbec1237dc5e473a06f5ed89e\",\"fb2f60794d969675bdaa57509820991e7f8b1c2b3b74a0cf502067c5ad2273b3\",\"92a2ba1bc0a3bcaf0597904f8cc198c6c9976b8161d79ee010c085daea4d5e14\"]}}",
+      "digest": "0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608"
+    }
+  },
+  "independent_predicates": {
+    "S0": {
+      "id": "fixture-shape-s0",
+      "body": {
+        "schema_version": 1,
+        "schema_digest": "41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d",
+        "fact_id": "F1",
+        "payload_hex": "616c706861",
+        "encoding_version": null,
+        "payload_digest": null,
+        "allowance_id": "B1",
+        "limit_units": 10,
+        "consumed_units": 3,
+        "duty_id": "D1",
+        "cause_id": "original-cause",
+        "responsible_id": "E1",
+        "duty_status": "UNRESOLVED"
+      },
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-shape-predicate\",\"schema_version\":1,\"body\":{\"schema_version\":1,\"schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"fact_id\":\"F1\",\"payload_hex\":\"616c706861\",\"encoding_version\":null,\"payload_digest\":null,\"allowance_id\":\"B1\",\"limit_units\":10,\"consumed_units\":3,\"duty_id\":\"D1\",\"cause_id\":\"original-cause\",\"responsible_id\":\"E1\",\"duty_status\":\"UNRESOLVED\"}}",
+      "digest": "78806a8e099ba7b0bf20c7093be6639a0177b068b5bd7c4607bbd4095f0f2bc3",
+      "rules": [
+        "Exact schema and no unexpected relation/index/trigger",
+        "Exactly one fixture_fact, one fixture_allowance and one fixture_duty in the declared company",
+        "Match all stored fields, original identities and expected values; no rounded or missing values"
+      ]
+    },
+    "S1": {
+      "id": "fixture-shape-s1",
+      "body": {
+        "schema_version": 2,
+        "schema_digest": "d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b",
+        "fact_id": "F1",
+        "payload_hex": "616c706861",
+        "encoding_version": 1,
+        "payload_digest": null,
+        "allowance_id": "B1",
+        "limit_units": 10,
+        "consumed_units": 3,
+        "duty_id": "D1",
+        "cause_id": "original-cause",
+        "responsible_id": "E1",
+        "duty_status": "UNRESOLVED"
+      },
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-shape-predicate\",\"schema_version\":1,\"body\":{\"schema_version\":2,\"schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"fact_id\":\"F1\",\"payload_hex\":\"616c706861\",\"encoding_version\":1,\"payload_digest\":null,\"allowance_id\":\"B1\",\"limit_units\":10,\"consumed_units\":3,\"duty_id\":\"D1\",\"cause_id\":\"original-cause\",\"responsible_id\":\"E1\",\"duty_status\":\"UNRESOLVED\"}}",
+      "digest": "c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819",
+      "rules": [
+        "Exact schema and no unexpected relation/index/trigger",
+        "Exactly one fixture_fact, one fixture_allowance and one fixture_duty in the declared company",
+        "Match all stored fields, original identities and expected values; no rounded or missing values"
+      ]
+    },
+    "S2": {
+      "id": "fixture-shape-s2",
+      "body": {
+        "schema_version": 3,
+        "schema_digest": "0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608",
+        "fact_id": "F1",
+        "payload_hex": "616c706861",
+        "encoding_version": 1,
+        "payload_digest": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8",
+        "allowance_id": "B1",
+        "limit_units": 10,
+        "consumed_units": 3,
+        "duty_id": "D1",
+        "cause_id": "original-cause",
+        "responsible_id": "E1",
+        "duty_status": "UNRESOLVED"
+      },
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-shape-predicate\",\"schema_version\":1,\"body\":{\"schema_version\":3,\"schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"fact_id\":\"F1\",\"payload_hex\":\"616c706861\",\"encoding_version\":1,\"payload_digest\":\"8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8\",\"allowance_id\":\"B1\",\"limit_units\":10,\"consumed_units\":3,\"duty_id\":\"D1\",\"cause_id\":\"original-cause\",\"responsible_id\":\"E1\",\"duty_status\":\"UNRESOLVED\"}}",
+      "digest": "9850c6dca813456e54cdbedca9d22e7da781473fd3d958519bf807b8f29c3e31",
+      "rules": [
+        "Exact schema and no unexpected relation/index/trigger",
+        "Exactly one fixture_fact, one fixture_allowance and one fixture_duty in the declared company",
+        "Match all stored fields, original identities and expected values; no rounded or missing values"
+      ]
+    }
+  },
+  "compiled_entries": {
+    "U1": {
+      "id": "compiled-u1",
+      "source": "S0",
+      "target": "S1",
+      "statement_ids": [
+        "unit.add-encoding",
+        "unit.set-encoding"
+      ],
+      "fixed_update_parameters": {
+        "company_id": "fixture-company",
+        "fact_id": "F1",
+        "payload_hex": "616c706861"
+      },
+      "expected_update_rows": 1,
+      "compiled_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-compiled-entry\",\"schema_version\":1,\"body\":{\"entry_id\":\"compiled-u1\",\"ordered_statement_digests\":[\"fb2f60794d969675bdaa57509820991e7f8b1c2b3b74a0cf502067c5ad2273b3\",\"0902357cadff712218840ad86cf84c1d1018ed3d6d22e093f5e1ddccccf134ef\"],\"precondition_digest\":\"78806a8e099ba7b0bf20c7093be6639a0177b068b5bd7c4607bbd4095f0f2bc3\",\"postcondition_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\",\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}]}}",
+      "compiled_digest": "3eadecff29307f5d011116be6083a5bb6d5d1a2bcf6315b5256240c018b96f67",
+      "unit_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-unit-descriptor\",\"schema_version\":1,\"body\":{\"unit_id\":\"U1\",\"bundled_entry_id\":\"compiled-u1\",\"compiled_entry_digest\":\"3eadecff29307f5d011116be6083a5bb6d5d1a2bcf6315b5256240c018b96f67\",\"from_schema\":1,\"from_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"to_schema\":2,\"to_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"preconditions\":[{\"condition_id\":\"fixture-shape-s0\",\"expected_digest\":\"78806a8e099ba7b0bf20c7093be6639a0177b068b5bd7c4607bbd4095f0f2bc3\"}],\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}],\"postconditions\":[{\"condition_id\":\"fixture-shape-s1\",\"expected_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\"}]}}",
+      "unit_digest": "37c4625b7312809d7cddec4b1bd704611d5083af6c2ad94fe87b6773cdf41bae"
+    },
+    "U2": {
+      "id": "compiled-u2",
+      "source": "S1",
+      "target": "S2",
+      "statement_ids": [
+        "unit.add-digest",
+        "unit.set-digest"
+      ],
+      "fixed_update_parameters": {
+        "company_id": "fixture-company",
+        "fact_id": "F1",
+        "payload_hex": "616c706861",
+        "payload_digest": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8"
+      },
+      "expected_update_rows": 1,
+      "compiled_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-compiled-entry\",\"schema_version\":1,\"body\":{\"entry_id\":\"compiled-u2\",\"ordered_statement_digests\":[\"92a2ba1bc0a3bcaf0597904f8cc198c6c9976b8161d79ee010c085daea4d5e14\",\"01b9d8738e0fe8389491ee841e75d6abbef10c1f96a88dc3a45432d0ff5beacf\"],\"precondition_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\",\"postcondition_digest\":\"9850c6dca813456e54cdbedca9d22e7da781473fd3d958519bf807b8f29c3e31\",\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}]}}",
+      "compiled_digest": "cdb6b767b8ddc19858ee9e7ee743e7f3d6711ab3fa60bf33ca3ead67098373fa",
+      "unit_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-unit-descriptor\",\"schema_version\":1,\"body\":{\"unit_id\":\"U2\",\"bundled_entry_id\":\"compiled-u2\",\"compiled_entry_digest\":\"cdb6b767b8ddc19858ee9e7ee743e7f3d6711ab3fa60bf33ca3ead67098373fa\",\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"preconditions\":[{\"condition_id\":\"fixture-shape-s1\",\"expected_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\"}],\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}],\"postconditions\":[{\"condition_id\":\"fixture-shape-s2\",\"expected_digest\":\"9850c6dca813456e54cdbedca9d22e7da781473fd3d958519bf807b8f29c3e31\"}]}}",
+      "unit_digest": "f9eb729d17819648c3c93892b27c6fc88f2e59a7724fb24d60bf550fe9314d64"
+    },
+    "R1": {
+      "id": "compiled-r1",
+      "source": "S1",
+      "target": "S2",
+      "statement_ids": [
+        "unit.add-digest",
+        "unit.set-digest"
+      ],
+      "fixed_update_parameters": {
+        "company_id": "fixture-company",
+        "fact_id": "F1",
+        "payload_hex": "616c706861",
+        "payload_digest": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8"
+      },
+      "expected_update_rows": 1,
+      "compiled_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-compiled-entry\",\"schema_version\":1,\"body\":{\"entry_id\":\"compiled-r1\",\"ordered_statement_digests\":[\"92a2ba1bc0a3bcaf0597904f8cc198c6c9976b8161d79ee010c085daea4d5e14\",\"01b9d8738e0fe8389491ee841e75d6abbef10c1f96a88dc3a45432d0ff5beacf\"],\"precondition_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\",\"postcondition_digest\":\"9850c6dca813456e54cdbedca9d22e7da781473fd3d958519bf807b8f29c3e31\",\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}]}}",
+      "compiled_digest": "fb683a7bda7f9ec427f8cedfbf7ddbc92bf385d6a10d2a91d858fa45f73d1f0f",
+      "unit_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-unit-descriptor\",\"schema_version\":1,\"body\":{\"unit_id\":\"R1\",\"bundled_entry_id\":\"compiled-r1\",\"compiled_entry_digest\":\"fb683a7bda7f9ec427f8cedfbf7ddbc92bf385d6a10d2a91d858fa45f73d1f0f\",\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"preconditions\":[{\"condition_id\":\"fixture-shape-s1\",\"expected_digest\":\"c854dbbb4677e82f89245c6e645a487413fe16a24b2b74144765dc48d6e7b819\"}],\"permitted_writes\":[{\"relation_id\":\"fixture_fact\",\"operation\":\"ALTER_RELATION\"},{\"relation_id\":\"fixture_fact\",\"operation\":\"UPDATE\"}],\"postconditions\":[{\"condition_id\":\"fixture-shape-s2\",\"expected_digest\":\"9850c6dca813456e54cdbedca9d22e7da781473fd3d958519bf807b8f29c3e31\"}]}}",
+      "unit_digest": "f737c913518016fc60faaa55f0ff914373a8cb542c77e72a53e929d75a7e49a4"
+    }
+  },
+  "fixture_bundle": {
+    "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-bundle-manifest\",\"schema_version\":1,\"body\":{\"core_schema_digest\":\"48d7f798f8a4329f324bb79fbdf13077e33847ef740ee7b43aed9fe78e8f0b13\",\"fixture_schema_digests\":[\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\"],\"compiled_entries\":[\"3eadecff29307f5d011116be6083a5bb6d5d1a2bcf6315b5256240c018b96f67\",\"cdb6b767b8ddc19858ee9e7ee743e7f3d6711ab3fa60bf33ca3ead67098373fa\",\"fb683a7bda7f9ec427f8cedfbf7ddbc92bf385d6a10d2a91d858fa45f73d1f0f\"],\"codec_contract_digest\":\"91a7ad5dd5601831cbd076221940a6dff035781133bbd4e744be659c3985479a\"}}",
+    "digest": "0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40"
+  },
+  "operations": {
+    "M": {
+      "request_id": "admit-M",
+      "plan_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-plan\",\"schema_version\":1,\"body\":{\"source_schema\":1,\"source_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"target_schema\":3,\"target_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"units\":[{\"ordinal\":1,\"unit_id\":\"U1\",\"unit_digest\":\"37c4625b7312809d7cddec4b1bd704611d5083af6c2ad94fe87b6773cdf41bae\",\"bundled_entry_id\":\"compiled-u1\",\"from_schema\":1,\"from_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"to_schema\":2,\"to_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"preceding_checkpoint_digest\":\"5f0cf98aa7ca84408d3e0eb047669c4dc96ea954a23482d53d74004d60cd8460\",\"resulting_checkpoint_digest\":\"f9041b8a95978469b253b14812c2afff3cc4814059fb1ab3bde0de0e61bc0127\"},{\"ordinal\":2,\"unit_id\":\"U2\",\"unit_digest\":\"f9eb729d17819648c3c93892b27c6fc88f2e59a7724fb24d60bf550fe9314d64\",\"bundled_entry_id\":\"compiled-u2\",\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"preceding_checkpoint_digest\":\"f9041b8a95978469b253b14812c2afff3cc4814059fb1ab3bde0de0e61bc0127\",\"resulting_checkpoint_digest\":\"7248dc0fab4a884d9dca04fcab6e0bc1313c584db5d5c6be11683462073c4a3e\"}]}}",
+      "plan_digest": "392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb",
+      "intent_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-intent\",\"schema_version\":1,\"body\":{\"request_id\":\"admit-M\",\"company_id\":\"fixture-company\",\"store_id\":\"fixture-store\",\"operation_id\":\"M\",\"kind\":\"UPGRADE\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"source_bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"target_bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"predecessor_operation_id\":null,\"budget_owner_operation_id\":\"M\",\"unit_attempt_limit\":3,\"original_not_after\":\"2026-01-01T00:01:00.000Z\",\"responsible_kind\":\"FIXTURE\",\"responsible_id\":\"E1\"}}",
+      "intent_digest": "4960b5fc43eecee328e51b8185443bb4f0d587e9f0e297b0261eb48be4b46507",
+      "checkpoints": [
+        {
+          "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-checkpoint\",\"schema_version\":1,\"body\":{\"operation_id\":\"M\",\"committed_ordinal\":0,\"schema_version\":1,\"schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"committed_unit_digests\":[]}}",
+          "digest": "5f0cf98aa7ca84408d3e0eb047669c4dc96ea954a23482d53d74004d60cd8460"
+        },
+        {
+          "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-checkpoint\",\"schema_version\":1,\"body\":{\"operation_id\":\"M\",\"committed_ordinal\":1,\"schema_version\":2,\"schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"committed_unit_digests\":[\"37c4625b7312809d7cddec4b1bd704611d5083af6c2ad94fe87b6773cdf41bae\"]}}",
+          "digest": "f9041b8a95978469b253b14812c2afff3cc4814059fb1ab3bde0de0e61bc0127"
+        },
+        {
+          "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-checkpoint\",\"schema_version\":1,\"body\":{\"operation_id\":\"M\",\"committed_ordinal\":2,\"schema_version\":3,\"schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"committed_unit_digests\":[\"37c4625b7312809d7cddec4b1bd704611d5083af6c2ad94fe87b6773cdf41bae\",\"f9eb729d17819648c3c93892b27c6fc88f2e59a7724fb24d60bf550fe9314d64\"]}}",
+          "digest": "7248dc0fab4a884d9dca04fcab6e0bc1313c584db5d5c6be11683462073c4a3e"
+        }
+      ],
+      "units": [
+        "U1",
+        "U2"
+      ],
+      "budget_owner": "M",
+      "attempt_limit": 3,
+      "exclusive_deadline": "2026-01-01T00:01:00.000Z"
+    },
+    "R": {
+      "request_id": "repair-admit-R",
+      "plan_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-plan\",\"schema_version\":1,\"body\":{\"source_schema\":2,\"source_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"target_schema\":3,\"target_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"units\":[{\"ordinal\":1,\"unit_id\":\"R1\",\"unit_digest\":\"f737c913518016fc60faaa55f0ff914373a8cb542c77e72a53e929d75a7e49a4\",\"bundled_entry_id\":\"compiled-r1\",\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"preceding_checkpoint_digest\":\"db387d8c92b0f671a89b006a11756261ce614ab45acb8135f437f29ca2ea2507\",\"resulting_checkpoint_digest\":\"9217085c78c3b7b2606c11d21f1ad9329ef0b70d34e97cdb9c8fdb07d7880927\"}]}}",
+      "plan_digest": "23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081",
+      "intent_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-intent\",\"schema_version\":1,\"body\":{\"request_id\":\"repair-admit-R\",\"company_id\":\"fixture-company\",\"store_id\":\"fixture-store\",\"operation_id\":\"R\",\"kind\":\"REPAIR\",\"plan_digest\":\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\",\"source_bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"target_bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"predecessor_operation_id\":\"M\",\"budget_owner_operation_id\":\"M\",\"unit_attempt_limit\":3,\"original_not_after\":\"2026-01-01T00:01:00.000Z\",\"responsible_kind\":\"FIXTURE\",\"responsible_id\":\"E1\"}}",
+      "intent_digest": "bbd14fe84b2849c4ef08609403ae215ba022f1dca1e6d40aef16ba3a4435677b",
+      "checkpoints": [
+        {
+          "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-checkpoint\",\"schema_version\":1,\"body\":{\"operation_id\":\"R\",\"committed_ordinal\":0,\"schema_version\":2,\"schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"committed_unit_digests\":[]}}",
+          "digest": "db387d8c92b0f671a89b006a11756261ce614ab45acb8135f437f29ca2ea2507"
+        },
+        {
+          "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"maintenance-checkpoint\",\"schema_version\":1,\"body\":{\"operation_id\":\"R\",\"committed_ordinal\":1,\"schema_version\":3,\"schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"committed_unit_digests\":[\"f737c913518016fc60faaa55f0ff914373a8cb542c77e72a53e929d75a7e49a4\"]}}",
+          "digest": "9217085c78c3b7b2606c11d21f1ad9329ef0b70d34e97cdb9c8fdb07d7880927"
+        }
+      ],
+      "units": [
+        "R1"
+      ],
+      "budget_owner": "M",
+      "attempt_limit": 3,
+      "exclusive_deadline": "2026-01-01T00:01:00.000Z"
+    }
+  },
+  "replacement": {
+    "parent_request_id": "supersede-M-with-R",
+    "preallocated_child_request_id": "repair-admit-R",
+    "required_authority_keys": [
+      "SUPERSEDE M to R",
+      "REPAIR_ADMIT R from M"
+    ],
+    "cause_id": "M-cause",
+    "original_operation": "M",
+    "successor": "R"
+  },
+  "fixture_values": {
+    "company_id": "fixture-company",
+    "store_id": "fixture-store",
+    "initial_clock": "2026-01-01T00:00:00.000Z",
+    "clock_horizon_exclusive": "2026-01-01T00:02:00.000Z",
+    "amounts_are_synthetic": true,
+    "authority_source_keys": [
+      "AUTHORITY",
+      "STOP",
+      "POLICY",
+      "RESOURCE",
+      "RESPONSIBILITY",
+      "BINDING",
+      "TIME"
+    ]
+  },
+  "expected_trace": {
+    "created": {
+      "g": 1,
+      "r": 1,
+      "s": 1,
+      "schema": 1,
+      "slot": "IDLE",
+      "attempts": 0,
+      "open_causes": [],
+      "migration_pairs": [
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    "M-admitted": {
+      "g": 1,
+      "r": 2,
+      "s": 2,
+      "schema": 1,
+      "slot": "M:0",
+      "attempts": 0,
+      "open_causes": [
+        "M-cause"
+      ]
+    },
+    "U1-committed": {
+      "g": 1,
+      "r": 3,
+      "s": 4,
+      "schema": 2,
+      "slot": "M:1",
+      "attempts": 1,
+      "open_causes": [
+        "M-cause"
+      ]
+    },
+    "U2-claimed-before-application": {
+      "g": 1,
+      "r": 4,
+      "s": 5,
+      "schema": 2,
+      "slot": "M:1",
+      "attempts": 2,
+      "open_causes": [
+        "M-cause"
+      ]
+    },
+    "U2-transformed": {
+      "g": 1,
+      "r": 4,
+      "s": 6,
+      "schema": 3,
+      "slot": "M:2:TRANSFORMED",
+      "attempts": 2,
+      "open_causes": [
+        "M-cause"
+      ]
+    },
+    "normal-final": {
+      "g": 1,
+      "r": 5,
+      "s": 7,
+      "schema": 3,
+      "slot": "IDLE",
+      "attempts": 2,
+      "open_causes": [],
+      "migration_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "finalized": [
+        "M"
+      ]
+    },
+    "lost-U1-reply-reopen": {
+      "g": 2,
+      "r": 3,
+      "s": 5,
+      "schema": 2,
+      "slot": "M:1",
+      "attempts": 1,
+      "open_causes": [
+        "M-cause"
+      ],
+      "binding_receipts": 1
+    },
+    "lost-U1-reply-final": {
+      "g": 2,
+      "r": 5,
+      "s": 8,
+      "schema": 3,
+      "slot": "IDLE",
+      "attempts": 2,
+      "open_causes": [],
+      "finalized": [
+        "M"
+      ]
+    },
+    "lost-claim-or-rollback-reopen": {
+      "g": 2,
+      "r": 4,
+      "s": 6,
+      "schema": 2,
+      "slot": "M:1",
+      "attempts": 2,
+      "open_causes": [
+        "M-cause"
+      ],
+      "old_permits": 0
+    },
+    "last-charged-attempt-final": {
+      "g": 2,
+      "r": 6,
+      "s": 9,
+      "schema": 3,
+      "slot": "IDLE",
+      "attempts": 3,
+      "open_causes": [],
+      "finalized": [
+        "M"
+      ]
+    },
+    "replacement-from-S1": {
+      "g": 1,
+      "r": 4,
+      "s": 5,
+      "schema": 2,
+      "slot": "R:0",
+      "attempts": 1,
+      "open_causes": [
+        "M-cause"
+      ],
+      "cause_origin": "M",
+      "cause_responsible_operation": "R",
+      "linked_replacement_receipts": 2
+    },
+    "repair-final": {
+      "g": 1,
+      "r": 6,
+      "s": 8,
+      "schema": 3,
+      "slot": "IDLE",
+      "attempts": 2,
+      "open_causes": [],
+      "finalized": [
+        "R"
+      ],
+      "superseded": [
+        "M"
+      ]
+    }
+  },
+  "notes": [
+    "Both operations consume the same original M budget and deadline. B1 consumed 3 is a separate preserved fixture allowance, not the count of migration claims.",
+    "The declared manifest digest binds profile, schema number and exact ordered DDL. Compare actual catalog and all row invariants separately. A descriptor digest is not transformed-data evidence.",
+    "The fixture uses one loaded manifest for both admitted endpoints. Actual runner identity/source/options are separate observations and remain unbound.",
+    "Only fixture-main may carry these records or the source adapter; the ordinary build rejects them."
+  ],
+  "bootstrap_seed": {
+    "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-bootstrap-seed\",\"schema_version\":1,\"body\":{\"fact_id\":\"F1\",\"payload_hex\":\"616c706861\",\"allowance_bytes\":\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-allowance\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"allowance_id\\\":\\\"B1\\\",\\\"limit_units\\\":10,\\\"consumed_units\\\":3}}\",\"duty_bytes\":\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-duty\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"duty_id\\\":\\\"D1\\\",\\\"cause_id\\\":\\\"original-cause\\\",\\\"responsible_id\\\":\\\"E1\\\",\\\"status\\\":\\\"UNRESOLVED\\\"}}\",\"source_bytes\":[\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"AUTHORITY\\\",\\\"source_id\\\":\\\"fixture-authority\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"principal_id\\\":\\\"E1\\\",\\\"allowed_keys\\\":[{\\\"action\\\":\\\"ADMIT\\\",\\\"operation_id\\\":\\\"M\\\",\\\"plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\",\\\"unit_ordinal\\\":0,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"APPLY_UNIT\\\",\\\"operation_id\\\":\\\"M\\\",\\\"plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\",\\\"unit_ordinal\\\":1,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"APPLY_UNIT\\\",\\\"operation_id\\\":\\\"M\\\",\\\"plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\",\\\"unit_ordinal\\\":2,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"APPLY_UNIT\\\",\\\"operation_id\\\":\\\"R\\\",\\\"plan_digest\\\":\\\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\\\",\\\"unit_ordinal\\\":1,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"FINALIZE\\\",\\\"operation_id\\\":\\\"M\\\",\\\"plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\",\\\"unit_ordinal\\\":0,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"FINALIZE\\\",\\\"operation_id\\\":\\\"R\\\",\\\"plan_digest\\\":\\\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\\\",\\\"unit_ordinal\\\":0,\\\"peer_operation_id\\\":null,\\\"peer_plan_digest\\\":null},{\\\"action\\\":\\\"REPAIR_ADMIT\\\",\\\"operation_id\\\":\\\"R\\\",\\\"plan_digest\\\":\\\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\\\",\\\"unit_ordinal\\\":0,\\\"peer_operation_id\\\":\\\"M\\\",\\\"peer_plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\"},{\\\"action\\\":\\\"SUPERSEDE\\\",\\\"operation_id\\\":\\\"M\\\",\\\"plan_digest\\\":\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\",\\\"unit_ordinal\\\":0,\\\"peer_operation_id\\\":\\\"R\\\",\\\"peer_plan_digest\\\":\\\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\\\"}]}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"STOP\\\",\\\"source_id\\\":\\\"fixture-stop\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"maintenance_stopped\\\":false,\\\"ordinary_stopped\\\":false}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"POLICY\\\",\\\"source_id\\\":\\\"fixture-policy\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"control_schema_version\\\":1,\\\"allowed_plan_digests\\\":[\\\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\\\",\\\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\\\"],\\\"max_unit_count\\\":2}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"RESOURCE\\\",\\\"source_id\\\":\\\"fixture-resource\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"allowance_id\\\":\\\"B1\\\",\\\"allowance_digest\\\":\\\"33505bf998825dec264b277b3cf3b381ac5ff1f17dec0a1a3a9647d55a5550f5\\\"}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"RESPONSIBILITY\\\",\\\"source_id\\\":\\\"fixture-responsibility\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"duty_id\\\":\\\"D1\\\",\\\"duty_digest\\\":\\\"f9262c90a96608365f7f3dd1c7dd4a13d338e8386fbd1477651b0271f21eabde\\\",\\\"responsible_id\\\":\\\"E1\\\"}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"BINDING\\\",\\\"source_id\\\":\\\"fixture-binding\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"bundle_digest\\\":\\\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\\\",\\\"compatible_schemas\\\":[{\\\"schema_version\\\":1,\\\"schema_digest\\\":\\\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\\\"},{\\\"schema_version\\\":2,\\\"schema_digest\\\":\\\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\\\"},{\\\"schema_version\\\":3,\\\"schema_digest\\\":\\\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\\\"}]}}}\",\"{\\\"normalization_version\\\":1,\\\"schema_name\\\":\\\"fixture-control-source\\\",\\\"schema_version\\\":1,\\\"body\\\":{\\\"dependency_kind\\\":\\\"TIME\\\",\\\"source_id\\\":\\\"fixture-time\\\",\\\"revision\\\":1,\\\"value\\\":{\\\"clock_id\\\":\\\"fixture-clock\\\",\\\"tick\\\":1,\\\"lower_utc\\\":\\\"2026-01-01T00:00:00.000Z\\\",\\\"upper_utc\\\":\\\"2026-01-01T00:00:00.000Z\\\",\\\"qualified_until\\\":\\\"2026-01-01T00:02:00.000Z\\\",\\\"verified\\\":true}}}\"]}}",
+    "digest": "40fa5cd65d26b998edd1d75f085870e81b70157ecfc8cc412763ede389db98c1",
+    "source_records": [
+      {
+        "kind": "AUTHORITY",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"AUTHORITY\",\"source_id\":\"fixture-authority\",\"revision\":1,\"value\":{\"principal_id\":\"E1\",\"allowed_keys\":[{\"action\":\"ADMIT\",\"operation_id\":\"M\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"unit_ordinal\":0,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"APPLY_UNIT\",\"operation_id\":\"M\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"unit_ordinal\":1,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"APPLY_UNIT\",\"operation_id\":\"M\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"unit_ordinal\":2,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"APPLY_UNIT\",\"operation_id\":\"R\",\"plan_digest\":\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\",\"unit_ordinal\":1,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"FINALIZE\",\"operation_id\":\"M\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"unit_ordinal\":0,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"FINALIZE\",\"operation_id\":\"R\",\"plan_digest\":\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\",\"unit_ordinal\":0,\"peer_operation_id\":null,\"peer_plan_digest\":null},{\"action\":\"REPAIR_ADMIT\",\"operation_id\":\"R\",\"plan_digest\":\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\",\"unit_ordinal\":0,\"peer_operation_id\":\"M\",\"peer_plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\"},{\"action\":\"SUPERSEDE\",\"operation_id\":\"M\",\"plan_digest\":\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\",\"unit_ordinal\":0,\"peer_operation_id\":\"R\",\"peer_plan_digest\":\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\"}]}}}",
+        "digest": "e7e4d57ffb9f6e4e99fc41694b352fd19657c3a1872f6cb56bcb1cde8672ca5e"
+      },
+      {
+        "kind": "STOP",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"STOP\",\"source_id\":\"fixture-stop\",\"revision\":1,\"value\":{\"maintenance_stopped\":false,\"ordinary_stopped\":false}}}",
+        "digest": "e6758534158851430c8fd0e267d114366db48747e706c68730b73a562032dc35"
+      },
+      {
+        "kind": "POLICY",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"POLICY\",\"source_id\":\"fixture-policy\",\"revision\":1,\"value\":{\"control_schema_version\":1,\"allowed_plan_digests\":[\"23ae8e5b3fcf8769e3a32d5eeabbb2285b0f47097341d6d8cccddcdc4e583081\",\"392fe56c09abc4f86d2a82effd1afa9d500c6c298ed37d67f6a9c6b6ad2055cb\"],\"max_unit_count\":2}}}",
+        "digest": "d633eb3e53e43cb096e677628e5fb25a4f2162cdcb86795bc3e11d9bd3b1668b"
+      },
+      {
+        "kind": "RESOURCE",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"RESOURCE\",\"source_id\":\"fixture-resource\",\"revision\":1,\"value\":{\"allowance_id\":\"B1\",\"allowance_digest\":\"33505bf998825dec264b277b3cf3b381ac5ff1f17dec0a1a3a9647d55a5550f5\"}}}",
+        "digest": "1b937a138d9f3411c6de6697410d9474c1b048d6318c898c616b92827363e3f7"
+      },
+      {
+        "kind": "RESPONSIBILITY",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"RESPONSIBILITY\",\"source_id\":\"fixture-responsibility\",\"revision\":1,\"value\":{\"duty_id\":\"D1\",\"duty_digest\":\"f9262c90a96608365f7f3dd1c7dd4a13d338e8386fbd1477651b0271f21eabde\",\"responsible_id\":\"E1\"}}}",
+        "digest": "cda93bfe633acd9556cdab7fd720dfce6bc79369645c2c5bac9bafe6bac02abf"
+      },
+      {
+        "kind": "BINDING",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"BINDING\",\"source_id\":\"fixture-binding\",\"revision\":1,\"value\":{\"bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"compatible_schemas\":[{\"schema_version\":1,\"schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\"},{\"schema_version\":2,\"schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\"},{\"schema_version\":3,\"schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\"}]}}}",
+        "digest": "7e9aa4eeae0c40c11d8125a20712358cdbfbf4f5370335b7e96584adf709afaf"
+      },
+      {
+        "kind": "TIME",
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"TIME\",\"source_id\":\"fixture-time\",\"revision\":1,\"value\":{\"clock_id\":\"fixture-clock\",\"tick\":1,\"lower_utc\":\"2026-01-01T00:00:00.000Z\",\"upper_utc\":\"2026-01-01T00:00:00.000Z\",\"qualified_until\":\"2026-01-01T00:02:00.000Z\",\"verified\":true}}}",
+        "digest": "c1362d230a93b3fda6b3b3aa296224d15f724bf558027e7ff4dccaa61ad492d1"
+      }
+    ],
+    "allowance_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-allowance\",\"schema_version\":1,\"body\":{\"allowance_id\":\"B1\",\"limit_units\":10,\"consumed_units\":3}}",
+    "duty_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-duty\",\"schema_version\":1,\"body\":{\"duty_id\":\"D1\",\"cause_id\":\"original-cause\",\"responsible_id\":\"E1\",\"status\":\"UNRESOLVED\"}}"
+  },
+  "initial_manifests": {
+    "core": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-initial-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"core\",\"initial_schema_digest\":\"48d7f798f8a4329f324bb79fbdf13077e33847ef740ee7b43aed9fe78e8f0b13\",\"fixture_bundle_digest\":null,\"fixture_seed_digest\":null}}",
+      "digest": "483ef54d9e5aa045b7c51321245604a096a49368271c687e23c745b0f859428d"
+    },
+    "fixture": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"storage-initial-manifest\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"initial_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"fixture_bundle_digest\":\"0afa42ce90ea80406939d509b22f595af884a2bf15c5da1c926ad48251652b40\",\"fixture_seed_digest\":\"40fa5cd65d26b998edd1d75f085870e81b70157ecfc8cc412763ede389db98c1\"}}",
+      "digest": "c4c11241a5a5f6fdc28ee2e40221e2ed852c5460071a25734f3e4b336b550f7d"
+    }
+  },
+  "migration_identities": {
+    "bootstrap-core": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"schema-migration-identity\",\"schema_version\":1,\"body\":{\"profile\":\"core\",\"migration_number\":1,\"from_schema\":0,\"from_schema_digest\":null,\"to_schema\":1,\"to_schema_digest\":\"48d7f798f8a4329f324bb79fbdf13077e33847ef740ee7b43aed9fe78e8f0b13\",\"initial_manifest_digest\":\"483ef54d9e5aa045b7c51321245604a096a49368271c687e23c745b0f859428d\",\"operation_id\":null,\"unit_digest\":null}}",
+      "digest": "86a272bee64d8a2b125c96ce5fbe57e0bc64ee75f037e68279091e8304091ca5"
+    },
+    "bootstrap-fixture": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"schema-migration-identity\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"migration_number\":1,\"from_schema\":0,\"from_schema_digest\":null,\"to_schema\":1,\"to_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"initial_manifest_digest\":\"c4c11241a5a5f6fdc28ee2e40221e2ed852c5460071a25734f3e4b336b550f7d\",\"operation_id\":null,\"unit_digest\":null}}",
+      "digest": "1a8c91de9c3b78c0623b80cdc5331872217e190c9d5661fafe310b8911564291"
+    },
+    "U1": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"schema-migration-identity\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"migration_number\":2,\"from_schema\":1,\"from_schema_digest\":\"41ddd42ddbac6bb23622b4661814389e1b6ef5209b90d592e0bc37b1982f2f4d\",\"to_schema\":2,\"to_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"initial_manifest_digest\":null,\"operation_id\":\"M\",\"unit_digest\":\"37c4625b7312809d7cddec4b1bd704611d5083af6c2ad94fe87b6773cdf41bae\"}}",
+      "digest": "5a3f30f6b2134f6843722f60e885c47bce92c60f7430d46401896a338fe2375d"
+    },
+    "U2": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"schema-migration-identity\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"migration_number\":3,\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"initial_manifest_digest\":null,\"operation_id\":\"M\",\"unit_digest\":\"f9eb729d17819648c3c93892b27c6fc88f2e59a7724fb24d60bf550fe9314d64\"}}",
+      "digest": "3939a7426dd864eed02e99e91accbc0f586f8aaca62d714c6c75a3cf3f9699bb"
+    },
+    "R1": {
+      "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"schema-migration-identity\",\"schema_version\":1,\"body\":{\"profile\":\"fixture\",\"migration_number\":3,\"from_schema\":2,\"from_schema_digest\":\"d5cd905b8a722feee6d67939bad6b4169d845dae843e931f6ccd9507d719784b\",\"to_schema\":3,\"to_schema_digest\":\"0bd8ece92ad50c4b80695dc7b37772cf26afc650cec1e40fd5095e4f3871d608\",\"initial_manifest_digest\":null,\"operation_id\":\"R\",\"unit_digest\":\"f737c913518016fc60faaa55f0ff914373a8cb542c77e72a53e929d75a7e49a4\"}}",
+      "digest": "e44d4a331f6278688d00cd2034f1f04f2c01173a976d5a64c71538202f021a53"
+    }
+  },
+  "fixture_control_ingress": {
+    "profile": "qualification",
+    "supervisor_principal": "fixture-supervisor",
+    "maintenance_principal": "E1",
+    "scope": "Separate supervised fixture port with current company/store/generation/entry binding. Source command grants are supplied by the port, including clock observations."
+  },
+  "current_time_controls": {
+    "exclusive_deadline": "2026-01-01T00:01:00.000Z",
+    "qualified_until": "2026-01-01T00:02:00.000Z",
+    "persisted_anchor": "fixture-time/revision-1",
+    "clock_owner": "fixture-supervisor",
+    "scenarios": [
+      {
+        "name": "expired-after-service-death",
+        "lower": "2026-01-01T00:01:00.000Z",
+        "upper": "2026-01-01T00:01:00.000Z",
+        "expected": "deny-expired"
+      },
+      {
+        "name": "straddles-original-expiry",
+        "lower": "2026-01-01T00:00:59.000Z",
+        "upper": "2026-01-01T00:01:01.000Z",
+        "expected": "deny-undetermined"
+      },
+      {
+        "name": "disconnected-after-service-death",
+        "lower": null,
+        "upper": null,
+        "expected": "deny-undetermined"
+      },
+      {
+        "name": "fresh-current-incarnation-within-original-window",
+        "lower": "2026-01-01T00:00:30.000Z",
+        "upper": "2026-01-01T00:00:30.000Z",
+        "expected": "eligible-if-other-guards-pass"
+      }
+    ],
+    "short_horizon_branch": {
+      "precondition": "Reach S1 using the original anchor. At 00:00:20.000 UTC the current supervisor commits only the TIME source replacement and its complete affected projections. Observe that receipt, terminate the subject, and acquire a fresh generation from the same store.",
+      "action": "Request the eligible next U2 claim from the successor with the exact revision-2 anchor. Use a separate identical branch for each observation.",
+      "original_deadline": "2026-01-01T00:01:00.000Z",
+      "time_source": {
+        "canonical_bytes": "{\"normalization_version\":1,\"schema_name\":\"fixture-control-source\",\"schema_version\":1,\"body\":{\"dependency_kind\":\"TIME\",\"source_id\":\"fixture-time\",\"revision\":2,\"value\":{\"clock_id\":\"fixture-clock\",\"tick\":2,\"lower_utc\":\"2026-01-01T00:00:20.000Z\",\"upper_utc\":\"2026-01-01T00:00:20.000Z\",\"qualified_until\":\"2026-01-01T00:00:40.000Z\",\"verified\":true}}}",
+        "digest": "9ed6f9a68b3a643cac169e4307c3ed765ec9fa975a90d0bb9465b23c35c273a8"
+      },
+      "scenarios": [
+        {
+          "name": "equals-anchor-horizon",
+          "lower": "2026-01-01T00:00:40.000Z",
+          "upper": "2026-01-01T00:00:40.000Z",
+          "expected": "deny-expired-horizon"
+        },
+        {
+          "name": "straddles-anchor-horizon",
+          "lower": "2026-01-01T00:00:39.999Z",
+          "upper": "2026-01-01T00:00:40.001Z",
+          "expected": "deny-undetermined"
+        },
+        {
+          "name": "just-before-anchor-horizon",
+          "lower": "2026-01-01T00:00:39.999Z",
+          "upper": "2026-01-01T00:00:39.999Z",
+          "expected": "eligible-if-other-guards-pass"
+        }
+      ]
+    }
+  }
+}

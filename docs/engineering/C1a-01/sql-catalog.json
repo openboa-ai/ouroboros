@@ -1,0 +1,1435 @@
+{
+  "change_id": "C1a-01",
+  "status": "candidate",
+  "bound_executable": null,
+  "notes": [
+    "Bind each parameter using the corresponding typed column or expected-value rule.",
+    "The order lists identify owning transactions. Bind each check step to its actual reads and the affected-row evidence.",
+    "Compile the fixture DDL into the qualification subject."
+  ],
+  "ordered_transactions": {
+    "initialize": [
+      "begin",
+      "ddl.core.01",
+      "ddl.core.02",
+      "ddl.core.03",
+      "ddl.core.04",
+      "ddl.core.05",
+      "ddl.core.06",
+      "ddl.core.07",
+      "ddl.core.08",
+      "ddl.core.09",
+      "ddl.core.10",
+      "ddl.core.11",
+      "ddl.core.12",
+      "ddl.core.13",
+      "ddl.core.14",
+      "ddl.core.15",
+      "ddl.core.16",
+      "ddl.core.17",
+      "ddl.core.18",
+      "ddl.core.19",
+      "ddl.core.20",
+      "fixture-only:ddl.fixture.*",
+      "insert.company_store",
+      "insert.mutation_group",
+      "check:exact-migration-identity",
+      "insert.schema_migration",
+      "insert.storage_entry",
+      "insert.maintenance_executor",
+      "fixture-only:bootstrap-fixture-rows",
+      "insert.audit_entry",
+      "check:complete-initial-snapshot",
+      "commit"
+    ],
+    "acquire-generation": [
+      "begin",
+      "check:complete-current-inventory",
+      "check:current-owner-and-compatible-snapshot",
+      "insert.mutation_group",
+      "insert.storage_entry",
+      "if-occupied:insert.maintenance_receipt",
+      "if-occupied:cas.executor",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "admit": [
+      "begin",
+      "check:original-key-current-control-and-idle",
+      "insert.mutation_group",
+      "insert.maintenance_operation",
+      "each-ordinal:insert.maintenance_unit",
+      "insert.maintenance_receipt",
+      "insert.maintenance_admission",
+      "each-action-key:insert.maintenance_control",
+      "each-dependency:insert.maintenance_control_dependency",
+      "each-declared-cause:insert.maintenance_restriction",
+      "cas.executor",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "claim": [
+      "begin",
+      "check:exact-next-unit-current-control-and-new-slot",
+      "insert.mutation_group",
+      "insert.maintenance_receipt",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "apply-unit": [
+      "begin",
+      "check:consume-one-volatile-permit-and-validate-current-snapshot",
+      "insert.mutation_group",
+      "compiled:exact-unit-statements",
+      "check:independent-declared-unit-postconditions",
+      "if-schema-step:check:exact-migration-identity",
+      "if-schema-step:insert.schema_migration",
+      "insert.maintenance_receipt",
+      "cas.executor",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "apply-control": [
+      "begin",
+      "check:current-source-command-and-complete-affected-projection-set",
+      "insert.mutation_group",
+      "cas.fixture-source",
+      "each-affected-control:cas.control",
+      "each-affected-control:delete.exact-dependencies",
+      "each-new-dependency:insert.maintenance_control_dependency",
+      "insert.maintenance_receipt",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "replace-with-repair": [
+      "begin",
+      "check:old-checkpoint-and-both-current-authorizations",
+      "insert.mutation_group",
+      "insert.maintenance_operation",
+      "each-repair-ordinal:insert.maintenance_unit",
+      "parent:insert.maintenance_receipt",
+      "child:insert.maintenance_receipt",
+      "insert.maintenance_admission",
+      "each-child-action-key:insert.maintenance_control",
+      "each-child-dependency:insert.maintenance_control_dependency",
+      "cas.executor",
+      "each-inherited-cause:cas.restriction",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ],
+    "finalize": [
+      "begin",
+      "check:current-control-and-all-final-invariants",
+      "insert.mutation_group",
+      "insert.maintenance_receipt",
+      "each-specified-cause:cas.restriction",
+      "cas.executor",
+      "insert.audit_entry",
+      "cas.company",
+      "check:complete-group",
+      "commit"
+    ]
+  },
+  "physical_columns": {
+    "audit_entry": [
+      "company_id",
+      "record_sequence",
+      "transaction_id",
+      "event_kind",
+      "body_bytes",
+      "body_digest"
+    ],
+    "company_store": [
+      "company_id",
+      "singleton",
+      "schema_version",
+      "schema_digest",
+      "state_revision",
+      "record_sequence",
+      "generation",
+      "created_at_ms"
+    ],
+    "fixture_allowance": [
+      "company_id",
+      "allowance_id",
+      "limit_units",
+      "consumed_units"
+    ],
+    "fixture_control_source": [
+      "company_id",
+      "dependency_kind",
+      "source_id",
+      "revision",
+      "body_bytes",
+      "body_digest",
+      "transaction_id"
+    ],
+    "fixture_duty": [
+      "company_id",
+      "duty_id",
+      "cause_id",
+      "responsible_id",
+      "status"
+    ],
+    "fixture_fact": [
+      "company_id",
+      "fact_id",
+      "payload"
+    ],
+    "maintenance_admission": [
+      "company_id",
+      "operation_id",
+      "original_receipt_id",
+      "source_kind",
+      "source_record_kind",
+      "source_record_id",
+      "source_record_revision",
+      "source_record_digest",
+      "admission_control_digest",
+      "original_responsible_kind",
+      "original_responsible_id",
+      "original_continuity_bytes",
+      "admitted_transaction_id"
+    ],
+    "maintenance_control": [
+      "company_id",
+      "operation_id",
+      "action",
+      "unit_ordinal",
+      "version",
+      "source_kind",
+      "source_record_kind",
+      "source_record_id",
+      "source_record_revision",
+      "source_record_digest",
+      "currentness",
+      "verdict",
+      "reason_code",
+      "expected_checkpoint_digest",
+      "dependency_digest",
+      "assessment_bytes",
+      "updated_transaction_id"
+    ],
+    "maintenance_control_dependency": [
+      "company_id",
+      "operation_id",
+      "action",
+      "unit_ordinal",
+      "dependency_kind",
+      "dependency_id",
+      "expected_revision",
+      "source_digest"
+    ],
+    "maintenance_executor": [
+      "company_id",
+      "version",
+      "operation_id",
+      "bound_generation",
+      "committed_ordinal",
+      "checkpoint_digest",
+      "actual_schema",
+      "actual_schema_digest",
+      "phase",
+      "responsible_kind",
+      "responsible_id",
+      "next_condition_bytes",
+      "last_progress_receipt_id"
+    ],
+    "maintenance_operation": [
+      "company_id",
+      "operation_id",
+      "request_id",
+      "principal_kind",
+      "principal_id",
+      "kind",
+      "store_id",
+      "intent_bytes",
+      "intent_digest",
+      "plan_bytes",
+      "plan_digest",
+      "source_bundle_digest",
+      "target_bundle_digest",
+      "source_schema",
+      "source_schema_digest",
+      "target_schema",
+      "target_schema_digest",
+      "unit_count",
+      "original_not_after",
+      "budget_owner_operation_id",
+      "unit_attempt_limit",
+      "predecessor_operation_id",
+      "created_transaction_id"
+    ],
+    "maintenance_receipt": [
+      "company_id",
+      "receipt_id",
+      "operation_id",
+      "request_id",
+      "parent_request_id",
+      "request_bytes",
+      "request_digest",
+      "principal_kind",
+      "principal_id",
+      "kind",
+      "unit_ordinal",
+      "unit_digest",
+      "claim_receipt_id",
+      "checkpoint_digest",
+      "result_schema",
+      "result_schema_digest",
+      "schema_migration_number",
+      "generation",
+      "transaction_id",
+      "result_bytes",
+      "recorded_at_ms"
+    ],
+    "maintenance_restriction": [
+      "company_id",
+      "restriction_id",
+      "version",
+      "origin_operation_id",
+      "responsible_operation_id",
+      "status",
+      "responsible_kind",
+      "responsible_id",
+      "next_condition_bytes",
+      "created_receipt_id",
+      "resolution_receipt_id"
+    ],
+    "maintenance_unit": [
+      "company_id",
+      "operation_id",
+      "ordinal",
+      "unit_id",
+      "unit_digest",
+      "from_schema",
+      "from_schema_digest",
+      "to_schema",
+      "to_schema_digest",
+      "precondition_bytes",
+      "permitted_write_set_bytes",
+      "postcondition_bytes",
+      "preceding_checkpoint_digest",
+      "resulting_checkpoint_digest",
+      "bundled_entry_id"
+    ],
+    "mutation_group": [
+      "company_id",
+      "transaction_id",
+      "generation",
+      "first_sequence",
+      "last_sequence",
+      "state_before",
+      "state_after",
+      "recorded_at_ms"
+    ],
+    "schema_migration": [
+      "migration_number",
+      "migration_digest",
+      "from_schema",
+      "to_schema",
+      "completed_at_ms"
+    ],
+    "storage_entry": [
+      "company_id",
+      "entry_id",
+      "kind",
+      "creation_id",
+      "store_id",
+      "intent_digest",
+      "allocation_digest",
+      "generation",
+      "previous_generation",
+      "schema_version",
+      "schema_digest",
+      "transaction_id",
+      "recorded_at_ms"
+    ]
+  },
+  "statements": {
+    "insert.audit_entry": {
+      "sql": "INSERT INTO audit_entry (company_id,record_sequence,transaction_id,event_kind,body_bytes,body_digest) VALUES (:company_id,:record_sequence,:transaction_id,:event_kind,:body_bytes,:body_digest)",
+      "parameters": [
+        "company_id",
+        "record_sequence",
+        "transaction_id",
+        "event_kind",
+        "body_bytes",
+        "body_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.company_store": {
+      "sql": "INSERT INTO company_store (company_id,singleton,schema_version,schema_digest,state_revision,record_sequence,generation,created_at_ms) VALUES (:company_id,:singleton,:schema_version,:schema_digest,:state_revision,:record_sequence,:generation,:created_at_ms)",
+      "parameters": [
+        "company_id",
+        "singleton",
+        "schema_version",
+        "schema_digest",
+        "state_revision",
+        "record_sequence",
+        "generation",
+        "created_at_ms"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.fixture_allowance": {
+      "sql": "INSERT INTO fixture_allowance (company_id,allowance_id,limit_units,consumed_units) VALUES (:company_id,:allowance_id,:limit_units,:consumed_units)",
+      "parameters": [
+        "company_id",
+        "allowance_id",
+        "limit_units",
+        "consumed_units"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "insert.fixture_control_source": {
+      "sql": "INSERT INTO fixture_control_source (company_id,dependency_kind,source_id,revision,body_bytes,body_digest,transaction_id) VALUES (:company_id,:dependency_kind,:source_id,:revision,:body_bytes,:body_digest,:transaction_id)",
+      "parameters": [
+        "company_id",
+        "dependency_kind",
+        "source_id",
+        "revision",
+        "body_bytes",
+        "body_digest",
+        "transaction_id"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "insert.fixture_duty": {
+      "sql": "INSERT INTO fixture_duty (company_id,duty_id,cause_id,responsible_id,status) VALUES (:company_id,:duty_id,:cause_id,:responsible_id,:status)",
+      "parameters": [
+        "company_id",
+        "duty_id",
+        "cause_id",
+        "responsible_id",
+        "status"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "insert.fixture_fact": {
+      "sql": "INSERT INTO fixture_fact (company_id,fact_id,payload) VALUES (:company_id,:fact_id,:payload)",
+      "parameters": [
+        "company_id",
+        "fact_id",
+        "payload"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": 1
+    },
+    "insert.maintenance_admission": {
+      "sql": "INSERT INTO maintenance_admission (company_id,operation_id,original_receipt_id,source_kind,source_record_kind,source_record_id,source_record_revision,source_record_digest,admission_control_digest,original_responsible_kind,original_responsible_id,original_continuity_bytes,admitted_transaction_id) VALUES (:company_id,:operation_id,:original_receipt_id,:source_kind,:source_record_kind,:source_record_id,:source_record_revision,:source_record_digest,:admission_control_digest,:original_responsible_kind,:original_responsible_id,:original_continuity_bytes,:admitted_transaction_id)",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "original_receipt_id",
+        "source_kind",
+        "source_record_kind",
+        "source_record_id",
+        "source_record_revision",
+        "source_record_digest",
+        "admission_control_digest",
+        "original_responsible_kind",
+        "original_responsible_id",
+        "original_continuity_bytes",
+        "admitted_transaction_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_control": {
+      "sql": "INSERT INTO maintenance_control (company_id,operation_id,action,unit_ordinal,version,source_kind,source_record_kind,source_record_id,source_record_revision,source_record_digest,currentness,verdict,reason_code,expected_checkpoint_digest,dependency_digest,assessment_bytes,updated_transaction_id) VALUES (:company_id,:operation_id,:action,:unit_ordinal,:version,:source_kind,:source_record_kind,:source_record_id,:source_record_revision,:source_record_digest,:currentness,:verdict,:reason_code,:expected_checkpoint_digest,:dependency_digest,:assessment_bytes,:updated_transaction_id)",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal",
+        "version",
+        "source_kind",
+        "source_record_kind",
+        "source_record_id",
+        "source_record_revision",
+        "source_record_digest",
+        "currentness",
+        "verdict",
+        "reason_code",
+        "expected_checkpoint_digest",
+        "dependency_digest",
+        "assessment_bytes",
+        "updated_transaction_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_control_dependency": {
+      "sql": "INSERT INTO maintenance_control_dependency (company_id,operation_id,action,unit_ordinal,dependency_kind,dependency_id,expected_revision,source_digest) VALUES (:company_id,:operation_id,:action,:unit_ordinal,:dependency_kind,:dependency_id,:expected_revision,:source_digest)",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal",
+        "dependency_kind",
+        "dependency_id",
+        "expected_revision",
+        "source_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_executor": {
+      "sql": "INSERT INTO maintenance_executor (company_id,version,operation_id,bound_generation,committed_ordinal,checkpoint_digest,actual_schema,actual_schema_digest,phase,responsible_kind,responsible_id,next_condition_bytes,last_progress_receipt_id) VALUES (:company_id,:version,:operation_id,:bound_generation,:committed_ordinal,:checkpoint_digest,:actual_schema,:actual_schema_digest,:phase,:responsible_kind,:responsible_id,:next_condition_bytes,:last_progress_receipt_id)",
+      "parameters": [
+        "company_id",
+        "version",
+        "operation_id",
+        "bound_generation",
+        "committed_ordinal",
+        "checkpoint_digest",
+        "actual_schema",
+        "actual_schema_digest",
+        "phase",
+        "responsible_kind",
+        "responsible_id",
+        "next_condition_bytes",
+        "last_progress_receipt_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_operation": {
+      "sql": "INSERT INTO maintenance_operation (company_id,operation_id,request_id,principal_kind,principal_id,kind,store_id,intent_bytes,intent_digest,plan_bytes,plan_digest,source_bundle_digest,target_bundle_digest,source_schema,source_schema_digest,target_schema,target_schema_digest,unit_count,original_not_after,budget_owner_operation_id,unit_attempt_limit,predecessor_operation_id,created_transaction_id) VALUES (:company_id,:operation_id,:request_id,:principal_kind,:principal_id,:kind,:store_id,:intent_bytes,:intent_digest,:plan_bytes,:plan_digest,:source_bundle_digest,:target_bundle_digest,:source_schema,:source_schema_digest,:target_schema,:target_schema_digest,:unit_count,:original_not_after,:budget_owner_operation_id,:unit_attempt_limit,:predecessor_operation_id,:created_transaction_id)",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "request_id",
+        "principal_kind",
+        "principal_id",
+        "kind",
+        "store_id",
+        "intent_bytes",
+        "intent_digest",
+        "plan_bytes",
+        "plan_digest",
+        "source_bundle_digest",
+        "target_bundle_digest",
+        "source_schema",
+        "source_schema_digest",
+        "target_schema",
+        "target_schema_digest",
+        "unit_count",
+        "original_not_after",
+        "budget_owner_operation_id",
+        "unit_attempt_limit",
+        "predecessor_operation_id",
+        "created_transaction_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_receipt": {
+      "sql": "INSERT INTO maintenance_receipt (company_id,receipt_id,operation_id,request_id,parent_request_id,request_bytes,request_digest,principal_kind,principal_id,kind,unit_ordinal,unit_digest,claim_receipt_id,checkpoint_digest,result_schema,result_schema_digest,schema_migration_number,generation,transaction_id,result_bytes,recorded_at_ms) VALUES (:company_id,:receipt_id,:operation_id,:request_id,:parent_request_id,:request_bytes,:request_digest,:principal_kind,:principal_id,:kind,:unit_ordinal,:unit_digest,:claim_receipt_id,:checkpoint_digest,:result_schema,:result_schema_digest,:schema_migration_number,:generation,:transaction_id,:result_bytes,:recorded_at_ms)",
+      "parameters": [
+        "company_id",
+        "receipt_id",
+        "operation_id",
+        "request_id",
+        "parent_request_id",
+        "request_bytes",
+        "request_digest",
+        "principal_kind",
+        "principal_id",
+        "kind",
+        "unit_ordinal",
+        "unit_digest",
+        "claim_receipt_id",
+        "checkpoint_digest",
+        "result_schema",
+        "result_schema_digest",
+        "schema_migration_number",
+        "generation",
+        "transaction_id",
+        "result_bytes",
+        "recorded_at_ms"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_restriction": {
+      "sql": "INSERT INTO maintenance_restriction (company_id,restriction_id,version,origin_operation_id,responsible_operation_id,status,responsible_kind,responsible_id,next_condition_bytes,created_receipt_id,resolution_receipt_id) VALUES (:company_id,:restriction_id,:version,:origin_operation_id,:responsible_operation_id,:status,:responsible_kind,:responsible_id,:next_condition_bytes,:created_receipt_id,:resolution_receipt_id)",
+      "parameters": [
+        "company_id",
+        "restriction_id",
+        "version",
+        "origin_operation_id",
+        "responsible_operation_id",
+        "status",
+        "responsible_kind",
+        "responsible_id",
+        "next_condition_bytes",
+        "created_receipt_id",
+        "resolution_receipt_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.maintenance_unit": {
+      "sql": "INSERT INTO maintenance_unit (company_id,operation_id,ordinal,unit_id,unit_digest,from_schema,from_schema_digest,to_schema,to_schema_digest,precondition_bytes,permitted_write_set_bytes,postcondition_bytes,preceding_checkpoint_digest,resulting_checkpoint_digest,bundled_entry_id) VALUES (:company_id,:operation_id,:ordinal,:unit_id,:unit_digest,:from_schema,:from_schema_digest,:to_schema,:to_schema_digest,:precondition_bytes,:permitted_write_set_bytes,:postcondition_bytes,:preceding_checkpoint_digest,:resulting_checkpoint_digest,:bundled_entry_id)",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "ordinal",
+        "unit_id",
+        "unit_digest",
+        "from_schema",
+        "from_schema_digest",
+        "to_schema",
+        "to_schema_digest",
+        "precondition_bytes",
+        "permitted_write_set_bytes",
+        "postcondition_bytes",
+        "preceding_checkpoint_digest",
+        "resulting_checkpoint_digest",
+        "bundled_entry_id"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.mutation_group": {
+      "sql": "INSERT INTO mutation_group (company_id,transaction_id,generation,first_sequence,last_sequence,state_before,state_after,recorded_at_ms) VALUES (:company_id,:transaction_id,:generation,:first_sequence,:last_sequence,:state_before,:state_after,:recorded_at_ms)",
+      "parameters": [
+        "company_id",
+        "transaction_id",
+        "generation",
+        "first_sequence",
+        "last_sequence",
+        "state_before",
+        "state_after",
+        "recorded_at_ms"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.schema_migration": {
+      "sql": "INSERT INTO schema_migration (migration_number,migration_digest,from_schema,to_schema,completed_at_ms) VALUES (:migration_number,:migration_digest,:from_schema,:to_schema,:completed_at_ms)",
+      "parameters": [
+        "migration_number",
+        "migration_digest",
+        "from_schema",
+        "to_schema",
+        "completed_at_ms"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "insert.storage_entry": {
+      "sql": "INSERT INTO storage_entry (company_id,entry_id,kind,creation_id,store_id,intent_digest,allocation_digest,generation,previous_generation,schema_version,schema_digest,transaction_id,recorded_at_ms) VALUES (:company_id,:entry_id,:kind,:creation_id,:store_id,:intent_digest,:allocation_digest,:generation,:previous_generation,:schema_version,:schema_digest,:transaction_id,:recorded_at_ms)",
+      "parameters": [
+        "company_id",
+        "entry_id",
+        "kind",
+        "creation_id",
+        "store_id",
+        "intent_digest",
+        "allocation_digest",
+        "generation",
+        "previous_generation",
+        "schema_version",
+        "schema_digest",
+        "transaction_id",
+        "recorded_at_ms"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "begin": {
+      "sql": "BEGIN IMMEDIATE",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "commit": {
+      "sql": "COMMIT",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "rollback": {
+      "sql": "ROLLBACK",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.company": {
+      "sql": "SELECT * FROM company_store WHERE singleton=1",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.creation": {
+      "sql": "SELECT * FROM storage_entry WHERE company_id=:company_id AND kind='CREATED'",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.entry": {
+      "sql": "SELECT * FROM storage_entry WHERE company_id=:company_id AND entry_id=:entry_id",
+      "parameters": [
+        "company_id",
+        "entry_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.generations": {
+      "sql": "SELECT * FROM storage_entry WHERE company_id=:company_id ORDER BY generation",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.migrations": {
+      "sql": "SELECT * FROM schema_migration ORDER BY migration_number",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.group": {
+      "sql": "SELECT * FROM mutation_group WHERE company_id=:company_id AND transaction_id=:transaction_id",
+      "parameters": [
+        "company_id",
+        "transaction_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.group-history": {
+      "sql": "SELECT * FROM mutation_group WHERE company_id=:company_id ORDER BY first_sequence",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.audit": {
+      "sql": "SELECT * FROM audit_entry WHERE company_id=:company_id AND record_sequence>=:first_sequence AND record_sequence<=:last_sequence ORDER BY record_sequence",
+      "parameters": [
+        "company_id",
+        "first_sequence",
+        "last_sequence"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.executor": {
+      "sql": "SELECT * FROM maintenance_executor WHERE company_id=:company_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.operation": {
+      "sql": "SELECT * FROM maintenance_operation WHERE company_id=:company_id AND operation_id=:operation_id",
+      "parameters": [
+        "company_id",
+        "operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.admission": {
+      "sql": "SELECT * FROM maintenance_admission WHERE company_id=:company_id AND operation_id=:operation_id",
+      "parameters": [
+        "company_id",
+        "operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.units": {
+      "sql": "SELECT * FROM maintenance_unit WHERE company_id=:company_id AND operation_id=:operation_id ORDER BY ordinal",
+      "parameters": [
+        "company_id",
+        "operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.control": {
+      "sql": "SELECT * FROM maintenance_control WHERE company_id=:company_id AND operation_id=:operation_id AND action=:action AND unit_ordinal=:unit_ordinal",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.control-set": {
+      "sql": "SELECT * FROM maintenance_control WHERE company_id=:company_id AND operation_id=:operation_id ORDER BY action,unit_ordinal",
+      "parameters": [
+        "company_id",
+        "operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.dependencies": {
+      "sql": "SELECT * FROM maintenance_control_dependency WHERE company_id=:company_id AND operation_id=:operation_id AND action=:action AND unit_ordinal=:unit_ordinal ORDER BY dependency_kind,dependency_id",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.request-receipt": {
+      "sql": "SELECT * FROM maintenance_receipt WHERE company_id=:company_id AND request_id=:request_id",
+      "parameters": [
+        "company_id",
+        "request_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.operation-receipts": {
+      "sql": "SELECT * FROM maintenance_receipt WHERE company_id=:company_id AND operation_id=:operation_id ORDER BY receipt_id",
+      "parameters": [
+        "company_id",
+        "operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.restriction": {
+      "sql": "SELECT * FROM maintenance_restriction WHERE company_id=:company_id AND restriction_id=:restriction_id",
+      "parameters": [
+        "company_id",
+        "restriction_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.open-causes": {
+      "sql": "SELECT * FROM maintenance_restriction WHERE company_id=:company_id AND status='OPEN' ORDER BY restriction_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.claim-count": {
+      "sql": "SELECT count(*) FROM maintenance_receipt AS r JOIN maintenance_operation AS o ON o.company_id=r.company_id AND o.operation_id=r.operation_id WHERE r.company_id=:company_id AND o.budget_owner_operation_id=:budget_owner_operation_id AND r.kind='UNIT_CLAIMED'",
+      "parameters": [
+        "company_id",
+        "budget_owner_operation_id"
+      ],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.catalog": {
+      "sql": "SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.integrity": {
+      "sql": "PRAGMA integrity_check",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.foreign-key-violations": {
+      "sql": "PRAGMA foreign_key_check",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "cas.company": {
+      "sql": "UPDATE company_store SET generation=:next_generation,state_revision=:next_revision,record_sequence=:next_sequence,schema_version=:next_schema,schema_digest=:next_schema_digest WHERE company_id=:company_id AND generation=:expected_generation AND state_revision=:expected_revision AND record_sequence=:expected_sequence AND schema_version=:expected_schema AND schema_digest=:expected_schema_digest",
+      "parameters": [
+        "next_generation",
+        "next_revision",
+        "next_sequence",
+        "next_schema",
+        "next_schema_digest",
+        "company_id",
+        "expected_generation",
+        "expected_revision",
+        "expected_sequence",
+        "expected_schema",
+        "expected_schema_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "cas.executor": {
+      "sql": "UPDATE maintenance_executor SET version=:version,operation_id=:operation_id,bound_generation=:bound_generation,committed_ordinal=:committed_ordinal,checkpoint_digest=:checkpoint_digest,actual_schema=:actual_schema,actual_schema_digest=:actual_schema_digest,phase=:phase,responsible_kind=:responsible_kind,responsible_id=:responsible_id,next_condition_bytes=:next_condition_bytes,last_progress_receipt_id=:last_progress_receipt_id WHERE company_id=:company_id AND version=:expected_version AND operation_id IS :expected_operation_id AND bound_generation IS :expected_bound_generation AND committed_ordinal=:expected_committed_ordinal AND checkpoint_digest IS :expected_checkpoint_digest AND phase=:expected_phase AND actual_schema=:expected_actual_schema AND actual_schema_digest=:expected_actual_schema_digest",
+      "parameters": [
+        "version",
+        "operation_id",
+        "bound_generation",
+        "committed_ordinal",
+        "checkpoint_digest",
+        "actual_schema",
+        "actual_schema_digest",
+        "phase",
+        "responsible_kind",
+        "responsible_id",
+        "next_condition_bytes",
+        "last_progress_receipt_id",
+        "company_id",
+        "expected_version",
+        "expected_operation_id",
+        "expected_bound_generation",
+        "expected_committed_ordinal",
+        "expected_checkpoint_digest",
+        "expected_phase",
+        "expected_actual_schema",
+        "expected_actual_schema_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "cas.control": {
+      "sql": "UPDATE maintenance_control SET version=:version,source_kind=:source_kind,source_record_kind=:source_record_kind,source_record_id=:source_record_id,source_record_revision=:source_record_revision,source_record_digest=:source_record_digest,currentness=:currentness,verdict=:verdict,reason_code=:reason_code,expected_checkpoint_digest=:expected_checkpoint_digest,dependency_digest=:dependency_digest,assessment_bytes=:assessment_bytes,updated_transaction_id=:updated_transaction_id WHERE company_id=:company_id AND operation_id=:operation_id AND action=:action AND unit_ordinal=:unit_ordinal AND version=:expected_version AND dependency_digest=:expected_dependency_digest",
+      "parameters": [
+        "version",
+        "source_kind",
+        "source_record_kind",
+        "source_record_id",
+        "source_record_revision",
+        "source_record_digest",
+        "currentness",
+        "verdict",
+        "reason_code",
+        "expected_checkpoint_digest",
+        "dependency_digest",
+        "assessment_bytes",
+        "updated_transaction_id",
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal",
+        "expected_version",
+        "expected_dependency_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "delete.exact-dependencies": {
+      "sql": "DELETE FROM maintenance_control_dependency WHERE company_id=:company_id AND operation_id=:operation_id AND action=:action AND unit_ordinal=:unit_ordinal",
+      "parameters": [
+        "company_id",
+        "operation_id",
+        "action",
+        "unit_ordinal"
+      ],
+      "affected_rows": "exact previously validated dependency count",
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "cas.restriction": {
+      "sql": "UPDATE maintenance_restriction SET version=:version,responsible_operation_id=:responsible_operation_id,status=:status,responsible_kind=:responsible_kind,responsible_id=:responsible_id,next_condition_bytes=:next_condition_bytes,resolution_receipt_id=:resolution_receipt_id WHERE company_id=:company_id AND restriction_id=:restriction_id AND version=:expected_version AND responsible_operation_id=:expected_responsible_operation_id AND origin_operation_id=:origin_operation_id AND status=:expected_status",
+      "parameters": [
+        "version",
+        "responsible_operation_id",
+        "status",
+        "responsible_kind",
+        "responsible_id",
+        "next_condition_bytes",
+        "resolution_receipt_id",
+        "company_id",
+        "restriction_id",
+        "expected_version",
+        "expected_responsible_operation_id",
+        "origin_operation_id",
+        "expected_status"
+      ],
+      "affected_rows": 1,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.fixture-facts": {
+      "sql": "SELECT * FROM fixture_fact WHERE company_id=:company_id ORDER BY fact_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.fixture-allowance": {
+      "sql": "SELECT * FROM fixture_allowance WHERE company_id=:company_id ORDER BY allowance_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.fixture-duty": {
+      "sql": "SELECT * FROM fixture_duty WHERE company_id=:company_id ORDER BY duty_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.fixture-sources": {
+      "sql": "SELECT * FROM fixture_control_source WHERE company_id=:company_id ORDER BY dependency_kind,source_id",
+      "parameters": [
+        "company_id"
+      ],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "cas.fixture-source": {
+      "sql": "UPDATE fixture_control_source SET revision=:revision,body_bytes=:body_bytes,body_digest=:body_digest,transaction_id=:transaction_id WHERE company_id=:company_id AND dependency_kind=:dependency_kind AND source_id=:source_id AND revision=:expected_revision AND body_digest=:expected_digest",
+      "parameters": [
+        "revision",
+        "body_bytes",
+        "body_digest",
+        "transaction_id",
+        "company_id",
+        "dependency_kind",
+        "source_id",
+        "expected_revision",
+        "expected_digest"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "unit.add-encoding": {
+      "sql": "ALTER TABLE fixture_fact ADD COLUMN encoding_version INTEGER NOT NULL DEFAULT 1 CHECK(encoding_version=1)",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": 1
+    },
+    "unit.set-encoding": {
+      "sql": "UPDATE fixture_fact SET encoding_version=1 WHERE company_id=:company_id AND fact_id=:fact_id AND payload=:payload",
+      "parameters": [
+        "company_id",
+        "fact_id",
+        "payload"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": 2
+    },
+    "unit.add-digest": {
+      "sql": "ALTER TABLE fixture_fact ADD COLUMN payload_digest BLOB NOT NULL DEFAULT X'8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8' CHECK(length(payload_digest)=32)",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": 2
+    },
+    "unit.set-digest": {
+      "sql": "UPDATE fixture_fact SET payload_digest=:payload_digest WHERE company_id=:company_id AND fact_id=:fact_id AND payload=:payload AND encoding_version=1",
+      "parameters": [
+        "payload_digest",
+        "company_id",
+        "fact_id",
+        "payload"
+      ],
+      "affected_rows": 1,
+      "profile": "fixture",
+      "fixture_schema": 3
+    },
+    "ddl.core.01": {
+      "sql": "CREATE TABLE company_store (\n  company_id TEXT PRIMARY KEY NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  singleton INTEGER NOT NULL UNIQUE CHECK(singleton=1),\n  schema_version INTEGER NOT NULL CHECK(schema_version>=1),\n  schema_digest BLOB NOT NULL CHECK(length(schema_digest)=32),\n  state_revision BLOB NOT NULL CHECK(length(state_revision)=8),\n  record_sequence BLOB NOT NULL CHECK(length(record_sequence)=8),\n  generation BLOB NOT NULL CHECK(length(generation)=8),\n  created_at_ms INTEGER NOT NULL\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.02": {
+      "sql": "CREATE TABLE schema_migration (\n  migration_number INTEGER PRIMARY KEY NOT NULL CHECK(migration_number>=1),\n  migration_digest BLOB NOT NULL CHECK(length(migration_digest)=32),\n  from_schema INTEGER NOT NULL CHECK(from_schema>=0),\n  to_schema INTEGER NOT NULL CHECK(to_schema=from_schema+1),\n  completed_at_ms INTEGER NOT NULL,\n  UNIQUE(from_schema), UNIQUE(to_schema)\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.03": {
+      "sql": "CREATE TABLE mutation_group (\n  company_id TEXT NOT NULL,\n  transaction_id TEXT NOT NULL,\n  generation BLOB NOT NULL CHECK(length(generation)=8),\n  first_sequence BLOB NOT NULL CHECK(length(first_sequence)=8),\n  last_sequence BLOB NOT NULL CHECK(length(last_sequence)=8 AND last_sequence>=first_sequence),\n  state_before BLOB NOT NULL CHECK(length(state_before)=8),\n  state_after BLOB NOT NULL CHECK(length(state_after)=8),\n  recorded_at_ms INTEGER NOT NULL,\n  PRIMARY KEY(company_id,transaction_id),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.04": {
+      "sql": "CREATE TABLE audit_entry (\n  company_id TEXT NOT NULL,\n  record_sequence BLOB NOT NULL CHECK(length(record_sequence)=8),\n  transaction_id TEXT NOT NULL,\n  event_kind TEXT NOT NULL,\n  body_bytes BLOB NOT NULL,\n  body_digest BLOB NOT NULL CHECK(length(body_digest)=32),\n  PRIMARY KEY(company_id,record_sequence),\n  FOREIGN KEY(company_id,transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.05": {
+      "sql": "CREATE TABLE storage_entry (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  entry_id TEXT NOT NULL CHECK(length(CAST(entry_id AS BLOB)) BETWEEN 1 AND 256),\n  kind TEXT NOT NULL CHECK(kind IN ('CREATED','OPENED')),\n  creation_id TEXT NOT NULL CHECK(length(CAST(creation_id AS BLOB)) BETWEEN 1 AND 256),\n  store_id TEXT CHECK(store_id IS NULL OR (length(CAST(store_id AS BLOB)) BETWEEN 1 AND 256)),\n  intent_digest BLOB CHECK(intent_digest IS NULL OR (length(intent_digest)=32)),\n  allocation_digest BLOB CHECK(allocation_digest IS NULL OR (length(allocation_digest)=32)),\n  generation BLOB NOT NULL CHECK(length(generation)=8 AND generation>X'0000000000000000'),\n  previous_generation BLOB NOT NULL CHECK(length(previous_generation)=8),\n  schema_version INTEGER NOT NULL CHECK(schema_version>=1),\n  schema_digest BLOB NOT NULL CHECK(length(schema_digest)=32),\n  transaction_id TEXT NOT NULL CHECK(length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  recorded_at_ms INTEGER NOT NULL CHECK(recorded_at_ms BETWEEN -62135596800000 AND 253402300799999),\n  PRIMARY KEY(company_id,entry_id),\n  UNIQUE(company_id,generation),\n  FOREIGN KEY(company_id,creation_id) REFERENCES storage_entry(company_id,entry_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  CONSTRAINT storage_entry_form CHECK((kind='CREATED' AND entry_id=creation_id AND store_id IS NOT NULL AND intent_digest IS NOT NULL AND allocation_digest IS NOT NULL AND previous_generation=X'0000000000000000' AND generation=X'0000000000000001') OR\n    (kind='OPENED' AND entry_id<>creation_id AND store_id IS NULL AND intent_digest IS NULL AND allocation_digest IS NULL AND previous_generation>X'0000000000000000' AND generation>previous_generation)),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.06": {
+      "sql": "CREATE UNIQUE INDEX one_creation ON storage_entry(company_id) WHERE kind='CREATED';",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.07": {
+      "sql": "CREATE TABLE maintenance_operation (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  request_id TEXT NOT NULL CHECK(length(CAST(request_id AS BLOB)) BETWEEN 1 AND 256),\n  principal_kind TEXT NOT NULL CHECK(principal_kind IN ('FIXTURE','COMPANY')),\n  principal_id TEXT NOT NULL CHECK(length(CAST(principal_id AS BLOB)) BETWEEN 1 AND 256),\n  kind TEXT NOT NULL CHECK(kind IN ('UPGRADE','REPAIR')),\n  store_id TEXT NOT NULL CHECK(length(CAST(store_id AS BLOB)) BETWEEN 1 AND 256),\n  intent_bytes BLOB NOT NULL CHECK(length(intent_bytes) BETWEEN 1 AND 65536),\n  intent_digest BLOB NOT NULL CHECK(length(intent_digest)=32),\n  plan_bytes BLOB NOT NULL CHECK(length(plan_bytes) BETWEEN 1 AND 65536),\n  plan_digest BLOB NOT NULL CHECK(length(plan_digest)=32),\n  source_bundle_digest BLOB NOT NULL CHECK(length(source_bundle_digest)=32),\n  target_bundle_digest BLOB NOT NULL CHECK(length(target_bundle_digest)=32),\n  source_schema INTEGER NOT NULL CHECK(source_schema>=1),\n  source_schema_digest BLOB NOT NULL CHECK(length(source_schema_digest)=32),\n  target_schema INTEGER NOT NULL CHECK(target_schema>=1),\n  target_schema_digest BLOB NOT NULL CHECK(length(target_schema_digest)=32),\n  unit_count INTEGER NOT NULL CHECK(unit_count>=1),\n  original_not_after INTEGER NOT NULL CHECK(original_not_after BETWEEN -62135596800000 AND 253402300799999),\n  budget_owner_operation_id TEXT NOT NULL CHECK(length(CAST(budget_owner_operation_id AS BLOB)) BETWEEN 1 AND 256),\n  unit_attempt_limit INTEGER NOT NULL CHECK(unit_attempt_limit>=1),\n  predecessor_operation_id TEXT CHECK(predecessor_operation_id IS NULL OR (length(CAST(predecessor_operation_id AS BLOB)) BETWEEN 1 AND 256)),\n  created_transaction_id TEXT NOT NULL CHECK(length(CAST(created_transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  PRIMARY KEY(company_id,operation_id),\n  UNIQUE(company_id,request_id),\n  FOREIGN KEY(company_id,budget_owner_operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,predecessor_operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,created_transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  CONSTRAINT operation_lineage CHECK((kind='UPGRADE' AND predecessor_operation_id IS NULL AND budget_owner_operation_id=operation_id) OR\n    (kind='REPAIR' AND predecessor_operation_id IS NOT NULL AND predecessor_operation_id<>operation_id AND budget_owner_operation_id<>operation_id)),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.08": {
+      "sql": "CREATE UNIQUE INDEX one_repair_successor ON maintenance_operation(company_id,predecessor_operation_id) WHERE predecessor_operation_id IS NOT NULL;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.09": {
+      "sql": "CREATE INDEX operation_budget_lookup ON maintenance_operation(company_id,budget_owner_operation_id);",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.10": {
+      "sql": "CREATE TABLE maintenance_unit (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  ordinal INTEGER NOT NULL CHECK(ordinal>=1),\n  unit_id TEXT NOT NULL CHECK(length(CAST(unit_id AS BLOB)) BETWEEN 1 AND 256),\n  unit_digest BLOB NOT NULL CHECK(length(unit_digest)=32),\n  from_schema INTEGER NOT NULL CHECK(from_schema>=1),\n  from_schema_digest BLOB NOT NULL CHECK(length(from_schema_digest)=32),\n  to_schema INTEGER NOT NULL CHECK(to_schema>=1),\n  to_schema_digest BLOB NOT NULL CHECK(length(to_schema_digest)=32),\n  precondition_bytes BLOB NOT NULL CHECK(length(precondition_bytes) BETWEEN 1 AND 65536),\n  permitted_write_set_bytes BLOB NOT NULL CHECK(length(permitted_write_set_bytes) BETWEEN 1 AND 65536),\n  postcondition_bytes BLOB NOT NULL CHECK(length(postcondition_bytes) BETWEEN 1 AND 65536),\n  preceding_checkpoint_digest BLOB NOT NULL CHECK(length(preceding_checkpoint_digest)=32),\n  resulting_checkpoint_digest BLOB NOT NULL CHECK(length(resulting_checkpoint_digest)=32),\n  bundled_entry_id TEXT NOT NULL CHECK(length(CAST(bundled_entry_id AS BLOB)) BETWEEN 1 AND 256),\n  PRIMARY KEY(company_id,operation_id,ordinal),\n  UNIQUE(company_id,operation_id,unit_id),\n  FOREIGN KEY(company_id,operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  CONSTRAINT unit_schema_step CHECK(to_schema>=from_schema AND to_schema-from_schema<=1 AND (to_schema=from_schema)=(to_schema_digest=from_schema_digest)),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.11": {
+      "sql": "CREATE TABLE maintenance_admission (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  original_receipt_id TEXT NOT NULL CHECK(length(CAST(original_receipt_id AS BLOB)) BETWEEN 1 AND 256),\n  source_kind TEXT NOT NULL CHECK(source_kind IN ('FIXTURE','COMPANY')),\n  source_record_kind TEXT NOT NULL CHECK(length(CAST(source_record_kind AS BLOB)) BETWEEN 1 AND 256),\n  source_record_id TEXT NOT NULL CHECK(length(CAST(source_record_id AS BLOB)) BETWEEN 1 AND 256),\n  source_record_revision BLOB NOT NULL CHECK(length(source_record_revision)=8 AND source_record_revision>X'0000000000000000'),\n  source_record_digest BLOB NOT NULL CHECK(length(source_record_digest)=32),\n  admission_control_digest BLOB NOT NULL CHECK(length(admission_control_digest)=32),\n  original_responsible_kind TEXT NOT NULL CHECK(original_responsible_kind IN ('FIXTURE','COMPANY')),\n  original_responsible_id TEXT NOT NULL CHECK(length(CAST(original_responsible_id AS BLOB)) BETWEEN 1 AND 256),\n  original_continuity_bytes BLOB NOT NULL CHECK(length(original_continuity_bytes) BETWEEN 1 AND 65536),\n  admitted_transaction_id TEXT NOT NULL CHECK(length(CAST(admitted_transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  PRIMARY KEY(company_id,operation_id),\n  FOREIGN KEY(company_id,operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,operation_id,original_receipt_id) REFERENCES maintenance_receipt(company_id,operation_id,receipt_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,admitted_transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.12": {
+      "sql": "CREATE TABLE maintenance_control (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  action TEXT NOT NULL CHECK(action IN ('APPLY_UNIT','FINALIZE','SUPERSEDE')),\n  unit_ordinal INTEGER NOT NULL CHECK(unit_ordinal>=0),\n  version BLOB NOT NULL CHECK(length(version)=8 AND version>X'0000000000000000'),\n  source_kind TEXT NOT NULL CHECK(source_kind IN ('FIXTURE','COMPANY')),\n  source_record_kind TEXT NOT NULL CHECK(length(CAST(source_record_kind AS BLOB)) BETWEEN 1 AND 256),\n  source_record_id TEXT NOT NULL CHECK(length(CAST(source_record_id AS BLOB)) BETWEEN 1 AND 256),\n  source_record_revision BLOB NOT NULL CHECK(length(source_record_revision)=8 AND source_record_revision>X'0000000000000000'),\n  source_record_digest BLOB NOT NULL CHECK(length(source_record_digest)=32),\n  currentness TEXT NOT NULL CHECK(currentness IN ('VERIFIED','UNVERIFIED')),\n  verdict TEXT NOT NULL CHECK(verdict IN ('ALLOW','DENY','UNDETERMINED')),\n  reason_code TEXT NOT NULL CHECK(length(CAST(reason_code AS BLOB)) BETWEEN 1 AND 256),\n  expected_checkpoint_digest BLOB NOT NULL CHECK(length(expected_checkpoint_digest)=32),\n  dependency_digest BLOB NOT NULL CHECK(length(dependency_digest)=32),\n  assessment_bytes BLOB NOT NULL CHECK(length(assessment_bytes) BETWEEN 1 AND 65536),\n  updated_transaction_id TEXT NOT NULL CHECK(length(CAST(updated_transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  PRIMARY KEY(company_id,operation_id,action,unit_ordinal),\n  FOREIGN KEY(company_id,operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,updated_transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  CONSTRAINT control_ordinal CHECK((action='APPLY_UNIT' AND unit_ordinal>0) OR (action<>'APPLY_UNIT' AND unit_ordinal=0)),\n  CONSTRAINT unverified_cannot_allow CHECK(currentness='VERIFIED' OR verdict<>'ALLOW'),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.13": {
+      "sql": "CREATE TABLE maintenance_control_dependency (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  action TEXT NOT NULL CHECK(action IN ('APPLY_UNIT','FINALIZE','SUPERSEDE')),\n  unit_ordinal INTEGER NOT NULL CHECK(unit_ordinal>=0),\n  dependency_kind TEXT NOT NULL CHECK(dependency_kind IN ('AUTHORITY','STOP','POLICY','RESOURCE','RESPONSIBILITY','BINDING','TIME')),\n  dependency_id TEXT NOT NULL CHECK(length(CAST(dependency_id AS BLOB)) BETWEEN 1 AND 256),\n  expected_revision BLOB NOT NULL CHECK(length(expected_revision)=8 AND expected_revision>X'0000000000000000'),\n  source_digest BLOB NOT NULL CHECK(length(source_digest)=32),\n  PRIMARY KEY(company_id,operation_id,action,unit_ordinal,dependency_kind,dependency_id),\n  FOREIGN KEY(company_id,operation_id,action,unit_ordinal) REFERENCES maintenance_control(company_id,operation_id,action,unit_ordinal) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.14": {
+      "sql": "CREATE TABLE maintenance_executor (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  version BLOB NOT NULL CHECK(length(version)=8 AND version>X'0000000000000000'),\n  operation_id TEXT CHECK(operation_id IS NULL OR (length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256)),\n  bound_generation BLOB CHECK(bound_generation IS NULL OR (length(bound_generation)=8 AND bound_generation>X'0000000000000000')),\n  committed_ordinal INTEGER NOT NULL CHECK(committed_ordinal>=0),\n  checkpoint_digest BLOB CHECK(checkpoint_digest IS NULL OR (length(checkpoint_digest)=32)),\n  actual_schema INTEGER NOT NULL CHECK(actual_schema>=1),\n  actual_schema_digest BLOB NOT NULL CHECK(length(actual_schema_digest)=32),\n  phase TEXT NOT NULL CHECK(phase IN ('IDLE','TRANSFORMING','TRANSFORMED')),\n  responsible_kind TEXT CHECK(responsible_kind IS NULL OR (responsible_kind IN ('FIXTURE','COMPANY'))),\n  responsible_id TEXT CHECK(responsible_id IS NULL OR (length(CAST(responsible_id AS BLOB)) BETWEEN 1 AND 256)),\n  next_condition_bytes BLOB NOT NULL CHECK(length(next_condition_bytes) BETWEEN 1 AND 65536),\n  last_progress_receipt_id TEXT CHECK(last_progress_receipt_id IS NULL OR (length(CAST(last_progress_receipt_id AS BLOB)) BETWEEN 1 AND 256)),\n  PRIMARY KEY(company_id),\n  FOREIGN KEY(company_id,operation_id) REFERENCES maintenance_admission(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,operation_id,last_progress_receipt_id) REFERENCES maintenance_receipt(company_id,operation_id,receipt_id) ON DELETE RESTRICT,\n  CONSTRAINT executor_occupancy CHECK((phase='IDLE' AND operation_id IS NULL AND bound_generation IS NULL AND committed_ordinal=0 AND checkpoint_digest IS NULL AND responsible_kind IS NULL AND responsible_id IS NULL AND last_progress_receipt_id IS NULL) OR\n    (phase<>'IDLE' AND operation_id IS NOT NULL AND bound_generation IS NOT NULL AND checkpoint_digest IS NOT NULL AND responsible_kind IS NOT NULL AND responsible_id IS NOT NULL AND last_progress_receipt_id IS NOT NULL AND (phase<>'TRANSFORMED' OR committed_ordinal>0))),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.15": {
+      "sql": "CREATE TABLE maintenance_restriction (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  restriction_id TEXT NOT NULL CHECK(length(CAST(restriction_id AS BLOB)) BETWEEN 1 AND 256),\n  version BLOB NOT NULL CHECK(length(version)=8 AND version>X'0000000000000000'),\n  origin_operation_id TEXT NOT NULL CHECK(length(CAST(origin_operation_id AS BLOB)) BETWEEN 1 AND 256),\n  responsible_operation_id TEXT NOT NULL CHECK(length(CAST(responsible_operation_id AS BLOB)) BETWEEN 1 AND 256),\n  status TEXT NOT NULL CHECK(status IN ('OPEN','RESOLVED')),\n  responsible_kind TEXT NOT NULL CHECK(responsible_kind IN ('FIXTURE','COMPANY')),\n  responsible_id TEXT NOT NULL CHECK(length(CAST(responsible_id AS BLOB)) BETWEEN 1 AND 256),\n  next_condition_bytes BLOB NOT NULL CHECK(length(next_condition_bytes) BETWEEN 1 AND 65536),\n  created_receipt_id TEXT NOT NULL CHECK(length(CAST(created_receipt_id AS BLOB)) BETWEEN 1 AND 256),\n  resolution_receipt_id TEXT CHECK(resolution_receipt_id IS NULL OR (length(CAST(resolution_receipt_id AS BLOB)) BETWEEN 1 AND 256)),\n  PRIMARY KEY(company_id,restriction_id),\n  FOREIGN KEY(company_id,origin_operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,responsible_operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,origin_operation_id,created_receipt_id) REFERENCES maintenance_receipt(company_id,operation_id,receipt_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,responsible_operation_id,resolution_receipt_id) REFERENCES maintenance_receipt(company_id,operation_id,receipt_id) ON DELETE RESTRICT,\n  CONSTRAINT restriction_resolution CHECK((status='OPEN' AND resolution_receipt_id IS NULL) OR (status='RESOLVED' AND resolution_receipt_id IS NOT NULL)),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.16": {
+      "sql": "CREATE TABLE maintenance_receipt (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  receipt_id TEXT NOT NULL CHECK(length(CAST(receipt_id AS BLOB)) BETWEEN 1 AND 256),\n  operation_id TEXT NOT NULL CHECK(length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 256),\n  request_id TEXT NOT NULL CHECK(length(CAST(request_id AS BLOB)) BETWEEN 1 AND 256),\n  parent_request_id TEXT CHECK(parent_request_id IS NULL OR (length(CAST(parent_request_id AS BLOB)) BETWEEN 1 AND 256)),\n  request_bytes BLOB NOT NULL CHECK(length(request_bytes) BETWEEN 1 AND 65536),\n  request_digest BLOB NOT NULL CHECK(length(request_digest)=32),\n  principal_kind TEXT NOT NULL CHECK(principal_kind IN ('FIXTURE','COMPANY')),\n  principal_id TEXT NOT NULL CHECK(length(CAST(principal_id AS BLOB)) BETWEEN 1 AND 256),\n  kind TEXT NOT NULL CHECK(kind IN ('ADMITTED','UNIT_CLAIMED','UNIT_COMMITTED','FINAL_VALIDATED','SUPERSEDED','CONTROL_APPLIED','EXECUTOR_BOUND')),\n  unit_ordinal INTEGER CHECK(unit_ordinal IS NULL OR (unit_ordinal>=1)),\n  unit_digest BLOB CHECK(unit_digest IS NULL OR (length(unit_digest)=32)),\n  claim_receipt_id TEXT CHECK(claim_receipt_id IS NULL OR (length(CAST(claim_receipt_id AS BLOB)) BETWEEN 1 AND 256)),\n  checkpoint_digest BLOB CHECK(checkpoint_digest IS NULL OR (length(checkpoint_digest)=32)),\n  result_schema INTEGER CHECK(result_schema IS NULL OR (result_schema>=1)),\n  result_schema_digest BLOB CHECK(result_schema_digest IS NULL OR (length(result_schema_digest)=32)),\n  schema_migration_number INTEGER CHECK(schema_migration_number IS NULL OR (schema_migration_number>=1)),\n  generation BLOB NOT NULL CHECK(length(generation)=8 AND generation>X'0000000000000000'),\n  transaction_id TEXT NOT NULL CHECK(length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  result_bytes BLOB NOT NULL CHECK(length(result_bytes) BETWEEN 1 AND 65536),\n  recorded_at_ms INTEGER NOT NULL CHECK(recorded_at_ms BETWEEN -62135596800000 AND 253402300799999),\n  PRIMARY KEY(company_id,receipt_id),\n  UNIQUE(company_id,request_id),\n  UNIQUE(company_id,operation_id,receipt_id),\n  FOREIGN KEY(company_id,operation_id) REFERENCES maintenance_operation(company_id,operation_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,operation_id,unit_ordinal) REFERENCES maintenance_unit(company_id,operation_id,ordinal) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,operation_id,claim_receipt_id) REFERENCES maintenance_receipt(company_id,operation_id,receipt_id) ON DELETE RESTRICT,\n  FOREIGN KEY(schema_migration_number) REFERENCES schema_migration(migration_number) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id,parent_request_id) REFERENCES maintenance_receipt(company_id,request_id) ON DELETE RESTRICT,\n  CONSTRAINT receipt_parent CHECK(parent_request_id IS NULL OR (kind='ADMITTED' AND parent_request_id<>request_id)),\n  CONSTRAINT receipt_unit_payload CHECK((kind IN ('UNIT_CLAIMED','UNIT_COMMITTED') AND unit_ordinal IS NOT NULL AND unit_digest IS NOT NULL) OR\n    (kind NOT IN ('UNIT_CLAIMED','UNIT_COMMITTED') AND unit_ordinal IS NULL AND unit_digest IS NULL)),\n  CONSTRAINT receipt_claim_link CHECK((kind='UNIT_COMMITTED' AND claim_receipt_id IS NOT NULL AND claim_receipt_id<>receipt_id) OR (kind<>'UNIT_COMMITTED' AND claim_receipt_id IS NULL)),\n  CONSTRAINT receipt_schema_pair CHECK((result_schema IS NULL)=(result_schema_digest IS NULL) AND (result_schema IS NULL)=(checkpoint_digest IS NULL)),\n  CONSTRAINT receipt_checkpoint CHECK(kind='CONTROL_APPLIED' OR checkpoint_digest IS NOT NULL),\n  CONSTRAINT receipt_migration CHECK(schema_migration_number IS NULL OR kind='UNIT_COMMITTED'),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.17": {
+      "sql": "CREATE UNIQUE INDEX one_committed_unit ON maintenance_receipt(company_id,operation_id,unit_ordinal) WHERE kind='UNIT_COMMITTED';",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.18": {
+      "sql": "CREATE UNIQUE INDEX one_claim_consumption ON maintenance_receipt(company_id,claim_receipt_id) WHERE kind='UNIT_COMMITTED';",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.19": {
+      "sql": "CREATE UNIQUE INDEX one_operation_endpoint ON maintenance_receipt(company_id,operation_id,kind) WHERE kind IN ('ADMITTED','FINAL_VALIDATED','SUPERSEDED');",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.core.20": {
+      "sql": "CREATE INDEX receipt_operation_kind ON maintenance_receipt(company_id,operation_id,kind);",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.fixture.01": {
+      "sql": "CREATE TABLE fixture_fact (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  fact_id TEXT NOT NULL CHECK(length(CAST(fact_id AS BLOB)) BETWEEN 1 AND 256),\n  payload BLOB NOT NULL CHECK(length(payload) BETWEEN 1 AND 65536),\n  PRIMARY KEY(company_id,fact_id),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.fixture.02": {
+      "sql": "CREATE TABLE fixture_allowance (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  allowance_id TEXT NOT NULL CHECK(length(CAST(allowance_id AS BLOB)) BETWEEN 1 AND 256),\n  limit_units INTEGER NOT NULL CHECK(limit_units>=1),\n  consumed_units INTEGER NOT NULL CHECK(consumed_units>=0),\n  PRIMARY KEY(company_id,allowance_id),\n  CONSTRAINT allowance_bounds CHECK(consumed_units<=limit_units),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.fixture.03": {
+      "sql": "CREATE TABLE fixture_duty (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  duty_id TEXT NOT NULL CHECK(length(CAST(duty_id AS BLOB)) BETWEEN 1 AND 256),\n  cause_id TEXT NOT NULL CHECK(length(CAST(cause_id AS BLOB)) BETWEEN 1 AND 256),\n  responsible_id TEXT NOT NULL CHECK(length(CAST(responsible_id AS BLOB)) BETWEEN 1 AND 256),\n  status TEXT NOT NULL CHECK(status IN ('UNRESOLVED')),\n  PRIMARY KEY(company_id,duty_id),\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "bootstrap"
+    },
+    "ddl.fixture.04": {
+      "sql": "CREATE TABLE fixture_control_source (\n  company_id TEXT NOT NULL CHECK(length(CAST(company_id AS BLOB)) BETWEEN 1 AND 256),\n  dependency_kind TEXT NOT NULL CHECK(dependency_kind IN ('AUTHORITY','STOP','POLICY','RESOURCE','RESPONSIBILITY','BINDING','TIME')),\n  source_id TEXT NOT NULL CHECK(length(CAST(source_id AS BLOB)) BETWEEN 1 AND 256),\n  revision BLOB NOT NULL CHECK(length(revision)=8 AND revision>X'0000000000000000'),\n  body_bytes BLOB NOT NULL CHECK(length(body_bytes) BETWEEN 1 AND 65536),\n  body_digest BLOB NOT NULL CHECK(length(body_digest)=32),\n  transaction_id TEXT NOT NULL CHECK(length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 256),\n  PRIMARY KEY(company_id,dependency_kind,source_id),\n  FOREIGN KEY(company_id,transaction_id) REFERENCES mutation_group(company_id,transaction_id) ON DELETE RESTRICT,\n  FOREIGN KEY(company_id) REFERENCES company_store(company_id) ON DELETE RESTRICT\n) STRICT;",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "bootstrap"
+    },
+    "begin.read": {
+      "sql": "BEGIN DEFERRED",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.audit_entry": {
+      "sql": "SELECT * FROM audit_entry ORDER BY company_id,record_sequence",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.company_store": {
+      "sql": "SELECT * FROM company_store ORDER BY company_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.fixture_allowance": {
+      "sql": "SELECT * FROM fixture_allowance ORDER BY company_id,allowance_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.inventory.fixture_control_source": {
+      "sql": "SELECT * FROM fixture_control_source ORDER BY company_id,dependency_kind,source_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.inventory.fixture_duty": {
+      "sql": "SELECT * FROM fixture_duty ORDER BY company_id,duty_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.inventory.fixture_fact": {
+      "sql": "SELECT * FROM fixture_fact ORDER BY company_id,fact_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "fixture",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_admission": {
+      "sql": "SELECT * FROM maintenance_admission ORDER BY company_id,operation_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_control": {
+      "sql": "SELECT * FROM maintenance_control ORDER BY company_id,operation_id,action,unit_ordinal",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_control_dependency": {
+      "sql": "SELECT * FROM maintenance_control_dependency ORDER BY company_id,operation_id,action,unit_ordinal,dependency_kind,dependency_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_executor": {
+      "sql": "SELECT * FROM maintenance_executor ORDER BY company_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_operation": {
+      "sql": "SELECT * FROM maintenance_operation ORDER BY company_id,operation_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_receipt": {
+      "sql": "SELECT * FROM maintenance_receipt ORDER BY company_id,receipt_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_restriction": {
+      "sql": "SELECT * FROM maintenance_restriction ORDER BY company_id,restriction_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.maintenance_unit": {
+      "sql": "SELECT * FROM maintenance_unit ORDER BY company_id,operation_id,ordinal",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.mutation_group": {
+      "sql": "SELECT * FROM mutation_group ORDER BY company_id,transaction_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.schema_migration": {
+      "sql": "SELECT * FROM schema_migration ORDER BY migration_number",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    },
+    "get.inventory.storage_entry": {
+      "sql": "SELECT * FROM storage_entry ORDER BY company_id,entry_id",
+      "parameters": [],
+      "affected_rows": null,
+      "profile": "core",
+      "fixture_schema": "any"
+    }
+  },
+  "read_transactions": {
+    "receipt": [
+      "begin.read",
+      "get.company",
+      "check:read-scope-at-snapshot",
+      "check:exact-original-key-and-linked-rows",
+      "check:current-view-in-same-snapshot",
+      "commit"
+    ],
+    "startup_inventory": [
+      "begin.read",
+      "get.company",
+      "get.catalog",
+      "get.integrity",
+      "get.foreign-key-violations",
+      "each-admitted-relation:get.inventory.*",
+      "check:complete-lineage-and-group-inventory",
+      "commit"
+    ]
+  },
+  "request_dispatch": [
+    "validate-current-read-access-and-full-canonical-input",
+    "read-exact-original-receipt",
+    "matching-original-returns-history",
+    "mismatch-or-unobservable-blocks-dependent-write",
+    "verified-absence-enters-new-operation",
+    "validate-current-write-guards-in-write-transaction"
+  ]
+}

@@ -1,0 +1,2072 @@
+{
+  "design_version": "1.0.0",
+  "status": "NOT_RUN",
+  "scope": "Required cut templates for the declared fixture write and filesystem paths.",
+  "case_profiles": [
+    {
+      "id": "initialize-core",
+      "original_selector": "C1a-01.N02/store-generation/each-init-statement-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "ddl.core.01",
+          "after_write_hook": "initialize-core.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "ddl.core.02",
+          "after_write_hook": "initialize-core.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "ddl.core.03",
+          "after_write_hook": "initialize-core.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "ddl.core.04",
+          "after_write_hook": "initialize-core.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "ddl.core.05",
+          "after_write_hook": "initialize-core.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "ddl.core.06",
+          "after_write_hook": "initialize-core.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "ddl.core.07",
+          "after_write_hook": "initialize-core.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "ddl.core.08",
+          "after_write_hook": "initialize-core.after-write.08"
+        },
+        {
+          "ordinal": 9,
+          "statement": "ddl.core.09",
+          "after_write_hook": "initialize-core.after-write.09"
+        },
+        {
+          "ordinal": 10,
+          "statement": "ddl.core.10",
+          "after_write_hook": "initialize-core.after-write.10"
+        },
+        {
+          "ordinal": 11,
+          "statement": "ddl.core.11",
+          "after_write_hook": "initialize-core.after-write.11"
+        },
+        {
+          "ordinal": 12,
+          "statement": "ddl.core.12",
+          "after_write_hook": "initialize-core.after-write.12"
+        },
+        {
+          "ordinal": 13,
+          "statement": "ddl.core.13",
+          "after_write_hook": "initialize-core.after-write.13"
+        },
+        {
+          "ordinal": 14,
+          "statement": "ddl.core.14",
+          "after_write_hook": "initialize-core.after-write.14"
+        },
+        {
+          "ordinal": 15,
+          "statement": "ddl.core.15",
+          "after_write_hook": "initialize-core.after-write.15"
+        },
+        {
+          "ordinal": 16,
+          "statement": "ddl.core.16",
+          "after_write_hook": "initialize-core.after-write.16"
+        },
+        {
+          "ordinal": 17,
+          "statement": "ddl.core.17",
+          "after_write_hook": "initialize-core.after-write.17"
+        },
+        {
+          "ordinal": 18,
+          "statement": "ddl.core.18",
+          "after_write_hook": "initialize-core.after-write.18"
+        },
+        {
+          "ordinal": 19,
+          "statement": "ddl.core.19",
+          "after_write_hook": "initialize-core.after-write.19"
+        },
+        {
+          "ordinal": 20,
+          "statement": "ddl.core.20",
+          "after_write_hook": "initialize-core.after-write.20"
+        },
+        {
+          "ordinal": 21,
+          "statement": "insert.company_store",
+          "after_write_hook": "initialize-core.after-write.21"
+        },
+        {
+          "ordinal": 22,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "initialize-core.after-write.22"
+        },
+        {
+          "ordinal": 23,
+          "statement": "insert.schema_migration",
+          "after_write_hook": "initialize-core.after-write.23"
+        },
+        {
+          "ordinal": 24,
+          "statement": "insert.storage_entry",
+          "after_write_hook": "initialize-core.after-write.24"
+        },
+        {
+          "ordinal": 25,
+          "statement": "insert.maintenance_executor",
+          "after_write_hook": "initialize-core.after-write.25"
+        },
+        {
+          "ordinal": 26,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "initialize-core.after-write.26"
+        }
+      ],
+      "additional_hooks": [
+        "initialize-core.before-first-write",
+        "initialize-core.before-commit",
+        "initialize-core.commit-fault",
+        "initialize-core.commit-return",
+        "initialize-core.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "initialize-fixture",
+      "original_selector": "C1a-01.N02/store-generation/each-init-statement-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "ddl.core.01",
+          "after_write_hook": "initialize-fixture.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "ddl.core.02",
+          "after_write_hook": "initialize-fixture.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "ddl.core.03",
+          "after_write_hook": "initialize-fixture.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "ddl.core.04",
+          "after_write_hook": "initialize-fixture.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "ddl.core.05",
+          "after_write_hook": "initialize-fixture.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "ddl.core.06",
+          "after_write_hook": "initialize-fixture.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "ddl.core.07",
+          "after_write_hook": "initialize-fixture.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "ddl.core.08",
+          "after_write_hook": "initialize-fixture.after-write.08"
+        },
+        {
+          "ordinal": 9,
+          "statement": "ddl.core.09",
+          "after_write_hook": "initialize-fixture.after-write.09"
+        },
+        {
+          "ordinal": 10,
+          "statement": "ddl.core.10",
+          "after_write_hook": "initialize-fixture.after-write.10"
+        },
+        {
+          "ordinal": 11,
+          "statement": "ddl.core.11",
+          "after_write_hook": "initialize-fixture.after-write.11"
+        },
+        {
+          "ordinal": 12,
+          "statement": "ddl.core.12",
+          "after_write_hook": "initialize-fixture.after-write.12"
+        },
+        {
+          "ordinal": 13,
+          "statement": "ddl.core.13",
+          "after_write_hook": "initialize-fixture.after-write.13"
+        },
+        {
+          "ordinal": 14,
+          "statement": "ddl.core.14",
+          "after_write_hook": "initialize-fixture.after-write.14"
+        },
+        {
+          "ordinal": 15,
+          "statement": "ddl.core.15",
+          "after_write_hook": "initialize-fixture.after-write.15"
+        },
+        {
+          "ordinal": 16,
+          "statement": "ddl.core.16",
+          "after_write_hook": "initialize-fixture.after-write.16"
+        },
+        {
+          "ordinal": 17,
+          "statement": "ddl.core.17",
+          "after_write_hook": "initialize-fixture.after-write.17"
+        },
+        {
+          "ordinal": 18,
+          "statement": "ddl.core.18",
+          "after_write_hook": "initialize-fixture.after-write.18"
+        },
+        {
+          "ordinal": 19,
+          "statement": "ddl.core.19",
+          "after_write_hook": "initialize-fixture.after-write.19"
+        },
+        {
+          "ordinal": 20,
+          "statement": "ddl.core.20",
+          "after_write_hook": "initialize-fixture.after-write.20"
+        },
+        {
+          "ordinal": 21,
+          "statement": "ddl.fixture.01",
+          "after_write_hook": "initialize-fixture.after-write.21"
+        },
+        {
+          "ordinal": 22,
+          "statement": "ddl.fixture.02",
+          "after_write_hook": "initialize-fixture.after-write.22"
+        },
+        {
+          "ordinal": 23,
+          "statement": "ddl.fixture.03",
+          "after_write_hook": "initialize-fixture.after-write.23"
+        },
+        {
+          "ordinal": 24,
+          "statement": "ddl.fixture.04",
+          "after_write_hook": "initialize-fixture.after-write.24"
+        },
+        {
+          "ordinal": 25,
+          "statement": "insert.company_store",
+          "after_write_hook": "initialize-fixture.after-write.25"
+        },
+        {
+          "ordinal": 26,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "initialize-fixture.after-write.26"
+        },
+        {
+          "ordinal": 27,
+          "statement": "insert.schema_migration",
+          "after_write_hook": "initialize-fixture.after-write.27"
+        },
+        {
+          "ordinal": 28,
+          "statement": "insert.storage_entry",
+          "after_write_hook": "initialize-fixture.after-write.28"
+        },
+        {
+          "ordinal": 29,
+          "statement": "insert.maintenance_executor",
+          "after_write_hook": "initialize-fixture.after-write.29"
+        },
+        {
+          "ordinal": 30,
+          "statement": "insert.fixture_fact",
+          "typed_fixture_key": "F1",
+          "after_write_hook": "initialize-fixture.after-write.30"
+        },
+        {
+          "ordinal": 31,
+          "statement": "insert.fixture_allowance",
+          "typed_fixture_key": "B1",
+          "after_write_hook": "initialize-fixture.after-write.31"
+        },
+        {
+          "ordinal": 32,
+          "statement": "insert.fixture_duty",
+          "typed_fixture_key": "D1",
+          "after_write_hook": "initialize-fixture.after-write.32"
+        },
+        {
+          "ordinal": 33,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "AUTHORITY",
+          "after_write_hook": "initialize-fixture.after-write.33"
+        },
+        {
+          "ordinal": 34,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "STOP",
+          "after_write_hook": "initialize-fixture.after-write.34"
+        },
+        {
+          "ordinal": 35,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "POLICY",
+          "after_write_hook": "initialize-fixture.after-write.35"
+        },
+        {
+          "ordinal": 36,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "RESOURCE",
+          "after_write_hook": "initialize-fixture.after-write.36"
+        },
+        {
+          "ordinal": 37,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "RESPONSIBILITY",
+          "after_write_hook": "initialize-fixture.after-write.37"
+        },
+        {
+          "ordinal": 38,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "BINDING",
+          "after_write_hook": "initialize-fixture.after-write.38"
+        },
+        {
+          "ordinal": 39,
+          "statement": "insert.fixture_control_source",
+          "typed_fixture_key": "TIME",
+          "after_write_hook": "initialize-fixture.after-write.39"
+        },
+        {
+          "ordinal": 40,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "initialize-fixture.after-write.40"
+        }
+      ],
+      "additional_hooks": [
+        "initialize-fixture.before-first-write",
+        "initialize-fixture.before-commit",
+        "initialize-fixture.commit-fault",
+        "initialize-fixture.commit-return",
+        "initialize-fixture.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "reopen-idle",
+      "original_selector": "C1a-01.N02/store-generation/each-generation-write-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "reopen-idle.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.storage_entry",
+          "after_write_hook": "reopen-idle.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "reopen-idle.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.company",
+          "after_write_hook": "reopen-idle.after-write.04"
+        }
+      ],
+      "additional_hooks": [
+        "reopen-idle.before-first-write",
+        "reopen-idle.before-commit",
+        "reopen-idle.commit-fault",
+        "reopen-idle.commit-return",
+        "reopen-idle.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "reopen-occupied",
+      "original_selector": "C1a-01.N02/store-generation/each-generation-write-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "reopen-occupied.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.storage_entry",
+          "after_write_hook": "reopen-occupied.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "EXECUTOR_BOUND",
+          "after_write_hook": "reopen-occupied.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.executor",
+          "after_write_hook": "reopen-occupied.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "reopen-occupied.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.company",
+          "after_write_hook": "reopen-occupied.after-write.06"
+        }
+      ],
+      "additional_hooks": [
+        "reopen-occupied.before-first-write",
+        "reopen-occupied.before-commit",
+        "reopen-occupied.commit-fault",
+        "reopen-occupied.commit-return",
+        "reopen-occupied.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "admit-M",
+      "original_selector": "C1a-01.N01/store-open/admitted-unit-valid",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "admit-M.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_operation",
+          "typed_fixture_key": "M",
+          "after_write_hook": "admit-M.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.maintenance_unit",
+          "typed_fixture_key": [
+            "M",
+            1
+          ],
+          "after_write_hook": "admit-M.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "insert.maintenance_unit",
+          "typed_fixture_key": [
+            "M",
+            2
+          ],
+          "after_write_hook": "admit-M.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "M:ADMITTED",
+          "after_write_hook": "admit-M.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "insert.maintenance_admission",
+          "after_write_hook": "admit-M.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1
+          ],
+          "after_write_hook": "admit-M.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2
+          ],
+          "after_write_hook": "admit-M.after-write.08"
+        },
+        {
+          "ordinal": 9,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0
+          ],
+          "after_write_hook": "admit-M.after-write.09"
+        },
+        {
+          "ordinal": 10,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0
+          ],
+          "after_write_hook": "admit-M.after-write.10"
+        },
+        {
+          "ordinal": 11,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "admit-M.after-write.11"
+        },
+        {
+          "ordinal": 12,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "BINDING"
+          ],
+          "after_write_hook": "admit-M.after-write.12"
+        },
+        {
+          "ordinal": 13,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "POLICY"
+          ],
+          "after_write_hook": "admit-M.after-write.13"
+        },
+        {
+          "ordinal": 14,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "RESOURCE"
+          ],
+          "after_write_hook": "admit-M.after-write.14"
+        },
+        {
+          "ordinal": 15,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "admit-M.after-write.15"
+        },
+        {
+          "ordinal": 16,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "STOP"
+          ],
+          "after_write_hook": "admit-M.after-write.16"
+        },
+        {
+          "ordinal": 17,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "TIME"
+          ],
+          "after_write_hook": "admit-M.after-write.17"
+        },
+        {
+          "ordinal": 18,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "admit-M.after-write.18"
+        },
+        {
+          "ordinal": 19,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "BINDING"
+          ],
+          "after_write_hook": "admit-M.after-write.19"
+        },
+        {
+          "ordinal": 20,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "POLICY"
+          ],
+          "after_write_hook": "admit-M.after-write.20"
+        },
+        {
+          "ordinal": 21,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "RESOURCE"
+          ],
+          "after_write_hook": "admit-M.after-write.21"
+        },
+        {
+          "ordinal": 22,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "admit-M.after-write.22"
+        },
+        {
+          "ordinal": 23,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "STOP"
+          ],
+          "after_write_hook": "admit-M.after-write.23"
+        },
+        {
+          "ordinal": 24,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "TIME"
+          ],
+          "after_write_hook": "admit-M.after-write.24"
+        },
+        {
+          "ordinal": 25,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "admit-M.after-write.25"
+        },
+        {
+          "ordinal": 26,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "BINDING"
+          ],
+          "after_write_hook": "admit-M.after-write.26"
+        },
+        {
+          "ordinal": 27,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "POLICY"
+          ],
+          "after_write_hook": "admit-M.after-write.27"
+        },
+        {
+          "ordinal": 28,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "RESOURCE"
+          ],
+          "after_write_hook": "admit-M.after-write.28"
+        },
+        {
+          "ordinal": 29,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "admit-M.after-write.29"
+        },
+        {
+          "ordinal": 30,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "STOP"
+          ],
+          "after_write_hook": "admit-M.after-write.30"
+        },
+        {
+          "ordinal": 31,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "TIME"
+          ],
+          "after_write_hook": "admit-M.after-write.31"
+        },
+        {
+          "ordinal": 32,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "admit-M.after-write.32"
+        },
+        {
+          "ordinal": 33,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "BINDING"
+          ],
+          "after_write_hook": "admit-M.after-write.33"
+        },
+        {
+          "ordinal": 34,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "POLICY"
+          ],
+          "after_write_hook": "admit-M.after-write.34"
+        },
+        {
+          "ordinal": 35,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "RESOURCE"
+          ],
+          "after_write_hook": "admit-M.after-write.35"
+        },
+        {
+          "ordinal": 36,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "admit-M.after-write.36"
+        },
+        {
+          "ordinal": 37,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "STOP"
+          ],
+          "after_write_hook": "admit-M.after-write.37"
+        },
+        {
+          "ordinal": 38,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "TIME"
+          ],
+          "after_write_hook": "admit-M.after-write.38"
+        },
+        {
+          "ordinal": 39,
+          "statement": "insert.maintenance_restriction",
+          "typed_fixture_key": "M-cause",
+          "after_write_hook": "admit-M.after-write.39"
+        },
+        {
+          "ordinal": 40,
+          "statement": "cas.executor",
+          "after_write_hook": "admit-M.after-write.40"
+        },
+        {
+          "ordinal": 41,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "admit-M.after-write.41"
+        },
+        {
+          "ordinal": 42,
+          "statement": "cas.company",
+          "after_write_hook": "admit-M.after-write.42"
+        }
+      ],
+      "additional_hooks": [
+        "admit-M.before-first-write",
+        "admit-M.before-commit",
+        "admit-M.commit-fault",
+        "admit-M.commit-return",
+        "admit-M.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "claim-u1",
+      "original_selector": "C1a-01.N02/store-generation/unit-claim-gaps",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "claim-u1.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "M",
+            1,
+            "UNIT_CLAIMED"
+          ],
+          "after_write_hook": "claim-u1.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "claim-u1.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.company",
+          "after_write_hook": "claim-u1.after-write.04"
+        }
+      ],
+      "additional_hooks": [
+        "claim-u1.before-first-write",
+        "claim-u1.before-commit",
+        "claim-u1.commit-fault",
+        "claim-u1.commit-return",
+        "claim-u1.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "apply-u1",
+      "original_selector": "C1a-01.N02/store-generation/each-unit-data-marker-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "apply-u1.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "unit.add-encoding",
+          "after_write_hook": "apply-u1.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "unit.set-encoding",
+          "after_write_hook": "apply-u1.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "insert.schema_migration",
+          "after_write_hook": "apply-u1.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "M",
+            1,
+            "UNIT_COMMITTED"
+          ],
+          "after_write_hook": "apply-u1.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.executor",
+          "after_write_hook": "apply-u1.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "apply-u1.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "cas.company",
+          "after_write_hook": "apply-u1.after-write.08"
+        }
+      ],
+      "additional_hooks": [
+        "apply-u1.before-first-write",
+        "apply-u1.before-commit",
+        "apply-u1.commit-fault",
+        "apply-u1.commit-return",
+        "apply-u1.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "claim-u2",
+      "original_selector": "C1a-01.N02/store-generation/unit-claim-gaps",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "claim-u2.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "M",
+            2,
+            "UNIT_CLAIMED"
+          ],
+          "after_write_hook": "claim-u2.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "claim-u2.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.company",
+          "after_write_hook": "claim-u2.after-write.04"
+        }
+      ],
+      "additional_hooks": [
+        "claim-u2.before-first-write",
+        "claim-u2.before-commit",
+        "claim-u2.commit-fault",
+        "claim-u2.commit-return",
+        "claim-u2.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "apply-u2",
+      "original_selector": "C1a-01.N02/store-generation/each-unit-data-marker-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "apply-u2.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "unit.add-digest",
+          "after_write_hook": "apply-u2.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "unit.set-digest",
+          "after_write_hook": "apply-u2.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "insert.schema_migration",
+          "after_write_hook": "apply-u2.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "M",
+            2,
+            "UNIT_COMMITTED"
+          ],
+          "after_write_hook": "apply-u2.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.executor",
+          "after_write_hook": "apply-u2.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "apply-u2.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "cas.company",
+          "after_write_hook": "apply-u2.after-write.08"
+        }
+      ],
+      "additional_hooks": [
+        "apply-u2.before-first-write",
+        "apply-u2.before-commit",
+        "apply-u2.commit-fault",
+        "apply-u2.commit-return",
+        "apply-u2.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "claim-r1",
+      "original_selector": "C1a-01.N02/store-generation/unit-claim-gaps",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "claim-r1.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "R",
+            1,
+            "UNIT_CLAIMED"
+          ],
+          "after_write_hook": "claim-r1.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "claim-r1.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.company",
+          "after_write_hook": "claim-r1.after-write.04"
+        }
+      ],
+      "additional_hooks": [
+        "claim-r1.before-first-write",
+        "claim-r1.before-commit",
+        "claim-r1.commit-fault",
+        "claim-r1.commit-return",
+        "claim-r1.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "apply-r1",
+      "original_selector": "C1a-01.N02/store-generation/each-unit-data-marker-gap",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "apply-r1.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "unit.add-digest",
+          "after_write_hook": "apply-r1.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "unit.set-digest",
+          "after_write_hook": "apply-r1.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "insert.schema_migration",
+          "after_write_hook": "apply-r1.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": [
+            "R",
+            1,
+            "UNIT_COMMITTED"
+          ],
+          "after_write_hook": "apply-r1.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.executor",
+          "after_write_hook": "apply-r1.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "apply-r1.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "cas.company",
+          "after_write_hook": "apply-r1.after-write.08"
+        }
+      ],
+      "additional_hooks": [
+        "apply-r1.before-first-write",
+        "apply-r1.before-commit",
+        "apply-r1.commit-fault",
+        "apply-r1.commit-return",
+        "apply-r1.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "change-M-stop",
+      "original_selector": "C1a-01.N02/store-generation/control-before-unit",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "change-M-stop.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "cas.fixture-source",
+          "typed_fixture_key": "STOP",
+          "after_write_hook": "change-M-stop.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "cas.control",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1
+          ],
+          "after_write_hook": "change-M-stop.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.control",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2
+          ],
+          "after_write_hook": "change-M-stop.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "cas.control",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0
+          ],
+          "after_write_hook": "change-M-stop.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.control",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0
+          ],
+          "after_write_hook": "change-M-stop.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "delete.exact-dependencies",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1
+          ],
+          "after_write_hook": "change-M-stop.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "delete.exact-dependencies",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2
+          ],
+          "after_write_hook": "change-M-stop.after-write.08"
+        },
+        {
+          "ordinal": 9,
+          "statement": "delete.exact-dependencies",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0
+          ],
+          "after_write_hook": "change-M-stop.after-write.09"
+        },
+        {
+          "ordinal": 10,
+          "statement": "delete.exact-dependencies",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0
+          ],
+          "after_write_hook": "change-M-stop.after-write.10"
+        },
+        {
+          "ordinal": 11,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.11"
+        },
+        {
+          "ordinal": 12,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "BINDING"
+          ],
+          "after_write_hook": "change-M-stop.after-write.12"
+        },
+        {
+          "ordinal": 13,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "POLICY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.13"
+        },
+        {
+          "ordinal": 14,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "RESOURCE"
+          ],
+          "after_write_hook": "change-M-stop.after-write.14"
+        },
+        {
+          "ordinal": 15,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.15"
+        },
+        {
+          "ordinal": 16,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "STOP"
+          ],
+          "after_write_hook": "change-M-stop.after-write.16"
+        },
+        {
+          "ordinal": 17,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            1,
+            "TIME"
+          ],
+          "after_write_hook": "change-M-stop.after-write.17"
+        },
+        {
+          "ordinal": 18,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.18"
+        },
+        {
+          "ordinal": 19,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "BINDING"
+          ],
+          "after_write_hook": "change-M-stop.after-write.19"
+        },
+        {
+          "ordinal": 20,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "POLICY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.20"
+        },
+        {
+          "ordinal": 21,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "RESOURCE"
+          ],
+          "after_write_hook": "change-M-stop.after-write.21"
+        },
+        {
+          "ordinal": 22,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.22"
+        },
+        {
+          "ordinal": 23,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "STOP"
+          ],
+          "after_write_hook": "change-M-stop.after-write.23"
+        },
+        {
+          "ordinal": 24,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "APPLY_UNIT",
+            2,
+            "TIME"
+          ],
+          "after_write_hook": "change-M-stop.after-write.24"
+        },
+        {
+          "ordinal": 25,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.25"
+        },
+        {
+          "ordinal": 26,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "BINDING"
+          ],
+          "after_write_hook": "change-M-stop.after-write.26"
+        },
+        {
+          "ordinal": 27,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "POLICY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.27"
+        },
+        {
+          "ordinal": 28,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "RESOURCE"
+          ],
+          "after_write_hook": "change-M-stop.after-write.28"
+        },
+        {
+          "ordinal": 29,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.29"
+        },
+        {
+          "ordinal": 30,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "STOP"
+          ],
+          "after_write_hook": "change-M-stop.after-write.30"
+        },
+        {
+          "ordinal": 31,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "FINALIZE",
+            0,
+            "TIME"
+          ],
+          "after_write_hook": "change-M-stop.after-write.31"
+        },
+        {
+          "ordinal": 32,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.32"
+        },
+        {
+          "ordinal": 33,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "BINDING"
+          ],
+          "after_write_hook": "change-M-stop.after-write.33"
+        },
+        {
+          "ordinal": 34,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "POLICY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.34"
+        },
+        {
+          "ordinal": 35,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "RESOURCE"
+          ],
+          "after_write_hook": "change-M-stop.after-write.35"
+        },
+        {
+          "ordinal": 36,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "change-M-stop.after-write.36"
+        },
+        {
+          "ordinal": 37,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "STOP"
+          ],
+          "after_write_hook": "change-M-stop.after-write.37"
+        },
+        {
+          "ordinal": 38,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "M",
+            "SUPERSEDE",
+            0,
+            "TIME"
+          ],
+          "after_write_hook": "change-M-stop.after-write.38"
+        },
+        {
+          "ordinal": 39,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "CONTROL_APPLIED",
+          "after_write_hook": "change-M-stop.after-write.39"
+        },
+        {
+          "ordinal": 40,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "change-M-stop.after-write.40"
+        },
+        {
+          "ordinal": 41,
+          "statement": "cas.company",
+          "after_write_hook": "change-M-stop.after-write.41"
+        }
+      ],
+      "additional_hooks": [
+        "change-M-stop.before-first-write",
+        "change-M-stop.before-commit",
+        "change-M-stop.commit-fault",
+        "change-M-stop.commit-return",
+        "change-M-stop.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "replace-M-with-R",
+      "original_selector": "C1a-01.N02/store-generation/replacement-commit-response-lost",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "replace-M-with-R.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_operation",
+          "typed_fixture_key": "R",
+          "after_write_hook": "replace-M-with-R.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "insert.maintenance_unit",
+          "typed_fixture_key": [
+            "R",
+            1
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "M:SUPERSEDED",
+          "after_write_hook": "replace-M-with-R.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "R:ADMITTED",
+          "after_write_hook": "replace-M-with-R.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "insert.maintenance_admission",
+          "after_write_hook": "replace-M-with-R.after-write.06"
+        },
+        {
+          "ordinal": 7,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.07"
+        },
+        {
+          "ordinal": 8,
+          "statement": "insert.maintenance_control",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.08"
+        },
+        {
+          "ordinal": 9,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.09"
+        },
+        {
+          "ordinal": 10,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "BINDING"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.10"
+        },
+        {
+          "ordinal": 11,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "POLICY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.11"
+        },
+        {
+          "ordinal": 12,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "RESOURCE"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.12"
+        },
+        {
+          "ordinal": 13,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.13"
+        },
+        {
+          "ordinal": 14,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "STOP"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.14"
+        },
+        {
+          "ordinal": 15,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "APPLY_UNIT",
+            1,
+            "TIME"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.15"
+        },
+        {
+          "ordinal": 16,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "AUTHORITY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.16"
+        },
+        {
+          "ordinal": 17,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "BINDING"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.17"
+        },
+        {
+          "ordinal": 18,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "POLICY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.18"
+        },
+        {
+          "ordinal": 19,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "RESOURCE"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.19"
+        },
+        {
+          "ordinal": 20,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "RESPONSIBILITY"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.20"
+        },
+        {
+          "ordinal": 21,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "STOP"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.21"
+        },
+        {
+          "ordinal": 22,
+          "statement": "insert.maintenance_control_dependency",
+          "typed_fixture_key": [
+            "R",
+            "FINALIZE",
+            0,
+            "TIME"
+          ],
+          "after_write_hook": "replace-M-with-R.after-write.22"
+        },
+        {
+          "ordinal": 23,
+          "statement": "cas.executor",
+          "after_write_hook": "replace-M-with-R.after-write.23"
+        },
+        {
+          "ordinal": 24,
+          "statement": "cas.restriction",
+          "typed_fixture_key": "M-cause",
+          "after_write_hook": "replace-M-with-R.after-write.24"
+        },
+        {
+          "ordinal": 25,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "replace-M-with-R.after-write.25"
+        },
+        {
+          "ordinal": 26,
+          "statement": "cas.company",
+          "after_write_hook": "replace-M-with-R.after-write.26"
+        }
+      ],
+      "additional_hooks": [
+        "replace-M-with-R.before-first-write",
+        "replace-M-with-R.before-commit",
+        "replace-M-with-R.commit-fault",
+        "replace-M-with-R.commit-return",
+        "replace-M-with-R.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "finalize-m",
+      "original_selector": "C1a-01.N02/store-generation/final-validation-response-lost",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "finalize-m.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "M:FINAL_VALIDATED",
+          "after_write_hook": "finalize-m.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "cas.restriction",
+          "typed_fixture_key": "M-cause",
+          "after_write_hook": "finalize-m.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.executor",
+          "after_write_hook": "finalize-m.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "finalize-m.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.company",
+          "after_write_hook": "finalize-m.after-write.06"
+        }
+      ],
+      "additional_hooks": [
+        "finalize-m.before-first-write",
+        "finalize-m.before-commit",
+        "finalize-m.commit-fault",
+        "finalize-m.commit-return",
+        "finalize-m.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "finalize-r",
+      "original_selector": "C1a-01.N02/store-generation/final-validation-response-lost",
+      "ordered_write_sites": [
+        {
+          "ordinal": 1,
+          "statement": "insert.mutation_group",
+          "after_write_hook": "finalize-r.after-write.01"
+        },
+        {
+          "ordinal": 2,
+          "statement": "insert.maintenance_receipt",
+          "typed_fixture_key": "R:FINAL_VALIDATED",
+          "after_write_hook": "finalize-r.after-write.02"
+        },
+        {
+          "ordinal": 3,
+          "statement": "cas.restriction",
+          "typed_fixture_key": "M-cause",
+          "after_write_hook": "finalize-r.after-write.03"
+        },
+        {
+          "ordinal": 4,
+          "statement": "cas.executor",
+          "after_write_hook": "finalize-r.after-write.04"
+        },
+        {
+          "ordinal": 5,
+          "statement": "insert.audit_entry",
+          "after_write_hook": "finalize-r.after-write.05"
+        },
+        {
+          "ordinal": 6,
+          "statement": "cas.company",
+          "after_write_hook": "finalize-r.after-write.06"
+        }
+      ],
+      "additional_hooks": [
+        "finalize-r.before-first-write",
+        "finalize-r.before-commit",
+        "finalize-r.commit-fault",
+        "finalize-r.commit-return",
+        "finalize-r.confirmed-before-response"
+      ],
+      "expected_outcome_rule": "Use independently witnessed complete before/after rows and original receipt identity. Unobservable results retain explicit uncertainty. No partial group.",
+      "actual_source_path": null,
+      "actual_selector": null,
+      "status": "NOT_RUN"
+    }
+  ],
+  "filesystem_and_connection_hooks": [
+    {
+      "original_selector": "C1a-01.N02/store-generation/creation-publication-gaps",
+      "hooks": [
+        "mkdirat",
+        "directory-open-and-identity",
+        "lock-open",
+        "flock",
+        "owned-parent-sync",
+        "owned-lock-file-sync",
+        "owned-directory-sync",
+        "existing-intent-and-allocation-resync",
+        "intent-temp-exclusive-open",
+        "intent-full-write",
+        "intent-file-sync",
+        "intent-rename-excl",
+        "intent-directory-sync"
+      ],
+      "actual_witness": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "original_selector": "C1a-01.N02/store-generation/allocation-publication-gaps",
+      "hooks": [
+        "db-exclusive-open",
+        "db-identity",
+        "db-file-sync",
+        "allocation-temp-exclusive-open",
+        "allocation-full-write",
+        "allocation-file-sync",
+        "allocation-rename-excl",
+        "allocation-directory-sync",
+        "first-sqlite-write",
+        "wal-transition-cold-header-write",
+        "wal-transition-synced-hot-header",
+        "wal-transition-first-main-page-write-before-journal-removal"
+      ],
+      "actual_witness": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "original_selector": "C1a-01.N02/store-life/child-survival-no-lock",
+      "hooks": [
+        "spawn-close-by-default",
+        "spawn-child-running",
+        "original-owner-terminated",
+        "successor-owns-lock-with-child-running"
+      ],
+      "actual_witness": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "original_selector": "C1a-01.N01/store-open/all-connections-qualified",
+      "hooks": [
+        "open-role-and-flags",
+        "verify-runtime-source-and-options",
+        "apply-and-query-required-settings",
+        "verify-catalog-and-identity",
+        "admit-role"
+      ],
+      "actual_witness": null,
+      "status": "NOT_RUN"
+    },
+    {
+      "original_selector": "C1a-01.N03/store-failure/uncertain-startup",
+      "hooks": [
+        "pre-recovery-raw-file-capture",
+        "pre-open-original-bootstrap-pair-classification",
+        "verified-bootstrap-recovery-role",
+        "subject-sqlite-recovery-witness",
+        "same-inode-empty-allocation-verification",
+        "read-only-consistent-observer-snapshot",
+        "initialized-legacy-journal-refusal-before-sqlite-open"
+      ],
+      "actual_witness": null,
+      "status": "NOT_RUN"
+    }
+  ],
+  "required_completion": [
+    "Keep both actual underlying committed/absent outcomes where applicable and the original uncertainty branch.",
+    "Use this as the independent minimum mapping for exact designed write sites. The final reviewed code must add its real read/check, implicit FK/index/WAL/VFS and platform fault cuts before execution.",
+    "This does not change the 108 semantic member identities or create new roots."
+  ],
+  "hook_oracles": {
+    "before-first-write_or_after-write_or_before-commit": "When the supervisor proves death/rollback before COMMIT entry, the current group is absent after verified recovery. Preserve earlier confirmed groups and charges.",
+    "commit-fault": "Inspect original complete identity/group and physical state after supported recovery; prove the actual committed or absent branch or retain unknown.",
+    "commit-return": "Record the real returned engine result separately. Missing/failed confirmation does not imply absent; verify the original before dependent action.",
+    "confirmed-before-response": "Recover the entire committed group and immutable original receipt. Do not repeat work, refill a charge or reuse a generation or permit."
+  }
+}
